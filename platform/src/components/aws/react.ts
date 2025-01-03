@@ -469,7 +469,6 @@ export class React extends Component implements Link.Linkable {
             ? createServerLambdaBundle(outputPath, edge)
             : undefined;
 
-          const indexPage = "index.html";
           return validatePlan({
             edge,
             cloudFrontFunctions: {
@@ -484,17 +483,16 @@ export class React extends Component implements Link.Linkable {
                 ],
               },
             },
-            defaultRootObject: indexPage,
             errorResponses: !serverConfig
               ? [
                   {
                     errorCode: 403,
-                    responsePagePath: interpolate`/${indexPage}`,
+                    responsePagePath: "/",
                     responseCode: 200,
                   },
                   {
                     errorCode: 404,
-                    responsePagePath: interpolate`/${indexPage}`,
+                    responsePagePath: "/",
                     responseCode: 200,
                   },
                 ]
