@@ -1178,7 +1178,10 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
    * Adds a private route to the API Gateway HTTP API.
    *
    * To add private routes, you need to have a VPC link. Make sure to pass in a `vpc`.
-   * Learn more about [adding private routes](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-develop-integrations-private.html).
+   * Learn more about [adding private routes](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-develop-integrations-private.html). Your VPC's availability zones must support VPC link.
+   * See the list of supported availability zones in the [aws docs](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-vpc-links.html). 
+   * You can set your VPC's availability zones using its `az` argument: `az: ["eu-west-3a", "eu-west-3c"]`. 
+   * To do this you have to map your AWS account's availability zones to their AZ IDs by running `aws ec2 describe-availability-zones`.
    *
    * :::tip
    * You need to pass `vpc` to add a private route.
