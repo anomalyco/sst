@@ -161,7 +161,7 @@ export interface App {
    *
    * <VideoAside title="Watch a video on how to protect your prod resources" href="https://youtu.be/fb6UBGwgDuA" />
    *
-   * To control how a stage is handled on `sst remove`, check out the `protected` prop.
+   * To control how a stage is handled on `sst remove`, check out the `protect` prop.
    *
    * @default `"retain"`
    */
@@ -257,7 +257,7 @@ export interface App {
    *
    * ```ts
    * {
-   *   protected: input.stage === "production"
+   *   protect: input.stage === "production"
    * }
    * ```
    *
@@ -268,7 +268,7 @@ export interface App {
    * If you accidentally remove a resource from the `sst.config.ts` and run `sst deploy` or
    * `sst dev`, it'll still get removed. To avoid this, check out the `removal` prop.
    */
-  protected?: boolean;
+  protect?: boolean;
 }
 
 export interface AppInput {
