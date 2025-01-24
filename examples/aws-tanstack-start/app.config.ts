@@ -1,15 +1,18 @@
-import { defineConfig } from "@tanstack/start/config";
-import tsConfigPaths from "vite-tsconfig-paths";
+import { defineConfig } from '@tanstack/start/config'
+import tsConfigPaths from 'vite-tsconfig-paths'
 
 export default defineConfig({
-  deployment: {
-    preset: "aws-lambda",
+  server: {
+    preset: 'aws-lambda',
+    awsLambda: {
+      streaming: true,
+    },
   },
   vite: {
-    plugins: () => [
+    plugins: [
       tsConfigPaths({
-        projects: ["./tsconfig.json"],
+        projects: ['./tsconfig.json'],
       }),
     ],
   },
-});
+})
