@@ -447,6 +447,8 @@ export class TanstackStart extends Component implements Link.Linkable {
             .filter((item) => {
               if (!item.isDirectory()) return true;
 
+              if (item.name === "_server") return false;
+
               // Ignore empty folders, sometimes these are created for purely server routes (vinxi bug)
               const isEmpty = !fs.readdirSync(
                 path.join(outputPath, assetsPath, item.name),
