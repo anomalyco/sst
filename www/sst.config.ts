@@ -19,12 +19,14 @@ export default $config({
           return { stage: "production" };
         }
       },
-      workflow(ctx) {
-        ctx.install();
-        ctx.shell("goenv install 1.21.3 && goenv global 1.21.3");
-        ctx.shell("cd ../platform && ./scripts/build");
-        ctx.shell("bun i sst-linux-x64");
-        ctx.deploy();
+      async workflow({ $, event }) {
+        await $`bun i`;
+        await $`goenv install 1.21.3 && goenv global 1.21.3`;
+        await $`cd ../platform && ./scripts/build`;
+        await $`bun i sst-linux-x64`;
+        event.action === "removed"
+          ? await $`bun sst remove`
+          : await $`bun sst deploy`;
       },
     },
   },
@@ -106,14 +108,14 @@ export default $config({
       domain:
         $app.stage === "production"
           ? {
-            name: domain,
-            redirects: [
-              "www.sst.dev",
-              "ion.sst.dev",
-              "serverless-stack.com",
-              "www.serverless-stack.com",
-            ],
-          }
+              name: domain,
+              redirects: [
+                "www.sst.dev",
+                "ion.sst.dev",
+                "serverless-stack.com",
+                "www.serverless-stack.com",
+              ],
+            }
           : domain,
       transform: {
         cdn: (args) => {

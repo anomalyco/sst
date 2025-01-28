@@ -14,7 +14,6 @@ import (
 
 	"github.com/sst/sst/v3/pkg/flag"
 	"golang.org/x/exp/slog"
-	"golang.org/x/sync/errgroup"
 )
 
 type Home interface {
@@ -175,30 +174,6 @@ func PutSecrets(backend Home, app, stage string, data map[string]string) error {
 	return putData(backend, "secret", app, stage, true, data)
 }
 
-func PushState(backend Home, updateID, app, stage, from string) error {
-	slog.Info("pushing state", "app", app, "stage", stage, "from", from)
-	file, err := os.Open(from)
-	if err != nil {
-		return nil
-	}
-	var group errgroup.Group
-	fileBytes, err := io.ReadAll(file)
-	if err != nil {
-		return err
-	}
-	err = json.Unmarshal(fileBytes, &map[string]interface{}{})
-	if err != nil {
-		return fmt.Errorf("something has corrupted the state file - refusing to upload: %w", err)
-	}
-	group.Go(func() error {
-		return backend.putData("app", app, stage, bytes.NewReader(fileBytes))
-	})
-	group.Go(func() error {
-		return backend.putData("snapshot", app, stage+"/"+updateID, bytes.NewReader(fileBytes))
-	})
-	return group.Wait()
-}
-
 func PushPartialState(backend Home, updateID, app, stage string, data []byte) error {
 	slog.Info("pushing partial state", "updateID", updateID)
 	err := json.Unmarshal(data, &map[string]interface{}{})
@@ -215,6 +190,11 @@ func PushSnapshot(backend Home, updateID, app, stage string, data []byte) error 
 		return fmt.Errorf("something has corrupted the state file - refusing to upload: %w", err)
 	}
 	return backend.putData("snapshot", app, stage+"/"+updateID, bytes.NewReader(data))
+}
+
+func PushEventLog(backend Home, updateID, app, stage string, reader io.Reader) error {
+	slog.Info("pushing eventlog", "updateID", updateID)
+	return backend.putData("eventlog", app, stage+"/"+updateID, reader)
 }
 
 var ErrStateNotFound = fmt.Errorf("state not found")
@@ -318,7 +298,6 @@ func ForceUnlock(backend Home, version, app, stage string) error {
 }
 
 func putData(backend Home, key, app, stage string, encrypt bool, data interface{}) error {
-	slog.Info("putting data", "key", key, "app", app, "stage", stage)
 	jsonBytes, err := json.Marshal(data)
 	if err != nil {
 		return err

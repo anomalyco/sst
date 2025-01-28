@@ -12,6 +12,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/pulumi/pulumi/sdk/v3/go/auto/events"
@@ -25,7 +26,6 @@ import (
 	"github.com/sst/sst/v3/pkg/project/provider"
 	"github.com/sst/sst/v3/pkg/telemetry"
 	"github.com/sst/sst/v3/pkg/types"
-	"github.com/zeebo/xxh3"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -38,7 +38,8 @@ func (p *Project) Run(ctx context.Context, input *StackInput) error {
 }
 
 func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
-	slog.Info("running stack command", "cmd", input.Command)
+	log := slog.Default().With("service", "project.run")
+	log.Info("running stack command", "cmd", input.Command)
 
 	if p.app.Protect && input.Command == "remove" {
 		return ErrProtectedStage
@@ -53,6 +54,7 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	})
 
 	updateID := id.Descending()
+	log = log.With("updateID", updateID)
 	if input.Command != "diff" {
 		err := p.Lock(updateID, input.Command)
 		if err != nil {
@@ -68,7 +70,7 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	if err != nil {
 		return err
 	}
-	defer workdir.Cleanup()
+	// defer workdir.Cleanup()
 
 	passphrase, err := provider.Passphrase(p.home, p.app.Name, p.app.Stage)
 	if err != nil {
@@ -91,7 +93,7 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 		return err
 	}
 	defer pulumiStderr.Close()
-	statePath, err := workdir.Pull()
+	_, err = workdir.Pull()
 	if err != nil {
 		if errors.Is(err, provider.ErrStateNotFound) {
 			if input.Command != "deploy" {
@@ -121,13 +123,13 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 		bus.Publish(&BuildFailedEvent{
 			Error: err.Error(),
 		})
-		slog.Info("state file might be corrupted", "err", err)
+		log.Info("state file might be corrupted", "err", err)
 		return err
 	}
 	completed.Finished = true
 	completed.Old = true
 	bus.Publish(completed)
-	slog.Info("got previous deployment")
+	log.Info("got previous deployment")
 
 	cli := map[string]interface{}{
 		"command": input.Command,
@@ -210,7 +212,7 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 		Files: files,
 		Hash:  buildResult.OutputFiles[0].Hash,
 	})
-	slog.Info("tracked files")
+	log.Info("tracked files")
 
 	secrets := map[string]string{}
 	fallback := map[string]string{}
@@ -252,25 +254,29 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 		"PULUMI_SKIP_UPDATE_CHECK=true",
 		"PULUMI_BACKEND_URL=file://"+workdir.Backend(),
 		"PULUMI_DEBUG_COMMANDS=true",
-		"PULUMI_DISABLE_AUTOMATIC_PLUGIN_ACQUISITION=true",
+		// "PULUMI_DISABLE_AUTOMATIC_PLUGIN_ACQUISITION=true",
 		"NODE_OPTIONS=--enable-source-maps --no-deprecation",
 		"PULUMI_HOME="+global.ConfigDir(),
 	)
 	if input.ServerPort != 0 {
-		env = append(env, "SST_SERVER=http://localhost:"+fmt.Sprint(input.ServerPort))
+		env = append(env, "SST_SERVER=http://127.0.0.1:"+fmt.Sprint(input.ServerPort))
 	}
 	pulumiPath := flag.SST_PULUMI_PATH
 	if pulumiPath == "" {
 		pulumiPath = filepath.Join(global.BinPath(), "..")
 	}
 
-	eventLogPath := filepath.Join(workdir.path, "event.log")
+	eventlogPath := workdir.EventLogPath()
+	eventlog, err := os.OpenFile(eventlogPath, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return err
+	}
+	defer eventlog.Close()
+
 	args := []string{
 		"--stack", fmt.Sprintf("organization/%v/%v", p.app.Name, p.app.Stage),
 		"--non-interactive",
-		"--yes",
-		"--event-log", eventLogPath,
-		"-f",
+		"--event-log", eventlogPath,
 	}
 
 	if input.Command == "deploy" || input.Command == "diff" {
@@ -296,55 +302,43 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 
 	switch input.Command {
 	case "diff":
-		args = append([]string{"diff"}, args...)
+		args = append([]string{"preview"}, args...)
 	case "refresh":
-		args = append([]string{"refresh"}, args...)
+		args = append([]string{"refresh", "--yes"}, args...)
 	case "deploy":
-		args = append([]string{"up"}, args...)
+		args = append([]string{"up", "--yes", "-f"}, args...)
 	case "remove":
-		args = append([]string{"destroy"}, args...)
+		args = append([]string{"destroy", "--yes", "-f"}, args...)
 	}
 	cmd := process.Command(filepath.Join(pulumiPath, "bin/pulumi"), args...)
+	process.Detach(cmd)
 	cmd.Env = env
 	cmd.Stdout = pulumiStdout
 	cmd.Stderr = pulumiStderr
 	cmd.Dir = workdir.Backend()
-	slog.Info("starting pulumi", "args", cmd.Args)
-
-	eventlog, err := os.Create(p.PathLog("event"))
-	if err != nil {
-		return err
-	}
-	defer eventlog.Close()
+	log.Info("starting pulumi", "args", cmd.Args)
 
 	errors := []Error{}
 	finished := false
 	importDiffs := map[string][]ImportDiff{}
+
 	partial := make(chan int, 1000)
+	partialContext, partialCancel := context.WithCancel(ctx)
+	defer partialCancel()
 	partialDone := make(chan error)
 	go func() {
-		last := uint64(0)
+		if input.Command == "diff" {
+			return
+		}
 		for {
 			select {
-			case cmd := <-partial:
-				data, err := os.ReadFile(statePath)
-				if err == nil {
-					next := xxh3.Hash(data)
-					if next != last && next != 0 && input.Command != "diff" {
-						err := provider.PushPartialState(p.Backend(), updateID, p.App().Name, p.App().Stage, data)
-						if err != nil && cmd == 0 {
-							partialDone <- err
-							return
-						}
-					}
-					last = next
-					if cmd == 0 {
-						partialDone <- provider.PushSnapshot(p.Backend(), updateID, p.App().Name, p.App().Stage, data)
-						return
-					}
-				}
+			case <-partialContext.Done():
+				partialDone <- nil
+				return
+			case <-partial:
+				workdir.PushPartial(updateID)
 			case <-time.After(time.Second * 5):
-				partial <- 1
+				workdir.PushPartial(updateID)
 				continue
 			}
 		}
@@ -355,23 +349,24 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	if err != nil {
 		return err
 	}
-	exited := make(chan error)
+	exited := make(chan error, 1)
 	go func() {
 		exited <- cmd.Wait()
+		log.Info("pulumi exited", "err", err)
 	}()
 
 	go func() {
 		<-ctx.Done()
-		// if cmd.Process != nil {
-		// 	cmd.Process.Signal(syscall.SIGINT)
-		// }
+		if cmd.Process != nil {
+			log.Info("sending interrupt")
+			err := cmd.Process.Signal(syscall.SIGINT)
+			if err != nil {
+				log.Error("failed to send interrupt", "err", err)
+			}
+		}
 	}()
 
-	eventLog, err := os.OpenFile(eventLogPath, os.O_RDWR|os.O_CREATE, 0644)
-	if err != nil {
-		return err
-	}
-	reader := bufio.NewReader(eventLog)
+	reader := bufio.NewReader(eventlog)
 loop:
 	for {
 		bytes, err := reader.ReadBytes('\n')
@@ -385,20 +380,19 @@ loop:
 					continue
 				}
 			}
-			return err
+			log.Error("failed to read event", "err", err)
+			continue
 		}
 		var event events.EngineEvent
 		err = json.Unmarshal(bytes, &event)
 		if err != nil {
-			break
+			slog.Error("failed to unmarshal event", "err", err)
+			continue
 		}
-		if event.DiagnosticEvent != nil && event.DiagnosticEvent.Severity == "error" {
-			if strings.HasPrefix(event.DiagnosticEvent.Message, "update failed") {
-				break
-			}
-			if strings.Contains(event.DiagnosticEvent.Message, "failed to register new resource") {
-				break
-			}
+		if event.DiagnosticEvent != nil &&
+			event.DiagnosticEvent.Severity == "error" &&
+			!strings.HasPrefix(event.DiagnosticEvent.Message, "update failed") &&
+			!strings.Contains(event.DiagnosticEvent.Message, "failed to register new resource") {
 
 			// check if the error is a common error
 			help := []string{}
@@ -417,6 +411,7 @@ loop:
 					}
 				}
 			}
+
 			if !exists {
 				errors = append(errors, Error{
 					Message: strings.TrimSpace(event.DiagnosticEvent.Message),
@@ -463,19 +458,12 @@ loop:
 
 		bytes, err = json.Marshal(event)
 		if err != nil {
-			break
+			log.Info("failed to marshal event", "err", err)
+			continue
 		}
-		eventlog.Write(bytes)
-		eventlog.WriteString("\n")
 	}
 
-	partial <- 0
-	err = <-partialDone
-	if err != nil {
-		return err
-	}
-
-	slog.Info("parsing state")
+	log.Info("parsing state")
 	complete, err := getCompletedEvent(context.Background(), passphrase, workdir)
 	if err != nil {
 		return err
@@ -485,8 +473,17 @@ loop:
 	complete.ImportDiffs = importDiffs
 	types.Generate(p.PathConfig(), complete.Links)
 	defer bus.Publish(complete)
-	if input.Command == "diff" {
-		return err
+
+	if input.Command != "diff" {
+		log.Info("canceling partial")
+		partialCancel()
+		log.Info("waiting for partial to exit")
+		<-partialDone
+
+		err = workdir.Push(updateID)
+		if err != nil {
+			return err
+		}
 	}
 
 	outputsFilePath := filepath.Join(p.PathWorkingDir(), "outputs.json")
@@ -513,7 +510,7 @@ loop:
 		}
 	}
 
-	slog.Info("done running stack command")
+	log.Info("done running stack command")
 	if cmd.ProcessState.ExitCode() > 0 {
 		return ErrStackRunFailed
 	}

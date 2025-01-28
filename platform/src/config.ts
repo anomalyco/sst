@@ -87,6 +87,7 @@
  *
  * @packageDocumentation
  */
+import type { Shell } from "bun";
 
 type Prettify<T> = {
   [K in keyof T]: T[K];
@@ -287,13 +288,6 @@ export interface AppInput {
 export interface RunnerInput {
   /**
    * The stage the deployment will be run in.
-   */
-  stage: string;
-}
-
-export interface Target {
-  /**
-   * The stage the app will be deployed to.
    */
   stage: string;
 }
@@ -724,6 +718,84 @@ export interface PullRequestEvent {
   sender: Prettify<GitSender>;
 }
 
+/**
+ * A user event for when the user manually triggers a deploy. For example:
+ * ```js
+ * {
+ *   type: "user",
+ *   action: "deploy",
+ *   repo: {
+ *     id: 1296269,
+ *     owner: "octocat",
+ *     repo: "Hello-World"
+ *   },
+ *   ref: "main",
+ *   commit: {
+ *     id: "b7e7c4c559e0e5b4bc6f8d98e0e5e5e5e5e5e5e5",
+ *     message: "Update the README with new information"
+ *   }
+ * }
+ * ```
+ */
+export interface UserEvent {
+  /**
+   * The user event type.
+   */
+  type: "user";
+  /**
+   * The type of the user action.
+   *
+   * - `deploy` is when you manually trigger a deploy
+   * - `remove` is when you manually remove a stage
+   */
+  action: "deploy" | "remove";
+  /**
+   * The Git repository the event is coming from. This might look like:
+   *
+   * ```js
+   * {
+   *   id: 1296269,
+   *   owner: "octocat",
+   *   repo: "Hello-World"
+   * }
+   * ```
+   */
+  repo: Prettify<GitRepo>;
+  /**
+   * The reference to the Git commit. This can be the branch, tag, or commit hash.
+   */
+  ref: string;
+  /**
+   * Info about the commit in the event. This might look like:
+   *
+   * ```js
+   * {
+   *   id: "b7e7c4c559e0e5b4bc6f8d98e0e5e5e5e5e5e5e5",
+   *   message: "Update the README with new information"
+   * }
+   * ```
+   */
+  commit: Prettify<GitCommit>;
+}
+
+export interface Target {
+  /**
+   * The stage the app will be deployed to.
+   */
+  stage: string;
+}
+
+export interface WorkflowInput {
+  /**
+   * The Bun shell.
+   */
+  $: Shell;
+  /**
+   * The event that triggered the workflow.
+   */
+  event: BranchEvent | PullRequestEvent | TagEvent | UserEvent;
+}
+
 export interface Config {
   /**
    * The config for your app. It needs to return an object of type [`App`](#app-1). The `app`
@@ -990,6 +1062,75 @@ export interface Config {
        * [Learn more about CodeBuild pricing](https://aws.amazon.com/codebuild/pricing/).
        */
       runner?: Runner | ((input: RunnerInput) => Runner);
+      /**
+       * Customize the commands that are run during the deployment.
+       *
+       * The default workflow automatically figures out the package manager you are using,
+       * installs the dependencies, and runs `sst deploy` or `sst remove` based on the
+       * event.
+       *
+       * For example, if you are using `pnpm`, the following workflow is equivalent
+       * to the default workflow.
+       *
+       * ```ts
+       * {
+       *   async workflow({ $, event }) {
+       *     await $`npm i -g pnpm`;
+       *     await $`pnpm i`;
+       *     event.action === "removed"
+       *       ? await $`pnpm sst remove`
+       *       : await $`pnpm sst deploy`;
+       *   }
+       * }
+       * ```
+       *
+       * Note that the `SST_STAGE` environment variable is set to the stage name. So you
+       * don't need to pass in `--stage` to the SST CLI.
+       *
+       * :::tip
+       * You don't need to pass in `--stage` to the SST CLI.
+       * :::
+       *
+       * Here is an example of running tests before deploying.
+       *
+       * ```ts
+       * {
+       *   async workflow({ $, event }) {
+       *     await $`npm i -g pnpm`;
+       *     await $`pnpm i`;
+       *     await $`pnpm test`;
+       *     event.action === "removed"
+       *       ? await $`pnpm sst remove`
+       *       : await $`pnpm sst deploy`;
+       *   }
+       * }
+       * ```
+       *
+       * The workflow function is run inside a Bun process. You have access to the Bun `$`
+       * Shell to make running commands easier.
+       *
+       * Here's an example of handling errors on test failures.
+       *
+       * ```ts
+       * {
+       *   async workflow({ $, event }) {
+       *     await $`npm i -g pnpm`;
+       *     await $`pnpm i`;
+       *
+       *     const { exitCode } = await $`pnpm test`.nothrow();
+       *     if (exitCode !== 0) {
+       *       // process test report here
+       *       throw new Error("Failed to run tests");
+       *     }
+       *
+       *     event.action === "removed"
+       *       ? await $`pnpm sst remove`
+       *       : await $`pnpm sst deploy`;
+       *   }
+       * }
+       * ```
+       */
+      workflow?(input: WorkflowInput): Promise<void>;
     };
   };
   /**

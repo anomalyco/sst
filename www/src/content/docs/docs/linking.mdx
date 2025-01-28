@@ -152,7 +152,7 @@ Resource links are injected into your function or frontend package when you run 
 
 #### Functions
 
-The functions in SST are tree shaken and bundled using [esbuild](https://esbuild.github.io/). While bundling, SST injects the resource links into the [`globalThis`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/globalThis).
+The functions in SST are tree shaken and bundled using [esbuild](https://esbuild.github.io/). While bundling, SST injects the resource links into the [`globalThis`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/globalThis). These are encrypted and added to the function bundle. And they are synchronously decrypted on load by the SST SDK.
 
 #### Frontends
 

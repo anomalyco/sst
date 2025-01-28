@@ -264,7 +264,7 @@ func (p *Project) RunOld(ctx context.Context, input *StackInput) error {
 	env["NODE_OPTIONS"] = "--enable-source-maps --no-deprecation"
 	// env["TMPDIR"] = p.PathLog("")
 	if input.ServerPort != 0 {
-		env["SST_SERVER"] = fmt.Sprintf("http://localhost:%v", input.ServerPort)
+		env["SST_SERVER"] = fmt.Sprintf("http://127.0.0.1:%v", input.ServerPort)
 	}
 	pulumiPath := flag.SST_PULUMI_PATH
 	if pulumiPath == "" {

@@ -79,10 +79,9 @@ func (a *AwsProvider) Init(app string, stage string, args map[string]interface{}
 
 	cfg, err := config.LoadDefaultConfig(
 		ctx,
+		config.WithRetryMaxAttempts(10),
 		func(lo *config.LoadOptions) error {
-			if a.profile != "" {
-				lo.SharedConfigProfile = a.profile
-			}
+			lo.SharedConfigProfile = a.profile
 			if region, ok := args["region"].(string); ok && region != "" {
 				lo.Region = region
 				lo.DefaultRegion = "us-east-1"

@@ -770,6 +770,14 @@ function renderType(
     if (type.type === "reference" && type.package === "esbuild") {
       return renderEsbuildType(type);
     }
+    if (
+      // when bun is isntalled globally, package is `bun-types`
+      (type.type === "reference" && type.package === "bun-types") ||
+      // when bun is isntalled locally (in CI), package is undefined
+      (type.type === "reference" && type.qualifiedName === "Shell")
+    ) {
+      return renderBunShellType(type);
+    }
     if (type.type === "reflection" && type.declaration.signatures) {
       return renderCallbackType(type);
     }
@@ -1155,6 +1163,9 @@ function renderType(
   function renderEsbuildType(type: TypeDoc.ReferenceType) {
     const hash = type.name === "Loader" ? `#loader` : "#build";
     return `[<code class="type">${type.name}</code>](https://esbuild.github.io/api/${hash})`;
+  }
+  function renderBunShellType(type: TypeDoc.ReferenceType) {
+    return `[<code class="type">Bun Shell</code>](https://bun.sh/docs/runtime/shell)`;
   }
   function renderCallbackType(type: TypeDoc.ReflectionType) {
     const signature = type.declaration.signatures![0];

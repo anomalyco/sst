@@ -10,11 +10,14 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/common/apitype"
 	"github.com/sst/sst/v3/pkg/id"
 	"github.com/sst/sst/v3/pkg/project/provider"
+	"github.com/zeebo/xxh3"
+	"golang.org/x/sync/errgroup"
 )
 
 type PulumiWorkdir struct {
-	path    string
-	project *Project
+	path       string
+	project    *Project
+	lastPushed uint64
 }
 
 func (p *Project) NewWorkdir() (*PulumiWorkdir, error) {
@@ -33,16 +36,55 @@ func (w *PulumiWorkdir) Cleanup() {
 	os.RemoveAll(w.path)
 }
 
+func (w *PulumiWorkdir) PushPartial(updateID string) error {
+	statePath := w.state()
+	data, err := os.ReadFile(statePath)
+	if err != nil {
+		return err
+	}
+	return w.pushPartial(updateID, data)
+}
+
+func (w *PulumiWorkdir) pushPartial(updateID string, data []byte) error {
+	home := w.project.Backend()
+	app := w.project.app.Name
+	stage := w.project.app.Stage
+	next := xxh3.Hash(data)
+	if next != uint64(w.lastPushed) && next != 0 {
+		err := provider.PushPartialState(home, updateID, app, stage, data)
+		if err != nil {
+			return err
+		}
+	}
+	w.lastPushed = next
+	return nil
+}
+
 func (w *PulumiWorkdir) Push(updateID string) error {
+	statePath := w.state()
+	data, err := os.ReadFile(statePath)
+	if err != nil {
+		return err
+	}
 	stage := w.project.app.Stage
 	app := w.project.app.Name
-	return provider.PushState(
-		w.project.home,
-		updateID,
-		app,
-		stage,
-		filepath.Join(w.Backend(), ".pulumi", "stacks", app, fmt.Sprintf("%v.json", stage)),
-	)
+	home := w.project.Backend()
+
+	var group errgroup.Group
+	group.Go(func() error {
+		return w.pushPartial(updateID, data)
+	})
+	group.Go(func() error {
+		return provider.PushSnapshot(home, updateID, app, stage, data)
+	})
+	group.Go(func() error {
+		file, err := os.Open(w.EventLogPath())
+		if err != nil {
+			return nil
+		}
+		return provider.PushEventLog(home, updateID, app, stage, file)
+	})
+	return group.Wait()
 }
 
 func (w *PulumiWorkdir) Pull() (string, error) {
@@ -115,4 +157,8 @@ func (w *PulumiWorkdir) Import(checkpoint *apitype.CheckpointV3) error {
 		return err
 	}
 	return nil
+}
+
+func (w *PulumiWorkdir) EventLogPath() string {
+	return filepath.Join(w.path, "eventlog.json")
 }

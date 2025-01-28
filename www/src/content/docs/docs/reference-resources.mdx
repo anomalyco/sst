@@ -35,7 +35,7 @@ Most low-level resources come with a `static get` method that use this property 
 
 ---
 
-#### Look up the resource
+### Look up the resource
 
 Say you want to reference a previously created S3 Bucket with the following name.
 
@@ -53,7 +53,7 @@ This gives you the same bucket object that you'd get if you had created this res
 
 ---
 
-#### Make it linkable
+### Make it linkable
 
 You can use the [`sst.Linkable`](/docs/component/linkable/) component, to be able to link any property of this resource.
 
@@ -69,7 +69,7 @@ Here we are using the domain name of the bucket as an example.
 
 ---
 
-#### Link to it
+### Link to it
 
 And link it to a function.
 
@@ -87,7 +87,5 @@ import { Resource } from "sst";
 
 console.log(Resource.MyStorage.domain);
 ```
-
----
 
 Check out the list of [Import Properties](/docs/import-resources/#import-properties) if you want to reference other low-level resources.

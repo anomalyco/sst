@@ -50,6 +50,7 @@
     "@pulumiverse/vercel": "1.11.0",
     "@types/archiver": "6.0.2",
     "@types/aws-lambda": "8.10.133",
+    "@types/bun": "1.2.1",
     "vitest": "^1.2.2"
   },
   "overrides": {

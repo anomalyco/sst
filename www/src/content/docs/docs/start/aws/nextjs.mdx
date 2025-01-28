@@ -500,7 +500,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # If static pages need linked resources
-# ARG SST_RESOUCE_MyResource
+# ARG SST_RESOURCE_MyResource
 
 RUN npm run build
 

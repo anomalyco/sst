@@ -702,7 +702,10 @@ var root = &cli.Command{
 				Long: strings.Join([]string{
 					"Manage the secrets in your app defined with `sst.Secret`.",
 					"",
+					"<VideoAside title=\"Watch a video on how secrets work\" href=\"https://youtu.be/7tW2L3P6LKw\" />",
+					"",
 					"The `--fallback` flag can be used to manage the fallback values of a secret.",
+					"",
 					"Applies to all the sub-commands in `sst secret`.",
 				}, "\n"),
 			},

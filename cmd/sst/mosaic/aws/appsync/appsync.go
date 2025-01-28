@@ -103,21 +103,26 @@ func (c *Connection) connect(ctx context.Context) error {
 		log.Info("connection timeout")
 		conn.Close()
 		for {
-			err := c.connect(ctx)
-			if err != nil {
-				log.Info("failed to reconnect", "err", err)
-				time.Sleep(time.Second)
-				continue
-			}
-			for id, sub := range c.subscriptions {
-				log.Info("resubscribing", "sub", sub)
-				err := c.subscribe(ctx, sub.Channel, id)
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				err := c.connect(ctx)
 				if err != nil {
-					log.Error("failed to resubscribe", "err", err)
+					log.Info("failed to reconnect", "err", err)
+					time.Sleep(time.Second)
 					continue
 				}
+				for id, sub := range c.subscriptions {
+					log.Info("resubscribing", "sub", sub)
+					err := c.subscribe(ctx, sub.Channel, id)
+					if err != nil {
+						log.Error("failed to resubscribe", "err", err)
+						continue
+					}
+				}
+				break
 			}
-			break
 		}
 	}()
 

@@ -69,9 +69,9 @@ At a high level, here's how the Console works.
 
   For your functions running [Live](/docs/live/), the logs will be streamed in real-time from your local machine.
 
-- It's open-source, built with SST, and deployed with [Seed](https://seed.run)
+- It's open-source and built with SST
 
-  The Console is a full-stack SST app. You can view the [source on GitHub](https://github.com/sst/console).
+  The Console is an SST app. You can view the [source on GitHub](https://github.com/sst/console). It's also auto-deployed using itself.
 
 ---
 
@@ -211,15 +211,36 @@ To customize IAM permissions for the CloudFormation stack:
 
 ## Pricing
 
-The Console pricing is based on the number of times the Lambda functions in your SST apps are invoked per month and it uses the following tiers.
+[Starting Feb 1, 2025](/blog/console-pricing-update), the Console will be priced based on the number of active resources in your SST apps.
+
+| Resources | Rate per resource |
+|-----------|-----------|
+| First 2000   | $0.086  |
+| 2000+        | $0.032 |
+
+**Free Tier**: Workspaces with 350 active resources or fewer.
+
+So for example, if you go over the free tier and have 351 active resources in a month, your bill will be 351 x $0.086 = $30.2.
+
+A couple of things to note.
+
+- These are calculated for a given workspace every month.
+- A resource is what SST creates in your cloud provider. [Learn more below](#faq).
+- You can always access personal stages, even if you're above the free tier.
+- If you haven't deployed to a stage in a month, its resources won't count as active.
+- For volume pricing, feel free to [contact us][contact-us].
+
+---
+
+#### Old pricing
+
+Previously, the Console pricing was based on the number of times the Lambda functions in your SST apps are invoked per month and it used the following tiers.
 
 | Invocations | Rate (per invocation) |
 |-------------|------|
 | First 1M    | Free |
 | 1M - 10M    | $0.00002 |
 | 10M+        | $0.000002 |
-
-A couple of things to note.
 
 - These are calculated for a given workspace on a monthly basis.
 - This does not apply to personal stages, they'll be free forever.
@@ -264,34 +285,11 @@ With Issues, there is:
 - **Source maps** are supported **automatically**
 - **No impact on performance** or cold starts, since the functions aren't modified
 
-:::tip
+:::note
 Issues works out of the box and has no impact on performance or cold starts.
 :::
 
 Issues currently only supports Node.js functions. Other runtimes and containers are on the roadmap.
-
----
-
-#### Behind the scenes
-
-Here's how it works.
-
-1. When an app is deployed or when an account is first synced, we add a log subscriber to your Lambda functions. 
-   - There's a maximum of 2 subscribers allowed. More on this below.
-2. The subscriber filters for anything that looks like an error and processes those log lines.
-3. It applies the source maps to the error stack trace.
-4. Finally, it groups similar looking errors together.
-
----
-
-#### Log subscriber
-
-The process of adding a log subscriber to your Lambda functions might fail. This can happen if:
-
-- We don't have enough permissions to add a subscriber. In this case, update the permissions that you've granted to the Console.
-- We've hit the limit for the number of subscribers. To fix this, you can remove one of the existing subscribers.
-
-You can see these errors in the Issues tab. Once you've fixed these issues, you can hit **Retry** and it'll try attaching the subscriber again. 
 
 ---
 
@@ -311,9 +309,51 @@ console.error(new Error("my-error"));
 
 ---
 
-#### Limits
+#### How it works
 
-There's a soft limit of 10K issues per hour per workspace. If your account goes over this limit, Issues will be temporarily paused. You can [contact us][contact-us] if this happens.
+Here's how Issues works behind the scenes.
+
+1. When an app is deployed or when an account is first synced, we add a log subscriber to the CloudWatch Log groups in your SST apps.
+   - This is added to your AWS account and includes a Lambda function. More on this below.
+2. If the subscriber filter matches anything that looks like an error it invokes the Lambda function.
+3. The Lambda function tries to parse the error and fetches the source maps from the state bucket in your account.
+4. It then hits an endpoint in the SST Console and passes in that error.
+5. Finally, the Console groups similar looking errors together and displays them.
+
+---
+
+#### Log subscriber
+
+The log subscriber also includes the following:
+
+1. **Lambda function** that'll be invoked when a log with an error is matched.
+   - This function has a max concurrency set to 10.
+   - If it falls behind on processing by over 10 minutes, it'll discard the logs.
+   - This prevents it from scaling indefinitely when there's a burst of errors.
+   - This also means that if there are a lot of errors, the alerts might be delayed by up to 10 minutes.
+2. **IAM role** that gives it access to query the logs and the state bucket for the source maps.
+3. **Log group** with a 1 day retention.
+
+These are added to **every region** in your AWS account that has a CloudWatch log group from your SST apps. It's deployed using a CloudFormation stack.
+
+This process of adding a log subscriber might fail if we:
+
+- Don't have enough permissions. In this case, update the permissions that you've granted to the Console.
+- Hit the limit for the number of subscribers, there's a maximum of 2 subscribers. To fix this, you can remove one of the existing subscribers.
+
+You can see these errors in the Issues tab. Once you've fixed these issues, you can hit **Retry** and it'll try attaching the subscriber again. 
+
+---
+
+#### Costs
+
+AWS will bill you for the Lambda function log subscriber that's in your account. This is usually fairly minimal.
+
+Even if your apps are generating an infinite number of errors, the Lambda function is limited to a concurrency of 10. So the **maximum** you'll be charged $43 x 10 = **$430 per month x # of regions** that are being monitored.
+
+You can also disable Issues from your workspace settings, if you are using a separate service for monitoring.
+
+[Learn more about Lambda pricing](https://aws.amazon.com/lambda/pricing/).
 
 ---
 
@@ -401,12 +441,6 @@ We designed Autodeploy to be a better fit for SST apps when compared to alternat
 4. **Integrates with the Console**
    - You can see which resources were updated in a deploy.
    - Your resource updates will also show you the related git commit.
-
-:::note
-Autodeploy is currently free while in beta.
-:::
-
-Autodeploy is free while in beta. But AWS will charge you for the CodeBuild build minutes that are used. [Learn more about CodeBuild pricing](https://aws.amazon.com/codebuild/pricing/).
 
 ---
 
@@ -594,19 +628,61 @@ Both `target` and `runner` are optional and come with defaults, but they can be 
 
 ---
 
+#### Costs
+
+AWS will bill you for the **CodeBuild build minutes** that are used to run your builds. [Learn more about CodeBuild pricing](https://aws.amazon.com/codebuild/pricing/).
+
+---
+
 ## FAQ
+
+Here are some frequently asked questions about the Console.
 
 - Do I need to use the Console to use SST?
 
-  You don't need the Console to use SST. It displays the local logs from your terminal in a UI that's more convenient.
+  You **don't need the Console** to use SST. It compliments the CLI and has some features that help with managing your apps in production.
 
-- What if I don't want to pay for the Console?
+  That said, it is completely free to get started. You can create an account and invite your team, **without** having to add a **credit card**.
 
-  You can still invite your team and use it to view your local logs and stages.
+- Is there a free tier?
 
-- Do I need a credit card to get started?
+  If your workspace has 350 active resources or fewer for the month, it's considered to be in the free tier. This count also resets every month.
 
-  The Console is free to get started and **doesn't need a credit card**.
+- What happens if I go over the free tier?
+
+  You won't be able to access the _production_ or deployed stages till you add your billing details in the workspace settings.
+
+  Note that, you can continue to **access your personal stages**. Just make sure you have `sst dev` running locally. Otherwise the Console won't be able to detect that it's a personal stage.
+
+- What counts as a resource?
+
+  Resources are what SST creates in your cloud provider. This includes the resources created by both SST's built-in components, like `Function`, `Nextjs`, `Bucket`, and the ones created by any other Terraform/Pulumi provider.
+
+  Some components, like `Nextjs` and `StaticSite`, create multiple resources. In general, the more complex the component, the more resources it'll create.
+
+  You can see a [full list of resources](#resources) if you go to an app in your Console and navigate to a stage in it.
+
+  For some context, the Console is itself a pretty large [SST app](https://github.com/sst/console) and it has around 320 resources.
+
+- How are active resource counted?
+
+  At the start of every month, or billing cycle, the Console will track the stages that have been updated. All the resources in these stages are considered active for the month.
+
+  However, if the only update to a stage in a month was to remove it, the resources in that stage will not be counted as being active.
+
+---
+
+#### Old pricing FAQ
+
+Here were some frequently asked questions about the old pricing plan for the Console.
+
+- Do I need to switch to the new pricing?
+
+   If you are currently on the old plan, you don't have to switch and you won't be automatically switched over either.
+
+   You can go to the workspace settings and check out how much you'll be billed based on both the plans. To switch over, you can cancel your current plan and then subscribe to the new plan.
+
+   At some point in the future, we'll remove the old plan. But there's no specific timeline for it yet.
 
 - Which Lambda functions are included in the number of invocations?
 
@@ -616,13 +692,10 @@ Both `target` and `runner` are optional and come with defaults, but they can be 
 
   Lambda functions that are invoked **locally are not included**.
 
-- Can I access the personal stages if I'm above the free tier?
-
-  If you go above the free tier in your _production_ stages, you **can still access your personal stages**. Just make sure you have `sst dev` running locally, otherwise the Console won't be able to detect that it's a personal stage.
-
 - My invocation volume is far higher than the listed tiers. Are there any other options?
 
   Feel free to [contact us][contact-us] and we can figure out a pricing plan that works for you.
+
 
 If you have any further questions, feel free to [send us an email][contact-us].
 

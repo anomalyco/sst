@@ -168,6 +168,7 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 
 	var result esbuild.BuildResult
 
+	log.Info("running esbuild")
 	if !input.Dev {
 		context, _ := esbuild.Context(options)
 		result = context.Rebuild()
@@ -183,6 +184,7 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		result = match.(esbuild.BuildContext).Rebuild()
 		r.results.Store(input.FunctionID, result)
 	}
+	log.Info("esbuild finished")
 
 	errors := []string{}
 	for _, error := range result.Errors {

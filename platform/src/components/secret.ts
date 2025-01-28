@@ -15,11 +15,12 @@ export class SecretMissingError extends VisibleError {
 /**
  * The `Secret` component lets you create secrets in your app.
  *
- * :::note
- * Secrets are encrypted when they are stored in your state file or in a function package.
- * :::
+ * <VideoAside title="Watch a video on how secrets work" href="https://youtu.be/7tW2L3P6LKw" />
  *
- * Secrets are encrypted and stored in an S3 Bucket in your AWS account. If used in your app config, they'll be encrypted in your state file as well. If used in your function code, they'll be decrypted and stored in the function package.
+ * Secrets are encrypted and stored in an S3 Bucket in your AWS account. If used in
+ * your app config, they'll be encrypted in your state file as well. If used in
+ * your function code, they are encrypted and included in the bundle. They'll are
+ * then decrypted synchronously when your function starts up by the SST SDK.
  *
  * @example
  *
@@ -77,6 +78,8 @@ export class SecretMissingError extends VisibleError {
  * ```ts title="sst.config.ts"
  * console.log(mySecret.value);
  * ```
+ *
+ * This is an [Output](/docs/components#outputs) that can be used as an Input to other components.
  *
  * #### Link the secret to a resource
  *
