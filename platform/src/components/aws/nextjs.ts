@@ -27,7 +27,7 @@ import { dynamodb, lambda } from "@pulumi/aws";
 import { URL_UNAVAILABLE } from "./linkable.js";
 import { getOpenNextPackage } from "../../util/compare-semver.js";
 
-const DEFAULT_OPEN_NEXT_VERSION = "3.3.0";
+const DEFAULT_OPEN_NEXT_VERSION = "3.4.1";
 const DEFAULT_CACHE_POLICY_ALLOWED_HEADERS = ["x-open-next-cache-key"];
 
 type BaseFunction = {
@@ -314,19 +314,20 @@ export interface NextjsArgs extends SsrSiteArgs {
    */
   assets?: SsrSiteArgs["assets"];
   /**
-   * Configure the [OpenNext](https://open-next.js.org) version used to build the Next.js app.
+   * Configure the [OpenNext](https://opennext.js.org) version used to build the Next.js app.
    *
    * :::note
    * This does not automatically update to the latest OpenNext version. It remains pinned to the version of SST you have.
    * :::
    *
-   * By default, this is pinned to the version of OpenNext that was released with the SST version you are using. You can [find this in the source](https://github.com/sst/ion/blob/dev/platform/src/components/aws/nextjs.ts) under `DEFAULT_OPEN_NEXT_VERSION`.
+   * By default, this is pinned to the version of OpenNext that was released with the SST version you are using. You can [find this in the source](https://github.com/sst/sst/blob/dev/platform/src/components/aws/nextjs.ts#L30) under `DEFAULT_OPEN_NEXT_VERSION`.
+   * OpenNext changed its package name from `open-next` to `@opennextjs/aws` in version `3.1.4`. SST will choose the correct one based on the version you provide.
    *
-   * @default The latest version of OpenNext
+   * @default The latest version of OpenNext pinned to the version of SST you are using.
    * @example
    * ```js
    * {
-   *   openNextVersion: "3.0.2"
+   *   openNextVersion: "3.4.1"
    * }
    * ```
    */
