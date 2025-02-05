@@ -262,7 +262,20 @@ export interface ApiGatewayV1Args {
    * }
    * ```
    */
-  cors?: Input<boolean>;
+  cors?: Input<{
+    /**
+     * Specify and allow the response headers.
+     *
+     * @default ```js
+     *  {
+     *   "Access-Control-Allow-Headers": "*",
+     *   "Access-Control-Allow-Methods":  "OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD",
+     *   "Access-Control-Allow-Origin": "*"
+     *  }
+     * ```
+     */
+    responseHeaders?: Input<Record<string, string>>;
+  }>;
   /**
    * Configure the [API Gateway logs](https://docs.aws.amazon.com/apigateway/latest/developerguide/view-cloudwatch-log-events-in-cloudwatch-console.html) in CloudWatch. By default, access logs are enabled and kept for 1 month.
    * @default `{retention: "1 month"}`
@@ -1175,7 +1188,7 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
       );
 
       return all([args.cors, resourceIds]).apply(([cors, resourceIds]) => {
-        if (cors === false) return [];
+        if (!cors) return [];
 
         // filter unique resource ids
         const uniqueResourceIds = [...new Set(resourceIds)];
@@ -1193,6 +1206,23 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
             { parent },
           );
 
+
+          let methodResponseParametersOverride = {};
+          let integrationResponseParametersOverride = {};
+
+          if(cors.responseHeaders) {
+            methodResponseParametersOverride = Object.keys(cors.responseHeaders).reduce((acc, key) => {
+              acc[`method.response.header.${key}`] = true;
+              return acc;
+            }, {});
+
+
+            integrationResponseParametersOverride = Object.keys(cors.responseHeaders).reduce((acc, key) => {
+              acc[`integration.response.header.${key}`] = `'${cors.responseHeaders[key]}'`;
+              return acc;
+            }, {});
+          }
+
           const methodResponse = new apigateway.MethodResponse(
             `${name}CorsMethodResponse${resourceId}`,
             {
@@ -1204,6 +1234,7 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
                 "method.response.header.Access-Control-Allow-Headers": true,
                 "method.response.header.Access-Control-Allow-Methods": true,
                 "method.response.header.Access-Control-Allow-Origin": true,
+                ...methodResponseParametersOverride,
               },
             },
             { parent },
@@ -1235,6 +1266,7 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
                 "method.response.header.Access-Control-Allow-Methods":
                   "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'",
                 "method.response.header.Access-Control-Allow-Origin": "'*'",
+                ...integrationResponseParametersOverride,
               },
             },
             { parent, dependsOn: [integration] },
