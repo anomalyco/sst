@@ -171,6 +171,9 @@ func (u *UI) Event(unknown interface{}) {
 		formattedDuration := fmt.Sprintf("took %.9s", fmt.Sprintf("+%v", duration))
 		u.printEvent(u.getColor(evt.WorkerID), "Done", formattedDuration)
 
+	case *aws.TaskMissingCommandEvent:
+		u.printEvent(u.getColor(""), TEXT_DANGER_BOLD.Render(fmt.Sprintf("%-11s", "Missing")), fmt.Sprintf("Dev command not configured for %s. Set `dev.command` to configure how the task works in `sst dev`.", evt.Name))
+
 	case *aws.FunctionInvokedEvent:
 		u.workerTime[evt.WorkerID] = time.Now()
 		u.printEvent(u.getColor(evt.WorkerID), TEXT_NORMAL_BOLD.Render(fmt.Sprintf("%-11s", "Invoke")), u.functionName(evt.FunctionID))

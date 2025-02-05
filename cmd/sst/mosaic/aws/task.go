@@ -38,6 +38,10 @@ type TaskCompleteEvent struct {
 	WorkerID string
 }
 
+type TaskMissingCommandEvent struct {
+	Name   	 string
+}
+
 func task(ctx context.Context, input input) {
 	log := slog.Default().With("service", "aws.task")
 	log.Info("starting")
@@ -116,7 +120,13 @@ func task(ctx context.Context, input input) {
 				if !ok {
 					continue
 				}
-				fields := strings.Fields(task.Command)
+				if task.Command == nil {
+					bus.Publish(&TaskMissingCommandEvent{
+						Name: task.Name,
+					})
+					continue
+				}
+				fields := strings.Fields(*task.Command)
 				cmd := process.Command(fields[0], fields[1:]...)
 				cmd.Dir = task.Directory
 				cmd.Env = body.Environment

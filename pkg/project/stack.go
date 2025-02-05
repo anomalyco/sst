@@ -75,7 +75,7 @@ type Devs map[string]Dev
 
 type Task struct {
 	Name      string `json:"-"`
-	Command   string `json:"command"`
+	Command   *string `json:"command"`
 	Directory string `json:"directory"`
 }
 
