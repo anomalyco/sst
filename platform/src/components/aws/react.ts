@@ -265,7 +265,7 @@ export interface ReactArgs extends SsrSiteArgs {
    * a new cache policy is created. Note that CloudFront has a limit of 20 cache
    * policies per account. This allows you to reuse an existing policy instead of
    * creating a new one.
-   * @default A new cache plolicy is created
+   * @default A new cache policy is created
    * @example
    * ```js
    * {
