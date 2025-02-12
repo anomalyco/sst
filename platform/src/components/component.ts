@@ -120,6 +120,7 @@ export class Component extends ComponentResource {
               "aws:apigateway/resource:Resource",
               "aws:apigateway/response:Response",
               "aws:apigateway/stage:Stage",
+              "aws:apigateway/usagePlanKey:UsagePlanKey",
               "aws:apigatewayv2/apiMapping:ApiMapping",
               "aws:apigatewayv2/domainName:DomainName",
               "aws:apigatewayv2/integration:Integration",
@@ -192,8 +193,10 @@ export class Component extends ComponentResource {
               }?,
             ]
           > = {
+            "aws:apigateway/apiKey:ApiKey": ["name", 1024],
             "aws:apigateway/authorizer:Authorizer": ["name", 128],
             "aws:apigateway/restApi:RestApi": ["name", 128],
+            "aws:apigateway/usagePlan:UsagePlan": ["name", 65536], // no length limit
             "aws:apigatewayv2/api:Api": ["name", 128],
             "aws:apigatewayv2/authorizer:Authorizer": ["name", 128],
             "aws:apigatewayv2/vpcLink:VpcLink": ["name", 128],

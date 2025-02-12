@@ -26,6 +26,7 @@ import { Dns } from "../dns";
 import { dns as awsDns } from "./dns";
 import { DnsValidatedCertificate } from "./dns-validated-certificate";
 import { ApiGatewayV1IntegrationRoute } from "./apigatewayv1-integration-route";
+import { ApiGatewayV1UsagePlan } from "./apigatewayv1-usage-plan";
 
 export interface ApiGatewayV1DomainArgs {
   /**
@@ -440,6 +441,74 @@ export interface ApiGatewayV1AuthorizerArgs {
      */
     authorizer?: Transform<apigateway.AuthorizerArgs>;
   };
+}
+
+export interface ApiGatewayV1UsagePlanArgs {
+  /**
+   * Configure a rate limits to protect your API from being overwhelmed by too many requests
+   * at once.
+   * @example
+   * ```js
+   * {
+   *   throttle: {
+   *     rate: 100,
+   *     burst: 200,
+   *   }
+   * }
+   * ```
+   */
+  throttle?: Input<{
+    /**
+     * The maximum number of requests permitted in a short-term spike beyond the rate limit.
+     */
+    burst?: Input<number>;
+    /**
+     * The steady-state maximum number of requests allowed per second.
+     */
+    rate?: Input<number>;
+  }>;
+  /**
+   * Configure a cap on the total number of requests allowed within a specified time period.
+   * @example
+   * ```js
+   * {
+   *   quota: {
+   *     limit: 1000,
+   *     period: "month",
+   *     offset: 0,
+   *   }
+   * }
+   * ```
+   */
+  quota?: Input<{
+    /**
+     * The maximum number of requests that can be made in the specified period.
+     */
+    limit: Input<number>;
+    /**
+     * The time period for which the quota applies.
+     */
+    period: Input<"day" | "week" | "month">;
+    /**
+     * The number of days into the period when the quota counter is reset.
+     * For example, with period="month" and offset=0, the quota is reset at
+     * the beginning of each month.
+     */
+    offset?: Input<number>;
+  }>;
+}
+
+export interface ApiGatewayV1ApiKeyArgs {
+  /**
+   * The value of the API key. If not provided, it will be generated automatically.
+   * @example
+   * ```js
+   * {
+   *   value: "d41d8cd98f00b204e9800998ecf8427e"
+   * }
+   * ```
+   */
+  value?: Input<string>;
 }
 
 export interface ApiGatewayV1RouteArgs {
@@ -1082,6 +1151,64 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
           name: selfName,
           executionArn: self.api.executionArn,
         },
+        ...args,
+      },
+      { provider: this.constructorOpts.provider },
+    );
+  }
+
+  /**
+   * Add a usage plan to the API Gateway REST API.
+   *
+   * @param name The name of the usage plan.
+   * @param args Configure the usage plan.
+   * @example
+   * Add a usage plan with throttle and quota.
+   *
+   * ```js title="sst.config.ts"
+   * const plan = api.addUsagePlan("MyPlan", {
+   *   throttle: {
+   *     rate: 100,
+   *     burst: 200,
+   *   },
+   *   quota: {
+   *     limit: 1000,
+   *     period: "month",
+   *     offset: 0,
+   *   }
+   * });
+   * ```
+   *
+   * Create an API key for the usage plan.
+   *
+   * ```js title="sst.config.ts"
+   * const key = plan.addApiKey("MyKey");
+   * ```
+   *
+   * You can link the API key to other resources, like a function. Once linked,
+   * include the key in the `x-api-key` header in your API requests.
+   *
+   * ```ts title="src/lambda.ts"
+   * import { Resource } from "sst";
+   *
+   * await fetch(Resource.MyApi.url, {
+   *   headers: {
+   *     "x-api-key": Resource.MyKey.value,
+   *   }
+   * });
+   * ```
+   */
+  public addUsagePlan(name: string, args: ApiGatewayV1UsagePlanArgs) {
+    if (!this.stage)
+      throw new VisibleError(
+        `Cannot add a usage plan to the "${this.constructorName}" API before it's deployed. Make sure to call deploy() to deploy the API first.`,
+      );
+
+    return new ApiGatewayV1UsagePlan(
+      name,
+      {
+        apiId: this.api.id,
+        apiStage: this.stage.stageName,
         ...args,
       },
       { provider: this.constructorOpts.provider },

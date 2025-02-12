@@ -2388,7 +2388,7 @@ interface ClusterRef {
  * import { task } from "sst/aws/task";
  *
  * const runRet = await task.run(Resource.MyTask);
- * const taskArn = runRet.tasks[0].taskArn;
+ * const taskArn = runRet.arn;
  * ```
  *
  * If you are not using Node.js, you can use the AWS SDK instead. Here's
