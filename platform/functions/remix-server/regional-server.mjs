@@ -2,72 +2,9 @@
 // build and performs the Remix server rendering.
 
 import { createRequestHandler as createNodeRequestHandler } from "@remix-run/node";
-
-/**
- * Common binary MIME types
- */
-const binaryTypes = [
-  "application/octet-stream",
-  // Docs
-  "application/epub+zip",
-  "application/msword",
-  "application/pdf",
-  "application/rtf",
-  "application/vnd.amazon.ebook",
-  "application/vnd.ms-excel",
-  "application/vnd.ms-powerpoint",
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  // Fonts
-  "font/otf",
-  "font/woff",
-  "font/woff2",
-  // Images
-  "image/bmp",
-  "image/gif",
-  "image/jpeg",
-  "image/png",
-  "image/tiff",
-  "image/vnd.microsoft.icon",
-  "image/webp",
-  // Audio
-  "audio/3gpp",
-  "audio/aac",
-  "audio/basic",
-  "audio/mpeg",
-  "audio/ogg",
-  "audio/wavaudio/webm",
-  "audio/x-aiff",
-  "audio/x-midi",
-  "audio/x-wav",
-  // Video
-  "video/3gpp",
-  "video/mp2t",
-  "video/mpeg",
-  "video/ogg",
-  "video/quicktime",
-  "video/webm",
-  "video/x-msvideo",
-  // Archives
-  "application/java-archive",
-  "application/vnd.apple.installer+xml",
-  "application/x-7z-compressed",
-  "application/x-apple-diskimage",
-  "application/x-bzip",
-  "application/x-bzip2",
-  "application/x-gzip",
-  "application/x-java-archive",
-  "application/x-rar-compressed",
-  "application/x-tar",
-  "application/x-zip",
-  "application/zip",
-];
-
-function isBinaryType(contentType) {
-  if (!contentType) return false;
-  return binaryTypes.some((t) => contentType.includes(t));
-}
+import { pipeline } from "node:stream/promises";
+import { Readable } from "node:stream";
+import { createGzip, createDeflate, createBrotliCompress } from "node:zlib";
 
 function convertApigRequestToNode(event) {
   if (event.headers["x-forwarded-host"]) {
@@ -107,51 +44,59 @@ const createApigHandler = (build) => {
     context.callbackWaitsForEmptyEventLoop = false;
     const request = convertApigRequestToNode(event);
     const response = await requestHandler(request);
+
     const httpResponseMetadata = {
       statusCode: response.status,
       headers: {
         ...Object.fromEntries(response.headers.entries()),
         "Transfer-Encoding": "chunked",
       },
-      cookies: accumulateCookies(response.headers),
+      cookies: response.headers.getSetCookie(),
     };
 
-    const writer = awslambda.HttpResponseStream.from(
-      responseStream,
-      httpResponseMetadata,
-    );
-
     if (response.body) {
-      await streamToNodeStream(response.body.getReader(), responseStream);
+      const acceptEncodingHeader = event.headers["accept-encoding"] || "";
+      const acceptEncodings = acceptEncodingHeader.split(",");
+
+      // ordered by precedence
+      const compressionMap = {
+        br: createBrotliCompress,
+        gzip: createGzip,
+        deflate: createDeflate,
+      };
+
+      const contentEncoding = Object.keys(compressionMap).find((encoding) =>
+        acceptEncodings.includes(encoding),
+      );
+
+      const readable = Readable.fromWeb(response.body);
+      const pipelineComponents = [readable];
+
+      // If the client accepts an encoding, we'll compress the response body
+      // and add the encoding to the response headers.
+      if (contentEncoding) {
+        httpResponseMetadata.headers["content-encoding"] = contentEncoding;
+        pipelineComponents.push(compressionMap[contentEncoding]());
+      }
+
+      const writer = awslambda.HttpResponseStream.from(
+        responseStream,
+        httpResponseMetadata,
+      );
+      pipelineComponents.push(writer);
+
+      await pipeline(...pipelineComponents);
     } else {
+      const writer = awslambda.HttpResponseStream.from(
+        responseStream,
+        httpResponseMetadata,
+      );
+
+      // without this, redirects will cause a server error
       writer.write(" ");
+      writer.end();
     }
-    writer.end();
   });
-};
-
-const accumulateCookies = (headers) => {
-  // node >= 19.7.0 with no remix fetch polyfill
-  if (typeof headers.getSetCookie === "function") {
-    return headers.getSetCookie();
-  }
-  // node < 19.7.0 or with remix fetch polyfill
-  const cookies = [];
-  for (let [key, value] of headers.entries()) {
-    if (key === "set-cookie") {
-      cookies.push(value);
-    }
-  }
-  return cookies;
-};
-
-const streamToNodeStream = async (reader, writer) => {
-  let readResult = await reader.read();
-  while (!readResult.done) {
-    writer.write(readResult.value);
-    readResult = await reader.read();
-  }
-  writer.end();
 };
 
 export const handler = createApigHandler(remixServerBuild);
