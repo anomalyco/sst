@@ -292,6 +292,11 @@ export interface QueueSubscriberArgs {
   };
 }
 
+interface QueueRef {
+  ref: true;
+  queueArn: Input<string>;
+}
+
 /**
  * The `Queue` component lets you add a serverless queue to your app. It uses [Amazon SQS](https://aws.amazon.com/sqs/).
  *
@@ -355,18 +360,31 @@ export class Queue extends Component implements Link.Linkable {
     opts: ComponentResourceOptions = {},
   ) {
     super(__pulumiType, name, args, opts);
+    const self = this;
+    this.constructorName = name;
+    this.constructorOpts = opts;
 
-    const parent = this;
+    if (args && "ref" in args) {
+      const ref = reference();
+      this.queue = ref.queue;
+      return;
+    }
+
     const fifo = normalizeFifo();
     const dlq = normalizeDlq();
     const visibilityTimeout = output(args?.visibilityTimeout ?? "30 seconds");
     const delay = output(args?.delay ?? "0 seconds");
 
-    const queue = createQueue();
+    this.queue = createQueue();
 
-    this.constructorName = name;
-    this.constructorOpts = opts;
-    this.queue = queue;
+    function reference() {
+      const ref = args as QueueRef;
+      const queue = sqs.Queue.get(`${name}Queue`, ref.queueArn, undefined, {
+        parent: self,
+      });
+
+      return { queue };
+    }
 
     function normalizeFifo() {
       return output(args?.fifo).apply((v) => {
@@ -411,7 +429,7 @@ export class Queue extends Component implements Link.Linkable {
                 maxReceiveCount: dlq.retry,
               }),
           },
-          { parent },
+          { parent: self },
         ),
       );
     }
@@ -585,6 +603,51 @@ export class Queue extends Component implements Link.Linkable {
         opts,
       );
     });
+  }
+
+  /**
+   * Reference an existing SQS Queue with its queue ARN. This is useful when you create a
+   * queue in one stage and want to share it in another stage. It avoids having to create
+   * a new queue in the other stage.
+   *
+   * :::tip
+   * You can use the `static get` method to share SQS queues across stages.
+   * :::
+   *
+   * @param name The name of the component.
+   * @param queueArn The ARN of the existing SQS Queue.
+   * @param opts? Resource options.
+   *
+   * @example
+   * Imagine you create a queue in the `dev` stage. And in your personal stage `frank`,
+   * instead of creating a new queue, you want to share the queue from `dev`.
+   *
+   * ```ts title="sst.config.ts"
+   * const queue = $app.stage === "frank"
+   *   ? sst.aws.Queue.get("MyQueue", "arn:aws:sqs:us-east-1:123456789012:MyQueue")
+   *   : new sst.aws.Queue("MyQueue");
+   * ```
+   *
+   * Here `arn:aws:sqs:us-east-1:123456789012:MyQueue` is the ARN of the queue created in
+   * the `dev` stage. You can find this by outputting the queue ARN in the `dev` stage.
+   *
+   * ```ts title="sst.config.ts"
+   * return queue.arn;
+   * ```
+   */
+  public static get(
+    name: string,
+    queueArn: Input<string>,
+    opts?: ComponentResourceOptions,
+  ) {
+    return new Queue(
+      name,
+      {
+        ref: true,
+        queueArn,
+      } as QueueArgs,
+      opts,
+    );
   }
 
   /** @internal */
