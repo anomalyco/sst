@@ -51,7 +51,7 @@ const createApigHandler = (build) => {
         ...Object.fromEntries(response.headers.entries()),
         "Transfer-Encoding": "chunked",
       },
-      cookies: response.headers.getSetCookie(),
+      cookies: accumulateCookies(response.headers),
     };
 
     if (response.body) {
@@ -97,6 +97,21 @@ const createApigHandler = (build) => {
       writer.end();
     }
   });
+};
+
+const accumulateCookies = (headers) => {
+  // node >= 19.7.0 with no remix fetch polyfill
+  if (typeof headers.getSetCookie === "function") {
+    return headers.getSetCookie();
+  }
+  // node < 19.7.0 or with remix fetch polyfill
+  const cookies = [];
+  for (let [key, value] of headers.entries()) {
+    if (key === "set-cookie") {
+      cookies.push(value);
+    }
+  }
+  return cookies;
 };
 
 export const handler = createApigHandler(remixServerBuild);
