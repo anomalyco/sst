@@ -145,6 +145,23 @@ export interface RouterBucketRouteArgs extends BaseRouteArgs {
 
 interface BaseRouteArgs {
   /**
+   * The cache policy to use for the route.
+   *
+   * @default CloudFront's managed CachingOptimized policy
+   * @example
+   * ```js
+   * {
+   *   routes: {
+   *     "/files/*": {
+   *       url: "https://example.com"
+   *       cachePolicy: "658327ea-f89d-4fab-a63d-7e88639e58f6"
+   *     }
+   *   }
+   * }
+   * ```
+   */
+  cachePolicy?: Input<string>;
+  /**
    * Configure CloudFront Functions to customize the behavior of HTTP requests and responses at the edge.
    */
   edge?: {
@@ -177,10 +194,13 @@ interface BaseRouteArgs {
        *
        * ```js
        * {
-       *   server: {
-       *     edge: {
-       *       viewerRequest: {
-       *         injection: `event.request.headers["x-foo"] = "bar";`
+       *   routes: {
+       *     "/api/*": {
+       *       url: "https://example.com"
+       *       edge: {
+       *         viewerRequest: {
+       *           injection: `event.request.headers["x-foo"] = "bar";`
+       *         }
        *       }
        *     }
        *   }
@@ -198,6 +218,7 @@ interface BaseRouteArgs {
        * {
        *   routes: {
        *     "/api/*": {
+       *       url: "https://example.com"
        *       edge: {
        *         viewerRequest: {
        *           kvStores: ["arn:aws:cloudfront::123456789012:key-value-store/my-store"]
@@ -226,6 +247,7 @@ interface BaseRouteArgs {
      * {
      *   routes: {
      *     "/api/*": {
+     *       url: "https://example.com"
      *       edge: {
      *         viewerResponse: {
      *           injection: `event.response.headers["x-foo"] = "bar";`
@@ -256,10 +278,13 @@ interface BaseRouteArgs {
        *
        * ```js
        * {
-       *   server: {
-       *     edge: {
-       *       viewerResponse: {
-       *         injection: `event.response.headers["x-foo"] = "bar";`
+       *   routes: {
+       *     "/api/*": {
+       *       url: "https://example.com"
+       *       edge: {
+       *         viewerResponse: {
+       *           injection: `event.response.headers["x-foo"] = "bar";`
+       *         }
        *       }
        *     }
        *   }
@@ -277,6 +302,7 @@ interface BaseRouteArgs {
        * {
        *   routes: {
        *     "/api/*": {
+       *       url: "https://example.com"
        *       edge: {
        *         viewerResponse: {
        *           kvStores: ["arn:aws:cloudfront::123456789012:key-value-store/my-store"]
@@ -580,11 +606,11 @@ export class Router extends Component implements Link.Linkable {
       return;
     }
 
+    let defaultCachePolicy: cloudfront.CachePolicy;
     let defaultCfFunction: cloudfront.Function;
     let defaultOac: OriginAccessControl;
     const routes = normalizeRoutes();
 
-    const cachePolicy = createCachePolicy();
     const cdn = createCdn();
 
     this.cdn = cdn;
@@ -717,38 +743,42 @@ async function handler(event) {
         new OriginAccessControl(
           `${name}S3AccessControl`,
           { name: physicalName(64, name) },
-          { parent },
+          { parent, ignoreChanges: ["name"] },
         );
       return defaultOac;
     }
 
     function createCachePolicy() {
-      return new cloudfront.CachePolicy(
-        ...transform(
-          args.transform?.cachePolicy,
-          `${name}CachePolicy`,
-          {
-            comment: `${name} router cache policy`,
-            defaultTtl: 0,
-            maxTtl: 31536000, // 1 year
-            minTtl: 0,
-            parametersInCacheKeyAndForwardedToOrigin: {
-              cookiesConfig: {
-                cookieBehavior: "none",
+      defaultCachePolicy =
+        defaultCachePolicy ??
+        new cloudfront.CachePolicy(
+          ...transform(
+            args.transform?.cachePolicy,
+            `${name}CachePolicy`,
+            {
+              comment: `${name} router cache policy`,
+              defaultTtl: 0,
+              maxTtl: 31536000, // 1 year
+              minTtl: 0,
+              parametersInCacheKeyAndForwardedToOrigin: {
+                cookiesConfig: {
+                  cookieBehavior: "none",
+                },
+                headersConfig: {
+                  headerBehavior: "none",
+                },
+                queryStringsConfig: {
+                  queryStringBehavior: "all",
+                },
+                enableAcceptEncodingBrotli: true,
+                enableAcceptEncodingGzip: true,
               },
-              headersConfig: {
-                headerBehavior: "none",
-              },
-              queryStringsConfig: {
-                queryStringBehavior: "all",
-              },
-              enableAcceptEncodingBrotli: true,
-              enableAcceptEncodingGzip: true,
             },
-          },
-          { parent },
-        ),
-      );
+            { parent },
+          ),
+        );
+
+      return defaultCachePolicy;
     }
 
     function createCdn() {
@@ -824,34 +854,6 @@ async function handler(event) {
     }
 
     function buildBehaviors() {
-      const urlDefaultConfig = {
-        viewerProtocolPolicy: "redirect-to-https",
-        allowedMethods: [
-          "DELETE",
-          "GET",
-          "HEAD",
-          "OPTIONS",
-          "PATCH",
-          "POST",
-          "PUT",
-        ],
-        cachedMethods: ["GET", "HEAD"],
-        defaultTtl: 0,
-        compress: true,
-        cachePolicyId: cachePolicy.id,
-        // CloudFront's Managed-AllViewerExceptHostHeader policy
-        originRequestPolicyId: "b689b0a8-53d0-40ab-baf2-68738e2966ac",
-      };
-
-      const bucketDefaultConfig = {
-        viewerProtocolPolicy: "redirect-to-https",
-        allowedMethods: ["GET", "HEAD", "OPTIONS"],
-        cachedMethods: ["GET", "HEAD"],
-        compress: true,
-        // CloudFront's managed CachingOptimized policy
-        cachePolicyId: "658327ea-f89d-4fab-a63d-7e88639e58f6",
-      };
-
       return output(routes).apply((routes) => {
         const behaviors = Object.entries(routes).map(([path, route]) => ({
           ...(path === "/*" ? {} : { pathPattern: path }),
@@ -885,14 +887,56 @@ async function handler(event) {
                 ]
               : []),
           ],
-          ...("url" in route ? urlDefaultConfig : bucketDefaultConfig),
+          ...("url" in route
+            ? {
+                viewerProtocolPolicy: "redirect-to-https",
+                allowedMethods: [
+                  "DELETE",
+                  "GET",
+                  "HEAD",
+                  "OPTIONS",
+                  "PATCH",
+                  "POST",
+                  "PUT",
+                ],
+                cachedMethods: ["GET", "HEAD"],
+                defaultTtl: 0,
+                compress: true,
+                cachePolicyId: route.cachePolicy ?? createCachePolicy().id,
+                // CloudFront's Managed-AllViewerExceptHostHeader policy
+                originRequestPolicyId: "b689b0a8-53d0-40ab-baf2-68738e2966ac",
+              }
+            : {
+                viewerProtocolPolicy: "redirect-to-https",
+                allowedMethods: ["GET", "HEAD", "OPTIONS"],
+                cachedMethods: ["GET", "HEAD"],
+                compress: true,
+                // CloudFront's managed CachingOptimized policy
+                cachePolicyId:
+                  route.cachePolicy ?? "658327ea-f89d-4fab-a63d-7e88639e58f6",
+              }),
         }));
 
         if (!routes["/*"]) {
           behaviors.push({
             targetOriginId: "/*",
             functionAssociations: [],
-            ...urlDefaultConfig,
+            viewerProtocolPolicy: "redirect-to-https",
+            allowedMethods: [
+              "DELETE",
+              "GET",
+              "HEAD",
+              "OPTIONS",
+              "PATCH",
+              "POST",
+              "PUT",
+            ],
+            cachedMethods: ["GET", "HEAD"],
+            defaultTtl: 0,
+            compress: true,
+            cachePolicyId: createCachePolicy().id,
+            // CloudFront's Managed-AllViewerExceptHostHeader policy
+            originRequestPolicyId: "b689b0a8-53d0-40ab-baf2-68738e2966ac",
           });
         }
         return behaviors;

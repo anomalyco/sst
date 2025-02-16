@@ -281,6 +281,9 @@ nav.sidebar .sidebar-pane > .sidebar-content {
 nav.sidebar .sidebar-pane > .sidebar-content::-webkit-scrollbar {
   display: none;
 }
+nav.sidebar ul {
+  --sl-sidebar-item-padding-inline: 0.3125rem;
+}
 nav.sidebar ul > li {
   border-inline-start: none;
 }
@@ -438,6 +441,9 @@ mobile-starlight-toc nav .dropdown a[aria-current=true] {
   }
   .main-frame > div > .main-pane {
     min-width: 0;
+  }
+  body > .page > .main-frame .main-pane > main > .content-panel .sl-container {
+    margin-inline: auto;
   }
 }
 

@@ -16,12 +16,6 @@ func WithLogFile(path string) Option {
 	}
 }
 
-func WithTheme(theme *Theme) Option {
-	return func(t *Terminal) {
-		t.theme = theme
-	}
-}
-
 func WithShell(shell string) Option {
 	return func(t *Terminal) {
 		t.shell = shell

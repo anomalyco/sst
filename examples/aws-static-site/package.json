@@ -1,0 +1,15 @@
+{
+  "name": "aws-static-site",
+  "version": "1.0.0",
+  "main": "index.js",
+  "devDependencies": {
+    "sst": "latest"
+  },
+  "scripts": {
+    "dev": "npx --yes serve ./site"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": ""
+}

@@ -9,10 +9,10 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/gorilla/websocket"
-	"github.com/sst/ion/cmd/sst/mosaic/aws"
-	"github.com/sst/ion/pkg/bus"
-	"github.com/sst/ion/pkg/project"
-	"github.com/sst/ion/pkg/server"
+	"github.com/sst/sst/v3/cmd/sst/mosaic/aws"
+	"github.com/sst/sst/v3/pkg/bus"
+	"github.com/sst/sst/v3/pkg/project"
+	"github.com/sst/sst/v3/pkg/server"
 )
 
 var upgrader = websocket.Upgrader{
@@ -65,11 +65,12 @@ type Frame struct {
 }
 
 func Start(ctx context.Context, p *project.Project, server *server.Server) error {
+	log := slog.Default().With("service", "socket")
 	connected := make(chan *websocket.Conn)
 	disconnected := make(chan *websocket.Conn)
 	invocationClear := make(chan string)
 	server.Mux.HandleFunc("/socket", func(w http.ResponseWriter, r *http.Request) {
-		slog.Info("socket upgrading", "addr", r.RemoteAddr)
+		log.Info("socket upgrading", "addr", r.RemoteAddr)
 		ws, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			return
@@ -84,11 +85,11 @@ func Start(ctx context.Context, p *project.Project, server *server.Server) error
 		for {
 			_, data, err := ws.ReadMessage()
 			if err != nil {
-				slog.Info("socket error", "err", err)
+				log.Info("socket error", "err", err)
 				break
 			}
 
-			slog.Info("socket message", "message", string(data))
+			log.Info("socket message", "message", string(data))
 			var message map[string]interface{}
 			err = json.Unmarshal(data, &message)
 			if err != nil {
@@ -211,7 +212,7 @@ func Start(ctx context.Context, p *project.Project, server *server.Server) error
 				break
 			}
 		case ws := <-connected:
-			slog.Info("socket connected", "addr", ws.RemoteAddr())
+			log.Info("socket connected", "addr", ws.RemoteAddr())
 			sockets[ws] = struct{}{}
 			ws.WriteJSON(map[string]interface{}{
 				"type": "cli.dev",
@@ -224,14 +225,14 @@ func Start(ctx context.Context, p *project.Project, server *server.Server) error
 			for _, invocation := range invocations {
 				all = append(all, invocation)
 			}
-			slog.Info("sending invocations", "count", len(all))
+			log.Info("sending invocations", "count", len(all))
 			ws.WriteJSON(map[string]interface{}{
 				"type":       "invocation",
 				"properties": all,
 			})
 			break
 		case ws := <-disconnected:
-			slog.Info("socket disconnected", "addr", ws.RemoteAddr())
+			log.Info("socket disconnected", "addr", ws.RemoteAddr())
 			delete(sockets, ws)
 			break
 		}

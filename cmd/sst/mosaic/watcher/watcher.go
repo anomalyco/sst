@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/sst/ion/pkg/bus"
+	"github.com/sst/sst/v3/pkg/bus"
 )
 
 type FileChangedEvent struct {
@@ -17,8 +17,9 @@ type FileChangedEvent struct {
 }
 
 func Start(ctx context.Context, root string) error {
-	defer slog.Info("watcher done")
-	slog.Info("starting watcher", "root", root)
+	log := slog.Default().With("service", "watcher")
+	defer log.Info("done")
+	log.Info("starting watcher", "root", root)
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return err
@@ -42,7 +43,7 @@ func Start(ctx context.Context, root string) error {
 					return filepath.SkipDir
 				}
 			}
-			slog.Info("watching", "path", path)
+			log.Info("watching", "path", path)
 			err = watcher.Add(path)
 			if err != nil {
 				return err
@@ -67,10 +68,10 @@ func Start(ctx context.Context, root string) error {
 			// 	return nil
 			// }
 			if event.Op&(fsnotify.Write|fsnotify.Create) == 0 {
-				slog.Info("ignoring file event", "path", event.Name, "op", event.Op)
+				log.Info("ignoring file event", "path", event.Name, "op", event.Op)
 				continue
 			}
-			slog.Info("file event", "path", event.Name, "op", event.Op)
+			log.Info("file event", "path", event.Name, "op", event.Op)
 			if time.Since(limiter[event.Name]) > 500*time.Millisecond {
 				limiter[event.Name] = time.Now()
 				bus.Publish(&FileChangedEvent{Path: event.Name})

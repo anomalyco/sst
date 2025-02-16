@@ -1,10 +1,8 @@
 import {
   ComponentResourceOptions,
   Output,
-  Resource,
   all,
   interpolate,
-  jsonStringify,
   output,
 } from "@pulumi/pulumi";
 import {
@@ -28,8 +26,25 @@ import { Dns } from "../dns";
 import { dns as awsDns } from "./dns";
 import { DnsValidatedCertificate } from "./dns-validated-certificate";
 import { ApiGatewayV1IntegrationRoute } from "./apigatewayv1-integration-route";
+import { ApiGatewayV1UsagePlan } from "./apigatewayv1-usage-plan";
 
 export interface ApiGatewayV1DomainArgs {
+  /**
+   * Use an existing API Gateway domain name.
+   *
+   * By default, a new API Gateway domain name is created. If you'd like to use an existing
+   * domain name, set the `nameId` to the ID of the domain name and **do not** pass in `name`.
+   *
+   * @example
+   * ```js
+   * {
+   *   domain: {
+   *     nameId: "example.com"
+   *   }
+   * }
+   * ```
+   */
+  nameId?: Input<string>;
   /**
    * The custom domain you want to use.
    *
@@ -428,6 +443,74 @@ export interface ApiGatewayV1AuthorizerArgs {
   };
 }
 
+export interface ApiGatewayV1UsagePlanArgs {
+  /**
+   * Configure a rate limits to protect your API from being overwhelmed by too many requests
+   * at once.
+   * @example
+   * ```js
+   * {
+   *   throttle: {
+   *     rate: 100,
+   *     burst: 200,
+   *   }
+   * }
+   * ```
+   */
+  throttle?: Input<{
+    /**
+     * The maximum number of requests permitted in a short-term spike beyond the rate limit.
+     */
+    burst?: Input<number>;
+    /**
+     * The steady-state maximum number of requests allowed per second.
+     */
+    rate?: Input<number>;
+  }>;
+  /**
+   * Configure a cap on the total number of requests allowed within a specified time period.
+   * @example
+   * ```js
+   * {
+   *   quota: {
+   *     limit: 1000,
+   *     period: "month",
+   *     offset: 0,
+   *   }
+   * }
+   * ```
+   */
+  quota?: Input<{
+    /**
+     * The maximum number of requests that can be made in the specified period.
+     */
+    limit: Input<number>;
+    /**
+     * The time period for which the quota applies.
+     */
+    period: Input<"day" | "week" | "month">;
+    /**
+     * The number of days into the period when the quota counter is reset.
+     * For example, with period="month" and offset=0, the quota is reset at
+     * the beginning of each month.
+     */
+    offset?: Input<number>;
+  }>;
+}
+
+export interface ApiGatewayV1ApiKeyArgs {
+  /**
+   * The value of the API key. If not provided, it will be generated automatically.
+   * @example
+   * ```js
+   * {
+   *   value: "d41d8cd98f00b204e9800998ecf8427e"
+   * }
+   * ```
+   */
+  value?: Input<string>;
+}
+
 export interface ApiGatewayV1RouteArgs {
   /**
    * Enable auth for your REST API. By default, auth is disabled.
@@ -652,6 +735,7 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
   private stage?: apigateway.Stage;
   private logGroup?: cloudwatch.LogGroup;
   private endpointType: Output<"EDGE" | "REGIONAL" | "PRIVATE">;
+  private deployed: boolean = false;
 
   constructor(
     name: string,
@@ -729,6 +813,7 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
    * The underlying [resources](/docs/components/#nodes) this component creates.
    */
   public get nodes() {
+    const self = this;
     return {
       /**
        * The Amazon API Gateway REST API
@@ -742,6 +827,20 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
        * The CloudWatch LogGroup for the access logs.
        */
       logGroup: this.logGroup,
+      /**
+       * The API Gateway REST API domain name.
+       */
+      get domainName() {
+        if (!self.deployed)
+          throw new VisibleError(
+            `"nodes.domainName" is not available before the "${self.constructorName}" API is deployed.`,
+          );
+        if (!self.apigDomain)
+          throw new VisibleError(
+            `"nodes.domainName" is not available when domain is not configured for the "${self.constructorName}" API.`,
+          );
+        return self.apigDomain;
+      },
     };
   }
 
@@ -1059,6 +1158,64 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
   }
 
   /**
+   * Add a usage plan to the API Gateway REST API.
+   *
+   * @param name The name of the usage plan.
+   * @param args Configure the usage plan.
+   * @example
+   * Add a usage plan with throttle and quota.
+   *
+   * ```js title="sst.config.ts"
+   * const plan = api.addUsagePlan("MyPlan", {
+   *   throttle: {
+   *     rate: 100,
+   *     burst: 200,
+   *   },
+   *   quota: {
+   *     limit: 1000,
+   *     period: "month",
+   *     offset: 0,
+   *   }
+   * });
+   * ```
+   *
+   * Create an API key for the usage plan.
+   *
+   * ```js title="sst.config.ts"
+   * const key = plan.addApiKey("MyKey");
+   * ```
+   *
+   * You can link the API key to other resources, like a function. Once linked,
+   * include the key in the `x-api-key` header in your API requests.
+   *
+   * ```ts title="src/lambda.ts"
+   * import { Resource } from "sst";
+   *
+   * await fetch(Resource.MyApi.url, {
+   *   headers: {
+   *     "x-api-key": Resource.MyKey.value,
+   *   }
+   * });
+   * ```
+   */
+  public addUsagePlan(name: string, args: ApiGatewayV1UsagePlanArgs) {
+    if (!this.stage)
+      throw new VisibleError(
+        `Cannot add a usage plan to the "${this.constructorName}" API before it's deployed. Make sure to call deploy() to deploy the API first.`,
+      );
+
+    return new ApiGatewayV1UsagePlan(
+      name,
+      {
+        apiId: this.api.id,
+        apiStage: this.stage.stageName,
+        ...args,
+      },
+      { provider: this.constructorOpts.provider },
+    );
+  }
+
+  /**
    * Create a deployment for the API Gateway REST API.
    *
    * :::note
@@ -1088,6 +1245,7 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
     createDnsRecords();
     const apiMapping = createDomainMapping();
 
+    this.deployed = true;
     this.logGroup = logGroup;
     this.stage = stage;
     this.apigDomain = apigDomain;
@@ -1107,21 +1265,28 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
     function normalizeDomain() {
       if (!args.domain) return;
 
-      // validate
-      output(args.domain).apply((domain) => {
-        if (typeof domain === "string") return;
-
-        if (!domain.name) throw new Error(`Missing "name" for domain.`);
-        if (domain.dns === false && !domain.cert)
-          throw new Error(`No "cert" provided for domain with disabled DNS.`);
-      });
-
-      // normalize
       return output(args.domain).apply((domain) => {
-        const norm = typeof domain === "string" ? { name: domain } : domain;
+        // validate
+        if (typeof domain !== "string") {
+          if (domain.name && domain.nameId)
+            throw new VisibleError(
+              `Cannot configure both domain "name" and "nameId" for the "${name}" API.`,
+            );
+          if (!domain.name && !domain.nameId)
+            throw new VisibleError(
+              `Either domain "name" or "nameId" is required for the "${name}" API.`,
+            );
+          if (domain.dns === false && !domain.cert)
+            throw new VisibleError(
+              `Domain "cert" is required when "dns" is disabled for the "${name}" API.`,
+            );
+        }
 
+        // normalize
+        const norm = typeof domain === "string" ? { name: domain } : domain;
         return {
           name: norm.name,
+          nameId: norm.nameId,
           path: norm.path,
           dns: norm.dns === false ? undefined : norm.dns ?? awsDns(),
           cert: norm.cert,
@@ -1287,7 +1452,7 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
               (accessLog) => RETENTION[accessLog.retention],
             ),
           },
-          { parent },
+          { parent, ignoreChanges: ["name"] },
         ),
       );
     }
@@ -1335,6 +1500,7 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
 
       return domain.apply((domain) => {
         if (domain.cert) return output(domain.cert);
+        if (domain.nameId) return output(undefined);
 
         return new DnsValidatedCertificate(
           `${name}Ssl`,
@@ -1350,34 +1516,40 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
     function createDomainName() {
       if (!domain || !certificateArn) return;
 
-      return endpointType.apply(
-        (endpointType) =>
-          new apigateway.DomainName(
-            ...transform(
-              args.transform?.domainName,
-              `${name}DomainName`,
-              {
-                domainName: domain?.name,
-                endpointConfiguration: { types: endpointType },
-                ...(endpointType === "REGIONAL"
-                  ? { regionalCertificateArn: certificateArn }
-                  : { certificateArn }),
-              },
-              { parent },
-            ),
-          ),
+      return all([domain, certificateArn, endpointType]).apply(
+        ([domain, certificateArn, endpointType]) =>
+          domain.nameId
+            ? apigateway.DomainName.get(
+                `${name}DomainName`,
+                domain.nameId,
+                {},
+                { parent },
+              )
+            : new apigateway.DomainName(
+                ...transform(
+                  args.transform?.domainName,
+                  `${name}DomainName`,
+                  {
+                    domainName: domain?.name,
+                    endpointConfiguration: { types: endpointType },
+                    ...(endpointType === "REGIONAL"
+                      ? { regionalCertificateArn: certificateArn }
+                      : { certificateArn }),
+                  },
+                  { parent },
+                ),
+              ),
       );
     }
 
     function createDnsRecords(): void {
-      if (!domain || !apigDomain) {
-        return;
-      }
+      if (!domain || !apigDomain) return;
 
-      domain.dns.apply((dns) => {
-        if (!dns) return;
+      domain.apply((domain) => {
+        if (!domain.dns) return;
+        if (domain.nameId) return;
 
-        dns.createAlias(
+        domain.dns.createAlias(
           name,
           {
             name: domain.name,

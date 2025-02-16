@@ -1,13 +1,12 @@
 import path from "path";
 import fs from "fs";
-import { execSync } from "child_process";
 import { Output, Resource, all, output } from "@pulumi/pulumi";
 import { Prettify } from "../component";
 import { Input } from "../input";
 import { Link } from "../link.js";
 import { VisibleError } from "../error.js";
 import { BaseSiteDev, BaseSiteFileOptions } from "./base-site";
-import { Run } from "../providers/run";
+import { siteBuilder } from "../aws/helpers/site-builder";
 
 export interface BaseSsrSiteArgs {
   dev?: false | Prettify<BaseSiteDev>;
@@ -151,7 +150,9 @@ export function buildApp(
         return "pnpm run build";
       if (
         fs.existsSync(path.join(sitePath, "bun.lockb")) ||
-        fs.existsSync(path.join($cli.paths.root, "bun.lockb"))
+        fs.existsSync(path.join($cli.paths.root, "bun.lockb")) ||
+        fs.existsSync(path.join(sitePath, "bun.lock")) ||
+        fs.existsSync(path.join($cli.paths.root, "bun.lock"))
       )
         return "bun run build";
 
@@ -175,18 +176,19 @@ export function buildApp(
       });
 
       // Run build
-      return new Run(
-        `${name}Build`,
+      return siteBuilder(
+        `${name}Builder`,
         {
-          command: cmd,
-          cwd: sitePath,
-          env: linkEnvs.apply((linkEnvs) => ({
+          create: cmd,
+          update: cmd,
+          dir: path.join($cli.paths.root, sitePath),
+          environment: linkEnvs.apply((linkEnvs) => ({
             SST: "1",
             ...process.env,
             ...environment,
             ...linkEnvs,
           })),
-          version: Date.now().toString(),
+          triggers: [Date.now().toString()],
         },
         {
           parent,

@@ -12,7 +12,6 @@ import { Link } from "../link.js";
 import { Input } from "../input.js";
 import { elasticache, secretsmanager } from "@pulumi/aws";
 import { Vpc } from "./vpc.js";
-import { physicalName } from "../naming.js";
 import { VisibleError } from "../error.js";
 import { DevCommand } from "../experimental/dev-command.js";
 
@@ -405,7 +404,6 @@ Listening on "${dev.host}:${dev.port}"...`,
           args.transform?.cluster,
           `${name}Cluster`,
           {
-            replicationGroupId: physicalName(40, name),
             description: "Managed by SST",
             engine,
             engineVersion: version,

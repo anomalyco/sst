@@ -2,10 +2,11 @@ package main
 
 import (
 	"fmt"
+	"runtime"
 
 	"github.com/pulumi/pulumi/sdk/v3"
-	"github.com/sst/ion/cmd/sst/cli"
-	"github.com/sst/ion/pkg/global"
+	"github.com/sst/sst/v3/cmd/sst/cli"
+	"github.com/sst/sst/v3/pkg/global"
 )
 
 var CmdVersion = &cli.Command{
@@ -19,6 +20,8 @@ var CmdVersion = &cli.Command{
 		if cli.Bool("verbose") {
 			fmt.Println("pulumi", sdk.Version)
 			fmt.Println("config", global.ConfigDir())
+			fmt.Println("GOARCH", runtime.GOARCH)
+			fmt.Println("GOOS", runtime.GOOS)
 		}
 		return nil
 	},

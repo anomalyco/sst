@@ -257,7 +257,7 @@ export interface SolidStartArgs extends SsrSiteArgs {
    * By default, a new cache policy is created for it. This allows you to reuse an existing
    * policy instead of creating a new one.
    *
-   * @default A new cache plolicy is created
+   * @default A new cache policy is created
    * @example
    * ```js
    * {
@@ -353,7 +353,7 @@ export class SolidStart extends Component implements Link.Linkable {
     const { sitePath, partition } = prepare(parent, args);
     const dev = normalizeDev();
 
-    if (dev) {
+    if (dev.enabled) {
       const server = createDevServer(parent, name, args);
       this.devUrl = dev.url;
       this.registerOutputs({
@@ -363,16 +363,8 @@ export class SolidStart extends Component implements Link.Linkable {
           server: server.arn,
         },
         _dev: {
-          links: output(args.link || [])
-            .apply(Link.build)
-            .apply((links) => links.map((link) => link.name)),
-          aws: {
-            role: server.nodes.role.arn,
-          },
-          environment: args.environment,
-          command: dev.command,
-          directory: dev.directory,
-          autostart: dev.autostart,
+          ...dev.outputs,
+          aws: { role: server.nodes.role.arn },
         },
       });
       return;
@@ -380,16 +372,16 @@ export class SolidStart extends Component implements Link.Linkable {
 
     const { access, bucket } = createBucket(parent, name, partition, args);
     const outputPath = buildApp(parent, name, args, sitePath);
-    const preset = outputPath.apply((output) => {
+    const nitro = outputPath.apply((output) => {
       const nitro = JSON.parse(
         fs.readFileSync(path.join(output, ".output/nitro.json")).toString(),
       );
-      if (!["aws-lambda-streaming", "aws-lambda"].includes(nitro.preset)) {
+      if (nitro.preset !== "aws-lambda") {
         throw new VisibleError(
-          `SolidStart's app.config.ts must be configured to use the "aws-lambda-streaming" or "aws-lambda" preset. It is currently set to "${nitro.preset}".`,
+          `SolidStart's app.config.ts must be configured to use the "aws-lambda" preset. It is currently set to "${nitro.preset}".`,
         );
       }
-      return nitro.preset;
+      return nitro;
     });
     const buildMeta = loadBuildMetadata();
     const plan = buildPlan();
@@ -418,18 +410,29 @@ export class SolidStart extends Component implements Link.Linkable {
         url: distribution.apply((d) => d.domainUrl ?? d.url),
         server: serverFunction.arn,
       },
+      _dev: {
+        ...dev.outputs,
+        aws: { role: serverFunction.nodes.role.arn },
+      },
     });
 
     function normalizeDev() {
-      if (!$dev) return undefined;
-      if (args.dev === false) return undefined;
+      const enabled = $dev && args.dev !== false;
+      const devArgs = args.dev || {};
 
       return {
-        ...args.dev,
-        url: output(args.dev?.url ?? URL_UNAVAILABLE),
-        command: output(args.dev?.command ?? "npm run dev"),
-        autostart: output(args.dev?.autostart ?? true),
-        directory: output(args.dev?.directory ?? sitePath),
+        enabled,
+        url: output(devArgs.url ?? URL_UNAVAILABLE),
+        outputs: {
+          title: devArgs.title,
+          command: output(devArgs.command ?? "npm run dev"),
+          autostart: output(devArgs.autostart ?? true),
+          directory: output(devArgs.directory ?? sitePath),
+          environment: args.environment,
+          links: output(args.link || [])
+            .apply(Link.build)
+            .apply((links) => links.map((link) => link.name)),
+        },
       };
     }
 
@@ -450,13 +453,13 @@ export class SolidStart extends Component implements Link.Linkable {
     }
 
     function buildPlan() {
-      return all([outputPath, buildMeta, preset]).apply(
-        ([outputPath, buildMeta, preset]) => {
+      return all([outputPath, buildMeta, nitro]).apply(
+        ([outputPath, buildMeta, nitro]) => {
           const serverConfig = {
             description: "Server handler for Solid",
             handler: "index.handler",
             bundle: path.join(outputPath, ".output", "server"),
-            streaming: preset === "aws-lambda-streaming",
+            streaming: nitro?.config?.awsLambda?.streaming === true,
           };
 
           return validatePlan({

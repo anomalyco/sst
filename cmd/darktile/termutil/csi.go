@@ -945,15 +945,15 @@ func (t *Terminal) sgrSequenceHandler(params []string) bool {
 		case "29":
 			t.GetActiveBuffer().getCursorAttr().strikethrough = false
 		case "38": // set foreground
-			t.GetActiveBuffer().getCursorAttr().fgColour, _ = t.theme.ColourFromAnsi(params[i+1:], false)
+			t.GetActiveBuffer().getCursorAttr().fgColour, _ = ColourFromAnsi(params[i+1:], false)
 			return false
 		case "48": // set background
-			t.GetActiveBuffer().getCursorAttr().bgColour, _ = t.theme.ColourFromAnsi(params[i+1:], true)
+			t.GetActiveBuffer().getCursorAttr().bgColour, _ = ColourFromAnsi(params[i+1:], true)
 			return false
 		case "39":
-			t.GetActiveBuffer().getCursorAttr().fgColour = t.theme.DefaultForeground()
+			t.GetActiveBuffer().getCursorAttr().fgColour = DefaultForeground()
 		case "49":
-			t.GetActiveBuffer().getCursorAttr().bgColour = t.theme.DefaultBackground()
+			t.GetActiveBuffer().getCursorAttr().bgColour = DefaultBackground()
 		default:
 			bi, err := strconv.Atoi(p)
 			if err != nil {
@@ -962,9 +962,9 @@ func (t *Terminal) sgrSequenceHandler(params []string) bool {
 			i := byte(bi)
 			switch true {
 			case i >= 30 && i <= 37, i >= 90 && i <= 97:
-				t.GetActiveBuffer().getCursorAttr().fgColour = t.theme.ColourFrom4Bit(i)
+				t.GetActiveBuffer().getCursorAttr().fgColour = ColourFrom4Bit(i)
 			case i >= 40 && i <= 47, i >= 100 && i <= 107:
-				t.GetActiveBuffer().getCursorAttr().bgColour = t.theme.ColourFrom4Bit(i)
+				t.GetActiveBuffer().getCursorAttr().bgColour = ColourFrom4Bit(i)
 			}
 
 		}

@@ -97,6 +97,11 @@ export interface SnsTopicSubscriberArgs {
   };
 }
 
+interface SnsTopicRef {
+  ref: true;
+  topicArn: Input<string>;
+}
+
 /**
  * The `SnsTopic` component lets you add an [Amazon SNS Topic](https://docs.aws.amazon.com/sns/latest/dg/sns-create-topic.html) to your app.
  *
@@ -163,15 +168,28 @@ export class SnsTopic extends Component implements Link.Linkable {
     opts: ComponentResourceOptions = {},
   ) {
     super(__pulumiType, name, args, opts);
-
-    const parent = this;
-    const fifo = normalizeFifo();
-
-    const topic = createTopic();
-
+    const self = this;
     this.constructorName = name;
     this.constructorOpts = opts;
-    this.topic = topic;
+
+    if (args && "ref" in args) {
+      const ref = reference();
+      this.topic = ref.topic;
+      return;
+    }
+
+    const fifo = normalizeFifo();
+
+    this.topic = createTopic();
+
+    function reference() {
+      const ref = args as SnsTopicRef;
+      const topic = sns.Topic.get(`${name}Topic`, ref.topicArn, undefined, {
+        parent: self,
+      });
+
+      return { topic };
+    }
 
     function normalizeFifo() {
       return output(args.fifo).apply((v) => v ?? false);
@@ -185,7 +203,7 @@ export class SnsTopic extends Component implements Link.Linkable {
           {
             fifoTopic: fifo,
           },
-          { parent },
+          { parent: self },
         ),
       );
     }
@@ -614,6 +632,51 @@ export class SnsTopic extends Component implements Link.Linkable {
         ...args,
       });
     });
+  }
+
+  /**
+   * Reference an existing SNS topic with its topic ARN. This is useful when you create a
+   * topic in one stage and want to share it in another stage. It avoids having to create
+   * a new topic in the other stage.
+   *
+   * :::tip
+   * You can use the `static get` method to share SNS topics across stages.
+   * :::
+   *
+   * @param name The name of the component.
+   * @param topicArn The ARN of the existing SNS Topic.
+   * @param opts? Resource options.
+   *
+   * @example
+   * Imagine you create a topic in the `dev` stage. And in your personal stage `frank`,
+   * instead of creating a new topic, you want to share the topic from `dev`.
+   *
+   * ```ts title="sst.config.ts"
+   * const topic = $app.stage === "frank"
+   *   ? sst.aws.SnsTopic.get("MyTopic", "arn:aws:sns:us-east-1:123456789012:MyTopic")
+   *   : new sst.aws.SnsTopic("MyTopic");
+   * ```
+   *
+   * Here `arn:aws:sns:us-east-1:123456789012:MyTopic` is the ARN of the topic created in
+   * the `dev` stage. You can find this by outputting the topic ARN in the `dev` stage.
+   *
+   * ```ts title="sst.config.ts"
+   * return topic.arn;
+   * ```
+   */
+  public static get(
+    name: string,
+    topicArn: Input<string>,
+    opts?: ComponentResourceOptions,
+  ) {
+    return new SnsTopic(
+      name,
+      {
+        ref: true,
+        topicArn,
+      } as SnsTopicArgs,
+      opts,
+    );
   }
 
   /** @internal */

@@ -416,7 +416,7 @@ export function createBucket(
     return new OriginAccessControl(
       `${name}S3AccessControl`,
       { name: physicalName(64, name) },
-      { parent },
+      { parent, ignoreChanges: ["name"] },
     );
   }
 

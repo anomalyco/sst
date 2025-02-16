@@ -33,8 +33,12 @@ type Metafile struct {
 	Inputs map[string]struct {
 		Bytes   int `json:"bytes"`
 		Imports []struct {
-			Path string `json:"path"`
-			Kind string `json:"kind"`
+			Path        string `json:"path"`
+			Kind        string `json:"kind"`
+			External    bool   `json:"external,omitempty"`
+			Original    string `json:"original,omitempty"`
+			Namespace   string `json:"namespace,omitempty"`
+			SideEffects bool   `json:"sideEffects,omitempty"`
 		} `json:"imports"`
 	} `json:"inputs"`
 	Outputs map[string]struct {

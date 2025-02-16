@@ -15,7 +15,8 @@ export default $config({
     const vpc = new sst.aws.Vpc("MyVpc", { nat: "gateway" });
     const cluster = new sst.aws.Cluster("MyCluster", { vpc });
 
-    const service = cluster.addService("MyService", {
+    const service = new sst.aws.Service("MyService", {
+      cluster,
       image: {
         context: "./",
         dockerfile: "Dockerfile",

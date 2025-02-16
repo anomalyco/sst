@@ -1,7 +1,8 @@
 import { VisibleError } from "./error";
-import { output, secret } from "@pulumi/pulumi";
+import { Output, output, secret } from "@pulumi/pulumi";
 import { Link } from "./link";
 import { Component, Prettify } from "./component";
+import { Input } from "./input";
 
 export class SecretMissingError extends VisibleError {
   constructor(public readonly secretName: string) {
@@ -14,11 +15,12 @@ export class SecretMissingError extends VisibleError {
 /**
  * The `Secret` component lets you create secrets in your app.
  *
- * :::note
- * Secrets are encrypted when they are stored in your state file or in a function package.
- * :::
+ * <VideoAside title="Watch a video on how secrets work" href="https://youtu.be/7tW2L3P6LKw" />
  *
- * Secrets are encrypted and stored in an S3 Bucket in your AWS account. If used in your app config, they'll be encrypted in your state file as well. If used in your function code, they'll be decrypted and stored in the function package.
+ * Secrets are encrypted and stored in an S3 Bucket in your AWS account. If used in
+ * your app config, they'll be encrypted in your state file as well. If used in
+ * your function code, they are encrypted and included in the bundle. They'll are
+ * then decrypted synchronously when your function starts up by the SST SDK.
  *
  * @example
  *
@@ -77,6 +79,8 @@ export class SecretMissingError extends VisibleError {
  * console.log(mySecret.value);
  * ```
  *
+ * This is an [Output](/docs/components#outputs) that can be used as an Input to other components.
+ *
  * #### Link the secret to a resource
  *
  * You can link the secret to other resources, like a function or your Next.js app.
@@ -96,15 +100,15 @@ export class SecretMissingError extends VisibleError {
  * ```
  */
 export class Secret extends Component implements Link.Linkable {
-  private _value: string;
+  private _value: Output<string>;
   private _name: string;
-  private _placeholder?: string;
+  private _placeholder?: Output<string>;
 
   /**
    * @param placeholder A placeholder value of the secret. This can be useful for cases where you might not be storing sensitive values.
 
    */
-  constructor(name: string, placeholder?: string) {
+  constructor(name: string, placeholder?: Input<string>) {
     super(
       "sst:sst:Secret",
       name,
@@ -114,12 +118,15 @@ export class Secret extends Component implements Link.Linkable {
       {},
     );
     this._name = name;
-    this._placeholder = placeholder;
-    const value = process.env["SST_SECRET_" + this._name] ?? this._placeholder;
-    if (typeof value !== "string") {
-      throw new SecretMissingError(this._name);
-    }
-    this._value = value;
+    this._placeholder = placeholder ? output(placeholder) : undefined;
+    this._value = output(
+      process.env["SST_SECRET_" + this._name] ?? this._placeholder,
+    ).apply((value) => {
+      if (typeof value !== "string") {
+        throw new SecretMissingError(this._name);
+      }
+      return value;
+    });
   }
 
   /**
@@ -140,7 +147,7 @@ export class Secret extends Component implements Link.Linkable {
    * The placeholder value of the secret.
    */
   public get placeholder() {
-    return output(this._placeholder);
+    return this._placeholder;
   }
 
   /** @internal */

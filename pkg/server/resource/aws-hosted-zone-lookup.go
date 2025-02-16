@@ -84,4 +84,3 @@ func (r *HostedZoneLookup) lookup(domain string) (string, error) {
 
 	return "", fmt.Errorf("could not find hosted zone for domain %s", domain)
 }
-

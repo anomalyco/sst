@@ -11,11 +11,12 @@ import (
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
-	"github.com/sst/ion/pkg/flag"
-	"github.com/sst/ion/pkg/global"
-	"github.com/sst/ion/pkg/npm"
-	"github.com/sst/ion/pkg/process"
-	"github.com/sst/ion/platform"
+	"github.com/sst/sst/v3/pkg/flag"
+	"github.com/sst/sst/v3/pkg/global"
+	"github.com/sst/sst/v3/pkg/npm"
+	"github.com/sst/sst/v3/pkg/process"
+	"github.com/sst/sst/v3/pkg/project/path"
+	"github.com/sst/sst/v3/platform"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -103,6 +104,7 @@ func (p *Project) writePackageJson() error {
 		slog.Info("adding dependency", "name", entry.Name)
 		dependencies[entry.Package] = entry.Version
 	}
+	dependencies["@pulumi/pulumi"] = global.PULUMI_VERSION
 
 	dataToWrite, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
@@ -167,7 +169,7 @@ func (p *Project) writeTypes() error {
 func (p *Project) fetchDeps() error {
 	slog.Info("fetching deps")
 	manager := global.BunPath()
-	if flag.NO_BUN {
+	if flag.SST_NO_BUN {
 		manager = "npm"
 	}
 	cmd := process.Command(manager, "install")
@@ -189,7 +191,7 @@ type ProviderLockEntry struct {
 type ProviderLock = []*ProviderLockEntry
 
 func (p *Project) loadProviderLock() error {
-	lockPath := filepath.Join(p.PathPlatformDir(), "provider-lock.json")
+	lockPath := path.ResolveProviderLock(p.PathConfig())
 	data, err := os.ReadFile(lockPath)
 	if err != nil {
 		p.lock = ProviderLock{}
@@ -280,7 +282,7 @@ func FindProvider(name string, version string) (*ProviderLockEntry, error) {
 }
 
 func (p *Project) writeProviderLock() error {
-	lockPath := filepath.Join(p.PathPlatformDir(), "provider-lock.json")
+	lockPath := path.ResolveProviderLock(p.PathConfig())
 	data, err := json.MarshalIndent(p.lock, "", "  ")
 	if err != nil {
 		return err

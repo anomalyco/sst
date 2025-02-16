@@ -12,9 +12,6 @@ import { Dns } from "../dns";
 import { dns as awsDns } from "./dns.js";
 import { ses, sesv2 } from "@pulumi/aws";
 import { permission } from "./permission";
-import { RandomId } from "@pulumi/random";
-import { hashNumberToPrettyString, physicalName } from "../naming";
-import { VisibleError } from "../error";
 
 interface Events {
   /**
@@ -142,10 +139,6 @@ export interface EmailArgs {
   dmarc?: Input<string>;
   /**
    * Configure event notifications for this Email component.
-   *
-   * :::tip
-   * You don't need to use a Lambda layer to use FFmpeg.
-   * :::
    *
    * @default No event notifications
    * @example
@@ -323,29 +316,14 @@ export class Email extends Component implements Link.Linkable {
     }
 
     function createConfigurationSet() {
-      const transformed = transform(
-        args.transform?.configurationSet,
-        `${name}Config`,
-        {} as sesv2.ConfigurationSetArgs,
-        { parent },
-      );
-
-      if (!transformed[1].configurationSetName) {
-        const randomId = new RandomId(
-          `${name}Id`,
-          { byteLength: 6 },
+      return new sesv2.ConfigurationSet(
+        ...transform(
+          args.transform?.configurationSet,
+          `${name}Config`,
+          { configurationSetName: "" },
           { parent },
-        );
-        transformed[1].configurationSetName = randomId.dec.apply((dec) =>
-          physicalName(
-            64,
-            name,
-            `-${hashNumberToPrettyString(parseInt(dec), 8)}`,
-          ).toLowerCase(),
-        );
-      }
-
-      return new sesv2.ConfigurationSet(...transformed);
+        ),
+      );
     }
 
     function createIdentity() {

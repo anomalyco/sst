@@ -14,7 +14,7 @@ export const github  = config.github;
 SST is a framework that makes it easy to build modern full-stack applications on your own infrastructure.
 
 :::note
-SST supports over 150 providers. Check out the [full list](/docs/providers#directory).
+SST supports over 150 providers. Check out the [full list](/docs/all-providers#directory).
 :::
 
 What makes SST different is that your _entire_ app is **defined in code** — in a single `sst.config.ts` file. This includes databases, buckets, queues, Stripe webhooks, or any one of **150+ providers**.
@@ -76,7 +76,8 @@ Like your API deployed in a container. Or any Lambda functions, Postgres databas
   ```ts title="sst.config.ts"
   const cluster = new sst.aws.Cluster("MyCluster", { vpc });
 
-  cluster.addService("MyService", {
+  new sst.aws.Service("MyService", {
+    cluster,
     loadBalancer: {
       ports: [{ listen: "80/http" }]
     }
@@ -111,16 +112,12 @@ Like your API deployed in a container. Or any Lambda functions, Postgres databas
 </Tabs>
 
 
-You can even set up Stripe webhooks in code.
+You can even set up your Stripe products in code.
 
 ```ts title="sst.config.ts"
-new stripe.WebhookEndpoint("MyStripeWebhook", {
-  url: "https://example.com/webhook",
-  enabledEvents: [
-    "payment_method.attached",
-    "payment_method.detached",
-    "payment_method.updated"
-  ]
+new stripe.Product("MyStripeProduct", {
+  name: "SST Paid Plan",
+  description: "This is how SST makes money",
 });
 ```
 
@@ -173,6 +170,8 @@ Learn more about [transforms](/docs/components#transforms).
 
 SST has built-in components for AWS and Cloudflare that make these services easier to use.
 
+<VideoAside title="Watch a video about providers in SST" href="https://youtu.be/rlR2f5N9mW4" />
+
 However it also supports components from any one of the **150+ Pulumi/Terraform providers**. For example, you can use Vercel for your frontends.
 
 ```ts title="sst.config.ts"
@@ -181,13 +180,15 @@ new vercel.Project("MyFrontend", {
 });
 ```
 
-Learn more about [Providers](/docs/providers) and check out the full list in the [Directory](/docs/providers#directory).
+Learn more about [Providers](/docs/providers) and check out the full list in the [Directory](/docs/all-providers#directory).
 
 ---
 
 ## Link resources
 
 Once you've added a couple of features, SST can help you link them together. This is great because you **won't need to hardcode** anything in your app.
+
+<VideoAside title="Watch a video on linking resources" href="https://youtu.be/s8cWklU4Akw" />
 
 Let's say you are deploying an Express app in a container and you want to upload files to an S3 bucket. You can `link` the bucket to your container.
 
@@ -196,7 +197,8 @@ const bucket = new sst.aws.Bucket("MyBucket");
 
 const cluster = new sst.aws.Cluster("MyCluster", { vpc });
 
-cluster.addService("MyService", {
+new sst.aws.Service("MyService", {
+  cluster,
   link: [bucket],
   loadBalancer: {
     ports: [{ listen: "80/http" }]

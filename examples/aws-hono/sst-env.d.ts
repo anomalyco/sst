@@ -2,16 +2,10 @@
 /* tslint:disable */
 /* eslint-disable */
 /* deno-fmt-ignore-file */
-import "sst"
-export {}
+
 declare module "sst" {
   export interface Resource {
     "Hono": {
-      "name": string
-      "type": "sst.aws.Function"
-      "url": string
-    }
-    "Hono3": {
       "name": string
       "type": "sst.aws.Function"
       "url": string
@@ -22,3 +16,7 @@ declare module "sst" {
     }
   }
 }
+/// <reference path="sst-env.d.ts" />
+
+import "sst"
+export {}

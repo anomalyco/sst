@@ -38,7 +38,8 @@ export default $config({
     });
     const cluster = new sst.aws.Cluster("Cluster", { vpc });
     const connection = $interpolate`postgres://${db.username}:${db.password}@${db.host}:${db.port}`;
-    cluster.addService("Zero", {
+    new sst.aws.Service("Zero", {
+      cluster,
       image: "rocicorp/zero",
       dev: {
         command: "npx zero-cache",

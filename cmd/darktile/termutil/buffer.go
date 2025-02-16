@@ -2,8 +2,9 @@ package termutil
 
 import (
 	"image"
-	"image/color"
 	"sync"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 const TabSize = 8
@@ -66,7 +67,7 @@ type Position struct {
 }
 
 // NewBuffer creates a new terminal buffer
-func NewBuffer(width, height uint16, maxLines uint64, fg color.Color, bg color.Color) *Buffer {
+func NewBuffer(width, height uint16, maxLines uint64, fg lipgloss.TerminalColor, bg lipgloss.TerminalColor) *Buffer {
 	b := &Buffer{
 		lines:        []Line{},
 		viewHeight:   height,

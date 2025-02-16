@@ -5,7 +5,7 @@ import { VisibleError } from "../error.js";
 import { Input } from "../input.js";
 import { Prettify } from "../component.js";
 import { BaseSiteFileOptions } from "./base-site.js";
-import { Run } from "../providers/run.js";
+import { siteBuilder } from "../aws/helpers/site-builder.js";
 
 export type BaseStaticSiteAssets = {
   /**
@@ -281,13 +281,16 @@ export function buildApp(
 ) {
   if (!build) return sitePath;
 
-  const result = new Run(
-    `${name}Build`,
+  const result = siteBuilder(
+    `${name}Builder`,
     {
-      command: output(build).command,
-      cwd: sitePath,
-      env: environment,
-      version: Date.now().toString(),
+      create: output(build).command,
+      update: output(build).command,
+      dir: output(sitePath).apply((sitePath) =>
+        path.join($cli.paths.root, sitePath),
+      ),
+      environment,
+      triggers: [Date.now().toString()],
     },
     {
       parent,
@@ -296,7 +299,7 @@ export function buildApp(
   );
 
   // Validate build output
-  return all([sitePath, build, result.id]).apply(([sitePath, build, _id]) => {
+  return all([sitePath, build, result.id]).apply(([sitePath, build, _]) => {
     const outputPath = path.join(sitePath, build.output);
     if (!fs.existsSync(outputPath)) {
       throw new VisibleError(

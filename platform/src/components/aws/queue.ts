@@ -57,6 +57,20 @@ export interface QueueArgs {
       }
   >;
   /**
+   * The period of time which the delivery of all messages in the queue is delayed.
+   *
+   * This can range from 0 seconds to 900 seconds (15 minutes).
+   *
+   * @default `"0 seconds"`
+   * @example
+   * ```js
+   * {
+   *   delay: "10 seconds"
+   * }
+   * ```
+   */
+  delay?: Input<DurationMinutes>;
+  /**
    * Visibility timeout is a period of time during which a message is temporarily
    * invisible to other consumers after a consumer has retrieved it from the queue.
    * This mechanism prevents other consumers from processing the same message
@@ -345,7 +359,8 @@ export class Queue extends Component implements Link.Linkable {
     const parent = this;
     const fifo = normalizeFifo();
     const dlq = normalizeDlq();
-    const visibilityTimeout = normalizeVisibilityTimeout();
+    const visibilityTimeout = output(args?.visibilityTimeout ?? "30 seconds");
+    const delay = output(args?.delay ?? "0 seconds");
 
     const queue = createQueue();
 
@@ -375,10 +390,6 @@ export class Queue extends Component implements Link.Linkable {
       );
     }
 
-    function normalizeVisibilityTimeout() {
-      return output(args?.visibilityTimeout).apply((v) => v ?? "30 seconds");
-    }
-
     function createQueue() {
       return new sqs.Queue(
         ...transform(
@@ -392,6 +403,7 @@ export class Queue extends Component implements Link.Linkable {
             visibilityTimeoutSeconds: visibilityTimeout.apply((v) =>
               toSeconds(v),
             ),
+            delaySeconds: delay.apply((v) => toSeconds(v)),
             redrivePolicy:
               dlq &&
               jsonStringify({

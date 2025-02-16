@@ -4,8 +4,11 @@ description: Link resources together and access them in a typesafe and secure wa
 ---
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
+import VideoAside from "../../../components/VideoAside.astro";
 
 Resource Linking  allows you to access your **infrastructure** in your **runtime code** in a typesafe and secure way.
+
+<VideoAside title="Watch a video on linking resources" href="https://youtu.be/s8cWklU4Akw" />
 
 1. Create a resource that you want to link to. For example, a bucket.
 
@@ -82,6 +85,10 @@ Resource Linking  allows you to access your **infrastructure** in your **runtime
      </TabItem>
    </Tabs>
 
+   :::tip
+   The SDK currently supports JavaScript/TypeScript and Golang.
+   :::
+
 ---
 
 ### Working locally
@@ -145,7 +152,7 @@ Resource links are injected into your function or frontend package when you run 
 
 #### Functions
 
-The functions in SST are tree shaken and bundled using [esbuild](https://esbuild.github.io/). While bundling, SST injects the resource links into the [`globalThis`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/globalThis).
+The functions in SST are tree shaken and bundled using [esbuild](https://esbuild.github.io/). While bundling, SST injects the resource links into the [`globalThis`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/globalThis). These are encrypted and added to the function bundle. And they are synchronously decrypted on load by the SST SDK.
 
 #### Frontends
 

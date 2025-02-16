@@ -17,7 +17,7 @@
 import { Prettify } from "../component.js";
 import { FunctionPermissionArgs } from "./function.js";
 
-export interface InputArgs extends Prettify<FunctionPermissionArgs> { }
+export interface InputArgs extends Prettify<FunctionPermissionArgs> {}
 
 export function permission(input: InputArgs) {
   return {

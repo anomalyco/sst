@@ -1,6 +1,8 @@
 package termutil
 
-import "image/color"
+import (
+	"github.com/charmbracelet/lipgloss"
+)
 
 type Cell struct {
 	r    MeasuredRune
@@ -15,7 +17,7 @@ func (cell *Cell) Rune() MeasuredRune {
 	return cell.r
 }
 
-func (cell *Cell) Fg() color.Color {
+func (cell *Cell) Fg() lipgloss.TerminalColor {
 	if cell.Attr().inverse {
 		return cell.attr.bgColour
 	}
@@ -42,14 +44,14 @@ func (cell *Cell) Strikethrough() bool {
 	return cell.attr.strikethrough
 }
 
-func (cell *Cell) Bg() color.Color {
+func (cell *Cell) Bg() lipgloss.TerminalColor {
 	if cell.Attr().inverse {
 		return cell.attr.fgColour
 	}
 	return cell.attr.bgColour
 }
 
-func (cell *Cell) erase(bgColour color.Color) {
+func (cell *Cell) erase(bgColour lipgloss.TerminalColor) {
 	cell.setRune(MeasuredRune{Rune: 0})
 	cell.attr.bgColour = bgColour
 }

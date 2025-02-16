@@ -5,44 +5,45 @@ export function logicalName(name: string) {
   return name.charAt(0).toUpperCase() + name.slice(1);
 }
 
-export function physicalName(
-  maxLength: number,
-  name: string,
-  suffix: string = "",
-) {
+export function physicalName(max: number, name: string, suffix: string = "") {
   // This function does the following:
   // - Removes all non-alphanumeric characters
   // - Prefixes the name with the app name and stage
   // - Truncates the name if it's too long
+  // - Adds a random suffix
+  // - Adds a suffix if provided
+  const main = prefixName(max - 9 - suffix.length, name);
+  const random = hashStringToPrettyString(
+    crypto.randomBytes(8).toString("hex"),
+    8,
+  );
+  return `${main}-${random}${suffix}`;
+}
+
+export function prefixName(max: number, name: string) {
+  // This function does the following:
+  // - Removes all non-alphanumeric characters
+  // - Prefixes the name with the app name and stage
+  // - Truncates the name if it's too long
+  // ie. foo => app-stage-foo
 
   name = name.replace(/[^a-zA-Z0-9]/g, "");
 
-  const prefixedName = (() => {
-    const L = maxLength - suffix.length;
-    const appLen = $app.name.length;
-    const stageLen = $app.stage.length;
-    const nameLen = name.length;
+  const stageLen = $app.stage.length;
+  const nameLen = name.length;
+  const strategy =
+    nameLen + 1 >= max
+      ? ("name" as const)
+      : nameLen + stageLen + 2 >= max
+        ? ("stage+name" as const)
+        : ("app+stage+name" as const);
 
-    if (appLen + stageLen + nameLen + 2 <= L) {
-      return `${$app.name}-${$app.stage}-${name}`;
-    }
-
-    if (stageLen + nameLen + 1 <= L) {
-      const appTruncated = $app.name.substring(0, L - stageLen - nameLen - 2);
-      return appTruncated === ""
-        ? `${$app.stage}-${name}`
-        : `${appTruncated}-${$app.stage}-${name}`;
-    }
-
-    const stageTruncated = $app.stage.substring(
-      0,
-      Math.max(8, L - nameLen - 1),
-    );
-    const nameTruncated = name.substring(0, L - stageTruncated.length - 1);
-    return `${stageTruncated}-${nameTruncated}`;
-  })();
-
-  return `${prefixedName}${suffix}`;
+  if (strategy === "name") return `${name.substring(0, max)}`;
+  if (strategy === "stage+name")
+    return `${$app.stage.substring(0, max - nameLen - 1)}-${name}`;
+  return `${$app.name.substring(0, max - stageLen - nameLen - 2)}-${
+    $app.stage
+  }-${name}`;
 }
 
 export function hashNumberToPrettyString(number: number, length: number) {

@@ -10,8 +10,9 @@
  *
  * You need to specify which port in your service will be exposed through API Gateway.
  *
- * ```ts title="sst.config.ts" {3}
- * const service = cluster.addService("MyService", {
+ * ```ts title="sst.config.ts" {4}
+ * const service = new sst.aws.Service("MyService", {
+ *   cluster,
  *   serviceRegistry: {
  *     port: 80,
  *   },
@@ -31,7 +32,8 @@ export default $config({
   async run() {
     const vpc = new sst.aws.Vpc("MyVpc");
     const cluster = new sst.aws.Cluster("MyCluster", { vpc });
-    const service = cluster.addService("MyService", {
+    const service = new sst.aws.Service("MyService", {
+      cluster,
       serviceRegistry: {
         port: 80,
       },

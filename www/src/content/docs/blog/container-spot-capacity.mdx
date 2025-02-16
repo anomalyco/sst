@@ -1,0 +1,81 @@
+---
+template: splash
+title: Container Spot capacity
+description: We are adding support for using the Fargate Spot capacity provider for services.
+author: jay
+lastUpdated: 2025-01-13
+pagefind: false
+---
+
+import { YouTube } from "@astro-community/astro-embed-youtube";
+
+We are adding support for using Spot instances when you create a Fargate service with the [`Cluster`](/docs/component/aws/cluster) component through the [`capacity`](/docs/component/aws/cluster#capacity) prop. Spot instances can be around 50% cheaper and we talk about how they work here.
+
+<YouTube id="2RrAZiTZoeA" posterQuality="high" />
+
+## Background
+
+You can create container services with ECS and Fargate in SST with the [`Cluster`](/docs/component/aws/cluster) component.
+
+You are charged per hour of vCPU and GB of memory used. With our base config, this works out to around $12 per month.
+
+Spot instances are spare capacity that AWS has and it's available at a discounted rate, around $6 per month.
+
+---
+
+## Spot
+
+You can enable this using the new [`capacity`](/docs/component/aws/cluster#capacity) prop.
+
+```ts title="sst.config.ts" {8}
+const cluster = new sst.aws.Cluster("MyCluster", { vpc });
+
+new sst.aws.Service("MyService", {
+  cluster,
+  loadBalancer: {
+    ports: [{ listen: "80/http" }],
+  },
+  capacity: "spot",
+});
+```
+
+You can also configure the % of regular Fargate vs Spot capacity you want to use.
+
+```ts title="sst.config.ts" {7}
+capacity: {
+  fargate: { weight: 1 },
+  spot: { weight: 1 }
+}
+```
+
+Learn more about the [**`capacity`**](/docs/component/aws/cluster#capacity) prop.
+
+---
+
+#### Caveats
+
+There are a couple of caveats.
+
+1. AWS may reclaim this capacity and turn off your service after a two-minute warning. This is rare, but it can happen.
+2. If there’s no spare capacity, you’ll get an error.
+
+This makes Fargate Spot a good option for dev or PR environments.
+
+```ts title="sst.config.ts"
+capacity: $app.stage === "production" ? undefined : "spot";
+```
+
+---
+
+## Get started
+
+Get started by checking out the [**Fargate Spot capacity example**](/docs/examples/#aws-cluster-spot-capacity).
+
+You can also check out our container service quick starts.
+
+- [Bun](/docs/start/aws/bun)
+- [Deno](/docs/start/aws/deno)
+- [NestJS](/docs/start/aws/nestjs)
+- [Express](/docs/start/aws/express)
+
+These will help you get started with building container services.

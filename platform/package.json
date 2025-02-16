@@ -24,10 +24,11 @@
     "@aws-sdk/client-ssm": "3.478.0",
     "@aws-sdk/client-sts": "3.478.0",
     "@aws-sdk/middleware-retry": "3.374.0",
-    "@pulumi/aws": "6.51.0",
+    "@pulumi/aws": "6.66.2",
     "@pulumi/cloudflare": "5.37.1",
-    "@pulumi/docker-build": "0.0.6",
-    "@pulumi/pulumi": "3.136.1",
+    "@pulumi/command": "1.0.1",
+    "@pulumi/docker-build": "0.0.8",
+    "@pulumi/pulumi": "3.145.0",
     "@pulumi/random": "4.16.6",
     "@pulumi/tls": "5.0.1",
     "@smithy/smithy-client": "2.1.18",
@@ -50,6 +51,7 @@
     "@pulumiverse/vercel": "1.11.0",
     "@types/archiver": "6.0.2",
     "@types/aws-lambda": "8.10.133",
+    "@types/bun": "1.2.1",
     "vitest": "^1.2.2"
   },
   "overrides": {

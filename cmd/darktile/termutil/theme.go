@@ -2,8 +2,10 @@ package termutil
 
 import (
 	"fmt"
-	"image/color"
+	"log/slog"
 	"strconv"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 type Colour uint8
@@ -33,10 +35,6 @@ const (
 	ColourCursorForeground
 	ColourCursorBackground
 )
-
-type Theme struct {
-	colourMap map[Colour]color.Color
-}
 
 var (
 	map4Bit = map[uint8]Colour{
@@ -75,102 +73,58 @@ var (
 	}
 )
 
-func (t *Theme) ColourFrom4Bit(code uint8) color.Color {
+func ColourFrom4Bit(code uint8) lipgloss.TerminalColor {
 	colour, ok := map4Bit[code]
 	if !ok {
-		return color.Black
+		return lipgloss.NoColor{}
 	}
-	return t.colourMap[colour]
+	return lipgloss.ANSIColor(colour)
 }
 
-func (t *Theme) DefaultBackground() color.Color {
-	c, ok := t.colourMap[ColourBackground]
-	if !ok {
-		return color.RGBA{0, 0, 0, 0xff}
-	}
-	return c
+func DefaultBackground() lipgloss.TerminalColor {
+	// red
+	return lipgloss.ANSIColor(ColourBrightRed)
 }
 
-func (t *Theme) DefaultForeground() color.Color {
-	c, ok := t.colourMap[ColourForeground]
-	if !ok {
-		return color.RGBA{255, 255, 255, 0xff}
-	}
-	return c
+func DefaultForeground() lipgloss.TerminalColor {
+	return lipgloss.NoColor{}
 }
 
-func (t *Theme) SelectionBackground() color.Color {
-	c, ok := t.colourMap[ColourSelectionBackground]
-	if !ok {
-		return color.RGBA{0, 0, 0, 0xff}
-	}
-	return c
-}
-
-func (t *Theme) SelectionForeground() color.Color {
-	c, ok := t.colourMap[ColourSelectionForeground]
-	if !ok {
-		return color.RGBA{255, 255, 255, 0xff}
-	}
-	return c
-}
-
-func (t *Theme) CursorBackground() color.Color {
-	c, ok := t.colourMap[ColourCursorBackground]
-	if !ok {
-		return color.RGBA{255, 255, 255, 0xff}
-	}
-	return c
-}
-
-func (t *Theme) CursorForeground() color.Color {
-	c, ok := t.colourMap[ColourCursorForeground]
-	if !ok {
-		return color.RGBA{0, 0, 0, 0xff}
-	}
-	return c
-}
-
-func (t *Theme) ColourFrom8Bit(n string) (color.Color, error) {
-
+func ColourFrom8Bit(n string) (lipgloss.TerminalColor, error) {
 	index, err := strconv.Atoi(n)
 	if err != nil {
 		return nil, err
 	}
+	slog.Info("converting", "index", index)
 
 	if index < 16 {
-		return t.colourMap[Colour(index)], nil
+		return lipgloss.ANSIColor(index), nil
 	}
 
 	if index >= 232 {
 		c := ((index - 232) * 0xff) / 0x18
-		return color.RGBA{
-			R: byte(c),
-			G: byte(c),
-			B: byte(c),
-			A: 0xff,
-		}, nil
+		hex := fmt.Sprintf("#%02x%02x%02x", c, c, c)
+		return lipgloss.Color(hex), nil
 	}
 
-	var colour color.RGBA
-	colour.A = 0xff
+	var r, g, b uint8
 	indexR := ((index - 16) / 36)
 	if indexR > 0 {
-		colour.R = uint8(55 + indexR*40)
+		r = uint8(55 + indexR*40)
 	}
 	indexG := (((index - 16) % 36) / 6)
 	if indexG > 0 {
-		colour.G = uint8(55 + indexG*40)
+		g = uint8(55 + indexG*40)
 	}
 	indexB := ((index - 16) % 6)
 	if indexB > 0 {
-		colour.B = uint8(55 + indexB*40)
+		b = uint8(55 + indexB*40)
 	}
-
-	return colour, nil
+	hex := fmt.Sprintf("#%02x%02x%02x", r, g, b)
+	return lipgloss.Color(hex), nil
 }
 
-func (t *Theme) ColourFrom24Bit(r, g, b string) (color.Color, error) {
+func ColourFrom24Bit(r, g, b string) (lipgloss.TerminalColor, error) {
 	ri, err := strconv.Atoi(r)
 	if err != nil {
 		return nil, err
@@ -183,31 +137,25 @@ func (t *Theme) ColourFrom24Bit(r, g, b string) (color.Color, error) {
 	if err != nil {
 		return nil, err
 	}
-	return color.RGBA{
-		R: byte(ri),
-		G: byte(gi),
-		B: byte(bi),
-		A: 0xff,
-	}, nil
+	hex := fmt.Sprintf("#%02x%02x%02x", ri, gi, bi)
+	return lipgloss.Color(hex), nil
 }
 
-func (t *Theme) ColourFromAnsi(ansi []string, bg bool) (color.Color, error) {
-
+func ColourFromAnsi(ansi []string, bg bool) (lipgloss.TerminalColor, error) {
 	if len(ansi) == 0 {
 		return nil, fmt.Errorf("invalid ansi colour code")
 	}
-
 	switch ansi[0] {
 	case "2":
 		if len(ansi) != 4 {
 			return nil, fmt.Errorf("invalid 24-bit ansi colour code")
 		}
-		return t.ColourFrom24Bit(ansi[1], ansi[2], ansi[3])
+		return ColourFrom24Bit(ansi[1], ansi[2], ansi[3])
 	case "5":
 		if len(ansi) != 2 {
 			return nil, fmt.Errorf("invalid 8-bit ansi colour code")
 		}
-		return t.ColourFrom8Bit(ansi[1])
+		return ColourFrom8Bit(ansi[1])
 	default:
 		return nil, fmt.Errorf("invalid ansi colour code")
 	}

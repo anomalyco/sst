@@ -5,13 +5,20 @@
   "sideEffects": false,
   "version": "0.0.0",
   "main": "./dist/index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sst/sst.git"
+  },
   "exports": {
     ".": "./dist/index.js",
     "./auth": "./dist/auth/index.js",
     "./auth/adapter": "./dist/auth/adapter/index.js",
     "./event": "./dist/event/index.js",
     "./realtime": "./dist/realtime/index.js",
-    "./*": "./dist/*.js"
+    "./*": {
+      "import": "./dist/*.js",
+      "types": "./dist/*.d.ts"
+    }
   },
   "scripts": {
     "build": "tsc",
@@ -32,18 +39,6 @@
   ],
   "bin": {
     "sst": "./bin/sst.mjs"
-  },
-  "peerDependencies": {
-    "hono": "4.x",
-    "valibot": "0.30.x"
-  },
-  "peerDependenciesMeta": {
-    "hono": {
-      "optional": true
-    },
-    "valibot": {
-      "optional": true
-    }
   },
   "optionalDependencies": {},
   "dependencies": {

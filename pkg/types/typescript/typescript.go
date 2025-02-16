@@ -7,9 +7,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/sst/ion/internal/fs"
-	"github.com/sst/ion/pkg/js"
-	"github.com/sst/ion/pkg/project/common"
+	"github.com/sst/sst/v3/internal/fs"
+	"github.com/sst/sst/v3/pkg/js"
+	"github.com/sst/sst/v3/pkg/project/common"
 )
 
 var mapping = map[string]string{
@@ -37,11 +37,17 @@ func Generate(root string, links common.Links) error {
 		"/* tslint:disable */",
 		"/* eslint-disable */",
 		"/* deno-fmt-ignore-file */",
-		"import \"sst\"",
-		"export {}",
+		"",
 		"",
 	}, "\n"))
+	footer := []byte(strings.Join([]string{
+		"",
+		"import \"sst\"",
+		"export {}",
+	}, "\n"))
+
 	packageJsons := fs.FindDown(root, "package.json")
+	rootEnv := filepath.Join(root, "sst-env.d.ts")
 	for _, packageJson := range packageJsons {
 		packageJsonFile, err := os.Open(packageJson)
 		if err != nil {
@@ -59,6 +65,7 @@ func Generate(root string, links common.Links) error {
 		}
 		defer envFile.Close()
 		envFile.Write(header)
+		defer envFile.Write(footer)
 
 		properties := map[string]interface{}{}
 		for name, link := range links {
@@ -89,9 +96,15 @@ func Generate(root string, links common.Links) error {
 			}
 			continue
 		}
-		envFile.Write([]byte("declare module \"sst\" {\n"))
-		envFile.Write([]byte("  export interface Resource " + infer(properties, "  ") + "\n"))
-		envFile.Write([]byte("}\n"))
+
+		if rootEnv == envPath {
+			envFile.Write([]byte("declare module \"sst\" {\n"))
+			envFile.Write([]byte("  export interface Resource " + infer(properties, "  ") + "\n"))
+			envFile.Write([]byte("}\n"))
+		}
+
+		rel, err := filepath.Rel(filepath.Dir(envPath), rootEnv)
+		envFile.WriteString("/// <reference path=\"" + rel + "\" />\n")
 	}
 
 	return nil

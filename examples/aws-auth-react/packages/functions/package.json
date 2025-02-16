@@ -1,0 +1,15 @@
+{
+  "name": "@aws-auth-react/functions",
+  "version": "0.0.0",
+  "type": "module",
+  "dependencies": {
+    "@aws-auth-react/core": "*",
+    "@openauthjs/openauth": "^0.3.6",
+    "hono": "^4.6.18",
+    "sst": "*",
+    "valibot": "^1.0.0-beta.14"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8"
+  }
+}

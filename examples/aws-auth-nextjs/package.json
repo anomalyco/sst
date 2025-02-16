@@ -1,0 +1,26 @@
+{
+  "name": "aws-auth-nextjs",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "next build",
+    "dev": "next dev",
+    "lint": "next lint",
+    "start": "next start"
+  },
+  "dependencies": {
+    "@openauthjs/openauth": "latest",
+    "hono": "^4.6.16",
+    "next": "15.1.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "sst": "latest",
+    "valibot": "^1.0.0-beta.11"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "typescript": "^5"
+  }
+}

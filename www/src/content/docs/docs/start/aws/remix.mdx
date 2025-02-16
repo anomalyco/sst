@@ -248,12 +248,13 @@ Select the defaults and pick **AWS**. This'll create a `sst.config.ts` file in y
 
 To deploy our Remix app in a container, we'll use [AWS Fargate](https://aws.amazon.com/fargate/) with [Amazon ECS](https://aws.amazon.com/ecs/). Replace the `run` function in your `sst.config.ts`.
 
-```js title="sst.config.ts" {9-11}
+```js title="sst.config.ts" {10-12}
 async run() {
   const vpc = new sst.aws.Vpc("MyVpc");
   const cluster = new sst.aws.Cluster("MyCluster", { vpc });
 
-  cluster.addService("MyService", {
+  new sst.aws.Service("MyService", {
+    cluster,
     loadBalancer: {
       ports: [{ listen: "80/http", forward: "3000/http" }],
     },
@@ -305,7 +306,7 @@ Add this below the `Vpc` component.
 Now, link the bucket to the container.
 
 ```ts title="sst.config.ts" {3}
-cluster.addService("MyService", {
+new sst.aws.Service("MyService", {
   // ...
   link: [bucket],
 });

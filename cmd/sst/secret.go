@@ -9,12 +9,12 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
-	"github.com/sst/ion/cmd/sst/cli"
-	"github.com/sst/ion/cmd/sst/mosaic/dev"
-	"github.com/sst/ion/cmd/sst/mosaic/ui"
-	"github.com/sst/ion/internal/util"
-	"github.com/sst/ion/pkg/project/provider"
-	"github.com/sst/ion/pkg/server"
+	"github.com/sst/sst/v3/cmd/sst/cli"
+	"github.com/sst/sst/v3/cmd/sst/mosaic/dev"
+	"github.com/sst/sst/v3/cmd/sst/mosaic/ui"
+	"github.com/sst/sst/v3/internal/util"
+	"github.com/sst/sst/v3/pkg/project/provider"
+	"github.com/sst/sst/v3/pkg/server"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -115,7 +115,7 @@ var CmdSecretLoad = &cli.Command{
 			"Optionally, set the secrets in a specific stage.",
 			"",
 			"```bash frame=\"none\"",
-			"sst secret load ./prod.env --stage production",
+			"sst secret load --stage production ./prod.env",
 			"```",
 			"",
 			"Set these secrets as _fallback_ values.",
@@ -123,6 +123,16 @@ var CmdSecretLoad = &cli.Command{
 			"```bash frame=\"none\" frame=\"none\"",
 			"sst secret load ./secrets.env --fallback",
 			"```",
+			"",
+			"This command can be paired with the `secret list` command to get all the",
+			"secrets from one stage and load them into another.",
+			"",
+			"```bash frame=\"none\"",
+			"sst secret list > ./secrets.env",
+			"sst secret load --stage production ./secrets.env",
+			"```",
+			"",
+			"This works becase `secret list` outputs the secrets in the right format.",
 		}, "\n"),
 	},
 	Args: []cli.Argument{
@@ -255,7 +265,7 @@ var CmdSecretSet = &cli.Command{
 			"Then set the secret from the file.",
 			"",
 			"```bash frame=\"none\"",
-			"sst secret set Key -- \"$(cat tmp.txt)\"",
+			"sst secret set Key < tmp.txt",
 			"```",
 			"",
 			"And make sure to delete the temp file.",

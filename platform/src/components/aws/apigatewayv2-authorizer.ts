@@ -9,7 +9,7 @@ import { ApiGatewayV2AuthorizerArgs } from "./apigatewayv2";
 import { apigatewayv2, lambda } from "@pulumi/aws";
 import { VisibleError } from "../error";
 import { toSeconds } from "../duration";
-import { Function } from "./function";
+import { functionBuilder } from "./helpers/function-builder";
 
 export interface AuthorizerArgs extends ApiGatewayV2AuthorizerArgs {
   /**
@@ -29,6 +29,10 @@ export interface AuthorizerArgs extends ApiGatewayV2AuthorizerArgs {
      */
     executionArn: Input<string>;
   }>;
+  /**
+   * The type of the API Gateway.
+   */
+  type: "http" | "websocket";
 }
 
 /**
@@ -60,7 +64,7 @@ export class ApiGatewayV2Authorizer extends Component {
     validateSingleAuthorizer();
     const fn = createFunction();
     const authorizer = createAuthorizer();
-    const permission = createPermission();
+    createPermission();
 
     this.authorizer = authorizer;
 
@@ -81,12 +85,23 @@ export class ApiGatewayV2Authorizer extends Component {
     function createFunction() {
       if (!lamb) return;
 
-      return Function.fromDefinition(`${name}Function`, lamb.function, {
-        description: interpolate`${api.name} authorizer`,
-      });
+      return functionBuilder(
+        `${name}Handler`,
+        lamb.function,
+        {
+          description: interpolate`${api.name} authorizer`,
+        },
+        undefined,
+        { parent: self },
+      );
     }
 
     function createAuthorizer() {
+      const defaultIdentitySource =
+        args.type === "http"
+          ? "$request.header.Authorization"
+          : "route.request.header.Authorization";
+
       return new apigatewayv2.Authorizer(
         ...transform(
           args.transform?.authorizer,
@@ -97,26 +112,28 @@ export class ApiGatewayV2Authorizer extends Component {
               ? {
                   authorizerType: "REQUEST",
                   identitySources: lamb.apply(
-                    (lamb) =>
-                      lamb.identitySources ?? ["$request.header.Authorization"],
+                    (lamb) => lamb.identitySources ?? [defaultIdentitySource],
                   ),
-                  authorizerUri: fn!.nodes.function.invokeArn,
-                  authorizerResultTtlInSeconds: lamb.apply((lamb) =>
-                    toSeconds(lamb.ttl ?? "0 seconds"),
-                  ),
-                  enableSimpleResponses: lamb.apply(
-                    (lamb) => (lamb.response ?? "simple") === "simple",
-                  ),
-                  authorizerPayloadFormatVersion: lamb.apply(
-                    (lamb) => lamb.payload ?? "2.0",
-                  ),
+                  authorizerUri: fn!.invokeArn,
+                  ...(args.type === "http"
+                    ? {
+                        authorizerResultTtlInSeconds: lamb.apply((lamb) =>
+                          toSeconds(lamb.ttl ?? "0 seconds"),
+                        ),
+                        authorizerPayloadFormatVersion: lamb.apply(
+                          (lamb) => lamb.payload ?? "2.0",
+                        ),
+                        enableSimpleResponses: lamb.apply(
+                          (lamb) => (lamb.response ?? "simple") === "simple",
+                        ),
+                      }
+                    : {}),
                 }
               : {
                   authorizerType: "JWT",
                   identitySources: [
                     jwt!.apply(
-                      (jwt) =>
-                        jwt.identitySource ?? "$request.header.Authorization",
+                      (jwt) => jwt.identitySource ?? defaultIdentitySource,
                     ),
                   ],
                   jwtConfiguration: jwt!.apply((jwt) => ({

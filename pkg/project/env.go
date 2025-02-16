@@ -8,13 +8,15 @@ import (
 
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
-	"github.com/sst/ion/pkg/project/provider"
+	"github.com/sst/sst/v3/pkg/project/provider"
 )
 
 func (p *Project) EnvFor(ctx context.Context, complete *CompleteEvent, name string) (map[string]string, error) {
+	log := slog.Default().With("service", "project.env").With("resource", name)
 	dev := complete.Devs[name]
 	env := map[string]string{}
 	if dev.Aws != nil && dev.Aws.Role != "" {
+		log.Info("loading aws credentials", "role", dev.Aws.Role)
 		prov, _ := p.Provider("aws")
 		awsProvider := prov.(*provider.AwsProvider)
 		stsClient := sts.NewFromConfig(awsProvider.Config())
@@ -30,8 +32,9 @@ func (p *Project) EnvFor(ctx context.Context, complete *CompleteEvent, name stri
 			env["AWS_SESSION_TOKEN"] = *result.Credentials.SessionToken
 			env["AWS_REGION"] = awsProvider.Config().Region
 		}
+		log.Error("failed to load aws credentials", "err", err)
 	}
-	slog.Info("dev", "links", dev.Links)
+	log.Info("dev", "links", dev.Links)
 	for _, resource := range dev.Links {
 		value := complete.Links[resource].Properties
 		jsonValue, _ := json.Marshal(value)

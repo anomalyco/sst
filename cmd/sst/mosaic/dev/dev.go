@@ -9,10 +9,10 @@ import (
 	"path/filepath"
 	"reflect"
 
-	"github.com/sst/ion/cmd/sst/mosaic/deployer"
-	"github.com/sst/ion/pkg/bus"
-	"github.com/sst/ion/pkg/project"
-	"github.com/sst/ion/pkg/server"
+	"github.com/sst/sst/v3/cmd/sst/mosaic/deployer"
+	"github.com/sst/sst/v3/pkg/bus"
+	"github.com/sst/sst/v3/pkg/project"
+	"github.com/sst/sst/v3/pkg/server"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -24,6 +24,11 @@ type Message struct {
 func Start(ctx context.Context, p *project.Project, server *server.Server) error {
 	var complete *project.CompleteEvent
 	var wg errgroup.Group
+
+	log := slog.Default().With("service", "dev")
+	log.Info("starting")
+	defer log.Info("done")
+
 	wg.Go(func() error {
 		evts := bus.Subscribe(&project.CompleteEvent{})
 		for {
@@ -39,11 +44,12 @@ func Start(ctx context.Context, p *project.Project, server *server.Server) error
 	server.Mux.HandleFunc("/stream", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("content-type", "application/x-ndjson")
 		w.WriteHeader(http.StatusOK)
-		slog.Info("subscribed", "addr", r.RemoteAddr)
+		log.Info("subscribed", "addr", r.RemoteAddr)
 		flusher, _ := w.(http.Flusher)
 		flusher.Flush()
 		ctx := r.Context()
 		events := bus.SubscribeAll()
+		defer bus.Unsubscribe(events)
 		if complete != nil {
 			go func() {
 				events <- complete
@@ -70,7 +76,7 @@ func Start(ctx context.Context, p *project.Project, server *server.Server) error
 	})
 
 	server.Mux.HandleFunc(("/api/deploy"), func(w http.ResponseWriter, r *http.Request) {
-		slog.Info("deploy requested")
+		log.Info("deploy requested")
 		bus.Publish(&deployer.DeployRequestedEvent{})
 	})
 
@@ -80,7 +86,7 @@ func Start(ctx context.Context, p *project.Project, server *server.Server) error
 		cwd, _ := os.Getwd()
 		for _, d := range complete.Devs {
 			full := filepath.Join(cwd, d.Directory)
-			slog.Info("matching dev", "full", full, "directory", directory)
+			log.Info("matching dev", "full", full, "directory", directory)
 			if (directory != "" && full == directory) || (name != "" && d.Name == name) {
 				env, err := p.EnvFor(ctx, complete, d.Name)
 				if err != nil {
@@ -98,7 +104,7 @@ func Start(ctx context.Context, p *project.Project, server *server.Server) error
 				return
 			}
 		}
-		slog.Info("dev not found", "directory", directory)
+		log.Info("dev not found", "directory", directory)
 		http.Error(w, "dev not found", http.StatusNotFound)
 		return
 

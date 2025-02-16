@@ -25,7 +25,7 @@ export default $config({
     const tunnel = new cloudflare.Tunnel("Tunnel", {
       name: `${$app.name}-${$app.stage}-tunnel`,
       secret: tunnelSecret.result.apply((v) =>
-        Buffer.from(v).toString("base64"),
+        Buffer.from(v).toString("base64")
       ),
       accountId: sst.cloudflare.DEFAULT_ACCOUNT_ID,
     });
@@ -61,9 +61,10 @@ export default $config({
           accessClientSecret: "dummy",
           scheme: "postgres",
         },
-      },
+      }
     );
-    cluster.addService("Cloudflared", {
+    new sst.aws.Service("Cloudflared", {
+      cluster,
       environment: {
         TUNNEL_TOKEN: tunnel.tunnelToken,
       },

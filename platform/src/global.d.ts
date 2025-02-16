@@ -320,14 +320,14 @@ declare global {
    * For example, to set a default runtime for all function components.
    *
    * ```ts title="sst.config.ts"
-   * $transform(sst.aws.Function, (args, opts) => {
+   * $transform(sst.aws.Function, (args, opts, name) => {
    *   // Set the default if it's not set by the component
    *   args.runtime ??= "nodejs20.x";
    * });
    * ```
    *
-   * Here, `args` and `opts` are what you'd pass to the `Function` component. Recall the
-   * signature of the `Function` component:
+   * Here, `args`, `opts` and `name` are what you'd pass to the `Function` component. Recall
+   * the signature of the `Function` component:
    *
    * ```ts title="sst.config.ts"
    * new sst.aws.Function(name: string, args: FunctionArgs, opts?: pulumi.ComponentResourceOptions)

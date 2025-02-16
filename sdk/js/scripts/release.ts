@@ -18,7 +18,7 @@ if (snapshot) {
 console.log("publishing", nextPkg.version);
 console.log(`npm dist-tag add ${pkg.name}@${pkg.version} ion`);
 
-await fs.rmdir("dist", { recursive: true });
+await fs.rmdir("dist", { recursive: true }).catch(() => {});
 await $`bun run build`;
 
 const cpus = {

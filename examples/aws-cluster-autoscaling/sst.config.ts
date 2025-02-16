@@ -26,7 +26,8 @@ export default $config({
 
     // Create a cluster and disable default scaling on CPU and memory utilization
     const cluster = new sst.aws.Cluster("MyCluster", { vpc });
-    const service = cluster.addService("MyService", {
+    const service = new sst.aws.Service("MyService", {
+      cluster,
       loadBalancer: {
         ports: [{ listen: "80/http" }],
       },

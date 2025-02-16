@@ -366,7 +366,10 @@ export class Worker extends Component implements Link.Linkable {
             user: user.name,
             policy: jsonStringify({
               Statement: permissions.map((p) => ({
-                Effect: "Allow",
+                Effect: (() => {
+                  const effect = p.effect ?? "allow";
+                  return effect.charAt(0).toUpperCase() + effect.slice(1);
+                })(),
                 Action: p.actions,
                 Resource: p.resources,
               })),

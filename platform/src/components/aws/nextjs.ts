@@ -27,7 +27,7 @@ import { dynamodb, lambda } from "@pulumi/aws";
 import { URL_UNAVAILABLE } from "./linkable.js";
 import { getOpenNextPackage } from "../../util/compare-semver.js";
 
-const DEFAULT_OPEN_NEXT_VERSION = "3.2.2";
+const DEFAULT_OPEN_NEXT_VERSION = "3.4.1";
 const DEFAULT_CACHE_POLICY_ALLOWED_HEADERS = ["x-open-next-cache-key"];
 
 type BaseFunction = {
@@ -219,7 +219,7 @@ export interface NextjsArgs extends SsrSiteArgs {
    * @example
    *
    * If you want to use a custom `build` script from your `package.json`. This is useful if you have a custom build process or want to use a different version of OpenNext.
-   * open-next by default uses the `build` script for building next-js app in your `package.json`. You can customize the build command in open-next configuration.
+   * OpenNext by default uses the `build` script for building next-js app in your `package.json`. You can customize the build command in OpenNext configuration.
    * ```js
    * {
    *   buildCommand: "npm run build:open-next"
@@ -314,19 +314,20 @@ export interface NextjsArgs extends SsrSiteArgs {
    */
   assets?: SsrSiteArgs["assets"];
   /**
-   * Configure the [OpenNext](https://open-next.js.org) version used to build the Next.js app.
+   * Configure the [OpenNext](https://opennext.js.org) version used to build the Next.js app.
    *
    * :::note
    * This does not automatically update to the latest OpenNext version. It remains pinned to the version of SST you have.
    * :::
    *
-   * By default, this is pinned to the version of OpenNext that was released with the SST version you are using. You can [find this in the source](https://github.com/sst/ion/blob/dev/platform/src/components/aws/nextjs.ts) under `DEFAULT_OPEN_NEXT_VERSION`.
+   * By default, this is pinned to the version of OpenNext that was released with the SST version you are using. You can [find this in the source](https://github.com/sst/sst/blob/dev/platform/src/components/aws/nextjs.ts#L30) under `DEFAULT_OPEN_NEXT_VERSION`.
+   * OpenNext changed its package name from `open-next` to `@opennextjs/aws` in version `3.1.4`. SST will choose the correct one based on the version you provide.
    *
-   * @default The latest version of OpenNext
+   * @default The latest version of OpenNext pinned to the version of SST you are using.
    * @example
    * ```js
    * {
-   *   openNextVersion: "3.0.2"
+   *   openNextVersion: "3.4.1"
    * }
    * ```
    */
@@ -509,7 +510,7 @@ export class Nextjs extends Component implements Link.Linkable {
     const { sitePath, partition, region } = prepare(parent, args);
     const dev = normalizeDev();
 
-    if (dev) {
+    if (dev.enabled) {
       const server = createDevServer(parent, name, args);
       this.devUrl = dev.url;
       this.registerOutputs({
@@ -519,16 +520,8 @@ export class Nextjs extends Component implements Link.Linkable {
           server: server.arn,
         },
         _dev: {
-          links: output(args.link || [])
-            .apply(Link.build)
-            .apply((links) => links.map((link) => link.name)),
-          aws: {
-            role: server.nodes.role.arn,
-          },
-          environment: args.environment,
-          command: dev.command,
-          directory: dev.directory,
-          autostart: dev.autostart,
+          ...dev.outputs,
+          aws: { role: server.nodes.role.arn },
         },
       });
       return;
@@ -581,18 +574,29 @@ export class Nextjs extends Component implements Link.Linkable {
         edge: plan.edge,
         server: serverFunction.arn,
       },
+      _dev: {
+        ...dev.outputs,
+        aws: { role: serverFunction.nodes.role.arn },
+      },
     });
 
     function normalizeDev() {
-      if (!$dev) return undefined;
-      if (args.dev === false) return undefined;
+      const enabled = $dev && args.dev !== false;
+      const devArgs = args.dev || {};
 
       return {
-        ...args.dev,
-        url: output(args.dev?.url ?? URL_UNAVAILABLE),
-        command: output(args.dev?.command ?? "npm run dev"),
-        autostart: output(args.dev?.autostart ?? true),
-        directory: output(args.dev?.directory ?? sitePath),
+        enabled,
+        url: output(devArgs.url ?? URL_UNAVAILABLE),
+        outputs: {
+          title: devArgs.title,
+          command: output(devArgs.command ?? "npm run dev"),
+          autostart: output(devArgs.autostart ?? true),
+          directory: output(devArgs.directory ?? sitePath),
+          environment: args.environment,
+          links: output(args.link || [])
+            .apply(Link.build)
+            .apply((links) => links.map((link) => link.name)),
+        },
       };
     }
 
@@ -1041,7 +1045,7 @@ export class Nextjs extends Component implements Link.Linkable {
               },
             ],
           },
-          { parent },
+          { parent, retainOnDelete: false },
         );
       });
     }

@@ -1,12 +1,12 @@
 package termutil
 
 import (
-	"image/color"
+	"github.com/charmbracelet/lipgloss"
 )
 
 type CellAttributes struct {
-	fgColour      color.Color
-	bgColour      color.Color
+	fgColour      lipgloss.TerminalColor
+	bgColour      lipgloss.TerminalColor
 	bold          bool
 	italic        bool
 	dim           bool

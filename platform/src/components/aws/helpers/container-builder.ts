@@ -14,7 +14,16 @@ export function imageBuilder(
   // Wait for the all args values to be resolved before acquiring the semaphore
   return all([args]).apply(async ([args]) => {
     await limiter.acquire(name);
-    const image = new Image(name, args, opts);
+    const image = new Image(
+      name,
+      {
+        ...(process.env.BUILDX_BUILDER
+          ? { builder: { name: process.env.BUILDX_BUILDER } }
+          : {}),
+        ...args,
+      },
+      opts,
+    );
     return image.urn.apply(() => {
       limiter.release();
       return image;

@@ -524,13 +524,16 @@ export class Service extends Component implements Link.Linkable {
       const policy = all([args.permissions || [], linkPermissions]).apply(
         ([argsPermissions, linkPermissions]) =>
           iam.getPolicyDocumentOutput({
-            statements: [
-              ...argsPermissions,
-              ...linkPermissions.map((item) => ({
+            statements: [...argsPermissions, ...linkPermissions].map(
+              (item) => ({
+                effect: (() => {
+                  const effect = item.effect ?? "allow";
+                  return effect.charAt(0).toUpperCase() + effect.slice(1);
+                })(),
                 actions: item.actions,
                 resources: item.resources,
-              })),
-            ],
+              }),
+            ),
           }),
       );
 

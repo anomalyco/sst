@@ -1,10 +1,10 @@
 package termutil
 
 import (
-	"image/color"
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/stretchr/testify/require"
 
 	"github.com/stretchr/testify/assert"
@@ -614,7 +614,7 @@ goodbyegoodbye`
 }
 
 func TestBufferMaxLines(t *testing.T) {
-	b := NewBuffer(80, 2, 2, color.White, color.Black)
+	b := NewBuffer(80, 2, 2, lipgloss.Color("#FFFFFF"), lipgloss.Color("#000000"))
 	b.modes.LineFeedMode = false
 
 	writeRaw(b, []rune("hello")...)
@@ -684,5 +684,5 @@ func TestShrinkingThenRestoring(t *testing.T) {
 }
 
 func makeBufferForTesting(cols, rows uint16) *Buffer {
-	return NewBuffer(cols, rows, 100, color.White, color.Black)
+	return NewBuffer(cols, rows, 100, lipgloss.Color("#FFFFFF"), lipgloss.Color("#000000"))
 }

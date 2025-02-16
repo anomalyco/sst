@@ -44,7 +44,10 @@ class Provider implements dynamic.ResourceProvider {
         `/zones?${qs}`,
         { headers: { "Content-Type": "application/json" } },
       );
-      const zone = ret.result.find((z) => inputs.domain.endsWith(z.name));
+      const zone = ret.result.find(
+        // ensure `example.com` does not match `myexample.com`
+        (z) => inputs.domain === z.name || inputs.domain.endsWith(`.${z.name}`),
+      );
       if (zone) return zone.id;
 
       if (ret.result.length < ret.result_info!.per_page)

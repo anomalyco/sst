@@ -1,26 +1,28 @@
-import { Await, createFileRoute, defer } from '@tanstack/react-router'
+import { Await, createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/start'
 import { Suspense, useState } from 'react'
 
-const personServerFn = createServerFn('GET', (name: string) => {
-  return { name, randomNumber: Math.floor(Math.random() * 100) }
-})
+const personServerFn = createServerFn({ method: 'GET' })
+  .validator((d: string) => d)
+  .handler(({ data: name }) => {
+    return { name, randomNumber: Math.floor(Math.random() * 100) }
+  })
 
-const slowServerFn = createServerFn('GET', async (name: string) => {
-  await new Promise((r) => setTimeout(r, 1000))
-  return { name, randomNumber: Math.floor(Math.random() * 100) }
-})
+const slowServerFn = createServerFn({ method: 'GET' })
+  .validator((d: string) => d)
+  .handler(async ({ data: name }) => {
+    await new Promise((r) => setTimeout(r, 1000))
+    return { name, randomNumber: Math.floor(Math.random() * 100) }
+  })
 
 export const Route = createFileRoute('/deferred')({
   loader: async () => {
     return {
-      deferredStuff: defer(
-        new Promise<string>((r) =>
-          setTimeout(() => r('Hello deferred!'), 2000),
-        ),
+      deferredStuff: new Promise<string>((r) =>
+        setTimeout(() => r('Hello deferred!'), 2000),
       ),
-      deferredPerson: defer(slowServerFn('Tanner Linsley')),
-      person: await personServerFn('John Doe'),
+      deferredPerson: slowServerFn({ data: 'Tanner Linsley' }),
+      person: await personServerFn({ data: 'John Doe' }),
     }
   },
   component: Deferred,

@@ -1,0 +1,16 @@
+{
+  "name": "@aws-auth-react/scripts",
+  "version": "0.0.0",
+  "type": "module",
+  "dependencies": {
+    "@aws-auth-react/core": "*",
+    "sst": "*"
+  },
+  "scripts": {
+    "shell": "sst shell tsx"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "tsx": "^4"
+  }
+}

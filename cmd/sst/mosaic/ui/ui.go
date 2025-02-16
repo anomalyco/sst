@@ -16,11 +16,12 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/pulumi/pulumi/sdk/v3/go/common/apitype"
 	"github.com/pulumi/pulumi/sdk/v3/go/common/resource"
-	"github.com/sst/ion/cmd/sst/mosaic/aws"
-	"github.com/sst/ion/cmd/sst/mosaic/cloudflare"
-	"github.com/sst/ion/cmd/sst/mosaic/deployer"
-	"github.com/sst/ion/cmd/sst/mosaic/ui/common"
-	"github.com/sst/ion/pkg/project"
+	"github.com/sst/sst/v3/cmd/sst/mosaic/aws"
+	"github.com/sst/sst/v3/cmd/sst/mosaic/cloudflare"
+	"github.com/sst/sst/v3/cmd/sst/mosaic/deployer"
+	"github.com/sst/sst/v3/cmd/sst/mosaic/ui/common"
+	"github.com/sst/sst/v3/pkg/flag"
+	"github.com/sst/sst/v3/pkg/project"
 
 	"golang.org/x/crypto/ssh/terminal"
 )
@@ -153,6 +154,26 @@ func (u *UI) Event(unknown interface{}) {
 	case *common.StdoutEvent:
 		u.println(evt.Line)
 
+	case *aws.TaskProvisionEvent:
+		u.printEvent(u.getColor(""), TEXT_NORMAL_BOLD.Render(fmt.Sprintf("%-11s", "Provision")), evt.Name)
+
+	case *aws.TaskStartEvent:
+		u.workerTime[evt.WorkerID] = time.Now()
+		u.printEvent(u.getColor(evt.WorkerID), fmt.Sprintf("%-11s", "Start"), evt.Command)
+
+	case *aws.TaskLogEvent:
+		duration := time.Since(u.workerTime[evt.WorkerID]).Round(time.Millisecond)
+		formattedDuration := fmt.Sprintf("%.9s", fmt.Sprintf("+%v", duration))
+		u.printEvent(u.getColor(evt.WorkerID), formattedDuration, evt.Line)
+
+	case *aws.TaskCompleteEvent:
+		duration := time.Since(u.workerTime[evt.WorkerID]).Round(time.Millisecond)
+		formattedDuration := fmt.Sprintf("took %.9s", fmt.Sprintf("+%v", duration))
+		u.printEvent(u.getColor(evt.WorkerID), "Done", formattedDuration)
+
+	case *aws.TaskMissingCommandEvent:
+		u.printEvent(u.getColor(""), TEXT_DANGER_BOLD.Render(fmt.Sprintf("%-11s", "Missing")), fmt.Sprintf("Dev command not configured for the \"%s\" task. Set `dev.command` to configure how the task works in `sst dev`.", evt.Name))
+
 	case *aws.FunctionInvokedEvent:
 		u.workerTime[evt.WorkerID] = time.Now()
 		u.printEvent(u.getColor(evt.WorkerID), TEXT_NORMAL_BOLD.Render(fmt.Sprintf("%-11s", "Invoke")), u.functionName(evt.FunctionID))
@@ -193,7 +214,9 @@ func (u *UI) Event(unknown interface{}) {
 
 	case *deployer.DeployFailedEvent:
 		u.reset()
-		u.printEvent(TEXT_DANGER, "Error", evt.Error)
+		if evt.Error != "" {
+			u.printEvent(TEXT_DANGER, "Error", evt.Error)
+		}
 
 	case *project.StackCommandEvent:
 		u.reset()
@@ -232,6 +255,15 @@ func (u *UI) Event(unknown interface{}) {
 	case *project.BuildFailedEvent:
 		u.reset()
 		u.printEvent(TEXT_DANGER, "Error", evt.Error)
+		break
+
+	case *project.SkipEvent:
+		u.println(
+			TEXT_INFO_BOLD.Render("~"),
+			TEXT_NORMAL_BOLD.Render("  No changes"),
+		)
+		u.reset()
+		break
 
 	case *apitype.ResourcePreEvent:
 		u.timing[evt.Metadata.URN] = time.Now()
@@ -323,7 +355,7 @@ func (u *UI) Event(unknown interface{}) {
 	case *apitype.DiagnosticEvent:
 		if evt.Severity == "error" {
 			message := []string{u.FormatURN(evt.URN)}
-			message = append(message, parseError(evt.Message)...)
+			message = append(message, parseError(strings.TrimSpace(evt.Message))...)
 			u.printEvent(TEXT_DANGER, "Error", message...)
 		}
 
@@ -347,6 +379,16 @@ func (u *UI) Event(unknown interface{}) {
 		u.complete = evt
 		if evt.Old {
 			break
+		}
+		if evt.UpdateID != "" && len(evt.Errors) == 0 {
+			u.blank()
+			u.println(
+				TEXT_INFO.Render("↗"),
+				"  ",
+				TEXT_NORMAL_BOLD.Render("Permalink"),
+				"   ",
+				TEXT_NORMAL.Render(`https://sst.dev/u/`+evt.UpdateID[len(evt.UpdateID)-8:]),
+			)
 		}
 		u.blank()
 		if len(evt.Errors) == 0 && evt.Finished {
@@ -410,19 +452,21 @@ func (u *UI) Event(unknown interface{}) {
 				TEXT_NORMAL_BOLD.Render("  Failed    "),
 			)
 
+			u.blank()
 			for _, status := range evt.Errors {
 				if status.URN != "" {
-					u.println(TEXT_DANGER_BOLD.Render("   " + u.FormatURN(status.URN)))
+					u.println(TEXT_DANGER_BOLD.Render(u.FormatURN(status.URN)))
 				}
 				for _, line := range parseError(status.Message) {
-					u.println(TEXT_NORMAL.Render("   " + line))
+					u.println(TEXT_NORMAL.Render(line))
 				}
 				for i, line := range status.Help {
 					if i == 0 {
 						u.println()
 					}
-					u.println(TEXT_NORMAL.Render("   " + line))
+					u.println(TEXT_NORMAL.Render(line))
 				}
+
 				importDiffs, ok := evt.ImportDiffs[status.URN]
 				if ok {
 					isSSTComponent := strings.Contains(status.URN, "::sst")
@@ -444,11 +488,20 @@ func (u *UI) Event(unknown interface{}) {
 						if !isSSTComponent {
 							u.print(TEXT_INFO.Render("`" + string(diff.Input) + ": " + string(value) + ",`"))
 						}
-						u.println()
+						u.blank()
 					}
 				} else {
-					u.println()
+					u.blank()
 				}
+			}
+
+			if evt.UpdateID != "" {
+				u.blank()
+				u.println(
+					TEXT_NORMAL_BOLD.Render("View more in the console:"),
+					" ",
+					TEXT_INFO.Render(`https://sst.dev/u/`+evt.UpdateID[len(evt.UpdateID)-8:]),
+				)
 			}
 		}
 		u.blank()
@@ -536,12 +589,11 @@ func (u *UI) printEvent(barColor lipgloss.Style, label string, message ...string
 		u.print(TEXT_DIM.Render(fmt.Sprint(fmt.Sprintf("%-11s", label), " ")))
 	}
 	if len(message) > 0 {
-		u.print(TEXT_DIM.Render(message[0]))
+		u.print(TEXT_NORMAL.Render(message[0]))
 	}
 	u.println()
 	for _, msg := range message[1:] {
-		u.print(barColor.Copy().Bold(true).Render("|  "))
-		u.println(TEXT_DIM.Render(msg))
+		u.println(TEXT_NORMAL.Render(msg))
 	}
 }
 
@@ -557,6 +609,9 @@ func (u *UI) Destroy() {
 func (u *UI) header(version, app, stage string) {
 	if u.hasHeader {
 		return
+	}
+	if flag.SST_EXPERIMENTAL {
+		version = version + " (experimental)"
 	}
 	u.println(
 		TEXT_HIGHLIGHT_BOLD.Render("SST "+version),
@@ -615,9 +670,9 @@ func (u *UI) FormatURN(urn string) string {
 }
 
 func Success(msg string) {
-	fmt.Fprint(os.Stderr, strings.TrimSpace(TEXT_SUCCESS_BOLD.Render(IconCheck)+"  "+TEXT_NORMAL.Render(fmt.Sprintln(msg))))
+	fmt.Fprintln(os.Stderr, strings.TrimSpace(TEXT_SUCCESS_BOLD.Render(IconCheck)+"  "+TEXT_NORMAL.Render(msg)))
 }
 
 func Error(msg string) {
-	fmt.Fprint(os.Stderr, strings.TrimSpace(TEXT_DANGER_BOLD.Render(IconX)+"  "+TEXT_NORMAL.Render(fmt.Sprintln(msg))))
+	fmt.Fprintln(os.Stderr, strings.TrimSpace(TEXT_DANGER_BOLD.Render(IconX)+"  "+TEXT_NORMAL.Render(msg)))
 }

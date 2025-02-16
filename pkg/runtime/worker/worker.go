@@ -13,9 +13,9 @@ import (
 
 	"github.com/evanw/esbuild/pkg/api"
 	esbuild "github.com/evanw/esbuild/pkg/api"
-	"github.com/sst/ion/pkg/project/path"
-	"github.com/sst/ion/pkg/runtime"
-	"github.com/sst/ion/pkg/runtime/node"
+	"github.com/sst/sst/v3/pkg/project/path"
+	"github.com/sst/sst/v3/pkg/runtime"
+	"github.com/sst/sst/v3/pkg/runtime/node"
 )
 
 type Runtime struct {
@@ -109,6 +109,7 @@ func (w *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		Loader:            loader,
 		KeepNames:         true,
 		Bundle:            true,
+		Define:            build.ESBuild.Define,
 		Splitting:         build.Splitting,
 		Metafile:          true,
 		Write:             true,
@@ -120,10 +121,17 @@ func (w *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		Format:            esbuild.FormatESModule,
 		MainFields:        []string{"module", "main"},
 		Banner: map[string]string{
-			"js": strings.Join([]string{
-				`import { createRequire as topLevelCreateRequire } from 'module';`,
-				`const require = topLevelCreateRequire("/");`,
-			}, "\n"),
+			"js": func() string {
+				defaultBanner := strings.Join([]string{
+					`import { createRequire as topLevelCreateRequire } from 'module';`,
+					`const require = topLevelCreateRequire("/");`,
+				}, "\n")
+				
+				if banner, ok := build.ESBuild.Banner["js"]; ok {
+					return banner + "\n" + defaultBanner
+				}
+				return defaultBanner
+			}(),
 		},
 	}
 

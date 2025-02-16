@@ -23,15 +23,14 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/common/apitype"
 	"github.com/pulumi/pulumi/sdk/v3/go/common/tokens"
 	"github.com/pulumi/pulumi/sdk/v3/go/common/workspace"
-	"github.com/sst/ion/pkg/bus"
-	"github.com/sst/ion/pkg/flag"
-	"github.com/sst/ion/pkg/global"
-	"github.com/sst/ion/pkg/id"
-	"github.com/sst/ion/pkg/js"
-	"github.com/sst/ion/pkg/project/common"
-	"github.com/sst/ion/pkg/project/provider"
-	"github.com/sst/ion/pkg/telemetry"
-	"github.com/sst/ion/pkg/types"
+	"github.com/sst/sst/v3/pkg/bus"
+	"github.com/sst/sst/v3/pkg/flag"
+	"github.com/sst/sst/v3/pkg/global"
+	"github.com/sst/sst/v3/pkg/js"
+	"github.com/sst/sst/v3/pkg/project/common"
+	"github.com/sst/sst/v3/pkg/project/provider"
+	"github.com/sst/sst/v3/pkg/telemetry"
+	"github.com/sst/sst/v3/pkg/types"
 	"github.com/zeebo/xxh3"
 	"golang.org/x/sync/errgroup"
 )
@@ -46,12 +45,18 @@ type StackInput struct {
 	ServerPort int
 	Dev        bool
 	Verbose    bool
+	Continue   bool
+	SkipHash   string
 }
 
 type ConcurrentUpdateEvent struct{}
 
 type BuildSuccessEvent struct {
 	Files []string
+	Hash  string
+}
+
+type SkipEvent struct {
 }
 
 type Dev struct {
@@ -68,9 +73,17 @@ type Dev struct {
 }
 type Devs map[string]Dev
 
+type Task struct {
+	Name      string `json:"-"`
+	Command   *string `json:"command"`
+	Directory string `json:"directory"`
+}
+
 type CompleteEvent struct {
+	UpdateID    string
 	Links       common.Links
 	Devs        Devs
+	Tasks       map[string]Task
 	Outputs     map[string]interface{}
 	Hints       map[string]string
 	Versions    map[string]int
@@ -157,7 +170,7 @@ var ErrStageNotFound = fmt.Errorf("stage not found")
 var ErrPassphraseInvalid = fmt.Errorf("passphrase invalid")
 var ErrProtectedStage = fmt.Errorf("cannot remove protected stage")
 
-func (p *Project) Run(ctx context.Context, input *StackInput) error {
+func (p *Project) RunOld(ctx context.Context, input *StackInput) error {
 	slog.Info("running stack command", "cmd", input.Command)
 
 	if p.app.Protect && input.Command == "remove" {
@@ -172,9 +185,10 @@ func (p *Project) Run(ctx context.Context, input *StackInput) error {
 		Version: p.Version(),
 	})
 
-	updateID := id.Descending()
+	var update *provider.Update
+	var err error
 	if input.Command != "diff" {
-		err := p.Lock(updateID, input.Command)
+		update, err = p.Lock(input.Command)
 		if err != nil {
 			if err == provider.ErrLockExists {
 				bus.Publish(&ConcurrentUpdateEvent{})
@@ -184,7 +198,8 @@ func (p *Project) Run(ctx context.Context, input *StackInput) error {
 		defer p.Unlock()
 	}
 
-	statePath, err := p.PullState()
+	workdir, err := p.NewWorkdir(update.ID)
+	statePath, err := workdir.Pull()
 	if err != nil {
 		if errors.Is(err, provider.ErrStateNotFound) {
 			if input.Command != "deploy" {
@@ -194,6 +209,7 @@ func (p *Project) Run(ctx context.Context, input *StackInput) error {
 			return err
 		}
 	}
+	defer workdir.Cleanup()
 
 	passphrase, err := provider.Passphrase(p.home, p.app.Name, p.app.Stage)
 	if err != nil {
@@ -249,7 +265,7 @@ func (p *Project) Run(ctx context.Context, input *StackInput) error {
 	env["NODE_OPTIONS"] = "--enable-source-maps --no-deprecation"
 	// env["TMPDIR"] = p.PathLog("")
 	if input.ServerPort != 0 {
-		env["SST_SERVER"] = fmt.Sprintf("http://localhost:%v", input.ServerPort)
+		env["SST_SERVER"] = fmt.Sprintf("http://127.0.0.1:%v", input.ServerPort)
 	}
 	pulumiPath := flag.SST_PULUMI_PATH
 	if pulumiPath == "" {
@@ -264,13 +280,13 @@ func (p *Project) Run(ctx context.Context, input *StackInput) error {
 	}
 	ws, err := auto.NewLocalWorkspace(ctx,
 		auto.Pulumi(pulumi),
-		auto.WorkDir(p.PathWorkingDir()),
+		auto.WorkDir(workdir.Backend()),
 		auto.PulumiHome(global.ConfigDir()),
 		auto.Project(workspace.Project{
 			Name:    tokens.PackageName(p.app.Name),
 			Runtime: workspace.NewProjectRuntimeInfo("nodejs", nil),
 			Backend: &workspace.ProjectBackend{
-				URL: fmt.Sprintf("file://%v", p.PathWorkingDir()),
+				URL: fmt.Sprintf("file://%v", workdir.Backend()),
 			},
 			Main: outfile,
 		}),
@@ -292,7 +308,7 @@ func (p *Project) Run(ctx context.Context, input *StackInput) error {
 	}
 	slog.Info("built stack")
 
-	completed, err := getCompletedEvent(ctx, stack)
+	completed, err := getCompletedEvent(ctx, passphrase, workdir)
 	if err != nil {
 		bus.Publish(&BuildFailedEvent{
 			Error: err.Error(),
@@ -363,6 +379,12 @@ func (p *Project) Run(ctx context.Context, input *StackInput) error {
 		defer js.Cleanup(buildResult)
 	}
 
+	// disable for now until we hash env too
+	if input.SkipHash != "" && buildResult.OutputFiles[0].Hash == input.SkipHash && false {
+		bus.Publish(&SkipEvent{})
+		return nil
+	}
+
 	var meta = map[string]interface{}{}
 	err = json.Unmarshal([]byte(buildResult.Metafile), &meta)
 	if err != nil {
@@ -376,7 +398,10 @@ func (p *Project) Run(ctx context.Context, input *StackInput) error {
 		}
 		files = append(files, absPath)
 	}
-	bus.Publish(&BuildSuccessEvent{files})
+	bus.Publish(&BuildSuccessEvent{
+		Files: files,
+		Hash:  buildResult.OutputFiles[0].Hash,
+	})
 	slog.Info("tracked files")
 
 	config := auto.ConfigMap{}
@@ -421,14 +446,12 @@ func (p *Project) Run(ctx context.Context, input *StackInput) error {
 		last := uint64(0)
 		for {
 			select {
-			case <-ctx.Done():
-				return
 			case cmd := <-partial:
 				data, err := os.ReadFile(statePath)
 				if err == nil {
 					next := xxh3.Hash(data)
 					if next != last && next != 0 && input.Command != "diff" {
-						err := provider.PushPartialState(p.Backend(), updateID, p.App().Name, p.App().Stage, data)
+						err := provider.PushPartialState(p.Backend(), update.ID, p.App().Name, p.App().Stage, data)
 						if err != nil && cmd == 0 {
 							partialDone <- err
 							return
@@ -436,7 +459,7 @@ func (p *Project) Run(ctx context.Context, input *StackInput) error {
 					}
 					last = next
 					if cmd == 0 {
-						partialDone <- provider.PushSnapshot(p.Backend(), updateID, p.App().Name, p.App().Stage, data)
+						partialDone <- provider.PushSnapshot(p.Backend(), update.ID, p.App().Name, p.App().Stage, data)
 						return
 					}
 				}
@@ -473,15 +496,26 @@ func (p *Project) Run(ctx context.Context, input *StackInput) error {
 						}
 					}
 
-					errors = append(errors, Error{
-						Message: event.DiagnosticEvent.Message,
-						URN:     event.DiagnosticEvent.URN,
-						Help:    help,
-					})
-					telemetry.Track("cli.resource.error", map[string]interface{}{
-						"error": event.DiagnosticEvent.Message,
-						"urn":   event.DiagnosticEvent.URN,
-					})
+					exists := false
+					if event.DiagnosticEvent.URN != "" {
+						for _, item := range errors {
+							if item.URN == event.DiagnosticEvent.URN {
+								exists = true
+								break
+							}
+						}
+					}
+					if !exists {
+						errors = append(errors, Error{
+							Message: strings.TrimSpace(event.DiagnosticEvent.Message),
+							URN:     event.DiagnosticEvent.URN,
+							Help:    help,
+						})
+						telemetry.Track("cli.resource.error", map[string]interface{}{
+							"error": event.DiagnosticEvent.Message,
+							"urn":   event.DiagnosticEvent.URN,
+						})
+					}
 				}
 
 				if event.ResOpFailedEvent != nil {
@@ -526,8 +560,6 @@ func (p *Project) Run(ctx context.Context, input *StackInput) error {
 	}()
 
 	slog.Info("running stack command", "cmd", input.Command)
-	var summary auto.UpdateSummary
-	started := time.Now().Format(time.RFC3339)
 
 	pulumiLog, err := os.Create(p.PathLog("pulumi"))
 	if err != nil {
@@ -549,48 +581,50 @@ func (p *Project) Run(ctx context.Context, input *StackInput) error {
 		}
 	}
 
+	var runError error
 	switch input.Command {
 	case "deploy":
-		result, derr := stack.Up(ctx,
+		opts := []optup.Option{
 			optup.DebugLogging(debugLogging),
 			optup.Target(input.Target),
 			optup.TargetDependents(),
 			optup.ProgressStreams(pulumiLog),
 			optup.EventStreams(stream),
+		}
+		if input.Continue {
+			opts = append(opts, optup.ContinueOnError())
+		}
+		_, runError = stack.Up(ctx,
+			opts...,
 		)
-		err = derr
-		summary = result.Summary
 
 	case "remove":
-		result, derr := stack.Destroy(ctx,
+		_, runError = stack.Destroy(ctx,
 			optdestroy.DebugLogging(debugLogging),
 			optdestroy.ContinueOnError(),
 			optdestroy.Target(input.Target),
 			optdestroy.TargetDependents(),
 			optdestroy.ProgressStreams(pulumiLog),
 			optdestroy.EventStreams(stream),
+			optdestroy.ContinueOnError(),
 		)
-		err = derr
-		summary = result.Summary
 
 	case "refresh":
-		result, derr := stack.Refresh(ctx,
+
+		_, runError = stack.Refresh(ctx,
 			optrefresh.DebugLogging(debugLogging),
 			optrefresh.Target(input.Target),
 			optrefresh.ProgressStreams(pulumiLog),
 			optrefresh.EventStreams(stream),
 		)
-		err = derr
-		summary = result.Summary
 	case "diff":
-		_, derr := stack.Preview(ctx,
+		_, runError = stack.Preview(ctx,
 			optpreview.DebugLogging(debugLogging),
 			optpreview.Diff(),
 			optpreview.Target(input.Target),
 			optpreview.ProgressStreams(pulumiLog),
 			optpreview.EventStreams(stream),
 		)
-		err = derr
 	}
 
 	slog.Info("waiting for partial state to finish")
@@ -601,14 +635,14 @@ func (p *Project) Run(ctx context.Context, input *StackInput) error {
 	}
 
 	slog.Info("parsing state")
-	defer slog.Info("done parsing state")
-	complete, err := getCompletedEvent(context.Background(), stack)
+	complete, err := getCompletedEvent(context.Background(), passphrase, workdir)
 	if err != nil {
 		return err
 	}
 	complete.Finished = finished
 	complete.Errors = errors
 	complete.ImportDiffs = importDiffs
+	types.Generate(p.PathConfig(), complete.Links)
 	defer bus.Publish(complete)
 	if input.Command == "diff" {
 		return err
@@ -618,21 +652,9 @@ func (p *Project) Run(ctx context.Context, input *StackInput) error {
 	outputsFile, _ := os.Create(outputsFilePath)
 	defer outputsFile.Close()
 	json.NewEncoder(outputsFile).Encode(complete.Outputs)
-	types.Generate(p.PathConfig(), complete.Links)
 
 	if input.Command != "diff " {
-		var update provider.Update
-		update.ID = updateID
-		update.Command = input.Command
-		update.Version = p.Version()
-		update.TimeStarted = summary.StartTime
-		if update.TimeStarted == "" {
-			update.TimeStarted = started
-		}
 		update.TimeCompleted = time.Now().Format(time.RFC3339)
-		if summary.EndTime != nil {
-			update.TimeCompleted = *summary.EndTime
-		}
 		for _, err := range errors {
 			update.Errors = append(update.Errors, provider.SummaryError{
 				URN:     err.URN,
@@ -646,215 +668,23 @@ func (p *Project) Run(ctx context.Context, input *StackInput) error {
 	}
 
 	slog.Info("done running stack command")
-	if err != nil {
-		slog.Error("stack run failed", "error", err)
+	if runError != nil {
+		slog.Error("stack run failed", "error", runError)
 		return ErrStackRunFailed
 	}
 	return nil
 }
 
-func (p *Project) Lock(updateID string, command string) error {
-	return provider.Lock(p.home, updateID, p.Version(), command, p.app.Name, p.app.Stage)
-}
-
-type PreviewInput struct {
-	Out chan interface{}
-}
-
-type ImportOptions struct {
-	Type   string
-	Name   string
-	ID     string
-	Parent string
+func (p *Project) Lock(command string) (*provider.Update, error) {
+	return provider.Lock(p.home, p.Version(), command, p.app.Name, p.app.Stage)
 }
 
 func (s *Project) Unlock() error {
-	if !flag.SST_NO_CLEANUP {
-		dir := s.PathWorkingDir()
-		files, err := os.ReadDir(dir)
-		if err != nil {
-			return err
-		}
-		for _, file := range files {
-			if strings.HasPrefix(file.Name(), "Pulumi") {
-				err := os.Remove(filepath.Join(dir, file.Name()))
-				if err != nil {
-					return err
-				}
-			}
-		}
-	}
 	return provider.Unlock(s.home, s.version, s.app.Name, s.app.Stage)
 }
 
 func (s *Project) ForceUnlock() error {
 	return provider.ForceUnlock(s.home, s.version, s.app.Name, s.app.Stage)
-}
-
-func (s *Project) PullState() (string, error) {
-	pulumiDir := filepath.Join(s.PathWorkingDir(), ".pulumi")
-	appDir := filepath.Join(pulumiDir, "stacks", s.app.Name)
-	path := filepath.Join(appDir, fmt.Sprintf("%v.json", s.app.Stage))
-
-	err := os.RemoveAll(pulumiDir)
-	if err != nil {
-		return path, err
-	}
-	err = os.MkdirAll(appDir, 0755)
-	if err != nil {
-		return path, err
-	}
-	err = provider.PullState(
-		s.home,
-		s.app.Name,
-		s.app.Stage,
-		path,
-	)
-	if err != nil {
-		return path, err
-	}
-	return path, nil
-}
-
-func (s *Project) PushState(version string) error {
-	pulumiDir := filepath.Join(s.PathWorkingDir(), ".pulumi")
-	return provider.PushState(
-		s.home,
-		version,
-		s.app.Name,
-		s.app.Stage,
-		filepath.Join(pulumiDir, "stacks", s.app.Name, fmt.Sprintf("%v.json", s.app.Stage)),
-	)
-}
-
-func decrypt(input interface{}) interface{} {
-	switch cast := input.(type) {
-	case map[string]interface{}:
-		if cast["plaintext"] != nil {
-			var parsed any
-			str, ok := cast["plaintext"].(string)
-			if ok {
-				json.Unmarshal([]byte(str), &parsed)
-				return parsed
-			}
-			return cast["plaintext"]
-		}
-		for key, value := range cast {
-			cast[key] = decrypt(value)
-		}
-		return cast
-	case []interface{}:
-		for i, value := range cast {
-			cast[i] = decrypt(value)
-		}
-		return cast
-	default:
-		return cast
-	}
-}
-
-type upOptionFunc func(*optup.Options)
-
-// ApplyOption is an implementation detail
-func (o upOptionFunc) ApplyOption(opts *optup.Options) {
-	o(opts)
-}
-
-func getCompletedEvent(ctx context.Context, stack auto.Stack) (*CompleteEvent, error) {
-	exported, err := stack.Export(ctx)
-	if err != nil {
-		return nil, err
-	}
-	var deployment apitype.DeploymentV3
-	json.Unmarshal(exported.Deployment, &deployment)
-	complete := &CompleteEvent{
-		Links:       common.Links{},
-		Versions:    map[string]int{},
-		ImportDiffs: map[string][]ImportDiff{},
-		Devs:        Devs{},
-		Tunnels:     map[string]Tunnel{},
-		Hints:       map[string]string{},
-		Outputs:     map[string]interface{}{},
-		Errors:      []Error{},
-		Finished:    false,
-		Resources:   []apitype.ResourceV3{},
-	}
-	if len(deployment.Resources) == 0 {
-		return complete, nil
-	}
-	complete.Resources = deployment.Resources
-
-	for _, resource := range complete.Resources {
-		outputs := decrypt(resource.Outputs).(map[string]interface{})
-		if resource.URN.Type().Module().Package().Name() == "sst" {
-			if resource.Type == "sst:sst:Version" {
-				if outputs["target"] != nil && outputs["version"] != nil {
-					complete.Versions[outputs["target"].(string)] = int(outputs["version"].(float64))
-				}
-			}
-
-			if resource.Type != "sst:sst:Version" {
-				name := resource.URN.Name()
-				_, ok := complete.Versions[name]
-				if !ok {
-					complete.Versions[name] = 1
-				}
-			}
-		}
-		if match, ok := outputs["_dev"].(map[string]interface{}); ok {
-			data, _ := json.Marshal(match)
-			var entry Dev
-			json.Unmarshal(data, &entry)
-			entry.Name = resource.URN.Name()
-			complete.Devs[entry.Name] = entry
-		}
-
-		if match, ok := outputs["_tunnel"].(map[string]interface{}); ok {
-			tunnel := Tunnel{
-				IP:         match["ip"].(string),
-				Username:   match["username"].(string),
-				PrivateKey: match["privateKey"].(string),
-				Subnets:    []string{},
-			}
-			subnets, ok := match["subnets"].([]interface{})
-			if ok {
-				for _, subnet := range subnets {
-					tunnel.Subnets = append(tunnel.Subnets, subnet.(string))
-				}
-				complete.Tunnels[resource.URN.Name()] = tunnel
-			}
-		}
-
-		if hint, ok := outputs["_hint"].(string); ok {
-			complete.Hints[string(resource.URN)] = hint
-		}
-
-		if resource.Type == "sst:sst:LinkRef" && outputs["target"] != nil && outputs["properties"] != nil {
-			link := common.Link{
-				Properties: outputs["properties"].(map[string]interface{}),
-				Include:    []common.LinkInclude{},
-			}
-			if outputs["include"] != nil {
-				for _, include := range outputs["include"].([]interface{}) {
-					link.Include = append(link.Include, common.LinkInclude{
-						Type:  include.(map[string]interface{})["type"].(string),
-						Other: include.(map[string]interface{}),
-					})
-				}
-			}
-			complete.Links[outputs["target"].(string)] = link
-		}
-	}
-
-	outputs := decrypt(deployment.Resources[0].Outputs).(map[string]interface{})
-	for key, value := range outputs {
-		if strings.HasPrefix(key, "_") {
-			continue
-		}
-		complete.Outputs[key] = value
-	}
-
-	return complete, nil
 }
 
 func getNotNilFields(v interface{}) []interface{} {
@@ -883,50 +713,4 @@ func getNotNilFields(v interface{}) []interface{} {
 	}
 
 	return result
-}
-
-func (p *Project) GetCompleted(ctx context.Context) (*CompleteEvent, error) {
-	passphrase, err := provider.Passphrase(p.home, p.app.Name, p.app.Stage)
-	if err != nil {
-		return nil, err
-	}
-	_, err = p.PullState()
-	if err != nil {
-		return nil, err
-	}
-	pulumi, err := auto.NewPulumiCommand(&auto.PulumiCommandOptions{
-		Root:             filepath.Join(global.BinPath(), ".."),
-		SkipVersionCheck: true,
-	})
-	if err != nil {
-		return nil, err
-	}
-	ws, err := auto.NewLocalWorkspace(ctx,
-		auto.Pulumi(pulumi),
-		auto.WorkDir(p.PathWorkingDir()),
-		auto.PulumiHome(global.ConfigDir()),
-		auto.Project(workspace.Project{
-			Name:    tokens.PackageName(p.app.Name),
-			Runtime: workspace.NewProjectRuntimeInfo("nodejs", nil),
-			Backend: &workspace.ProjectBackend{
-				URL: fmt.Sprintf("file://%v", p.PathWorkingDir()),
-			},
-		}),
-		auto.EnvVars(
-			map[string]string{
-				"PULUMI_CONFIG_PASSPHRASE": passphrase,
-			},
-		),
-	)
-	if err != nil {
-		return nil, err
-	}
-	stack, err := auto.UpsertStack(ctx,
-		p.app.Stage,
-		ws,
-	)
-	if err != nil {
-		return nil, err
-	}
-	return getCompletedEvent(ctx, stack)
 }

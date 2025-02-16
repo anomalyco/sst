@@ -3,6 +3,7 @@ import path from "path";
 import crypto from "crypto";
 import archiver from "archiver";
 import type { BuildOptions, Loader } from "esbuild";
+import { glob } from "glob";
 import {
   all,
   asset,
@@ -35,7 +36,6 @@ import {
 } from "@pulumi/aws";
 import { Permission, permission } from "./permission.js";
 import { Vpc } from "./vpc.js";
-import { buildPython, buildPythonContainer } from "../../runtime/python.js";
 import { Image } from "@pulumi/docker-build";
 import { rpc } from "../rpc/rpc.js";
 import { parseRoleArn } from "./helpers/arn.js";
@@ -50,9 +50,19 @@ export type FunctionArn = `arn:${string}` & {};
 
 export type FunctionPermissionArgs = {
   /**
+   * Configures whether the permission is allowed or denied.
+   * @default `"allow"`
+   * @example
+   * ```ts
+   * {
+   *   effect: "deny"
+   * }
+   * ```
+   */
+  effect?: "allow" | "deny";
+  /**
    * The [IAM actions](https://docs.aws.amazon.com/service-authorization/latest/reference/reference_policies_actions-resources-contextkeys.html#actions_table) that can be performed.
    * @example
-   *
    * ```js
    * {
    *   actions: ["s3:*"]
@@ -63,7 +73,6 @@ export type FunctionPermissionArgs = {
   /**
    * The resourcess specified using the [IAM ARN format](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_identifiers.html).
    * @example
-   *
    * ```js
    * {
    *   resources: ["arn:aws:s3:::my-bucket/*"]
@@ -205,8 +214,21 @@ export interface FunctionArgs {
    */
   live?: Input<false>;
   /**
-   * Disable running this function [Live](/docs/live/) in `sst dev`.
-   * @default Live mode enabled in `sst dev`
+   * Disable running this function [_Live_](/docs/live/) in `sst dev`.
+   *
+   * By default, the functions in your app are run locally in `sst dev`. To do this, a _stub_
+   * version of your function is deployed, instead of the real function.
+   *
+   * :::note
+   * In `sst dev` a _stub_ version of your function is deployed.
+   * :::
+   *
+   * This shows under the **Functions** tab in the multiplexer sidebar where your invocations
+   * are logged. You can turn this off by setting `dev` to `false`.
+   *
+   * Read more about [Live](/docs/live/) and [`sst dev`](/docs/reference/cli/#dev).
+   *
+   * @default `true`
    * @example
    * ```js
    * {
@@ -252,9 +274,17 @@ export interface FunctionArgs {
    */
   description?: Input<string>;
   /**
-   * The runtime environment for the function. Support for other runtimes is on our roadmap.
+   * The language runtime for the function.
+   *
+   * :::tip
+   * Currently supports Node.js and Golang functions.
+   * :::
+   *
+   * Currently supports **Node.js** and **Golang** functions. Python is community supported
+   * and is currently a work in progress. Other runtimes are on the roadmap.
    *
    * @default `"nodejs20.x"`
+   *
    * @example
    * ```js
    * {
@@ -266,6 +296,7 @@ export interface FunctionArgs {
     | "nodejs18.x"
     | "nodejs20.x"
     | "nodejs22.x"
+    | "go"
     | "provided.al2023"
     | "python3.9"
     | "python3.10"
@@ -296,24 +327,27 @@ export interface FunctionArgs {
    */
   bundle?: Input<string>;
   /**
-   * Path to the handler for the function with the format `{file}.{method}`.
+   * Path to the handler for the function.
+   *
+   * - For Node.js this is in the format `{path}/{file}.{method}`.
+   * - For Golang this is `{path}`.
+   *
+   * @example
+   *
+   * For example with Node.js you might have.
+   *
+   * ```js
+   * {
+   *   handler: "packages/functions/src/main.handler"
+   * }
+   * ```
+   *
+   * Where `packages/functions/src` is the path. And `main` is the file, where you might have
+   * a `main.ts` or `main.js`. And `handler` is the method exported in that file.
    *
    * :::note
    * You don't need to specify the file extension.
    * :::
-   *
-   * The handler path is relative to the root your repo or the `sst.config.ts`.
-   *
-   * @example
-   *
-   * Here there is a file called `index.js` (or `.ts`) in the `packages/functions/src/`
-   * directory with an exported method called `handler`.
-   *
-   * ```js
-   * {
-   *   handler: "packages/functions/src/index.handler"
-   * }
-   * ```
    *
    * If `bundle` is specified, the handler needs to be in the root of the bundle directory.
    *
@@ -323,6 +357,17 @@ export interface FunctionArgs {
    *   handler: "index.handler"
    * }
    * ```
+   *
+   * For Golang it might look like this.
+   *
+   * ```js
+   * {
+   *   handler: "packages/functions/src"
+   * }
+   * ```
+   *
+   * Where `packages/functions/src` is the path to your Go app. And the path is relative to the
+   * root your repo or the `sst.config.ts`.
    */
   handler: Input<string>;
   /**
@@ -1140,21 +1185,37 @@ export interface FunctionArgs {
  * The `Function` component lets you add serverless functions to your app.
  * It uses [AWS Lambda](https://aws.amazon.com/lambda/).
  *
- * :::note
- * Currently supports Node.js functions only. Support for other runtimes is on the roadmap.
- * :::
+ * #### Supported runtimes
+ *
+ * Currently supports **Node.js** and **Golang** functions. Python is community supported and is
+ * currently a work in progress. Other runtimes are on the roadmap.
  *
  * @example
  *
  * #### Minimal example
  *
- * Pass in the path to your handler function.
  *
- * ```ts title="sst.config.ts"
- * new sst.aws.Function("MyFunction", {
- *   handler: "src/lambda.handler"
- * });
- * ```
+ * <Tabs>
+ *   <TabItem label="Node">
+ *   Pass in the path to your handler function.
+ *
+ *   ```ts title="sst.config.ts"
+ *   new sst.aws.Function("MyFunction", {
+ *     handler: "src/lambda.handler"
+ *   });
+ *   ```
+ *   </TabItem>
+ *   <TabItem label="Go">
+ *   Pass in the directory to your Go app.
+ *
+ *   ```ts title="sst.config.ts"
+ *   new sst.aws.Function("MyFunction", {
+ *     runtime: "go",
+ *     handler: "./src"
+ *   });
+ *   ```
+ *   </TabItem>
+ * </Tabs>
  *
  * #### Set additional config
  *
@@ -1185,15 +1246,29 @@ export interface FunctionArgs {
  * You can use the [SDK](/docs/reference/sdk/) to access the linked resources
  * in your handler.
  *
- * ```ts title="src/lambda.ts"
- * import { Resource } from "sst";
+ * <Tabs>
+ *   <TabItem label="Node">
+ *   ```ts title="src/lambda.ts"
+ *   import { Resource } from "sst";
  *
- * console.log(Resource.MyBucket.name);
- * ```
+ *   console.log(Resource.MyBucket.name);
+ *   ```
+ *   </TabItem>
+ *   <TabItem label="Go">
+ *   ```go title="src/main.go"
+ *   import (
+ *     "github.com/sst/sst/v3/sdk/golang/resource"
+ *   )
+ *
+ *   resource.Get("MyBucket", "name")
+ *   ```
+ *   </TabItem>
+ * </Tabs>
  *
  * #### Set environment variables
  *
- * Set environment variables for the function. Available in your handler as `process.env`.
+ * Set environment variables that you can read in your function. For example, using
+ * `process.env` in your Node.js functions.
  *
  * ```ts {4} title="sst.config.ts"
  * new sst.aws.Function("MyFunction", {
@@ -1217,8 +1292,8 @@ export interface FunctionArgs {
  *
  * #### Bundling
  *
- * Customize how SST uses [esbuild](https://esbuild.github.io/) to bundle your function code
- * with the `nodejs` property.
+ * Customize how SST uses [esbuild](https://esbuild.github.io/) to bundle your Node.js
+ * functions with the `nodejs` property.
  *
  * ```ts title="sst.config.ts" {3-5}
  * new sst.aws.Function("MyFunction", {
@@ -1245,7 +1320,7 @@ export class Function extends Component implements Link.Linkable {
       }),
   );
 
-  private static readonly appsync = lazy(() =>
+  public static readonly appsync = lazy(() =>
     rpc.call("Provider.Aws.Appsync", {}),
   );
 
@@ -1551,68 +1626,34 @@ export class Function extends Component implements Link.Linkable {
     }
 
     function buildHandler() {
-      return all([runtime, dev]).apply(([runtime, dev]) => {
-        if (dev) {
-          return {
-            handler: "bootstrap",
-            bundle: path.join($cli.paths.platform, "dist", "bridge"),
-          };
-        }
+      return all([runtime, dev, isContainer]).apply(
+        async ([runtime, dev, isContainer]) => {
+          if (dev) {
+            return {
+              handler: "bootstrap",
+              bundle: path.join($cli.paths.platform, "dist", "bridge"),
+            };
+          }
 
-        if (runtime.startsWith("python")) {
-          const buildResult = all([args, isContainer, linkData]).apply(
-            async ([args, isContainer, linkData]) => {
-              if (isContainer) {
-                const result = await buildPythonContainer(name, {
-                  ...args,
-                  links: linkData,
-                });
-                if (result.type === "error") {
-                  throw new VisibleError(
-                    `Failed to build function "${args.handler}": ` +
-                      result.errors.join("\n").trim(),
-                  );
-                }
-                return result;
-              }
-              const result = await buildPython(name, {
-                ...args,
-                links: linkData,
-              });
-              if (result.type === "error") {
-                throw new VisibleError(
-                  `Failed to build function "${args.handler}": ` +
-                    result.errors.join("\n").trim(),
-                );
-              }
-              return result;
-            },
-          );
-
+          const buildResult = buildInput.apply(async (input) => {
+            const result = await rpc.call<{
+              handler: string;
+              out: string;
+              errors: string[];
+              sourcemaps: string[];
+            }>("Runtime.Build", { ...input, isContainer });
+            if (result.errors.length > 0) {
+              throw new Error(result.errors.join("\n"));
+            }
+            return result;
+          });
           return {
             handler: buildResult.handler,
             bundle: buildResult.out,
+            sourcemaps: buildResult.sourcemaps,
           };
-        }
-
-        const buildResult = buildInput.apply(async (input) => {
-          const result = await rpc.call<{
-            handler: string;
-            out: string;
-            errors: string[];
-            sourcemaps: string[];
-          }>("Runtime.Build", input);
-          if (result.errors.length > 0) {
-            throw new Error(result.errors.join("\n"));
-          }
-          return result;
-        });
-        return {
-          handler: buildResult.handler,
-          bundle: buildResult.out,
-          sourcemaps: buildResult.sourcemaps,
-        };
-      });
+        },
+      );
     }
 
     function buildHandlerWrapper() {
@@ -1723,21 +1764,21 @@ export class Function extends Component implements Link.Linkable {
           iam.getPolicyDocumentOutput({
             statements: [
               ...argsPermissions,
-              ...linkPermissions.map((item) => ({
-                actions: item.actions,
-                resources: item.resources,
-              })),
+              ...linkPermissions,
               ...(dev
                 ? [
                     {
+                      effect: "allow",
                       actions: ["appsync:*"],
                       resources: ["*"],
                     },
                     {
+                      effect: "allow",
                       actions: ["iot:*"],
                       resources: ["*"],
                     },
                     {
+                      effect: "allow",
                       actions: ["s3:*"],
                       resources: [
                         interpolate`arn:${partition}:s3:::${bootstrapData.asset}`,
@@ -1746,7 +1787,14 @@ export class Function extends Component implements Link.Linkable {
                     },
                   ]
                 : []),
-            ],
+            ].map((item) => ({
+              effect: (() => {
+                const effect = item.effect ?? "allow";
+                return effect.charAt(0).toUpperCase() + effect.slice(1);
+              })(),
+              actions: item.actions,
+              resources: item.resources,
+            })),
           }),
       );
 
@@ -1755,7 +1803,7 @@ export class Function extends Component implements Link.Linkable {
           args.transform?.role,
           `${name}Role`,
           {
-            assumeRolePolicy: !$dev
+            assumeRolePolicy: !dev
               ? iam.assumeRolePolicyForPrincipal({
                   Service: "lambda.amazonaws.com",
                 })
@@ -1807,67 +1855,64 @@ export class Function extends Component implements Link.Linkable {
       // The build artifact directory already exists, with all the user code and
       // config files. It also has the dockerfile, we need to now just build and push to
       // the container registry.
+      return all([isContainer, dev, bundle]).apply(
+        ([
+          isContainer,
+          dev,
+          bundle, // We need the bundle to be resolved because of implicit dockerfiles even though we don't use it here
+        ]) => {
+          if (!isContainer || dev) return;
 
-      return isContainer.apply((isContainer) => {
-        if (!isContainer) return;
+          const authToken = ecr.getAuthorizationTokenOutput({
+            registryId: bootstrapData.assetEcrRegistryId,
+          });
 
-        // TODO: walln - check service implementation for .dockerignore stuff
-
-        const authToken = ecr.getAuthorizationTokenOutput({
-          registryId: bootstrapData.assetEcrRegistryId,
-        });
-
-        // build image
-        //aws-python-container::sst:aws:Function::MyPythonFunction
-        return new Image(
-          `${name}Image`,
-          {
-            // tags: [$interpolate`${bootstrapData.assetEcrUrl}:latest`],
-            tags: [$interpolate`${bootstrapData.assetEcrUrl}:latest`],
-            // Cannot use latest tag it breaks lambda because for whatever reason
-            // .ref is actually digest + tags and is not properly qualified???
-            context: {
-              location: path.join($cli.paths.work, "artifacts", `${name}-src`),
-            },
-            // Use the pushed image as a cache source.
-            cacheFrom: [
-              {
-                registry: {
-                  ref: $interpolate`${bootstrapData.assetEcrUrl}:cache`,
+          return new Image(
+            `${name}Image`,
+            {
+              tags: [$interpolate`${bootstrapData.assetEcrUrl}:latest`],
+              context: {
+                location: path.join(
+                  $cli.paths.work,
+                  "artifacts",
+                  `${name}-src`,
+                ),
+              },
+              cacheFrom: [
+                {
+                  registry: {
+                    ref: $interpolate`${bootstrapData.assetEcrUrl}:${name}-cache`,
+                  },
                 },
-              },
-            ],
-            // TODO: walln - investigate buildx ecr caching best practices
-            // Include an inline cache with our pushed image.
-            // cacheTo: [{
-            //     registry: {
-            //       imageManifest: true,
-            //       ociMediaTypes: true,
-            //       ref: $interpolate`${bootstrapData.assetEcrUrl}:cache`,
-            //     }
-            // }],
-            cacheTo: [
-              {
-                inline: {},
-              },
-            ],
-            platforms: [
-              architecture.apply((v) =>
-                v === "arm64" ? "linux/arm64" : "linux/amd64",
-              ),
-            ],
-            push: true,
-            registries: [
-              authToken.apply((authToken) => ({
-                address: authToken.proxyEndpoint,
-                username: authToken.userName,
-                password: secret(authToken.password),
-              })),
-            ],
-          },
-          { parent },
-        );
-      });
+              ],
+              cacheTo: [
+                {
+                  registry: {
+                    ref: $interpolate`${bootstrapData.assetEcrUrl}:${name}-cache`,
+                    imageManifest: true,
+                    ociMediaTypes: true,
+                    mode: "max",
+                  },
+                },
+              ],
+              platforms: [
+                architecture.apply((v) =>
+                  v === "arm64" ? "linux/arm64" : "linux/amd64",
+                ),
+              ],
+              push: true,
+              registries: [
+                authToken.apply((authToken) => ({
+                  address: authToken.proxyEndpoint,
+                  username: authToken.userName,
+                  password: secret(authToken.password),
+                })),
+              ],
+            },
+            { parent },
+          );
+        },
+      );
     }
 
     function createZipAsset() {
@@ -1882,6 +1927,7 @@ export class Function extends Component implements Link.Linkable {
         copyFiles,
         isContainer,
         logGroup.apply((l) => l?.arn),
+        dev,
       ]).apply(
         async ([
           bundle,
@@ -1890,6 +1936,7 @@ export class Function extends Component implements Link.Linkable {
           copyFiles,
           isContainer,
           logGroupArn,
+          dev,
         ]) => {
           if (isContainer) return;
 
@@ -1920,17 +1967,42 @@ export class Function extends Component implements Link.Linkable {
             });
             archive.pipe(ws);
 
-            // set the date to 0 so that the zip file is deterministic
-            archive.glob(
-              "**",
+            const files = [];
+
+            for (const item of [
               {
-                cwd: bundle,
+                from: bundle,
+                to: ".",
+                isDir: true,
+              },
+              ...(!dev ? copyFiles : []),
+            ]) {
+              if (!item.isDir) {
+                files.push({
+                  from: item.from,
+                  to: item.to,
+                });
+              }
+              const found = await glob("**", {
+                cwd: item.from,
                 dot: true,
                 ignore:
                   sourcemaps?.map((item) => path.relative(bundle, item)) || [],
-              },
-              { date: new Date(0), mode: 0o777 },
-            );
+              });
+              files.push(
+                ...found.map((file) => ({
+                  from: path.join(item.from, file),
+                  to: path.join(item.to, file),
+                })),
+              );
+            }
+            files.sort((a, b) => a.to.localeCompare(b.to));
+            for (const file of files) {
+              archive.file(file.from, {
+                name: file.to,
+                date: new Date(0),
+              });
+            }
 
             // Add handler wrapper into the zip
             if (wrapper) {
@@ -1940,15 +2012,6 @@ export class Function extends Component implements Link.Linkable {
               });
             }
 
-            // Add copyFiles into the zip
-            copyFiles.forEach(async (entry) => {
-              entry.isDir
-                ? archive.directory(entry.from, entry.to, { date: new Date(0) })
-                : archive.file(entry.from, {
-                    name: entry.to,
-                    date: new Date(0),
-                  });
-            });
             await archive.finalize();
           });
 
@@ -2071,7 +2134,18 @@ export class Function extends Component implements Link.Linkable {
                       (ref) => ref?.replace(":latest", ""),
                     ),
                     imageConfig: {
-                      commands: [handler],
+                      commands: [
+                        all([handler, runtime]).apply(([handler, runtime]) => {
+                          // If a python container image we have to rewrite the handler path so lambdaric is happy
+                          // This means no leading . and replace all / with .
+                          if (isContainer && runtime.includes("python")) {
+                            return handler
+                              .replace(/\.\//g, "")
+                              .replace(/\//g, ".");
+                          }
+                          return handler;
+                        }),
+                      ],
                     },
                   }
                 : {
@@ -2079,7 +2153,9 @@ export class Function extends Component implements Link.Linkable {
                     s3Bucket: zipAsset!.bucket,
                     s3Key: zipAsset!.key,
                     handler: unsecret(handler),
-                    runtime,
+                    runtime: runtime.apply((v) =>
+                      v === "go" ? "provided.al2023" : v,
+                    ),
                   }),
             },
             { parent },

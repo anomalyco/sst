@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+
+	"github.com/sst/sst/v3/internal/fs"
 )
 
 type Package struct {
@@ -38,4 +40,40 @@ func Get(name string, version string) (*Package, error) {
 		return nil, err
 	}
 	return &data, nil
+}
+
+func DetectPackageManager(dir string) (string, string) {
+	options := []struct {
+		search string
+		name   string
+	}{
+		{
+			search: "package-lock.json",
+			name:   "npm",
+		},
+		{
+			search: "yarn.lock",
+			name:   "yarn",
+		},
+		{
+			search: "pnpm-lock.yaml",
+			name:   "pnpm",
+		},
+		{
+			search: "bun.lockb",
+			name:   "bun",
+		},
+		{
+			search: "bun.lock",
+			name:   "bun",
+		},
+	}
+	for _, option := range options {
+		lock, err := fs.FindUp(dir, option.search)
+		if err != nil {
+			continue
+		}
+		return option.name, lock
+	}
+	return "", ""
 }

@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 
 	"github.com/creack/pty"
@@ -32,7 +33,6 @@ type Terminal struct {
 	mouseMode         MouseMode
 	mouseExtMode      MouseExtMode
 	logFile           *os.File
-	theme             *Theme
 	running           bool
 	shell             string
 	initialCommand    string
@@ -43,13 +43,12 @@ func New(options ...Option) *Terminal {
 	term := &Terminal{
 		processChan: make(chan MeasuredRune, 0xffff),
 		closeChan:   make(chan struct{}),
-		theme:       &Theme{},
 	}
 	for _, opt := range options {
 		opt(term)
 	}
-	fg := term.theme.DefaultForeground()
-	bg := term.theme.DefaultBackground()
+	fg := DefaultForeground()
+	bg := DefaultBackground()
 	term.buffers = []*Buffer{
 		NewBuffer(1, 1, 0xffff, fg, bg),
 		NewBuffer(1, 1, 0xffff, fg, bg),
@@ -70,8 +69,8 @@ func (t *Terminal) log(line string, params ...interface{}) {
 }
 
 func (t *Terminal) reset() {
-	fg := t.theme.DefaultForeground()
-	bg := t.theme.DefaultBackground()
+	fg := DefaultForeground()
+	bg := DefaultBackground()
 	t.buffers = []*Buffer{
 		NewBuffer(1, 1, 0xffff, fg, bg),
 		NewBuffer(1, 1, 0xffff, fg, bg),
@@ -92,10 +91,6 @@ func (t *Terminal) WriteToPty(data []byte) error {
 
 func (t *Terminal) GetTitle() string {
 	return t.windowManipulator.GetTitle()
-}
-
-func (t *Terminal) Theme() *Theme {
-	return t.theme
 }
 
 // write takes data from StdOut of the child shell and processes it
@@ -132,9 +127,8 @@ func (t *Terminal) SetSize(rows, cols uint16) error {
 
 // Run starts the terminal/shell proxying process
 func (t *Terminal) Run(updateChan chan struct{}, rows uint16, cols uint16) error {
-
 	os.Setenv("TERM", "xterm-256color")
-
+	os.Setenv("COLORTERM", "truecolor")
 	t.updateChan = updateChan
 
 	if t.shell == "" {
@@ -145,9 +139,9 @@ func (t *Terminal) Run(updateChan chan struct{}, rows uint16, cols uint16) error
 	}
 
 	// Create arbitrary command.
-	c := exec.Command(t.shell)
+	fields := strings.Fields(t.shell)
+	c := exec.Command(fields[0], fields[1:]...)
 	c.Env = os.Environ()
-	c.Env = append(c.Env, "COLORTERM=truecolor")
 
 	// Start the command with a pty.
 	var err error

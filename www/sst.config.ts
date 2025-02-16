@@ -19,12 +19,14 @@ export default $config({
           return { stage: "production" };
         }
       },
-      workflow(ctx) {
-        ctx.install();
-        ctx.shell("goenv install 1.21.3 && goenv global 1.21.3");
-        ctx.shell("cd ../platform && ./scripts/build");
-        ctx.shell("bun i sst-linux-x64");
-        ctx.deploy();
+      async workflow({ $, event }) {
+        await $`bun i`;
+        await $`goenv install 1.21.3 && goenv global 1.21.3`;
+        await $`cd ../platform && ./scripts/build`;
+        await $`bun i sst-linux-x64`;
+        event.action === "removed"
+          ? await $`bun sst remove`
+          : await $`bun sst deploy`;
       },
     },
   },
@@ -71,7 +73,41 @@ export default $config({
       },
     };
 
-    // Stripe .html from /blog
+    // Redirect /u/* to api.console.sst.dev/link/*
+    const redirectToConsoleBehavior = {
+      targetOriginId: "redirect",
+      viewerProtocolPolicy: "redirect-to-https",
+      allowedMethods: ["GET", "HEAD", "OPTIONS"],
+      cachedMethods: ["GET", "HEAD"],
+      functionAssociations: [
+        {
+          eventType: "viewer-request",
+          functionArn: new aws.cloudfront.Function("ConsoleRedirect", {
+            runtime: "cloudfront-js-2.0",
+            code: [
+              `async function handler(event) {`,
+              `  const request = event.request;`,
+              // ie. request.uri is /u/123
+              `  return {`,
+              `    statusCode: 302,`,
+              `    statusDescription: 'Found',`,
+              `    headers: {`,
+              `      location: { value: "https://api.console.sst.dev/link" + request.uri }`,
+              `    },`,
+              `  };`,
+              `}`,
+            ].join("\n"),
+          }).arn,
+        },
+      ],
+      forwardedValues: {
+        queryString: true,
+        headers: ["Origin"],
+        cookies: { forward: "none" },
+      },
+    };
+
+    // Strip .html from /blog
     const stripHtmlBehavior = {
       targetOriginId: "redirect",
       viewerProtocolPolicy: "redirect-to-https",
@@ -139,6 +175,7 @@ export default $config({
             { pathPattern: "/examples*", ...redirectToGuideBehavior },
             { pathPattern: "/chapters*", ...redirectToGuideBehavior },
             { pathPattern: "/archives*", ...redirectToGuideBehavior },
+            { pathPattern: "/u/*", ...redirectToConsoleBehavior },
           ]);
         },
       },
