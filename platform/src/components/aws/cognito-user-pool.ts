@@ -236,35 +236,61 @@ export interface CognitoUserPoolArgs {
    */
   smsAuthenticationMessage?: Input<string>;
   /**
-   * The message template for Email messages sent to users who are being authenticated.
-   *
-   * The template must include the `{####}` placeholder, which will be replaced with the
-   * verification code.
-   *
-   * @default The verification code to your new account is {####}
-   * @example
-   *
-   * ```ts
-   * {
-   *   emailVerificationMessage: "The verification code to your new account is {####}"
-   * }
-   * ```
+   * Configure the verification message sent to users who are being authenticated.
    */
-  emailVerificationMessage?: Input<string>;
-  /**
-   * Subject line for Email messages sent to users who are being authenticated.
-   *
-   *
-   * @default Verify your new account
-   * @example
-   *
-   * ```ts
-   * {
-   *   emailVerificationSubject: "Verify your new account"
-   * }
-   * ```
-   */
-  emailVerificationSubject?: Input<string>;
+  verify?: Input<{
+    /**
+     * Subject line for Email messages sent to users who are being authenticated.
+     *
+     * @default `"Verify your new account"`
+     * @example
+     *
+     * ```ts
+     * {
+     *   verify: {
+     *     emailSubject: "Verify your new Awesome account"
+     *   }
+     * }
+     * ```
+     */
+    emailSubject?: Input<string>;
+    /**
+     * The template for email messages sent to users who are being authenticated.
+     *
+     * The template must include the `{####}` placeholder, which will be replaced with the
+     * verification code.
+     *
+     * @default `"The verification code to your new account is {####}"`
+     * @example
+     *
+     * ```ts
+     * {
+     *   verify: {
+     *     emailMessage: "The verification code to your new Awesome account is {####}"
+     *   }
+     * }
+     * ```
+     */
+    emailMessage?: Input<string>;
+    /**
+     * The template for SMS messages sent to users who are being authenticated.
+     *
+     * The template must include the `{####}` placeholder, which will be replaced with the
+     * verification code.
+     *
+     * @default `"The verification code to your new account is {####}"`
+     * @example
+     *
+     * ```ts
+     * {
+     *   verify: {
+     *     smsMessage: "The verification code to your new Awesome account is {####}"
+     *   }
+     * }
+     * ```
+     */
+    smsMessage?: Input<string>;
+  }>;
   /**
    * Enable software token MFA for the User Pool.
    *
@@ -473,6 +499,7 @@ export class CognitoUserPool extends Component implements Link.Linkable {
 
     normalizeAliasesAndUsernames();
     const triggers = normalizeTriggers();
+    const verify = normalizeVerify();
     const userPool = createUserPool();
 
     this.constructorOpts = opts;
@@ -503,6 +530,23 @@ export class CognitoUserPool extends Component implements Link.Linkable {
           ...triggers,
           preTokenGenerationVersion:
             triggers.preTokenGenerationVersion === "v2" ? "V2_0" : "V1_0",
+        };
+      });
+    }
+
+    function normalizeVerify() {
+      if (!args.verify) return;
+
+      return output(args.verify).apply((verify) => {
+        return {
+          defaultEmailOption: "CONFIRM_WITH_CODE",
+          emailMessage:
+            verify.emailMessage ??
+            "The verification code to your new account is {####}",
+          emailSubject: verify.emailSubject ?? "Verify your new account",
+          smsMessage:
+            verify.smsMessage ??
+            "The verification code to your new account is {####}",
         };
       });
     }
@@ -561,16 +605,7 @@ export class CognitoUserPool extends Component implements Link.Linkable {
                 emailConfiguration: {
                   emailSendingAccount: "COGNITO_DEFAULT",
                 },
-                verificationMessageTemplate: {
-                  defaultEmailOption: "CONFIRM_WITH_CODE",
-                  emailMessage:
-                    args.emailVerificationMessage ??
-                    "The verification code to your new account is {####}",
-                  emailSubject:
-                    args.emailVerificationSubject ?? "Verify your new account",
-                  smsMessage:
-                    "The verification code to your new account is {####}",
-                },
+                verificationMessageTemplate: verify,
                 userPoolAddOns: {
                   advancedSecurityMode: output(args.advancedSecurity).apply(
                     (v) => (v ?? "off").toUpperCase(),
@@ -594,17 +629,17 @@ export class CognitoUserPool extends Component implements Link.Linkable {
                         triggers.customEmailSender === undefined
                           ? undefined
                           : {
-                            lambdaArn: createTrigger("customEmailSender")!,
-                            lambdaVersion: "V1_0",
-                          },
+                              lambdaArn: createTrigger("customEmailSender")!,
+                              lambdaVersion: "V1_0",
+                            },
                       customMessage: createTrigger("customMessage"),
                       customSmsSender:
                         triggers.customSmsSender === undefined
                           ? undefined
                           : {
-                            lambdaArn: createTrigger("customSmsSender")!,
-                            lambdaVersion: "V1_0",
-                          },
+                              lambdaArn: createTrigger("customSmsSender")!,
+                              lambdaVersion: "V1_0",
+                            },
                       defineAuthChallenge: createTrigger("defineAuthChallenge"),
                       postAuthentication: createTrigger("postAuthentication"),
                       postConfirmation: createTrigger("postConfirmation"),
@@ -614,9 +649,9 @@ export class CognitoUserPool extends Component implements Link.Linkable {
                         triggers.preTokenGeneration === undefined
                           ? undefined
                           : {
-                            lambdaArn: createTrigger("preTokenGeneration")!,
-                            lambdaVersion: triggers.preTokenGenerationVersion,
-                          },
+                              lambdaArn: createTrigger("preTokenGeneration")!,
+                              lambdaVersion: triggers.preTokenGenerationVersion,
+                            },
                       userMigration: createTrigger("userMigration"),
                       verifyAuthChallengeResponse: createTrigger(
                         "verifyAuthChallengeResponse",
