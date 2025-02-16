@@ -294,7 +294,7 @@ export interface QueueSubscriberArgs {
 
 interface QueueRef {
   ref: true;
-  queueArn: Input<string>;
+  queueUrl: Input<string>;
 }
 
 /**
@@ -379,7 +379,7 @@ export class Queue extends Component implements Link.Linkable {
 
     function reference() {
       const ref = args as QueueRef;
-      const queue = sqs.Queue.get(`${name}Queue`, ref.queueArn, undefined, {
+      const queue = sqs.Queue.get(`${name}Queue`, ref.queueUrl, undefined, {
         parent: self,
       });
 
@@ -606,7 +606,7 @@ export class Queue extends Component implements Link.Linkable {
   }
 
   /**
-   * Reference an existing SQS Queue with its queue ARN. This is useful when you create a
+   * Reference an existing SQS Queue with its queue URL. This is useful when you create a
    * queue in one stage and want to share it in another stage. It avoids having to create
    * a new queue in the other stage.
    *
@@ -615,7 +615,7 @@ export class Queue extends Component implements Link.Linkable {
    * :::
    *
    * @param name The name of the component.
-   * @param queueArn The ARN of the existing SQS Queue.
+   * @param queueUrl The URL of the existing SQS Queue.
    * @param opts? Resource options.
    *
    * @example
@@ -624,27 +624,28 @@ export class Queue extends Component implements Link.Linkable {
    *
    * ```ts title="sst.config.ts"
    * const queue = $app.stage === "frank"
-   *   ? sst.aws.Queue.get("MyQueue", "arn:aws:sqs:us-east-1:123456789012:MyQueue")
+   *   ? sst.aws.Queue.get("MyQueue", "https://sqs.us-east-1.amazonaws.com/123456789012/MyQueue")
    *   : new sst.aws.Queue("MyQueue");
    * ```
    *
-   * Here `arn:aws:sqs:us-east-1:123456789012:MyQueue` is the ARN of the queue created in
-   * the `dev` stage. You can find this by outputting the queue ARN in the `dev` stage.
+   * Here `https://sqs.us-east-1.amazonaws.com/123456789012/MyQueue` is the URL of the queue
+   * created in the `dev` stage. You can find this by outputting the queue URL in the `dev`
+   * stage.
    *
    * ```ts title="sst.config.ts"
-   * return queue.arn;
+   * return queue.url;
    * ```
    */
   public static get(
     name: string,
-    queueArn: Input<string>,
+    queueUrl: Input<string>,
     opts?: ComponentResourceOptions,
   ) {
     return new Queue(
       name,
       {
         ref: true,
-        queueArn,
+        queueUrl,
       } as QueueArgs,
       opts,
     );
