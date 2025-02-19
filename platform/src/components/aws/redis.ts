@@ -458,7 +458,11 @@ Listening on "${dev.host}:${dev.port}"...`,
   public get host() {
     return this.dev
       ? this.dev.host
-      : this.cluster!.configurationEndpointAddress;
+      : this.cluster!.clusterMode.apply((mode) => {
+        return mode === "disabled"
+          ? this.cluster!.primaryEndpointAddress
+          : this.cluster!.configurationEndpointAddress
+    });
   }
 
   /**
