@@ -27,7 +27,7 @@ import { dynamodb, lambda } from "@pulumi/aws";
 import { URL_UNAVAILABLE } from "./linkable.js";
 import { getOpenNextPackage } from "../../util/compare-semver.js";
 
-const DEFAULT_OPEN_NEXT_VERSION = "3.4.1";
+const DEFAULT_OPEN_NEXT_VERSION = "3.4.2";
 const DEFAULT_CACHE_POLICY_ALLOWED_HEADERS = ["x-open-next-cache-key"];
 
 type BaseFunction = {
@@ -327,7 +327,7 @@ export interface NextjsArgs extends SsrSiteArgs {
    * @example
    * ```js
    * {
-   *   openNextVersion: "3.4.1"
+   *   openNextVersion: "3.4.2"
    * }
    * ```
    */
