@@ -247,7 +247,7 @@ func (t *Terminal) processRunes(runes ...MeasuredRune) (renderRequired bool) {
 			renderRequired = true
 		case 0xe: //shiftOut
 			t.activeBuffer.currentCharset = 1
-		case 0xf: //shiftIn
+		case 0xf: //shifting, shift in
 			t.activeBuffer.currentCharset = 0
 		default:
 			if r.Rune < 0x20 {
