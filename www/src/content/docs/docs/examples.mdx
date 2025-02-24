@@ -2847,7 +2847,7 @@ dev: {
 By providing the `dev` prop for Redis, SST will use the local Redis server and
 not deploy a new Redis ElastiCache cluster when running `sst dev`.
 
-It also allows us to access Redis through a Reosurce `link`.
+It also allows us to access Redis through a Resource `link`.
 
 ```ts title="index.ts"
 const client = Resource.MyRedis.host === "localhost"
@@ -3071,7 +3071,7 @@ We are deploying a service to a cluster in a VPC. And we can access it within th
 the service's cloud map hostname.
 
 ```ts title="lambda.ts"
-const reponse = await fetch(`http://${Resource.MyService.service}`);
+const response = await fetch(`http://${Resource.MyService.service}`);
 ```
 
 Here we are accessing it through a Lambda function that's linked to the service and is
