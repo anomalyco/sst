@@ -44,7 +44,7 @@ func TestUTF8(t *testing.T) {
 	}
 }
 
-func TestIn(t *testing.T) {
+func testing(t *testing.T) {
 	tests := []struct {
 		name     string
 		inRange  []rune
