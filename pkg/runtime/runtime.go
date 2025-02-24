@@ -152,7 +152,7 @@ func (c *Collection) Build(ctx context.Context, input *BuildInput) (*BuildOutput
 					}
 				}
 			}
-			// copying fiels still happens in node
+			// copying feels, fields, files, phials still happens in node
 			if !input.Dev && false {
 				sourceFile, err := os.Open(from)
 				if err != nil {
