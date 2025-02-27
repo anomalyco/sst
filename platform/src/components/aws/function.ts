@@ -49,37 +49,53 @@ import { Efs } from "./efs.js";
 export type FunctionArn = `arn:${string}` & {};
 
 export type FunctionPermissionArgs = {
-  /**
-   * Configures whether the permission is allowed or denied.
-   * @default `"allow"`
-   * @example
-   * ```ts
-   * {
-   *   effect: "deny"
-   * }
-   * ```
-   */
-  effect?: "allow" | "deny";
-  /**
-   * The [IAM actions](https://docs.aws.amazon.com/service-authorization/latest/reference/reference_policies_actions-resources-contextkeys.html#actions_table) that can be performed.
-   * @example
-   * ```js
-   * {
-   *   actions: ["s3:*"]
-   * }
-   * ```
-   */
-  actions: string[];
-  /**
-   * The resourcess specified using the [IAM ARN format](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_identifiers.html).
-   * @example
-   * ```js
-   * {
-   *   resources: ["arn:aws:s3:::my-bucket/*"]
-   * }
-   * ```
-   */
-  resources: Input<string>[];
+	/**
+	 * Configures whether the permission is allowed or denied.
+	 * @default `"allow"`
+	 * @example
+	 * ```ts
+	 * {
+	 *   effect: "deny"
+	 * }
+	 * ```
+	 */
+	effect?: "allow" | "deny";
+	/**
+	 * The [IAM actions](https://docs.aws.amazon.com/service-authorization/latest/reference/reference_policies_actions-resources-contextkeys.html#actions_table) that can be performed.
+	 * @example
+	 * ```js
+	 * {
+	 *   actions: ["s3:*"]
+	 * }
+	 * ```
+	 */
+	actions: string[];
+	/**
+	 * The resourcess specified using the [IAM ARN format](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_identifiers.html).
+	 * @example
+	 * ```js
+	 * {
+	 *   resources: ["arn:aws:s3:::my-bucket/*"]
+	 * }
+	 * ```
+	 */
+	resources: Input<string>[];
+	/**
+	 * Conditions the request has to meet in order to match.
+	 * @example
+	 * ```js
+	 * [{
+	 *   test: "StringLike",
+	 *   variable: "s3:prefix",
+	 *   values: ["home/${aws:username}/*"]
+	 * }]
+	 * ```
+	 */
+	conditions?: Input<{
+		test: string;
+		variable: string;
+		values: Input<string>[];
+	}>[];
 };
 
 interface FunctionUrlCorsArgs {
@@ -1759,44 +1775,45 @@ export class Function extends Component implements Link.Linkable {
         );
       }
 
-      const policy = all([args.permissions || [], linkPermissions, dev]).apply(
-        ([argsPermissions, linkPermissions, dev]) =>
-          iam.getPolicyDocumentOutput({
-            statements: [
-              ...argsPermissions,
-              ...linkPermissions,
-              ...(dev
-                ? [
-                    {
-                      effect: "allow",
-                      actions: ["appsync:*"],
-                      resources: ["*"],
-                    },
-                    {
-                      effect: "allow",
-                      actions: ["iot:*"],
-                      resources: ["*"],
-                    },
-                    {
-                      effect: "allow",
-                      actions: ["s3:*"],
-                      resources: [
-                        interpolate`arn:${partition}:s3:::${bootstrapData.asset}`,
-                        interpolate`arn:${partition}:s3:::${bootstrapData.asset}/*`,
-                      ],
-                    },
-                  ]
-                : []),
-            ].map((item) => ({
-              effect: (() => {
-                const effect = item.effect ?? "allow";
-                return effect.charAt(0).toUpperCase() + effect.slice(1);
-              })(),
-              actions: item.actions,
-              resources: item.resources,
-            })),
-          }),
-      );
+			const policy = all([args.permissions || [], linkPermissions, dev]).apply(
+				([argsPermissions, linkPermissions, dev]) =>
+					iam.getPolicyDocumentOutput({
+						statements: [
+							...argsPermissions,
+							...linkPermissions,
+							...(dev
+								? [
+									{
+										effect: "allow",
+										actions: ["appsync:*"],
+										resources: ["*"],
+									},
+									{
+										effect: "allow",
+										actions: ["iot:*"],
+										resources: ["*"],
+									},
+									{
+										effect: "allow",
+										actions: ["s3:*"],
+										resources: [
+											interpolate`arn:${partition}:s3:::${bootstrapData.asset}`,
+											interpolate`arn:${partition}:s3:::${bootstrapData.asset}/*`,
+										],
+									},
+								]
+								: []),
+						].map((item) => ({
+							effect: (() => {
+								const effect = item.effect ?? "allow";
+								return effect.charAt(0).toUpperCase() + effect.slice(1);
+							})(),
+							actions: item.actions,
+							resources: item.resources,
+							...item.conditions && { conditions: item.conditions },
+						})),
+					}),
+			);
 
       return new iam.Role(
         ...transform(
