@@ -81,7 +81,7 @@ export type FunctionPermissionArgs = {
 	 */
 	resources: Input<string>[];
 	/**
-	 * Conditions the request has to meet in order to match.
+	 * [Conditions](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_condition.html) the request has to meet in order to match.
 	 * @example
 	 * ```js
 	 * [{
