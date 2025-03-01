@@ -1,0 +1,13 @@
+[project]
+name = "lib"
+version = "0.1.0"
+description = "Core library for Python Services"
+authors = [
+    { name = "Akshay Petta", email = "33671231+apetta@users.noreply.github.com" },
+]
+requires-python = "==3.11.*"
+dependencies = ["requests>=2.32.3"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

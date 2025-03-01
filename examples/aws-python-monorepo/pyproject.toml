@@ -1,0 +1,17 @@
+[project]
+name = "aws-python-monorepo"
+version = "0.1.0"
+description = "An example monorepo app for python deployments on AWS w/ SST"
+authors = [
+    { name = "Akshay Petta", email = "33671231+apetta@users.noreply.github.com" },
+]
+dependencies = []
+
+# CRITICAL: It is recommended to specify your python version to match your Lambda runtime
+requires-python = "==3.11.*"
+
+[tool.uv.workspace]
+members = ["apps/backend", "packages/lib"]
+
+[tool.uv.sources]
+sst = { git = "https://github.com/walln/sst", branch = "walln/python-improvements", subdirectory = "sdk/python" }
