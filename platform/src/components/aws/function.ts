@@ -915,6 +915,20 @@ export interface FunctionArgs {
      * ```
      */
     container?: Input<boolean>;
+
+    /**
+     * The path prefix to strip from the handler path for monorepo setups.
+     * This is useful when your Python code is in a subdirectory of a monorepo.
+     * @example
+     * ```ts
+     * {
+     *   python: {
+     *     monorepoPath: "apps/python-backend/src"
+     *   }
+     * }
+     * ```
+     */
+    monorepoPath?: Input<string>;
   }>;
   /**
    * Add additional files to copy into the function package. Takes a list of objects

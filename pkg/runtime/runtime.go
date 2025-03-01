@@ -57,6 +57,7 @@ type BuildOutput struct {
 	Handler    string   `json:"handler"`
 	Errors     []string `json:"errors"`
 	Sourcemaps []string `json:"sourcemaps"`
+	Properties json.RawMessage `json:"properties"`
 }
 
 type RunInput struct {

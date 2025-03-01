@@ -129,6 +129,35 @@ type PyProject struct {
 	} `toml:"project"`
 }
 
+
+func (r *PythonRuntime) stripMonorepoPrefix(handler string, input *runtime.RunInput) string {
+    // Extract monorepoPath from the build properties if available
+    if input.Build != nil && input.Build.Properties != nil {
+
+        var config struct {
+            MonorepoPath string `json:"monorepoPath"`
+        }
+        
+        if err := json.Unmarshal(input.Build.Properties, &config); err == nil {
+            // If monorepoPath is defined, try to strip prefix
+            if config.MonorepoPath != "" {
+
+                prefix := config.MonorepoPath + "/"
+                if strings.HasPrefix(handler, prefix) {
+                    stripped := strings.TrimPrefix(handler, prefix)
+
+                    return stripped
+                }
+            }
+        } else {
+            slog.Debug("failed to unmarshal properties for monorepo config", "error", err)
+        }
+    }
+
+    // If no monorepo path matched or there was an error, return the original handler
+    return handler
+}
+
 func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runtime.Worker, error) {
 	// We need the lambda bridge in the artifact directory so that we can run the handler
 	// without having to manually isolate the runtime, So if it is not present then we need to copy it from
@@ -150,7 +179,7 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 		"run",
 		"--with=requests",
 		lambdaBridgePath,
-		filepath.Join(input.Build.Out, input.Build.Handler),
+		filepath.Join(input.Build.Out, r.stripMonorepoPrefix(input.Build.Handler, input)),
 		input.WorkerID,
 	)
 	cmd.Env = append(input.Env, "AWS_LAMBDA_RUNTIME_API="+input.Server)
@@ -333,6 +362,7 @@ func (r *PythonRuntime) CreateBuildAsset(ctx context.Context, input *runtime.Bui
 			Handler:    adjustedHandler,
 			Errors:     errors,
 			Sourcemaps: sourcemaps,
+			Properties: input.Properties,
 		}, nil
 	} else {
 		// 5. Check if there is a Dockerfile in the handler directory
@@ -378,6 +408,7 @@ func (r *PythonRuntime) CreateBuildAsset(ctx context.Context, input *runtime.Bui
 			Handler:    adjustedHandler,
 			Errors:     errors,
 			Sourcemaps: sourcemaps,
+			Properties: input.Properties,
 		}, nil
 	}
 }
