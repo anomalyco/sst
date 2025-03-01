@@ -16,4 +16,8 @@ class Resource:
         name: str
         type: str
         url: str
+    class MyPythonContainerApi:
+        name: str
+        type: str
+        url: str
 

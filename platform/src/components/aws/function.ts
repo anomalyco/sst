@@ -2157,24 +2157,11 @@ export class Function extends Component implements Link.Linkable {
                           // If a python container image we have to rewrite the handler path so lambdaric is happy
                           // This means no leading . and replace all / with .
                           if (isContainer && runtime.includes("python")) {
-                            // First strip the monorepo prefix if it exists
-                            let processedHandler = handler;
-                            if (
-                              monorepoPath &&
-                              handler.startsWith(monorepoPath)
-                            ) {
-                              processedHandler = handler.substring(
-                                monorepoPath.length,
-                              );
-                              // Remove leading slash if present after stripping prefix
-                              if (processedHandler.startsWith("/")) {
-                                processedHandler =
-                                  processedHandler.substring(1);
-                              }
-                            }
-
                             // Then apply the standard transformations for lambdaric
-                            return processedHandler
+                            return handlePythonMonorepoPath(
+                              handler,
+                              monorepoPath,
+                            )
                               .replace(/\.\//g, "")
                               .replace(/\//g, ".");
                           }
@@ -2187,7 +2174,19 @@ export class Function extends Component implements Link.Linkable {
                     packageType: "Zip",
                     s3Bucket: zipAsset!.bucket,
                     s3Key: zipAsset!.key,
-                    handler: unsecret(handler),
+                    handler: unsecret(
+                      all([handler, runtime, args.python?.monorepoPath]).apply(
+                        ([handler, runtime, monorepoPath]) => {
+                          if (runtime.includes("python")) {
+                            return handlePythonMonorepoPath(
+                              handler,
+                              monorepoPath,
+                            );
+                          }
+                          return handler;
+                        },
+                      ),
+                    ),
                     runtime: runtime.apply((v) =>
                       v === "go" ? "provided.al2023" : v,
                     ),
@@ -2215,6 +2214,17 @@ export class Function extends Component implements Link.Linkable {
           );
         },
       );
+    }
+
+    function handlePythonMonorepoPath(handler: string, monorepoPath?: string) {
+      let processedHandler = handler;
+      if (monorepoPath && handler.startsWith(monorepoPath)) {
+        processedHandler = handler.substring(monorepoPath.length);
+        if (processedHandler.startsWith("/")) {
+          processedHandler = processedHandler.substring(1);
+        }
+      }
+      return processedHandler;
     }
 
     function createUrl() {
