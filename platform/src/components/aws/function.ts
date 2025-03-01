@@ -2149,11 +2149,32 @@ export class Function extends Component implements Link.Linkable {
                     ),
                     imageConfig: {
                       commands: [
-                        all([handler, runtime]).apply(([handler, runtime]) => {
+                        all([
+                          handler,
+                          runtime,
+                          args.python?.monorepoPath,
+                        ]).apply(([handler, runtime, monorepoPath]) => {
                           // If a python container image we have to rewrite the handler path so lambdaric is happy
                           // This means no leading . and replace all / with .
                           if (isContainer && runtime.includes("python")) {
-                            return handler
+                            // First strip the monorepo prefix if it exists
+                            let processedHandler = handler;
+                            if (
+                              monorepoPath &&
+                              handler.startsWith(monorepoPath)
+                            ) {
+                              processedHandler = handler.substring(
+                                monorepoPath.length,
+                              );
+                              // Remove leading slash if present after stripping prefix
+                              if (processedHandler.startsWith("/")) {
+                                processedHandler =
+                                  processedHandler.substring(1);
+                              }
+                            }
+
+                            // Then apply the standard transformations for lambdaric
+                            return processedHandler
                               .replace(/\.\//g, "")
                               .replace(/\//g, ".");
                           }
