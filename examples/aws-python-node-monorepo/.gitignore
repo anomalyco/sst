@@ -1,5 +1,10 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
+# Node.js
+node_modules
+.pnp
+.pnp.js
+
 # Python
 .venv
 __pycache__
@@ -11,6 +16,9 @@ __pycache__
 
 # sst
 .sst
+
+# Debug
+npm-debug.log*
 
 # Misc
 .DS_Store

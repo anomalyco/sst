@@ -1,0 +1,18 @@
+{
+  "name": "@repo/lib",
+  "version": "0.0.0",
+  "author": {
+    "name": "Akshay Petta",
+    "email": "33671231+apetta@users.noreply.github.com"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "~22.13.1",
+    "typescript": "~5.7.3"
+  },
+  "private": true,
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "type": "module"
+}

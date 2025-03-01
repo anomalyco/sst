@@ -1,5 +1,5 @@
 [project]
-name = "aws-python-monorepo"
+name = "aws-python-node-monorepo"
 version = "0.1.0"
 description = "An example monorepo app for python deployments on AWS w/ SST"
 authors = [
@@ -11,7 +11,7 @@ dependencies = []
 requires-python = "==3.11.*"
 
 [tool.uv.workspace]
-members = ["apps/backend", "packages/lib"]
+members = ["apps/python-backend", "packages/python-lib"]
 
 [tool.uv.sources]
 sst = { git = "https://github.com/walln/sst", branch = "walln/python-improvements", subdirectory = "sdk/python" }

@@ -12,6 +12,10 @@ class Resource:
     class MyLinkableValue:
         foo: str
         type: str
+    class MyNodeApi:
+        name: str
+        type: str
+        url: str
     class MyPythonApi:
         name: str
         type: str

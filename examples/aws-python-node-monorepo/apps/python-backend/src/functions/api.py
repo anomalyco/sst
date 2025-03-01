@@ -8,5 +8,5 @@ def handler(event, context):
 
     return {
         "statusCode": 200,
-        "body": f"Hello, World! - Linkable value: {Resource.MyLinkableValue.foo}",
+        "body": f"Hello from Python! - Linkable value: {Resource.MyLinkableValue.foo}",
     }

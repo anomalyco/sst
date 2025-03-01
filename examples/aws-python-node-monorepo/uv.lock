@@ -4,13 +4,13 @@ requires-python = "==3.11.*"
 
 [manifest]
 members = [
-    "aws-python-monorepo",
+    "aws-python-node-monorepo",
     "functions",
     "lib",
 ]
 
 [[package]]
-name = "aws-python-monorepo"
+name = "aws-python-node-monorepo"
 version = "0.1.0"
 source = { virtual = "." }
 
@@ -106,7 +106,7 @@ wheels = [
 [[package]]
 name = "functions"
 version = "0.1.0"
-source = { editable = "apps/backend" }
+source = { editable = "apps/python-backend" }
 dependencies = [
     { name = "lib" },
     { name = "sst" },
@@ -114,7 +114,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "lib", editable = "packages/lib" },
+    { name = "lib", editable = "packages/python-lib" },
     { name = "sst", git = "https://github.com/walln/sst?subdirectory=sdk%2Fpython&branch=walln%2Fpython-improvements" },
 ]
 
@@ -130,7 +130,7 @@ wheels = [
 [[package]]
 name = "lib"
 version = "0.1.0"
-source = { editable = "packages/lib" }
+source = { editable = "packages/python-lib" }
 dependencies = [
     { name = "requests" },
 ]

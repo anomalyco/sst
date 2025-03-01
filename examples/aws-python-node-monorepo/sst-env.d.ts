@@ -13,7 +13,17 @@ declare module "sst" {
       "foo": string
       "type": "sst.sst.Linkable"
     }
+    "MyNodeApi": {
+      "name": string
+      "type": "sst.aws.Function"
+      "url": string
+    }
     "MyPythonApi": {
+      "name": string
+      "type": "sst.aws.Function"
+      "url": string
+    }
+    "MyPythonContainerApi": {
       "name": string
       "type": "sst.aws.Function"
       "url": string

@@ -1,0 +1,19 @@
+{
+  "name": "node-backend",
+  "version": "0.0.1",
+  "dependencies": {
+    "@repo/lib": "workspace:*",
+    "sst": "latest",
+    "zod": "~3.24.2"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "~8.10.147",
+    "@types/node": "~22.13.1",
+    "typescript": "~5.7.3"
+  },
+  "private": true,
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "type": "module"
+}

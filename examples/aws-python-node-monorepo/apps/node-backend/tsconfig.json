@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "baseUrl": "./",
+    "paths": {
+      "@repo/lib/*": ["../../packages/node-lib/src/*"]
+    }
+  },
+}
