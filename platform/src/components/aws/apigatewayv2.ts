@@ -1185,11 +1185,11 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
    * :::
    *
    * @param rawRoute The path for the route.
-   * @param arn The ARN of the AWS Load Balander or Cloud Map service.
+   * @param arn The ARN of the AWS Load Balancer or Cloud Map service.
    * @param args Configure the route.
    *
    * @example
-   * Add a route to Application Load Balander.
+   * Add a route to Application Load Balancer.
    *
    * ```js title="sst.config.ts"
    * const loadBalancerArn = "arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/my-load-balancer/50dc6c495c0c9188";

@@ -330,7 +330,7 @@ export interface FunctionArgs {
    * Path to the handler for the function.
    *
    * - For Node.js this is in the format `{path}/{file}.{method}`.
-   * - For Golang this is `{path}`.
+   * - For Golang this is `{path}` to the Go module.
    *
    * @example
    *
@@ -362,12 +362,14 @@ export interface FunctionArgs {
    *
    * ```js
    * {
-   *   handler: "packages/functions/src"
+   *   handler: "packages/functions/go/some_module"
    * }
    * ```
    *
-   * Where `packages/functions/src` is the path to your Go app. And the path is relative to the
-   * root your repo or the `sst.config.ts`.
+   * Where `packages/functions/go/some_module` is the path to the Go module. This
+   * includes the name of the module in your `go.mod`. So in this case your `go.mod`
+   * might be in `packages/functions/go` and `some_module` is the name of the
+   * module.
    */
   handler: Input<string>;
   /**

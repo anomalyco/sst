@@ -490,7 +490,14 @@ interface BucketRef {
  * #### Add a subscriber
  *
  * ```ts title="sst.config.ts"
- * bucket.subscribe("src/subscriber.handler");
+ * bucket.notify({
+ *   notifications: [
+ *     {
+ *       name: "MySubscriber",
+ *       function: "src/subscriber.handler"
+ *     }
+ *   ]
+ * });
  * ```
  *
  * #### Link the bucket to a resource
@@ -620,9 +627,9 @@ export class Bucket extends Component implements Link.Linkable {
               access === "public"
                 ? { type: "*", identifiers: ["*"] }
                 : {
-                    type: "Service",
-                    identifiers: ["cloudfront.amazonaws.com"],
-                  },
+                  type: "Service",
+                  identifiers: ["cloudfront.amazonaws.com"],
+                },
             ],
             actions: ["s3:GetObject"],
             resources: [interpolate`${bucket.arn}/*`],
