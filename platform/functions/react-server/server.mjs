@@ -6,73 +6,7 @@ import * as serverBuild from "./server/index.js";
 
 import { createRequestHandler as createReactRouterRequestHandler } from "react-router";
 
-/**
- * Common binary MIME types
- */
-const binaryTypes = [
-  "application/octet-stream",
-  // Docs
-  "application/epub+zip",
-  "application/msword",
-  "application/pdf",
-  "application/rtf",
-  "application/vnd.amazon.ebook",
-  "application/vnd.ms-excel",
-  "application/vnd.ms-powerpoint",
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  // Fonts
-  "font/otf",
-  "font/woff",
-  "font/woff2",
-  // Images
-  "image/bmp",
-  "image/gif",
-  "image/jpeg",
-  "image/png",
-  "image/tiff",
-  "image/vnd.microsoft.icon",
-  "image/webp",
-  // Audio
-  "audio/3gpp",
-  "audio/aac",
-  "audio/basic",
-  "audio/mpeg",
-  "audio/ogg",
-  "audio/wavaudio/webm",
-  "audio/x-aiff",
-  "audio/x-midi",
-  "audio/x-wav",
-  // Video
-  "video/3gpp",
-  "video/mp2t",
-  "video/mpeg",
-  "video/ogg",
-  "video/quicktime",
-  "video/webm",
-  "video/x-msvideo",
-  // Archives
-  "application/java-archive",
-  "application/vnd.apple.installer+xml",
-  "application/x-7z-compressed",
-  "application/x-apple-diskimage",
-  "application/x-bzip",
-  "application/x-bzip2",
-  "application/x-gzip",
-  "application/x-java-archive",
-  "application/x-rar-compressed",
-  "application/x-tar",
-  "application/x-zip",
-  "application/zip",
-];
-
-function isBinaryType(contentType) {
-  if (!contentType) return false;
-  return binaryTypes.some((t) => contentType.includes(t));
-}
-
-function convertApigRequestToNode(event) {
+function convertLambdaRequestToNode(event) {
   if (event.headers["x-forwarded-host"]) {
     event.headers.host = event.headers["x-forwarded-host"];
   }
@@ -104,57 +38,33 @@ function convertApigRequestToNode(event) {
 }
 
 const createLambdaHandler = (build) => {
-  const requestHandler = createReactRouterRequestHandler(
-    build,
-    process.env.NODE_ENV,
-  );
+  const requestHandler = createReactRouterRequestHandler(build, "production");
 
   return awslambda.streamifyResponse(async (event, responseStream, context) => {
     context.callbackWaitsForEmptyEventLoop = false;
-    const request = convertApigRequestToNode(event);
+    const request = convertLambdaRequestToNode(event);
     const response = await requestHandler(request);
-    const httpResponseMetadata = {
+    const writer = awslambda.HttpResponseStream.from(responseStream, {
       statusCode: response.status,
       headers: {
         ...Object.fromEntries(response.headers.entries()),
         "Transfer-Encoding": "chunked",
       },
-      cookies: accumulateCookies(response.headers),
-    };
+      cookies: response.headers.getSetCookie(),
+    });
+
     if (response.body) {
-      const reader = response.body;
-      const writer = awslambda.HttpResponseStream.from(
-        responseStream,
-        httpResponseMetadata,
-      );
-      await streamToNodeStream(reader.getReader(), responseStream);
-      writer.end();
+      const reader = response.body.getReader();
+      let readResult = await reader.read();
+      while (!readResult.done) {
+        writer.write(readResult.value);
+        readResult = await reader.read();
+      }
+    } else {
+      writer.write(" ");
     }
+    writer.end();
   });
-};
-
-const accumulateCookies = (headers) => {
-  // node >= 19.7.0 with no remix fetch polyfill
-  if (typeof headers.getSetCookie === "function") {
-    return headers.getSetCookie();
-  }
-  // node < 19.7.0 or with remix fetch polyfill
-  const cookies = [];
-  for (let [key, value] of headers.entries()) {
-    if (key === "set-cookie") {
-      cookies.push(value);
-    }
-  }
-  return cookies;
-};
-
-const streamToNodeStream = async (reader, writer) => {
-  let readResult = await reader.read();
-  while (!readResult.done) {
-    writer.write(readResult.value);
-    readResult = await reader.read();
-  }
-  writer.end();
 };
 
 export const handler = createLambdaHandler(serverBuild);
