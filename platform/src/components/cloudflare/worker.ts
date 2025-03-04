@@ -333,7 +333,14 @@ export class Worker extends Component implements Link.Linkable {
           if (b) {
             if (!result[b.binding]) result[b.binding] = [];
             result[b.binding].push({
-              name,
+              // for some reason queue bindings have a different format
+              ...(b.binding === "queueBindings"
+                ? {
+                    binding: name,
+                  }
+                : {
+                    name,
+                  }),
               ...b.properties,
             });
             continue;

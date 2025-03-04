@@ -107,7 +107,13 @@ func Start(ctx context.Context, p *project.Project, server *server.Server) error
 		log.Info("dev not found", "directory", directory)
 		http.Error(w, "dev not found", http.StatusNotFound)
 		return
+	})
 
+	server.Mux.HandleFunc("/api/completed", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("content-type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(complete)
+		return
 	})
 
 	return wg.Wait()
@@ -194,4 +200,22 @@ func Deploy(ctx context.Context, url string) error {
 		return err
 	}
 	return nil
+}
+
+func Completed(ctx context.Context, url string) (*project.CompleteEvent, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", url+"/api/completed", nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var result project.CompleteEvent
+	err = json.NewDecoder(resp.Body).Decode(&result)
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
 }

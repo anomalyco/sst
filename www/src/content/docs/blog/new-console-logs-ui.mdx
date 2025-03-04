@@ -1,0 +1,31 @@
+---
+template: splash
+title: New Console Logs UI
+description: We've updated how you view your application logs in the SST Console.
+author: jay
+lastUpdated: 2025-02-18
+pagefind: false
+---
+
+import { Image } from "astro:assets"
+
+import logsLight from '../../../assets/blog/sst-console-logs-light.png';
+import logsDark from '../../../assets/blog/sst-console-logs-dark.png';
+
+We recently updated the logs UI in the SST Console. We've added the ability to **search**, view **log streams**, and just made it **faster**.
+
+<picture>
+  <source srcset={logsDark.src} media="(prefers-color-scheme: dark)" />
+  <source srcset={logsLight.src} media="(prefers-color-scheme: light)" />
+  <Image src={logsLight} alt="SST Console Logs" />
+</picture>
+
+In the Console, you can view logs from your functions, containers, or any other CloudWatch log groups. We added the ability to:
+
+- **Search these logs** for any string. You can also set a search filter and tail the logs. This helps you debug any issues by triggering your app and watching for the generated logs
+- **View log streams**. From the search results, you can jump to the log stream that the log message is coming from. Typically, for very active log groups, you'll see logs from multiple log streams interleaved together. When you view a specific log stream, you can drill down and just view the logs from that specific invocation or request.
+- **Faster logs**. We've also used one of the newer CloudWatch APIs that makes fetching these logs from your account a lot faster.
+
+---
+
+Check out the [new logs](/docs/console#logs) in the Console.

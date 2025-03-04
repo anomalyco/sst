@@ -22,6 +22,15 @@ var forceExternal = []string{
 	"sharp", "pg-native",
 }
 
+var targetMap = map[string]esbuild.Target{
+	"nodejs22.x": esbuild.ES2023,
+	"nodejs20.x": esbuild.ES2023,
+	"nodejs18.x": esbuild.ES2022,
+	"nodejs16.x": esbuild.ES2021,
+	"nodejs14.x": esbuild.ES2020,
+	"nodejs12.x": esbuild.ES2019,
+}
+
 func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtime.BuildOutput, error) {
 	log := slog.Default().With("service", "runtime.node").With("functionID", input.FunctionID)
 
@@ -117,7 +126,7 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		Sourcemap:   esbuild.SourceMapLinked,
 		Write:       true,
 		Format:      esbuild.FormatESModule,
-		Target:      esbuild.ESNext,
+		Target:      targetMap[input.Runtime],
 		MainFields:  []string{"module", "main"},
 		Banner: map[string]string{
 			"js": strings.Join([]string{
@@ -134,7 +143,7 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 
 	if !isESM {
 		options.Format = esbuild.FormatCommonJS
-		options.Target = esbuild.ESNext
+		options.Target = targetMap[input.Runtime]
 		options.Banner["js"] = properties.Banner
 		options.MainFields = []string{"main"}
 	}

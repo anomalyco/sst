@@ -9,10 +9,12 @@ import (
 	"strings"
 
 	"github.com/sst/sst/v3/cmd/sst/cli"
+	"github.com/sst/sst/v3/cmd/sst/mosaic/dev"
 	"github.com/sst/sst/v3/cmd/sst/mosaic/ui"
 	"github.com/sst/sst/v3/internal/util"
 	"github.com/sst/sst/v3/pkg/process"
 	"github.com/sst/sst/v3/pkg/project"
+	"github.com/sst/sst/v3/pkg/server"
 	"github.com/sst/sst/v3/pkg/tunnel"
 )
 
@@ -61,20 +63,45 @@ var CmdTunnel = &cli.Command{
 		if tunnel.NeedsInstall() {
 			return util.NewReadableError(nil, "The sst tunnel needs to be installed or upgraded. Run `sudo sst tunnel install`")
 		}
+
+		cfgPath, err := project.Discover()
+		if err != nil {
+			return err
+		}
+
 		slog.Info("starting tunnel")
-		proj, err := c.InitProject()
+
+		var completed *project.CompleteEvent
+
+		stage, err := c.Stage(cfgPath)
 		if err != nil {
 			return err
 		}
-		state, err := proj.GetCompleted(c.Context)
+
+		if url, err := server.Discover(cfgPath, stage); err == nil {
+			completed, err = dev.Completed(c.Context, url)
+			if err != nil {
+				return err
+			}
+		} else {
+			proj, err := c.InitProject()
+			if err != nil {
+				return err
+			}
+			completed, err = proj.GetCompleted(c.Context)
+			if err != nil {
+				return err
+			}
+		}
+
 		if err != nil {
 			return err
 		}
-		if len(state.Tunnels) == 0 {
-			return util.NewReadableError(nil, "No tunnels found for stage "+proj.App().Stage)
+		if len(completed.Tunnels) == 0 {
+			return util.NewReadableError(nil, "No tunnels found for stage "+stage)
 		}
 		var tun project.Tunnel
-		for _, item := range state.Tunnels {
+		for _, item := range completed.Tunnels {
 			tun = item
 		}
 		subnets := strings.Join(tun.Subnets, ",")

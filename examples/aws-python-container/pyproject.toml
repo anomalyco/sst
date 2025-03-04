@@ -13,4 +13,4 @@ requires-python = "==3.11.*"
 members = ["functions", "core", "custom_dockerfile"]
 
 [tool.uv.sources]
-sst = { git = "https://github.com/walln/sst.git", subdirectory = "sdk/python", branch = "walln/python-improvements" }
+sst = { git = "https://github.com/sst/sst.git", subdirectory = "sdk/python", branch = "dev" }

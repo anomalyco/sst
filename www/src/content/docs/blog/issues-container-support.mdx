@@ -1,0 +1,52 @@
+---
+template: splash
+title: Issues container support
+description: Issues now reports errors from container applications.
+author: jay
+lastUpdated: 2025-03-04
+pagefind: false
+---
+
+import { Image } from "astro:assets"
+
+import issues from '../../../assets/blog/sst-console-container-issues.png';
+
+[Issues](/docs/console#issues) now reports errors from Node.js container applications. Previously, only errors from Lambda functions were reported.
+
+<Image src={issues} alt="SST Console Container Issues" />
+
+---
+
+### Reporting errors
+
+For the Console to automatically report errors, you need to `console.error` an error object.
+
+```js title="src/index.ts"
+console.error(new Error("my-error"));
+```
+
+In container applications, your code needs to also import the [SST JS SDK](/docs/reference/sdk/).
+
+```js title="src/index.ts" {1}
+import "sst";
+
+console.error(new Error("my-error"));
+```
+
+This applies a polyfill to the `console` object to prepend the log lines with a marker that allows Issues to detect errors.
+
+:::note
+You'll need to update your SDK version to `3.9.24` or higher.
+:::
+
+If you are already importing the SDK, you won't need to add an additional import.
+
+---
+
+### How it works
+
+Issues works by adding a log subscriber to the CloudWatch Log groups in your SST apps. This has a filter that matches anything that looks like an error.
+
+In the case of Lambda functions, the Lambda runtime automatically adds a marker to the logs that the filter matches for. For containers, the SST SDK polyfills the `console` object to add the marker.
+
+[Learn more about Issues](/docs/console#issues).

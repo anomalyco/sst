@@ -1,23 +1,24 @@
 import fs from "fs";
 import path from "path";
-import { ComponentResourceOptions, Output, all, output } from "@pulumi/pulumi";
+import {
+  ComponentResourceOptions,
+  Output,
+  all,
+  interpolate,
+} from "@pulumi/pulumi";
 import { Function } from "./function.js";
 import {
   SsrSiteArgs,
-  createBucket,
-  createDevServer,
-  createServersAndDistribution,
+  createDevResources,
+  createResources,
   prepare,
-  useCloudFrontFunctionHostHeaderInjection,
   validatePlan,
-} from "./ssr-site.js";
+} from "./ssr-site-new.js";
 import { Cdn } from "./cdn.js";
 import { Bucket } from "./bucket.js";
 import { Component } from "../component.js";
 import { Link } from "../link.js";
-import type { Input } from "../input.js";
 import { buildApp } from "../base/base-ssr-site.js";
-import { URL_UNAVAILABLE } from "./linkable.js";
 
 export interface ReactArgs extends SsrSiteArgs {
   /**
@@ -83,6 +84,19 @@ export interface ReactArgs extends SsrSiteArgs {
    */
   permissions?: SsrSiteArgs["permissions"];
   /**
+   * The regions that the [server function](#nodes-server) in your Astro site will be
+   * deployed to. Requests will be routed to the nearest region based on the user's location.
+   *
+   * @default The default region of the SST app
+   * @example
+   * ```js
+   * {
+   *   regions: ["us-east-1", "eu-west-1"]
+   * }
+   * ```
+   */
+  regions?: SsrSiteArgs["regions"];
+  /**
    * Path to the directory where your React app is located.  This path is relative to your `sst.config.ts`.
    *
    * By default it assumes your React app is in the root of your SST app.
@@ -135,10 +149,10 @@ export interface ReactArgs extends SsrSiteArgs {
    */
   invalidation?: SsrSiteArgs["invalidation"];
   /**
-   * Set environment variables in your React app. These are made available:
+   * Set [environment variables](https://vitejs.dev/guide/env-and-mode) in your React app. These are made available:
    *
    * 1. In `react-router build`, they are loaded into `process.env`.
-   * 2. Locally while running `sst dev react-router dev`.
+   * 2. Locally while running `react-router dev` through `sst dev`.
    *
    * :::tip
    * You can also `link` resources to your React app and access them in a type-safe way with the [SDK](/docs/reference/sdk/). We recommend linking since it's more secure.
@@ -231,14 +245,6 @@ export interface ReactArgs extends SsrSiteArgs {
    */
   assets?: SsrSiteArgs["assets"];
   /**
-   * Configure where the [server function](#nodes-server) is deployed.
-   *
-   * By default, it's deployed to AWS Lambda in a single region. Enable this option if you want to instead deploy it to Lambda@Edge.
-   * @default `false`
-   * @internal
-   */
-  edge?: Input<boolean>;
-  /**
    * Configure the [server function](#nodes-server) in your React app to connect
    * to private subnets in a virtual private cloud or VPC. This allows your app to
    * access private resources.
@@ -271,7 +277,7 @@ export interface ReactArgs extends SsrSiteArgs {
 }
 
 /**
- * The `React` component lets you deploy a [React Router](https://reactrouter.com) app to AWS.
+ * The `React` component lets you deploy a React app built with [React Router](https://reactrouter.com/) app to AWS.
  *
  * @example
  *
@@ -352,18 +358,15 @@ export class React extends Component implements Link.Linkable {
     super(__pulumiType, name, args, opts);
 
     const parent = this;
-    const edge = normalizeEdge();
-    const { sitePath, partition } = prepare(parent, args);
-    const dev = normalizeDev();
+    const { dev, sitePath, regions } = prepare(parent, args);
 
     if (dev.enabled) {
-      const server = createDevServer(parent, name, args);
+      const { server } = createDevResources(parent, name, args);
       this.devUrl = dev.url;
       this.registerOutputs({
         _metadata: {
           mode: "placeholder",
           path: sitePath,
-          edge,
           server: server.arn,
         },
         _dev: {
@@ -374,25 +377,22 @@ export class React extends Component implements Link.Linkable {
       return;
     }
 
-    const { access, bucket } = createBucket(parent, name, partition, args);
     const outputPath = buildApp(parent, name, args, sitePath);
     const buildMeta = loadBuildMetadata();
     const plan = buildPlan();
-    const { distribution, ssrFunctions, edgeFunctions } =
-      createServersAndDistribution(
-        parent,
-        name,
-        args,
-        outputPath,
-        access,
-        bucket,
-        plan,
-      );
-    const serverFunction = ssrFunctions[0] ?? Object.values(edgeFunctions)[0];
+    const { distribution, bucket, servers } = createResources(
+      parent,
+      name,
+      args,
+      outputPath,
+      plan,
+      regions,
+    );
+    const server = servers.apply((servers) => servers[0]);
 
     this.assets = bucket;
     this.cdn = distribution;
-    this.server = serverFunction;
+    this.server = server;
     this.registerOutputs({
       _hint: all([this.cdn.domainUrl, this.cdn.url]).apply(
         ([domainUrl, url]) => domainUrl ?? url,
@@ -401,42 +401,17 @@ export class React extends Component implements Link.Linkable {
         mode: "deployed",
         path: sitePath,
         url: distribution.apply((d) => d.domainUrl ?? d.url),
-        edge,
-        server: serverFunction.arn,
+        edge: false,
+        server: server.arn,
       },
       _dev: {
         ...dev.outputs,
-        aws: { role: serverFunction.nodes.role.arn },
+        aws: { role: server.nodes.role.arn },
       },
     });
 
-    function normalizeDev() {
-      const enabled = $dev && args.dev !== false;
-      const devArgs = args.dev || {};
-
-      return {
-        enabled,
-        url: output(devArgs.url ?? URL_UNAVAILABLE),
-        outputs: {
-          title: devArgs.title,
-          command: output(devArgs.command ?? "npm run dev"),
-          autostart: output(devArgs.autostart ?? true),
-          directory: output(devArgs.directory ?? sitePath),
-          environment: args.environment,
-          links: output(args.link || [])
-            .apply(Link.build)
-            .apply((links) => links.map((link) => link.name)),
-        },
-      };
-    }
-
-    function normalizeEdge() {
-      return output(args?.edge).apply((edge) => edge ?? false);
-    }
-
     function loadBuildMetadata() {
-      return all([outputPath]).apply(([outputPath]) => {
-        // The path for all files that need to be in the "/" directory (static assets) is the "build/client" directory
+      return outputPath.apply((outputPath) => {
         const assetsPath = path.join("build", "client");
         const serverPath = path.join("build", "server");
         return {
@@ -444,162 +419,66 @@ export class React extends Component implements Link.Linkable {
           serverPath: fs.existsSync(path.join(outputPath, serverPath))
             ? serverPath
             : undefined,
-          // create 1 behaviour for each top level asset file/folder
-          staticRoutes: fs
-            .readdirSync(path.join(outputPath, assetsPath), {
-              withFileTypes: true,
-            })
-            .map((item) => (item.isDirectory() ? `${item.name}/*` : item.name)),
         };
       });
     }
 
     function buildPlan() {
-      return all([outputPath, edge, buildMeta]).apply(
-        ([outputPath, edge, buildMeta]) => {
-          const serverConfig = buildMeta.serverPath
-            ? createServerLambdaBundle(outputPath, edge)
-            : undefined;
-
-          return validatePlan({
-            edge,
-            cloudFrontFunctions: {
-              serverCfFunction: {
-                injections: [useCloudFrontFunctionHostHeaderInjection()],
+      return all([outputPath, buildMeta]).apply(([outputPath, buildMeta]) => {
+        const indexPage = "index.html";
+        return validatePlan({
+          cloudFrontFunction: {
+            //injection: useCloudFrontFunctionHostHeaderInjection(),
+            injection: "",
+          },
+          server: buildMeta.serverPath
+            ? createServerLambdaBundle(outputPath)
+            : undefined,
+          s3: {
+            copy: [
+              {
+                from: buildMeta.assetsPath,
+                to: "",
+                cached: true,
               },
-              staticCfFunction: {
-                injections: [
-                  // Note: When using libraries like @react-router/fs-routes the file can
-                  // contains special characters like "+". It needs to be encoded.
-                  `event.request.uri = event.request.uri.split('/').map(encodeURIComponent).join('/');`,
-                ],
-              },
-            },
-            errorResponses: !serverConfig
-              ? [
-                  {
-                    errorCode: 403,
-                    responsePagePath: "/",
-                    responseCode: 200,
-                  },
-                  {
-                    errorCode: 404,
-                    responsePagePath: "/",
-                    responseCode: 200,
-                  },
-                ]
-              : [],
-            edgeFunctions:
-              edge && serverConfig
-                ? {
-                    server: {
-                      function: serverConfig,
-                    },
-                  }
-                : undefined,
-            origins: {
-              ...(edge || !serverConfig
-                ? {}
-                : {
-                    server: {
-                      server: {
-                        function: serverConfig,
-                      },
-                    },
-                  }),
-              s3: {
-                s3: {
-                  copy: [
-                    {
-                      from: buildMeta.assetsPath,
-                      to: "",
-                      cached: true,
-                    },
-                  ],
-                },
-              },
-            },
-            behaviors: [
-              ...(!serverConfig
-                ? [
-                    {
-                      cacheType: "static",
-                      cfFunction: "serverCfFunction",
-                      origin: "s3",
-                    } as const,
-                  ]
-                : [
-                    edge
-                      ? ({
-                          cacheType: "server",
-                          cfFunction: "serverCfFunction",
-                          edgeFunction: "server",
-                          origin: "s3",
-                        } as const)
-                      : ({
-                          cacheType: "server",
-                          cfFunction: "serverCfFunction",
-                          origin: "server",
-                        } as const),
-                    ...buildMeta.staticRoutes.map(
-                      (route) =>
-                        ({
-                          cacheType: "static",
-                          pattern: route,
-                          cfFunction: "staticCfFunction",
-                          origin: "s3",
-                        }) as const,
-                    ),
-                  ]),
             ],
-          });
-        },
-      );
+          },
+          errorResponses: buildMeta.serverPath
+            ? []
+            : [
+                {
+                  errorCode: 403,
+                  responsePagePath: interpolate`/${indexPage}`,
+                  responseCode: 200,
+                },
+                {
+                  errorCode: 404,
+                  responsePagePath: interpolate`/${indexPage}`,
+                  responseCode: 200,
+                },
+              ],
+        });
+      });
     }
 
-    function createServerLambdaBundle(outputPath: string, isEdge: boolean) {
-      // Create a Lambda@Edge handler for the React server bundle.
-      //
-      // Note: React does perform their own internal ESBuild process, but it
-      // doesn't bundle 3rd party dependencies by default. In the interest of
-      // keeping deployments seamless for users we will create a server bundle
-      // with all dependencies included. We will still need to consider how to
-      // address any need for external dependencies, although I think we should
-      // possibly consider this at a later date.
+    function createServerLambdaBundle(outputPath: string) {
+      // React does perform their own internal ESBuild process, but it doesn't bundle
+      // 3rd party dependencies by default. In the interest of keeping deployments
+      // seamless for users we will create a server bundle with all dependencies included.
 
-      // In this path we are assuming that the React build only outputs the
-      // "core server build". We can safely assume this as we have guarded the
-      // react-router.config.js to ensure it matches our expectations for the build
-      // configuration.
-      // We need to ensure that the "core server build" is wrapped with an
-      // appropriate Lambda@Edge handler. We will utilise an internal asset
-      // template to create this wrapper within the "core server build" output
-      // directory.
-
-      // Ensure build directory exists
-      const buildPath = path.join(outputPath, "build");
-      fs.mkdirSync(buildPath, { recursive: true });
-
-      // Copy the server lambda handler and pre-append the build injection based
-      // on the config file used.
-      const content = [
-        // When using Vite config, the output build will be "server/index.js"
-        `// Import the server build that was produced by 'react-router build'`,
-        `import * as reactRouterServerBuild from "./server/index.js";`,
-        fs.readFileSync(
-          path.join(
-            $cli.paths.platform,
-            "functions",
-            "react-server",
-            isEdge ? "edge-server.mjs" : "regional-server.mjs",
-          ),
+      fs.copyFileSync(
+        path.join(
+          $cli.paths.platform,
+          "functions",
+          "react-server",
+          "server.mjs",
         ),
-      ].join("\n");
-      fs.writeFileSync(path.join(buildPath, "server.mjs"), content);
+        path.join(outputPath, "build", "server.mjs"),
+      );
 
       return {
-        handler: path.join(buildPath, "server.handler"),
-        streaming: !isEdge,
+        handler: path.join(outputPath, "build", "server.handler"),
+        streaming: true,
       };
     }
   }

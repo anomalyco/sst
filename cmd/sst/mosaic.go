@@ -255,7 +255,8 @@ func CmdMosaic(c *cli.Cli) error {
 							)
 						}
 						for name := range evt.Tunnels {
-							multi.AddProcess("tunnel", []string{currentExecutable, "tunnel", "--stage", p.App().Stage}, "⇌", "Tunnel", "", true, true, append(os.Environ(),
+							multi.AddProcess("tunnel", []string{currentExecutable, "tunnel", "--stage", p.App().Stage}, "⇌", "Tunnel", "", true, true, append(
+								multiEnv,
 								"SST_LOG="+p.PathLog("tunnel_"+name),
 							)...)
 						}

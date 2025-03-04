@@ -135,7 +135,7 @@ func run() error {
 			slog.Error("failed to close message", slog.String("requestID", requestID), slog.String("error", err.Error()))
 			continue
 		}
-		timeout := time.Second * 8
+		timeout := time.Second * 16
 
 	loop:
 		for {

@@ -1,0 +1,14 @@
+[project]
+name = "functions"
+version = "0.1.0"
+description = "Lambda function handlers"
+dependencies = ["core", "sst", "fastapi==0.115.8", "mangum==0.19.0"]
+requires-python = "==3.11.*"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.sources]
+core = { workspace = true }
+sst = { git = "https://github.com/sst/sst.git", branch = "dev", subdirectory = "sdk/python" }

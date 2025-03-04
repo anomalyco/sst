@@ -11,4 +11,4 @@ build-backend = "hatchling.build"
 
 [tool.uv.sources]
 core = { workspace = true }
-sst = { git = "https://github.com/walln/sst", branch = "walln/python-improvements", subdirectory = "sdk/python" }
+sst = { git = "https://github.com/sst/sst.git", branch = "dev", subdirectory = "sdk/python" }

@@ -1,0 +1,62 @@
+name: release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "*"
+
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - run: |
+          npm config set //registry.npmjs.org/:_authToken $NODE_AUTH_TOKEN
+          npm whoami
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - run: git fetch --force --tags
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ">=1.23.2"
+
+      - run: go mod download
+      - run: bun i --frozen-lockfile
+      - run: git reset --hard
+      - run: cd platform && bun tsc --noEmit
+      - run: ./platform/scripts/build
+        env:
+          DOCKER_PUSH: true
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.SST_GITHUB_TOKEN }}
+          AUR_KEY: ${{ secrets.AUR_KEY }}
+
+      - run: |
+          cd sdk/js
+          bun run release

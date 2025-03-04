@@ -1206,6 +1206,23 @@ Listening on "${dev.host}:${dev.port}"...`,
     );
   }
 
+  /**
+   * The reader endpoint of the database.
+   */
+  public get reader() {
+    if (this.dev?.enabled) return this.dev.host;
+    return all([this.cluster!.readerEndpoint, this.proxy!]).apply(
+      ([endpoint, proxy]) => {
+        if (proxy) {
+          throw new VisibleError(
+            "Reader endpoint is not currently supported for RDS Proxy. Please contact us on Discord or open a GitHub issue.",
+          );
+        }
+        return output(endpoint.split(":")[0]);
+      },
+    );
+  }
+
   public get nodes() {
     return {
       cluster: this.cluster,
@@ -1224,6 +1241,14 @@ Listening on "${dev.host}:${dev.port}"...`,
         password: this.password,
         port: this.port,
         host: this.host,
+        reader: this.dev?.enabled
+          ? this.dev.host
+          : all([this.cluster!.readerEndpoint, this.proxy!]).apply(
+              ([endpoint, proxy]) => {
+                if (proxy) return output(undefined);
+                return output(endpoint.split(":")[0]);
+              },
+            ),
       },
       include: this.dev?.enabled
         ? []

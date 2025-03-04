@@ -2,6 +2,7 @@ import path from "path";
 import fs from "fs";
 import { globSync } from "glob";
 import crypto from "crypto";
+import type { Loader } from "esbuild";
 import {
   Output,
   Unwrap,
@@ -192,6 +193,22 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
      * ```
      */
     install?: Input<string[]>;
+    /**
+     * Configure additional esbuild loaders for other file extensions. This is useful
+     * when your code is importing non-JS files like `.png`, `.css`, etc.
+     *
+     * @example
+     * ```js
+     * {
+     *   server: {
+     *     loader: {
+     *      ".png": "file"
+     *     }
+     *   }
+     * }
+     * ```
+     */
+    loader?: Input<Record<string, Loader>>;
     /**
      * A list of Lambda layer ARNs to add to the server function.
      *
@@ -705,6 +722,7 @@ export function createServersAndDistribution(
             nodejs: {
               format: "esm" as const,
               install: args.server?.install,
+              loader: args.server?.loader,
               ...props.function.nodejs,
             },
             environment: output(args.environment).apply((environment) => ({

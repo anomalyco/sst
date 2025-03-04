@@ -1,0 +1,21 @@
+---
+import Welcome from '../components/Welcome.astro';
+import Layout from '../layouts/Layout.astro';
+
+// Welcome to Astro! Wondering what to do next? Check out the Astro documentation at https://docs.astro.build
+// Don't want to use any of this? Delete everything in this file, the `assets`, `components`, and `layouts` directories, and start fresh.
+---
+
+<Layout>
+    <ul>
+      <li><a href="/server-rendered">This page is server rendered</a></li>
+      <li><a href="/prerendered">This page is prerendered</a></li>
+      <li><a href="/action">This page uses actions</a></li>
+      <li><a href="/src-image">This page display image in src/</a></li>
+      <li><a href="/public-image">This page display image in public/</a></li>
+      <li><a href="/remote-image">This page display image from remote url</a></li>
+      <li><a href="/error">This page throw an error (500 page is server rendered)</a></li>
+      <li><a href="/garbage">This page does not exist (404 page is prerendered)</a></li>
+    </ul>
+	<Welcome />
+</Layout>

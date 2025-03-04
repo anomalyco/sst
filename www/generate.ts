@@ -2170,6 +2170,7 @@ async function buildComponents() {
       "../platform/src/components/aws/nuxt.ts",
       "../platform/src/components/aws/realtime.ts",
       "../platform/src/components/aws/realtime-lambda-subscriber.ts",
+      "../platform/src/components/aws/react.ts",
       "../platform/src/components/aws/redis.ts",
       "../platform/src/components/aws/remix.ts",
       "../platform/src/components/aws/queue.ts",

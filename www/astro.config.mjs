@@ -86,6 +86,7 @@ const sidebar = [
           "docs/component/aws/astro",
           "docs/component/aws/redis",
           "docs/component/aws/email",
+          "docs/component/aws/react",
           "docs/component/aws/remix",
           "docs/component/aws/nextjs",
           "docs/component/aws/queue",

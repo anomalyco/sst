@@ -122,7 +122,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "core", editable = "core" },
-    { name = "sst", git = "https://github.com/walln/sst?subdirectory=sdk%2Fpython&branch=walln%2Fpython-improvements" },
+    { name = "sst", git = "https://github.com/sst/sst.git?subdirectory=sdk%2Fpython&branch=dev" },
 ]
 
 [[package]]
@@ -137,7 +137,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "core", editable = "core" },
-    { name = "sst", git = "https://github.com/walln/sst?subdirectory=sdk%2Fpython&branch=walln%2Fpython-improvements" },
+    { name = "sst", git = "https://github.com/sst/sst.git?subdirectory=sdk%2Fpython&branch=dev" },
 ]
 
 [[package]]
@@ -176,7 +176,7 @@ wheels = [
 [[package]]
 name = "sst"
 version = "0.2.0"
-source = { git = "https://github.com/walln/sst?subdirectory=sdk%2Fpython&branch=walln%2Fpython-improvements#f0f67f7e6d61663abb781d721974098ef89bb191" }
+source = { git = "https://github.com/sst/sst.git?subdirectory=sdk%2Fpython&branch=dev#e335fd9a3f41ee9cf5e12db5d85fa49e00175cde" }
 dependencies = [
     { name = "cryptography" },
 ]

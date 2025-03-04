@@ -93,9 +93,6 @@ func function(ctx context.Context, input input) {
 			return
 		case reader := <-ch:
 			log.Info("worker got next request", "workerID", workerID)
-			writer := input.client.NewWriter(bridge.MessagePing, input.prefix+"/"+r.PathValue("workerID")+"/in")
-			json.NewEncoder(writer).Encode(bridge.PingBody{})
-			writer.Close()
 			resp, _ := http.ReadResponse(bufio.NewReader(reader), r)
 			requestID := resp.Header.Get("lambda-runtime-aws-request-id")
 			for key, values := range resp.Header {
@@ -317,6 +314,9 @@ func function(ctx context.Context, input input) {
 					}
 				}
 			case bridge.MessageNext:
+				writer := input.client.NewWriter(bridge.MessageReboot, input.prefix+"/"+msg.Source+"/in")
+				json.NewEncoder(writer).Encode(bridge.PingBody{})
+				writer.Close()
 				ch, ok := nextChan[msg.Source]
 				if !ok {
 					ch = make(chan io.Reader, 100)

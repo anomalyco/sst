@@ -54,27 +54,32 @@ export module bus {
             metadata: options?.metadata || {},
           }
         : await def.create(properties, options?.metadata);
-    const res = await c.fetch(u, {
-      method: "POST",
-      aws: options?.aws,
-      headers: {
-        "X-Amz-Target": "AWSEvents.PutEvents",
-        "Content-Type": "application/x-amz-json-1.1",
-      },
-      body: JSON.stringify({
-        Entries: [
-          {
-            Source: [Resource.App.name, Resource.App.stage].join("."),
-            DetailType: evt.type,
-            Detail: JSON.stringify({
-              metadata: evt.metadata,
-              properties: evt.properties,
-            }),
-            EventBusName: typeof name === "string" ? name : name.name,
-          },
-        ],
-      }),
-    });
+    const res = await c
+      .fetch(u, {
+        method: "POST",
+        aws: options?.aws,
+        headers: {
+          "X-Amz-Target": "AWSEvents.PutEvents",
+          "Content-Type": "application/x-amz-json-1.1",
+        },
+        body: JSON.stringify({
+          Entries: [
+            {
+              Source: [Resource.App.name, Resource.App.stage].join("."),
+              DetailType: evt.type,
+              Detail: JSON.stringify({
+                metadata: evt.metadata,
+                properties: evt.properties,
+              }),
+              EventBusName: typeof name === "string" ? name : name.name,
+            },
+          ],
+        }),
+      })
+      .catch((e) => {
+        if (e instanceof Error) console.log("cause", e.cause);
+        throw e;
+      });
     if (!res.ok) throw new PublishError(res);
     return res.json();
   }

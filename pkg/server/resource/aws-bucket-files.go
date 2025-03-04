@@ -3,6 +3,7 @@ package resource
 import (
 	"bytes"
 	"os"
+	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -111,31 +112,66 @@ func (r *BucketFiles) Delete(input *DeleteInput[BucketFilesOutputs], output *int
 }
 
 func (r *BucketFiles) upload(client *s3.Client, bucketName string, files []BucketFile, oldFiles []BucketFile) error {
+	// Create map of existing files
 	oldFilesMap := make(map[string]BucketFile)
 	for _, f := range oldFiles {
 		oldFilesMap[f.Key] = f
 	}
 
-	for _, file := range files {
-		oldFile, exists := oldFilesMap[file.Key]
-		if exists && oldFile.Hash != nil && *oldFile.Hash == *file.Hash &&
-			oldFile.CacheControl == file.CacheControl &&
-			oldFile.ContentType == file.ContentType {
-			continue
-		}
+	// Create channels for work distribution and error collection
+	filesChan := make(chan BucketFile)
+	errChan := make(chan error, len(files))
+	var wg sync.WaitGroup
 
-		content, err := os.ReadFile(file.Source)
-		if err != nil {
-			return err
-		}
+	// Start worker pool (10 workers)
+	numWorkers := 10
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			// Each worker processes files from the channel
+			for file := range filesChan {
+				// write start timestamp with nanoseconds to file
+				content, err := os.ReadFile(file.Source)
+				if err != nil {
+					errChan <- err
+					return
+				}
 
-		_, err = client.PutObject(r.context, &s3.PutObjectInput{
-			Bucket:       aws.String(bucketName),
-			Key:          aws.String(file.Key),
-			Body:         bytes.NewReader(content),
-			CacheControl: file.CacheControl,
-			ContentType:  aws.String(file.ContentType),
-		})
+				_, err = client.PutObject(r.context, &s3.PutObjectInput{
+					Bucket:       aws.String(bucketName),
+					Key:          aws.String(file.Key),
+					Body:         bytes.NewReader(content),
+					CacheControl: file.CacheControl,
+					ContentType:  aws.String(file.ContentType),
+				})
+				if err != nil {
+					errChan <- err
+				}
+			}
+		}()
+	}
+
+	// Send files that need uploading to the channel
+	go func() {
+		for _, file := range files {
+			oldFile, exists := oldFilesMap[file.Key]
+			if exists && oldFile.Hash != nil && *oldFile.Hash == *file.Hash &&
+				oldFile.CacheControl == file.CacheControl &&
+				oldFile.ContentType == file.ContentType {
+				continue
+			}
+			filesChan <- file
+		}
+		close(filesChan)
+	}()
+
+	// Wait for all workers to finish
+	wg.Wait()
+	close(errChan)
+
+	// Check for any errors
+	for err := range errChan {
 		if err != nil {
 			return err
 		}

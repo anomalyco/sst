@@ -14,6 +14,9 @@ export default $config({
     const vpc = addVpc();
     const bucket = addBucket();
     const auth = addAuth();
+    addAstro4Site();
+    addAstro5Site();
+    addReactRouter7Site();
     //const queue = addQueue();
     //const efs = addEfs();
     //const email = addEmail();
@@ -40,7 +43,9 @@ export default $config({
     }
 
     function addBucket() {
-      const bucket = new sst.aws.Bucket("MyBucket");
+      const bucket = new sst.aws.Bucket("MyBucket", {
+        access: "public",
+      });
 
       //const queue = new sst.aws.Queue("MyQueue");
       //queue.subscribe("functions/bucket/index.handler");
@@ -375,6 +380,33 @@ export default $config({
       });
 
       return bus;
+    }
+
+    function addAstro4Site() {
+      new sst.aws.Astro("MyAstro4Site", {
+        domain: "astro4.playground.sst.sh",
+        path: "sites/astro4",
+        regions: ["us-east-1", "us-west-1"],
+        link: [bucket],
+      });
+    }
+
+    function addAstro5Site() {
+      new sst.aws.Astro("MyAstro5Site", {
+        domain: "astro5.playground.sst.sh",
+        path: "sites/astro5",
+        //path: "sites/astro5-static",
+        link: [bucket],
+      });
+    }
+
+    function addReactRouter7Site() {
+      new sst.aws.React("MyReactRouter7Site", {
+        domain: "reactrouter7.playground.sst.sh",
+        path: "sites/react-router-7-ssr",
+        //path: "sites/react-router-7-csr",
+        link: [bucket],
+      });
     }
   },
 });

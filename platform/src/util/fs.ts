@@ -1,4 +1,5 @@
 import fs from "fs/promises";
+import fsSync from "fs";
 import path from "path";
 
 export async function findAbove(
@@ -45,4 +46,13 @@ export async function existsAsync(input: string) {
     .access(input)
     .then(() => true)
     .catch(() => false);
+}
+
+export function readDirRecursivelySync(dir: string, prefix?: string): string[] {
+  return fsSync.readdirSync(dir, { withFileTypes: true }).flatMap((item) => {
+    const path = prefix ? `${prefix}/${item.name}` : item.name;
+    return item.isDirectory()
+      ? readDirRecursivelySync(`${dir}/${item.name}`, path)
+      : [path];
+  });
 }

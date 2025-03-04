@@ -951,15 +951,14 @@ export function createTaskDefinition(
   const clusterName = args.cluster.nodes.cluster.name;
   const region = getRegionOutput({}, opts).name;
   const bootstrapData = region.apply((region) => bootstrap.forRegion(region));
-  const containerDefinitions = all([
-    containers,
-    Link.propertiesToEnv(Link.getProperties(args.link)),
-  ]).apply(([containers, linkEnvs]) =>
+  const linkEnvs = Link.propertiesToEnv(Link.getProperties(args.link));
+  const containerDefinitions = output(containers).apply((containers) =>
     containers.map((container) => ({
       name: container.name,
       image: (() => {
         if (typeof container.image === "string") return output(container.image);
 
+        const containerImage = container.image;
         const contextPath = path.join($cli.paths.root, container.image.context);
         const dockerfile = container.image.dockerfile ?? "Dockerfile";
         const dockerfilePath = container.image.dockerfile
@@ -990,10 +989,10 @@ export function createTaskDefinition(
             {
               context: { location: contextPath },
               dockerfile: { location: dockerfilePath },
-              buildArgs: {
-                ...container.image.args,
+              buildArgs: linkEnvs.apply((linkEnvs) => ({
+                ...containerImage.args,
                 ...linkEnvs,
-              },
+              })),
               target: container.image.target,
               platforms: [container.image.platform],
               tags: [container.name, ...(container.image.tags ?? [])].map(
@@ -1071,10 +1070,12 @@ export function createTaskDefinition(
           "awslogs-stream-prefix": "/service",
         },
       },
-      environment: Object.entries({
-        ...container.environment,
-        ...linkEnvs,
-      }).map(([name, value]) => ({ name, value })),
+      environment: linkEnvs.apply((linkEnvs) =>
+        Object.entries({
+          ...container.environment,
+          ...linkEnvs,
+        }).map(([name, value]) => ({ name, value })),
+      ),
       linuxParameters: {
         initProcessEnabled: true,
       },
