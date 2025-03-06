@@ -1,4 +1,4 @@
-import { installGlobals } from "react-router";
+import { installGlobals } from "@remix-run/node";
 
 // A Remix app by default has `"sideEffects": false` set in the package.json
 // which will trigger ESBuild's treeshaking capabilities. This results in the

@@ -4,7 +4,7 @@
 import {
   createRequestHandler as createNodeRequestHandler,
   readableStreamToString,
-} from "react-router";
+} from "@remix-run/node";
 import { URL } from "url";
 
 /**
