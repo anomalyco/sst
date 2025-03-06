@@ -224,7 +224,7 @@ func (r *PythonRuntime) CreateBuildAsset(ctx context.Context, input *runtime.Bui
 	if err != nil {
 		return nil, fmt.Errorf("failed to get package name: %v", err)
 	}
-	exportCmd := process.CommandContext(ctx, "uv", "export", "--package="+packageName, "--output-file="+outputRequirementsFile, "--no-emit-workspace")
+	exportCmd := process.CommandContext(ctx, "uv", "export", "--package="+packageName, "--output-file="+outputRequirementsFile, "--no-emit-workspace", "--no-dev")
 	exportCmd.Dir = workingDir
 	err = exportCmd.Run()
 	if err != nil {
