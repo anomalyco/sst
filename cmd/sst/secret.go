@@ -184,14 +184,34 @@ var CmdSecretLoad = &cli.Command{
 		scanner := bufio.NewScanner(file)
 		for scanner.Scan() {
 			line := scanner.Text()
-			if strings.HasPrefix(line, "#") {
+			// Skip comments and empty lines
+			if strings.HasPrefix(line, "#") || strings.TrimSpace(line) == "" {
 				continue
 			}
 			parts := strings.SplitN(line, "=", 2)
 			if len(parts) == 2 {
-				ui.Success(fmt.Sprintf("Setting %s", parts[0]))
 				key := strings.TrimSpace(parts[0])
 				value := strings.TrimSpace(parts[1])
+
+				// Handle quoted values (both single and double quotes)
+				if len(value) >= 2 {
+					// Check for double quotes
+					if strings.HasPrefix(value, "\"") && strings.HasSuffix(value, "\"") {
+						// Remove the quotes
+						value = value[1 : len(value)-1]
+						// Handle escaped characters within double quotes
+						value = strings.ReplaceAll(value, "\\\"", "\"")
+						value = strings.ReplaceAll(value, "\\n", "\n")
+						value = strings.ReplaceAll(value, "\\r", "\r")
+						value = strings.ReplaceAll(value, "\\t", "\t")
+						// Check for single quotes
+					} else if strings.HasPrefix(value, "'") && strings.HasSuffix(value, "'") {
+						// Remove the quotes - single quotes typically don't process escapes in .env files
+						value = value[1 : len(value)-1]
+					}
+				}
+
+				ui.Success(fmt.Sprintf("Setting %s", key))
 				secrets[key] = value
 			}
 		}
