@@ -113,6 +113,31 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
    */
   warm?: Input<number>;
   /**
+   * Configure the schedule for the server function warm-up requests using a custom rate or cron expression.
+   *
+   * Instead of using the default interval for sending warm-up requests, you can provide a custom schedule by specifying
+   * either a rate expression or a cron expression. This gives you granular control over how frequently the warm-up
+   * requests are made, helping to mitigate cold starts according to your application's specific needs.
+   *
+   * Use AWS CloudWatch Events syntax:
+   * - Rate expression: Use `rate(X)` where X is the desired interval (e.g. `rate(5 minutes)`).
+   * - Cron expression: Use `cron(...)` following AWS's cron format (e.g. `cron(0 12 * * ? *)` for 12:00 UTC daily).
+   *
+   * @default `"rate(5 minutes)"`
+   * @example
+   * // Use a rate expression to trigger warm-up requests every 5 minutes
+   * {
+   *   warmExpression: `rate(5 minutes)`
+   * }
+   *
+   * @example
+   * // Use a cron expression to trigger warm-up requests at 12:00 UTC every day
+   * {
+   *   warmExpression: `cron(0 12 * * ? *)`
+   * }
+   */
+  warmExpression?: Input<`rate(${string})` | `cron(${string})`>;
+  /**
    * Configure the Lambda function used for server.
    * @default `{architecture: "x86_64", memory: "1024 MB"}`
    */
@@ -495,7 +520,7 @@ export function createServersAndDistribution(
     const originGroups = buildOriginGroups();
     const invalidation = buildInvalidation();
     const distribution = createDistribution();
-    createWarmer();
+    createWarmer(args.warmExpression);
 
     return {
       distribution,
@@ -1136,7 +1161,11 @@ async function handler(event) {
       );
     }
 
-    function createWarmer() {
+    function createWarmer(
+      schedule: Input<
+        `rate(${string})` | `cron(${string})`
+      > = "rate(5 minutes)",
+    ) {
       // note: Currently all sites have a single server function. When we add
       //       support for multiple server functions (ie. route splitting), we
       //       need to handle warming multiple functions.
@@ -1154,7 +1183,7 @@ async function handler(event) {
       const cron = new Cron(
         `${name}Warmer`,
         {
-          schedule: "rate(5 minutes)",
+          schedule,
           job: {
             description: `${name} warmer`,
             bundle: path.join($cli.paths.platform, "dist", "ssr-warmer"),
