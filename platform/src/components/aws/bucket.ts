@@ -133,7 +133,8 @@ export interface BucketArgs {
    * :::
    *
    * This adds a statement to the bucket policy that either allows `public` access or just
-   * `cloudfront` access.
+   * `cloudfront` access. In both cases it adds a statement that denies access ofr unsecure transport.
+   * You can also choose to add just a policy statement that denies access for unsecure transport.
    *
    * @example
    * ```js
@@ -169,14 +170,16 @@ export interface BucketArgs {
    * @example
    * ```js
    * {
-   *  getAdditionalPolicyStatements: (bucket) => [
-   *    {
-   *      Effect: "Allow",
-   *      Action: ["s3:GetObject"],
-   *      Resource: [`${bucket.arn}/*`]
-   *    }
-   *  ]
-   * }
+   *  getAdditionalPolicyStatements: (bucket) =>
+    [
+      {
+        sid: "ReadGetObject",
+        effect: "Allow",
+        principals: [{ type: "*", identifiers: ["*"] }],
+        actions: ["s3:GetObject"],
+        resources: [$interpolate`${bucket.arn}/*`]
+      },
+    ]
    * ```
    */
   getAdditionalPolicyStatements?: (
@@ -650,7 +653,7 @@ export class Bucket extends Component implements Link.Linkable {
         const statements = args.getAdditionalPolicyStatements
           ? args.getAdditionalPolicyStatements(bucket)
           : [];
-        if (access === "public" || access === "cloudfront") {
+        if (["public", "cloudfront"].includes(access ?? "")) {
           statements.push({
             principals: [
               access === "public"
@@ -665,9 +668,9 @@ export class Bucket extends Component implements Link.Linkable {
           });
         }
         if (
-          access === "denyUnsecureTransport" ||
-          access === "public" ||
-          access === "cloudfront"
+          ["public", "cloudfront", "denyUnsecureTransport"].includes(
+            access ?? "",
+          )
         )
           statements.push({
             sid: "DenyUnSecureTransport",
