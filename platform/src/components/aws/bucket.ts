@@ -22,6 +22,20 @@ import { Queue } from "./queue";
 import { SnsTopic } from "./sns-topic";
 import { BucketNotification } from "./bucket-notification";
 
+//EXTENDED TYPES
+export type GetPolicyDocumentStatement = Omit<
+  NonNullable<aws.iam.GetPolicyDocumentArgs["statements"]>[number],
+  "resources"
+> & { resources: Output<string>[] };
+
+export type BucketExtendedArgs = Omit<BucketArgs, "access"> & {
+  access?: Input<"public" | "cloudfront" | "denyUnsecureTransport">;
+  getAdditionalPolicyStatements?: (
+    bucket: aws.s3.BucketV2,
+  ) => GetPolicyDocumentStatement[];
+};
+//END OF EXTENDED TYPES
+
 interface BucketCorsArgs {
   /**
    * The HTTP headers that origins can include in requests to the bucket.
@@ -528,11 +542,11 @@ export class Bucket extends Component implements Link.Linkable {
   private constructorName: string;
   private constructorOpts: ComponentResourceOptions;
   private isSubscribed: boolean = false;
-  private bucket: Output<s3.BucketV2>;
+  private bucket: Output<aws.s3.BucketV2>;
 
   constructor(
     name: string,
-    args: BucketArgs = {},
+    { getAdditionalPolicyStatements, ...args }: BucketExtendedArgs = {},
     opts: ComponentResourceOptions = {},
   ) {
     super(__pulumiType, name, args, opts);
@@ -545,6 +559,7 @@ export class Bucket extends Component implements Link.Linkable {
       return;
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const parent = this;
     const access = normalizeAccess();
 
@@ -558,7 +573,7 @@ export class Bucket extends Component implements Link.Linkable {
     // (ie. bucket.name). Also, a bucket can only have one policy. We want to ensure
     // the policy created here is created first. And SST will throw an error if
     // another policy is created after this one.
-    this.bucket = policy.apply(() => bucket);
+    this.bucket = policy.apply(() => bucket); //with or without a policy resolve the bucket
 
     function normalizeAccess() {
       return all([args.public, args.access]).apply(([pub, access]) =>
@@ -619,35 +634,40 @@ export class Bucket extends Component implements Link.Linkable {
     }
 
     function createBucketPolicy() {
-      return access.apply((access) => {
-        const statements = [];
-        if (access) {
+      return all([access]).apply(([access]) => {
+        if (!access && !getAdditionalPolicyStatements) return;
+        const statements = getAdditionalPolicyStatements
+          ? getAdditionalPolicyStatements(bucket)
+          : [];
+        if (access === "public" || access === "cloudfront") {
           statements.push({
             principals: [
               access === "public"
                 ? { type: "*", identifiers: ["*"] }
                 : {
-                  type: "Service",
-                  identifiers: ["cloudfront.amazonaws.com"],
-                },
+                    type: "Service",
+                    identifiers: ["cloudfront.amazonaws.com"],
+                  },
             ],
             actions: ["s3:GetObject"],
             resources: [interpolate`${bucket.arn}/*`],
           });
         }
-        statements.push({
-          effect: "Deny",
-          principals: [{ type: "*", identifiers: ["*"] }],
-          actions: ["s3:*"],
-          resources: [bucket.arn, interpolate`${bucket.arn}/*`],
-          conditions: [
-            {
-              test: "Bool",
-              variable: "aws:SecureTransport",
-              values: ["false"],
-            },
-          ],
-        });
+        if (access === "denyUnsecureTransport")
+          statements.push({
+            sid: "DenyUnSecureTransport",
+            effect: "Deny",
+            principals: [{ type: "*", identifiers: ["*"] }],
+            actions: ["s3:*"],
+            resources: [bucket.arn, interpolate`${bucket.arn}/*`],
+            conditions: [
+              {
+                test: "Bool",
+                variable: "aws:SecureTransport",
+                values: ["false"],
+              },
+            ],
+          });
 
         return new s3.BucketPolicy(
           ...transform(
