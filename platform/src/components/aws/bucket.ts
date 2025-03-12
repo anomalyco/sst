@@ -14,13 +14,18 @@ import { Duration, toSeconds } from "../duration";
 import { VisibleError } from "../error";
 import { parseBucketArn } from "./helpers/arn";
 import { BucketLambdaSubscriber } from "./bucket-lambda-subscriber";
-import { iam, s3 } from "@pulumi/aws";
+import { iam, s3, types } from "@pulumi/aws";
 import { permission } from "./permission";
 import { BucketQueueSubscriber } from "./bucket-queue-subscriber";
 import { BucketTopicSubscriber } from "./bucket-topic-subscriber";
 import { Queue } from "./queue";
 import { SnsTopic } from "./sns-topic";
 import { BucketNotification } from "./bucket-notification";
+
+export type GetPolicyDocumentStatement = Omit<
+  types.input.iam.GetPolicyDocumentStatement,
+  "resources"
+> & { resources: Output<string>[] };
 
 interface BucketCorsArgs {
   /**
@@ -137,7 +142,7 @@ export interface BucketArgs {
    * }
    * ```
    */
-  access?: Input<"public" | "cloudfront">;
+  access?: Input<"public" | "cloudfront" | "denyUnsecureTransport">;
   /**
    * The CORS configuration for the bucket. Defaults to `true`, which is the same as:
    *
@@ -156,6 +161,27 @@ export interface BucketArgs {
    * @default `true`
    */
   cors?: Input<false | Prettify<BucketCorsArgs>>;
+  /**
+   *
+   * This function allow adding Policy Document statements to the bucket policy.
+   * The function receives the created bucket and should return an array of Policy Document statements.
+   *
+   * @example
+   * ```js
+   * {
+   *  getAdditionalPolicyStatements: (bucket) => [
+   *    {
+   *      Effect: "Allow",
+   *      Action: ["s3:GetObject"],
+   *      Resource: [`${bucket.arn}/*`]
+   *    }
+   *  ]
+   * }
+   * ```
+   */
+  getAdditionalPolicyStatements?: (
+    bucket: s3.BucketV2,
+  ) => GetPolicyDocumentStatement[];
   /**
    * Enable versioning for the bucket.
    *
@@ -558,7 +584,7 @@ export class Bucket extends Component implements Link.Linkable {
     // (ie. bucket.name). Also, a bucket can only have one policy. We want to ensure
     // the policy created here is created first. And SST will throw an error if
     // another policy is created after this one.
-    this.bucket = policy.apply(() => bucket);
+    this.bucket = policy.apply(() => bucket); //with or without a policy resolve the bucket
 
     function normalizeAccess() {
       return all([args.public, args.access]).apply(([pub, access]) =>
@@ -620,34 +646,43 @@ export class Bucket extends Component implements Link.Linkable {
 
     function createBucketPolicy() {
       return access.apply((access) => {
-        const statements = [];
-        if (access) {
+        if (!access && !args.getAdditionalPolicyStatements) return;
+        const statements = args.getAdditionalPolicyStatements
+          ? args.getAdditionalPolicyStatements(bucket)
+          : [];
+        if (access === "public" || access === "cloudfront") {
           statements.push({
             principals: [
               access === "public"
                 ? { type: "*", identifiers: ["*"] }
                 : {
-                  type: "Service",
-                  identifiers: ["cloudfront.amazonaws.com"],
-                },
+                    type: "Service",
+                    identifiers: ["cloudfront.amazonaws.com"],
+                  },
             ],
             actions: ["s3:GetObject"],
             resources: [interpolate`${bucket.arn}/*`],
           });
         }
-        statements.push({
-          effect: "Deny",
-          principals: [{ type: "*", identifiers: ["*"] }],
-          actions: ["s3:*"],
-          resources: [bucket.arn, interpolate`${bucket.arn}/*`],
-          conditions: [
-            {
-              test: "Bool",
-              variable: "aws:SecureTransport",
-              values: ["false"],
-            },
-          ],
-        });
+        if (
+          access === "denyUnsecureTransport" ||
+          access === "public" ||
+          access === "cloudfront"
+        )
+          statements.push({
+            sid: "DenyUnSecureTransport",
+            effect: "Deny",
+            principals: [{ type: "*", identifiers: ["*"] }],
+            actions: ["s3:*"],
+            resources: [bucket.arn, interpolate`${bucket.arn}/*`],
+            conditions: [
+              {
+                test: "Bool",
+                variable: "aws:SecureTransport",
+                values: ["false"],
+              },
+            ],
+          });
 
         return new s3.BucketPolicy(
           ...transform(
