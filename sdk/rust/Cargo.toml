@@ -2,6 +2,13 @@
 name = "sst_sdk"
 version = "0.1.0"
 edition = "2021"
+description = "Rust SDK for SST"
+documentation = "https://sst.dev/docs"
+readme = "../../README.md"
+repository = "https://github.com/sst/sst"
+license = "MIT"
+keywords = ["aws", "sst"]
+authors = ["Rohan Godha <hi@rohangodha.com>"]
 
 [dependencies]
 aes-gcm = "0.10.3"
