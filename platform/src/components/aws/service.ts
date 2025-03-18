@@ -181,6 +181,42 @@ interface ServiceRules {
         value: Input<string>;
       }>[]
     >;
+
+    /**
+     * Configure header-based routing. Only requests matching the specified
+     * header name and values are forwarded to the container.
+     *
+     * ```js
+     * {
+     *   header: {
+     *     name: "X-Custom-Header",
+     *     values: ["value1", "value2", "prefix*"]
+     *   }
+     * }
+     * ```
+     *
+     * Both the header name and values are case-insensitive. For example, if you specify
+     * `X-Custom-Header` as the name and `Value1` as a value, it will match requests with
+     * the header `x-custom-header: value1` as well.
+     *
+     * A request must have a header that matches the specified name and one of the
+     * specified values to satisfy this condition.
+     *
+     * @default Header is not checked when forwarding requests.
+     */
+    header?: Input<{
+      /**
+       * The name of the HTTP header field to check. This is case-insensitive.
+       */
+      name: Input<string>;
+
+      /**
+       * The values to match against the header value. The rule matches if the
+       * request header matches any of these values. Values are case-insensitive
+       * and support wildcards (`*` and `?`) for pattern matching.
+       */
+      values: Input<Input<string>>[];
+    }>;
   }>;
 }
 
@@ -1735,6 +1771,7 @@ export class Service extends Component implements Link.Linkable {
                 ? {
                   path: v.conditions?.path ?? v.path,
                   query: v.conditions?.query,
+                  header: v.conditions?.header,
                 }
                 : undefined;
             if (protocolType(listenProtocol) === "network" && listenConditions)
@@ -2031,8 +2068,11 @@ export class Service extends Component implements Link.Linkable {
             customRules.forEach(
               (r) =>
                 new lb.ListenerRule(
-                  `${name}Listener${listenerId}Rule${r.listenConditions!.path ?? ""
-                  }${r.listenConditions!.query ?? ""}`,
+                  `${name}Listener${listenerId}Rule${
+                    r.listenConditions!.path ?? ""
+                  }${r.listenConditions!.query ?? ""}${
+                    r.listenConditions!.header?.name ?? ""
+                  }`,
                   {
                     listenerArn: listener.arn,
                     actions: buildActions(r),
@@ -2042,6 +2082,12 @@ export class Service extends Component implements Link.Linkable {
                           ? { values: [r.listenConditions!.path!] }
                           : undefined,
                         queryStrings: r.listenConditions!.query,
+                        httpHeader: r.listenConditions?.header
+                          ? {
+                              httpHeaderName: r.listenConditions.header.name,
+                              values: r.listenConditions.header.values,
+                            }
+                          : undefined,
                       },
                     ],
                   },
