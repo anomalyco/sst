@@ -84,7 +84,7 @@ export interface ReactArgs extends SsrSiteArgs {
    */
   permissions?: SsrSiteArgs["permissions"];
   /**
-   * The regions that the [server function](#nodes-server) in your Astro site will be
+   * The regions that the [server function](#nodes-server) in your React site will be
    * deployed to. Requests will be routed to the nearest region based on the user's location.
    *
    * @default The default region of the SST app
