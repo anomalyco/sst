@@ -16,6 +16,7 @@ import (
 
 	cloudflare "github.com/cloudflare/cloudflare-go"
 	"github.com/sst/sst/v3/internal/util"
+	"github.com/sst/sst/v3/pkg/state"
 )
 
 type CloudflareProvider struct {
@@ -219,7 +220,21 @@ func (c *CloudflareHome) listStages(app string) ([]string, error) {
 
 	for _, obj := range response.Result {
 		segments := strings.Split(obj.Key, "/")
-		stages = append(stages, segments[len(segments)-1])
+		stageName := segments[len(segments)-1]
+
+		file, err := c.getData("app", app, stageName)
+		if err != nil {
+			continue
+		}
+
+		checkpoint, err := state.UnmarshalCheckpoint(file)
+		if err != nil {
+			continue
+		}
+
+		if state.HasResources(checkpoint) {
+			stages = append(stages, segments[len(segments)-1])
+		}
 	}
 
 	return stages, nil

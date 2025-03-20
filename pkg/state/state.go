@@ -1,9 +1,12 @@
 package state
 
 import (
+	"io"
 	"slices"
 
+	"github.com/pulumi/pulumi/pkg/v3/resource/stack"
 	"github.com/pulumi/pulumi/sdk/v3/go/common/apitype"
+	"github.com/pulumi/pulumi/sdk/v3/go/common/encoding"
 	"github.com/pulumi/pulumi/sdk/v3/go/common/resource"
 )
 
@@ -116,4 +119,22 @@ func Repair(checkpoint *apitype.CheckpointV3) []Mutation {
 		}
 	}
 	return result
+}
+
+func UnmarshalCheckpoint(reader io.Reader) (*apitype.CheckpointV3, error) {
+	bytes, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, err
+	}
+
+	checkpoint, err := stack.UnmarshalVersionedCheckpointToLatestCheckpoint(encoding.JSON, bytes)
+	if err != nil {
+		return nil, err
+	}
+
+	return checkpoint, nil
+}
+
+func HasResources(checkpoint *apitype.CheckpointV3) bool {
+	return checkpoint != nil && checkpoint.Latest != nil && len(checkpoint.Latest.Resources) > 0
 }

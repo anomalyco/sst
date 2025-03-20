@@ -23,6 +23,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/aws/smithy-go"
 	"github.com/sst/sst/v3/internal/util"
+	"github.com/sst/sst/v3/pkg/state"
 
 	ecrTypes "github.com/aws/aws-sdk-go-v2/service/ecr/types"
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
@@ -726,7 +727,16 @@ func (a *AwsHome) listStages(app string) ([]string, error) {
 		filename := path.Base(*obj.Key)
 		if strings.HasSuffix(filename, ".json") {
 			stageName := strings.TrimSuffix(filename, ".json")
-			stages = append(stages, stageName)
+
+			data, err := a.getData("app", app, stageName)
+			if err != nil {
+				continue
+			}
+
+			checkpoint, err := state.UnmarshalCheckpoint(data)
+			if state.HasResources(checkpoint) {
+				stages = append(stages, stageName)
+			}
 		}
 	}
 
