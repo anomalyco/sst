@@ -1,11 +1,9 @@
 import fs from "fs";
 import path from "path";
-import { globSync } from "glob";
 import {
   ComponentResourceOptions,
   Output,
   all,
-  interpolate,
   output,
 } from "@pulumi/pulumi";
 import { Size } from "../size.js";
@@ -18,7 +16,7 @@ import { isALteB } from "../../util/compare-semver.js";
 import { SsrSite, SsrSiteArgs } from "./ssr-site.js";
 import { Bucket } from "./bucket.js";
 
-const DEFAULT_OPEN_NEXT_VERSION = "3.4.1";
+const DEFAULT_OPEN_NEXT_VERSION = "3.5.3";
 
 type BaseFunction = {
   handler: string;
