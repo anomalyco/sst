@@ -81,7 +81,7 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 	var properties Properties
 	json.Unmarshal(input.Properties, &properties)
 
-	cargotomlpath, err := fs.FindUp(input.Handler, "cargo.toml")
+	cargotomlpath, err := fs.FindUp(input.Handler, "Cargo.toml")
 	if err != nil {
 		return nil, err
 	}
