@@ -517,9 +517,8 @@ export class Nextjs extends SsrSite {
     { bucket }: { bucket: Bucket },
   ) {
     const parent = this;
-
-    const ret = all([outputPath, args?.imageOptimization]).apply(
-      ([outputPath, imageOptimization]) => {
+    const ret = all([outputPath, args?.imageOptimization, args.environment]).apply(
+      ([outputPath, imageOptimization, environment]) => {
         const { openNextOutput, buildId, prerenderManifest, base } =
           loadBuildOutput();
 
@@ -536,7 +535,8 @@ export class Nextjs extends SsrSite {
 
         const serverOrigin = openNextOutput.origins["default"];
         const imageOptimizerOrigin = openNextOutput.origins["imageOptimizer"];
-        const s3Origin = openNextOutput.origins["s3"];
+
+        const NODE_ENV = environment?.NODE_ENV ?? "production";
         const plan = all([
           revalidationTable?.arn,
           revalidationTable?.name,
@@ -565,6 +565,9 @@ export class Nextjs extends SsrSite {
               streaming: serverOrigin.streaming,
               runtime: "nodejs20.x" as const,
               environment: {
+                // This is needed so Next/React doesn't try to load modules that are meant for development.
+                // TODO: Remember to set this env variable on each function when splitting the server will be supported.
+                NODE_ENV: NODE_ENV,
                 CACHE_BUCKET_NAME: bucketName,
                 CACHE_BUCKET_KEY_PREFIX: "_cache",
                 CACHE_BUCKET_REGION: bucketRegion,
@@ -649,6 +652,7 @@ export class Nextjs extends SsrSite {
                 runtime: "nodejs20.x" as const,
                 architecture: "arm64" as const,
                 environment: {
+                  NODE_ENV: NODE_ENV,
                   BUCKET_NAME: bucketName,
                   BUCKET_KEY_PREFIX: "_assets",
                   ...(imageOptimization?.staticEtag
