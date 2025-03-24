@@ -1,3 +1,4 @@
+import { cloudfront } from "@pulumi/aws";
 import {
   ComponentResourceOptions,
   Output,
@@ -7,20 +8,19 @@ import {
 } from "@pulumi/pulumi";
 import crypto from "crypto";
 import { Component, Transform, transform } from "../component";
-import { Link } from "../link";
+import { DurationSeconds } from "../duration";
+import { VisibleError } from "../error";
 import type { Input } from "../input";
-import { Cdn, CdnArgs } from "./cdn";
-import { cloudfront } from "@pulumi/aws";
+import { Link } from "../link";
 import { hashStringToPrettyString, physicalName } from "../naming";
 import { Bucket } from "./bucket";
+import { Cdn, CdnArgs } from "./cdn";
 import { OriginAccessControl } from "./providers/origin-access-control";
-import { VisibleError } from "../error";
-import { RouterUrlRoute } from "./router-url-route";
 import { RouterBucketRoute } from "./router-bucket-route";
 import { RouterSiteRoute } from "./router-site-route";
+import { RouterUrlRoute } from "./router-url-route";
 import { SsrSite } from "./ssr-site";
 import { StaticSite } from "./static-site";
-import { DurationSeconds } from "../duration";
 
 interface InlineUrlRouteArgs extends InlineBaseRouteArgs {
   /**
@@ -1814,7 +1814,7 @@ if (event.request.headers.host.value.includes('cloudfront.net')) {
   };
 }`;
 
-export const CF_ROUTER_GLOBAL_INJECTION = `
+export const CF_ROUTER_URL_ORIGIN_INJECTION = `
 function setUrlOrigin(urlHost, override) {
   cf.updateRequestOrigin(Object.assign({
     domainName: urlHost,
@@ -1827,8 +1827,27 @@ function setUrlOrigin(urlHost, override) {
       enabled: false,
     }
   }, override));
-}
+}`;
 
+export const CF_ROUTER_URL_ORIGIN_WITH_OAC_INJECTION = `
+function setUrlOrigin(urlHost, override) {
+  cf.updateRequestOrigin(Object.assign({
+    domainName: urlHost,
+    customOriginConfig: {
+      port: 443,
+      protocol: "https",
+      sslProtocols: ["TLSv1.2"],
+    },
+    originAccessControlConfig: {
+      enabled: true,
+      signingBehavior: "always",
+      signingProtocol: "sigv4",
+      originType: "lambda",
+    }
+  }, override));
+}`;
+
+export const CF_ROUTER_S3_ORIGIN_INJECTION = `
 function setS3Origin(s3Domain, override) {
   cf.updateRequestOrigin(Object.assign({
     domainName: s3Domain,
@@ -1840,6 +1859,10 @@ function setS3Origin(s3Domain, override) {
     },
   }, override));
 }`;
+
+export const CF_ROUTER_GLOBAL_INJECTION = `
+${CF_ROUTER_URL_ORIGIN_INJECTION}
+${CF_ROUTER_S3_ORIGIN_INJECTION}`;
 
 export const CF_SITE_ROUTER_INJECTION = `
 async function routeSite(kvNamespace, metadata) {
