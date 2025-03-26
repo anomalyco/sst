@@ -7,12 +7,17 @@ import Layout from '../layouts/Layout.astro';
 ---
 
 <Layout>
-    <ul>
-      <li><a href="/prerendered">This page is prerendered</a></li>
-      <li><a href="/src-image">This page display image in src/</a></li>
-      <li><a href="/public-image">This page display image in public/</a></li>
-      <li><a href="/remote-image">This page display image from remote url</a></li>
-      <li><a href="/garbage">This page does not exist (404 page is prerendered)</a></li>
-    </ul>
+  <ul>
+    <li><a href="/prerendered">A prerendered page</a></li>
+    <li><a href="/sub/page">A prerendered page inside /sub</a></li>
+    <li><a href="/src-image">This page display image in src/</a></li>
+    <li><a href="/public-image">This page display image in public/</a></li>
+    <li><a href="/remote-image">This page display image from remote url</a></li>
+    <li><a href="/garbage">This page does not exist (404 page is prerendered)</a></li>
+    <li><a href="/redirect-to-route">Redirect /redirect-to-route to /prerendered</a></li>
+    <li><a href="/redirect-to-url">Redirect /redirect-to-url to https://www.google.com</a></li>
+    <li><a href="/redirect/page">Redirect /redirect/page to /sub/page</a></li>
+    <li><a href="/dynamic-redirect">Dynamically redirect /dynamic-redirect to /prerendered</a></li>
+  </ul>
 	<Welcome />
 </Layout>

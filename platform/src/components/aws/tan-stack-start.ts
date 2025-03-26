@@ -1,27 +1,15 @@
 import fs from "fs";
 import path from "path";
-import { ComponentResourceOptions, Output, all } from "@pulumi/pulumi";
-import { Function } from "./function.js";
-import {
-  SsrSiteArgs,
-  createDevResources,
-  createResources,
-  prepare,
-  validatePlan,
-} from "./ssr-site-new.js";
-import { Cdn } from "./cdn.js";
-import { Bucket } from "./bucket.js";
-import { Component } from "../component.js";
-import { Link } from "../link.js";
-import { buildApp } from "../base/base-ssr-site.js";
+import { ComponentResourceOptions, Output } from "@pulumi/pulumi";
 import { VisibleError } from "../error.js";
+import { SsrSite, SsrSiteArgs } from "./ssr-site.js";
 
-export interface TanstackStartArgs extends SsrSiteArgs {
+export interface TanStackStartArgs extends SsrSiteArgs {
   /**
    * Configure how this component works in `sst dev`.
    *
    * :::note
-   * In `sst dev` your Tanstack Start app is run in dev mode; it's not deployed.
+   * In `sst dev` your TanStack Start app is run in dev mode; it's not deployed.
    * :::
    *
    * Instead of deploying your TanStack Start app, this starts it in dev mode. It's run
@@ -144,8 +132,7 @@ export interface TanstackStartArgs extends SsrSiteArgs {
    */
   invalidation?: SsrSiteArgs["invalidation"];
   /**
-   * Set environment variables in your TanStack Start app through
-   * [Vite](https://vitejs.dev/guide/env-and-mode). These are made available:
+   * Set in your TanStack Start app. These are made available:
    *
    * 1. In `vinxi build`, they are loaded into `process.env`.
    * 2. Locally while running `sst dev vinxi dev`.
@@ -241,22 +228,6 @@ export interface TanstackStartArgs extends SsrSiteArgs {
    */
   assets?: SsrSiteArgs["assets"];
   /**
-   * Configure the [server function](#nodes-server) in your TanStack Start app to connect
-   * to private subnets in a virtual private cloud or VPC. This allows your app to
-   * access private resources.
-   *
-   * @example
-   * ```js
-   * {
-   *   vpc: {
-   *     securityGroups: ["sg-0399348378a4c256c"],
-   *     subnets: ["subnet-0b6a2b73896dc8c4c", "subnet-021389ebee680c2f0"]
-   *   }
-   * }
-   * ```
-   */
-  vpc?: SsrSiteArgs["vpc"];
-  /**
    * Configure the TanStack Start app to use an existing CloudFront cache policy.
    *
    * :::note
@@ -279,7 +250,7 @@ export interface TanstackStartArgs extends SsrSiteArgs {
 }
 
 /**
- * The `TanstackStart` component lets you deploy a [TanStack Start](https://tanstack.com/start/latest) app to AWS.
+ * The `TanStackStart` component lets you deploy a [TanStack Start](https://tanstack.com/start/latest) app to AWS.
  *
  * @example
  *
@@ -288,7 +259,7 @@ export interface TanstackStartArgs extends SsrSiteArgs {
  * Deploy a TanStack Start app that's in the project root.
  *
  * ```js title="sst.config.ts"
- * new sst.aws.TanstackStart("MyWeb");
+ * new sst.aws.TanStackStart("MyWeb");
  * ```
  *
  * #### Change the path
@@ -296,7 +267,7 @@ export interface TanstackStartArgs extends SsrSiteArgs {
  * Deploys the TanStack Start app in the `my-app/` directory.
  *
  * ```js {2} title="sst.config.ts"
- * new sst.aws.TanstackStart("MyWeb", {
+ * new sst.aws.TanStackStart("MyWeb", {
  *   path: "my-app/"
  * });
  * ```
@@ -306,7 +277,7 @@ export interface TanstackStartArgs extends SsrSiteArgs {
  * Set a custom domain for your TanStack Start app.
  *
  * ```js {2} title="sst.config.ts"
- * new sst.aws.TanstackStart("MyWeb", {
+ * new sst.aws.TanStackStart("MyWeb", {
  *   domain: "my-app.com"
  * });
  * ```
@@ -316,7 +287,7 @@ export interface TanstackStartArgs extends SsrSiteArgs {
  * Redirect `www.my-app.com` to `my-app.com`.
  *
  * ```js {4} title="sst.config.ts"
- * new sst.aws.TanstackStart("MyWeb", {
+ * new sst.aws.TanStackStart("MyWeb", {
  *   domain: {
  *     name: "my-app.com",
  *     redirects: ["www.my-app.com"]
@@ -332,7 +303,7 @@ export interface TanstackStartArgs extends SsrSiteArgs {
  * ```ts {4} title="sst.config.ts"
  * const bucket = new sst.aws.Bucket("MyBucket");
  *
- * new sst.aws.TanstackStart("MyWeb", {
+ * new sst.aws.TanStackStart("MyWeb", {
  *   link: [bucket]
  * });
  * ```
@@ -346,102 +317,59 @@ export interface TanstackStartArgs extends SsrSiteArgs {
  * console.log(Resource.MyBucket.name);
  * ```
  */
-export class TanstackStart extends Component implements Link.Linkable {
-  private cdn?: Output<Cdn>;
-  private assets?: Bucket;
-  private server?: Output<Function>;
-  private devUrl?: Output<string>;
-
+export class TanStackStart extends SsrSite {
   constructor(
     name: string,
-    args: TanstackStartArgs = {},
+    args: TanStackStartArgs = {},
     opts: ComponentResourceOptions = {},
   ) {
     super(__pulumiType, name, args, opts);
+  }
 
-    const parent = this;
-    const { dev, sitePath, regions } = prepare(parent, args);
+  protected normalizeBuildCommand() { }
 
-    if (dev.enabled) {
-      const { server } = createDevResources(parent, name, args);
-      this.devUrl = dev.url;
-      this.registerOutputs({
-        _metadata: {
-          mode: "placeholder",
-          path: sitePath,
-          server: server.arn,
-        },
-        _dev: {
-          ...dev.outputs,
-          aws: { role: server.nodes.role.arn },
-        },
-      });
-      return;
-    }
+  protected buildPlan(outputPath: Output<string>) {
+    return outputPath.apply((outputPath) => {
+      const nitro = JSON.parse(
+        fs.readFileSync(
+          path.join(outputPath, ".output", "nitro.json"),
+          "utf-8",
+        ),
+      );
 
-    const outputPath = buildApp(parent, name, args, sitePath);
-    const plan = buildPlan();
-    const { distribution, bucket, servers } = createResources(
-      parent,
-      name,
-      args,
-      outputPath,
-      plan,
-      regions,
-    );
-    const server = servers.apply((servers) => servers[0]);
-
-    this.assets = bucket;
-    this.cdn = distribution;
-    this.server = server;
-    this.registerOutputs({
-      _hint: all([this.cdn.domainUrl, this.cdn.url]).apply(
-        ([domainUrl, url]) => domainUrl ?? url,
-      ),
-      _metadata: {
-        mode: "deployed",
-        path: sitePath,
-        url: distribution.apply((d) => d.domainUrl ?? d.url),
-        server: server.arn,
-      },
-      _dev: {
-        ...dev.outputs,
-        aws: { role: server.nodes.role.arn },
-      },
-    });
-
-    function buildPlan() {
-      return outputPath.apply((outputPath) => {
-        const nitro = JSON.parse(
-          fs
-            .readFileSync(path.join(outputPath, ".output/nitro.json"))
-            .toString(),
+      if (!["aws-lambda"].includes(nitro.preset)) {
+        throw new VisibleError(
+          `TanStackStart's app.config.ts must be configured to use the "aws-lambda" preset. It is currently set to "${nitro.preset}".`,
         );
-        if (!["aws-lambda"].includes(nitro.preset)) {
-          throw new VisibleError(
-            `TanstackStart's app.config.ts must be configured to use the "aws-lambda" preset. It is currently set to "${nitro.preset}".`,
-          );
-        }
+      }
 
-        return validatePlan({
-          server: {
-            description: "Server handler for Tanstack",
-            handler: "index.handler",
-            bundle: path.join(outputPath, ".output", "server"),
-            streaming: nitro?.config?.awsLambda?.streaming === true,
+      const serverOutputPath = path.join(outputPath, ".output", "server");
+
+      // If basepath is configured, nitro.mjs will have a line that looks like this:
+      // return createRouter$2({ routeTree: Nr, defaultPreload: "intent", defaultErrorComponent: ce, defaultNotFoundComponent: () => jsx(de, {}), scrollRestoration: true, basepath: "/tan" });
+      const serverNitroChunk = fs.readFileSync(
+        path.join(serverOutputPath, "chunks", "nitro", "nitro.mjs"),
+        "utf-8",
+      );
+      const basepath = serverNitroChunk.match(/basepath: "(.*)"/)?.[1];
+
+      return {
+        base: basepath,
+        server: {
+          description: "Server handler for TanStack",
+          handler: "index.handler",
+          bundle: serverOutputPath,
+          streaming: nitro?.config?.awsLambda?.streaming === true,
+        },
+        assets: [
+          {
+            from: path.join(".output", "public"),
+            to: "",
+            cached: true,
           },
-          s3: {
-            copy: [
-              {
-                from: path.join(".output", "public"),
-                to: "",
-                cached: true,
-              },
-            ],
-          },
-        });
-      });
-    }
+        ],
+      };
+    });
   }
 
   /**
@@ -451,41 +379,10 @@ export class TanstackStart extends Component implements Link.Linkable {
    * Otherwise, it's the autogenerated CloudFront URL.
    */
   public get url() {
-    return all([this.cdn?.domainUrl, this.cdn?.url, this.devUrl]).apply(
-      ([domainUrl, url, dev]) => domainUrl ?? url ?? dev!,
-    );
-  }
-
-  /**
-   * The underlying [resources](/docs/components/#nodes) this component creates.
-   */
-  public get nodes() {
-    return {
-      /**
-       * The AWS Lambda server function that renders the site.
-       */
-      server: this.server,
-      /**
-       * The Amazon S3 Bucket that stores the assets.
-       */
-      assets: this.assets,
-      /**
-       * The Amazon CloudFront CDN that serves the site.
-       */
-      cdn: this.cdn,
-    };
-  }
-
-  /** @internal */
-  public getSSTLink() {
-    return {
-      properties: {
-        url: this.url,
-      },
-    };
+    return super.url;
   }
 }
 
 const __pulumiType = "sst:aws:TanstackStart";
 // @ts-expect-error
-TanstackStart.__pulumiType = __pulumiType;
+TanStackStart.__pulumiType = __pulumiType;

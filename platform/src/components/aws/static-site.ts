@@ -4,6 +4,7 @@ import crypto from "crypto";
 import {
   ComponentResourceOptions,
   Output,
+  Resource,
   all,
   interpolate,
   output,
@@ -24,8 +25,14 @@ import {
 } from "../base/base-static-site.js";
 import { cloudfront, getRegionOutput, s3 } from "@pulumi/aws";
 import { URL_UNAVAILABLE } from "./linkable.js";
-import { OriginAccessControl } from "./providers/origin-access-control.js";
-import { physicalName } from "../naming.js";
+import { KvKeys } from "./providers/kv-keys.js";
+import {
+  CF_BLOCK_CLOUDFRONT_URL_INJECTION,
+  CF_ROUTER_GLOBAL_INJECTION,
+  CF_SITE_ROUTER_INJECTION,
+} from "./router.js";
+import { readDirRecursivelySync } from "../../util/fs.js";
+import { DistributionInvalidation } from "./providers/distribution-invalidation.js";
 
 export interface StaticSiteArgs extends BaseStaticSiteArgs {
   /**
@@ -66,6 +73,42 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
    * ```
    */
   path?: BaseStaticSiteArgs["path"];
+  /**
+   * Configure the base path of the site.
+   *
+   * You can serve your site from a subpath. For example, if you want to serve
+   * your site at `https://my-app.com/docs`, you can do the following.
+   *
+   * If you are using site generator like Vite, first make sure the base path is set in
+   * your static site generator.
+   *
+   * For Vite, set the `base` option in your `vite.config.ts`. The value should end with
+   * `/`. This is to ensure the asset paths (ie. .css, .js) are correctly constructed.
+   * ```js {2} title="vite.config.ts"
+   * export default defineConfig({
+   *   base: "/docs/",
+   * });
+   * ```
+   *
+   * Then set the base path on the StaticSite component, and disable the CDN.
+   *
+   * ```js {2} title="sst.config.ts"
+   * const docs = new sst.aws.StaticSite("Docs", {
+   *   base: "/docs",
+   *   cdn: false,
+   * });
+   * ```
+   *
+   * Finally, add the site as a route to the Router component.
+   *
+   * ```js {4}
+   * const router = new sst.aws.Router("MyRouter", {
+   *   domain: "my-app.com",
+   * });
+   * router.routeSite("/docs", docs);
+   * ```
+   */
+  base?: Input<string>;
   /**
    * Configure CloudFront Functions to customize the behavior of HTTP requests and responses at the edge.
    */
@@ -110,59 +153,45 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
      * ```
      *
      * You can use this add basic auth, [check out an example](/docs/examples/#aws-static-site-basic-auth).
-     *
-     * @example
-     *
-     * Alternatively you can pass in the ARN of an existing CloudFront function to
-     * override the default behavior.
-     *
-     * ```js
-     * {
-     *   edge: {
-     *     viewerRequest: "arn:aws:cloudfront::123456789012:function/my-function"
-     *   }
-     * }
-     * ```
      */
-    viewerRequest?: Input<
-      | string
-      | {
-          /**
-           * The code to inject into the viewer request function.
-           *
-           * @example
-           * To add a custom header to all requests.
-           *
-           * ```js
-           * {
-           *   edge: {
-           *     viewerRequest: {
-           *       injection: `event.request.headers["x-foo"] = "bar";`
-           *     }
-           *   }
-           * }
-           * ```
-           */
-          injection: Input<string>;
-          /**
-           * The KV stores to associate with the viewer request function.
-           *
-           * Takes a list of CloudFront KeyValueStore ARNs.
-           *
-           * @example
-           * ```js
-           * {
-           *   edge: {
-           *     viewerRequest: {
-           *       kvStores: ["arn:aws:cloudfront::123456789012:key-value-store/my-store"]
-           *     }
-           *   }
-           * }
-           * ```
-           */
-          kvStores?: Input<Input<string>[]>;
-        }
-    >;
+    viewerRequest?: Input<{
+      /**
+       * The code to inject into the viewer request function.
+       *
+       * @example
+       * To add a custom header to all requests.
+       *
+       * ```js
+       * {
+       *   edge: {
+       *     viewerRequest: {
+       *       injection: `event.request.headers["x-foo"] = "bar";`
+       *     }
+       *   }
+       * }
+       * ```
+       */
+      injection: Input<string>;
+      /**
+       * The KV store to associate with the viewer request function.
+       *
+       * @example
+       * ```js
+       * {
+       *   edge: {
+       *     viewerRequest: {
+       *       kvStore: "arn:aws:cloudfront::123456789012:key-value-store/my-store"
+       *     }
+       *   }
+       * }
+       * ```
+       */
+      kvStore?: Input<string>;
+      /**
+       * @deprecated Use `kvStore` instead because CloudFront Functions only support one KV store.
+       */
+      kvStores?: Input<Input<string>[]>;
+    }>;
     /**
      * Configure the viewer response function.
      *
@@ -197,58 +226,47 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
      *   }
      * }
      * ```
-     *
-     * @example
-     *
-     * Alternatively you can pass in the ARN of an existing CloudFront function.
-     *
-     * ```js
-     * {
-     *   edge: {
-     *     viewerResponse: "arn:aws:cloudfront::123456789012:function/my-function"
-     *   }
-     * }
-     * ```
      */
-    viewerResponse?: Input<
-      | string
-      | {
-          /**
-           * The code to inject into the viewer response function.
-           *
-           * @example
-           * To add a custom header to all responses.
-           *
-           * ```js
-           * {
-           *   edge: {
-           *     viewerResponse: {
-           *       injection: `event.response.headers["x-foo"] = "bar";`
-           *     }
-           *   }
-           * }
-           * ```
-           */
-          injection: Input<string>;
-          /**
-           * The KV stores to associate with the viewer response function.
-           *
-           * Takes a list of CloudFront KeyValueStore ARNs.
-           *
-           * @example
-           * ```js
-           * {
-           *   edge: {
-           *     viewerResponse: {
-           *       kvStores: ["arn:aws:cloudfront::123456789012:key-value-store/my-store"]
-           *     }
-           *   }
-           * }
-           * ```
-           */
-          kvStores?: Input<Input<string>[]>;
-        }
-    >;
+    viewerResponse?: Input<{
+      /**
+       * The code to inject into the viewer response function.
+       *
+       * @example
+       * To add a custom header to all responses.
+       *
+       * ```js
+       * {
+       *   edge: {
+       *     viewerResponse: {
+       *       injection: `event.response.headers["x-foo"] = "bar";`
+       *     }
+       *   }
+       * }
+       * ```
+       */
+      injection: Input<string>;
+      /**
+       * The KV store to associate with the viewer response function.
+       *
+       * @example
+       * ```js
+       * {
+       *   server: {
+       *     edge: {
+       *       viewerResponse: {
+       *         kvStore: "arn:aws:cloudfront::123456789012:key-value-store/my-store"
+       *       }
+       *     }
+       *   }
+       * }
+       * ```
+       */
+      kvStore?: Input<string>;
+      /**
+       * @deprecated Use `kvStore` instead because CloudFront Functions only support one KV store.
+       */
+      kvStores?: Input<Input<string>[]>;
+    }>;
   }>;
   /**
    * Configure if your static site needs to be built. This is useful if you are using a static site generator.
@@ -410,47 +428,62 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
   invalidation?: Input<
     | false
     | {
-        /**
-         * Configure if `sst deploy` should wait for the CloudFront cache invalidation to finish.
-         *
-         * :::tip
-         * For non-prod environments it might make sense to pass in `false`.
-         * :::
-         *
-         * Waiting for the CloudFront cache invalidation process to finish ensures that the new content will be served once the deploy finishes. However, this process can sometimes take more than 5 mins.
-         * @default `false`
-         * @example
-         * ```js
-         * {
-         *   invalidation: {
-         *     wait: true
-         *   }
-         * }
-         * ```
-         */
-        wait?: Input<boolean>;
-        /**
-         * The paths to invalidate.
-         *
-         * You can either pass in an array of glob patterns to invalidate specific files. Or you can use the built-in option `all` to invalidation all files when any file changes.
-         *
-         * :::note
-         * Invalidating `all` counts as one invalidation, while each glob pattern counts as a single invalidation path.
-         * :::
-         * @default `"all"`
-         * @example
-         * Invalidate the `index.html` and all files under the `products/` route.
-         * ```js
-         * {
-         *   invalidation: {
-         *     paths: ["/index.html", "/products/*"]
-         *   }
-         * }
-         * ```
-         */
-        paths?: Input<"all" | string[]>;
-      }
+      /**
+       * Configure if `sst deploy` should wait for the CloudFront cache invalidation to finish.
+       *
+       * :::tip
+       * For non-prod environments it might make sense to pass in `false`.
+       * :::
+       *
+       * Waiting for the CloudFront cache invalidation process to finish ensures that the new content will be served once the deploy finishes. However, this process can sometimes take more than 5 mins.
+       * @default `false`
+       * @example
+       * ```js
+       * {
+       *   invalidation: {
+       *     wait: true
+       *   }
+       * }
+       * ```
+       */
+      wait?: Input<boolean>;
+      /**
+       * The paths to invalidate.
+       *
+       * You can either pass in an array of glob patterns to invalidate specific files. Or you can use the built-in option `all` to invalidation all files when any file changes.
+       *
+       * :::note
+       * Invalidating `all` counts as one invalidation, while each glob pattern counts as a single invalidation path.
+       * :::
+       * @default `"all"`
+       * @example
+       * Invalidate the `index.html` and all files under the `products/` route.
+       * ```js
+       * {
+       *   invalidation: {
+       *     paths: ["/index.html", "/products/*"]
+       *   }
+       * }
+       * ```
+       */
+      paths?: Input<"all" | string[]>;
+    }
   >;
+  /**
+   * By default, a standalone CloudFront distribution is created.
+   *
+   * If you want to use a `Router` component to serve your site, set this to
+   * `false`.
+   *
+   * @default `true`
+   * @example
+   * ```js
+   * {
+   *   cdn: false
+   * }
+   * ```
+   */
+  cdn?: Input<boolean>;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
@@ -527,7 +560,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
  *
  * ```js title="sst.config.ts"
  * new sst.aws.StaticSite("MyWeb", {
- *   errorPage: "404.html",
+ *   errorPage: "/404.html",
  *   build: {
  *     command: "bundle exec jekyll build",
  *     output: "_site"
@@ -541,7 +574,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
  *
  * ```js title="sst.config.ts"
  * new sst.aws.StaticSite("MyWeb", {
- *   errorPage: "404.html",
+ *   errorPage: "/404.html",
  *   build: {
  *     command: "npm run build",
  *     output: "public"
@@ -612,9 +645,23 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
  * ```
  */
 export class StaticSite extends Component implements Link.Linkable {
-  private cdn?: Cdn;
-  private assets?: Bucket;
+  private cdn?: Output<Cdn | undefined>;
+  private bucket?: Bucket;
   private devUrl?: Output<string>;
+  private _cdnData?: {
+    base: Output<string | undefined>;
+    entries: Output<Record<string, string>>;
+    purge: Output<boolean>;
+    invalidation: Output<
+      | false
+      | {
+        paths: string[];
+        version: string;
+        wait: boolean;
+      }
+    >;
+    invalidationDependsOn: Input<Resource>[];
+  };
 
   constructor(
     name: string,
@@ -641,6 +688,8 @@ export class StaticSite extends Component implements Link.Linkable {
       return;
     }
 
+    const base = normalizeBase();
+    const errorPage = normalizeErrorPage();
     const assets = normalizeAsssets();
     const outputPath = buildApp(
       parent,
@@ -649,14 +698,199 @@ export class StaticSite extends Component implements Link.Linkable {
       sitePath,
       environment,
     );
-    const access = createCloudFrontOriginAccessControl();
     const bucket = createBucket();
     const { bucketName, bucketDomain } = getBucketDetails();
-    const bucketFile = uploadAssets();
+    const assetsUploaded = uploadAssets();
+    const kvEntries = buildKvEntries();
     const invalidation = buildInvalidation();
-    const distribution = createDistribution();
-    this.assets = bucket;
+
+    const distribution = output(args.cdn).apply((cdn) => {
+      if (cdn === false) return;
+      const kvNamespace = buildRequestKvNamespace();
+      const kvStoreArn = createRequestKvStore();
+      const requestFunction = createRequestFunction();
+      const responseFunction = createResponseFunction();
+      const distribution = createDistribution();
+      const kvUpdated = createKvValues();
+      createInvalidation();
+      return distribution;
+
+      function buildRequestKvNamespace() {
+        // In the case multiple sites use the same kv store, we need to namespace the keys
+        return crypto
+          .createHash("md5")
+          .update(`${$app.name}-${$app.stage}-${name}`)
+          .digest("hex")
+          .substring(0, 4);
+      }
+
+      function createRequestKvStore() {
+        return output(args.edge).apply((edge) => {
+          const viewerRequest = edge?.viewerRequest;
+          const userKvStore =
+            viewerRequest?.kvStore ?? viewerRequest?.kvStores?.[0];
+          if (userKvStore) return output(userKvStore);
+
+          return new cloudfront.KeyValueStore(`${name}KvStore`, {}, { parent })
+            .arn;
+        });
+      }
+
+      function createKvValues() {
+        return new KvKeys(
+          `${name}KvKeys`,
+          {
+            store: kvStoreArn!,
+            namespace: kvNamespace,
+            entries: kvEntries,
+            purge: assets.purge,
+          },
+          { parent },
+        );
+      }
+
+      function createInvalidation() {
+        invalidation.apply((invalidation) => {
+          if (!invalidation) return;
+
+          new DistributionInvalidation(
+            `${name}Invalidation`,
+            {
+              distributionId: distribution.nodes.distribution.id,
+              paths: invalidation.paths,
+              version: invalidation.version,
+              wait: invalidation.wait,
+            },
+            { parent, dependsOn: [assetsUploaded, kvUpdated] },
+          );
+        });
+      }
+
+      function createRequestFunction() {
+        return output(args.edge).apply((edge) => {
+          const userInjection = edge?.viewerRequest?.injection ?? "";
+          const blockCloudfrontUrlInjection = args.domain
+            ? CF_BLOCK_CLOUDFRONT_URL_INJECTION
+            : "";
+          return new cloudfront.Function(
+            `${name}CloudfrontFunctionRequest`,
+            {
+              runtime: "cloudfront-js-2.0",
+              keyValueStoreAssociations: kvStoreArn ? [kvStoreArn] : [],
+              code: interpolate`
+import cf from "cloudfront";
+async function handler(event) {
+  ${userInjection}
+  ${blockCloudfrontUrlInjection}
+  ${CF_SITE_ROUTER_INJECTION}
+
+  const kvNamespace = "${kvNamespace}";
+
+  // Load metadata
+  let metadata;
+  try {
+    const v = await cf.kvs().get(kvNamespace + ":metadata");
+    metadata = JSON.parse(v);
+  } catch (e) {}
+
+  await routeSite(kvNamespace, metadata);
+  return event.request;
+}
+
+${CF_ROUTER_GLOBAL_INJECTION}`,
+            },
+            { parent },
+          );
+        });
+      }
+
+      function createResponseFunction() {
+        return output(args.edge).apply((edge) => {
+          const userConfig = edge?.viewerResponse;
+          const userInjection = userConfig?.injection;
+          const kvStoreArn = userConfig?.kvStore ?? userConfig?.kvStores?.[0];
+
+          if (!userInjection) return;
+
+          return new cloudfront.Function(
+            `${name}CloudfrontFunctionResponse`,
+            {
+              runtime: "cloudfront-js-2.0",
+              keyValueStoreAssociations: kvStoreArn ? [kvStoreArn] : [],
+              code: `
+import cf from "cloudfront";
+async function handler(event) {
+  ${userInjection}
+  return event.response;
+}`,
+            },
+            { parent },
+          );
+        });
+      }
+
+      function createDistribution() {
+        return new Cdn(
+          ...transform(
+            args.transform?.cdn,
+            `${name}Cdn`,
+            {
+              comment: `${name} site`,
+              domain: args.domain,
+              origins: [
+                {
+                  originId: "default",
+                  domainName: "placeholder.sst.dev",
+                  customOriginConfig: {
+                    httpPort: 80,
+                    httpsPort: 443,
+                    originProtocolPolicy: "https-only",
+                    originReadTimeout: 20,
+                    originSslProtocols: ["TLSv1.2"],
+                  },
+                },
+              ],
+              defaultCacheBehavior: {
+                targetOriginId: "default",
+                viewerProtocolPolicy: "redirect-to-https",
+                allowedMethods: [
+                  "DELETE",
+                  "GET",
+                  "HEAD",
+                  "OPTIONS",
+                  "PATCH",
+                  "POST",
+                  "PUT",
+                ],
+                cachedMethods: ["GET", "HEAD"],
+                compress: true,
+                // CloudFront's managed CachingOptimized policy
+                cachePolicyId: "658327ea-f89d-4fab-a63d-7e88639e58f6",
+                functionAssociations: all([
+                  requestFunction,
+                  responseFunction,
+                ]).apply(([reqFn, resFn]) => [
+                  { eventType: "viewer-request", functionArn: reqFn.arn },
+                  ...(resFn
+                    ? [{ eventType: "viewer-response", functionArn: resFn.arn }]
+                    : []),
+                ]),
+              },
+            },
+            { parent },
+          ),
+        );
+      }
+    });
+    this.bucket = bucket;
     this.cdn = distribution;
+    this._cdnData = {
+      base,
+      entries: kvEntries,
+      purge: assets.purge,
+      invalidation,
+      invalidationDependsOn: [assetsUploaded],
+    };
 
     this.registerOutputs({
       _hint: this.url,
@@ -686,24 +920,31 @@ export class StaticSite extends Component implements Link.Linkable {
       };
     }
 
+    function normalizeBase() {
+      return output(args.base).apply((v) => {
+        if (!v) return undefined;
+        return "/" + v.replace(/^\//, "").replace(/\/$/, "");
+      });
+    }
+
+    function normalizeErrorPage() {
+      return all([indexPage, args.errorPage]).apply(
+        ([indexPage, errorPage]) => {
+          return "/" + (errorPage ?? indexPage).replace(/^\//, "");
+        },
+      );
+    }
+
     function normalizeAsssets() {
       return {
         ...args.assets,
         path: args.assets?.path
           ? output(args.assets?.path).apply((v) =>
-              v.replace(/^\//, "").replace(/\/$/, ""),
-            )
+            v.replace(/^\//, "").replace(/\/$/, ""),
+          )
           : undefined,
-        purge: args.assets?.purge ?? true,
+        purge: output(args.assets?.purge ?? true),
       };
-    }
-
-    function createCloudFrontOriginAccessControl() {
-      return new OriginAccessControl(
-        `${name}S3AccessControl`,
-        { name: physicalName(64, name) },
-        { parent, ignoreChanges: ["name"] },
-      );
     }
 
     function createBucket() {
@@ -723,8 +964,8 @@ export class StaticSite extends Component implements Link.Linkable {
       const s3Bucket = bucket
         ? bucket.nodes.bucket
         : s3.BucketV2.get(`${name}Assets`, assets.bucket!, undefined, {
-            parent,
-          });
+          parent,
+        });
 
       return {
         bucketName: s3Bucket.bucket,
@@ -799,139 +1040,25 @@ export class StaticSite extends Component implements Link.Linkable {
       });
     }
 
-    function createDistribution() {
-      return new Cdn(
-        ...transform(
-          args.transform?.cdn,
-          `${name}Cdn`,
-          {
-            comment: `${name} site`,
-            origins: [
-              {
-                originId: "s3",
-                domainName: bucketDomain,
-                originPath: assets.path ? $interpolate`/${assets.path}` : "",
-                originAccessControlId: access.id,
-              },
-            ],
-            defaultRootObject: indexPage,
-            customErrorResponses: args.errorPage
-              ? [
-                  {
-                    errorCode: 403,
-                    responsePagePath: interpolate`/${args.errorPage}`,
-                    responseCode: 403,
-                  },
-                  {
-                    errorCode: 404,
-                    responsePagePath: interpolate`/${args.errorPage}`,
-                    responseCode: 404,
-                  },
-                ]
-              : [
-                  {
-                    errorCode: 403,
-                    responsePagePath: interpolate`/${indexPage}`,
-                    responseCode: 200,
-                  },
-                  {
-                    errorCode: 404,
-                    responsePagePath: interpolate`/${indexPage}`,
-                    responseCode: 200,
-                  },
-                ],
-            defaultCacheBehavior: {
-              targetOriginId: "s3",
-              viewerProtocolPolicy: "redirect-to-https",
-              allowedMethods: ["GET", "HEAD", "OPTIONS"],
-              cachedMethods: ["GET", "HEAD"],
-              compress: true,
-              // CloudFront's managed CachingOptimized policy
-              cachePolicyId: "658327ea-f89d-4fab-a63d-7e88639e58f6",
-              functionAssociations: output(args.edge).apply((edge) => [
-                {
-                  eventType: "viewer-request",
-                  functionArn: createCloudfrontRequestFunction(),
-                },
-                ...(edge?.viewerResponse
-                  ? [
-                      {
-                        eventType: "viewer-response",
-                        functionArn: createCloudfrontResponseFunction(),
-                      },
-                    ]
-                  : []),
-              ]),
+    function buildKvEntries() {
+      return all([outputPath, assets, bucketDomain, errorPage, base]).apply(
+        async ([outputPath, assets, bucketDomain, errorPage, base]) => {
+          const files = readDirRecursivelySync(path.join(outputPath));
+          const kvEntries = Object.fromEntries(
+            files.map((file) => [path.posix.join("/", file), "s3"]),
+          );
+
+          kvEntries["metadata"] = JSON.stringify({
+            base,
+            custom404: errorPage,
+            s3: {
+              domain: bucketDomain,
+              dir: assets.path ?? "",
             },
-            domain: args.domain,
-            invalidation,
-          },
-          // create distribution after s3 upload finishes
-          { dependsOn: bucketFile, parent },
-        ),
+          });
+          return kvEntries;
+        },
       );
-    }
-
-    function createCloudfrontRequestFunction() {
-      return output(args.edge).apply((edge) => {
-        if (typeof edge?.viewerRequest === "string")
-          return output(edge.viewerRequest);
-
-        const disableUrlInjection = `
-if (event.request.headers.host.value.includes('cloudfront.net')) {
-  return {
-    statusCode: 403,
-    statusDescription: 'Forbidden',
-    body: {
-      encoding: "text",
-      data: '<html><head><title>403 Forbidden</title></head><body><center><h1>403 Forbidden</h1></center></body></html>'
-    }
-  };
-}`;
-        const redirectInjection = `
-if (event.request.uri.endsWith('/')) {
-  event.request.uri += 'index.html';
-} else if (!event.request.uri.includes('.')) {
-  event.request.uri += '.html';
-}`;
-        return new cloudfront.Function(
-          `${name}Function`,
-          {
-            runtime: "cloudfront-js-2.0",
-            keyValueStoreAssociations: edge?.viewerRequest?.kvStores ?? [],
-            code: `
-async function handler(event) {
-  ${args.domain ? disableUrlInjection : ""}
-  ${redirectInjection}
-  ${edge?.viewerRequest?.injection ?? ""}
-  return event.request;
-}`,
-          },
-          { parent },
-        ).arn;
-      });
-    }
-
-    function createCloudfrontResponseFunction() {
-      return output(args.edge).apply((edge) => {
-        if (typeof edge?.viewerResponse === "string")
-          return output(edge.viewerResponse);
-
-        return new cloudfront.Function(
-          `${name}ResponseFunction`,
-          {
-            runtime: "cloudfront-js-2.0",
-            keyValueStoreAssociations: edge?.viewerResponse?.kvStores ?? [],
-            code: `
-async function handler(event) {
-  ${edge?.viewerResponse?.injection ?? ""}
-  return event.response;
-}
-`,
-          },
-          { parent },
-        ).arn;
-      });
     }
 
     function buildInvalidation() {
@@ -970,7 +1097,7 @@ async function handler(event) {
 
           return {
             paths: invalidationPaths,
-            token: hash.digest("hex"),
+            version: hash.digest("hex"),
             wait: invalidation.wait,
           };
         },
@@ -985,9 +1112,20 @@ async function handler(event) {
    * Otherwise, it's the autogenerated CloudFront URL.
    */
   public get url() {
-    return all([this.cdn?.domainUrl, this.cdn?.url, this.devUrl]).apply(
-      ([domainUrl, url, dev]) => domainUrl ?? url ?? dev!,
-    );
+    return all([this.cdn, this.devUrl]).apply(([cdn, dev]) => {
+      if (!cdn) return;
+      return all([cdn.domainUrl, cdn.url]).apply(
+        ([domainUrl, url]) => domainUrl ?? url ?? dev!,
+      );
+    });
+  }
+
+  /**
+   * The CDN data for the site.
+   * @internal
+   */
+  public get cdnData() {
+    return this._cdnData;
   }
 
   /**
@@ -998,7 +1136,7 @@ async function handler(event) {
       /**
        * The Amazon S3 Bucket that stores the assets.
        */
-      assets: this.assets,
+      assets: this.bucket,
       /**
        * The Amazon CloudFront CDN that serves the site.
        */

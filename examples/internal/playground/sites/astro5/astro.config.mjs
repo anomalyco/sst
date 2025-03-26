@@ -10,4 +10,10 @@ export default defineConfig({
   },
   output: "server",
   adapter: aws(),
+  redirects: {
+    "/redirect-to-route": "/prerendered",
+    "/redirect-to-url": "https://www.google.com",
+    "/redirect/[slug]": "/sub/[slug]",
+  },
+  base: "/astro5",
 });

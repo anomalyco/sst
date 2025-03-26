@@ -1,0 +1,21 @@
+{
+  "name": "nuxt-app",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "sed -i '' 's/baseURL: .*/baseURL: undefined,/' nuxt.config.ts && nuxt build",
+    "build-base": "sed -i '' 's/baseURL: .*/baseURL: \"\\/nuxt\",/' nuxt.config.ts && nuxt build",
+    "dev": "nuxt dev",
+    "generate": "nuxt generate",
+    "postinstall": "nuxt prepare",
+    "preview": "nuxt preview"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.651.1",
+    "@aws-sdk/s3-request-presigner": "^3.651.1",
+    "nuxt": "^3.13.0",
+    "sst": "latest",
+    "vue": "latest",
+    "vue-router": "latest"
+  }
+}

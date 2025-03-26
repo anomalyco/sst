@@ -60,11 +60,11 @@ export interface AuthArgs {
    * ```ts title="src/auth.ts"
    * import { handle } from "hono/aws-lambda";
    * import { issuer } from "@openauthjs/openauth";
-   * 
+   *
    * const app = issuer({
    *   // ...
    * });
-   * 
+   *
    * export const handler = handle(app);
    * ```
    *
@@ -166,7 +166,7 @@ export interface AuthArgs {
  * import { issuer } from "@openauthjs/openauth";
  * import { CodeProvider } from "@openauthjs/openauth/provider/code";
  * import { subjects } from "./subjects";
- * 
+ *
  * const app = issuer({
  *   subjects,
  *   providers: {
@@ -174,7 +174,7 @@ export interface AuthArgs {
  *   },
  *   success: async (ctx, value) => {}
  * });
- * 
+ *
  * export const handler = handle(app);
  * ```
  *
@@ -212,7 +212,7 @@ export interface AuthArgs {
  * ```ts title="app/page.tsx" {1,6}
  * import { Resource } from "sst"
  * import { createClient } from "@openauthjs/openauth/client"
- * 
+ *
  * export const client = createClient({
  *   clientID: "nextjs",
  *   issuer: Resource.MyAuth.url
@@ -303,17 +303,17 @@ export class Auth extends Component implements Link.Linkable {
     function createRouter() {
       if (!args.domain) return;
 
-      return new Router(
+      const router = new Router(
         `${name}Router`,
         {
           domain: args.domain,
-          routes: {
-            "/*": issuer.url,
-          },
           _skipHint: true,
         },
         { parent: self },
       );
+      router.route("/", issuer.url);
+
+      return router;
     }
   }
 

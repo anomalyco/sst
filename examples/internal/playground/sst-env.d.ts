@@ -5,18 +5,13 @@
 
 declare module "sst" {
   export interface Resource {
-    "MyApp": {
-      "name": string
-      "type": "sst.aws.Function"
-      "url": string
+    "GOOGLE_CLIENT_ID": {
+      "type": "sst.sst.Secret"
+      "value": string
     }
-    "MyAstro4Site": {
-      "type": "sst.aws.Astro"
-      "url": string
-    }
-    "MyAstro5Site": {
-      "type": "sst.aws.Astro"
-      "url": string
+    "GOOGLE_CLIENT_SECRET": {
+      "type": "sst.sst.Secret"
+      "value": string
     }
     "MyAuth": {
       "type": "sst.aws.Auth"
@@ -26,24 +21,64 @@ declare module "sst" {
       "name": string
       "type": "sst.aws.Bucket"
     }
-    "MyReactRouter7Site": {
-      "type": "sst.aws.React"
+    "MyNextjsSite": {
+      "type": "sst.aws.Nextjs"
       "url": string
     }
     "MyRouter": {
       "type": "sst.aws.Router"
       "url": string
     }
-    "MyRouter2": {
-      "type": "sst.aws.Router"
+    "MyRouterAnalogSite": {
+      "type": "sst.aws.Analog"
+    }
+    "MyRouterApp": {
+      "name": string
+      "type": "sst.aws.Function"
       "url": string
     }
-    "MyTanstackSite": {
+    "MyRouterAstroSite": {
+      "type": "sst.aws.Astro"
+    }
+    "MyRouterNextSite": {
+      "type": "sst.aws.Nextjs"
+    }
+    "MyRouterNuxtSite": {
+      "type": "sst.aws.Nuxt"
+    }
+    "MyRouterRemixSite": {
+      "type": "sst.aws.Remix"
+    }
+    "MyRouterSite": {
+      "type": "sst.aws.React"
+    }
+    "MyRouterSolidSite": {
+      "type": "sst.aws.SolidStart"
+    }
+    "MyRouterSvelteSite": {
+      "type": "sst.aws.SvelteKit"
+    }
+    "MyRouterTanStackStartSite": {
       "type": "sst.aws.TanstackStart"
+    }
+    "MyStaticSite": {
+      "type": "sst.aws.StaticSite"
       "url": string
     }
     "MyVpc": {
       "type": "sst.aws.Vpc"
+    }
+    "RouterAuthIssuer": {
+      "name": string
+      "type": "sst.aws.Function"
+      "url": string
+    }
+    "RouterAuthStorage": {
+      "name": string
+      "type": "sst.aws.Dynamo"
+    }
+    "Web": {
+      "type": "sst.aws.StaticSite"
     }
   }
 }

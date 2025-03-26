@@ -1,0 +1,27 @@
+{
+  "name": "aws-nextjs",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "next build",
+    "onbuild": "sed -i '' 's/basePath: .*/basePath: undefined,/' next.config.mjs && npx -y @opennextjs/aws@latest build",
+    "onbuild-base": "sed -i '' 's/basePath: .*/basePath: \"\\/nextjs\",/' next.config.mjs && npx -y @opennextjs/aws@latest build",
+    "dev": "next dev",
+    "lint": "next lint",
+    "start": "next start"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.668.0",
+    "@aws-sdk/s3-request-presigner": "^3.668.0",
+    "next": "14.2.15",
+    "react": "^18",
+    "react-dom": "^18",
+    "sst": "3.3.47"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "typescript": "^5"
+  }
+}

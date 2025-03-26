@@ -96,6 +96,19 @@ export interface BaseSsrSiteArgs {
      * ```
      */
     fileOptions?: Input<Prettify<BaseSiteFileOptions>[]>;
+    /**
+     * Configure if files from previous deployments should be purged from the bucket.
+     * @default `true`
+     * @example
+     * ```js
+     * {
+     *   assets: {
+     *     purge: false
+     *   }
+     * }
+     * ```
+     */
+    purge?: Input<boolean>;
   }>;
   buildCommand?: Input<string>;
   environment?: Input<Record<string, Input<string>>>;

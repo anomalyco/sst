@@ -1,22 +1,7 @@
-import fs from "fs";
 import path from "path";
-import { ComponentResourceOptions, Output, all, output } from "@pulumi/pulumi";
-import { Function } from "./function.js";
-import {
-  SsrSiteArgs,
-  createBucket,
-  createDevServer,
-  createServersAndDistribution,
-  prepare,
-  useCloudFrontFunctionHostHeaderInjection,
-  validatePlan,
-} from "./ssr-site.js";
-import { Cdn } from "./cdn.js";
-import { Bucket } from "./bucket.js";
-import { Component } from "../component.js";
-import { Link } from "../link.js";
-import { buildApp } from "../base/base-ssr-site.js";
-import { URL_UNAVAILABLE } from "./linkable.js";
+import { ComponentResourceOptions, Output } from "@pulumi/pulumi";
+import { SsrSite, SsrSiteArgs } from "./ssr-site.js";
+import { readFileSync } from "fs";
 
 export interface NuxtArgs extends SsrSiteArgs {
   /**
@@ -234,22 +219,6 @@ export interface NuxtArgs extends SsrSiteArgs {
    */
   assets?: SsrSiteArgs["assets"];
   /**
-   * Configure the [server function](#nodes-server) in your Nuxt app to connect
-   * to private subnets in a virtual private cloud or VPC. This allows your app to
-   * access private resources.
-   *
-   * @example
-   * ```js
-   * {
-   *   vpc: {
-   *     securityGroups: ["sg-0399348378a4c256c"],
-   *     subnets: ["subnet-0b6a2b73896dc8c4c", "subnet-021389ebee680c2f0"]
-   *   }
-   * }
-   * ```
-   */
-  vpc?: SsrSiteArgs["vpc"];
-  /**
    * Configure the Nuxt app to use an existing CloudFront cache policy.
    *
    * :::note
@@ -340,168 +309,40 @@ export interface NuxtArgs extends SsrSiteArgs {
  * console.log(Resource.MyBucket.name);
  * ```
  */
-export class Nuxt extends Component implements Link.Linkable {
-  private cdn?: Output<Cdn>;
-  private assets?: Bucket;
-  private server?: Output<Function>;
-  private devUrl?: Output<string>;
-
+export class Nuxt extends SsrSite {
   constructor(
     name: string,
     args: NuxtArgs = {},
     opts: ComponentResourceOptions = {},
   ) {
     super(__pulumiType, name, args, opts);
+  }
 
-    const parent = this;
-    const { sitePath, partition } = prepare(parent, args);
-    const dev = normalizeDev();
+  protected normalizeBuildCommand() { }
 
-    if (dev.enabled) {
-      const server = createDevServer(parent, name, args);
-      this.devUrl = dev.url;
-      this.registerOutputs({
-        _metadata: {
-          mode: "placeholder",
-          path: sitePath,
-          server: server.arn,
-        },
-        _dev: {
-          ...dev.outputs,
-          aws: { role: server.nodes.role.arn },
-        },
-      });
-      return;
-    }
-
-    const { access, bucket } = createBucket(parent, name, partition, args);
-    const outputPath = buildApp(parent, name, args, sitePath);
-    const buildMeta = loadBuildMetadata();
-    const plan = buildPlan();
-    const { distribution, ssrFunctions, edgeFunctions } =
-      createServersAndDistribution(
-        parent,
-        name,
-        args,
-        outputPath,
-        access,
-        bucket,
-        plan,
-      );
-    const serverFunction = ssrFunctions[0] ?? Object.values(edgeFunctions)[0];
-
-    this.assets = bucket;
-    this.cdn = distribution;
-    this.server = serverFunction;
-    this.registerOutputs({
-      _hint: all([this.cdn.domainUrl, this.cdn.url]).apply(
-        ([domainUrl, url]) => domainUrl ?? url,
-      ),
-      _metadata: {
-        mode: "deployed",
-        path: sitePath,
-        url: distribution.apply((d) => d.domainUrl ?? d.url),
-        server: serverFunction.arn,
-      },
-      _dev: {
-        ...dev.outputs,
-        aws: { role: serverFunction.nodes.role.arn },
-      },
-    });
-
-    function normalizeDev() {
-      const enabled = $dev && args.dev !== false;
-      const devArgs = args.dev || {};
+  protected buildPlan(outputPath: Output<string>) {
+    return outputPath.apply((outputPath) => {
+      const basepath = readFileSync(
+        path.join(outputPath, "nuxt.config.ts"),
+        "utf-8",
+      ).match(/baseURL: ['"](.*)['"]/)?.[1];
 
       return {
-        enabled,
-        url: output(devArgs.url ?? URL_UNAVAILABLE),
-        outputs: {
-          title: devArgs.title,
-          command: output(devArgs.command ?? "npm run dev"),
-          autostart: output(devArgs.autostart ?? true),
-          directory: output(devArgs.directory ?? sitePath),
-          environment: args.environment,
-          links: output(args.link || [])
-            .apply(Link.build)
-            .apply((links) => links.map((link) => link.name)),
-        },
-      };
-    }
-
-    function loadBuildMetadata() {
-      return outputPath.apply((outputPath) => {
-        const assetsPath = path.join(".output", "public");
-
-        return {
-          assetsPath,
-          // create 1 behaviour for each top level asset file/folder
-          staticRoutes: fs
-            .readdirSync(path.join(outputPath, assetsPath), {
-              withFileTypes: true,
-            })
-            .map((item) => (item.isDirectory() ? `${item.name}/*` : item.name)),
-        };
-      });
-    }
-
-    function buildPlan() {
-      return all([outputPath, buildMeta]).apply(([outputPath, buildMeta]) => {
-        const serverConfig = {
+        base: basepath,
+        server: {
           description: "Server handler for Nuxt",
           handler: "index.handler",
           bundle: path.join(outputPath, ".output", "server"),
-        };
-
-        return validatePlan({
-          edge: false,
-          cloudFrontFunctions: {
-            serverCfFunction: {
-              injections: [useCloudFrontFunctionHostHeaderInjection()],
-            },
+        },
+        assets: [
+          {
+            from: path.join(".output", "public"),
+            to: "",
+            cached: true,
           },
-          origins: {
-            server: {
-              server: {
-                function: serverConfig,
-              },
-            },
-            s3: {
-              s3: {
-                copy: [
-                  {
-                    from: buildMeta.assetsPath,
-                    to: "",
-                    cached: true,
-                  },
-                ],
-              },
-            },
-          },
-          behaviors: [
-            {
-              cacheType: "server",
-              cfFunction: "serverCfFunction",
-              origin: "server",
-            },
-            {
-              pattern: "_server/",
-              cacheType: "server",
-              cfFunction: "serverCfFunction",
-              origin: "server",
-            },
-            ...buildMeta.staticRoutes.map(
-              (route) =>
-                ({
-                  cacheType: "static",
-                  pattern: route,
-                  origin: "s3",
-                }) as const,
-            ),
-          ],
-        });
-      });
-    }
+        ],
+      };
+    });
   }
 
   /**
@@ -511,38 +352,7 @@ export class Nuxt extends Component implements Link.Linkable {
    * Otherwise, it's the autogenerated CloudFront URL.
    */
   public get url() {
-    return all([this.cdn?.domainUrl, this.cdn?.url, this.devUrl]).apply(
-      ([domainUrl, url, dev]) => domainUrl ?? url ?? dev!,
-    );
-  }
-
-  /**
-   * The underlying [resources](/docs/components/#nodes) this component creates.
-   */
-  public get nodes() {
-    return {
-      /**
-       * The AWS Lambda server function that renders the site.
-       */
-      server: this.server,
-      /**
-       * The Amazon S3 Bucket that stores the assets.
-       */
-      assets: this.assets,
-      /**
-       * The Amazon CloudFront CDN that serves the site.
-       */
-      cdn: this.cdn,
-    };
-  }
-
-  /** @internal */
-  public getSSTLink() {
-    return {
-      properties: {
-        url: this.url,
-      },
-    };
+    return super.url;
   }
 }
 

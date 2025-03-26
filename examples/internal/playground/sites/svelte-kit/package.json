@@ -1,0 +1,28 @@
+{
+  "name": "aws-svelte-kit",
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "build": "sed -i '' 's/base: .*/base: undefined,/' svelte.config.js && vite build",
+    "build-base": "sed -i '' 's/base: .*/base: \"\\/svelte\",/' svelte.config.js && vite build",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+    "dev": "vite dev",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@sveltejs/adapter-auto": "^3.0.0",
+    "@sveltejs/kit": "^2.0.0",
+    "@sveltejs/vite-plugin-svelte": "^4.0.0",
+    "svelte": "^5.0.0",
+    "svelte-check": "^4.0.0",
+    "typescript": "^5.0.0",
+    "vite": "^5.0.3"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.700.0",
+    "@aws-sdk/s3-request-presigner": "^3.700.0",
+    "sst": "latest",
+    "svelte-kit-sst": "2.43.5"
+  }
+}

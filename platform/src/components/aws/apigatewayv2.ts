@@ -232,6 +232,14 @@ export interface ApiGatewayV2Args {
    * const myVpc = new sst.aws.Vpc("MyVpc");
    * ```
    *
+   * Or reference an existing VPC.
+   *
+   * ```js title="sst.config.ts"
+   * const myVpc = sst.aws.Vpc.get("MyVpc", {
+   *   id: "vpc-12345678901234567"
+   * });
+   * ```
+   *
    * And pass it in. The VPC link will be placed in the public subnets.
    *
    * ```js

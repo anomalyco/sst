@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "react-router build",
+    "build": "sed -i '' 's/basename: .*/basename: undefined,/' react-router.config.ts && sed -i '' 's/base: .*/base: undefined,/' vite.config.ts && react-router build",
+    "build-base": "sed -i '' 's/basename: .*/basename: \"\\/rr7\",/' react-router.config.ts && sed -i '' 's/base: .*/base: \"\\/rr7\\/\",/' vite.config.ts && react-router build",
     "dev": "react-router dev",
     "start": "react-router-serve ./build/server/index.js",
     "typecheck": "react-router typegen && tsc"

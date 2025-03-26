@@ -93,8 +93,9 @@ func (w *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 			Contents: fmt.Sprintf(`
       import handler from "%s"
       import { fromCloudflareEnv, wrapCloudflareHandler } from "sst"
+      export * from "%s"
       export default wrapCloudflareHandler(handler)
-      `, abs),
+      `, abs, abs),
 			ResolveDir: filepath.Dir(abs),
 			Loader:     esbuild.LoaderTS,
 		},
@@ -126,7 +127,7 @@ func (w *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 					`import { createRequire as topLevelCreateRequire } from 'module';`,
 					`const require = topLevelCreateRequire("/");`,
 				}, "\n")
-				
+
 				if banner, ok := build.ESBuild.Banner["js"]; ok {
 					return banner + "\n" + defaultBanner
 				}

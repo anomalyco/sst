@@ -143,7 +143,6 @@ export class Component extends ComponentResource {
               "aws:iam/userPolicy:UserPolicy",
               "aws:cloudfront/cachePolicy:CachePolicy",
               "aws:cloudfront/distribution:Distribution",
-              "aws:cloudfront/keyvaluestoreKey:KeyvaluestoreKey",
               "aws:cognito/identityPoolRoleAttachment:IdentityPoolRoleAttachment",
               "aws:cognito/identityProvider:IdentityProvider",
               "aws:cognito/userPoolClient:UserPoolClient",

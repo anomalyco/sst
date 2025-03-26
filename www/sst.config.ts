@@ -6,6 +6,7 @@ export default $config({
       name: "www",
       removal: input?.stage === "production" ? "retain" : "remove",
       home: "aws",
+      version: "3.9.44",
     };
   },
   console: {

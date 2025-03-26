@@ -37,7 +37,6 @@
     "acorn": "8.11.3",
     "acorn-walk": "8.3.2",
     "archiver": "6.0.1",
-    "astro-sst": "2.40.1",
     "aws4fetch": "1.0.18",
     "esbuild": "0.20.2",
     "glob": "10.3.10",

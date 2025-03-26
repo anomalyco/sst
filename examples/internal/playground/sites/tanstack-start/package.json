@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vinxi dev",
-    "build": "vinxi build",
+    "build": "sed -i '' 's/basepath: .*/basepath: undefined,/' app/router.tsx && vinxi build",
+    "build-base": "sed -i '' 's/basepath: .*/basepath: \"\\/tan\",/' app/router.tsx && vinxi build",
     "start": "vinxi start"
   },
   "dependencies": {

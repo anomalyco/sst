@@ -14,7 +14,6 @@ import { DistributionDeploymentWaiter } from "./providers/distribution-deploymen
 import { Dns } from "../dns.js";
 import { dns as awsDns } from "./dns.js";
 import { cloudfront } from "@pulumi/aws";
-import { DistributionInvalidation } from "./providers/distribution-invalidation.js";
 import { logicalName } from "../naming.js";
 
 export interface CdnDomainArgs {
@@ -240,78 +239,9 @@ export interface CdnArgs {
    */
   wait?: Input<boolean>;
   /**
-   * Configure how the CloudFront cache invalidations are handled.
-   * :::tip
-   * You get 1000 free invalidations per month. After that you pay $0.005 per invalidation path. [Read more here](https://aws.amazon.com/cloudfront/pricing/).
-   * :::
-   * @default `false`
-   * @example
-   * Enable invalidations. Setting this to `true` will invalidate all paths. It is equivalent
-   * to passing in `{ paths: ["/*"] }`.
-   *
-   * ```js
-   * {
-   *   invalidation: true
-   * }
-   * ```
+   * Tags to apply to the distribution.
    */
-  invalidation?: Input<
-    | boolean
-    | {
-        /**
-         * Configure if `sst deploy` should wait for the CloudFront cache invalidation to finish.
-         *
-         * :::tip
-         * For non-prod environments it might make sense to pass in `false`.
-         * :::
-         *
-         * Waiting for this process to finish ensures that new content will be available after the deploy finishes. However, this process can sometimes take more than 5 mins.
-         * @default `false`
-         * @example
-         * ```js
-         * {
-         *   invalidation: {
-         *     wait: true
-         *   }
-         * }
-         * ```
-         */
-        wait?: Input<boolean>;
-        /**
-         * The invalidation token is used to determine if the cache should be invalidated. If the
-         * token is the same as the previous deployment, the cache will not be invalidated.
-         *
-         * @default A unique value is auto-generated on each deploy
-         * @example
-         * ```js
-         * {
-         *   invalidation: {
-         *     token: "foo123"
-         *   }
-         * }
-         * ```
-         */
-        token?: Input<string>;
-        /**
-         * Specify an array of glob pattern of paths to invalidate.
-         *
-         * :::note
-         * Each glob pattern counts as a single invalidation. However, invalidating `/*` counts as a single invalidation as well.
-         * :::
-         * @default `["/*"]`
-         * @example
-         * Invalidate the `index.html` and all files under the `products/` route. This counts as two invalidations.
-         * ```js
-         * {
-         *   invalidation: {
-         *     paths: ["/index.html", "/products/*"]
-         *   }
-         * }
-         * ```
-         */
-        paths?: Input<Input<string>[]>;
-      }
-  >;
+  tags?: Input<Record<string, Input<string>>>;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying resources.
    */
@@ -367,12 +297,10 @@ export class Cdn extends Component {
     }
 
     const domain = normalizeDomain();
-    const invalidation = normalizeInvalidation();
 
     const certificateArn = createSsl();
     const distribution = createDistribution();
     const waiter = createDistributionDeploymentWaiter();
-    createInvalidation();
     createDnsRecords();
     createRedirects();
 
@@ -421,17 +349,6 @@ export class Cdn extends Component {
           cert: norm.cert,
         };
       });
-    }
-
-    function normalizeInvalidation() {
-      if (!args.invalidation) return;
-
-      return output(args.invalidation).apply((invalidation) => ({
-        paths: ["/*"],
-        wait: false,
-        token: crypto.randomUUID(),
-        ...(invalidation === true ? {} : invalidation),
-      }));
     }
 
     function createSsl() {
@@ -489,24 +406,10 @@ export class Cdn extends Component {
                   cloudfrontDefaultCertificate: true,
                 },
             waitForDeployment: false,
+            tags: args.tags,
           },
           { parent },
         ),
-      );
-    }
-
-    function createInvalidation() {
-      if (!invalidation) return;
-
-      new DistributionInvalidation(
-        `${name}Invalidation`,
-        {
-          distributionId: distribution.id,
-          paths: invalidation.paths,
-          version: invalidation.token,
-          wait: invalidation.wait,
-        },
-        { parent },
       );
     }
 

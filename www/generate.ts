@@ -600,6 +600,7 @@ async function generateComponentDoc(
   sdk?: TypeDoc.DeclarationReflection
 ) {
   console.info(`Generating ${component.name}...`);
+
   const sourceFile = component.sources![0].fileName;
   const className = useClassName(component);
   const fullClassName = `${useClassProviderNamespace(component)}.${className}`;
@@ -642,9 +643,20 @@ async function generateComponentDoc(
           ...(["realtime", "task"].includes(sdk?.name!)
             ? renderAbout(useModuleComment(sdk!))
             : []),
-          ...(["opencontrol"].includes(sdk?.name!)
-            ? renderVariables(sdk!)
-            : []),
+          ...(() => {
+            if (!["opencontrol"].includes(sdk?.name!)) return [];
+            for (const variable of sdk!.children!) {
+              if (variable.name === "tools") {
+                // @ts-expect-error
+                variable.type = {
+                  type: "reference",
+                  name: "Tools",
+                  package: "opencontrol",
+                };
+              }
+            }
+            return renderVariables(sdk!);
+          })(),
           ...(sdk
             ? renderFunctions(
                 sdk,
@@ -929,6 +941,9 @@ function renderType(
         '<code class="primitive">"arn:aws:lambda:$&#123;string&#125;"</code>',
       ].join("");
     }
+    if (type.name === "SsrSite") {
+      return ['<code class="primitive">All SSR sites</code>'].join("");
+    }
     // types in the same doc (links to the class ie. `subscribe()` return type)
     if (isModuleComponent(module) && type.name === useClassName(module)) {
       return `[<code class="type">${type.name}</code>](.)`;
@@ -972,6 +987,7 @@ function renderType(
       Efs: "efs",
       Function: "function",
       FunctionArgs: "function",
+      FunctionEnvironmentUpdate: "providers/function-environment-update",
       FunctionPermissionArgs: "function",
       Postgres: "postgres",
       PostgresArgs: "postgres",
@@ -984,6 +1000,7 @@ function renderType(
       SnsTopic: "sns-topic",
       SnsTopicLambdaSubscriber: "sns-topic-lambda-subscriber",
       SnsTopicQueueSubscriber: "sns-topic-queue-subscriber",
+      StaticSite: "static-site",
       Task: "task",
       Vpc: "vpc",
     }[type.name];
@@ -1037,11 +1054,18 @@ function renderType(
             `<code class="symbol">&gt;</code>`,
           ].join("");
     }
-    if (type.name === "UnwrappedObject" || type.name === "Unwrap") {
+    if (
+      type.name === "UnwrappedObject" ||
+      type.name === "UnwrappedArray" ||
+      type.name === "Unwrap"
+    ) {
       return renderSomeType(type.typeArguments?.[0]!);
     }
     if (type.name === "ComponentResourceOptions") {
       return `[<code class="type">${type.name}</code>](https://www.pulumi.com/docs/concepts/options/)`;
+    }
+    if (type.name === "CustomResourceOptions") {
+      return `[<code class="type">${type.name}</code>](https://www.pulumi.com/docs/iac/concepts/resources/dynamic-providers/)`;
     }
     if (type.name === "FileAsset") {
       return `[<code class="type">${type.name}</code>](https://www.pulumi.com/docs/iac/concepts/assets-archives/#assets)`;
@@ -1174,7 +1198,7 @@ function renderType(
     return `[<code class="type">${type.name}</code>](https://esbuild.github.io/api/${hash})`;
   }
   function renderOpencontrolType(type: TypeDoc.ReferenceType) {
-    return `[<code class="type">${type.name}</code>](https://opencontrol.js.org/docs/api/opencontrol)`;
+    return `[<code class="type">${type.name}</code>](https://opencontrol.ai/)`;
   }
   function renderBunShellType(type: TypeDoc.ReferenceType) {
     return `[<code class="type">Bun Shell</code>](https://bun.sh/docs/runtime/shell)`;
@@ -1198,7 +1222,6 @@ function renderType(
 
 function renderVariables(
   module: TypeDoc.DeclarationReflection,
-
   opts?: { title?: string }
 ) {
   const lines: string[] = [];
@@ -2199,7 +2222,7 @@ async function buildComponents() {
       "../platform/src/components/aws/solid-start.ts",
       "../platform/src/components/aws/static-site.ts",
       "../platform/src/components/aws/svelte-kit.ts",
-      "../platform/src/components/aws/tanstack-start.ts",
+      "../platform/src/components/aws/tan-stack-start.ts",
       "../platform/src/components/aws/task.ts",
       "../platform/src/components/aws/vpc.ts",
       "../platform/src/components/aws/vpc-v1.ts",
@@ -2208,13 +2231,14 @@ async function buildComponents() {
       "../platform/src/components/cloudflare/d1.ts",
       "../platform/src/components/cloudflare/kv.ts",
       // internal
-      "../platform/src/components/aws/dns.ts",
-      "../platform/src/components/cloudflare/dns.ts",
-      "../platform/src/components/vercel/dns.ts",
       "../platform/src/components/aws/cdn.ts",
+      "../platform/src/components/aws/dns.ts",
       "../platform/src/components/aws/iam-edit.ts",
       "../platform/src/components/aws/permission.ts",
+      "../platform/src/components/aws/providers/function-environment-update.ts",
       "../platform/src/components/cloudflare/binding.ts",
+      "../platform/src/components/cloudflare/dns.ts",
+      "../platform/src/components/vercel/dns.ts",
     ],
     tsconfig: "../platform/tsconfig.json",
   });

@@ -1,0 +1,10 @@
+---
+export function getStaticPaths() {
+  return [
+    { params: { slug: "page" }},
+  ];
+}
+
+const { slug } = Astro.params;
+---
+<p>This {slug} is inside /sub</p>
