@@ -485,6 +485,12 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
    */
   cdn?: Input<boolean>;
   /**
+   *  Specify the HTTP version(s) that you want viewers to use to communicate with CloudFront. The default value for new web distributions is http2.
+   *  Viewers that don't support HTTP/2 automatically use an earlier HTTP version. (http1.1 | http2 | http3 | http2and3)
+   *  [Values](https://docs.aws.amazon.com/cloudfront/latest/APIReference/API_DistributionConfig.html#cloudfront-Type-DistributionConfig-HttpVersion)
+   */
+  httpVersion?: Input<"http1.1" | "http2" | "http3" | "http2and3">;
+  /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
    */
@@ -876,6 +882,7 @@ async function handler(event) {
                     : []),
                 ]),
               },
+              httpVersion: args.httpVersion,
             },
             { parent },
           ),

@@ -232,6 +232,11 @@ export interface CdnArgs {
    */
   domain?: Input<string | Prettify<CdnDomainArgs>>;
   /**
+   *  Specify the HTTP version(s) that you want viewers to use to communicate with CloudFront. The default value for new web distributions is http2.
+   *  Viewers that don't support HTTP/2 automatically use an earlier HTTP version. (http1.1 | http2 | http3 | http2and3)
+   */
+  httpVersion?: cloudfront.DistributionArgs["httpVersion"];
+  /**
    * Whether to wait for the CloudFront distribution to be deployed before
    * completing the deployment of the app. This is necessary if you need to use the
    * distribution URL in other resources.
@@ -405,6 +410,7 @@ export class Cdn extends Component {
               : {
                   cloudfrontDefaultCertificate: true,
                 },
+            httpVersion: args.httpVersion,
             waitForDeployment: false,
             tags: args.tags,
           },

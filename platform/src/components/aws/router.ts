@@ -624,6 +624,12 @@ export interface RouterArgs {
     >
   >;
   /**
+   *  Specify the HTTP version(s) that you want viewers to use to communicate with CloudFront. The default value for new web distributions is http2.
+   *  Viewers that don't support HTTP/2 automatically use an earlier HTTP version. (http1.1 | http2 | http3 | http2and3)
+   *  [Values](https://docs.aws.amazon.com/cloudfront/latest/APIReference/API_DistributionConfig.html#cloudfront-Type-DistributionConfig-HttpVersion)
+   */
+  httpVersion?: Input<"http1.1" | "http2" | "http3" | "http2and3">;
+  /**
    * Configure CloudFront Functions to customize the behavior of HTTP requests and responses at the edge.
    */
   edge?: {
@@ -1431,6 +1437,7 @@ async function handler(event) {
                   .filter((d) => d.behavior.pathPattern !== "/*")
                   .map((d) => d.behavior),
                 domain: args.domain,
+                httpVersion: args.httpVersion,
                 wait: true,
               },
               { parent: self },
@@ -1627,6 +1634,7 @@ async function handler(event) {
             {
               comment: `${name} app`,
               domain: args.domain,
+              httpVersion: args.httpVersion,
               origins: [
                 {
                   originId: "default",
