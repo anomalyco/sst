@@ -1063,6 +1063,7 @@ export class Router extends Component implements Link.Linkable {
   private constructorName: string;
   private constructorOpts: ComponentResourceOptions;
   private cdn: Output<Cdn>;
+  private lastRouteUpdate: Output<any> | undefined;
   private kvStoreArn?: Output<string>;
   private kvNamespace?: Output<string>;
   private hasInlineRoutes?: Output<boolean>;
@@ -1770,7 +1771,7 @@ async function handler(event) {
             "Cannot use both `routes` and `.route()` function to add routes.",
           );
 
-        new RouterUrlRoute(
+        const route = new RouterUrlRoute(
           `${this.constructorName}Route${pattern}`,
           {
             store: this.kvStoreArn!,
@@ -1778,9 +1779,12 @@ async function handler(event) {
             pattern,
             url,
             routeArgs: args,
+            dependsOn: this.lastRouteUpdate,
           },
           { provider: this.constructorOpts.provider },
         );
+
+        this.lastRouteUpdate = output(route);
       },
     );
   }
@@ -1852,7 +1856,7 @@ async function handler(event) {
             "Cannot use both `routes` and `.routeBucket()` function to add routes.",
           );
 
-        new RouterBucketRoute(
+        const route = new RouterBucketRoute(
           `${this.constructorName}Route${pattern}`,
           {
             store: this.kvStoreArn!,
@@ -1860,9 +1864,12 @@ async function handler(event) {
             pattern,
             bucket,
             routeArgs: args,
+            dependsOn: this.lastRouteUpdate,
           },
           { provider: this.constructorOpts.provider },
         );
+
+        this.lastRouteUpdate = output(route);
       },
     );
   }
@@ -1933,7 +1940,7 @@ async function handler(event) {
           "Cannot use both `routes` and `.routeSite()` function to add routes.",
         );
 
-      new RouterSiteRoute(
+      const route = new RouterSiteRoute(
         `${this.constructorName}Route${pattern}`,
         {
           store: this.kvStoreArn!,
@@ -1941,9 +1948,12 @@ async function handler(event) {
           pattern,
           site,
           distributionId: this.distributionID,
+          dependsOn: this.lastRouteUpdate,
         },
         { provider: this.constructorOpts.provider },
       );
+
+      this.lastRouteUpdate = output(route);
     });
   }
 

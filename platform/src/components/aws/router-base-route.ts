@@ -17,6 +17,10 @@ export interface RouterBaseRouteArgs {
    * The pattern to match.
    */
   pattern: Input<string>;
+  /**
+   * Optional dependency on previous route updates.
+   */
+  dependsOn?: Input<any>;
 }
 
 export function parsePattern(pattern: string) {
@@ -78,6 +82,6 @@ export function updateKvRoutes(
       key: "routes",
       entry: [routeType, routeNs, pattern.host, pattern.path].join(","),
     },
-    { parent },
+    { parent, dependsOn: args.dependsOn },
   );
 }
