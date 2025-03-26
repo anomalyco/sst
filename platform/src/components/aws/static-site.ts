@@ -428,52 +428,52 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
   invalidation?: Input<
     | false
     | {
-        /**
-         * Configure if `sst deploy` should wait for the CloudFront cache invalidation to finish.
-         *
-         * :::tip
-         * For non-prod environments it might make sense to pass in `false`.
-         * :::
-         *
-         * Waiting for the CloudFront cache invalidation process to finish ensures that the new content will be served once the deploy finishes. However, this process can sometimes take more than 5 mins.
-         * @default `false`
-         * @example
-         * ```js
-         * {
-         *   invalidation: {
-         *     wait: true
-         *   }
-         * }
-         * ```
-         */
-        wait?: Input<boolean>;
-        /**
-         * The paths to invalidate.
-         *
-         * You can either pass in an array of glob patterns to invalidate specific files. Or you can use the built-in option `all` to invalidation all files when any file changes.
-         *
-         * :::note
-         * Invalidating `all` counts as one invalidation, while each glob pattern counts as a single invalidation path.
-         * :::
-         * @default `"all"`
-         * @example
-         * Invalidate the `index.html` and all files under the `products/` route.
-         * ```js
-         * {
-         *   invalidation: {
-         *     paths: ["/index.html", "/products/*"]
-         *   }
-         * }
-         * ```
-         */
-        paths?: Input<"all" | string[]>;
-      }
+      /**
+       * Configure if `sst deploy` should wait for the CloudFront cache invalidation to finish.
+       *
+       * :::tip
+       * For non-prod environments it might make sense to pass in `false`.
+       * :::
+       *
+       * Waiting for the CloudFront cache invalidation process to finish ensures that the new content will be served once the deploy finishes. However, this process can sometimes take more than 5 mins.
+       * @default `false`
+       * @example
+       * ```js
+       * {
+       *   invalidation: {
+       *     wait: true
+       *   }
+       * }
+       * ```
+       */
+      wait?: Input<boolean>;
+      /**
+       * The paths to invalidate.
+       *
+       * You can either pass in an array of glob patterns to invalidate specific files. Or you can use the built-in option `all` to invalidation all files when any file changes.
+       *
+       * :::note
+       * Invalidating `all` counts as one invalidation, while each glob pattern counts as a single invalidation path.
+       * :::
+       * @default `"all"`
+       * @example
+       * Invalidate the `index.html` and all files under the `products/` route.
+       * ```js
+       * {
+       *   invalidation: {
+       *     paths: ["/index.html", "/products/*"]
+       *   }
+       * }
+       * ```
+       */
+      paths?: Input<"all" | string[]>;
+    }
   >;
   /**
-   * By default, a standalone CloudFront distribution is created for your site.
+   * By default, a standalone CloudFront distribution is created.
    *
-   * Alternatively, you can pass in `false` and add the app as a route to the Router
-   * component.
+   * If you want to use a `Router` component to serve your site, set this to
+   * `false`.
    *
    * @default `true`
    * @example
@@ -655,10 +655,10 @@ export class StaticSite extends Component implements Link.Linkable {
     invalidation: Output<
       | false
       | {
-          paths: string[];
-          version: string;
-          wait: boolean;
-        }
+        paths: string[];
+        version: string;
+        wait: boolean;
+      }
     >;
     invalidationDependsOn: Input<Resource>[];
   };
@@ -940,8 +940,8 @@ async function handler(event) {
         ...args.assets,
         path: args.assets?.path
           ? output(args.assets?.path).apply((v) =>
-              v.replace(/^\//, "").replace(/\/$/, ""),
-            )
+            v.replace(/^\//, "").replace(/\/$/, ""),
+          )
           : undefined,
         purge: output(args.assets?.purge ?? true),
       };
@@ -964,8 +964,8 @@ async function handler(event) {
       const s3Bucket = bucket
         ? bucket.nodes.bucket
         : s3.BucketV2.get(`${name}Assets`, assets.bucket!, undefined, {
-            parent,
-          });
+          parent,
+        });
 
       return {
         bucketName: s3Bucket.bucket,

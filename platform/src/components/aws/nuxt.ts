@@ -67,21 +67,6 @@ export interface NuxtArgs extends SsrSiteArgs {
    */
   permissions?: SsrSiteArgs["permissions"];
   /**
-   * By default, a standalone CloudFront distribution is created for your Nuxt app.
-   *
-   * Alternatively, you can pass in `false` and add the app as a route to the Router
-   * component.
-   *
-   * @default `true`
-   * @example
-   * ```js
-   * {
-   *   cdn: false
-   * }
-   * ```
-   */
-  cdn?: SsrSiteArgs["cdn"];
-  /**
    * Path to the directory where your Nuxt app is located.  This path is relative to your `sst.config.ts`.
    *
    * By default it assumes your Nuxt app is in the root of your SST app.
@@ -322,40 +307,6 @@ export interface NuxtArgs extends SsrSiteArgs {
  * import { Resource } from "sst";
  *
  * console.log(Resource.MyBucket.name);
- * ```
- *
- * #### Configure base path
- *
- * To serve your Nuxt app from a subpath (e.g., `https://my-app.com/docs`), you need to configure both Nuxt and SST settings.
- *
- * Step 1: Configure Nuxt base path
- *
- * Set the `baseURL` option in your Nuxt app's `nuxt.config.ts` without a trailing slash:
- * ```js {3} title="nuxt.config.ts"
- * export default defineConfig({
- *   app: {
- *     baseURL: "/docs",
- *   },
- * });
- * ```
- *
- * Step 2: Disable CDN on the Nuxt component
- *
- * In your SST configuration:
- * ```js {2} title="sst.config.ts"
- * const docs = new sst.aws.Nuxt("Docs", {
- *   cdn: false,
- * });
- * ```
- *
- * Step 3: Add the site to a Router
- *
- * Finally, route the Nuxt app through a Router component:
- * ```js {2}
- * const router = new sst.aws.Router("MyRouter", {
- *   domain: "my-app.com",
- * });
- * router.routeSite("/docs", docs);
  * ```
  */
 export class Nuxt extends SsrSite {

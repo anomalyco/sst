@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  basePath: "/next",
+  basePath: undefined,
   images: {
     domains: ["images.unsplash.com"],
   },

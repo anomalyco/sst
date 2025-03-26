@@ -70,21 +70,6 @@ export interface RemixArgs extends SsrSiteArgs {
    */
   permissions?: SsrSiteArgs["permissions"];
   /**
-   * By default, a standalone CloudFront distribution is created for your Remix app.
-   *
-   * Alternatively, you can pass in `false` and add the app as a route to the Router
-   * component.
-   *
-   * @default `true`
-   * @example
-   * ```js
-   * {
-   *   cdn: false
-   * }
-   * ```
-   */
-  cdn?: SsrSiteArgs["cdn"];
-  /**
    * Path to the directory where your Remix app is located.  This path is relative to your `sst.config.ts`.
    *
    * By default it assumes your Remix app is in the root of your SST app.
@@ -328,52 +313,6 @@ export interface RemixArgs extends SsrSiteArgs {
  * import { Resource } from "sst";
  *
  * console.log(Resource.MyBucket.name);
- * ```
- *
- * #### Configure base path
- *
- * To serve your Remix app from a subpath (e.g., `https://my-app.com/docs`), you need to configure both Remix and SST settings.
- *
- * Step 1: Configure Vite base path
- *
- * Set the `base` option in your `vite.config.ts`. The value should end with a trailing slash:
- * ```js {3} title="vite.config.ts"
- * export default defineConfig({
- *   plugins: [...],
- *   base: "/docs/",
- * });
- * ```
- *
- * Step 2: Configure Remix basename
- *
- * Set the `basename` option inside the `plugins` section without a trailing slash:
- * ```js {4} title="vite.config.ts"
- * export default defineConfig({
- *   plugins: [
- *     remix({
- *       basename: "/docs",
- *     }),
- *   ],
- * });
- * ```
- *
- * Step 3: Disable CDN on the Remix component
- *
- * In your SST configuration:
- * ```js {2} title="sst.config.ts"
- * const docs = new sst.aws.Remix("Docs", {
- *   cdn: false,
- * });
- * ```
- *
- * Step 4: Add the site to a Router
- *
- * Finally, route the Remix app through a Router component:
- * ```js {4}
- * const router = new sst.aws.Router("MyRouter", {
- *   domain: "my-app.com",
- * });
- * router.routeSite("/docs", docs);
  * ```
  */
 export class Remix extends SsrSite {

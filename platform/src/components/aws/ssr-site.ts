@@ -153,6 +153,20 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
         paths?: Input<"all" | "versioned" | string[]>;
       }
   >;
+  /**
+   * By default, a standalone CloudFront distribution is created.
+   *
+   * If you want to use a `Router` component to serve your site, set this to
+   * `false`.
+   *
+   * @default `true`
+   * @example
+   * ```js
+   * {
+   *   cdn: false
+   * }
+   * ```
+   */
   cdn?: Input<boolean>;
   regions?: Input<string[]>;
   permissions?: FunctionArgs["permissions"];
@@ -754,7 +768,7 @@ async function handler(event) {
                   customOriginConfig: {
                     httpPort: 80,
                     httpsPort: 443,
-                    originProtocolPolicy: "https-only",
+                    originProtocolPolicy: "http-only",
                     originReadTimeout: 20,
                     originSslProtocols: ["TLSv1.2"],
                   },

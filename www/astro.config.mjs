@@ -141,6 +141,7 @@ const sidebar = [
               "docs/component/aws/apigateway-websocket-route",
               "docs/component/aws/apigatewayv1-integration-route",
               "docs/component/aws/kinesis-stream-lambda-subscriber",
+              "docs/component/aws/providers/function-environment-update",
             ],
           },
           {

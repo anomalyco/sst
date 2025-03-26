@@ -68,21 +68,6 @@ export interface TanStackStartArgs extends SsrSiteArgs {
    */
   permissions?: SsrSiteArgs["permissions"];
   /**
-   * By default, a standalone CloudFront distribution is created for your TanStack Start app.
-   *
-   * Alternatively, you can pass in `false` and add the app as a route to the Router
-   * component.
-   *
-   * @default `true`
-   * @example
-   * ```js
-   * {
-   *   cdn: false
-   * }
-   * ```
-   */
-  cdn?: SsrSiteArgs["cdn"];
-  /**
    * The regions that the [server function](#nodes-server) in your TanStack Start app will be deployed to. Requests will be routed to the nearest region based on the user's location.
    *
    * @default The default region of the SST app

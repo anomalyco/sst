@@ -10,19 +10,21 @@ export default $config({
   },
   async run() {
     const ret: Record<string, $util.Output<string>> = {};
+    const GOOGLE_CLIENT_ID = new sst.Secret("GOOGLE_CLIENT_ID");
+    const GOOGLE_CLIENT_SECRET = new sst.Secret("GOOGLE_CLIENT_SECRET");
 
     const vpc = addVpc();
     const bucket = addBucket();
     const auth = addAuth();
     const oc = addOpenControl();
-    addSsrSite();
-    addStaticSite();
     //const queue = addQueue();
     //const efs = addEfs();
     //const email = addEmail();
     //const apiv1 = addApiV1();
     //const apiv2 = addApiV2();
     //const apiws = addApiWebsocket();
+    addSsrSite();
+    addStaticSite();
     const router = addRouter();
     //const app = addFunction();
     //const cluster = addCluster();
@@ -81,7 +83,11 @@ export default $config({
 
     function addAuth() {
       const auth = new sst.aws.Auth("MyAuth", {
-        authorizer: "functions/auth/index.handler",
+        domain: "auth.playground.sst.sh",
+        issuer: {
+          handler: "functions/auth/index.handler",
+          link: [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET],
+        },
       });
       return auth;
     }
@@ -263,6 +269,9 @@ export default $config({
         path: "sites/nextjs",
         link: [bucket],
         cdn: false,
+        server: {
+          timeout: "50 seconds",
+        },
       });
       const vite = new sst.aws.StaticSite("Web", {
         path: "sites/vite",
@@ -286,7 +295,7 @@ export default $config({
           regex: "^/api/(.*)$",
           to: "/$1",
         },
-        connectionTimeout: 1,
+        connectionTimeout: "1 second",
       });
       //router.routeSite("/rr7", rr7);
       //router.routeSite("/astro5", astro5);
@@ -297,9 +306,57 @@ export default $config({
       //router.routeSite("/analog", analog);
       //router.routeSite("/remix", remix);
       //router.routeSite("/vite", vite);
-      router.routeSite("/next", nextjs);
+      //router.routeSite("/", nextjs);
+
+      // Add auth
+      const authStorage = new sst.aws.Dynamo("RouterAuthStorage", {
+        fields: { pk: "string", sk: "string" },
+        primaryIndex: { hashKey: "pk", rangeKey: "sk" },
+        ttl: "expiry",
+      });
+
+      const authIssuer = new sst.aws.Function("RouterAuthIssuer", {
+        handler: "functions/auth/index.handler",
+        link: [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, authStorage],
+        url: true,
+      });
+
+      router.route(
+        "/", // <---- this doesn't work. CF is giving me 502's. if I add the domain from the Router, it does work.
+        authIssuer.url
+      );
 
       return router;
+    }
+
+    function addSsrSite() {
+      new sst.aws.Nextjs("MyNextjsSite", {
+        //domain: "ssr.playground.sst.sh",
+        path: "sites/nextjs",
+        //path: "sites/astro4",
+        //path: "sites/astro5",
+        //path: "sites/astro5-static",
+        //path: "sites/react-router-7-ssr",
+        //path: "sites/react-router-7-csr",
+        //path: "sites/tanstack-start",
+
+        // multi-region
+        //regions: ["us-east-1", "us-west-1"],
+        link: [bucket],
+        //assets: {
+        //  purge: true,
+        //},
+      });
+    }
+
+    function addStaticSite() {
+      new sst.aws.StaticSite("MyStaticSite", {
+        path: "sites/vite",
+        build: {
+          command: "npm run build",
+          output: "dist",
+        },
+      });
     }
 
     function addFunction() {
@@ -464,36 +521,6 @@ export default $config({
       });
 
       return bus;
-    }
-
-    function addSsrSite() {
-      new sst.aws.Astro("MyNextjsSite", {
-        //domain: "ssr.playground.sst.sh",
-        //path: "sites/nextjs",
-        //path: "sites/astro4",
-        //path: "sites/astro5",
-        path: "sites/astro5-static",
-        //path: "sites/react-router-7-ssr",
-        //path: "sites/react-router-7-csr",
-        //path: "sites/tanstack-start",
-
-        // multi-region
-        //regions: ["us-east-1", "us-west-1"],
-        link: [bucket],
-        //assets: {
-        //  purge: true,
-        //},
-      });
-    }
-
-    function addStaticSite() {
-      new sst.aws.StaticSite("MyStaticSite", {
-        path: "sites/vite",
-        build: {
-          command: "npm run build",
-          output: "dist",
-        },
-      });
     }
   },
 });

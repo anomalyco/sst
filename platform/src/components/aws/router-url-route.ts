@@ -12,9 +12,9 @@ import { toSeconds } from "../duration";
 
 export interface Args extends RouterBaseRouteArgs {
   /**
-   * The host to route to.
+   * The URL to route to.
    */
-  host: Input<string>;
+  url: Input<string>;
   /**
    * Additional arguments for the route.
    */
@@ -37,28 +37,35 @@ export class RouterUrlRoute extends Component {
 
     const self = this;
 
-    all([args.pattern, args.routeArgs]).apply(([pattern, routeArgs]) => {
-      const patternData = parsePattern(pattern);
-      const namespace = buildKvNamespace(name);
-      createKvRouteData(name, args, self, namespace, {
-        host: args.host,
-        rewrite: routeArgs?.rewrite,
-        origin: {
-          connectionAttempts: routeArgs?.connectionAttempts,
-          timeouts: {
-            connectionTimeout:
-              routeArgs?.connectionTimeout &&
-              toSeconds(routeArgs?.connectionTimeout),
-            readTimeout:
-              routeArgs?.readTimeout && toSeconds(routeArgs?.readTimeout),
-            keepAliveTimeout:
-              routeArgs?.keepAliveTimeout &&
-              toSeconds(routeArgs?.keepAliveTimeout),
+    all([args.url, args.pattern, args.routeArgs]).apply(
+      ([url, pattern, routeArgs]) => {
+        const u = new URL(url);
+        const host = u.host;
+        const protocol = u.protocol.slice(0, -1);
+
+        const patternData = parsePattern(pattern);
+        const namespace = buildKvNamespace(name);
+        createKvRouteData(name, args, self, namespace, {
+          host,
+          rewrite: routeArgs?.rewrite,
+          origin: {
+            protocol: protocol === "https" ? undefined : protocol,
+            connectionAttempts: routeArgs?.connectionAttempts,
+            timeouts: (() => {
+              const timeouts = [
+                "connectionTimeout" as const,
+                "readTimeout" as const,
+                "keepAliveTimeout" as const,
+              ].flatMap((k) =>
+                routeArgs?.[k] ? [[k, toSeconds(routeArgs[k])]] : [],
+              );
+              return timeouts.length ? Object.fromEntries(timeouts) : undefined;
+            })(),
           },
-        },
-      });
-      updateKvRoutes(name, args, self, "url", namespace, patternData);
-    });
+        });
+        updateKvRoutes(name, args, self, "url", namespace, patternData);
+      },
+    );
   }
 }
 

@@ -13,12 +13,12 @@ export default function ImageTest() {
           </Link>
         </div>
 
-        <h2>SVG from public folder (may not use optimization):</h2>
-        <div style={{ position: "relative", width: "500px", height: "300px" }}>
+        <h2>Image from public folder:</h2>
+        <div style={{ position: "relative", width: "300px", height: "300px" }}>
           <Image
-            src="./vercel.svg"
-            alt="Vercel Logo"
-            width={500}
+            src="/black.jpg"
+            alt="Black square"
+            width={300}
             height={300}
             style={{ objectFit: "contain" }}
             priority

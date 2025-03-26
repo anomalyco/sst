@@ -149,6 +149,10 @@ func (r *KvKeys) purge(client *cloudfrontkeyvaluestore.Client, store string, nam
 			NextToken: nextToken,
 		})
 		if err != nil {
+			var notFoundErr *types.ResourceNotFoundException
+			if errors.As(err, &notFoundErr) {
+				return nil
+			}
 			return err
 		}
 
@@ -284,7 +288,7 @@ func (r *KvKeys) updateKeys(client *cloudfrontkeyvaluestore.Client, store string
 			time.Sleep(time.Duration(rand.Intn(400)+100) * time.Millisecond)
 			
 			// Retry with nil etag (to force fetching a new one) and the same batch
-			return r.updateKeys(client, store, nil, putBatch, deleteBatch)
+			return r.updateKeys(client, store, nil, putItems, deleteItems)
 		}
 		return err
 	}

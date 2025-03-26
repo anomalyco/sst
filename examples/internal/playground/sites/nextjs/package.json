@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "build": "next build",
-    "open-build": "npx -y @opennextjs/aws@latest build",
+    "onbuild": "sed -i '' 's/basePath: .*/basePath: undefined,/' next.config.mjs && npx -y @opennextjs/aws@latest build",
+    "onbuild-base": "sed -i '' 's/basePath: .*/basePath: \"\\/nextjs\",/' next.config.mjs && npx -y @opennextjs/aws@latest build",
     "dev": "next dev",
     "lint": "next lint",
     "start": "next start"

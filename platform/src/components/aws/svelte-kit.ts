@@ -68,21 +68,6 @@ export interface SvelteKitArgs extends SsrSiteArgs {
    */
   permissions?: SsrSiteArgs["permissions"];
   /**
-   * By default, a standalone CloudFront distribution is created for your SvelteKit app.
-   *
-   * Alternatively, you can pass in `false` and add the app as a route to the Router
-   * component.
-   *
-   * @default `true`
-   * @example
-   * ```js
-   * {
-   *   cdn: false
-   * }
-   * ```
-   */
-  cdn?: SsrSiteArgs["cdn"];
-  /**
    * Path to the directory where your SvelteKit app is located.  This path is relative to your `sst.config.ts`.
    *
    * By default it assumes your SvelteKit app is in the root of your SST app.
@@ -318,42 +303,6 @@ export interface SvelteKitArgs extends SsrSiteArgs {
  * import { Resource } from "sst";
  *
  * console.log(Resource.MyBucket.name);
- * ```
- *
- * #### Configure base path
- *
- * To serve your SvelteKit app from a subpath (e.g., `https://my-app.com/docs`), you need to configure both SvelteKit and SST settings.
- *
- * Step 1: Configure SvelteKit base path
- *
- * Set the `base` option in your SvelteKit app's `svelte.config.js` without a trailing slash:
- * ```js {3} title="svelte.config.js"
- * export default defineConfig({
- *   kit: {
- *     paths: {
- *       base: "/docs",
- *     },
- *   },
- * });
- * ```
- *
- * Step 2: Disable CDN on the SvelteKit component
- *
- * In your SST configuration:
- * ```js {2} title="sst.config.ts"
- * const docs = new sst.aws.SvelteKit("Docs", {
- *   cdn: false,
- * });
- * ```
- *
- * Step 3: Add the site to a Router
- *
- * Finally, route the SvelteKit app through a Router component:
- * ```js {2}
- * const router = new sst.aws.Router("MyRouter", {
- *   domain: "my-app.com",
- * });
- * router.routeSite("/docs", docs);
  * ```
  */
 export class SvelteKit extends SsrSite {

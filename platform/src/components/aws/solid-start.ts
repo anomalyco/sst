@@ -304,50 +304,6 @@ export interface SolidStartArgs extends SsrSiteArgs {
  *
  * console.log(Resource.MyBucket.name);
  * ```
- *
- * #### Configure base path
- *
- * To serve your SolidStart app from a subpath (e.g., `https://my-app.com/docs`), you need to configure both SolidStart and SST settings.
- *
- * Step 1: Configure SolidStart base path
- *
- * Set the `baseURL` option in your SolidStart app's `app.config.ts` without a trailing slash:
- * ```js {3} title="app.config.ts"
- * export default defineConfig({
- *   server: {
- *     baseURL: "/docs",
- *   },
- * });
- * ```
- *
- * Step 2: Set Router base option
- *
- * Set the `base` option on the `Router` element in your SolidStart app (typically in "src/app.tsx"):
- * ```js {2} title="src/app.tsx"
- * <Router
- *   base={import.meta.env.SERVER_BASE_URL}
- *   root={...}
- * >
- * ```
- *
- * Step 3: Disable CDN on the SolidStart component
- *
- * In your SST configuration:
- * ```js {2} title="sst.config.ts"
- * const docs = new sst.aws.SolidStart("Docs", {
- *   cdn: false,
- * });
- * ```
- *
- * Step 4: Add the site to a Router
- *
- * Finally, route the SolidStart app through a Router component:
- * ```js {2}
- * const router = new sst.aws.Router("MyRouter", {
- *   domain: "my-app.com",
- * });
- * router.routeSite("/docs", docs);
- * ```
  */
 export class SolidStart extends SsrSite {
   constructor(

@@ -69,21 +69,6 @@ export interface AstroArgs extends SsrSiteArgs {
    */
   permissions?: SsrSiteArgs["permissions"];
   /**
-   * By default, a standalone CloudFront distribution is created for your Astro site.
-   *
-   * Alternatively, you can pass in `false` and add the site as a route to the Router
-   * component.
-   *
-   * @default `true`
-   * @example
-   * ```js
-   * {
-   *   cdn: false
-   * }
-   * ```
-   */
-  cdn?: SsrSiteArgs["cdn"];
-  /**
    * The regions that the [server function](#nodes-server) in your Astro site will be
    * deployed to. Requests will be routed to the nearest region based on the user's location.
    *
@@ -338,39 +323,6 @@ export interface AstroArgs extends SsrSiteArgs {
  * console.log(Resource.MyBucket.name);
  * ---
  * ```
- *
- * #### Configure base path
- *
- * To serve your Astro app from a subpath (e.g., `https://my-app.com/docs`), you need to configure both Astro and SST settings.
- *
- * Step 1: Configure Astro base path
- *
- * Set the `base` option in your Astro app's `astro.config.mjs`:
- * ```js {3} title="astro.config.mjs"
- * export default defineConfig({
- *   adapter: sst(),
- *   base: "/docs",
- * });
- * ```
- *
- * Step 2: Disable CDN on the Astro component
- *
- * In your SST configuration:
- * ```js {2} title="sst.config.ts"
- * const docs = new sst.aws.Astro("Docs", {
- *   cdn: false,
- * });
- * ```
- *
- * Step 3: Add the site to a Router
- *
- * Finally, route the Astro app through a Router component:
- * ```js {4}
- * const router = new sst.aws.Router("MyRouter", {
- *   domain: "my-app.com",
- * });
- * router.routeSite("/docs", docs);
- * ```
  */
 export class Astro extends SsrSite {
   constructor(
@@ -381,7 +333,7 @@ export class Astro extends SsrSite {
     super(__pulumiType, name, args, opts);
   }
 
-  protected normalizeBuildCommand() {}
+  protected normalizeBuildCommand() { }
 
   protected buildPlan(outputPath: Output<string>) {
     return outputPath.apply((outputPath) => {
@@ -433,18 +385,18 @@ export class Astro extends SsrSite {
         server: isStatic
           ? undefined
           : {
-              handler: path.join(serverOutputPath, "entry.handler"),
-              nodejs: { install: ["sharp"] },
-              streaming: buildMeta.responseMode === "stream",
-              copyFiles: fs.existsSync(path.join(serverOutputPath, "404.html"))
-                ? [
-                    {
-                      from: path.join(serverOutputPath, "404.html"),
-                      to: "404.html",
-                    },
-                  ]
-                : [],
-            },
+            handler: path.join(serverOutputPath, "entry.handler"),
+            nodejs: { install: ["sharp"] },
+            streaming: buildMeta.responseMode === "stream",
+            copyFiles: fs.existsSync(path.join(serverOutputPath, "404.html"))
+              ? [
+                {
+                  from: path.join(serverOutputPath, "404.html"),
+                  to: "404.html",
+                },
+              ]
+              : [],
+          },
         assets: [
           {
             from: buildMeta.clientBuildOutputDir,
@@ -455,9 +407,9 @@ export class Astro extends SsrSite {
         ],
         custom404:
           isStatic &&
-          fs.existsSync(
-            path.join(outputPath, buildMeta.clientBuildOutputDir, "404.html"),
-          )
+            fs.existsSync(
+              path.join(outputPath, buildMeta.clientBuildOutputDir, "404.html"),
+            )
             ? "/404.html"
             : undefined,
       };

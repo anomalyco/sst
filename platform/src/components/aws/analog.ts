@@ -68,21 +68,6 @@ export interface AnalogArgs extends SsrSiteArgs {
    */
   permissions?: SsrSiteArgs["permissions"];
   /**
-   * By default, a standalone CloudFront distribution is created for your Analog app.
-   *
-   * Alternatively, you can pass in `false` and add the app as a route to the Router
-   * component.
-   *
-   * @default `true`
-   * @example
-   * ```js
-   * {
-   *   cdn: false
-   * }
-   * ```
-   */
-  cdn?: SsrSiteArgs["cdn"];
-  /**
    * Path to the directory where your Analog app is located.  This path is relative to your `sst.config.ts`.
    *
    * By default it assumes your Analog app is in the root of your SST app.
@@ -321,43 +306,6 @@ export interface AnalogArgs extends SsrSiteArgs {
  * import { Resource } from "sst";
  *
  * console.log(Resource.MyBucket.name);
- * ```
- *
- * #### Configure base path
- *
- * To serve your Analog app from a subpath (e.g., `https://my-app.com/docs`), you need to configure both Analog and SST settings.
- *
- * Step 1: Configure Analog base and API paths
- *
- * Set the `base` and `apiPrefix` options in your Analog app's `vite.config.ts`. The `apiPrefix` value should not begin with a slash:
- * ```js {4,7} title="vite.config.ts"
- * export default defineConfig(({ mode }) => ({
- *   plugins: [
- *     analog({
- *       apiPrefix: "docs/api",
- *     }),
- *   ],
- *   base: "/docs",
- * }));
- * ```
- *
- * Step 2: Disable CDN on the Analog component
- *
- * In your SST configuration:
- * ```js {2} title="sst.config.ts"
- * const docs = new sst.aws.Analog("Docs", {
- *   cdn: false,
- * });
- * ```
- *
- * Step 3: Add the site to a Router
- *
- * Finally, route the Analog app through a Router component:
- * ```js {2}
- * const router = new sst.aws.Router("MyRouter", {
- *   domain: "my-app.com",
- * });
- * router.routeSite("/docs", docs);
  * ```
  */
 export class Analog extends SsrSite {

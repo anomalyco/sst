@@ -338,53 +338,6 @@ interface InlineBaseRouteArgs {
 
 interface RouteArgs {
   /**
-   * Rewrite the request path.
-   *
-   * @example
-   *
-   * For URL routes, if the route path is `/api/*` and a request comes in for
-   * `/api/users/profile`, the request path the destination sees is `/api/users/profile`.
-   *
-   * If you want to serve the route from the root, you can rewrite the request path to
-   * `/users/profile`.
-   *
-   * ```js
-   * {
-   *   rewrite: {
-   *     regex: "^/api/(.*)$",
-   *     to: "/$1"
-   *   }
-   * }
-   * ```
-   *
-   * Similarly, for bucket routes, if the route path is `/files/*` and a request comes in
-   * for `/files/logo.png`, the request path the destination sees is `/files/logo.png`.
-   *
-   * If you want to serve the file from the root of the bucket, you can rewrite the request
-   * path to `/logo.png`.
-   *
-   * ```js
-   * {
-   *   rewrite: {
-   *     regex: "^/files/(.*)$",
-   *     to: "/$1"
-   *   }
-   * }
-   * ```
-   *
-   * Rewrite the request path is not supported for site routes.
-   */
-  rewrite?: Input<{
-    /**
-     * The regex to match the request path.
-     */
-    regex: Input<string>;
-    /**
-     * The replacement for the matched path.
-     */
-    to: Input<string>;
-  }>;
-  /**
    * The number of times that CloudFront attempts to connect to the origin. Must be
    * between 1 and 3.
    * @default 3
@@ -412,21 +365,55 @@ interface RouteArgs {
 
 export interface RouterUrlRouteArgs extends RouteArgs {
   /**
-   * The number of seconds that CloudFront waits for a response after forwarding a request
-   * to the origin. Must be between 1 and 60 seconds.
+   * Rewrite the request path.
+   *
+   * @example
+   *
+   * If the route path is `/api/*` and a request comes in for `/api/users/profile`,
+   * the request path the destination sees is `/api/users/profile`.
+   *
+   * If you want to serve the route from the root, you can rewrite the request
+   * path to `/users/profile`.
+   *
+   * ```js
+   * {
+   *   rewrite: {
+   *     regex: "^/api/(.*)$",
+   *     to: "/$1"
+   *   }
+   * }
+   * ```
+   */
+  rewrite?: Input<{
+    /**
+     * The regex to match the request path.
+     */
+    regex: Input<string>;
+    /**
+     * The replacement for the matched path.
+     */
+    to: Input<string>;
+  }>;
+  /**
+   * The number of seconds that CloudFront waits for a response after routing a
+   * request to the destination. Must be between 1 and 60 seconds.
+   *
+   * When compared to the `connectionTimeout`, this is the total time for the
+   * request.
+   *
    * @default `"30 seconds"`
    * @example
    * ```js
    * {
-   *   responseTimeout: "60 seconds"
+   *   readTimeout: "60 seconds"
    * }
    * ```
    */
   readTimeout?: Input<DurationSeconds>;
   /**
-   * The number of seconds that CloudFront should try to maintain the connection to the
-   * origin after receiving the last packet of the response. Must be between 1 and 60 seconds
-   * seconds.
+   * The number of seconds that CloudFront should try to maintain the connection
+   * to the destination after receiving the last packet of the response. Must be
+   * between 1 and 60 seconds
    * @default `"5 seconds"`
    * @example
    * ```js
@@ -438,7 +425,38 @@ export interface RouterUrlRouteArgs extends RouteArgs {
   keepAliveTimeout?: Input<DurationSeconds>;
 }
 
-export interface RouterBucketRouteArgs extends RouteArgs {}
+export interface RouterBucketRouteArgs extends RouteArgs {
+  /**
+   * Rewrite the request path.
+   *
+   * @example
+   *
+   * If the route path is `/files/*` and a request comes in for `/files/logo.png`,
+   * the request path the destination sees is `/files/logo.png`.
+   *
+   * If you want to serve the file from the root of the bucket, you can rewrite
+   * the request path to `/logo.png`.
+   *
+   * ```js
+   * {
+   *   rewrite: {
+   *     regex: "^/files/(.*)$",
+   *     to: "/$1"
+   *   }
+   * }
+   * ```
+   */
+  rewrite?: Input<{
+    /**
+     * The regex to match the request path.
+     */
+    regex: Input<string>;
+    /**
+     * The replacement for the matched path.
+     */
+    to: Input<string>;
+  }>;
+}
 
 export interface RouterArgs {
   /**
@@ -820,18 +838,37 @@ interface RouterRef {
 }
 
 /**
- * The `Router` component lets you use a CloudFront distribution to direct requests to various parts of your application.
- * The `routes` prop can route requests to function URLs, different domains, or any component that has an associated URL.
+ * The `Router` component lets you use a CloudFront distribution to direct
+ * requests to various parts of your application.
+ *
+ * #### How it works
+ *
+ * Behind the scenes, this uses:
+ *
+ * - The default CloudFront distribution behavior
+ * - A CloudFront function for routing
+ * - And a KV store to store the routing data
+ *
+ * When a request comes in, it does a lookup in the KV store and dynamically sets
+ * the origin based on the routing data.
+ *
+ * You might notices a _placeholder.sst.dev_ behavior in CloudFront. This is not
+ * used and is only there because CloudFront requires a behavior to exist.
  *
  * @example
  *
  * #### Minimal example
  *
  * ```ts title="sst.config.ts"
+ * const router = new sst.aws.Router("MyRouter");
+ * router.route("/*", "https://some-external-service.com");
+ * ```
+ *
+ * #### Add a custom domain
+ *
+ * ```ts {2} title="sst.config.ts"
  * new sst.aws.Router("MyRouter", {
- *   routes: {
- *     "/*": "https://some-internal-service.com"
- *   }
+ *   domain: "myapp.com"
  * });
  * ```
  *
@@ -843,11 +880,9 @@ interface RouterRef {
  *   url: true,
  * });
  *
- * new sst.aws.Router("MyRouter", {
- *   routes: {
- *     "/*": myFunction.url
- *   }
+ * const router = new sst.aws.Router("MyRouter", {
  * });
+ * router.route("/*", myFunction.url);
  * ```
  *
  * #### Route to a bucket
@@ -857,38 +892,172 @@ interface RouterRef {
  *   access: "cloudfront"
  * });
  *
- * new sst.aws.Router("MyRouter", {
- *   routes: {
- *     "/files/*": {
- *       bucket: myBucket
- *     }
- *   }
- * });
+ * const router = new sst.aws.Router("MyRouter");
+ * router.routeBucket("/files/*", myBucket);
  * ```
  *
  * Make sure to allow CloudFront access to the bucket by setting the `access` prop on the bucket.
  *
- * #### Route all API requests separately
+ * #### Route to a frontend
  *
- * ```ts {4} title="sst.config.ts"
- * new sst.aws.Router("MyRouter", {
- *   routes: {
- *     "/*": "https://myapp.com",
- *     "/api/*": myFunction.url
- *   }
- * });
+ * ```ts title="sst.config.ts" "cdn: false"
+ * const site = new sst.aws.Nextjs("Site", { cdn: false });
+ *
+ * const router = new sst.aws.Router("MyRouter");
+ * router.routeSite("/*", site);
  * ```
  *
- * #### Add a custom domain
+ * We are disabling the built-in CDN of the Next.js app because we want to use the
+ * router to serve the app.
  *
- * ```ts {2} title="sst.config.ts"
- * new sst.aws.Router("MyRouter", {
- *   domain: "myapp.com",
- *   routes: {
- *     "/*": myFunction.url
- *   }
- * });
- * ```
+ * #### Route to a frontend on a subpath
+ *
+ * To serve your frontend from a subpath, you need to:
+ *
+ * 1. Configure the base path in your frontend framework.
+ *
+ *    <Tabs>
+ *      <TabItem label="Next.js">
+ *      Set the [`basePath`](https://nextjs.org/docs/app/api-reference/config/next-config-js/basePath) in your `next.config.js`.
+ *
+ *      ```js {2} title="next.config.js"
+ *      export default defineConfig({
+ *        basePath: "/docs"
+ *      });
+ *      ```
+ *      </TabItem>
+ *      <TabItem label="Astro">
+ *      Set the `base` option in your `astro.config.mjs`.
+ *
+ *      ```js {3} title="astro.config.mjs"
+ *      export default defineConfig({
+ *        adapter: sst(),
+ *        base: "/docs"
+ *      });
+ *      ```
+ *      </TabItem>
+ *      <TabItem label="Remix">
+ *      Set the `base` option in your `vite.config.ts` with the trailing slash.
+ *
+ *      ```js {3} title="vite.config.ts"
+ *      export default defineConfig({
+ *        plugins: [...],
+ *        base: "/docs/"
+ *      });
+ *      ```
+ *      </TabItem>
+ *      <TabItem label="SvelteKit">
+ *      Set the `base` option in your `svelte.config.js` without the trailing slash.
+ *
+ *      ```js {4} title="svelte.config.js"
+ *      export default defineConfig({
+ *        kit: {
+ *          paths: {
+ *            base: "/docs"
+ *          }
+ *        }
+ *      });
+ *      ```
+ *      </TabItem>
+ *      <TabItem label="React">
+ *      Set the `base` option in your `vite.config.ts` with the trailing slash.
+ *
+ *      ```js {3} title="vite.config.ts"
+ *      export default defineConfig({
+ *        plugins: [tailwindcss(), reactRouter(), tsconfigPaths()],
+ *        base: "/docs/"
+ *      });
+ *      ```
+ *      </TabItem>
+ *      <TabItem label="Nuxt">
+ *      Set the `baseURL` option in your `nuxt.config.ts` without a trailing slash.
+ *
+ *      ```js {3} title="nuxt.config.ts"
+ *      export default defineConfig({
+ *        app: {
+ *          baseURL: "/docs"
+ *        }
+ *      });
+ *      ```
+ *      </TabItem>
+ *      <TabItem label="SolidStart">
+ *      Set the `baseURL` option in your `app.config.ts` without a trailing slash.
+ *
+ *      ```js {3} title="app.config.ts"
+ *      export default defineConfig({
+ *        server: {
+ *          baseURL: "/docs"
+ *        }
+ *      });
+ *      ```
+ *      </TabItem>
+ *      <TabItem label="Analog">
+ *      Set the `base` and `apiPrefix` options in your `vite.config.ts`. The `apiPrefix` value should not begin with a slash.
+ *
+ *      ```js {4,7} title="vite.config.ts"
+ *      export default defineConfig(({ mode }) => ({
+ *        plugins: [
+ *          analog({
+ *            apiPrefix: "docs/api"
+ *          })
+ *        ],
+ *        base: "/docs"
+ *      }));
+ *      ```
+ *      </TabItem>
+ *    </Tabs>
+ *
+ * 2. Disable the built-in CDN of the frontend.
+ *
+ *    <Tabs>
+ *      <TabItem label="Next.js">
+ *      ```ts title="sst.config.ts" "cdn: false"
+ *      const site = new sst.aws.Nextjs("Site", { cdn: false });
+ *      ```
+ *      </TabItem>
+ *      <TabItem label="Astro">
+ *      ```ts title="sst.config.ts" "cdn: false"
+ *      const site = new sst.aws.Astro("Site", { cdn: false });
+ *      ```
+ *      </TabItem>
+ *      <TabItem label="Remix">
+ *      ```ts title="sst.config.ts" "cdn: false"
+ *      const site = new sst.aws.Remix("Site", { cdn: false });
+ *      ```
+ *      </TabItem>
+ *      <TabItem label="SvelteKit">
+ *      ```ts title="sst.config.ts" "cdn: false"
+ *      const site = new sst.aws.SvelteKit("Site", { cdn: false });
+ *      ```
+ *      </TabItem>
+ *      <TabItem label="React">
+ *      ```ts title="sst.config.ts" "cdn: false"
+ *      const site = new sst.aws.React("Site", { cdn: false });
+ *      ```
+ *      </TabItem>
+ *      <TabItem label="Nuxt">
+ *      ```ts title="sst.config.ts" "cdn: false"
+ *      const site = new sst.aws.Nuxt("Site", { cdn: false });
+ *      ```
+ *      </TabItem>
+ *      <TabItem label="SolidStart">
+ *      ```ts title="sst.config.ts" "cdn: false"
+ *      const site = new sst.aws.SolidStart("Site", { cdn: false });
+ *      ```
+ *      </TabItem>
+ *      <TabItem label="Analog">
+ *      ```ts title="sst.config.ts" "cdn: false"
+ *      const site = new sst.aws.Analog("Site", { cdn: false });
+ *      ```
+ *      </TabItem>
+ *    </Tabs>
+ *
+ * 3. Add the site to a Router.
+ *
+ *    ```ts title="sst.config.ts"
+ *    const router = new sst.aws.Router("MyRouter");
+ *    router.routeSite("/docs", site);
+ *    ```
  */
 export class Router extends Component implements Link.Linkable {
   private constructorName: string;
@@ -1465,7 +1634,7 @@ async function handler(event) {
                   customOriginConfig: {
                     httpPort: 80,
                     httpsPort: 443,
-                    originProtocolPolicy: "https-only",
+                    originProtocolPolicy: "http-only",
                     originReadTimeout: 20,
                     originSslProtocols: ["TLSv1.2"],
                   },
@@ -1543,40 +1712,41 @@ async function handler(event) {
   }
 
   /**
-   * Add a route with a URL destination to the Router.
+   * Add a route to a destination URL.
    *
-   * This method allows you to route requests to a URL destination based on a path prefix,
-   * domain pattern, or both.
-   *
-   * @param pattern The pattern to match for this route. This can be:
-   *   - A path prefix like `/api`
-   *   - A domain pattern like `api.example.com`
-   *   - A combined pattern like `dev.example.com/api`
-   * @param url The destination URL to route matching requests to
-   * @param args Additional configuration for the route
+   * @param pattern The path pattern to match for this route.
+   * @param url The destination URL to route matching requests to.
+   * @param args Configure the route.
    *
    * @example
-   * Route by path prefix only:
    *
-   * ```ts
+   * You can match a route based on:
+   *
+   * - A path like `/api`
+   * - A domain pattern like `api.example.com`
+   * - A combined pattern like `dev.example.com/api`
+   *
+   * For example, to match a path.
+   *
+   * ```ts title="sst.config.ts"
    * router.route("/api", "https://api.example.com");
    * ```
    *
-   * Route by domain only:
+   * Or match a domain.
    *
-   * ```ts
+   * ```ts title="sst.config.ts"
    * router.route("api.myapp.com/", "https://api.example.com");
    * ```
    *
-   * Route by both domain and path:
+   * Or a combined pattern.
    *
-   * ```ts
+   * ```ts title="sst.config.ts"
    * router.route("dev.myapp.com/api", "https://api.example.com");
    * ```
    *
-   * Route with rewriting:
+   * You can also rewrite the request path.
    *
-   * ```ts
+   * ```ts title="sst.config.ts"
    * router.route("/api", "https://api.example.com", {
    *   rewrite: {
    *     regex: "^/api/(.*)$",
@@ -1584,6 +1754,9 @@ async function handler(event) {
    *   }
    * });
    * ```
+   *
+   * Here something like `/api/users/profile` will be routed to
+   * `https://api.example.com/users/profile`.
    */
   public route(
     pattern: Input<string>,
@@ -1603,7 +1776,7 @@ async function handler(event) {
             store: this.kvStoreArn!,
             routerNamespace: this.kvNamespace!,
             pattern,
-            host: output(url).apply((url) => new URL(url).host),
+            url,
             routeArgs: args,
           },
           { provider: this.constructorOpts.provider },
@@ -1613,40 +1786,49 @@ async function handler(event) {
   }
 
   /**
-   * Add a route with an S3 bucket destination to the Router.
+   * Add a route to an S3 bucket.
    *
-   * This method allows you to route requests to an S3 bucket based on
-   * a path prefix, domain pattern, or both.
-   *
-   * @param pattern The pattern to match for this route. This can be:
-   *   - A path prefix like `/files`
-   *   - A domain pattern like `files.example.com`
-   *   - A combined pattern like `dev.example.com/files`
-   * @param bucket The S3 bucket to route matching requests to
-   * @param args Additional configuration for the route
+   * @param pattern The path pattern to match for this route.
+   * @param bucket The S3 bucket to route matching requests to.
+   * @param args Configure the route.
    *
    * @example
-   * Route by path prefix only:
    *
-   * ```ts
+   * Let's say you have an S3 bucket that gives CloudFront `access`.
+   *
+   * ```ts title="sst.config.ts" {2}
+   * const bucket = new sst.aws.Bucket("MyBucket", {
+   *   access: "cloudfront"
+   * });
+   * ```
+   *
+   * You can match a pattern and route to it based on:
+   *
+   * - A path like `/api`
+   * - A domain pattern like `api.example.com`
+   * - A combined pattern like `dev.example.com/api`
+   *
+   * For example, to match a path.
+   *
+   * ```ts title="sst.config.ts"
    * router.routeBucket("/files", bucket);
    * ```
    *
-   * Route by domain only:
+   * Or match a domain.
    *
-   * ```ts
+   * ```ts title="sst.config.ts"
    * router.routeBucket("files.example.com", bucket);
    * ```
    *
-   * Route by both domain and path:
+   * Or a combined pattern.
    *
-   * ```ts
+   * ```ts title="sst.config.ts"
    * router.routeBucket("dev.example.com/files", bucket);
    * ```
    *
-   * Route with path rewriting:
+   * You can also rewrite the request path.
    *
-   * ```ts
+   * ```ts title="sst.config.ts"
    * router.routeBucket("/files", bucket, {
    *   rewrite: {
    *     regex: "^/files/(.*)$",
@@ -1654,6 +1836,9 @@ async function handler(event) {
    *   }
    * });
    * ```
+   *
+   * Here something like `/files/logo.png` will be routed to
+   * `/logo.png`.
    */
   public routeBucket(
     pattern: Input<string>,
@@ -1683,41 +1868,62 @@ async function handler(event) {
   }
 
   /**
-   * Add a route with an SSR or static site destination to the Router.
+   * Add a route to a frontend or static site.
    *
-   * This method allows you to route requests to an SSR site (like Next.js, Remix, SvelteKit)
-   * or a static site based on a path prefix, domain pattern, or both.
-   *
-   * @param pattern The pattern to match for this route. This can be:
-   *   - A path prefix like `/docs`
-   *   - A domain pattern like `docs.example.com`
-   *   - A combined pattern like `dev.example.com/docs`
-   * @param site The SSR or static site to route matching requests to
-   *
-   * :::note
-   * When routing to a site with a path prefix (like `/docs`), you must configure the
-   * corresponding base path in your site's framework configuration. The base path in
-   * the framework configuration must match the path prefix in your router pattern.
-   * :::
+   * @param pattern The path pattern to match for this route.
+   * @param site The frontend or static site to route matching requests to.
    *
    * @example
-   * Route by path prefix only:
    *
-   * ```ts
-   * const site = new sst.aws.NextjsSite("Site", { cdn: false });
+   * You can add routes to a frontend (like Next.js, Remix, SvelteKit) or a static
+   * site.
+   *
+   * Let's say you have a Next.js app with its built-in CDN disabled.
+   *
+   * ```ts title="sst.config.ts" "cdn: false"
+   * const site = new sst.aws.Nextjs("Site", { cdn: false });
+   * ```
+   *
+   * You can then match a pattern and route to it based on:
+   *
+   * - A path like `/docs`
+   * - A domain pattern like `docs.example.com`
+   * - A combined pattern like `dev.example.com/docs`
+   *
+   * For example, to match a path.
+   *
+   * ```ts title="sst.config.ts"
    * router.routeSite("/docs", site);
    * ```
    *
-   * Route by domain only:
+   * Or match a domain.
    *
-   * ```ts
+   * ```ts title="sst.config.ts"
    * router.routeSite("docs.example.com/", site);
    * ```
    *
    * Route by both domain and path:
    *
-   * ```ts
+   * ```ts title="sst.config.ts"
    * router.routeSite("dev.example.com/docs", site);
+   * ```
+   *
+   * If you are routing to a path like `/docs`, you must configure the
+   * base path in your frontend's config. The base path must match the path in your
+   * route pattern.
+   *
+   * :::caution
+   * If routing to a path, you need to configure that as the base path in your
+   * frontend as well.
+   * :::
+   *
+   * For example, if you are routing `/docs` to a Next.js app, you need to set
+   * `basePath` to `/docs` in your `next.config.js`.
+   *
+   * ```js title="next.config.js" {2}
+   * export default defineConfig({
+   *   basePath: "/docs"
+   * });
    * ```
    */
   public routeSite(pattern: Input<string>, site: Input<SsrSite | StaticSite>) {
@@ -1751,21 +1957,22 @@ async function handler(event) {
   }
 
   /**
-   * Reference an existing Router with the given Router distribution ID. This is useful when
-   * you create a Router in one stage and want to share it in another. It avoids having to
-   * create a new Router in the other stage.
-   *
-   * :::tip
-   * You can use the `static get` method to share Routers across stages.
-   * :::
+   * Reference an existing Router with the given Router distribution ID.
    *
    * @param name The name of the component.
-   * @param distributionID The id of the existing Router distribution.
+   * @param distributionID The ID of the existing Router distribution.
    * @param opts? Resource options.
    *
+   * This is useful when you create a Router in one stage and want to share it in
+   * another. It avoids having to create a new Router in the other stage.
+   *
+   * :::tip
+   * You can use the `static get` method to share a Router across stages.
+   * :::
+   *
    * @example
-   * Imagine you create a Router in the `dev` stage. And in your personal stage `frank`,
-   * instead of creating a new Router, you want to share the same Router from `dev`.
+   * Let's say you create a Router in the `dev` stage. And in your personal stage
+   * `frank`, you want to share the same Router.
    *
    * ```ts title="sst.config.ts"
    * const router = $app.stage === "frank"
@@ -1773,8 +1980,9 @@ async function handler(event) {
    *   : new sst.aws.Router("MyRouter");
    * ```
    *
-   * Here `E2IDLMESRN6V62` is the ID of the Router distribution created in the `dev` stage.
-   * You can find this by outputting the distribution ID in the `dev` stage.
+   * Here `E2IDLMESRN6V62` is the ID of the Router distribution created in the
+   * `dev` stage. You can find this by outputting the distribution ID in the `dev`
+   * stage.
    *
    * ```ts title="sst.config.ts"
    * return {
@@ -1816,7 +2024,7 @@ if (event.request.headers.host.value.includes('cloudfront.net')) {
 
 export const CF_ROUTER_URL_ORIGIN_INJECTION = `
 function setUrlOrigin(urlHost, override) {
-  cf.updateRequestOrigin(Object.assign({
+  const origin = {
     domainName: urlHost,
     customOriginConfig: {
       port: 443,
@@ -1826,8 +2034,19 @@ function setUrlOrigin(urlHost, override) {
     originAccessControlConfig: {
       enabled: false,
     }
-  }, override));
-}`;
+  };
+  override = override ?? {};
+  if (override.protocol === "http") {
+    delete origin.customOriginConfig;
+  }
+  if (override.connectionAttempts) {
+    origin.connectionAttempts = override.connectionAttempts;
+  }
+  if (override.timeouts) {
+    origin.timeouts = override.timeouts;
+  }
+  cf.updateRequestOrigin(origin);
+}
 
 export const CF_ROUTER_URL_ORIGIN_WITH_OAC_INJECTION = `
 function setUrlOrigin(urlHost, override) {
@@ -1849,15 +2068,23 @@ function setUrlOrigin(urlHost, override) {
 
 export const CF_ROUTER_S3_ORIGIN_INJECTION = `
 function setS3Origin(s3Domain, override) {
-  cf.updateRequestOrigin(Object.assign({
+  const origin = {
     domainName: s3Domain,
     originAccessControlConfig: {
       enabled: true,
       signingBehavior: "always",
       signingProtocol: "sigv4",
       originType: "s3",
-    },
-  }, override));
+    }
+  };
+  override = override ?? {};
+  if (override.connectionAttempts) {
+    origin.connectionAttempts = override.connectionAttempts;
+  }
+  if (override.timeouts) {
+    origin.timeouts = override.timeouts;
+  }
+  cf.updateRequestOrigin(origin);
 }`;
 
 export const CF_ROUTER_GLOBAL_INJECTION = `

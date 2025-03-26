@@ -451,38 +451,6 @@ export interface NextjsArgs extends SsrSiteArgs {
  *
  * console.log(Resource.MyBucket.name);
  * ```
- *
- * #### Configure base path
- *
- * To serve your Next.js app from a subpath (e.g., `https://my-app.com/docs`), you need to configure your Next.js app and SST settings.
- *
- * Step 1: Configure Next.js base path
- *
- * Set the [`basePath`](https://nextjs.org/docs/app/api-reference/config/next-config-js/basePath) option in your `next.config.js`:
- * ```js {2} title="next.config.js"
- * export default defineConfig({
- *   basePath: "/docs",
- * });
- * ```
- *
- * Step 2: Disable CDN on the Nextjs component
- *
- * In your SST configuration:
- * ```js {2} title="sst.config.ts"
- * const docs = new sst.aws.Nextjs("Docs", {
- *   cdn: false,
- * });
- * ```
- *
- * Step 3: Add the site to a Router
- *
- * Finally, route the Next.js app through a Router component:
- * ```js {4}
- * const router = new sst.aws.Router("MyRouter", {
- *   domain: "my-app.com",
- * });
- * router.routeSite("/docs", docs);
- * ```
  */
 export class Nextjs extends SsrSite {
   private revalidationQueue?: Output<Queue | undefined>;
@@ -588,36 +556,36 @@ export class Nextjs extends SsrSite {
                 },
                 ...(queueArn
                   ? [
-                      {
-                        actions: [
-                          "sqs:SendMessage",
-                          "sqs:GetQueueAttributes",
-                          "sqs:GetQueueUrl",
-                        ],
-                        resources: [queueArn],
-                      },
-                    ]
+                    {
+                      actions: [
+                        "sqs:SendMessage",
+                        "sqs:GetQueueAttributes",
+                        "sqs:GetQueueUrl",
+                      ],
+                      resources: [queueArn],
+                    },
+                  ]
                   : []),
                 ...(tableArn
                   ? [
-                      {
-                        actions: [
-                          "dynamodb:BatchGetItem",
-                          "dynamodb:GetRecords",
-                          "dynamodb:GetShardIterator",
-                          "dynamodb:Query",
-                          "dynamodb:GetItem",
-                          "dynamodb:Scan",
-                          "dynamodb:ConditionCheckItem",
-                          "dynamodb:BatchWriteItem",
-                          "dynamodb:PutItem",
-                          "dynamodb:UpdateItem",
-                          "dynamodb:DeleteItem",
-                          "dynamodb:DescribeTable",
-                        ],
-                        resources: [tableArn, `${tableArn}/*`],
-                      },
-                    ]
+                    {
+                      actions: [
+                        "dynamodb:BatchGetItem",
+                        "dynamodb:GetRecords",
+                        "dynamodb:GetShardIterator",
+                        "dynamodb:Query",
+                        "dynamodb:GetItem",
+                        "dynamodb:Scan",
+                        "dynamodb:ConditionCheckItem",
+                        "dynamodb:BatchWriteItem",
+                        "dynamodb:PutItem",
+                        "dynamodb:UpdateItem",
+                        "dynamodb:DeleteItem",
+                        "dynamodb:DescribeTable",
+                      ],
+                      resources: [tableArn, `${tableArn}/*`],
+                    },
+                  ]
                   : []),
               ],
               injections: [

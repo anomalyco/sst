@@ -67,21 +67,6 @@ export interface ReactArgs extends SsrSiteArgs {
    */
   permissions?: SsrSiteArgs["permissions"];
   /**
-   * By default, a standalone CloudFront distribution is created for your React app.
-   *
-   * Alternatively, you can pass in `false` and add the app as a route to the Router
-   * component.
-   *
-   * @default `true`
-   * @example
-   * ```js
-   * {
-   *   cdn: false
-   * }
-   * ```
-   */
-  cdn?: SsrSiteArgs["cdn"];
-  /**
    * The regions that the [server function](#nodes-server) in your React app will be
    * deployed to. Requests will be routed to the nearest region based on the user's location.
    *
@@ -324,49 +309,6 @@ export interface ReactArgs extends SsrSiteArgs {
  * import { Resource } from "sst";
  *
  * console.log(Resource.MyBucket.name);
- * ```
- *
- * #### Configure base path
- *
- * To serve your React app from a subpath (e.g., `https://my-app.com/docs`), you need to configure both Vite and React Router settings.
- *
- * Step 1: Configure Vite base path
- *
- * In your `vite.config.ts`, set the `base` option with a trailing slash:
- * ```js {3} title="vite.config.ts"
- * export default defineConfig({
- *   plugins: [tailwindcss(), reactRouter(), tsconfigPaths()],
- *   base: "/docs/",
- * });
- * ```
- *
- * Step 2: Configure React Router basename
- *
- * In your `react-router.config.ts`, set the `basename` option without a trailing slash:
- * ```js {3} title="react-router.config.ts"
- * export default {
- *   ssr: true,
- *   basename: "/docs",
- * } satisfies Config;
- * ```
- *
- * Step 3: Disable CDN on the React component
- *
- * In your SST configuration:
- * ```js {2} title="sst.config.ts"
- * const docs = new sst.aws.React("Docs", {
- *   cdn: false,
- * });
- * ```
- *
- * Step 4: Add the site to a Router
- *
- * Finally, route the React app through a Router component:
- * ```js {4}
- * const router = new sst.aws.Router("MyRouter", {
- *   domain: "my-app.com",
- * });
- * router.routeSite("/docs", docs);
  * ```
  */
 export class React extends SsrSite {

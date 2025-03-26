@@ -5,6 +5,14 @@
 
 declare module "sst" {
   export interface Resource {
+    "GOOGLE_CLIENT_ID": {
+      "type": "sst.sst.Secret"
+      "value": string
+    }
+    "GOOGLE_CLIENT_SECRET": {
+      "type": "sst.sst.Secret"
+      "value": string
+    }
     "MyAuth": {
       "type": "sst.aws.Auth"
       "url": string
@@ -14,7 +22,7 @@ declare module "sst" {
       "type": "sst.aws.Bucket"
     }
     "MyNextjsSite": {
-      "type": "sst.aws.Astro"
+      "type": "sst.aws.Nextjs"
       "url": string
     }
     "MyRouter": {
@@ -59,6 +67,15 @@ declare module "sst" {
     }
     "MyVpc": {
       "type": "sst.aws.Vpc"
+    }
+    "RouterAuthIssuer": {
+      "name": string
+      "type": "sst.aws.Function"
+      "url": string
+    }
+    "RouterAuthStorage": {
+      "name": string
+      "type": "sst.aws.Dynamo"
     }
     "Web": {
       "type": "sst.aws.StaticSite"
