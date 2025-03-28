@@ -1,43 +1,41 @@
-import { cloudfront, getRegionOutput, lambda, Region } from "@pulumi/aws";
-import {
-  all,
-  ComponentResourceOptions,
-  interpolate,
-  Output,
-  output,
-  Resource,
-  Unwrap,
-} from "@pulumi/pulumi";
-import crypto from "crypto";
-import type { Loader } from "esbuild";
+import path from "path";
 import fs from "fs";
 import { globSync } from "glob";
-import path from "path";
-import { readDirRecursivelySync } from "../../util/fs.js";
+import crypto from "crypto";
+import type { Loader } from "esbuild";
+import {
+  Output,
+  Unwrap,
+  output,
+  all,
+  interpolate,
+  ComponentResourceOptions,
+  Resource,
+} from "@pulumi/pulumi";
+import { Cdn, CdnArgs } from "./cdn.js";
+import { Function, FunctionArgs } from "./function.js";
+import { Bucket, BucketArgs } from "./bucket.js";
+import { BucketFile, BucketFiles } from "./providers/bucket-files.js";
+import { logicalName } from "../naming.js";
+import { Input } from "../input.js";
+import { Component, transform, type Transform } from "../component.js";
+import { VisibleError } from "../error.js";
+import { Cron } from "./cron.js";
 import { BaseSiteFileOptions, getContentType } from "../base/base-site.js";
 import { BaseSsrSiteArgs, buildApp } from "../base/base-ssr-site.js";
-import { Component, transform, type Transform } from "../component.js";
-import { toSeconds } from "../duration.js";
-import { VisibleError } from "../error.js";
-import { Input } from "../input.js";
-import { Link } from "../link.js";
-import { logicalName } from "../naming.js";
-import { Bucket, BucketArgs } from "./bucket.js";
-import { Cdn, CdnArgs } from "./cdn.js";
-import { Cron } from "./cron.js";
-import { Function, FunctionArgs } from "./function.js";
-import { useProvider } from "./helpers/provider.js";
-import { URL_UNAVAILABLE } from "./linkable.js";
-import { BucketFile, BucketFiles } from "./providers/bucket-files.js";
-import { DistributionInvalidation } from "./providers/distribution-invalidation.js";
+import { cloudfront, getRegionOutput, lambda, Region } from "@pulumi/aws";
+import { readDirRecursivelySync } from "../../util/fs.js";
 import { KvKeys } from "./providers/kv-keys.js";
+import { useProvider } from "./helpers/provider.js";
+import { Link } from "../link.js";
+import { URL_UNAVAILABLE } from "./linkable.js";
 import {
-  CF_BLOCK_CLOUDFRONT_URL_INJECTION,
-  CF_ROUTER_S3_ORIGIN_INJECTION,
-  CF_ROUTER_URL_ORIGIN_INJECTION,
-  CF_ROUTER_URL_ORIGIN_WITH_OAC_INJECTION,
+  CF_ROUTER_GLOBAL_INJECTION,
   CF_SITE_ROUTER_INJECTION,
+  CF_BLOCK_CLOUDFRONT_URL_INJECTION,
 } from "./router.js";
+import { DistributionInvalidation } from "./providers/distribution-invalidation.js";
+import { toSeconds } from "../duration.js";
 
 const supportedRegions = {
   "af-south-1": { lat: -33.9249, lon: 18.4241 }, // Cape Town, South Africa
@@ -243,19 +241,19 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
      */
     architecture?: FunctionArgs["architecture"];
     /**
-     * Whether the Lambda URL is protected behind CloudFront or publicly accessible.
+     * Controls whether the server URL is restricted to CloudFront access only or publicly accessible.
      *
      * @default `false`
      * @example
      * ```js
      * {
      *   server: {
-     *     isProtected: true
+     *     protectedUrl: true
      *   }
      * }
      * ```
      */
-    isProtected?: Input<boolean>;
+    protectedUrl?: Input<boolean>;
     /**
      * Dependencies that need to be excluded from the server function package.
      *
@@ -689,12 +687,6 @@ export abstract class SsrSite extends Component implements Link.Linkable {
           const blockCloudfrontUrlInjection = args.domain
             ? CF_BLOCK_CLOUDFRONT_URL_INJECTION
             : "";
-          const urlOriginInjection = output(server?.isProtected).apply(
-            (isProtected) =>
-              isProtected
-                ? CF_ROUTER_URL_ORIGIN_WITH_OAC_INJECTION
-                : CF_ROUTER_URL_ORIGIN_INJECTION,
-          );
           return new cloudfront.Function(
             `${name}CloudfrontFunctionRequest`,
             {
@@ -720,8 +712,7 @@ async function handler(event) {
   return event.request;
 }
 
-${urlOriginInjection}
-${CF_ROUTER_S3_ORIGIN_INJECTION}`,
+${CF_ROUTER_GLOBAL_INJECTION}`,
             },
             { parent },
           );
@@ -809,13 +800,13 @@ async function handler(event) {
     });
 
     // Create Lambda permissions to allow CloudFront to invoke the server functions
-    all([distribution, servers, args.server?.isProtected]).apply(
+    all([distribution, servers, args.server?.protectedUrl]).apply(
       ([dist, servers, isProtected]) => {
         if (!dist || !isProtected) return;
         servers.forEach(({ region, server }) => {
           const provider = useProvider(region);
           new lambda.Permission(
-            `${name}CloudFrontLambdaInvoke${logicalName(region)}`,
+            `${name}CloudFrontFunctionUrlAccess${logicalName(region)}`,
             {
               action: "lambda:InvokeFunctionUrl",
               function: server.nodes.function.name,
@@ -1062,8 +1053,8 @@ async function handler(event) {
                   ...(layers ?? []),
                 ]),
                 url: {
-                  authorization: output(args.server?.isProtected).apply(
-                    (isProtected) => (isProtected ? "iam" : "none"),
+                  authorization: output(args.server?.protectedUrl).apply(
+                    (protectedUrl) => (protectedUrl ? "iam" : "none"),
                   ),
                 },
                 dev: false,
@@ -1272,8 +1263,9 @@ async function handler(event) {
         plan,
         bucket.nodes.bucket.bucketRegionalDomainName,
         timeout,
+        output(args.server?.protectedUrl)
       ]).apply(
-        ([servers, imageOptimizer, outputPath, plan, bucketDomain, timeout]) =>
+        ([servers, imageOptimizer, outputPath, plan, bucketDomain, timeout, protectedUrl]) =>
           all([
             servers.map((s) => ({ region: s.region, url: s.server!.url })),
             imageOptimizer?.url,
@@ -1306,6 +1298,14 @@ async function handler(event) {
                 timeouts: {
                   readTimeout: toSeconds(timeout),
                 },
+                ...(protectedUrl ? {
+                  originAccessControlConfig: {
+                    enabled: true,
+                    signingBehavior: "always",
+                    signingProtocol: "sigv4",
+                    originType: "lambda",
+                  }
+                } : {})
               },
             });
             return kvEntries;
