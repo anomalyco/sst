@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import { ComponentResourceOptions, Output } from "@pulumi/pulumi";
 import { VisibleError } from "../error.js";
-import { SsrSite, SsrSiteArgs } from "./ssr-site.js";
+import { Plan, SsrSite, SsrSiteArgs } from "./ssr-site.js";
 
 export interface TanStackStartArgs extends SsrSiteArgs {
   /**
@@ -326,9 +326,9 @@ export class TanStackStart extends SsrSite {
     super(__pulumiType, name, args, opts);
   }
 
-  protected normalizeBuildCommand() { }
+  protected normalizeBuildCommand() {}
 
-  protected buildPlan(outputPath: Output<string>) {
+  protected buildPlan(outputPath: Output<string>): Output<Plan> {
     return outputPath.apply((outputPath) => {
       const nitro = JSON.parse(
         fs.readFileSync(

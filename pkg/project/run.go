@@ -268,9 +268,9 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	if input.ServerPort != 0 {
 		env = append(env, "SST_SERVER=http://127.0.0.1:"+fmt.Sprint(input.ServerPort))
 	}
-	pulumiPath := flag.SST_PULUMI_PATH
-	if pulumiPath == "" {
-		pulumiPath = filepath.Join(global.BinPath(), "..")
+	pulumiPath := global.PulumiPath()
+	if flag.SST_PULUMI_PATH != "" {
+		pulumiPath = flag.SST_PULUMI_PATH
 	}
 
 	eventlogPath := workdir.EventLogPath()
@@ -335,7 +335,7 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 		}
 	}
 
-	cmd := process.Command(filepath.Join(pulumiPath, "bin/pulumi"), args...)
+	cmd := process.Command(pulumiPath, args...)
 	process.Detach(cmd)
 	cmd.Env = env
 	cmd.Stdout = pulumiStdout

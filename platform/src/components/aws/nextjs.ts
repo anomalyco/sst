@@ -1,11 +1,6 @@
 import fs from "fs";
 import path from "path";
-import {
-  ComponentResourceOptions,
-  Output,
-  all,
-  output,
-} from "@pulumi/pulumi";
+import { ComponentResourceOptions, Output, all, output } from "@pulumi/pulumi";
 import { Size } from "../size.js";
 import { Function } from "./function.js";
 import { VisibleError } from "../error.js";
@@ -13,7 +8,7 @@ import type { Input } from "../input.js";
 import { Queue } from "./queue.js";
 import { dynamodb, getRegionOutput, lambda } from "@pulumi/aws";
 import { isALteB } from "../../util/compare-semver.js";
-import { SsrSite, SsrSiteArgs } from "./ssr-site.js";
+import { Plan, SsrSite, SsrSiteArgs } from "./ssr-site.js";
 import { Bucket } from "./bucket.js";
 
 const DEFAULT_OPEN_NEXT_VERSION = "3.5.3";
@@ -483,7 +478,7 @@ export class Nextjs extends SsrSite {
     name: string,
     args: NextjsArgs,
     { bucket }: { bucket: Bucket },
-  ) {
+  ): Output<Plan> {
     const parent = this;
 
     const ret = all([outputPath, args?.imageOptimization]).apply(
@@ -556,36 +551,36 @@ export class Nextjs extends SsrSite {
                 },
                 ...(queueArn
                   ? [
-                    {
-                      actions: [
-                        "sqs:SendMessage",
-                        "sqs:GetQueueAttributes",
-                        "sqs:GetQueueUrl",
-                      ],
-                      resources: [queueArn],
-                    },
-                  ]
+                      {
+                        actions: [
+                          "sqs:SendMessage",
+                          "sqs:GetQueueAttributes",
+                          "sqs:GetQueueUrl",
+                        ],
+                        resources: [queueArn],
+                      },
+                    ]
                   : []),
                 ...(tableArn
                   ? [
-                    {
-                      actions: [
-                        "dynamodb:BatchGetItem",
-                        "dynamodb:GetRecords",
-                        "dynamodb:GetShardIterator",
-                        "dynamodb:Query",
-                        "dynamodb:GetItem",
-                        "dynamodb:Scan",
-                        "dynamodb:ConditionCheckItem",
-                        "dynamodb:BatchWriteItem",
-                        "dynamodb:PutItem",
-                        "dynamodb:UpdateItem",
-                        "dynamodb:DeleteItem",
-                        "dynamodb:DescribeTable",
-                      ],
-                      resources: [tableArn, `${tableArn}/*`],
-                    },
-                  ]
+                      {
+                        actions: [
+                          "dynamodb:BatchGetItem",
+                          "dynamodb:GetRecords",
+                          "dynamodb:GetShardIterator",
+                          "dynamodb:Query",
+                          "dynamodb:GetItem",
+                          "dynamodb:Scan",
+                          "dynamodb:ConditionCheckItem",
+                          "dynamodb:BatchWriteItem",
+                          "dynamodb:PutItem",
+                          "dynamodb:UpdateItem",
+                          "dynamodb:DeleteItem",
+                          "dynamodb:DescribeTable",
+                        ],
+                        resources: [tableArn, `${tableArn}/*`],
+                      },
+                    ]
                   : []),
               ],
               injections: [

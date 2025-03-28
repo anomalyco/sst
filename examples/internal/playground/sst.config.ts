@@ -10,8 +10,6 @@ export default $config({
   },
   async run() {
     const ret: Record<string, $util.Output<string>> = {};
-    const GOOGLE_CLIENT_ID = new sst.Secret("GOOGLE_CLIENT_ID");
-    const GOOGLE_CLIENT_SECRET = new sst.Secret("GOOGLE_CLIENT_SECRET");
 
     const vpc = addVpc();
     const bucket = addBucket();
@@ -82,6 +80,8 @@ export default $config({
     }
 
     function addAuth() {
+      const GOOGLE_CLIENT_ID = new sst.Secret("GOOGLE_CLIENT_ID");
+      const GOOGLE_CLIENT_SECRET = new sst.Secret("GOOGLE_CLIENT_SECRET");
       const auth = new sst.aws.Auth("MyAuth", {
         domain: "auth.playground.sst.sh",
         issuer: {
@@ -289,13 +289,13 @@ export default $config({
           aliases: ["*.router.playground.sst.sh"],
         },
       });
-      router.route("api.router.playground.sst.sh/", app.url);
-      router.route("/api", app.url, {
-        rewrite: {
-          regex: "^/api/(.*)$",
-          to: "/$1",
-        },
-        connectionTimeout: "1 second",
+      //router.route("api.router.playground.sst.sh/", app.url);
+      router.route("/api1", app.url, {
+        //rewrite: {
+        //  regex: "^/api/(.*)$",
+        //  to: "/$1",
+        //},
+        //connectionTimeout: "1 second",
       });
       //router.routeSite("/rr7", rr7);
       //router.routeSite("/astro5", astro5);
@@ -307,24 +307,6 @@ export default $config({
       //router.routeSite("/remix", remix);
       //router.routeSite("/vite", vite);
       //router.routeSite("/", nextjs);
-
-      // Add auth
-      const authStorage = new sst.aws.Dynamo("RouterAuthStorage", {
-        fields: { pk: "string", sk: "string" },
-        primaryIndex: { hashKey: "pk", rangeKey: "sk" },
-        ttl: "expiry",
-      });
-
-      const authIssuer = new sst.aws.Function("RouterAuthIssuer", {
-        handler: "functions/auth/index.handler",
-        link: [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, authStorage],
-        url: true,
-      });
-
-      router.route(
-        "/", // <---- this doesn't work. CF is giving me 502's. if I add the domain from the Router, it does work.
-        authIssuer.url
-      );
 
       return router;
     }
@@ -377,8 +359,11 @@ export default $config({
       return new sst.aws.Service("MyService", {
         cluster,
         loadBalancer: {
-          ports: [
-            { listen: "80/http" },
+          rules: [
+            {
+              listen: "80/http",
+              //container: "app",
+            },
             //{ listen: "80/http", container: "web" },
             //{ listen: "8080/http", container: "sidecar" },
           ],

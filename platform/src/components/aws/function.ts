@@ -43,6 +43,7 @@ import { RandomBytes } from "@pulumi/random";
 import { lazy } from "../../util/lazy.js";
 import { Efs } from "./efs.js";
 import { FunctionEnvironmentUpdate } from "./providers/function-environment-update.js";
+import { warnOnce } from "../../util/warn.js";
 
 /**
  * Helper type to define function ARN type
@@ -1663,12 +1664,13 @@ export class Function extends Component implements Link.Linkable {
           securityGroups: args.vpc.securityGroups,
         };
         return all([
+          args.vpc.id,
           args.vpc.nodes.natGateways,
           args.vpc.nodes.natInstances,
-        ]).apply(([natGateways, natInstances]) => {
+        ]).apply(([id, natGateways, natInstances]) => {
           if (natGateways.length === 0 && natInstances.length === 0) {
-            throw new VisibleError(
-              `Functions that are running in a VPC need a NAT gateway. Enable it by setting "nat" on the "sst.aws.Vpc" component.`,
+            warnOnce(
+              `\nWarning: One or more functions are deployed in the "${id}" VPC, which does not have a NAT gateway. As a result, these functions cannot access the internet. If your functions need internet access, enable it by setting "nat": true on the "Vpc" component.\n`,
             );
           }
           return result;

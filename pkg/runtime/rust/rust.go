@@ -83,7 +83,10 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 
 	cargotomlpath, err := fs.FindUp(input.Handler, "cargo.toml")
 	if err != nil {
-		return nil, err
+		cargotomlpath, err = fs.FindUp(input.Handler, "Cargo.toml")
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// root of project

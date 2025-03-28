@@ -96,7 +96,9 @@ export class D1 extends Component implements Link.Linkable {
    */
   getSSTLink() {
     return {
-      properties: {},
+      properties: {
+        databaseId: this.database.id,
+      },
       include: [
         binding({
           type: "d1DatabaseBindings",

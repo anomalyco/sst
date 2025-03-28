@@ -3,7 +3,7 @@ import path from "path";
 import { ComponentResourceOptions, Output } from "@pulumi/pulumi";
 import { isALtB } from "../../util/compare-semver.js";
 import { VisibleError } from "../error.js";
-import { SsrSite, SsrSiteArgs } from "./ssr-site.js";
+import { Plan, SsrSite, SsrSiteArgs } from "./ssr-site.js";
 
 export interface AstroArgs extends SsrSiteArgs {
   /**
@@ -333,9 +333,9 @@ export class Astro extends SsrSite {
     super(__pulumiType, name, args, opts);
   }
 
-  protected normalizeBuildCommand() { }
+  protected normalizeBuildCommand() {}
 
-  protected buildPlan(outputPath: Output<string>) {
+  protected buildPlan(outputPath: Output<string>): Output<Plan> {
     return outputPath.apply((outputPath) => {
       const BUILD_META_FILE_NAME = "sst.buildMeta.json";
       const filePath = path.join(outputPath, "dist", BUILD_META_FILE_NAME);
@@ -385,18 +385,18 @@ export class Astro extends SsrSite {
         server: isStatic
           ? undefined
           : {
-            handler: path.join(serverOutputPath, "entry.handler"),
-            nodejs: { install: ["sharp"] },
-            streaming: buildMeta.responseMode === "stream",
-            copyFiles: fs.existsSync(path.join(serverOutputPath, "404.html"))
-              ? [
-                {
-                  from: path.join(serverOutputPath, "404.html"),
-                  to: "404.html",
-                },
-              ]
-              : [],
-          },
+              handler: path.join(serverOutputPath, "entry.handler"),
+              nodejs: { install: ["sharp"] },
+              streaming: buildMeta.responseMode === "stream",
+              copyFiles: fs.existsSync(path.join(serverOutputPath, "404.html"))
+                ? [
+                    {
+                      from: path.join(serverOutputPath, "404.html"),
+                      to: "404.html",
+                    },
+                  ]
+                : [],
+            },
         assets: [
           {
             from: buildMeta.clientBuildOutputDir,
@@ -407,9 +407,9 @@ export class Astro extends SsrSite {
         ],
         custom404:
           isStatic &&
-            fs.existsSync(
-              path.join(outputPath, buildMeta.clientBuildOutputDir, "404.html"),
-            )
+          fs.existsSync(
+            path.join(outputPath, buildMeta.clientBuildOutputDir, "404.html"),
+          )
             ? "/404.html"
             : undefined,
       };

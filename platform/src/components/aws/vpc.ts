@@ -184,6 +184,10 @@ export interface VpcArgs {
      */
     natInstance?: Transform<ec2.InstanceArgs>;
     /**
+     * Transform the EC2 NAT security group resource.
+     */
+    natSecurityGroup?: Transform<ec2.SecurityGroupArgs>;
+    /**
      * Transform the EC2 Elastic IP resource.
      */
     elasticIp?: Transform<ec2.EipArgs>;
@@ -845,27 +849,30 @@ export class Vpc extends Component implements Link.Linkable {
         if (nat?.type !== "ec2") return output([]);
 
         const sg = new ec2.SecurityGroup(
-          `${name}NatInstanceSecurityGroup`,
-          {
-            vpcId: vpc.id,
-            ingress: [
-              {
-                protocol: "-1",
-                fromPort: 0,
-                toPort: 0,
-                cidrBlocks: ["0.0.0.0/0"],
-              },
-            ],
-            egress: [
-              {
-                protocol: "-1",
-                fromPort: 0,
-                toPort: 0,
-                cidrBlocks: ["0.0.0.0/0"],
-              },
-            ],
-          },
-          { parent: self },
+          ...transform(
+            args.transform?.natSecurityGroup,
+            `${name}NatInstanceSecurityGroup`,
+            {
+              vpcId: vpc.id,
+              ingress: [
+                {
+                  protocol: "-1",
+                  fromPort: 0,
+                  toPort: 0,
+                  cidrBlocks: ["0.0.0.0/0"],
+                },
+              ],
+              egress: [
+                {
+                  protocol: "-1",
+                  fromPort: 0,
+                  toPort: 0,
+                  cidrBlocks: ["0.0.0.0/0"],
+                },
+              ],
+            },
+            { parent: self },
+          ),
         );
 
         const role = new iam.Role(

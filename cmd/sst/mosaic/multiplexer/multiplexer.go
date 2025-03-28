@@ -111,6 +111,11 @@ func (s *Multiplexer) Start() {
 				case *EventProcess:
 					for _, p := range s.processes {
 						if p.key == evt.Key {
+							if p.dead {
+								p.start()
+								s.sort()
+								s.draw()
+							}
 							return
 						}
 					}
@@ -122,7 +127,6 @@ func (s *Multiplexer) Start() {
 						args:     evt.Args,
 						killable: evt.Killable,
 						env:      evt.Env,
-						dead:     !evt.Autostart,
 					}
 					term := tcellterm.New()
 					term.SetSurface(s.main)

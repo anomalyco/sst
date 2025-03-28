@@ -68,15 +68,6 @@ declare module "sst" {
     "MyVpc": {
       "type": "sst.aws.Vpc"
     }
-    "RouterAuthIssuer": {
-      "name": string
-      "type": "sst.aws.Function"
-      "url": string
-    }
-    "RouterAuthStorage": {
-      "name": string
-      "type": "sst.aws.Dynamo"
-    }
     "Web": {
       "type": "sst.aws.StaticSite"
     }

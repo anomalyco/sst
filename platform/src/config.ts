@@ -846,7 +846,7 @@ export interface Config {
    * },
    * ```
    */
-  app(input: AppInput): App;
+  app(input: AppInput): App | Promise<App>;
   /**
    * Configure how your app works with the SST Console.
    */

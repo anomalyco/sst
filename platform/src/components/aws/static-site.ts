@@ -371,6 +371,28 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
        * ```
        */
       purge?: Input<boolean>;
+      /**
+       * Configure additional asset routes for serving files directly from the S3 bucket.
+       *
+       * These routes allow files stored in specific S3 bucket paths to be served under the
+       * same domain as your site. This is particularly useful for handling user-uploaded
+       * content.
+       *
+       * @example
+       * If user-uploaded files are stored in the `uploads` directory, and no `routes` are
+       * configured, these files will return 404 errors or display the `errorPage` if set.
+       * By including `uploads` in `routes`, all files in that folder will be served
+       * directly from the S3 bucket.
+       *
+       * ```js
+       * {
+       *   assets: {
+       *     routes: ["uploads"]
+       *   }
+       * }
+       * ```
+       */
+      routes?: Input<Input<string>[]>;
     }
   >;
   /**
@@ -428,46 +450,46 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
   invalidation?: Input<
     | false
     | {
-      /**
-       * Configure if `sst deploy` should wait for the CloudFront cache invalidation to finish.
-       *
-       * :::tip
-       * For non-prod environments it might make sense to pass in `false`.
-       * :::
-       *
-       * Waiting for the CloudFront cache invalidation process to finish ensures that the new content will be served once the deploy finishes. However, this process can sometimes take more than 5 mins.
-       * @default `false`
-       * @example
-       * ```js
-       * {
-       *   invalidation: {
-       *     wait: true
-       *   }
-       * }
-       * ```
-       */
-      wait?: Input<boolean>;
-      /**
-       * The paths to invalidate.
-       *
-       * You can either pass in an array of glob patterns to invalidate specific files. Or you can use the built-in option `all` to invalidation all files when any file changes.
-       *
-       * :::note
-       * Invalidating `all` counts as one invalidation, while each glob pattern counts as a single invalidation path.
-       * :::
-       * @default `"all"`
-       * @example
-       * Invalidate the `index.html` and all files under the `products/` route.
-       * ```js
-       * {
-       *   invalidation: {
-       *     paths: ["/index.html", "/products/*"]
-       *   }
-       * }
-       * ```
-       */
-      paths?: Input<"all" | string[]>;
-    }
+        /**
+         * Configure if `sst deploy` should wait for the CloudFront cache invalidation to finish.
+         *
+         * :::tip
+         * For non-prod environments it might make sense to pass in `false`.
+         * :::
+         *
+         * Waiting for the CloudFront cache invalidation process to finish ensures that the new content will be served once the deploy finishes. However, this process can sometimes take more than 5 mins.
+         * @default `false`
+         * @example
+         * ```js
+         * {
+         *   invalidation: {
+         *     wait: true
+         *   }
+         * }
+         * ```
+         */
+        wait?: Input<boolean>;
+        /**
+         * The paths to invalidate.
+         *
+         * You can either pass in an array of glob patterns to invalidate specific files. Or you can use the built-in option `all` to invalidation all files when any file changes.
+         *
+         * :::note
+         * Invalidating `all` counts as one invalidation, while each glob pattern counts as a single invalidation path.
+         * :::
+         * @default `"all"`
+         * @example
+         * Invalidate the `index.html` and all files under the `products/` route.
+         * ```js
+         * {
+         *   invalidation: {
+         *     paths: ["/index.html", "/products/*"]
+         *   }
+         * }
+         * ```
+         */
+        paths?: Input<"all" | string[]>;
+      }
   >;
   /**
    * By default, a standalone CloudFront distribution is created.
@@ -655,10 +677,10 @@ export class StaticSite extends Component implements Link.Linkable {
     invalidation: Output<
       | false
       | {
-        paths: string[];
-        version: string;
-        wait: boolean;
-      }
+          paths: string[];
+          version: string;
+          wait: boolean;
+        }
     >;
     invalidationDependsOn: Input<Resource>[];
   };
@@ -938,12 +960,21 @@ async function handler(event) {
     function normalizeAsssets() {
       return {
         ...args.assets,
+        // remove leading and trailing slashes from the path
         path: args.assets?.path
           ? output(args.assets?.path).apply((v) =>
-            v.replace(/^\//, "").replace(/\/$/, ""),
-          )
+              v.replace(/^\//, "").replace(/\/$/, ""),
+            )
           : undefined,
         purge: output(args.assets?.purge ?? true),
+        // normalize to /path format
+        routes: args.assets?.routes
+          ? output(args.assets?.routes).apply((v) =>
+              v.map(
+                (route) => "/" + route.replace(/^\//, "").replace(/\/$/, ""),
+              ),
+            )
+          : undefined,
       };
     }
 
@@ -964,8 +995,8 @@ async function handler(event) {
       const s3Bucket = bucket
         ? bucket.nodes.bucket
         : s3.BucketV2.get(`${name}Assets`, assets.bucket!, undefined, {
-          parent,
-        });
+            parent,
+          });
 
       return {
         bucketName: s3Bucket.bucket,
@@ -1053,7 +1084,8 @@ async function handler(event) {
             custom404: errorPage,
             s3: {
               domain: bucketDomain,
-              dir: assets.path ?? "",
+              dir: assets.path ? "/" + assets.path : "",
+              routes: assets.routes,
             },
           });
           return kvEntries;
@@ -1062,8 +1094,8 @@ async function handler(event) {
     }
 
     function buildInvalidation() {
-      return all([outputPath, args.invalidation]).apply(
-        ([outputPath, invalidationRaw]) => {
+      return all([outputPath, args.assets, args.invalidation]).apply(
+        ([outputPath, assets, invalidationRaw]) => {
           // Normalize invalidation
           if (invalidationRaw === false) return false;
           const invalidation = {
@@ -1084,6 +1116,7 @@ async function handler(event) {
           // - nodir: This will prevent symlinks themselves from being copied into the zip.
           // - follow: This will follow symlinks and copy the files within.
           const hash = crypto.createHash("md5");
+          hash.update(JSON.stringify(assets ?? {}));
           globSync("**", {
             dot: true,
             nodir: true,
@@ -1113,9 +1146,8 @@ async function handler(event) {
    */
   public get url() {
     return all([this.cdn, this.devUrl]).apply(([cdn, dev]) => {
-      if (!cdn) return;
-      return all([cdn.domainUrl, cdn.url]).apply(
-        ([domainUrl, url]) => domainUrl ?? url ?? dev!,
+      return all([cdn?.domainUrl, cdn?.url]).apply(
+        ([domainUrl, url]) => domainUrl ?? url ?? dev,
       );
     });
   }

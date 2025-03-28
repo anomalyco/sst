@@ -1,8 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { ComponentResourceOptions, Output } from "@pulumi/pulumi";
-import { SsrSiteArgs } from "./ssr-site.js";
-import { SsrSite } from "./ssr-site.js";
+import { Plan, SsrSite, SsrSiteArgs } from "./ssr-site.js";
 
 export interface SvelteKitArgs extends SsrSiteArgs {
   /**
@@ -314,9 +313,9 @@ export class SvelteKit extends SsrSite {
     super(__pulumiType, name, args, opts);
   }
 
-  protected normalizeBuildCommand() { }
+  protected normalizeBuildCommand() {}
 
-  protected buildPlan(outputPath: Output<string>) {
+  protected buildPlan(outputPath: Output<string>): Output<Plan> {
     return outputPath.apply((outputPath) => {
       const serverOutputPath = path.join(
         outputPath,
@@ -334,7 +333,7 @@ export class SvelteKit extends SsrSite {
         if (appDir && appPath && appPath.endsWith(appDir)) {
           basepath = appPath.substring(0, appPath.length - appDir.length);
         }
-      } catch (e) { }
+      } catch (e) {}
 
       return {
         base: basepath,

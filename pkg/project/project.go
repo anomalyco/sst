@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
+	"github.com/evanw/esbuild/pkg/api"
 	"github.com/sst/sst/v3/internal/fs"
 	"github.com/sst/sst/v3/internal/util"
 	"github.com/sst/sst/v3/pkg/flag"
@@ -86,16 +87,32 @@ type ProjectConfig struct {
 	Config  string
 }
 
-var ErrInvalidStageName = fmt.Errorf("invalid stage name")
-var ErrInvalidAppName = fmt.Errorf("invalid app name")
-var ErrAppNameChanged = fmt.Errorf("app name changed")
-var ErrV2Config = fmt.Errorf("sstv2 config detected")
-var ErrBuildFailed = fmt.Errorf("")
-var ErrVersionInvalid = fmt.Errorf("invalid version")
-var ErrVersionMismatch = fmt.Errorf("")
+var ErrInvalidStageName = fmt.Errorf("ErrInvalidStageName")
+var ErrInvalidAppName = fmt.Errorf("ErrInvalidAppName")
+var ErrAppNameChanged = fmt.Errorf("ErrAppNameChanged")
+var ErrV2Config = fmt.Errorf("ErrV2Config")
+var ErrVersionInvalid = fmt.Errorf("ErrVersionInvalid")
+
+type ErrVersionMismatch struct {
+	Needed   string
+	Received string
+}
+
+func (err *ErrVersionMismatch) Error() string {
+	return "ErrorVersionMismatch"
+}
+
+type ErrBuildFailed struct {
+	msg    string
+	Errors []api.Message
+}
+
+func (err *ErrBuildFailed) Error() string {
+	return err.msg
+}
 
 var InvalidStageRegex = regexp.MustCompile(`[^a-zA-Z0-9-]`)
-var InvalidAppRegex = regexp.MustCompile(`[^a-zA-Z0-9-]`)
+var InvalidAppRegex = regexp.MustCompile(`^[^a-zA-Z]|[^a-zA-Z0-9-]`)
 
 func New(input *ProjectConfig) (*Project, error) {
 	if InvalidStageRegex.MatchString(input.Stage) {
@@ -147,14 +164,17 @@ if (mod.stacks || mod.config) {
   console.log("~v2")
   process.exit(0)
 }
-console.log("~j" + JSON.stringify(mod.app({
+console.log("~j" + JSON.stringify(await mod.app({
   stage: $input.stage || undefined,
 })))`,
 				input.Config),
 		},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("%w%s", ErrBuildFailed, err)
+		if buildResult.Errors != nil {
+			return nil, &ErrBuildFailed{msg: err.Error(), Errors: buildResult.Errors}
+		}
+		return nil, err
 	}
 	defer js.Cleanup(buildResult)
 
@@ -247,7 +267,7 @@ console.log("~j" + JSON.stringify(mod.app({
 					return nil, ErrVersionInvalid
 				}
 				if !constraint.Check(version) {
-					return nil, fmt.Errorf("%wYou are using v%s which does not match v%s in your \"sst.config.ts\".", ErrVersionMismatch, input.Version, proj.app.Version)
+					return nil, &ErrVersionMismatch{Needed: input.Version, Received: proj.app.Version}
 				}
 			}
 

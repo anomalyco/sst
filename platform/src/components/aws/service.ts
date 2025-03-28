@@ -37,6 +37,7 @@ import {
   normalizeStorage,
 } from "./fargate.js";
 import { Dns } from "../dns.js";
+import { hashStringToPrettyString } from "../naming.js";
 
 type Port = `${number}/${"http" | "https" | "tcp" | "udp" | "tcp_udp" | "tls"}`;
 
@@ -121,6 +122,8 @@ interface ServiceRules {
      * If multiple `key` and `value` pairs are provided, it'll match requests with **any** of the
      * query string parameters.
      *
+     * @default Query string is not checked when forwarding requests.
+     *
      * @example
      *
      * For example, to match requests with query string `version=v1`.
@@ -163,8 +166,6 @@ interface ServiceRules {
      *   ]
      * }
      * ```
-     *
-     * @default Query string is not checked when forwarding requests.
      */
     query?: Input<
       Input<{
@@ -181,6 +182,42 @@ interface ServiceRules {
         value: Input<string>;
       }>[]
     >;
+    /**
+     * Configure header based routing. Only requests matching the header
+     * name and values are forwarded to the container.
+     *
+     * Both the header name and values are case insensitive.
+     *
+     * @default Header is not checked when forwarding requests.
+     *
+     * @example
+     *
+     * For example, if you specify `X-Custom-Header` as the name and `Value1`
+     * as a value, it will match requests with the header
+     * `x-custom-header: value1` as well.
+     *
+     * ```js
+     * {
+     *   header: {
+     *     name: "X-Custom-Header",
+     *     values: ["Value1", "Value2", "Prefix*"]
+     *   }
+     * }
+     * ```
+     */
+    header?: Input<{
+      /**
+       * The name of the HTTP header field to check. This is case-insensitive.
+       */
+      name: Input<string>;
+
+      /**
+       * The values to match against the header value. The rule matches if the
+       * request header matches any of these values. Values are case-insensitive
+       * and support wildcards (`*` and `?`) for pattern matching.
+       */
+      values: Input<Input<string>>[];
+    }>;
   }>;
 }
 
@@ -229,34 +266,34 @@ export interface ServiceArgs extends FargateBaseArgs {
    * disable this and deploy your service in `sst dev`, pass in `false`.
    */
   dev?:
-  | false
-  | {
-    /**
-     * The `url` when this is running in dev mode.
-     *
-     * Since this component is not deployed in `sst dev`, there is no real URL. But if you are
-     * using this component's `url` or linking to this component's `url`, it can be useful to
-     * have a placeholder URL. It avoids having to handle it being `undefined`.
-     * @default `"http://url-unavailable-in-dev.mode"`
-     */
-    url?: Input<string>;
-    /**
-     * The command that `sst dev` runs to start this in dev mode. This is the command you run
-     * when you want to run your service locally.
-     */
-    command?: Input<string>;
-    /**
-     * Configure if you want to automatically start this when `sst dev` starts. You can still
-     * start it manually later.
-     * @default `true`
-     */
-    autostart?: Input<boolean>;
-    /**
-     * Change the directory from where the `command` is run.
-     * @default Uses the `image.dockerfile` path
-     */
-    directory?: Input<string>;
-  };
+    | false
+    | {
+        /**
+         * The `url` when this is running in dev mode.
+         *
+         * Since this component is not deployed in `sst dev`, there is no real URL. But if you are
+         * using this component's `url` or linking to this component's `url`, it can be useful to
+         * have a placeholder URL. It avoids having to handle it being `undefined`.
+         * @default `"http://url-unavailable-in-dev.mode"`
+         */
+        url?: Input<string>;
+        /**
+         * The command that `sst dev` runs to start this in dev mode. This is the command you run
+         * when you want to run your service locally.
+         */
+        command?: Input<string>;
+        /**
+         * Configure if you want to automatically start this when `sst dev` starts. You can still
+         * start it manually later.
+         * @default `true`
+         */
+        autostart?: Input<boolean>;
+        /**
+         * Change the directory from where the `command` is run.
+         * @default Uses the `image.dockerfile` path
+         */
+        directory?: Input<string>;
+      };
   /**
    * Configure a public endpoint for the service. When configured, a load balancer
    * will be created to route traffic to the containers. By default, the endpoint is an
@@ -315,119 +352,119 @@ export interface ServiceArgs extends FargateBaseArgs {
     domain?: Input<
       | string
       | {
-        /**
-         * The custom domain you want to use.
-         *
-         * @example
-         * ```js
-         * {
-         *   domain: {
-         *     name: "example.com"
-         *   }
-         * }
-         * ```
-         *
-         * Can also include subdomains based on the current stage.
-         *
-         * ```js
-         * {
-         *   domain: {
-         *     name: `${$app.stage}.example.com`
-         *   }
-         * }
-         * ```
-         */
-        name: Input<string>;
-        /**
-         * Alias domains that should be used.
-         *
-         * @example
-         * ```js {4}
-         * {
-         *   domain: {
-         *     name: "app1.example.com",
-         *     aliases: ["app2.example.com"]
-         *   }
-         * }
-         * ```
-         */
-        aliases?: Input<string[]>;
-        /**
-         * The ARN of an ACM (AWS Certificate Manager) certificate that proves ownership of the
-         * domain. By default, a certificate is created and validated automatically.
-         *
-         * :::tip
-         * You need to pass in a `cert` for domains that are not hosted on supported `dns` providers.
-         * :::
-         *
-         * To manually set up a domain on an unsupported provider, you'll need to:
-         *
-         * 1. [Validate that you own the domain](https://docs.aws.amazon.com/acm/latest/userguide/domain-ownership-validation.html) by creating an ACM certificate. You can either validate it by setting a DNS record or by verifying an email sent to the domain owner.
-         * 2. Once validated, set the certificate ARN as the `cert` and set `dns` to `false`.
-         * 3. Add the DNS records in your provider to point to the load balancer endpoint.
-         *
-         * @example
-         * ```js
-         * {
-         *   domain: {
-         *     name: "example.com",
-         *     dns: false,
-         *     cert: "arn:aws:acm:us-east-1:112233445566:certificate/3a958790-8878-4cdc-a396-06d95064cf63"
-         *   }
-         * }
-         * ```
-         */
-        cert?: Input<string>;
-        /**
-         * The DNS provider to use for the domain. Defaults to the AWS.
-         *
-         * Takes an adapter that can create the DNS records on the provider. This can automate
-         * validating the domain and setting up the DNS routing.
-         *
-         * Supports Route 53, Cloudflare, and Vercel adapters. For other providers, you'll need
-         * to set `dns` to `false` and pass in a certificate validating ownership via `cert`.
-         *
-         * @default `sst.aws.dns`
-         *
-         * @example
-         *
-         * Specify the hosted zone ID for the Route 53 domain.
-         *
-         * ```js
-         * {
-         *   domain: {
-         *     name: "example.com",
-         *     dns: sst.aws.dns({
-         *       zone: "Z2FDTNDATAQYW2"
-         *     })
-         *   }
-         * }
-         * ```
-         *
-         * Use a domain hosted on Cloudflare, needs the Cloudflare provider.
-         *
-         * ```js
-         * {
-         *   domain: {
-         *     name: "example.com",
-         *     dns: sst.cloudflare.dns()
-         *   }
-         * }
-         * ```
-         *
-         * Use a domain hosted on Vercel, needs the Vercel provider.
-         *
-         * ```js
-         * {
-         *   domain: {
-         *     name: "example.com",
-         *     dns: sst.vercel.dns()
-         *   }
-         * }
-         * ```
-         */
-        dns?: Input<false | (Dns & {})>;
-      }
+          /**
+           * The custom domain you want to use.
+           *
+           * @example
+           * ```js
+           * {
+           *   domain: {
+           *     name: "example.com"
+           *   }
+           * }
+           * ```
+           *
+           * Can also include subdomains based on the current stage.
+           *
+           * ```js
+           * {
+           *   domain: {
+           *     name: `${$app.stage}.example.com`
+           *   }
+           * }
+           * ```
+           */
+          name: Input<string>;
+          /**
+           * Alias domains that should be used.
+           *
+           * @example
+           * ```js {4}
+           * {
+           *   domain: {
+           *     name: "app1.example.com",
+           *     aliases: ["app2.example.com"]
+           *   }
+           * }
+           * ```
+           */
+          aliases?: Input<string[]>;
+          /**
+           * The ARN of an ACM (AWS Certificate Manager) certificate that proves ownership of the
+           * domain. By default, a certificate is created and validated automatically.
+           *
+           * :::tip
+           * You need to pass in a `cert` for domains that are not hosted on supported `dns` providers.
+           * :::
+           *
+           * To manually set up a domain on an unsupported provider, you'll need to:
+           *
+           * 1. [Validate that you own the domain](https://docs.aws.amazon.com/acm/latest/userguide/domain-ownership-validation.html) by creating an ACM certificate. You can either validate it by setting a DNS record or by verifying an email sent to the domain owner.
+           * 2. Once validated, set the certificate ARN as the `cert` and set `dns` to `false`.
+           * 3. Add the DNS records in your provider to point to the load balancer endpoint.
+           *
+           * @example
+           * ```js
+           * {
+           *   domain: {
+           *     name: "example.com",
+           *     dns: false,
+           *     cert: "arn:aws:acm:us-east-1:112233445566:certificate/3a958790-8878-4cdc-a396-06d95064cf63"
+           *   }
+           * }
+           * ```
+           */
+          cert?: Input<string>;
+          /**
+           * The DNS provider to use for the domain. Defaults to the AWS.
+           *
+           * Takes an adapter that can create the DNS records on the provider. This can automate
+           * validating the domain and setting up the DNS routing.
+           *
+           * Supports Route 53, Cloudflare, and Vercel adapters. For other providers, you'll need
+           * to set `dns` to `false` and pass in a certificate validating ownership via `cert`.
+           *
+           * @default `sst.aws.dns`
+           *
+           * @example
+           *
+           * Specify the hosted zone ID for the Route 53 domain.
+           *
+           * ```js
+           * {
+           *   domain: {
+           *     name: "example.com",
+           *     dns: sst.aws.dns({
+           *       zone: "Z2FDTNDATAQYW2"
+           *     })
+           *   }
+           * }
+           * ```
+           *
+           * Use a domain hosted on Cloudflare, needs the Cloudflare provider.
+           *
+           * ```js
+           * {
+           *   domain: {
+           *     name: "example.com",
+           *     dns: sst.cloudflare.dns()
+           *   }
+           * }
+           * ```
+           *
+           * Use a domain hosted on Vercel, needs the Vercel provider.
+           *
+           * ```js
+           * {
+           *   domain: {
+           *     name: "example.com",
+           *     dns: sst.vercel.dns()
+           *   }
+           * }
+           * ```
+           */
+          dns?: Input<false | (Dns & {})>;
+        }
     >;
     /** @deprecated Use `rules` instead. */
     ports?: Input<Prettify<ServiceRules>[]>;
@@ -561,129 +598,129 @@ export interface ServiceArgs extends FargateBaseArgs {
     domain?: Input<
       | string
       | {
-        /**
-         * The custom domain you want to use.
-         *
-         * @example
-         * ```js
-         * {
-         *   domain: {
-         *     name: "example.com"
-         *   }
-         * }
-         * ```
-         *
-         * Can also include subdomains based on the current stage.
-         *
-         * ```js
-         * {
-         *   domain: {
-         *     name: `${$app.stage}.example.com`
-         *   }
-         * }
-         * ```
-         *
-         * Wildcard domains are supported.
-         *
-         * ```js
-         * {
-         *   domain: {
-         *     name: "*.example.com"
-         *   }
-         * }
-         * ```
-         */
-        name: Input<string>;
-        /**
-         * Alias domains that should be used.
-         *
-         * @example
-         * ```js {4}
-         * {
-         *   domain: {
-         *     name: "app1.example.com",
-         *     aliases: ["app2.example.com"]
-         *   }
-         * }
-         * ```
-         */
-        aliases?: Input<string[]>;
-        /**
-         * The ARN of an ACM (AWS Certificate Manager) certificate that proves ownership of the
-         * domain. By default, a certificate is created and validated automatically.
-         *
-         * :::tip
-         * You need to pass in a `cert` for domains that are not hosted on supported `dns` providers.
-         * :::
-         *
-         * To manually set up a domain on an unsupported provider, you'll need to:
-         *
-         * 1. [Validate that you own the domain](https://docs.aws.amazon.com/acm/latest/userguide/domain-ownership-validation.html) by creating an ACM certificate. You can either validate it by setting a DNS record or by verifying an email sent to the domain owner.
-         * 2. Once validated, set the certificate ARN as the `cert` and set `dns` to `false`.
-         * 3. Add the DNS records in your provider to point to the load balancer endpoint.
-         *
-         * @example
-         * ```js
-         * {
-         *   domain: {
-         *     name: "example.com",
-         *     dns: false,
-         *     cert: "arn:aws:acm:us-east-1:112233445566:certificate/3a958790-8878-4cdc-a396-06d95064cf63"
-         *   }
-         * }
-         * ```
-         */
-        cert?: Input<string>;
-        /**
-         * The DNS provider to use for the domain. Defaults to the AWS.
-         *
-         * Takes an adapter that can create the DNS records on the provider. This can automate
-         * validating the domain and setting up the DNS routing.
-         *
-         * Supports Route 53, Cloudflare, and Vercel adapters. For other providers, you'll need
-         * to set `dns` to `false` and pass in a certificate validating ownership via `cert`.
-         *
-         * @default `sst.aws.dns`
-         *
-         * @example
-         *
-         * Specify the hosted zone ID for the Route 53 domain.
-         *
-         * ```js
-         * {
-         *   domain: {
-         *     name: "example.com",
-         *     dns: sst.aws.dns({
-         *       zone: "Z2FDTNDATAQYW2"
-         *     })
-         *   }
-         * }
-         * ```
-         *
-         * Use a domain hosted on Cloudflare, needs the Cloudflare provider.
-         *
-         * ```js
-         * {
-         *   domain: {
-         *     name: "example.com",
-         *     dns: sst.cloudflare.dns()
-         *   }
-         * }
-         * ```
-         *
-         * Use a domain hosted on Vercel, needs the Vercel provider.
-         *
-         * ```js
-         * {
-         *   domain: {
-         *     name: "example.com",
-         *     dns: sst.vercel.dns()
-         *   }
-         * }
-         * ```
-         */
-        dns?: Input<false | (Dns & {})>;
-      }
+          /**
+           * The custom domain you want to use.
+           *
+           * @example
+           * ```js
+           * {
+           *   domain: {
+           *     name: "example.com"
+           *   }
+           * }
+           * ```
+           *
+           * Can also include subdomains based on the current stage.
+           *
+           * ```js
+           * {
+           *   domain: {
+           *     name: `${$app.stage}.example.com`
+           *   }
+           * }
+           * ```
+           *
+           * Wildcard domains are supported.
+           *
+           * ```js
+           * {
+           *   domain: {
+           *     name: "*.example.com"
+           *   }
+           * }
+           * ```
+           */
+          name: Input<string>;
+          /**
+           * Alias domains that should be used.
+           *
+           * @example
+           * ```js {4}
+           * {
+           *   domain: {
+           *     name: "app1.example.com",
+           *     aliases: ["app2.example.com"]
+           *   }
+           * }
+           * ```
+           */
+          aliases?: Input<string[]>;
+          /**
+           * The ARN of an ACM (AWS Certificate Manager) certificate that proves ownership of the
+           * domain. By default, a certificate is created and validated automatically.
+           *
+           * :::tip
+           * You need to pass in a `cert` for domains that are not hosted on supported `dns` providers.
+           * :::
+           *
+           * To manually set up a domain on an unsupported provider, you'll need to:
+           *
+           * 1. [Validate that you own the domain](https://docs.aws.amazon.com/acm/latest/userguide/domain-ownership-validation.html) by creating an ACM certificate. You can either validate it by setting a DNS record or by verifying an email sent to the domain owner.
+           * 2. Once validated, set the certificate ARN as the `cert` and set `dns` to `false`.
+           * 3. Add the DNS records in your provider to point to the load balancer endpoint.
+           *
+           * @example
+           * ```js
+           * {
+           *   domain: {
+           *     name: "example.com",
+           *     dns: false,
+           *     cert: "arn:aws:acm:us-east-1:112233445566:certificate/3a958790-8878-4cdc-a396-06d95064cf63"
+           *   }
+           * }
+           * ```
+           */
+          cert?: Input<string>;
+          /**
+           * The DNS provider to use for the domain. Defaults to the AWS.
+           *
+           * Takes an adapter that can create the DNS records on the provider. This can automate
+           * validating the domain and setting up the DNS routing.
+           *
+           * Supports Route 53, Cloudflare, and Vercel adapters. For other providers, you'll need
+           * to set `dns` to `false` and pass in a certificate validating ownership via `cert`.
+           *
+           * @default `sst.aws.dns`
+           *
+           * @example
+           *
+           * Specify the hosted zone ID for the Route 53 domain.
+           *
+           * ```js
+           * {
+           *   domain: {
+           *     name: "example.com",
+           *     dns: sst.aws.dns({
+           *       zone: "Z2FDTNDATAQYW2"
+           *     })
+           *   }
+           * }
+           * ```
+           *
+           * Use a domain hosted on Cloudflare, needs the Cloudflare provider.
+           *
+           * ```js
+           * {
+           *   domain: {
+           *     name: "example.com",
+           *     dns: sst.cloudflare.dns()
+           *   }
+           * }
+           * ```
+           *
+           * Use a domain hosted on Vercel, needs the Vercel provider.
+           *
+           * ```js
+           * {
+           *   domain: {
+           *     name: "example.com",
+           *     dns: sst.vercel.dns()
+           *   }
+           * }
+           * ```
+           */
+          dns?: Input<false | (Dns & {})>;
+        }
     >;
     /** @deprecated Use `rules` instead. */
     ports?: Input<Prettify<ServiceRules>[]>;
@@ -1122,41 +1159,41 @@ export interface ServiceArgs extends FargateBaseArgs {
   capacity?: Input<
     | "spot"
     | {
-      /**
-       * Configure how the regular Fargate capacity is allocated.
-       */
-      fargate?: Input<{
         /**
-         * Start the first `base` number of tasks with the given capacity.
-         *
-         * :::caution
-         * You can only specify `base` for one capacity provider.
-         * :::
+         * Configure how the regular Fargate capacity is allocated.
          */
-        base?: Input<number>;
+        fargate?: Input<{
+          /**
+           * Start the first `base` number of tasks with the given capacity.
+           *
+           * :::caution
+           * You can only specify `base` for one capacity provider.
+           * :::
+           */
+          base?: Input<number>;
+          /**
+           * Ensure the given ratio of tasks are started for this capacity.
+           */
+          weight: Input<number>;
+        }>;
         /**
-         * Ensure the given ratio of tasks are started for this capacity.
+         * Configure how the Fargate spot capacity is allocated.
          */
-        weight: Input<number>;
-      }>;
-      /**
-       * Configure how the Fargate spot capacity is allocated.
-       */
-      spot?: Input<{
-        /**
-         * Start the first `base` number of tasks with the given capacity.
-         *
-         * :::caution
-         * You can only specify `base` for one capacity provider.
-         * :::
-         */
-        base?: Input<number>;
-        /**
-         * Ensure the given ratio of tasks are started for this capacity.
-         */
-        weight: Input<number>;
-      }>;
-    }
+        spot?: Input<{
+          /**
+           * Start the first `base` number of tasks with the given capacity.
+           *
+           * :::caution
+           * You can only specify `base` for one capacity provider.
+           * :::
+           */
+          base?: Input<number>;
+          /**
+           * Ensure the given ratio of tasks are started for this capacity.
+           */
+          weight: Input<number>;
+        }>;
+      }
   >;
   /**
    * Configure the health check that ECS runs on your containers.
@@ -1633,9 +1670,9 @@ export class Service extends Component implements Link.Linkable {
     this._url = !self.loadBalancer
       ? undefined
       : all([self.domain, self.loadBalancer?.dnsName]).apply(
-        ([domain, loadBalancer]) =>
-          domain ? `https://${domain}/` : `http://${loadBalancer}`,
-      );
+          ([domain, loadBalancer]) =>
+            domain ? `https://${domain}/` : `http://${loadBalancer}`,
+        );
 
     this.registerOutputs({ _hint: this._url });
     registerReceiver();
@@ -1733,9 +1770,10 @@ export class Service extends Component implements Link.Linkable {
             const listenConditions =
               v.conditions || v.path
                 ? {
-                  path: v.conditions?.path ?? v.path,
-                  query: v.conditions?.query,
-                }
+                    path: v.conditions?.path ?? v.path,
+                    query: v.conditions?.query,
+                    header: v.conditions?.header,
+                  }
                 : undefined;
             if (protocolType(listenProtocol) === "network" && listenConditions)
               throw new VisibleError(
@@ -1976,39 +2014,40 @@ export class Service extends Component implements Link.Linkable {
             const buildActions = (r?: (typeof rules)[number]) => [
               ...(!r
                 ? [
-                  {
-                    type: "fixed-response",
-                    fixedResponse: {
-                      statusCode: "403",
-                      contentType: "text/plain",
-                      messageBody: "Forbidden",
+                    {
+                      type: "fixed-response",
+                      fixedResponse: {
+                        statusCode: "403",
+                        contentType: "text/plain",
+                        messageBody: "Forbidden",
+                      },
                     },
-                  },
-                ]
+                  ]
                 : []),
               ...(r?.type === "forward"
                 ? [
-                  {
-                    type: "forward",
-                    targetGroupArn:
-                      targets[
-                        `${r.container}${r.forwardProtocol.toUpperCase()}${r.forwardPort
-                        }`
-                      ].arn,
-                  },
-                ]
+                    {
+                      type: "forward",
+                      targetGroupArn:
+                        targets[
+                          `${r.container}${r.forwardProtocol.toUpperCase()}${
+                            r.forwardPort
+                          }`
+                        ].arn,
+                    },
+                  ]
                 : []),
               ...(r?.type === "redirect"
                 ? [
-                  {
-                    type: "redirect",
-                    redirect: {
-                      port: r.redirectPort.toString(),
-                      protocol: r.redirectProtocol.toUpperCase(),
-                      statusCode: "HTTP_301",
+                    {
+                      type: "redirect",
+                      redirect: {
+                        port: r.redirectPort.toString(),
+                        protocol: r.redirectProtocol.toUpperCase(),
+                        statusCode: "HTTP_301",
+                      },
                     },
-                  },
-                ]
+                  ]
                 : []),
             ];
             const listener = new lb.Listener(
@@ -2031,8 +2070,10 @@ export class Service extends Component implements Link.Linkable {
             customRules.forEach(
               (r) =>
                 new lb.ListenerRule(
-                  `${name}Listener${listenerId}Rule${r.listenConditions!.path ?? ""
-                  }${r.listenConditions!.query ?? ""}`,
+                  `${name}Listener${listenerId}Rule${hashStringToPrettyString(
+                    JSON.stringify(r.listenConditions),
+                    4,
+                  )}`,
                   {
                     listenerArn: listener.arn,
                     actions: buildActions(r),
@@ -2042,6 +2083,12 @@ export class Service extends Component implements Link.Linkable {
                           ? { values: [r.listenConditions!.path!] }
                           : undefined,
                         queryStrings: r.listenConditions!.query,
+                        httpHeader: r.listenConditions!.header
+                          ? {
+                              httpHeaderName: r.listenConditions!.header.name,
+                              values: r.listenConditions!.header.values,
+                            }
+                          : undefined,
                       },
                     ],
                   },
@@ -2105,35 +2152,35 @@ export class Service extends Component implements Link.Linkable {
             desiredCount: scaling.min,
             ...(capacity
               ? {
-                // setting `forceNewDeployment` ensures that the service is not recreated
-                // when the capacity provider config changes.
-                forceNewDeployment: true,
-                capacityProviderStrategies: capacity.apply((v) => [
-                  ...(v.fargate
-                    ? [
-                      {
-                        capacityProvider: "FARGATE",
-                        base: v.fargate?.base,
-                        weight: v.fargate?.weight,
-                      },
-                    ]
-                    : []),
-                  ...(v.spot
-                    ? [
-                      {
-                        capacityProvider: "FARGATE_SPOT",
-                        base: v.spot?.base,
-                        weight: v.spot?.weight,
-                      },
-                    ]
-                    : []),
-                ]),
-              }
+                  // setting `forceNewDeployment` ensures that the service is not recreated
+                  // when the capacity provider config changes.
+                  forceNewDeployment: true,
+                  capacityProviderStrategies: capacity.apply((v) => [
+                    ...(v.fargate
+                      ? [
+                          {
+                            capacityProvider: "FARGATE",
+                            base: v.fargate?.base,
+                            weight: v.fargate?.weight,
+                          },
+                        ]
+                      : []),
+                    ...(v.spot
+                      ? [
+                          {
+                            capacityProvider: "FARGATE_SPOT",
+                            base: v.spot?.base,
+                            weight: v.spot?.weight,
+                          },
+                        ]
+                      : []),
+                  ]),
+                }
               : // @deprecated do not use `launchType`, set `capacityProviderStrategies`
-              // to `[{ capacityProvider: "FARGATE", weight: 1 }]` instead
-              {
-                launchType: "FARGATE",
-              }),
+                // to `[{ capacityProvider: "FARGATE", weight: 1 }]` instead
+                {
+                  launchType: "FARGATE",
+                }),
             networkConfiguration: {
               // If the vpc is an SST vpc, services are automatically deployed to the public
               // subnets. So we need to assign a public IP for the service to be accessible.

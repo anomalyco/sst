@@ -1,10 +1,9 @@
-import fs, { readFileSync } from "fs";
+import fs from "fs";
 import path from "path";
 import { ComponentResourceOptions, Output, all } from "@pulumi/pulumi";
 import type { Input } from "../input.js";
 import { VisibleError } from "../error.js";
-import { SsrSite } from "./ssr-site.js";
-import { SsrSiteArgs } from "./ssr-site.js";
+import { Plan, SsrSite, SsrSiteArgs } from "./ssr-site.js";
 
 export interface RemixArgs extends SsrSiteArgs {
   /**
@@ -324,13 +323,13 @@ export class Remix extends SsrSite {
     super(__pulumiType, name, args, opts);
   }
 
-  protected normalizeBuildCommand() { }
+  protected normalizeBuildCommand() {}
 
   protected buildPlan(
     outputPath: Output<string>,
     _name: string,
     args: RemixArgs,
-  ) {
+  ): Output<Plan> {
     return all([outputPath, args.buildDirectory]).apply(
       async ([outputPath, buildDirectory]) => {
         // The path for all files that need to be in the "/" directory (static assets)
@@ -353,10 +352,9 @@ export class Remix extends SsrSite {
           );
         }
 
-        const basepath = readFileSync(
-          path.join(outputPath, "vite.config.ts"),
-          "utf-8",
-        ).match(/base: ['"](.*)['"]/)?.[1];
+        const basepath = fs
+          .readFileSync(path.join(outputPath, "vite.config.ts"), "utf-8")
+          .match(/base: ['"](.*)['"]/)?.[1];
 
         return {
           base: basepath,
@@ -396,7 +394,9 @@ export class Remix extends SsrSite {
               },
             };
           } catch (e) {
-            throw new VisibleError(`Could not load Vite configuration from "${file}". Check that your Remix project uses Vite and the file exists.`);
+            throw new VisibleError(
+              `Could not load Vite configuration from "${file}". Check that your Remix project uses Vite and the file exists.`,
+            );
           }
         }
 
