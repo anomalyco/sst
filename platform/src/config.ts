@@ -1246,10 +1246,10 @@ export interface Config {
    * bucket: bucket-jOaikGu4rla
    * ```
    *
-   * These outputs are also written to a `.sst/output.json` file after every successful deploy.
+   * These outputs are also written to a `.sst/outputs.json` file after every successful deploy.
    * It contains the above outputs in JSON.
    *
-   * ```json title=".sst/output.json"
+   * ```json title=".sst/outputs.json"
    * {"bucket": "bucket-jOaikGu4rla"}
    * ```
    */
