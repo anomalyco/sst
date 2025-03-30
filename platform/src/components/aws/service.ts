@@ -439,7 +439,7 @@ export class Service extends Component implements Link.Linkable {
                   // - If we specify "name", we need to ensure the $app-$stage-$name
                   //   if less than 32 chars. Hard to guarantee.
                   // - Hence we will use "namePrefix".
-                  namePrefix: forwardProtocol,
+                  namePrefix: forwardProtocol.replace("_", ""),
                   port: forwardPort,
                   protocol: forwardProtocol,
                   targetType: "ip",
