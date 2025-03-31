@@ -702,7 +702,12 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
     const logGroup = createLogGroup();
     const stage = createStage();
 
-    const certificateArn = createSsl();
+    const certificate = createSsl();
+    const certificateArn = all([domain, certificate]).apply(([domain, certificate]) => {
+      if (domain?.cert) return output(domain.cert);
+      if (domain?.nameId) return output(undefined);
+      return certificate?.arn;
+    });
     const apigDomain = createDomainName();
     createDnsRecords();
     const apiMapping = createDomainMapping();
@@ -878,11 +883,11 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
     }
 
     function createSsl() {
-      if (!domain) return output(undefined);
+      if (!domain) return;
 
       return domain.apply((domain) => {
-        if (domain.cert) return output(domain.cert);
-        if (domain.nameId) return output(undefined);
+        if (domain.cert) return;
+        if (domain.nameId) return;
 
         return new DnsValidatedCertificate(
           `${name}Ssl`,
@@ -891,14 +896,14 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
             dns: domain.dns!,
           },
           { parent },
-        ).arn;
+        );
       });
     }
 
     function createDomainName() {
       if (!domain || !certificateArn) return;
 
-      return all([domain, certificateArn]).apply(([domain, certificateArn]) => {
+      return all([domain, certificate, certificateArn]).apply(([domain, certificate, certificateArn]) => {
         return domain.nameId
           ? apigatewayv2.DomainName.get(
             `${name}DomainName`,
@@ -918,7 +923,7 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
                   securityPolicy: "TLS_1_2",
                 },
               },
-              { parent },
+              { parent, dependsOn: certificate ? [certificate] : undefined },
             ),
           );
       });
