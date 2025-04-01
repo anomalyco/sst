@@ -73,7 +73,11 @@ Currently the Console only supports apps **deployed to AWS**.
 
    > Resource handler returned message: "Specified ReservedConcurrentExecutions for function decreases account's UnreservedConcurrentExecution below its minimum value
 
-   This happens because AWS has been limiting the concurrency of Lambda functions for new accounts. It's a good idea to increase this limit before you go to production anyway. To do so, you can [request a quota increase](https://repost.aws/knowledge-center/lambda-concurrency-limit-increase) to the default value of 1000.
+   This happens because AWS has been limiting the concurrency of Lambda functions for new accounts. It's a good idea to increase this limit before you go to production anyway. To do so, you can [request a quota increase](https://repost.aws/knowledge-center/lambda-concurrency-limit-increase) to the default value of 1000. If you want to expedite the request:
+    1. Submit the request
+    2. Click the "Quota request history" link in the sidebar
+    3. Click on "AWS Support Center Case" to open your request case details
+    4. Hit the "Reply" button and select "Chat" to chat with an AWS representative to expedite it.
 
 3. **Invite your team**
 
