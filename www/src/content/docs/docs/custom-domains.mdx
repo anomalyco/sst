@@ -136,6 +136,12 @@ If your domains are hosted on [Cloudflare](https://developers.cloudflare.com/dns
 
    To get your API tokens, head to the [API Tokens section](https://dash.cloudflare.com/profile/api-tokens) of your Cloudflare dashboard and create one with the **Edit zone DNS** policy.
 
+
+     :::note
+      The Cloudflare Pulumi providers need the proper credentials above to deploy your app in the first place, which means they won't be initially accessible via SST Secrets. Instead, you can use SST Console's [`autodeploy`](console.mdx#autodeploy) feature to set these 2 environment variables there to avoid this issue.
+      :::
+
+
 3. Use the [`sst.cloudflare.dns`](/docs/component/cloudflare/dns/) adapter.
 
    ```js
