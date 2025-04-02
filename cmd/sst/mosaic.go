@@ -158,7 +158,10 @@ func CmdMosaic(c *cli.Cli) error {
 
 	wg.Go(func() error {
 		defer c.Cancel()
-		return watcher.Start(c.Context, p.PathRoot())
+		return watcher.Start(c.Context, watcher.WatchConfig{
+			Root:  p.PathRoot(),
+			Watch: p.App().Watch,
+		})
 	})
 
 	server, err := server.New()
@@ -349,7 +352,6 @@ func CmdMosaic(c *cli.Cli) error {
 	err = wg.Wait()
 	slog.Info("done mosaic", "err", err)
 	return err
-
 }
 
 func diff(a map[string]string, b map[string]string) bool {
