@@ -1587,9 +1587,12 @@ export interface ServiceArgs extends FargateBaseArgs {
  * for more details.
  */
 export class Service extends Component implements Link.Linkable {
-  private readonly _service?: ecs.Service;
-  private readonly cloudmapNamespace?: Output<string>;
-  private readonly cloudmapService?: servicediscovery.Service;
+  private readonly _name: string;
+  private readonly _service?: Output<ecs.Service>;
+  private readonly cloudmapNamespace?: Output<string | undefined>;
+  private readonly cloudmapService?: Output<
+    servicediscovery.Service | undefined
+  >;
   private readonly executionRole?: iam.Role;
   private readonly taskRole: iam.Role;
   private readonly taskDefinition?: Output<ecs.TaskDefinition>;
@@ -1606,6 +1609,7 @@ export class Service extends Component implements Link.Linkable {
     opts: ComponentResourceOptions = {},
   ) {
     super(__pulumiType, name, args, opts);
+    this._name = name;
 
     const self = this;
     const clusterArn = args.cluster.nodes.cluster.arn;
@@ -2122,99 +2126,106 @@ export class Service extends Component implements Link.Linkable {
     }
 
     function createCloudmapService() {
-      return new servicediscovery.Service(
-        `${name}CloudmapService`,
-        {
-          name: `${name}.${$app.stage}.${$app.name}`,
-          namespaceId: vpc.cloudmapNamespaceId,
-          forceDestroy: true,
-          dnsConfig: {
-            namespaceId: vpc.cloudmapNamespaceId,
-            dnsRecords: [
-              ...(args.serviceRegistry ? [{ ttl: 60, type: "SRV" }] : []),
-              { ttl: 60, type: "A" },
-            ],
+      return output(vpc.cloudmapNamespaceId).apply((cloudmapNamespaceId) => {
+        if (!cloudmapNamespaceId) return;
+
+        return new servicediscovery.Service(
+          `${name}CloudmapService`,
+          {
+            name: `${name}.${$app.stage}.${$app.name}`,
+            namespaceId: cloudmapNamespaceId,
+            forceDestroy: true,
+            dnsConfig: {
+              namespaceId: cloudmapNamespaceId,
+              dnsRecords: [
+                ...(args.serviceRegistry ? [{ ttl: 60, type: "SRV" }] : []),
+                { ttl: 60, type: "A" },
+              ],
+            },
           },
-        },
-        { parent: self },
-      );
+          { parent: self },
+        );
+      });
     }
 
     function createService() {
-      return new ecs.Service(
-        ...transform(
-          args.transform?.service,
-          `${name}Service`,
-          {
-            name,
-            cluster: clusterArn,
-            taskDefinition: taskDefinition.arn,
-            desiredCount: scaling.min,
-            ...(capacity
-              ? {
-                  // setting `forceNewDeployment` ensures that the service is not recreated
-                  // when the capacity provider config changes.
-                  forceNewDeployment: true,
-                  capacityProviderStrategies: capacity.apply((v) => [
-                    ...(v.fargate
-                      ? [
-                          {
-                            capacityProvider: "FARGATE",
-                            base: v.fargate?.base,
-                            weight: v.fargate?.weight,
-                          },
-                        ]
-                      : []),
-                    ...(v.spot
-                      ? [
-                          {
-                            capacityProvider: "FARGATE_SPOT",
-                            base: v.spot?.base,
-                            weight: v.spot?.weight,
-                          },
-                        ]
-                      : []),
-                  ]),
-                }
-              : // @deprecated do not use `launchType`, set `capacityProviderStrategies`
-                // to `[{ capacityProvider: "FARGATE", weight: 1 }]` instead
-                {
-                  launchType: "FARGATE",
-                }),
-            networkConfiguration: {
-              // If the vpc is an SST vpc, services are automatically deployed to the public
-              // subnets. So we need to assign a public IP for the service to be accessible.
-              assignPublicIp: vpc.isSstVpc,
-              subnets: vpc.containerSubnets,
-              securityGroups: vpc.securityGroups,
-            },
-            deploymentCircuitBreaker: {
-              enable: true,
-              rollback: true,
-            },
-            loadBalancers:
-              lbArgs &&
-              all([lbArgs.rules, targetGroups!]).apply(([rules, targets]) =>
-                Object.values(targets).map((target) => ({
-                  targetGroupArn: target.arn,
-                  containerName: target.port.apply(
-                    (port) =>
-                      rules.find((r) => r.forwardPort === port)!.container!,
+      return cloudmapService.apply(
+        (cloudmapService) =>
+          new ecs.Service(
+            ...transform(
+              args.transform?.service,
+              `${name}Service`,
+              {
+                name,
+                cluster: clusterArn,
+                taskDefinition: taskDefinition.arn,
+                desiredCount: scaling.min,
+                ...(capacity
+                  ? {
+                      // setting `forceNewDeployment` ensures that the service is not recreated
+                      // when the capacity provider config changes.
+                      forceNewDeployment: true,
+                      capacityProviderStrategies: capacity.apply((v) => [
+                        ...(v.fargate
+                          ? [
+                              {
+                                capacityProvider: "FARGATE",
+                                base: v.fargate?.base,
+                                weight: v.fargate?.weight,
+                              },
+                            ]
+                          : []),
+                        ...(v.spot
+                          ? [
+                              {
+                                capacityProvider: "FARGATE_SPOT",
+                                base: v.spot?.base,
+                                weight: v.spot?.weight,
+                              },
+                            ]
+                          : []),
+                      ]),
+                    }
+                  : // @deprecated do not use `launchType`, set `capacityProviderStrategies`
+                    // to `[{ capacityProvider: "FARGATE", weight: 1 }]` instead
+                    {
+                      launchType: "FARGATE",
+                    }),
+                networkConfiguration: {
+                  // If the vpc is an SST vpc, services are automatically deployed to the public
+                  // subnets. So we need to assign a public IP for the service to be accessible.
+                  assignPublicIp: vpc.isSstVpc,
+                  subnets: vpc.containerSubnets,
+                  securityGroups: vpc.securityGroups,
+                },
+                deploymentCircuitBreaker: {
+                  enable: true,
+                  rollback: true,
+                },
+                loadBalancers:
+                  lbArgs &&
+                  all([lbArgs.rules, targetGroups!]).apply(([rules, targets]) =>
+                    Object.values(targets).map((target) => ({
+                      targetGroupArn: target.arn,
+                      containerName: target.port.apply(
+                        (port) =>
+                          rules.find((r) => r.forwardPort === port)!.container!,
+                      ),
+                      containerPort: target.port.apply((port) => port!),
+                    })),
                   ),
-                  containerPort: target.port.apply((port) => port!),
-                })),
-              ),
-            enableExecuteCommand: true,
-            serviceRegistries: {
-              registryArn: cloudmapService.arn,
-              port: args.serviceRegistry
-                ? output(args.serviceRegistry).port
-                : undefined,
-            },
-            waitForSteadyState: wait,
-          },
-          { parent: self },
-        ),
+                enableExecuteCommand: true,
+                serviceRegistries: cloudmapService && {
+                  registryArn: cloudmapService.arn,
+                  port: args.serviceRegistry
+                    ? output(args.serviceRegistry).port
+                    : undefined,
+                },
+                waitForSteadyState: wait,
+              },
+              { parent: self },
+            ),
+          ),
       );
     }
 
@@ -2394,9 +2405,19 @@ export class Service extends Component implements Link.Linkable {
    * The name of the Cloud Map service. This is useful for service discovery.
    */
   public get service() {
-    return this.dev
-      ? interpolate`dev.${this.cloudmapNamespace}`
-      : interpolate`${this.cloudmapService!.name}.${this.cloudmapNamespace}`;
+    console.log("GETTER");
+    return all([this.cloudmapNamespace, this.cloudmapService]).apply(
+      ([namespace, service]) => {
+        if (!namespace)
+          throw new VisibleError(
+            `Cannot access the AWS Cloud Map service name for the "${this._name}" Service. Cloud Map is not configured for the cluster.`,
+          );
+
+        return this.dev
+          ? interpolate`dev.${namespace}`
+          : interpolate`${service!.name}.${namespace}`;
+      },
+    );
   }
 
   /**
@@ -2459,11 +2480,19 @@ export class Service extends Component implements Link.Linkable {
        * The Amazon Cloud Map service.
        */
       get cloudmapService() {
+        console.log("NODES GETTER");
         if (self.dev)
           throw new VisibleError(
             "Cannot access `nodes.cloudmapService` in dev mode.",
           );
-        return self.cloudmapService!;
+
+        return output(self.cloudmapService).apply((service) => {
+          if (!service)
+            throw new VisibleError(
+              `Cannot access "nodes.cloudmapService" for the "${self._name}" Service. Cloud Map is not configured for the cluster.`,
+            );
+          return service;
+        });
       },
     };
   }
@@ -2473,7 +2502,9 @@ export class Service extends Component implements Link.Linkable {
     return {
       properties: {
         url: this.dev ? this.devUrl : this._url,
-        service: this.service,
+        service: output(this.cloudmapNamespace).apply((namespace) =>
+          namespace ? this.service : undefined,
+        ),
       },
     };
   }

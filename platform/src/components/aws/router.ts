@@ -1069,7 +1069,7 @@ export class Router extends Component implements Link.Linkable {
 
   constructor(
     name: string,
-    args: RouterArgs,
+    args: RouterArgs = {},
     opts: ComponentResourceOptions = {},
   ) {
     super(__pulumiType, name, args, opts);

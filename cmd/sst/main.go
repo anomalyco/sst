@@ -282,6 +282,21 @@ var root = &cli.Command{
 			},
 		},
 		{
+			Name: "config",
+			Type: "string",
+			Description: cli.Description{
+				Short: "Path to the config file",
+				Long: strings.Join([]string{
+					"",
+					"Path to the config file.",
+					"",
+					"```bash",
+					"sst --config path/to/config.ts [command]",
+					"```",
+				}, "\n"),
+			},
+		},
+		{
 			Name: "help",
 			Type: "bool",
 			Description: cli.Description{
@@ -588,7 +603,7 @@ var root = &cli.Command{
 				spin.Suffix = "  Adding provider..."
 				spin.Start()
 				defer spin.Stop()
-				cfgPath, err := project.Discover()
+				cfgPath, err := cli.Discover()
 				if err != nil {
 					return err
 				}
@@ -656,7 +671,7 @@ var root = &cli.Command{
 				}, "\n"),
 			},
 			Run: func(cli *cli.Cli) error {
-				cfgPath, err := project.Discover()
+				cfgPath, err := cli.Discover()
 				if err != nil {
 					return err
 				}

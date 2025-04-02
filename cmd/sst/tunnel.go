@@ -64,7 +64,7 @@ var CmdTunnel = &cli.Command{
 			return util.NewReadableError(nil, "The sst tunnel needs to be installed or upgraded. Run `sudo sst tunnel install`")
 		}
 
-		cfgPath, err := project.Discover()
+		cfgPath, err := c.Discover()
 		if err != nil {
 			return err
 		}

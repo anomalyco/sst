@@ -19,7 +19,7 @@ type ErrorTransformer = func(err error) (bool, error)
 var transformers = []ErrorTransformer{
 	exact(appsync.ErrSubscriptionFailed, "Failed to subscribe to appsync websocket endpoint which powers live lambda. Check to see if you have proper appsync permissions."),
 	exact(project.ErrInvalidStageName, "The stage name is invalid. It must start with a letter and can only contain alphanumeric characters and hyphens."),
-	exact(project.ErrInvalidAppName, "The app name is invalid. It can only contain alphanumeric characters and hyphens."),
+	exact(project.ErrInvalidAppName, "The app name is invalid. It must start with a letter and can only contain alphanumeric characters and hyphens."),
 	exact(project.ErrAppNameChanged, "The app name has changed.\n\nIf you want to rename the app, make sure to run `sst remove` to remove the old app first. Alternatively, remove the \".sst\" folder and try again.\n"),
 	exact(project.ErrV2Config, "You are using sst v3 and this looks like an sst v2 config"),
 	exact(project.ErrStageNotFound, "Stage not found"),

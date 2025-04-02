@@ -43,7 +43,7 @@ func CmdMosaic(c *cli.Cli) error {
 			args = append(args, strings.Fields(arg)...)
 		}
 		slog.Info("dev mode with target", "args", c.Arguments())
-		cfgPath, err := project.Discover()
+		cfgPath, err := c.Discover()
 		stage, err := c.Stage(cfgPath)
 		if err != nil {
 			return err

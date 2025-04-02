@@ -260,17 +260,17 @@ export interface ApiGatewayV2Args {
    * ```
    */
   vpc?:
-  | Vpc
-  | Input<{
-    /**
-     * A list of VPC security group IDs.
-     */
-    securityGroups: Input<Input<string>[]>;
-    /**
-     * A list of VPC subnet IDs.
-     */
-    subnets: Input<Input<string>[]>;
-  }>;
+    | Vpc
+    | Input<{
+        /**
+         * A list of VPC security group IDs.
+         */
+        securityGroups: Input<Input<string>[]>;
+        /**
+         * A list of VPC subnet IDs.
+         */
+        subnets: Input<Input<string>[]>;
+      }>;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
@@ -529,56 +529,56 @@ export interface ApiGatewayV2RouteArgs {
   auth?: Input<
     | false
     | {
-      /**
-       * Enable IAM authorization for a given API route. When IAM auth is enabled, clients
-       * need to use Signature Version 4 to sign their requests with their AWS credentials.
-       */
-      iam?: Input<boolean>;
-      /**
-       * Enable JWT or JSON Web Token authorization for a given API route. When JWT auth is enabled, clients need to include a valid JWT in their requests.
-       *
-       * @example
-       * You can configure JWT auth.
-       *
-       * ```js
-       * {
-       *   auth: {
-       *     jwt: {
-       *       authorizer: myAuthorizer.id,
-       *       scopes: ["read:profile", "write:profile"]
-       *     }
-       *   }
-       * }
-       * ```
-       *
-       * Where `myAuthorizer` is created by calling the `addAuthorizer` method.
-       */
-      jwt?: Input<{
         /**
-         * Authorizer ID of the JWT authorizer.
+         * Enable IAM authorization for a given API route. When IAM auth is enabled, clients
+         * need to use Signature Version 4 to sign their requests with their AWS credentials.
          */
-        authorizer: Input<string>;
+        iam?: Input<boolean>;
         /**
-         * Defines the permissions or access levels that the JWT grants. If the JWT does not have the required scope, the request is rejected. By default it does not require any scopes.
+         * Enable JWT or JSON Web Token authorization for a given API route. When JWT auth is enabled, clients need to include a valid JWT in their requests.
+         *
+         * @example
+         * You can configure JWT auth.
+         *
+         * ```js
+         * {
+         *   auth: {
+         *     jwt: {
+         *       authorizer: myAuthorizer.id,
+         *       scopes: ["read:profile", "write:profile"]
+         *     }
+         *   }
+         * }
+         * ```
+         *
+         * Where `myAuthorizer` is created by calling the `addAuthorizer` method.
          */
-        scopes?: Input<Input<string>[]>;
-      }>;
-      /**
-       * Enable custom Lambda authorization for a given API route. Pass in the authorizer ID.
-       *
-       * @example
-       * ```js
-       * {
-       *   auth: {
-       *     lambda: myAuthorizer.id
-       *   }
-       * }
-       * ```
-       *
-       * Where `myAuthorizer` is created by calling the `addAuthorizer` method.
-       */
-      lambda?: Input<string>;
-    }
+        jwt?: Input<{
+          /**
+           * Authorizer ID of the JWT authorizer.
+           */
+          authorizer: Input<string>;
+          /**
+           * Defines the permissions or access levels that the JWT grants. If the JWT does not have the required scope, the request is rejected. By default it does not require any scopes.
+           */
+          scopes?: Input<Input<string>[]>;
+        }>;
+        /**
+         * Enable custom Lambda authorization for a given API route. Pass in the authorizer ID.
+         *
+         * @example
+         * ```js
+         * {
+         *   auth: {
+         *     lambda: myAuthorizer.id
+         *   }
+         * }
+         * ```
+         *
+         * Where `myAuthorizer` is created by calling the `addAuthorizer` method.
+         */
+        lambda?: Input<string>;
+      }
   >;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
@@ -771,10 +771,10 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
         return cors === true || cors === undefined
           ? defaultCors
           : {
-            ...defaultCors,
-            ...cors,
-            maxAge: cors.maxAge && toSeconds(cors.maxAge),
-          };
+              ...defaultCors,
+              ...cors,
+              maxAge: cors.maxAge && toSeconds(cors.maxAge),
+            };
       });
     }
 
@@ -898,29 +898,31 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
     function createDomainName() {
       if (!domain || !certificateArn) return;
 
-      return all([domain, certificateArn]).apply(([domain, certificateArn]) => {
+      return output(domain).apply((domain) => {
         return domain.nameId
           ? apigatewayv2.DomainName.get(
-            `${name}DomainName`,
-            domain.nameId,
-            {},
-            { parent },
-          )
-          : new apigatewayv2.DomainName(
-            ...transform(
-              args.transform?.domainName,
               `${name}DomainName`,
-              {
-                domainName: domain.name!,
-                domainNameConfiguration: {
-                  certificateArn: certificateArn!,
-                  endpointType: "REGIONAL",
-                  securityPolicy: "TLS_1_2",
-                },
-              },
+              domain.nameId,
+              {},
               { parent },
-            ),
-          );
+            )
+          : new apigatewayv2.DomainName(
+              ...transform(
+                args.transform?.domainName,
+                `${name}DomainName`,
+                {
+                  domainName: domain.name!,
+                  domainNameConfiguration: certificateArn.apply(
+                    (certificateArn) => ({
+                      certificateArn: certificateArn!,
+                      endpointType: "REGIONAL",
+                      securityPolicy: "TLS_1_2",
+                    }),
+                  ),
+                },
+                { parent },
+              ),
+            );
       });
     }
 
@@ -973,9 +975,9 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
     //       trailing slash, the API fails with the error {"message":"Not Found"}
     return this.apigDomain && this.apiMapping
       ? all([this.apigDomain.domainName, this.apiMapping.apiMappingKey]).apply(
-        ([domain, key]) =>
-          key ? `https://${domain}/${key}/` : `https://${domain}`,
-      )
+          ([domain, key]) =>
+            key ? `https://${domain}/${key}/` : `https://${domain}`,
+        )
       : this.api.apiEndpoint;
   }
 

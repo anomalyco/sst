@@ -1011,11 +1011,11 @@ async function handler(event) {
         // Build fileOptions
         const fileOptions = assets?.fileOptions ?? [
           {
-            files: "**",
+            files: "**/*.html",
             cacheControl: "max-age=0,no-cache,no-store,must-revalidate",
           },
           {
-            files: ["**/*.js", "**/*.css"],
+            files: "**",
             cacheControl: "max-age=31536000,public,immutable",
           },
         ];
