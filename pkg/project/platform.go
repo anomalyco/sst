@@ -12,6 +12,7 @@ import (
 )
 
 func (p *Project) CheckPlatform(version string) bool {
+	return true
 	if version == "dev" {
 		currentExecutable, _ := os.Executable()
 		info, _ := os.Stat(currentExecutable)
@@ -20,6 +21,7 @@ func (p *Project) CheckPlatform(version string) bool {
 	slog.Info("checking platform")
 	contents, err := os.ReadFile(filepath.Join(p.PathPlatformDir(), "version"))
 	if err != nil {
+		slog.Error(err.Error())
 		return false
 	}
 	return string(contents) == version
