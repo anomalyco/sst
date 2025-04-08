@@ -27,12 +27,32 @@ var logFile = (func() *os.File {
 	return logFile
 })()
 
+func (c *Cli) Discover() (string, error) {
+	cfgPath := c.String("config")
+	if cfgPath != "" {
+		abs, err := filepath.Abs(cfgPath)
+		if err != nil {
+			return "", util.NewReadableError(err, "Could not find "+cfgPath)
+		}
+		if _, err := os.Stat(abs); os.IsNotExist(err) {
+			return "", util.NewReadableError(err, "Could not find "+abs)
+		}
+		return abs, nil
+	}
+
+	match, err := project.Discover()
+	if err != nil {
+		return "", util.NewReadableError(err, "Could not find sst.config.ts")
+	}
+	return match, nil
+}
+
 func (c *Cli) InitProject() (*project.Project, error) {
 	slog.Info("initializing project", "version", c.version)
 
-	cfgPath, err := project.Discover()
+	cfgPath, err := c.Discover()
 	if err != nil {
-		return nil, util.NewReadableError(err, "Could not find sst.config.ts")
+		return nil, err
 	}
 
 	stage, err := c.Stage(cfgPath)

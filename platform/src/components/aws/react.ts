@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { ComponentResourceOptions, Output, output } from "@pulumi/pulumi";
-import { SsrSite, SsrSiteArgs } from "./ssr-site.js";
+import { Plan, SsrSite, SsrSiteArgs } from "./ssr-site.js";
 
 export interface ReactArgs extends SsrSiteArgs {
   /**
@@ -198,6 +198,84 @@ export interface ReactArgs extends SsrSiteArgs {
    */
   domain?: SsrSiteArgs["domain"];
   /**
+   * Serve your React app through a `Router` component instead of a standalone CloudFront
+   * distribution.
+   *
+   * Let's say you have a Router component.
+   *
+   * ```ts title="sst.config.ts"
+   * const router = new sst.aws.Router("Router", {
+   *   domain: "*.example.com",
+   * });
+   * ```
+   *
+   * You can then match a pattern and route to your app based on:
+   *
+   * - A path like `/docs`
+   * - A domain pattern like `docs.example.com`
+   * - A combined pattern like `dev.example.com/docs`
+   *
+   * For example, to match a path.
+   *
+   * ```ts title="sst.config.ts"
+   * {
+   *   route: {
+   *     router,
+   *     path: "/docs",
+   *   },
+   * }
+   * ```
+   *
+   * Or match a domain.
+   *
+   * ```ts title="sst.config.ts"
+   * {
+   *   route: {
+   *     router,
+   *     domain: "docs.example.com",
+   *   },
+   * }
+   * ```
+   *
+   * Route by both domain and path:
+   *
+   * ```ts title="sst.config.ts"
+   * {
+   *   route: {
+   *     router,
+   *     domain: "dev.example.com",
+   *     path: "/docs",
+   *   },
+   * }
+   * ```
+   *
+   * If you are routing to a path like `/docs`, you must configure the
+   * base path in your React app. The base path must match the path in your
+   * route prop.
+   *
+   * :::caution
+   * If routing to a path, you need to configure that as the base path in your
+   * React app as well.
+   * :::
+   *
+   * For example, if you are routing `/docs` to a React app, you need to set
+   * the `base` property in your `vite.config.ts` and `basename` in your React Router configuration.
+   *
+   * ```js {3} title="vite.config.ts"
+   * export default defineConfig({
+   *   plugins: [tailwindcss(), reactRouter(), tsconfigPaths()],
+   *   base: '/docs/'
+   * });
+   * ```
+   *
+   * ```jsx {2} title="react-router.config.ts"
+   * export const routerConfig = {
+   *   basename: '/docs'
+   * };
+   * ```
+   */
+  route?: SsrSiteArgs["route"];
+  /**
    * The command used internally to build your React app.
    *
    * @default `"npm run build"`
@@ -320,9 +398,9 @@ export class React extends SsrSite {
     super(__pulumiType, name, args, opts);
   }
 
-  protected normalizeBuildCommand() { }
+  protected normalizeBuildCommand() {}
 
-  protected buildPlan(outputPath: Output<string>) {
+  protected buildPlan(outputPath: Output<string>): Output<Plan> {
     return output(outputPath).apply((outputPath) => {
       const assetsPath = path.join("build", "client");
       const serverPath = (() => {
@@ -338,7 +416,7 @@ export class React extends SsrSite {
           const content = fs.readFileSync(viteConfig, "utf-8");
           const match = content.match(/["']?base["']?:\s*["']([^"]+)["']/);
           return match ? match[1] : undefined;
-        } catch (e) { }
+        } catch (e) {}
       })();
 
       // Get base configured in react-router config ie. "/docs/"
@@ -348,7 +426,7 @@ export class React extends SsrSite {
           const content = fs.readFileSync(rrConfig, "utf-8");
           const match = content.match(/["']?basename["']?:\s*["']([^"]+)["']/);
           return match ? match[1] : undefined;
-        } catch (e) { }
+        } catch (e) {}
       })();
 
       if (viteBase) {
@@ -376,25 +454,25 @@ export class React extends SsrSite {
         base: reactRouterBase,
         server: serverPath
           ? (() => {
-            // React does perform their own internal ESBuild process, but it doesn't bundle
-            // 3rd party dependencies by default. In the interest of keeping deployments
-            // seamless for users we will create a server bundle with all dependencies included.
+              // React does perform their own internal ESBuild process, but it doesn't bundle
+              // 3rd party dependencies by default. In the interest of keeping deployments
+              // seamless for users we will create a server bundle with all dependencies included.
 
-            fs.copyFileSync(
-              path.join(
-                $cli.paths.platform,
-                "functions",
-                "react-server",
-                "server.mjs",
-              ),
-              path.join(outputPath, "build", "server.mjs"),
-            );
+              fs.copyFileSync(
+                path.join(
+                  $cli.paths.platform,
+                  "functions",
+                  "react-server",
+                  "server.mjs",
+                ),
+                path.join(outputPath, "build", "server.mjs"),
+              );
 
-            return {
-              handler: path.join(outputPath, "build", "server.handler"),
-              streaming: true,
-            };
-          })()
+              return {
+                handler: path.join(outputPath, "build", "server.handler"),
+                streaming: true,
+              };
+            })()
           : undefined,
         assets: [
           {

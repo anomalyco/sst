@@ -1,7 +1,7 @@
+import fs from "fs";
 import path from "path";
 import { ComponentResourceOptions, Output } from "@pulumi/pulumi";
-import { SsrSite, SsrSiteArgs } from "./ssr-site.js";
-import { readFileSync } from "fs";
+import { Plan, SsrSite, SsrSiteArgs } from "./ssr-site.js";
 
 export interface NuxtArgs extends SsrSiteArgs {
   /**
@@ -189,6 +189,80 @@ export interface NuxtArgs extends SsrSiteArgs {
    */
   domain?: SsrSiteArgs["domain"];
   /**
+   * Serve your Nuxt app through a `Router` component instead of a standalone CloudFront
+   * distribution.
+   *
+   * Let's say you have a Router component.
+   *
+   * ```ts title="sst.config.ts"
+   * const router = new sst.aws.Router("Router", {
+   *   domain: "*.example.com",
+   * });
+   * ```
+   *
+   * You can then match a pattern and route to your app based on:
+   *
+   * - A path like `/docs`
+   * - A domain pattern like `docs.example.com`
+   * - A combined pattern like `dev.example.com/docs`
+   *
+   * For example, to match a path.
+   *
+   * ```ts title="sst.config.ts"
+   * {
+   *   route: {
+   *     router,
+   *     path: "/docs",
+   *   },
+   * }
+   * ```
+   *
+   * Or match a domain.
+   *
+   * ```ts title="sst.config.ts"
+   * {
+   *   route: {
+   *     router,
+   *     domain: "docs.example.com",
+   *   },
+   * }
+   * ```
+   *
+   * Route by both domain and path:
+   *
+   * ```ts title="sst.config.ts"
+   * {
+   *   route: {
+   *     router,
+   *     domain: "dev.example.com",
+   *     path: "/docs",
+   *   },
+   * }
+   * ```
+   *
+   * If you are routing to a path like `/docs`, you must configure the
+   * base path in your Nuxt app. The base path must match the path in your
+   * route prop.
+   *
+   * :::caution
+   * If routing to a path, you need to configure that as the base path in your
+   * Nuxt app as well.
+   * :::
+   *
+   * For example, if you are routing `/docs` to a Nuxt app, you need to set
+   * [`baseURL`](https://nuxt.com/docs/api/nuxt-config#baseurl)
+   * to `/docs` in your `nuxt.config.ts` without a trailing slash.
+   *
+   * ```js title="nuxt.config.ts" {3}
+   * export default defineNuxtConfig({
+   *   app: {
+   *     baseURL: '/docs'
+   *   }
+   * });
+   * ```
+   */
+  route?: SsrSiteArgs["route"];
+  /**
    * The command used internally to build your Nuxt app.
    *
    * @default `"npm run build"`
@@ -318,14 +392,13 @@ export class Nuxt extends SsrSite {
     super(__pulumiType, name, args, opts);
   }
 
-  protected normalizeBuildCommand() { }
+  protected normalizeBuildCommand() {}
 
-  protected buildPlan(outputPath: Output<string>) {
+  protected buildPlan(outputPath: Output<string>): Output<Plan> {
     return outputPath.apply((outputPath) => {
-      const basepath = readFileSync(
-        path.join(outputPath, "nuxt.config.ts"),
-        "utf-8",
-      ).match(/baseURL: ['"](.*)['"]/)?.[1];
+      const basepath = fs
+        .readFileSync(path.join(outputPath, "nuxt.config.ts"), "utf-8")
+        .match(/baseURL: ['"](.*)['"]/)?.[1];
 
       return {
         base: basepath,

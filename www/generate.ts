@@ -1991,6 +1991,7 @@ function useClassMethods(module: TypeDoc.DeclarationReflection) {
       (c) =>
         !c.flags.isExternal &&
         !c.flags.isPrivate &&
+        !c.flags.isProtected &&
         c.signatures &&
         !c.signatures[0].comment?.modifierTags.has("@internal") &&
         !c.signatures[0].comment?.blockTags.find((t) => t.tag === "@deprecated")
@@ -2208,6 +2209,7 @@ async function buildComponents() {
       "../platform/src/components/aws/realtime-lambda-subscriber.ts",
       "../platform/src/components/aws/react.ts",
       "../platform/src/components/aws/redis.ts",
+      "../platform/src/components/aws/redis-v1.ts",
       "../platform/src/components/aws/remix.ts",
       "../platform/src/components/aws/queue.ts",
       "../platform/src/components/aws/queue-lambda-subscriber.ts",

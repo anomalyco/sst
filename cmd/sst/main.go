@@ -164,7 +164,7 @@ var root = &cli.Command{
 			"",
 			"- **macOS**",
 			"",
-			"  The CLI is available via a Homebrew Tap, and as downloadable binary in the [releases](https://github.com/sst/sst/v3/releases/latest).",
+			"  The CLI is available via a Homebrew Tap, and as downloadable binary in the [releases](https://github.com/sst/sst/releases/latest).",
 			"",
 			"  ```bash",
 			"  brew install sst/tap/sst",
@@ -177,7 +177,7 @@ var root = &cli.Command{
 			"",
 			"- **Linux**",
 			"",
-			"  The CLI is available as downloadable binaries in the [releases](https://github.com/sst/sst/v3/releases/latest). Download the `.deb` or `.rpm` and install with `sudo dpkg -i` and `sudo rpm -i`.",
+			"  The CLI is available as downloadable binaries in the [releases](https://github.com/sst/sst/releases/latest). Download the `.deb` or `.rpm` and install with `sudo dpkg -i` and `sudo rpm -i`.",
 			"",
 			"  For Arch Linux, it's available in the [aur](https://aur.archlinux.org/packages/sst-bin).",
 			"---",
@@ -278,6 +278,26 @@ var root = &cli.Command{
 					"```",
 					"This is useful when running in a CI environment.",
 					"",
+				}, "\n"),
+			},
+		},
+		{
+			Name: "config",
+			Type: "string",
+			Description: cli.Description{
+				Short: "Path to the config file",
+				Long: strings.Join([]string{
+					"",
+					"Optionally, pass in a path to the SST config file. This default to",
+					"`sst.config.ts` in the current directory.",
+					"",
+					"```bash",
+					"sst --config path/to/config.ts [command]",
+					"```",
+					"",
+					"This is useful when your monorepo has multiple SST apps in it.",
+					"You can run the SST CLI for a specific app by passing in the path to",
+					"its config file.",
 				}, "\n"),
 			},
 		},
@@ -588,7 +608,7 @@ var root = &cli.Command{
 				spin.Suffix = "  Adding provider..."
 				spin.Start()
 				defer spin.Stop()
-				cfgPath, err := project.Discover()
+				cfgPath, err := cli.Discover()
 				if err != nil {
 					return err
 				}
@@ -656,7 +676,7 @@ var root = &cli.Command{
 				}, "\n"),
 			},
 			Run: func(cli *cli.Cli) error {
-				cfgPath, err := project.Discover()
+				cfgPath, err := cli.Discover()
 				if err != nil {
 					return err
 				}

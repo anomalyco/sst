@@ -1,8 +1,8 @@
-import fs, { readFileSync } from "fs";
+import fs from "fs";
 import path from "path";
 import { ComponentResourceOptions, Output } from "@pulumi/pulumi";
 import { VisibleError } from "../error.js";
-import { SsrSite, SsrSiteArgs } from "./ssr-site.js";
+import { Plan, SsrSite, SsrSiteArgs } from "./ssr-site.js";
 
 export interface AnalogArgs extends SsrSiteArgs {
   /**
@@ -189,6 +189,83 @@ export interface AnalogArgs extends SsrSiteArgs {
    */
   domain?: SsrSiteArgs["domain"];
   /**
+   * Serve your Analog app through a `Router` component instead of a standalone CloudFront
+   * distribution.
+   *
+   * Let's say you have a Router component.
+   *
+   * ```ts title="sst.config.ts"
+   * const router = new sst.aws.Router("Router", {
+   *   domain: "*.example.com",
+   * });
+   * ```
+   *
+   * You can then match a pattern and route to your app based on:
+   *
+   * - A path like `/docs`
+   * - A domain pattern like `docs.example.com`
+   * - A combined pattern like `dev.example.com/docs`
+   *
+   * For example, to match a path.
+   *
+   * ```ts title="sst.config.ts"
+   * {
+   *   route: {
+   *     router,
+   *     path: "/docs",
+   *   },
+   * }
+   * ```
+   *
+   * Or match a domain.
+   *
+   * ```ts title="sst.config.ts"
+   * {
+   *   route: {
+   *     router,
+   *     domain: "docs.example.com",
+   *   },
+   * }
+   * ```
+   *
+   * Route by both domain and path:
+   *
+   * ```ts title="sst.config.ts"
+   * {
+   *   route: {
+   *     router,
+   *     domain: "dev.example.com",
+   *     path: "/docs",
+   *   },
+   * }
+   * ```
+   *
+   * If you are routing to a path like `/docs`, you must configure the
+   * base path in your Analog app. The base path must match the path in your
+   * route prop.
+   *
+   * :::caution
+   * If routing to a path, you need to configure that as the base path in your
+   * Analog app as well.
+   * :::
+   *
+   * For example, if you are routing `/docs` to an Analog app, you need to set
+   * the `base` and `apiPrefix` options in your `vite.config.ts`. The `apiPrefix`
+   * value should not begin with a slash.
+   *
+   * ```js {4,7} title="vite.config.ts"
+   * export default defineConfig(({ mode }) => ({
+   *   plugins: [
+   *     analog({
+   *       apiPrefix: "docs/api"
+   *     })
+   *   ],
+   *   base: "/docs"
+   * }));
+   * ```
+   */
+  route?: SsrSiteArgs["route"];
+  /**
    * The command used internally to build your Analog app.
    *
    * @default `"npm run build"`
@@ -247,7 +324,7 @@ export interface AnalogArgs extends SsrSiteArgs {
  *
  * #### Minimal example
  *
- * Deploy a Analog app that's in the project root.
+ * Deploy an Analog app that's in the project root.
  *
  * ```js title="sst.config.ts"
  * new sst.aws.Analog("MyWeb");
@@ -317,9 +394,9 @@ export class Analog extends SsrSite {
     super(__pulumiType, name, args, opts);
   }
 
-  protected normalizeBuildCommand() { }
+  protected normalizeBuildCommand() {}
 
-  protected buildPlan(outputPath: Output<string>) {
+  protected buildPlan(outputPath: Output<string>): Output<Plan> {
     return outputPath.apply((outputPath) => {
       const nitro = JSON.parse(
         fs.readFileSync(
@@ -334,10 +411,9 @@ export class Analog extends SsrSite {
         );
       }
 
-      const basepath = readFileSync(
-        path.join(outputPath, "vite.config.ts"),
-        "utf-8",
-      ).match(/base: ['"](.*)['"]/)?.[1];
+      const basepath = fs
+        .readFileSync(path.join(outputPath, "vite.config.ts"), "utf-8")
+        .match(/base: ['"](.*)['"]/)?.[1];
 
       return {
         base: basepath,

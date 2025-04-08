@@ -1,11 +1,6 @@
 import fs from "fs";
 import path from "path";
-import {
-  ComponentResourceOptions,
-  Output,
-  all,
-  output,
-} from "@pulumi/pulumi";
+import { ComponentResourceOptions, Output, all, output } from "@pulumi/pulumi";
 import { Size } from "../size.js";
 import { Function } from "./function.js";
 import { VisibleError } from "../error.js";
@@ -13,10 +8,10 @@ import type { Input } from "../input.js";
 import { Queue } from "./queue.js";
 import { dynamodb, getRegionOutput, lambda } from "@pulumi/aws";
 import { isALteB } from "../../util/compare-semver.js";
-import { SsrSite, SsrSiteArgs } from "./ssr-site.js";
+import { Plan, SsrSite, SsrSiteArgs } from "./ssr-site.js";
 import { Bucket } from "./bucket.js";
 
-const DEFAULT_OPEN_NEXT_VERSION = "3.5.3";
+const DEFAULT_OPEN_NEXT_VERSION = "3.5.5";
 
 type BaseFunction = {
   handler: string;
@@ -239,6 +234,78 @@ export interface NextjsArgs extends SsrSiteArgs {
    * ```
    */
   environment?: SsrSiteArgs["environment"];
+  /**
+   * Serve your Next.js app through a `Router` component instead of a standalone CloudFront
+   * distribution.
+   *
+   * Let's say you have a Router component.
+   *
+   * ```ts title="sst.config.ts"
+   * const router = new sst.aws.Router("Router", {
+   *   domain: "*.example.com",
+   * });
+   * ```
+   *
+   * You can then match a pattern and route to your app based on:
+   *
+   * - A path like `/docs`
+   * - A domain pattern like `docs.example.com`
+   * - A combined pattern like `dev.example.com/docs`
+   *
+   * For example, to match a path.
+   *
+   * ```ts title="sst.config.ts"
+   * {
+   *   route: {
+   *     router,
+   *     path: "/docs",
+   *   },
+   * }
+   * ```
+   *
+   * Or match a domain.
+   *
+   * ```ts title="sst.config.ts"
+   * {
+   *   route: {
+   *     router,
+   *     domain: "docs.example.com",
+   *   },
+   * }
+   * ```
+   *
+   * Route by both domain and path:
+   *
+   * ```ts title="sst.config.ts"
+   * {
+   *   route: {
+   *     router,
+   *     domain: "dev.example.com",
+   *     path: "/docs",
+   *   },
+   * }
+   * ```
+   *
+   * If you are routing to a path like `/docs`, you must configure the
+   * base path in your Next.js app. The base path must match the path in your
+   * route prop.
+   *
+   * :::caution
+   * If routing to a path, you need to configure that as the base path in your
+   * Next.js app as well.
+   * :::
+   *
+   * For example, if you are routing `/docs` to a Next.js app, you need to set
+   * [`basePath`](https://nextjs.org/docs/app/api-reference/config/next-config-js/basePath)
+   * to `/docs` in your `next.config.js`.
+   *
+   * ```js title="next.config.js" {2}
+   * export default defineConfig({
+   *   basePath: "/docs"
+   * });
+   * ```
+   */
+  route?: SsrSiteArgs["route"];
   /**
    * Set a custom domain for your Next.js app.
    *
@@ -483,7 +550,7 @@ export class Nextjs extends SsrSite {
     name: string,
     args: NextjsArgs,
     { bucket }: { bucket: Bucket },
-  ) {
+  ): Output<Plan> {
     const parent = this;
 
     const ret = all([outputPath, args?.imageOptimization]).apply(
@@ -556,36 +623,36 @@ export class Nextjs extends SsrSite {
                 },
                 ...(queueArn
                   ? [
-                    {
-                      actions: [
-                        "sqs:SendMessage",
-                        "sqs:GetQueueAttributes",
-                        "sqs:GetQueueUrl",
-                      ],
-                      resources: [queueArn],
-                    },
-                  ]
+                      {
+                        actions: [
+                          "sqs:SendMessage",
+                          "sqs:GetQueueAttributes",
+                          "sqs:GetQueueUrl",
+                        ],
+                        resources: [queueArn],
+                      },
+                    ]
                   : []),
                 ...(tableArn
                   ? [
-                    {
-                      actions: [
-                        "dynamodb:BatchGetItem",
-                        "dynamodb:GetRecords",
-                        "dynamodb:GetShardIterator",
-                        "dynamodb:Query",
-                        "dynamodb:GetItem",
-                        "dynamodb:Scan",
-                        "dynamodb:ConditionCheckItem",
-                        "dynamodb:BatchWriteItem",
-                        "dynamodb:PutItem",
-                        "dynamodb:UpdateItem",
-                        "dynamodb:DeleteItem",
-                        "dynamodb:DescribeTable",
-                      ],
-                      resources: [tableArn, `${tableArn}/*`],
-                    },
-                  ]
+                      {
+                        actions: [
+                          "dynamodb:BatchGetItem",
+                          "dynamodb:GetRecords",
+                          "dynamodb:GetShardIterator",
+                          "dynamodb:Query",
+                          "dynamodb:GetItem",
+                          "dynamodb:Scan",
+                          "dynamodb:ConditionCheckItem",
+                          "dynamodb:BatchWriteItem",
+                          "dynamodb:PutItem",
+                          "dynamodb:UpdateItem",
+                          "dynamodb:DeleteItem",
+                          "dynamodb:DescribeTable",
+                        ],
+                        resources: [tableArn, `${tableArn}/*`],
+                      },
+                    ]
                   : []),
               ],
               injections: [
@@ -632,6 +699,7 @@ export class Nextjs extends SsrSite {
                 to: "_assets",
                 cached: true,
                 versionedSubDir: "_next",
+                deepRoute: true,
               },
             ],
             isrCache: {

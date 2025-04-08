@@ -67,6 +67,7 @@ func CmdUI(c *cli.Cli) error {
 			common.StdoutEvent{},
 			deployer.DeployFailedEvent{},
 			project.StackCommandEvent{},
+			project.CancelledEvent{},
 			project.ConcurrentUpdateEvent{},
 			project.StackCommandEvent{},
 			project.BuildFailedEvent{},

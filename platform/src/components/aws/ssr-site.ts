@@ -18,24 +18,31 @@ import { Bucket, BucketArgs } from "./bucket.js";
 import { BucketFile, BucketFiles } from "./providers/bucket-files.js";
 import { logicalName } from "../naming.js";
 import { Input } from "../input.js";
-import { Component, transform, type Transform } from "../component.js";
+import {
+  Component,
+  Prettify,
+  transform,
+  type Transform,
+} from "../component.js";
 import { VisibleError } from "../error.js";
 import { Cron } from "./cron.js";
 import { BaseSiteFileOptions, getContentType } from "../base/base-site.js";
 import { BaseSsrSiteArgs, buildApp } from "../base/base-ssr-site.js";
 import { cloudfront, getRegionOutput, lambda, Region } from "@pulumi/aws";
-import { readDirRecursivelySync } from "../../util/fs.js";
 import { KvKeys } from "./providers/kv-keys.js";
 import { useProvider } from "./helpers/provider.js";
 import { Link } from "../link.js";
 import { URL_UNAVAILABLE } from "./linkable.js";
 import {
-  CF_ROUTER_GLOBAL_INJECTION,
-  CF_SITE_ROUTER_INJECTION,
+  CF_ROUTER_INJECTION,
   CF_BLOCK_CLOUDFRONT_URL_INJECTION,
+  KV_SITE_METADATA,
+  RouterRouteArgs,
+  normalizeRouteArgs,
 } from "./router.js";
 import { DistributionInvalidation } from "./providers/distribution-invalidation.js";
 import { toSeconds } from "../duration.js";
+import { KvRoutesUpdate } from "./providers/kv-routes-update.js";
 
 const supportedRegions = {
   "af-south-1": { lat: -33.9249, lon: 18.4241 }, // Cape Town, South Africa
@@ -93,6 +100,7 @@ export type Plan = {
     to: string;
     cached: boolean;
     versionedSubDir?: string;
+    deepRoute?: boolean;
   }[];
   isrCache?: {
     from: string;
@@ -104,6 +112,7 @@ export type Plan = {
 
 export interface SsrSiteArgs extends BaseSsrSiteArgs {
   domain?: CdnArgs["domain"];
+  route?: Prettify<RouterRouteArgs>;
   cachePolicy?: Input<string>;
   invalidation?: Input<
     | false
@@ -151,21 +160,6 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
         paths?: Input<"all" | "versioned" | string[]>;
       }
   >;
-  /**
-   * By default, a standalone CloudFront distribution is created.
-   *
-   * If you want to use a `Router` component to serve your site, set this to
-   * `false`.
-   *
-   * @default `true`
-   * @example
-   * ```js
-   * {
-   *   cdn: false
-   * }
-   * ```
-   */
-  cdn?: Input<boolean>;
   regions?: Input<string[]>;
   permissions?: FunctionArgs["permissions"];
   /**
@@ -302,146 +296,145 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
      */
     layers?: Input<Input<string>[]>;
     /**
-     * Configure CloudFront Functions to customize the behavior of HTTP requests and responses at the edge.
+     * @deprecated The `server.edge` prop has been moved to the top level `edge` prop on the component.
      */
     edge?: Input<{
-      /**
-       * Configure the viewer request function.
-       *
-       * The viewer request function can be used to modify incoming requests before they
-       * reach your origin server. For example, you can redirect users, rewrite URLs,
-       * or add headers.
-       */
       viewerRequest?: Input<{
-        /**
-         * The code to inject into the viewer request function.
-         *
-         * By default, a viewer request function is created to:
-         * - Disable CloudFront default URL if custom domain is set
-         * - Add the `x-forwarded-host` header
-         * - Route assets requests to S3 (static files stored in the bucket)
-         * - Route server requests to server functions (dynamic rendering)
-         *
-         * The function manages routing by:
-         * 1. First checking if the requested path exists in S3 (with variations like adding index.html)
-         * 2. Serving a custom 404 page from S3 if configured and the path isn't found
-         * 3. Routing image optimization requests to the image optimizer function
-         * 4. Routing all other requests to the nearest server function
-         *
-         * The given code will be injected at the beginning of this function.
-         *
-         * ```js
-         * async function handler(event) {
-         *   // User injected code
-         *
-         *   // Default behavior code
-         *
-         *   return event.request;
-         * }
-         * ```
-         *
-         * @example
-         * To add a custom header to all requests.
-         *
-         * ```js
-         * {
-         *   server: {
-         *     edge: {
-         *       viewerRequest: {
-         *         injection: `event.request.headers["x-foo"] = "bar";`
-         *       }
-         *     }
-         *   }
-         * }
-         * ```
-         *
-         * You can use this to add basic auth, [check out an example](/docs/examples/#aws-nextjs-basic-auth).
-         */
         injection: Input<string>;
-        /**
-         * The KV store to associate with the viewer request function.
-         *
-         * @example
-         * ```js
-         * {
-         *   server: {
-         *     edge: {
-         *       viewerRequest: {
-         *         kvStore: "arn:aws:cloudfront::123456789012:key-value-store/my-store"
-         *       }
-         *     }
-         *   }
-         * }
-         * ```
-         */
         kvStore?: Input<string>;
-        /**
-         * @deprecated Use `kvStore` instead because CloudFront Functions only support one KV store.
-         */
         kvStores?: Input<Input<string>[]>;
       }>;
-      /**
-       * Configure the viewer response function.
-       *
-       * The viewer response function can be used to modify outgoing responses before they are
-       * sent to the client. For example, you can add security headers or change the response
-       * status code.
-       *
-       * By default, no viewer response function is set. A new function will be created
-       * with the provided code.
-       */
       viewerResponse?: Input<{
-        /**
-         * The code to inject into the viewer response function.
-         *
-         * ```js
-         * async function handler(event) {
-         *   // User injected code
-         *
-         *   return event.response;
-         * }
-         * ```
-         *
-         * @example
-         * To add a custom header to all responses.
-         *
-         * ```js
-         * {
-         *   server: {
-         *     edge: {
-         *       viewerResponse: {
-         *         injection: `event.response.headers["x-foo"] = {value: "bar"};`
-         *       }
-         *     }
-         *   }
-         * }
-         * ```
-         */
         injection: Input<string>;
-        /**
-         * The KV store to associate with the viewer response function.
-         *
-         * @example
-         * ```js
-         * {
-         *   server: {
-         *     edge: {
-         *       viewerResponse: {
-         *         kvStore: "arn:aws:cloudfront::123456789012:key-value-store/my-store"
-         *       }
-         *     }
-         *   }
-         * }
-         * ```
-         */
         kvStore?: Input<string>;
-        /**
-         * @deprecated Use `kvStore` instead because CloudFront Functions only support one KV store.
-         */
         kvStores?: Input<Input<string>[]>;
       }>;
     }>;
   };
+  /**
+   * Configure CloudFront Functions to customize the behavior of HTTP requests and responses at the edge.
+   */
+  edge?: Input<{
+    /**
+     * Configure the viewer request function.
+     *
+     * The viewer request function can be used to modify incoming requests before they
+     * reach your origin server. For example, you can redirect users, rewrite URLs,
+     * or add headers.
+     */
+    viewerRequest?: Input<{
+      /**
+       * The code to inject into the viewer request function.
+       *
+       * By default, a viewer request function is created to:
+       * - Disable CloudFront default URL if custom domain is set
+       * - Add the `x-forwarded-host` header
+       * - Route assets requests to S3 (static files stored in the bucket)
+       * - Route server requests to server functions (dynamic rendering)
+       *
+       * The function manages routing by:
+       * 1. First checking if the requested path exists in S3 (with variations like adding index.html)
+       * 2. Serving a custom 404 page from S3 if configured and the path isn't found
+       * 3. Routing image optimization requests to the image optimizer function
+       * 4. Routing all other requests to the nearest server function
+       *
+       * The given code will be injected at the beginning of this function.
+       *
+       * ```js
+       * async function handler(event) {
+       *   // User injected code
+       *
+       *   // Default behavior code
+       *
+       *   return event.request;
+       * }
+       * ```
+       *
+       * @example
+       * To add a custom header to all requests.
+       *
+       * ```js
+       * {
+       *   edge: {
+       *     viewerRequest: {
+       *       injection: `event.request.headers["x-foo"] = "bar";`
+       *     }
+       *   }
+       * }
+       * ```
+       *
+       * You can use this to add basic auth, [check out an example](/docs/examples/#aws-nextjs-basic-auth).
+       */
+      injection: Input<string>;
+      /**
+       * The KV store to associate with the viewer request function.
+       *
+       * @example
+       * ```js
+       * {
+       *   edge: {
+       *     viewerRequest: {
+       *       kvStore: "arn:aws:cloudfront::123456789012:key-value-store/my-store"
+       *     }
+       *   }
+       * }
+       * ```
+       */
+      kvStore?: Input<string>;
+    }>;
+    /**
+     * Configure the viewer response function.
+     *
+     * The viewer response function can be used to modify outgoing responses before they are
+     * sent to the client. For example, you can add security headers or change the response
+     * status code.
+     *
+     * By default, no viewer response function is set. A new function will be created
+     * with the provided code.
+     */
+    viewerResponse?: Input<{
+      /**
+       * The code to inject into the viewer response function.
+       *
+       * ```js
+       * async function handler(event) {
+       *   // User injected code
+       *
+       *   return event.response;
+       * }
+       * ```
+       *
+       * @example
+       * To add a custom header to all responses.
+       *
+       * ```js
+       * {
+       *   edge: {
+       *     viewerResponse: {
+       *       injection: `event.response.headers["x-foo"] = {value: "bar"};`
+       *     }
+       *   }
+       * }
+       * ```
+       */
+      injection: Input<string>;
+      /**
+       * The KV store to associate with the viewer response function.
+       *
+       * @example
+       * ```js
+       * {
+       *   edge: {
+       *     viewerResponse: {
+       *       kvStore: "arn:aws:cloudfront::123456789012:key-value-store/my-store"
+       *     }
+       *   }
+       * }
+       * ```
+       */
+      kvStore?: Input<string>;
+    }>;
+  }>;
   /**
    * Configure the server function to connect to private subnets in a virtual private cloud or VPC. This allows it to access private resources.
    *
@@ -470,11 +463,11 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
    */
   vpc?: FunctionArgs["vpc"];
   /**
-   *  Specify the HTTP version(s) that you want viewers to use to communicate with CloudFront. The default value for new web distributions is http2.
-   *  Viewers that don't support HTTP/2 automatically use an earlier HTTP version. (http1.1 | http2 | http3 | http2and3)
-   *  [Values](https://docs.aws.amazon.com/cloudfront/latest/APIReference/API_DistributionConfig.html#cloudfront-Type-DistributionConfig-HttpVersion)
+   * @deprecated The `route` prop is now the recommended way to use the `Router` component
+   * to serve your site. Setting `route` will not create a standalone CloudFront
+   * distribution.
    */
-  httpVersion?: Input<"http1.1" | "http2" | "http3" | "http2and3">;
+  cdn?: Input<boolean>;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
@@ -496,24 +489,11 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
 }
 
 export abstract class SsrSite extends Component implements Link.Linkable {
-  private cdn?: Output<Cdn | undefined>;
+  private cdn?: Cdn;
   private bucket?: Bucket;
   private server?: Output<Function>;
   private devUrl?: Output<string>;
-  private _cdnData?: {
-    base: Output<string | undefined>;
-    entries: Output<Record<string, string>>;
-    purge: Output<boolean>;
-    invalidation: Output<
-      | false
-      | {
-          paths: string[];
-          version: string;
-          wait: boolean;
-        }
-    >;
-    invalidationDependsOn: Input<Resource>[];
-  };
+  private prodUrl?: Output<string | undefined>;
 
   protected abstract normalizeBuildCommand(
     args: SsrSiteArgs,
@@ -533,9 +513,12 @@ export abstract class SsrSite extends Component implements Link.Linkable {
     opts: ComponentResourceOptions = {},
   ) {
     super(type, name, args, opts);
+    const self = this;
 
-    const parent = this;
+    validateDeprecatedProps();
     const regions = normalizeRegions();
+    const route = normalizeRoute();
+    const edge = normalizeEdge();
     const serverTimeout = normalizeServerTimeout();
     const buildCommand = this.normalizeBuildCommand(args);
     const sitePath = regions.apply(() => normalizeSitePath());
@@ -560,7 +543,7 @@ export abstract class SsrSite extends Component implements Link.Linkable {
     }
 
     const outputPath = buildApp(
-      parent,
+      self,
       name,
       args,
       sitePath,
@@ -576,120 +559,86 @@ export abstract class SsrSite extends Component implements Link.Linkable {
     const servers = createServers();
     const imageOptimizer = createImageOptimizer();
     const assetsUploaded = uploadAssets();
-    const kvEntries = buildKvEntries();
-    const invalidation = buildInvalidation();
+    const kvNamespace = buildKvNamespace();
 
-    // Create CDN related resources
-    const distribution = output(args.cdn).apply((cdn) => {
-      if (cdn === false) return;
+    let distribution: Cdn | undefined;
+    let distributionId: Output<string>;
+    let kvStoreArn: Output<string>;
+    let invalidationDependsOn: Resource[] = [];
+    let prodUrl: Output<string | undefined>;
+    if (route) {
+      kvStoreArn = route.routerKvStoreArn;
+      distributionId = route.routerDistributionId;
+      invalidationDependsOn = [updateRouterKvRoutes()];
+      prodUrl = route.routerUrl;
+    } else {
+      kvStoreArn = createRequestKvStore();
+      distribution = createDistribution();
+      distributionId = distribution.nodes.distribution.id;
+      prodUrl = distribution.domainUrl.apply((domainUrl) =>
+        output(domainUrl ?? distribution!.url),
+      );
+    }
 
-      const kvNamespace = buildRequestKvNamespace();
-      const kvStoreArn = createRequestKvStore();
-      const requestFunction = createRequestFunction();
-      const responseFunction = createResponseFunction();
-      const cachePolicyId = args.cachePolicy ?? createCachePolicy().id;
-      const distribution = createDistribution();
-      const kvUpdated = createKvValues();
-      createInvalidation();
-      return distribution;
-
-      function buildRequestKvNamespace() {
-        // In the case multiple sites use the same kv store, we need to namespace the keys
-        return crypto
-          .createHash("md5")
-          .update(`${$app.name}-${$app.stage}-${name}`)
-          .digest("hex")
-          .substring(0, 4);
-      }
-
-      function createCachePolicy() {
-        return new cloudfront.CachePolicy(
-          `${name}ServerCachePolicy`,
-          {
-            comment: "SST server response cache policy",
-            defaultTtl: 0,
-            maxTtl: 31536000, // 1 year
-            minTtl: 0,
-            parametersInCacheKeyAndForwardedToOrigin: {
-              cookiesConfig: {
-                cookieBehavior: "none",
-              },
-              headersConfig: {
-                headerBehavior: "whitelist",
-                headers: {
-                  items: ["x-open-next-cache-key"],
-                },
-              },
-              queryStringsConfig: {
-                queryStringBehavior: "all",
-              },
-              enableAcceptEncodingBrotli: true,
-              enableAcceptEncodingGzip: true,
+    function createCachePolicy() {
+      return new cloudfront.CachePolicy(
+        `${name}ServerCachePolicy`,
+        {
+          comment: "SST server response cache policy",
+          defaultTtl: 0,
+          maxTtl: 31536000, // 1 year
+          minTtl: 0,
+          parametersInCacheKeyAndForwardedToOrigin: {
+            cookiesConfig: {
+              cookieBehavior: "none",
             },
-          },
-          { parent },
-        );
-      }
-
-      function createRequestKvStore() {
-        return output(args.server?.edge).apply((edge) => {
-          const viewerRequest = edge?.viewerRequest;
-          const userKvStore =
-            viewerRequest?.kvStore ?? viewerRequest?.kvStores?.[0];
-          if (userKvStore) return output(userKvStore);
-
-          return new cloudfront.KeyValueStore(`${name}KvStore`, {}, { parent })
-            .arn;
-        });
-      }
-
-      function createKvValues() {
-        return new KvKeys(
-          `${name}KvKeys`,
-          {
-            store: kvStoreArn!,
-            namespace: kvNamespace,
-            entries: kvEntries,
-            purge,
-          },
-          { parent },
-        );
-      }
-
-      function createInvalidation() {
-        invalidation.apply((invalidation) => {
-          if (!invalidation) return;
-
-          new DistributionInvalidation(
-            `${name}Invalidation`,
-            {
-              distributionId: distribution.nodes.distribution.id,
-              paths: invalidation.paths,
-              version: invalidation.version,
-              wait: invalidation.wait,
+            headersConfig: {
+              headerBehavior: "whitelist",
+              headers: {
+                items: ["x-open-next-cache-key"],
+              },
             },
-            { parent, dependsOn: [assetsUploaded, kvUpdated] },
-          );
-        });
-      }
+            queryStringsConfig: {
+              queryStringBehavior: "all",
+            },
+            enableAcceptEncodingBrotli: true,
+            enableAcceptEncodingGzip: true,
+          },
+        },
+        { parent: self },
+      );
+    }
 
-      function createRequestFunction() {
-        return output(args.server).apply((server) => {
-          const userInjection = server?.edge?.viewerRequest?.injection ?? "";
-          const blockCloudfrontUrlInjection = args.domain
-            ? CF_BLOCK_CLOUDFRONT_URL_INJECTION
-            : "";
-          return new cloudfront.Function(
-            `${name}CloudfrontFunctionRequest`,
-            {
-              runtime: "cloudfront-js-2.0",
-              keyValueStoreAssociations: kvStoreArn ? [kvStoreArn] : [],
-              code: interpolate`
+    function createRequestKvStore() {
+      return edge.apply((edge) => {
+        const viewerRequest = edge?.viewerRequest;
+        if (viewerRequest?.kvStore) return output(viewerRequest?.kvStore);
+
+        return new cloudfront.KeyValueStore(
+          `${name}KvStore`,
+          {},
+          { parent: self },
+        ).arn;
+      });
+    }
+
+    function createRequestFunction() {
+      return edge.apply((edge) => {
+        const userInjection = edge?.viewerRequest?.injection ?? "";
+        const blockCloudfrontUrlInjection = args.domain
+          ? CF_BLOCK_CLOUDFRONT_URL_INJECTION
+          : "";
+        return new cloudfront.Function(
+          `${name}CloudfrontFunctionRequest`,
+          {
+            runtime: "cloudfront-js-2.0",
+            keyValueStoreAssociations: kvStoreArn ? [kvStoreArn] : [],
+            code: interpolate`
 import cf from "cloudfront";
 async function handler(event) {
   ${userInjection}
   ${blockCloudfrontUrlInjection}
-  ${CF_SITE_ROUTER_INJECTION}
+  ${CF_ROUTER_INJECTION}
 
   const kvNamespace = "${kvNamespace}";
 
@@ -702,107 +651,101 @@ async function handler(event) {
 
   await routeSite(kvNamespace, metadata);
   return event.request;
-}
+}`,
+          },
+          { parent: self },
+        );
+      });
+    }
 
-${CF_ROUTER_GLOBAL_INJECTION}`,
-            },
-            { parent },
-          );
-        });
-      }
+    function createResponseFunction() {
+      return edge.apply((edge) => {
+        const userConfig = edge?.viewerResponse;
+        const userInjection = userConfig?.injection;
+        const kvStoreArn = userConfig?.kvStore;
 
-      function createResponseFunction() {
-        return output(args.server).apply((server) => {
-          const userConfig = server?.edge?.viewerResponse;
-          const userInjection = userConfig?.injection;
-          const kvStoreArn = userConfig?.kvStore ?? userConfig?.kvStores?.[0];
+        if (!userInjection) return;
 
-          if (!userInjection) return;
-
-          return new cloudfront.Function(
-            `${name}CloudfrontFunctionResponse`,
-            {
-              runtime: "cloudfront-js-2.0",
-              keyValueStoreAssociations: kvStoreArn ? [kvStoreArn] : [],
-              code: `
+        return new cloudfront.Function(
+          `${name}CloudfrontFunctionResponse`,
+          {
+            runtime: "cloudfront-js-2.0",
+            keyValueStoreAssociations: kvStoreArn ? [kvStoreArn] : [],
+            code: `
 import cf from "cloudfront";
 async function handler(event) {
   ${userInjection}
   return event.response;
 }`,
-            },
-            { parent },
-          );
-        });
-      }
-
-      function createDistribution() {
-        return new Cdn(
-          ...transform(
-            args.transform?.cdn,
-            `${name}Cdn`,
-            {
-              comment: `${name} app`,
-              domain: args.domain,
-              httpVersion: args.httpVersion,
-              origins: [
-                {
-                  originId: "default",
-                  domainName: "placeholder.sst.dev",
-                  customOriginConfig: {
-                    httpPort: 80,
-                    httpsPort: 443,
-                    originProtocolPolicy: "http-only",
-                    originReadTimeout: 20,
-                    originSslProtocols: ["TLSv1.2"],
-                  },
-                },
-              ],
-              defaultCacheBehavior: {
-                targetOriginId: "default",
-                viewerProtocolPolicy: "redirect-to-https",
-                allowedMethods: [
-                  "DELETE",
-                  "GET",
-                  "HEAD",
-                  "OPTIONS",
-                  "PATCH",
-                  "POST",
-                  "PUT",
-                ],
-                cachedMethods: ["GET", "HEAD"],
-                compress: true,
-                cachePolicyId,
-                // CloudFront's Managed-AllViewerExceptHostHeader policy
-                originRequestPolicyId: "b689b0a8-53d0-40ab-baf2-68738e2966ac",
-                functionAssociations: all([
-                  requestFunction,
-                  responseFunction,
-                ]).apply(([reqFn, resFn]) => [
-                  { eventType: "viewer-request", functionArn: reqFn.arn },
-                  ...(resFn
-                    ? [{ eventType: "viewer-response", functionArn: resFn.arn }]
-                    : []),
-                ]),
-              },
-            },
-            { parent },
-          ),
+          },
+          { parent: self },
         );
-      }
-    });
+      });
+    }
+
+    function createDistribution() {
+      return new Cdn(
+        ...transform(
+          args.transform?.cdn,
+          `${name}Cdn`,
+          {
+            comment: `${name} app`,
+            domain: args.domain,
+            origins: [
+              {
+                originId: "default",
+                domainName: "placeholder.sst.dev",
+                customOriginConfig: {
+                  httpPort: 80,
+                  httpsPort: 443,
+                  originProtocolPolicy: "http-only",
+                  originReadTimeout: 20,
+                  originSslProtocols: ["TLSv1.2"],
+                },
+              },
+            ],
+            defaultCacheBehavior: {
+              targetOriginId: "default",
+              viewerProtocolPolicy: "redirect-to-https",
+              allowedMethods: [
+                "DELETE",
+                "GET",
+                "HEAD",
+                "OPTIONS",
+                "PATCH",
+                "POST",
+                "PUT",
+              ],
+              cachedMethods: ["GET", "HEAD"],
+              compress: true,
+              cachePolicyId: args.cachePolicy ?? createCachePolicy().id,
+              // CloudFront's Managed-AllViewerExceptHostHeader policy
+              originRequestPolicyId: "b689b0a8-53d0-40ab-baf2-68738e2966ac",
+              functionAssociations: all([
+                createRequestFunction(),
+                createResponseFunction(),
+              ]).apply(([reqFn, resFn]) => [
+                { eventType: "viewer-request", functionArn: reqFn.arn },
+                ...(resFn
+                  ? [{ eventType: "viewer-response", functionArn: resFn.arn }]
+                  : []),
+              ]),
+            },
+          },
+          { parent: self },
+        ),
+      );
+    }
+
+    const kvUpdated = createKvEntries();
+    createInvalidation();
 
     const server = servers.apply((servers) => servers[0]?.server);
     this.bucket = bucket;
     this.cdn = distribution;
     this.server = server;
-    this._cdnData = {
-      base: output(plan.base),
-      entries: kvEntries,
-      purge,
-      invalidation,
-      invalidationDependsOn: [assetsUploaded],
-    };
+    this.prodUrl = prodUrl;
+
     this.registerOutputs({
       _hint: this.url,
       _metadata: {
@@ -817,6 +760,13 @@ async function handler(event) {
         aws: { role: server.nodes.role.arn },
       },
     });
+
+    function validateDeprecatedProps() {
+      if (args.cdn !== undefined)
+        throw new VisibleError(
+          `"cdn" prop is deprecated. Use the "route.router" prop instead to use an existing "Router" component to serve your site.`,
+        );
+    }
 
     function normalizeDev() {
       const enabled = $dev && args.dev !== false;
@@ -855,7 +805,7 @@ async function handler(event) {
 
     function normalizeRegions() {
       return output(
-        args.regions ?? [getRegionOutput(undefined, { parent }).name],
+        args.regions ?? [getRegionOutput(undefined, { parent: self }).name],
       ).apply((regions) => {
         if (regions.length === 0)
           throw new VisibleError(
@@ -886,6 +836,38 @@ async function handler(event) {
           return region as Region;
         });
       });
+    }
+
+    function normalizeRoute() {
+      const route = normalizeRouteArgs(args.route);
+
+      if (route) {
+        if (args.domain)
+          throw new VisibleError(
+            `Cannot provide both "domain" and "route". Use the "domain" prop on the "Router" component when serving your site through a Router.`,
+          );
+
+        if (args.edge)
+          throw new VisibleError(
+            `Cannot provide both "edge" and "route". Use the "edge" prop on the "Router" component when serving your site through a Router.`,
+          );
+      }
+
+      return route;
+    }
+
+    function normalizeEdge() {
+      return output([args.edge, args.server?.edge]).apply(
+        ([edge, serverEdge]) => {
+          if (serverEdge)
+            throw new VisibleError(
+              `The "server.edge" prop is deprecated. Use the "edge" prop on the top level instead.`,
+            );
+
+          if (!edge) return edge;
+          return edge;
+        },
+      );
     }
 
     function normalizeServerTimeout() {
@@ -921,29 +903,30 @@ async function handler(event) {
             link: args.link,
             dev: false,
           },
-          { parent },
+          { parent: self },
         ),
       );
     }
 
     function validatePlan(plan: Output<Plan>) {
-      return all([plan, args.cdn, args.domain]).apply(([plan, cdn, domain]) => {
-        if (plan.base && cdn !== false) {
-          throw new VisibleError(
-            `Base path is configured for "${name}" but CDN is enabled. When using a base path, set "cdn: false" and route the site through a Router component.`,
-          );
-        }
-        if (cdn === false && domain) {
-          throw new VisibleError(
-            `Custom domain cannot be configured when CDN is disabled. If the site is routed through a Router component, configure the domain on the Router component instead.`,
-          );
-        }
-
+      return all([plan, route]).apply(([plan, route]) => {
         if (plan.base) {
           // starts with /
           plan.base = !plan.base.startsWith("/") ? `/${plan.base}` : plan.base;
           // does not end with /
           plan.base = plan.base.replace(/\/$/, "");
+        }
+
+        if (route?.pathPrefix && route.pathPrefix !== "/") {
+          if (!plan.base)
+            throw new VisibleError(
+              `No base path found for site. You must configure the base path to match the route path prefix "${route.pathPrefix}".`,
+            );
+
+          if (!plan.base.startsWith(route.pathPrefix))
+            throw new VisibleError(
+              `The site base path "${plan.base}" must start with the route path prefix "${route.pathPrefix}".`,
+            );
         }
 
         // if copy.to has a leading slash, files will be uploaded to `/` folder in bucket
@@ -964,7 +947,7 @@ async function handler(event) {
           args.transform?.assets,
           `${name}Assets`,
           { access: "cloudfront" },
-          { parent, retainOnDelete: false },
+          { parent: self, retainOnDelete: false },
         ),
       );
     }
@@ -1029,7 +1012,7 @@ async function handler(event) {
                 dev: false,
                 _skipHint: true,
               },
-              { provider, parent },
+              { provider, parent: self },
             ),
           );
 
@@ -1065,7 +1048,7 @@ async function handler(event) {
                   },
                 },
               },
-              { provider, parent },
+              { provider, parent: self },
             );
 
             // Prewarm on deploy
@@ -1078,7 +1061,7 @@ async function handler(event) {
                 },
                 input: JSON.stringify({}),
               },
-              { provider, parent },
+              { provider, parent: self },
             );
           }
 
@@ -1109,7 +1092,7 @@ async function handler(event) {
             _skipMetadata: true,
             _skipHint: true,
           },
-          { parent },
+          { parent: self },
         );
       });
     }
@@ -1216,16 +1199,25 @@ async function handler(event) {
               bucketName: bucket.name,
               files: bucketFiles,
               purge,
-              region: getRegionOutput(undefined, { parent }).name,
+              region: getRegionOutput(undefined, { parent: self }).name,
             },
-            { parent },
+            { parent: self },
           );
         },
       );
     }
 
-    function buildKvEntries() {
-      return all([
+    function buildKvNamespace() {
+      // In the case multiple sites use the same kv store, we need to namespace the keys
+      return crypto
+        .createHash("md5")
+        .update(`${$app.name}-${$app.stage}-${name}`)
+        .digest("hex")
+        .substring(0, 4);
+    }
+
+    function createKvEntries() {
+      const entries = all([
         servers,
         imageOptimizer,
         outputPath,
@@ -1238,25 +1230,55 @@ async function handler(event) {
             servers.map((s) => ({ region: s.region, url: s.server!.url })),
             imageOptimizer?.url,
           ]).apply(([servers, imageOptimizerUrl]) => {
-            const kvEntries = Object.fromEntries(
-              plan.assets.flatMap((copy) => {
-                const files = readDirRecursivelySync(
-                  path.join(outputPath, copy.from),
-                );
-                return files.map((file) => [path.posix.join("/", file), "s3"]);
-              }),
-            );
+            const kvEntries: Record<string, string> = {};
+            const dirs: string[] = [];
+
+            plan.assets.forEach((copy) => {
+              fs.readdirSync(path.join(outputPath, copy.from), {
+                withFileTypes: true,
+              }).forEach((item) => {
+                if (item.isFile()) {
+                  kvEntries[path.posix.join("/", item.name)] = "s3";
+                  return;
+                }
+
+                // Handle deep routes
+                // In Next.js, asset requests are prefixed with is /_next/static, and
+                // image optimization requests are prefixed with /_next/image. We cannot
+                // route by 1 level of subdirs (ie. /_next/`), so we need to route by 2
+                // levels of subdirs.
+                if (!copy.deepRoute) {
+                  dirs.push(path.posix.join("/", item.name, "/"));
+                  return;
+                }
+
+                fs.readdirSync(path.join(outputPath, copy.from, item.name), {
+                  withFileTypes: true,
+                }).forEach((subItem) => {
+                  if (subItem.isFile()) {
+                    kvEntries[path.posix.join("/", item.name, subItem.name)] =
+                      "s3";
+                    return;
+                  }
+                  dirs.push(path.posix.join("/", item.name, subItem.name, "/"));
+                });
+              });
+            });
+
             kvEntries["metadata"] = JSON.stringify({
               base: plan.base,
               custom404: plan.custom404,
               s3: {
                 domain: bucketDomain,
                 dir: plan.assets[0].to ? "/" + plan.assets[0].to : "",
+                routes: dirs,
               },
-              image: imageOptimizerUrl && {
-                host: new URL(imageOptimizerUrl!).host,
-                pattern: plan.imageOptimizer!.prefix,
-              },
+              image: imageOptimizerUrl
+                ? {
+                    host: new URL(imageOptimizerUrl!).host,
+                    route: plan.imageOptimizer!.prefix,
+                  }
+                : undefined,
               servers: servers.map((s) => [
                 new URL(s.url).host,
                 supportedRegions[s.region as keyof typeof supportedRegions].lat,
@@ -1267,17 +1289,45 @@ async function handler(event) {
                   readTimeout: toSeconds(timeout),
                 },
               },
-            });
+            } satisfies KV_SITE_METADATA);
             return kvEntries;
           }),
       );
+
+      return new KvKeys(
+        `${name}KvKeys`,
+        {
+          store: kvStoreArn!,
+          namespace: kvNamespace,
+          entries,
+          purge,
+        },
+        { parent: self },
+      );
     }
 
-    function buildInvalidation() {
-      return all([args.invalidation, outputPath, plan]).apply(
+    function updateRouterKvRoutes() {
+      return new KvRoutesUpdate(
+        `${name}RoutesUpdate`,
+        {
+          store: route!.routerKvStoreArn,
+          namespace: route!.routerKvNamespace,
+          key: "routes",
+          entry: route!.apply((route) =>
+            ["site", kvNamespace, route!.hostPattern, route!.pathPrefix].join(
+              ",",
+            ),
+          ),
+        },
+        { parent: self },
+      );
+    }
+
+    function createInvalidation() {
+      all([args.invalidation, outputPath, plan]).apply(
         ([invalidationRaw, outputPath, plan]) => {
           // Normalize invalidation
-          if (invalidationRaw === false) return false;
+          if (invalidationRaw === false) return;
           const invalidation = {
             wait: false,
             paths: "all",
@@ -1288,7 +1338,7 @@ async function handler(event) {
           // This will be used to determine if we need to invalidate our CloudFront cache.
           const s3Origin = plan.assets;
           const cachedS3Files = s3Origin.filter((file) => file.cached);
-          if (cachedS3Files.length === 0) return false;
+          if (cachedS3Files.length === 0) return;
 
           // Build invalidation paths
           const invalidationPaths: string[] = [];
@@ -1296,7 +1346,7 @@ async function handler(event) {
             invalidationPaths.push("/*");
           } else if (invalidation.paths === "versioned") {
             cachedS3Files.forEach((item) => {
-              if (!item.versionedSubDir) return false;
+              if (!item.versionedSubDir) return;
               invalidationPaths.push(
                 path.posix.join("/", item.to, item.versionedSubDir, "*"),
               );
@@ -1304,7 +1354,7 @@ async function handler(event) {
           } else {
             invalidationPaths.push(...(invalidation?.paths || []));
           }
-          if (invalidationPaths.length === 0) return false;
+          if (invalidationPaths.length === 0) return;
 
           // Build build ID
           let invalidationBuildId: string;
@@ -1355,11 +1405,19 @@ async function handler(event) {
             invalidationBuildId = hash.digest("hex");
           }
 
-          return {
-            paths: invalidationPaths,
-            version: invalidationBuildId,
-            wait: invalidation.wait,
-          };
+          new DistributionInvalidation(
+            `${name}Invalidation`,
+            {
+              distributionId,
+              paths: invalidationPaths,
+              version: invalidationBuildId,
+              wait: invalidation.wait,
+            },
+            {
+              parent: self,
+              dependsOn: [assetsUploaded, kvUpdated, ...invalidationDependsOn],
+            },
+          );
         },
       );
     }
@@ -1372,20 +1430,9 @@ async function handler(event) {
    * Otherwise, it's the autogenerated CloudFront URL.
    */
   public get url() {
-    return all([this.cdn, this.devUrl]).apply(([cdn, dev]) => {
-      if (!cdn) return;
-      return all([cdn.domainUrl, cdn.url]).apply(
-        ([domainUrl, url]) => domainUrl ?? url ?? dev!,
-      );
-    });
-  }
-
-  /**
-   * The CDN data for the site.
-   * @internal
-   */
-  public get cdnData() {
-    return this._cdnData;
+    return all([this.prodUrl, this.devUrl]).apply(
+      ([prodUrl, devUrl]) => (prodUrl ?? devUrl)!,
+    );
   }
 
   /**

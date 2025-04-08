@@ -31,6 +31,7 @@
     "@pulumi/pulumi": "3.145.0",
     "@pulumi/random": "4.16.6",
     "@pulumi/tls": "5.0.1",
+    "@pulumiverse/vercel": "1.11.0",
     "@smithy/smithy-client": "2.1.18",
     "@tsconfig/node18": "18.2.2",
     "@types/node": "^22.10.0",
@@ -47,7 +48,6 @@
   },
   "devDependencies": {
     "@aws-sdk/client-iot": "3.501.0",
-    "@pulumiverse/vercel": "1.11.0",
     "@types/archiver": "6.0.2",
     "@types/aws-lambda": "8.10.133",
     "@types/bun": "1.2.1",

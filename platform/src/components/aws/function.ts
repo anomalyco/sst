@@ -43,6 +43,10 @@ import { RandomBytes } from "@pulumi/random";
 import { lazy } from "../../util/lazy.js";
 import { Efs } from "./efs.js";
 import { FunctionEnvironmentUpdate } from "./providers/function-environment-update.js";
+import { warnOnce } from "../../util/warn.js";
+import { normalizeRouteArgs, RouterRouteArgs } from "./router.js";
+import { KvRoutesUpdate } from "./providers/kv-routes-update.js";
+import { KvKeys } from "./providers/kv-keys.js";
 
 /**
  * Helper type to define function ARN type
@@ -698,6 +702,64 @@ export interface FunctionArgs {
     | boolean
     | {
         /**
+         * Serve your function URL through a `Router` component.
+         *
+         * Let's say you have a Router component.
+         *
+         * ```ts title="sst.config.ts"
+         * const router = new sst.aws.Router("Router", {
+         *   domain: "*.example.com",
+         * });
+         * ```
+         *
+         * You can then match a pattern and route to your function based on:
+         *
+         * - A path like `/api/users`
+         * - A domain pattern like `api.example.com`
+         * - A combined pattern like `dev.example.com/api`
+         *
+         * For example, to match a path:
+         *
+         * ```ts title="sst.config.ts"
+         * {
+         *   url: {
+         *     route: {
+         *       router,
+         *       path: "/api/users",
+         *     },
+         *   },
+         * }
+         * ```
+         *
+         * Or match a domain:
+         *
+         * ```ts title="sst.config.ts"
+         * {
+         *   url: {
+         *     route: {
+         *       router,
+         *       domain: "api.example.com",
+         *     },
+         *   },
+         * }
+         * ```
+         *
+         * Route by both domain and path:
+         *
+         * ```ts title="sst.config.ts"
+         * {
+         *   url: {
+         *     route: {
+         *       router,
+         *       domain: "dev.example.com",
+         *       path: "/api/users",
+         *     },
+         *   },
+         * }
+         * ```
+         */
+        route?: Prettify<RouterRouteArgs>;
+        /**
          * The authorization used for the function URL. Supports [IAM authorization](https://docs.aws.amazon.com/lambda/latest/dg/urls-auth.html).
          * @default `"none"`
          * @example
@@ -747,6 +809,7 @@ export interface FunctionArgs {
    */
   nodejs?: Input<{
     /**
+     * @internal
      * Point to a file that exports a list of esbuild plugins to use.
      *
      * @example
@@ -1382,8 +1445,7 @@ export class Function extends Component implements Link.Linkable {
   private function: Output<lambda.Function>;
   private role: iam.Role;
   private logGroup: Output<cloudwatch.LogGroup | undefined>;
-  private fnUrl: Output<lambda.FunctionUrl | undefined>;
-  private missingSourcemap?: boolean;
+  private urlEndpoint: Output<string | undefined>;
 
   private static readonly encryptionKey = lazy(
     () =>
@@ -1436,7 +1498,7 @@ export class Function extends Component implements Link.Linkable {
     const logGroup = createLogGroup();
     const zipAsset = createZipAsset();
     const fn = createFunction();
-    const fnUrl = createUrl();
+    const urlEndpoint = createUrl();
     createProvisioned();
 
     const links = linkData.apply((input) => input.map((item) => item.name));
@@ -1444,7 +1506,7 @@ export class Function extends Component implements Link.Linkable {
     this.function = fn;
     this.role = role;
     this.logGroup = logGroup;
-    this.fnUrl = fnUrl;
+    this.urlEndpoint = urlEndpoint;
 
     const buildInput = output({
       functionID: name,
@@ -1503,9 +1565,7 @@ export class Function extends Component implements Link.Linkable {
         internal: args._skipMetadata,
         dev: dev,
       },
-      _hint: args._skipHint
-        ? undefined
-        : fnUrl.apply((fnUrl) => fnUrl?.functionUrl),
+      _hint: args._skipHint ? undefined : urlEndpoint,
     });
 
     function normalizeDev() {
@@ -1627,7 +1687,7 @@ export class Function extends Component implements Link.Linkable {
                   maxAge: url.cors.maxAge && toSeconds(url.cors.maxAge),
                 };
 
-        return { authorization, cors };
+        return { authorization, cors, route: normalizeRouteArgs(url.route) };
       });
     }
 
@@ -1663,12 +1723,13 @@ export class Function extends Component implements Link.Linkable {
           securityGroups: args.vpc.securityGroups,
         };
         return all([
+          args.vpc.id,
           args.vpc.nodes.natGateways,
           args.vpc.nodes.natInstances,
-        ]).apply(([natGateways, natInstances]) => {
+        ]).apply(([id, natGateways, natInstances]) => {
           if (natGateways.length === 0 && natInstances.length === 0) {
-            throw new VisibleError(
-              `Functions that are running in a VPC need a NAT gateway. Enable it by setting "nat" on the "sst.aws.Vpc" component.`,
+            warnOnce(
+              `\nWarning: One or more functions are deployed in the "${id}" VPC, which does not have a NAT gateway. As a result, these functions cannot access the internet. If your functions need internet access, enable it by setting the "nat" prop on the "Vpc" component.\n`,
             );
           }
           return result;
@@ -1842,11 +1903,6 @@ export class Function extends Component implements Link.Linkable {
                     {
                       effect: "allow",
                       actions: ["appsync:*"],
-                      resources: ["*"],
-                    },
-                    {
-                      effect: "allow",
-                      actions: ["iot:*"],
                       resources: ["*"],
                     },
                     {
@@ -2259,9 +2315,10 @@ export class Function extends Component implements Link.Linkable {
 
     function createUrl() {
       return url.apply((url) => {
-        if (url === undefined) return;
+        if (url === undefined) return output(undefined);
 
-        return new lambda.FunctionUrl(
+        // create the function url
+        const fnUrl = new lambda.FunctionUrl(
           `${name}Url`,
           {
             functionName: fn.name,
@@ -2273,6 +2330,43 @@ export class Function extends Component implements Link.Linkable {
           },
           { parent },
         );
+        if (!url.route) return fnUrl.functionUrl;
+
+        // add router route
+        const routeNamespace = crypto
+          .createHash("md5")
+          .update(`${$app.name}-${$app.stage}-${name}`)
+          .digest("hex")
+          .substring(0, 4);
+        new KvKeys(
+          `${name}RouteKey`,
+          {
+            store: url.route.routerKvStoreArn,
+            namespace: routeNamespace,
+            entries: fnUrl.functionUrl.apply((fnUrl) => ({
+              metadata: JSON.stringify({
+                host: new URL(fnUrl).host,
+              }),
+            })),
+            purge: false,
+          },
+          { parent },
+        );
+        new KvRoutesUpdate(
+          `${name}RoutesUpdate`,
+          {
+            store: url.route.routerKvStoreArn,
+            namespace: url.route.routerKvNamespace,
+            key: "routes",
+            entry: url.route.apply((route) =>
+              ["url", routeNamespace, route.hostPattern, route.pathPrefix].join(
+                ",",
+              ),
+            ),
+          },
+          { parent },
+        );
+        return url.route.routerUrl;
       });
     }
 
@@ -2327,13 +2421,13 @@ export class Function extends Component implements Link.Linkable {
    * The Lambda function URL if `url` is enabled.
    */
   public get url() {
-    return this.fnUrl.apply((url) => {
+    return this.urlEndpoint.apply((url) => {
       if (!url) {
         throw new VisibleError(
           `Function URL is not enabled. Enable it with "url: true".`,
         );
       }
-      return url.functionUrl;
+      return url;
     });
   }
 
@@ -2432,7 +2526,7 @@ export class Function extends Component implements Link.Linkable {
     return {
       properties: {
         name: this.name,
-        url: this.fnUrl.apply((url) => url?.functionUrl ?? output(undefined)),
+        url: this.urlEndpoint,
       },
       include: [
         permission({

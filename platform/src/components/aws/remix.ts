@@ -1,10 +1,9 @@
-import fs, { readFileSync } from "fs";
+import fs from "fs";
 import path from "path";
 import { ComponentResourceOptions, Output, all } from "@pulumi/pulumi";
 import type { Input } from "../input.js";
 import { VisibleError } from "../error.js";
-import { SsrSite } from "./ssr-site.js";
-import { SsrSiteArgs } from "./ssr-site.js";
+import { Plan, SsrSite, SsrSiteArgs } from "./ssr-site.js";
 
 export interface RemixArgs extends SsrSiteArgs {
   /**
@@ -188,6 +187,78 @@ export interface RemixArgs extends SsrSiteArgs {
    */
   domain?: SsrSiteArgs["domain"];
   /**
+   * Serve your Remix app through a `Router` component instead of a standalone CloudFront
+   * distribution.
+   *
+   * Let's say you have a Router component.
+   *
+   * ```ts title="sst.config.ts"
+   * const router = new sst.aws.Router("Router", {
+   *   domain: "*.example.com",
+   * });
+   * ```
+   *
+   * You can then match a pattern and route to your app based on:
+   *
+   * - A path like `/docs`
+   * - A domain pattern like `docs.example.com`
+   * - A combined pattern like `dev.example.com/docs`
+   *
+   * For example, to match a path.
+   *
+   * ```ts title="sst.config.ts"
+   * {
+   *   route: {
+   *     router,
+   *     path: "/docs",
+   *   },
+   * }
+   * ```
+   *
+   * Or match a domain.
+   *
+   * ```ts title="sst.config.ts"
+   * {
+   *   route: {
+   *     router,
+   *     domain: "docs.example.com",
+   *   },
+   * }
+   * ```
+   *
+   * Route by both domain and path:
+   *
+   * ```ts title="sst.config.ts"
+   * {
+   *   route: {
+   *     router,
+   *     domain: "dev.example.com",
+   *     path: "/docs",
+   *   },
+   * }
+   * ```
+   *
+   * If you are routing to a path like `/docs`, you must configure the
+   * base path in your Remix app. The base path must match the path in your
+   * route prop.
+   *
+   * :::caution
+   * If routing to a path, you need to configure that as the base path in your
+   * Remix app as well.
+   * :::
+   *
+   * For example, if you are routing `/docs` to a Remix app, you need to set
+   * the `base` property in your `vite.config.ts`.
+   *
+   * ```js {3} title="vite.config.ts"
+   * export default defineConfig({
+   *   plugins: [...],
+   *   base: '/docs/'
+   * });
+   * ```
+   */
+  route?: SsrSiteArgs["route"];
+  /**
    * The command used internally to build your Remix app.
    *
    * @default `"npm run build"`
@@ -324,13 +395,13 @@ export class Remix extends SsrSite {
     super(__pulumiType, name, args, opts);
   }
 
-  protected normalizeBuildCommand() { }
+  protected normalizeBuildCommand() {}
 
   protected buildPlan(
     outputPath: Output<string>,
     _name: string,
     args: RemixArgs,
-  ) {
+  ): Output<Plan> {
     return all([outputPath, args.buildDirectory]).apply(
       async ([outputPath, buildDirectory]) => {
         // The path for all files that need to be in the "/" directory (static assets)
@@ -353,10 +424,9 @@ export class Remix extends SsrSite {
           );
         }
 
-        const basepath = readFileSync(
-          path.join(outputPath, "vite.config.ts"),
-          "utf-8",
-        ).match(/base: ['"](.*)['"]/)?.[1];
+        const basepath = fs
+          .readFileSync(path.join(outputPath, "vite.config.ts"), "utf-8")
+          .match(/base: ['"](.*)['"]/)?.[1];
 
         return {
           base: basepath,
@@ -396,7 +466,9 @@ export class Remix extends SsrSite {
               },
             };
           } catch (e) {
-            throw new VisibleError(`Could not load Vite configuration from "${file}". Check that your Remix project uses Vite and the file exists.`);
+            throw new VisibleError(
+              `Could not load Vite configuration from "${file}". Check that your Remix project uses Vite and the file exists.`,
+            );
           }
         }
 

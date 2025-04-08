@@ -1,8 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { ComponentResourceOptions, Output } from "@pulumi/pulumi";
-import { SsrSiteArgs } from "./ssr-site.js";
-import { SsrSite } from "./ssr-site.js";
+import { Plan, SsrSite, SsrSiteArgs } from "./ssr-site.js";
 
 export interface SvelteKitArgs extends SsrSiteArgs {
   /**
@@ -186,6 +185,82 @@ export interface SvelteKitArgs extends SsrSiteArgs {
    */
   domain?: SsrSiteArgs["domain"];
   /**
+   * Serve your SvelteKit app through a `Router` component instead of a standalone CloudFront
+   * distribution.
+   *
+   * Let's say you have a Router component.
+   *
+   * ```ts title="sst.config.ts"
+   * const router = new sst.aws.Router("Router", {
+   *   domain: "*.example.com",
+   * });
+   * ```
+   *
+   * You can then match a pattern and route to your app based on:
+   *
+   * - A path like `/docs`
+   * - A domain pattern like `docs.example.com`
+   * - A combined pattern like `dev.example.com/docs`
+   *
+   * For example, to match a path.
+   *
+   * ```ts title="sst.config.ts"
+   * {
+   *   route: {
+   *     router,
+   *     path: "/docs",
+   *   },
+   * }
+   * ```
+   *
+   * Or match a domain.
+   *
+   * ```ts title="sst.config.ts"
+   * {
+   *   route: {
+   *     router,
+   *     domain: "docs.example.com",
+   *   },
+   * }
+   * ```
+   *
+   * Route by both domain and path:
+   *
+   * ```ts title="sst.config.ts"
+   * {
+   *   route: {
+   *     router,
+   *     domain: "dev.example.com",
+   *     path: "/docs",
+   *   },
+   * }
+   * ```
+   *
+   * If you are routing to a path like `/docs`, you must configure the
+   * base path in your SvelteKit app. The base path must match the path in your
+   * route prop.
+   *
+   * :::caution
+   * If routing to a path, you need to configure that as the base path in your
+   * SvelteKit app as well.
+   * :::
+   *
+   * For example, if you are routing `/docs` to a SvelteKit app, you need to set
+   * [`base`](https://kit.svelte.dev/docs/configuration#paths)
+   * to `/docs` in your `svelte.config.js` without a trailing slash.
+   *
+   * ```js {4} title="svelte.config.js"
+   * export default {
+   *   kit: {
+   *     paths: {
+   *       base: '/docs'
+   *     }
+   *   }
+   * };
+   * ```
+   */
+  route?: SsrSiteArgs["route"];
+  /**
    * The command used internally to build your SvelteKit app.
    *
    * @default `"npm run build"`
@@ -314,9 +389,9 @@ export class SvelteKit extends SsrSite {
     super(__pulumiType, name, args, opts);
   }
 
-  protected normalizeBuildCommand() { }
+  protected normalizeBuildCommand() {}
 
-  protected buildPlan(outputPath: Output<string>) {
+  protected buildPlan(outputPath: Output<string>): Output<Plan> {
     return outputPath.apply((outputPath) => {
       const serverOutputPath = path.join(
         outputPath,
@@ -334,7 +409,7 @@ export class SvelteKit extends SsrSite {
         if (appDir && appPath && appPath.endsWith(appDir)) {
           basepath = appPath.substring(0, appPath.length - appDir.length);
         }
-      } catch (e) { }
+      } catch (e) {}
 
       return {
         base: basepath,
