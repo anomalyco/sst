@@ -463,6 +463,12 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
    */
   vpc?: FunctionArgs["vpc"];
   /**
+   *  Specify the HTTP version(s) that you want viewers to use to communicate with CloudFront. The default value for new web distributions is http2.
+   *  Viewers that don't support HTTP/2 automatically use an earlier HTTP version. (http1.1 | http2 | http3 | http2and3)
+   *  [Values](https://docs.aws.amazon.com/cloudfront/latest/APIReference/API_DistributionConfig.html#cloudfront-Type-DistributionConfig-HttpVersion)
+   */
+  httpVersion?: Input<"http1.1" | "http2" | "http3" | "http2and3">;
+  /**
    * @deprecated The `route` prop is now the recommended way to use the `Router` component
    * to serve your site. Setting `route` will not create a standalone CloudFront
    * distribution.
@@ -691,6 +697,7 @@ async function handler(event) {
           {
             comment: `${name} app`,
             domain: args.domain,
+            httpVersion: args.httpVersion,
             origins: [
               {
                 originId: "default",
