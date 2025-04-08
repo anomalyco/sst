@@ -156,6 +156,8 @@ func (m *footer) Update(msg any) {
 	switch msg := msg.(type) {
 	case *spinnerTick:
 		m.spinner++
+	case *project.CancelledEvent:
+		m.cancelled = true
 	case *project.StackCommandEvent:
 		m.Reset()
 		m.started = true
@@ -296,10 +298,10 @@ func (m *footer) View(width int) string {
 			label = "Deploying"
 		}
 		if m.cancelled {
-			label = "Cancelling, waiting for pending operations to complete"
+			label = "Cancelling  Waiting for pending operations to complete. Press ctrl+c again to force cancel."
 		}
 	}
-	if m.skipped > 0 {
+	if m.skipped > 0 && !m.cancelled {
 		label = fmt.Sprintf("%-11s", label)
 		label += TEXT_DIM.Render(fmt.Sprintf(" %d skipped", m.skipped))
 	}

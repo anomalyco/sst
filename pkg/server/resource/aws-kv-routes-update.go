@@ -13,6 +13,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudfrontkeyvaluestore/types"
 )
 
+const (
+	chunkSize = 1000
+)
+
 type KvRoutesUpdate struct {
 	*AwsResource
 }
@@ -39,27 +43,42 @@ func (r *KvRoutesUpdate) Create(input *KvRoutesUpdateInputs, output *CreateResul
 	}
 	client := cloudfrontkeyvaluestore.NewFromConfig(cfg)
 
-	// Get all routes
-	fullKey := input.Namespace + ":" + input.Key
-	existingRoutes, etag, err := r.getRoutesWithEtag(client, input.Store, fullKey)
+	// get etag
+	etag, err := r.getEtag(client, input.Store)
 	if err != nil {
 		return err
 	}
-	
-	// Append route if not exists
-	if !existsRoute(existingRoutes, input.Entry) {
-		routes := append(existingRoutes, input.Entry)
-		err = r.setRoutes(client, input.Store, etag, fullKey, routes)
-		// retry if etag pre-condition failed
-		if err != nil {
-			var preconditionFailedErr *types.ValidationException
-			if errors.As(err, &preconditionFailedErr) && preconditionFailedErr.Message != nil && strings.Contains(*preconditionFailedErr.Message, "Pre-Condition failed") {
-				// sleep for a random time between 100 and 500ms
-				time.Sleep(time.Duration(rand.Intn(400)+100) * time.Millisecond)
-				return r.Create(input, output)
-			}
-			return err
+
+	// get routes
+	fullKey := input.Namespace + ":" + input.Key
+	existingRoutes, chunkNum, err := r.getRoutes(client, input.Store, fullKey)
+	if err != nil {
+		// check etag to see if this happened b/c routes were updated in the meantime
+		newEtag, err := r.getEtag(client, input.Store)
+		if err == nil && newEtag != etag {
+			// sleep for a random time between 100 and 500ms
+			time.Sleep(time.Duration(rand.Intn(400)+100) * time.Millisecond)
+			return r.Create(input, output)
 		}
+		return err
+	}
+	
+	// append route if not exists
+	routes := existingRoutes
+	if !existsRoute(routes, input.Entry) {
+		routes = append(routes, input.Entry)
+	}
+
+	// set routes
+	err = r.setRoutes(client, input.Store, etag, fullKey, routes, chunkNum)
+	if err != nil {
+		var preconditionFailedErr *types.ValidationException
+		if errors.As(err, &preconditionFailedErr) && preconditionFailedErr.Message != nil && strings.Contains(*preconditionFailedErr.Message, "Pre-Condition failed") {
+			// sleep for a random time between 100 and 500ms
+			time.Sleep(time.Duration(rand.Intn(400)+100) * time.Millisecond)
+			return r.Create(input, output)
+		}
+		return err
 	}
 	
 	*output = CreateResult[KvRoutesUpdateOutputs]{
@@ -114,10 +133,23 @@ func (r *KvRoutesUpdate) Update(input *UpdateInput[KvRoutesUpdateInputs, KvRoute
 	}
 	client := cloudfrontkeyvaluestore.NewFromConfig(cfg)
 
-	// Get all routes
-	fullKey := input.News.Namespace + ":" + input.News.Key
-	existingEntries, etag, err := r.getRoutesWithEtag(client, input.News.Store, fullKey)
+	// get etag
+	etag, err := r.getEtag(client, input.News.Store)
 	if err != nil {
+		return err
+	}
+
+	// get routes
+	fullKey := input.News.Namespace + ":" + input.News.Key
+	existingEntries, chunkNum, err := r.getRoutes(client, input.News.Store, fullKey)
+	if err != nil {
+		// check etag to see if this happened b/c routes were updated in the meantime
+		newEtag, err := r.getEtag(client, input.News.Store)
+		if err == nil && newEtag != etag {
+			// sleep for a random time between 100 and 500ms
+			time.Sleep(time.Duration(rand.Intn(400)+100) * time.Millisecond)
+			return r.Update(input, output)
+		}
 		return err
 	}
 	
@@ -128,7 +160,7 @@ func (r *KvRoutesUpdate) Update(input *UpdateInput[KvRoutesUpdateInputs, KvRoute
 	}
 	
 	// Save routes
-	err = r.setRoutes(client, input.News.Store, etag, fullKey, entries)
+	err = r.setRoutes(client, input.News.Store, etag, fullKey, entries, chunkNum)
 	if err != nil {
 		var preconditionFailedErr *types.ValidationException
 		if errors.As(err, &preconditionFailedErr) && preconditionFailedErr.Message != nil && strings.Contains(*preconditionFailedErr.Message, "Pre-Condition failed") {
@@ -158,25 +190,39 @@ func (r *KvRoutesUpdate) Delete(input *DeleteInput[KvRoutesUpdateOutputs], outpu
 	}
 	client := cloudfrontkeyvaluestore.NewFromConfig(cfg)
 
-	// Get all routes
-	fullKey := input.Outs.Namespace + ":" + input.Outs.Key
-	existingRoutes, etag, err := r.getRoutesWithEtag(client, input.Outs.Store, fullKey)
+	// get etag
+	etag, err := r.getEtag(client, input.Outs.Store)
 	if err != nil {
+		return err
+	}
+
+	// get routes
+	fullKey := input.Outs.Namespace + ":" + input.Outs.Key
+	existingRoutes, chunkNum, err := r.getRoutes(client, input.Outs.Store, fullKey)
+	if err != nil {
+		// check etag to see if this happened b/c routes were updated in the meantime
+		newEtag, err := r.getEtag(client, input.Outs.Store)
+		if err == nil && newEtag != etag {
+			// sleep for a random time between 100 and 500ms
+			time.Sleep(time.Duration(rand.Intn(400)+100) * time.Millisecond)
+			return r.Delete(input, output)
+		}
 		return err
 	}
 
 	// Remove route
 	routes := removeRoute(existingRoutes, input.Outs.Entry)
 
-	// Route not found
-	if len(routes) == len(existingRoutes) {
-		return nil
-	}
+	// Route not found - DO NOT do optimizations like this b/c existingRoutes might not
+	// contain the latest data. Etag might have changed from when etag was first retrieved.
+	//if len(routes) == len(existingRoutes) {
+	//	return nil
+	//}
 
 	if len(routes) == 0 {
-		err = r.deleteKey(client, input.Outs.Store, etag, fullKey)
+		err = r.deleteKey(client, input.Outs.Store, etag, fullKey, chunkNum)
 	} else {
-		err = r.setRoutes(client, input.Outs.Store, etag, fullKey, routes)
+		err = r.setRoutes(client, input.Outs.Store, etag, fullKey, routes, chunkNum)
 	}
 	if err != nil {
 		var preconditionFailedErr *types.ValidationException
@@ -191,17 +237,19 @@ func (r *KvRoutesUpdate) Delete(input *DeleteInput[KvRoutesUpdateOutputs], outpu
 	return nil
 }
 
-func (r *KvRoutesUpdate) getRoutesWithEtag(client *cloudfrontkeyvaluestore.Client, storeARN, key string) ([]string, string, error) {
-	// get etag
+func (r *KvRoutesUpdate) getEtag(client *cloudfrontkeyvaluestore.Client, storeARN string) (string, error) {
 	descResp, err := client.DescribeKeyValueStore(r.context, &cloudfrontkeyvaluestore.DescribeKeyValueStoreInput{
 		KvsARN: aws.String(storeARN),
 	})
 	if err != nil {
-		return nil, "", err
+		return "", err
 	}
-	etag := *descResp.ETag
+	return *descResp.ETag, nil
+}
 
-	// get routes
+func (r *KvRoutesUpdate) getRoutes(client *cloudfrontkeyvaluestore.Client, storeARN, key string) ([]string, int, error) {
+	chunkNum := 1
+
 	getResp, err := client.GetKey(r.context, &cloudfrontkeyvaluestore.GetKeyInput{
 		KvsARN: aws.String(storeARN),
 		Key:    aws.String(key),
@@ -211,63 +259,158 @@ func (r *KvRoutesUpdate) getRoutesWithEtag(client *cloudfrontkeyvaluestore.Clien
 		var notFoundErr *types.ResourceNotFoundException
 		if errors.As(err, &notFoundErr) {
 			// Key not found, return empty entries
-			return []string{}, etag, nil
+			return []string{}, chunkNum, nil
 		}
 		// other error, propagate
-		return nil, etag, err
+		return nil, chunkNum, err
 	}
 	
 	if getResp.Value == nil {
 		// no value
-		return []string{}, etag, nil
+		return []string{}, chunkNum, nil
+	}
+	
+	entriesData := *getResp.Value
+
+	// Check if the data is chunked by trying to parse a metadata object first
+	var metadata map[string]int
+	if err := json.Unmarshal([]byte(*getResp.Value), &metadata); err == nil {
+		if parts, ok := metadata["parts"]; ok && parts > 0 {
+			chunkNum = parts
+
+			// This is chunked data, we need to retrieve and concatenate all chunks
+			entriesData = ""
+			
+			// Retrieve all chunks
+			for i := 0; i < parts; i++ {
+				chunkResp, err := client.GetKey(r.context, &cloudfrontkeyvaluestore.GetKeyInput{
+					KvsARN: aws.String(storeARN),
+					Key:    aws.String(fmt.Sprintf("%s:%d", key, i)),
+				})
+				
+				if err != nil {
+					return nil, chunkNum, fmt.Errorf("failed to retrieve chunk %d: %w", i, err)
+				}
+				
+				if chunkResp.Value == nil {
+					return nil, chunkNum, fmt.Errorf("chunk %d value is missing", i)
+				}
+				
+				entriesData += *chunkResp.Value
+			}
+		}
 	}
 	
 	// Parse routes array
 	var entries []string
-	if err := json.Unmarshal([]byte(*getResp.Value), &entries); err != nil {
-		return nil, etag, fmt.Errorf("failed to unmarshal existing entries: %w", err)
+	if err := json.Unmarshal([]byte(entriesData), &entries); err != nil {
+		return nil, chunkNum, fmt.Errorf("failed to unmarshal existing entries: %w", err)
 	}
 	
-	return entries, etag, nil
+	return entries, chunkNum, nil
 }
 
-func (r *KvRoutesUpdate) setRoutes(client *cloudfrontkeyvaluestore.Client, storeARN string, etag string, key string, entries []string) error {
+func (r *KvRoutesUpdate) setRoutes(client *cloudfrontkeyvaluestore.Client, storeARN string, etag string, key string, entries []string, oldChunkNum int) error {
+	newChunkNum := 1
+	puts := []types.PutKeyRequestListItem{}
+	deletes := []types.DeleteKeyRequestListItem{}
+
+	// Build new entries
 	entriesJSON, err := json.Marshal(entries)
 	if err != nil {
 		return fmt.Errorf("failed to marshal entries: %w", err)
 	}
 	entriesStr := string(entriesJSON)
 
+	// Check if the string is longer than chunkSize
+	if len(entriesStr) > chunkSize {
+		// Calculate number of chunks needed
+		newChunkNum= (len(entriesStr) + chunkSize - 1) / chunkSize // Ceiling division
+		
+		// Create a metadata entry to store the number of parts
+		metadataMap := map[string]int{"parts": newChunkNum}
+		metadataJSON, err := json.Marshal(metadataMap)
+		if err != nil {
+			return fmt.Errorf("failed to marshal metadata: %w", err)
+		}
+		
+		// Create multiple puts for each chunk
+		puts = append(puts, types.PutKeyRequestListItem{
+			Key:   aws.String(key),
+			Value: aws.String(string(metadataJSON)),
+		})
+		
+		// Split the string into chunks
+		for i := 0; i < newChunkNum; i++ {
+			start := i * chunkSize
+			end := start + chunkSize
+			if end > len(entriesStr) {
+				end = len(entriesStr)
+			}
+			
+			puts = append(puts, types.PutKeyRequestListItem{
+				Key:   aws.String(fmt.Sprintf("%s:%d", key, i)),
+				Value: aws.String(entriesStr[start:end]),
+			})
+		}
+	} else {
+		// For smaller strings, use the original approach
+		puts = append(puts, types.PutKeyRequestListItem{
+			Key:   aws.String(key),
+			Value: aws.String(entriesStr),
+		})
+	}
+
+	// Delete extra chunks if previous chunk # is greater than new chunk #
+	if oldChunkNum > newChunkNum {
+		for i := newChunkNum; i < oldChunkNum; i++ {
+			deletes = append(deletes, types.DeleteKeyRequestListItem{
+				Key: aws.String(fmt.Sprintf("%s:%d", key, i)),
+			})
+		}
+
+		if newChunkNum == 1 {
+			deletes = append(deletes, types.DeleteKeyRequestListItem{
+				Key: aws.String(fmt.Sprintf("%s:0", key)),
+			})
+		}
+	}
+
 	// update
 	_, err = client.UpdateKeys(r.context, &cloudfrontkeyvaluestore.UpdateKeysInput{
 		KvsARN:  aws.String(storeARN),
 		IfMatch: aws.String(etag),
-		Puts: []types.PutKeyRequestListItem{
-			{
-				Key:   aws.String(key),
-				Value: aws.String(entriesStr),
-			},
-		},
+		Puts:    puts,
+		Deletes: deletes,
 	})
 	if err != nil {
 		return err
 	}
+
 	return nil
 }
 
-func (r *KvRoutesUpdate) deleteKey(client *cloudfrontkeyvaluestore.Client, storeARN, etag string, key string) error {
-	// delete
+func (r *KvRoutesUpdate) deleteKey(client *cloudfrontkeyvaluestore.Client, storeARN, etag string, key string, oldChunkNum int) error {
+	deletes := []types.DeleteKeyRequestListItem{}
+	deletes = append(deletes, types.DeleteKeyRequestListItem{
+		Key: aws.String(key),
+	})
+	
+	// Add all chunk keys to delete
+	if oldChunkNum > 1 {
+		for i := 0; i < oldChunkNum; i++ {
+			deletes = append(deletes, types.DeleteKeyRequestListItem{
+				Key: aws.String(fmt.Sprintf("%s:%d", key, i)),
+			})
+		}
+	}
+	
+	// Not chunked or key not found, proceed with normal delete
 	_, err := client.UpdateKeys(r.context, &cloudfrontkeyvaluestore.UpdateKeysInput{
 		KvsARN:  aws.String(storeARN),
 		IfMatch: aws.String(etag),
-		Deletes: []types.DeleteKeyRequestListItem{
-			{
-				Key: aws.String(key),
-			},
-		},
+		Deletes: deletes,
 	})
-
-	// retry if etag pre-condition failed
 	if err != nil {
 		return err
 	}

@@ -198,6 +198,38 @@ export interface TanStackStartArgs extends SsrSiteArgs {
    */
   domain?: SsrSiteArgs["domain"];
   /**
+   * Serve your TanStack Start app through a `Router` component instead of a standalone CloudFront
+   * distribution.
+   *
+   * Let's say you have a Router component.
+   *
+   * ```ts title="sst.config.ts"
+   * const router = new sst.aws.Router("Router", {
+   *   domain: "*.example.com",
+   * });
+   * ```
+   *
+   * You can then match a pattern and route to your app based on:
+   *
+   * - A domain pattern like `docs.example.com`
+   *
+   * For example, to match a domain.
+   *
+   * ```ts title="sst.config.ts"
+   * {
+   *   route: {
+   *     router,
+   *     domain: "docs.example.com",
+   *   },
+   * }
+   * ```
+   *
+   * :::caution
+   * TanStack Start can only be routed from the root "/" and does not currently support base paths.
+   * :::
+   */
+  route?: SsrSiteArgs["route"];
+  /**
    * The command used internally to build your TanStack Start app.
    *
    * @default `"npm run build"`
@@ -347,11 +379,27 @@ export class TanStackStart extends SsrSite {
 
       // If basepath is configured, nitro.mjs will have a line that looks like this:
       // return createRouter$2({ routeTree: Nr, defaultPreload: "intent", defaultErrorComponent: ce, defaultNotFoundComponent: () => jsx(de, {}), scrollRestoration: true, basepath: "/tan" });
-      const serverNitroChunk = fs.readFileSync(
-        path.join(serverOutputPath, "chunks", "nitro", "nitro.mjs"),
-        "utf-8",
-      );
-      const basepath = serverNitroChunk.match(/basepath: "(.*)"/)?.[1];
+      let basepath;
+      // TanStack Start currently doesn't support basepaths.
+      //try {
+      //  const serverNitroChunk = fs.readFileSync(
+      //    path.join(serverOutputPath, "chunks", "nitro", "nitro.mjs"),
+      //    "utf-8",
+      //  );
+      //  basepath = serverNitroChunk.match(/basepath: "(.*)"/)?.[1];
+      //} catch (e) {}
+
+      // Remove the .output/public/_server directory from the assets
+      // b/c all `_server` requests should go to the server function. If this folder is
+      // not removed, it will create an s3 route that conflicts with the `_server` route.
+      fs.rmSync(path.join(outputPath, ".output", "public", "_server"), {
+        recursive: true,
+        force: true,
+      });
+      fs.rmSync(path.join(outputPath, ".output", "public", "api"), {
+        recursive: true,
+        force: true,
+      });
 
       return {
         base: basepath,

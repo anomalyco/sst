@@ -225,7 +225,7 @@ func CmdMosaic(c *cli.Cli) error {
 
 	mode := c.String("mode")
 	if mode == "" {
-		multi, err := multiplexer.New(c.Context)
+		multi, err := multiplexer.New()
 		if err != nil {
 			return err
 		}
@@ -236,11 +236,12 @@ func CmdMosaic(c *cli.Cli) error {
 		)
 		multi.AddProcess("deploy", []string{currentExecutable, "ui", "--filter=sst"}, "⑆", "SST", "", false, true, append(multiEnv, "SST_LOG="+p.PathLog("ui-deploy"))...)
 		multi.AddProcess("function", []string{currentExecutable, "ui", "--filter=function"}, "λ", "Functions", "", false, true, append(multiEnv, "SST_LOG="+p.PathLog("ui-function"))...)
-		wg.Go(func() error {
-			defer c.Cancel()
+		defer func() {
+			multi.Exit()
+		}()
+		go func() {
 			multi.Start()
-			return nil
-		})
+		}()
 		wg.Go(func() error {
 			evts := bus.Subscribe(&project.CompleteEvent{})
 			defer c.Cancel()
@@ -339,12 +340,6 @@ func CmdMosaic(c *cli.Cli) error {
 			}
 		})
 	}
-
-	wg.Go(func() error {
-		<-c.Context.Done()
-		fmt.Println("Cleaning up...")
-		return nil
-	})
 
 	err = wg.Wait()
 	slog.Info("done mosaic", "err", err)

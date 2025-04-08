@@ -113,7 +113,7 @@ export class D1 extends Component implements Link.Linkable {
   /**
    * The generated ID of the D1 database.
    */
-  public get id() {
+  public get databaseId() {
     return this.database.id;
   }
 

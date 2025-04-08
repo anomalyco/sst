@@ -25,6 +25,8 @@ type StackInput struct {
 
 type ConcurrentUpdateEvent struct{}
 
+type CancelledEvent struct{}
+
 type BuildSuccessEvent struct {
 	Files []string
 	Hash  string

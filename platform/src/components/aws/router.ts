@@ -17,10 +17,8 @@ import { OriginAccessControl } from "./providers/origin-access-control";
 import { VisibleError } from "../error";
 import { RouterUrlRoute } from "./router-url-route";
 import { RouterBucketRoute } from "./router-bucket-route";
-import { RouterSiteRoute } from "./router-site-route";
-import { SsrSite } from "./ssr-site";
-import { StaticSite } from "./static-site";
 import { DurationSeconds } from "../duration";
+import path from "path";
 
 interface InlineUrlRouteArgs extends InlineBaseRouteArgs {
   /**
@@ -507,8 +505,8 @@ export interface RouterArgs {
   /**
    * A map of routes to their destinations.
    *
-   * @deprecated Use the `route`, `routeBucket`, and `routeSite` functions instead. These
-   * functions provide a more flexible API for routing to URLs, buckets, and sites. They
+   * @deprecated Use the `route` and `routeBucket` functions instead. These
+   * functions provide a more flexible API for routing to URLs and buckets. They
    * also allow routing based on both domain and path patterns.
    *
    * The _key_ is the route path and the _value_ can be:
@@ -861,7 +859,7 @@ interface RouterRef {
  *
  * ```ts title="sst.config.ts"
  * const router = new sst.aws.Router("MyRouter");
- * router.route("/*", "https://some-external-service.com");
+ * router.route("/", "https://some-external-service.com");
  * ```
  *
  * #### Add a custom domain
@@ -882,7 +880,7 @@ interface RouterRef {
  *
  * const router = new sst.aws.Router("MyRouter", {
  * });
- * router.route("/*", myFunction.url);
+ * router.route("/", myFunction.url);
  * ```
  *
  * #### Route to a bucket
@@ -893,171 +891,40 @@ interface RouterRef {
  * });
  *
  * const router = new sst.aws.Router("MyRouter");
- * router.routeBucket("/files/*", myBucket);
+ * router.routeBucket("/files", myBucket);
  * ```
  *
  * Make sure to allow CloudFront access to the bucket by setting the `access` prop on the bucket.
  *
  * #### Route to a frontend
  *
- * ```ts title="sst.config.ts" "cdn: false"
- * const site = new sst.aws.Nextjs("Site", { cdn: false });
- *
+ * ```ts title="sst.config.ts"
  * const router = new sst.aws.Router("MyRouter");
- * router.routeSite("/*", site);
- * ```
  *
- * We are disabling the built-in CDN of the Next.js app because we want to use the
- * router to serve the app.
+ * new sst.aws.Nextjs("Site", {
+ *   route: {
+ *     router,
+ *   },
+ * });
+ * ```
  *
  * #### Route to a frontend on a subpath
  *
- * To serve your frontend from a subpath, you need to:
+ * ```ts title="sst.config.ts"
+ * const router = new sst.aws.Router("MyRouter");
  *
- * 1. Configure the base path in your frontend framework.
+ * new sst.aws.Nextjs("Site", {
+ *   route: {
+ *     router,
+ *     path: "/docs"
+ *   },
+ * });
+ * ```
  *
- *    <Tabs>
- *      <TabItem label="Next.js">
- *      Set the [`basePath`](https://nextjs.org/docs/app/api-reference/config/next-config-js/basePath) in your `next.config.js`.
- *
- *      ```js {2} title="next.config.js"
- *      export default defineConfig({
- *        basePath: "/docs"
- *      });
- *      ```
- *      </TabItem>
- *      <TabItem label="Astro">
- *      Set the `base` option in your `astro.config.mjs`.
- *
- *      ```js {3} title="astro.config.mjs"
- *      export default defineConfig({
- *        adapter: sst(),
- *        base: "/docs"
- *      });
- *      ```
- *      </TabItem>
- *      <TabItem label="Remix">
- *      Set the `base` option in your `vite.config.ts` with the trailing slash.
- *
- *      ```js {3} title="vite.config.ts"
- *      export default defineConfig({
- *        plugins: [...],
- *        base: "/docs/"
- *      });
- *      ```
- *      </TabItem>
- *      <TabItem label="SvelteKit">
- *      Set the `base` option in your `svelte.config.js` without the trailing slash.
- *
- *      ```js {4} title="svelte.config.js"
- *      export default defineConfig({
- *        kit: {
- *          paths: {
- *            base: "/docs"
- *          }
- *        }
- *      });
- *      ```
- *      </TabItem>
- *      <TabItem label="React">
- *      Set the `base` option in your `vite.config.ts` with the trailing slash.
- *
- *      ```js {3} title="vite.config.ts"
- *      export default defineConfig({
- *        plugins: [tailwindcss(), reactRouter(), tsconfigPaths()],
- *        base: "/docs/"
- *      });
- *      ```
- *      </TabItem>
- *      <TabItem label="Nuxt">
- *      Set the `baseURL` option in your `nuxt.config.ts` without a trailing slash.
- *
- *      ```js {3} title="nuxt.config.ts"
- *      export default defineConfig({
- *        app: {
- *          baseURL: "/docs"
- *        }
- *      });
- *      ```
- *      </TabItem>
- *      <TabItem label="SolidStart">
- *      Set the `baseURL` option in your `app.config.ts` without a trailing slash.
- *
- *      ```js {3} title="app.config.ts"
- *      export default defineConfig({
- *        server: {
- *          baseURL: "/docs"
- *        }
- *      });
- *      ```
- *      </TabItem>
- *      <TabItem label="Analog">
- *      Set the `base` and `apiPrefix` options in your `vite.config.ts`. The `apiPrefix` value should not begin with a slash.
- *
- *      ```js {4,7} title="vite.config.ts"
- *      export default defineConfig(({ mode }) => ({
- *        plugins: [
- *          analog({
- *            apiPrefix: "docs/api"
- *          })
- *        ],
- *        base: "/docs"
- *      }));
- *      ```
- *      </TabItem>
- *    </Tabs>
- *
- * 2. Disable the built-in CDN of the frontend.
- *
- *    <Tabs>
- *      <TabItem label="Next.js">
- *      ```ts title="sst.config.ts" "cdn: false"
- *      const site = new sst.aws.Nextjs("Site", { cdn: false });
- *      ```
- *      </TabItem>
- *      <TabItem label="Astro">
- *      ```ts title="sst.config.ts" "cdn: false"
- *      const site = new sst.aws.Astro("Site", { cdn: false });
- *      ```
- *      </TabItem>
- *      <TabItem label="Remix">
- *      ```ts title="sst.config.ts" "cdn: false"
- *      const site = new sst.aws.Remix("Site", { cdn: false });
- *      ```
- *      </TabItem>
- *      <TabItem label="SvelteKit">
- *      ```ts title="sst.config.ts" "cdn: false"
- *      const site = new sst.aws.SvelteKit("Site", { cdn: false });
- *      ```
- *      </TabItem>
- *      <TabItem label="React">
- *      ```ts title="sst.config.ts" "cdn: false"
- *      const site = new sst.aws.React("Site", { cdn: false });
- *      ```
- *      </TabItem>
- *      <TabItem label="Nuxt">
- *      ```ts title="sst.config.ts" "cdn: false"
- *      const site = new sst.aws.Nuxt("Site", { cdn: false });
- *      ```
- *      </TabItem>
- *      <TabItem label="SolidStart">
- *      ```ts title="sst.config.ts" "cdn: false"
- *      const site = new sst.aws.SolidStart("Site", { cdn: false });
- *      ```
- *      </TabItem>
- *      <TabItem label="Analog">
- *      ```ts title="sst.config.ts" "cdn: false"
- *      const site = new sst.aws.Analog("Site", { cdn: false });
- *      ```
- *      </TabItem>
- *    </Tabs>
- *
- * 3. Add the site to a Router.
- *
- *    ```ts title="sst.config.ts"
- *    const router = new sst.aws.Router("MyRouter");
- *    router.routeSite("/docs", site);
- *    ```
+ * :::caution
+ * If routing to a path, you need to configure that as the base path in your
+ * frontend app as well.
+ * :::
  */
 export class Router extends Component implements Link.Linkable {
   private constructorName: string;
@@ -1065,7 +932,7 @@ export class Router extends Component implements Link.Linkable {
   private cdn: Output<Cdn>;
   private kvStoreArn?: Output<string>;
   private kvNamespace?: Output<string>;
-  private hasInlineRoutes?: Output<boolean>;
+  private hasInlineRoutes: Output<boolean>;
 
   constructor(
     name: string,
@@ -1337,22 +1204,18 @@ async function handler(event) {
                     pathPattern: path,
                     targetOriginId: path,
                     functionAssociations: [
-                      ...(route.edge?.viewerRequest || route.rewrite
-                        ? [
-                            {
-                              eventType: "viewer-request",
-                              functionArn:
-                                route.edge?.viewerRequest || route.rewrite
-                                  ? createCfRequestFunction(
-                                      path,
-                                      route.edge?.viewerRequest,
-                                      route.rewrite,
-                                      "url" in route,
-                                    ).arn
-                                  : createCfRequestDefaultFunction().arn,
-                            },
-                          ]
-                        : []),
+                      {
+                        eventType: "viewer-request",
+                        functionArn:
+                          route.edge?.viewerRequest || route.rewrite
+                            ? createCfRequestFunction(
+                                path,
+                                route.edge?.viewerRequest,
+                                route.rewrite,
+                                true,
+                              ).arn
+                            : createCfRequestDefaultFunction().arn,
+                      },
                       ...(route.edge?.viewerResponse
                         ? [
                             {
@@ -1398,6 +1261,35 @@ async function handler(event) {
                   behavior: {
                     pathPattern: path,
                     targetOriginId: path,
+                    functionAssociations: [
+                      ...(route.edge?.viewerRequest || route.rewrite
+                        ? [
+                            {
+                              eventType: "viewer-request",
+                              functionArn:
+                                route.edge?.viewerRequest || route.rewrite
+                                  ? createCfRequestFunction(
+                                      path,
+                                      route.edge?.viewerRequest,
+                                      route.rewrite,
+                                      false,
+                                    ).arn
+                                  : createCfRequestDefaultFunction().arn,
+                            },
+                          ]
+                        : []),
+                      ...(route.edge?.viewerResponse
+                        ? [
+                            {
+                              eventType: "viewer-response",
+                              functionArn: createCfResponseFunction(
+                                path,
+                                route.edge.viewerResponse,
+                              ).arn,
+                            },
+                          ]
+                        : []),
+                    ],
                     viewerProtocolPolicy: "redirect-to-https",
                     allowedMethods: ["GET", "HEAD", "OPTIONS"],
                     cachedMethods: ["GET", "HEAD"],
@@ -1518,7 +1410,7 @@ import cf from "cloudfront";
 async function handler(event) {
   ${userInjection}
   ${blockCloudfrontUrlInjection}
-  ${CF_SITE_ROUTER_INJECTION}
+  ${CF_ROUTER_INJECTION}
 
   const routerNS = "${kvNamespace}";
 
@@ -1527,6 +1419,16 @@ async function handler(event) {
     try {
       const v = await cf.kvs().get(routerNS + ":routes");
       routes = JSON.parse(v);
+
+      // handle chunked routes
+      if (routes.parts) {
+        const chunkPromises = [];
+        for (let i = 0; i < routes.parts; i++) {
+          chunkPromises.push(cf.kvs().get(routerNS + ":routes:" + i));
+        }
+        const chunks = await Promise.all(chunkPromises);
+        routes = JSON.parse(chunks.join(""));
+      }
     } catch (e) {}
     return routes;
   }
@@ -1578,16 +1480,11 @@ async function handler(event) {
     const rw = route.metadata.rewrite;
     event.request.uri = event.request.uri.replace(new RegExp(rw.regex), rw.to);
   }
-  if (route.type === "url") {
-    event.request.headers["x-forwarded-host"] = event.request.headers.host;
-    setUrlOrigin(route.metadata.host, route.metadata.origin);
-  }
+  if (route.type === "url") setUrlOrigin(route.metadata.host, route.metadata.origin);
   if (route.type === "bucket") setS3Origin(route.metadata.domain, route.metadata.origin);
   if (route.type === "site") await routeSite(route.routeNs, route.metadata);
   return event.request;
-}
-
-${CF_ROUTER_GLOBAL_INJECTION}`,
+}`,
             },
             { parent: self },
           );
@@ -1697,6 +1594,21 @@ async function handler(event) {
     return all([this.cdn.domainUrl, this.cdn.url]).apply(
       ([domainUrl, url]) => domainUrl ?? url,
     );
+  }
+
+  /** @internal */
+  public get _kvStoreArn() {
+    return this.kvStoreArn;
+  }
+
+  /** @internal */
+  public get _kvNamespace() {
+    return this.kvNamespace;
+  }
+
+  /** @internal */
+  public get _hasInlineRoutes() {
+    return this.hasInlineRoutes;
   }
 
   /**
@@ -1873,78 +1785,13 @@ async function handler(event) {
    * @param pattern The path pattern to match for this route.
    * @param site The frontend or static site to route matching requests to.
    *
-   * @example
-   *
-   * You can add routes to a frontend (like Next.js, Remix, SvelteKit) or a static
-   * site.
-   *
-   * Let's say you have a Next.js app with its built-in CDN disabled.
-   *
-   * ```ts title="sst.config.ts" "cdn: false"
-   * const site = new sst.aws.Nextjs("Site", { cdn: false });
-   * ```
-   *
-   * You can then match a pattern and route to it based on:
-   *
-   * - A path like `/docs`
-   * - A domain pattern like `docs.example.com`
-   * - A combined pattern like `dev.example.com/docs`
-   *
-   * For example, to match a path.
-   *
-   * ```ts title="sst.config.ts"
-   * router.routeSite("/docs", site);
-   * ```
-   *
-   * Or match a domain.
-   *
-   * ```ts title="sst.config.ts"
-   * router.routeSite("docs.example.com/", site);
-   * ```
-   *
-   * Route by both domain and path:
-   *
-   * ```ts title="sst.config.ts"
-   * router.routeSite("dev.example.com/docs", site);
-   * ```
-   *
-   * If you are routing to a path like `/docs`, you must configure the
-   * base path in your frontend's config. The base path must match the path in your
-   * route pattern.
-   *
-   * :::caution
-   * If routing to a path, you need to configure that as the base path in your
-   * frontend as well.
-   * :::
-   *
-   * For example, if you are routing `/docs` to a Next.js app, you need to set
-   * `basePath` to `/docs` in your `next.config.js`.
-   *
-   * ```js title="next.config.js" {2}
-   * export default defineConfig({
-   *   basePath: "/docs"
-   * });
-   * ```
+   * @deprecated The `routeSite` function has been deprecated. Set the `route` on the
+   * site components to route the site through this Router.
    */
-  public routeSite(pattern: Input<string>, site: Input<SsrSite | StaticSite>) {
-    all([pattern, this.hasInlineRoutes]).apply(([pattern, hasInlineRoutes]) => {
-      if (hasInlineRoutes)
-        throw new VisibleError(
-          "Cannot use both `routes` and `.routeSite()` function to add routes.",
-        );
-
-      new RouterSiteRoute(
-        `${this.constructorName}Route${pattern}`,
-        {
-          store: this.kvStoreArn!,
-          routerNamespace: this.kvNamespace!,
-          pattern,
-          site,
-          distributionId: this.distributionID,
-        },
-        { provider: this.constructorOpts.provider },
-      );
-    });
+  public routeSite(pattern: Input<string>, site: any) {
+    throw new VisibleError(
+      `The "routeSite" function has been deprecated. Configure the new "route" prop on the site component to route the site through this Router.`,
+    );
   }
 
   /** @internal */
@@ -2022,74 +1869,13 @@ if (event.request.headers.host.value.includes('cloudfront.net')) {
   };
 }`;
 
-export const CF_ROUTER_GLOBAL_INJECTION = `
-function setUrlOrigin(urlHost, override) {
-  const origin = {
-    domainName: urlHost,
-    customOriginConfig: {
-      port: 443,
-      protocol: "https",
-      sslProtocols: ["TLSv1.2"],
-    },
-    originAccessControlConfig: {
-      enabled: false,
-    }
-  };
-  override = override ?? {};
-  if (override.protocol === "http") {
-    delete origin.customOriginConfig;
-  }
-  if (override.connectionAttempts) {
-    origin.connectionAttempts = override.connectionAttempts;
-  }
-  if (override.timeouts) {
-    origin.timeouts = override.timeouts;
-  }
-  if (override.originAccessControlConfig) {
-    origin.originAccessControlConfig = override.originAccessControlConfig;
-  }
-  cf.updateRequestOrigin(origin);
-}
-
-function setS3Origin(s3Domain, override) {
-  const origin = {
-    domainName: s3Domain,
-    originAccessControlConfig: {
-      enabled: true,
-      signingBehavior: "always",
-      signingProtocol: "sigv4",
-      originType: "s3",
-    }
-  };
-  override = override ?? {};
-  if (override.connectionAttempts) {
-    origin.connectionAttempts = override.connectionAttempts;
-  }
-  if (override.timeouts) {
-    origin.timeouts = override.timeouts;
-  }
-  cf.updateRequestOrigin(origin);
-}`;
-
-export const CF_SITE_ROUTER_INJECTION = `
+export const CF_ROUTER_INJECTION = `
 async function routeSite(kvNamespace, metadata) {
   const baselessUri = metadata.base
     ? event.request.uri.replace(metadata.base, "")
     : event.request.uri;
 
-  // Route to S3 asset routes
-  if (metadata.s3 && metadata.s3.routes) {
-    for (var i=0, l=metadata.s3.routes.length; i<l; i++) {
-      const route = metadata.s3.routes[i];
-      if (baselessUri.startsWith(route)) {
-        event.request.uri = metadata.s3.dir + baselessUri;
-        setS3Origin(metadata.s3.domain);
-        return;
-      }
-    }
-  }
-
-  // Route to S3
+  // Route to S3 files
   try {
     // check using baselessUri b/c files are stored in the root
     const u = decodeURIComponent(baselessUri);
@@ -2102,6 +1888,18 @@ async function routeSite(kvNamespace, metadata) {
     setS3Origin(metadata.s3.domain);
     return;
   } catch (e) {}
+
+  // Route to S3 routes
+  if (metadata.s3 && metadata.s3.routes) {
+    for (var i=0, l=metadata.s3.routes.length; i<l; i++) {
+      const route = metadata.s3.routes[i];
+      if (baselessUri.startsWith(route)) {
+        event.request.uri = metadata.s3.dir + baselessUri;
+        setS3Origin(metadata.s3.domain);
+        return;
+      }
+    }
+  }
 
   // Route to S3 custom 404 (no servers)
   if (metadata.custom404) {
@@ -2226,4 +2024,172 @@ async function routeSite(kvNamespace, metadata) {
     const a = Math.sin(dLat / 2) ** 2 + Math.cos(radLat1) * Math.cos(radLat2) * Math.sin(dLon / 2) ** 2;
     return 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
+}
+
+function setUrlOrigin(urlHost, override) {
+  event.request.headers["x-forwarded-host"] = event.request.headers.host;
+  const origin = {
+    domainName: urlHost,
+    customOriginConfig: {
+      port: 443,
+      protocol: "https",
+      sslProtocols: ["TLSv1.2"],
+    },
+    originAccessControlConfig: {
+      enabled: false,
+    }
+  };
+  override = override ?? {};
+  if (override.protocol === "http") {
+    delete origin.customOriginConfig;
+  }
+  if (override.connectionAttempts) {
+    origin.connectionAttempts = override.connectionAttempts;
+  }
+  if (override.timeouts) {
+    origin.timeouts = override.timeouts;
+  }
+  if (override.originAccessControlConfig) {
+    origin.originAccessControlConfig = override.originAccessControlConfig;
+  }
+  cf.updateRequestOrigin(origin);
+}
+
+function setS3Origin(s3Domain, override) {
+  delete event.request.headers["Cookies"];
+  delete event.request.headers["cookies"];
+  delete event.request.cookies;
+
+  const origin = {
+    domainName: s3Domain,
+    originAccessControlConfig: {
+      enabled: true,
+      signingBehavior: "always",
+      signingProtocol: "sigv4",
+      originType: "s3",
+    }
+  };
+  override = override ?? {};
+  if (override.connectionAttempts) {
+    origin.connectionAttempts = override.connectionAttempts;
+  }
+  if (override.timeouts) {
+    origin.timeouts = override.timeouts;
+  }
+  cf.updateRequestOrigin(origin);
 }`;
+
+export type KV_SITE_METADATA = {
+  base?: string; // Should be undefiend if no base path, should never be "/"
+  custom404?: string;
+  s3: {
+    domain: string;
+    dir: string; // Should be "" if no dir
+    routes: string[];
+  };
+  image?: {
+    host: string;
+    path: string;
+  };
+  servers?: [string, number, number][];
+  origin?: {
+    timeouts: {
+      readTimeout: number;
+    };
+  };
+};
+
+export type RouterRouteArgs = {
+  /**
+   * The `Router` component to use to route requests.
+   *
+   * @example
+   *
+   * Let's say you have a Router component.
+   *
+   * ```ts title="sst.config.ts"
+   * const router = new sst.aws.Router("MyRouter", {
+   *   domain: "example.com",
+   * });
+   * ```
+   *
+   * Attach to the Router to receive requests.
+   *
+   * ```ts title="sst.config.ts"
+   * route: {
+   *   router,
+   * }
+   * ```
+   */
+  router: Input<Router>;
+  /**
+   * Route requests matching specific domain pattern.
+   *
+   * @example
+   *
+   * You can serve your resource from a subdomain. For example, if you want to make
+   * it available at `https://dev.example.com`, set the `Router` domain to a wildcard.
+   *
+   * ```ts {2} title="sst.config.ts"
+   * const router = new sst.aws.Router("MyRouter", {
+   *   domain: "*.example.com",
+   * });
+   * ```
+   *
+   * Then set the domain pattern.
+   *
+   * ```ts {3} title="sst.config.ts"
+   * route: {
+   *   router,
+   *   domain: "dev.example.com",
+   * }
+   * ```
+   */
+  domain?: Input<string>;
+  /**
+   * Route request smatching specific path prefix.
+   *
+   * @default `"/"`
+   * @example
+   *
+   * ```ts {3} title="sst.config.ts"
+   * route: {
+   *   router,
+   *   path: "/docs",
+   * }
+   * ```
+   */
+  path?: Input<string>;
+};
+
+export function normalizeRouteArgs(route?: Input<RouterRouteArgs>) {
+  if (!route) return undefined;
+
+  return output(route).apply((v) => {
+    return v.router._hasInlineRoutes.apply((hasInlineRoutes) => {
+      if (hasInlineRoutes)
+        throw new VisibleError(
+          "Cannot route the site using the provided router. The Router component uses inline routes which has been deprecated.",
+        );
+
+      const pathPrefix = v.path
+        ? "/" + v.path.replace(/^\//, "").replace(/\/$/, "")
+        : undefined;
+      return {
+        hostPattern: v.domain
+          ? v.domain
+              .replace(/[.+?^${}()|[\]\\]/g, "\\$&") // Escape special regex chars
+              .replace(/\*/g, ".*") // Replace * with .*
+          : undefined,
+        pathPrefix,
+        routerDistributionId: v.router.nodes.cdn.nodes.distribution.id,
+        routerUrl: v.router.url.apply(
+          (url) =>
+            (v.domain ? `https://${v.domain}` : url) + (pathPrefix ?? ""),
+        ),
+        routerKvNamespace: v.router._kvNamespace!,
+        routerKvStoreArn: v.router._kvStoreArn!,
+      };
+    });
+  });
+}

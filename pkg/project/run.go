@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"os/signal"
 	"path"
 	"path/filepath"
 	"strings"
@@ -390,6 +391,24 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 				err := cmd.Process.Signal(syscall.SIGINT)
 				if err != nil {
 					log.Error("failed to send interrupt", "err", err)
+				}
+				bus.Publish(&CancelledEvent{})
+				interruptChannel := make(chan os.Signal, 1)
+				signal.Notify(interruptChannel, syscall.SIGINT, syscall.SIGTERM)
+
+				for {
+					select {
+					case <-exited:
+						return
+					case <-interruptChannel:
+						if cmd.Process != nil {
+							log.Info("sending force interrupt")
+							err := cmd.Process.Signal(syscall.SIGINT)
+							if err != nil {
+								log.Error("failed to send interrupt", "err", err)
+							}
+						}
+					}
 				}
 			}
 		}

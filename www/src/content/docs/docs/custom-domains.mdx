@@ -136,6 +136,11 @@ If your domains are hosted on [Cloudflare](https://developers.cloudflare.com/dns
 
    To get your API tokens, head to the [API Tokens section](https://dash.cloudflare.com/profile/api-tokens) of your Cloudflare dashboard and create one with the **Edit zone DNS** policy.
 
+   The Cloudflare providers need these credentials to deploy your app in the first place, which means they can't be set using the `sst secret` CLI.
+
+   If you are auto-deploying your app through the [SST Console](console.mdx#autodeploy) or through your CI, you'll need to set these as environment variables.
+
+
 3. Use the [`sst.cloudflare.dns`](/docs/component/cloudflare/dns/) adapter.
 
    ```js

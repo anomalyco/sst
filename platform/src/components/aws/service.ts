@@ -2405,7 +2405,6 @@ export class Service extends Component implements Link.Linkable {
    * The name of the Cloud Map service. This is useful for service discovery.
    */
   public get service() {
-    console.log("GETTER");
     return all([this.cloudmapNamespace, this.cloudmapService]).apply(
       ([namespace, service]) => {
         if (!namespace)

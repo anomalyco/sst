@@ -111,8 +111,12 @@ func getCompletedEvent(ctx context.Context, passphrase string, workdir *PulumiWo
 		}
 
 		if resource.Type == "sst:sst:LinkRef" && outputs["target"] != nil && outputs["properties"] != nil {
+			properties, ok := outputs["properties"].(map[string]interface{})
+			if !ok {
+				continue
+			}
 			link := common.Link{
-				Properties: outputs["properties"].(map[string]interface{}),
+				Properties: properties,
 				Include:    []common.LinkInclude{},
 			}
 			if outputs["include"] != nil {

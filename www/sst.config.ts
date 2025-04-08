@@ -182,6 +182,35 @@ export default $config({
       },
     });
 
+    // Redirect docs.sst.dev to sst.dev/docs
+    if ($app.stage === "production") {
+      new sst.aws.Router("DocsRouter", {
+        domain: {
+          name: "docs.sst.dev",
+          aliases: ["docs.serverless-stack.com"],
+        },
+        routes: {
+          "/*": {
+            url: `https://sst.dev/docs`,
+            edge: {
+              viewerRequest: {
+                injection: `
+return {
+  statusCode: 301,
+  statusDescription: 'Moved Permanently',
+  headers: {
+    location: { value: "https://sst.dev/docs" }
+  }
+};
+              `,
+              },
+            },
+          },
+        },
+      });
+    }
+
+    // Redirect telemetry.ion.sst.dev to us.i.posthog.com
     new sst.aws.Router("TelemetryRouter", {
       domain: "telemetry.ion." + domain,
       routes: {

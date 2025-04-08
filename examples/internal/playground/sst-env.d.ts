@@ -29,37 +29,14 @@ declare module "sst" {
       "type": "sst.aws.Router"
       "url": string
     }
-    "MyRouterAnalogSite": {
-      "type": "sst.aws.Analog"
-    }
     "MyRouterApp": {
       "name": string
       "type": "sst.aws.Function"
       "url": string
     }
-    "MyRouterAstroSite": {
+    "MyRouterAstro": {
       "type": "sst.aws.Astro"
-    }
-    "MyRouterNextSite": {
-      "type": "sst.aws.Nextjs"
-    }
-    "MyRouterNuxtSite": {
-      "type": "sst.aws.Nuxt"
-    }
-    "MyRouterRemixSite": {
-      "type": "sst.aws.Remix"
-    }
-    "MyRouterSite": {
-      "type": "sst.aws.React"
-    }
-    "MyRouterSolidSite": {
-      "type": "sst.aws.SolidStart"
-    }
-    "MyRouterSvelteSite": {
-      "type": "sst.aws.SvelteKit"
-    }
-    "MyRouterTanStackStartSite": {
-      "type": "sst.aws.TanstackStart"
+      "url": string
     }
     "MyStaticSite": {
       "type": "sst.aws.StaticSite"
@@ -67,9 +44,6 @@ declare module "sst" {
     }
     "MyVpc": {
       "type": "sst.aws.Vpc"
-    }
-    "Web": {
-      "type": "sst.aws.StaticSite"
     }
   }
 }
