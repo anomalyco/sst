@@ -284,6 +284,10 @@ export interface TanStackStartArgs extends SsrSiteArgs {
 /**
  * The `TanStackStart` component lets you deploy a [TanStack Start](https://tanstack.com/start/latest) app to AWS.
  *
+ * :::note
+ * You need to make sure the `server.preset` value in the `app.config.ts` is set to `aws-lambda`.
+ * :::
+ *
  * @example
  *
  * #### Minimal example
