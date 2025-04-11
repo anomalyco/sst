@@ -17,6 +17,7 @@ export * from "./dynamo.js";
 export * from "./efs.js";
 export * from "./email.js";
 export * from "./function.js";
+export * from "./sfn.js";
 export * from "./kinesis-stream.js";
 export * from "./nextjs.js";
 export * from "./opencontrol.js";
@@ -40,6 +41,8 @@ export * from "./vpc.js";
 export { linkable } from "./linkable.js";
 export { permission } from "./permission.js";
 export { iamEdit } from "./iam-edit.js";
+
+export * as sfn from "./sfn-states";
 
 // internal components
 export * from "./cdn.js";
