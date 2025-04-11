@@ -886,12 +886,12 @@ export class StaticSite extends Component implements Link.Linkable {
           // Build fileOptions
           const fileOptions = assets?.fileOptions ?? [
             {
-              files: "**/*.html",
-              cacheControl: "max-age=0,no-cache,no-store,must-revalidate",
-            },
-            {
               files: "**",
               cacheControl: "max-age=31536000,public,immutable",
+            },
+            {
+              files: "**/*.html",
+              cacheControl: "max-age=0,no-cache,no-store,must-revalidate",
             },
           ];
 
