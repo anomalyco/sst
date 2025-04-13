@@ -1,0 +1,10 @@
+{
+	"name": "hyperdrive",
+	"version": "0.0.0",
+	"type": "module",
+	"dependencies": {
+		"@cloudflare/workers-types": "4.20250412.0",
+		"postgres": "3.4.5",
+		"sst": "3.13.10"
+	}
+}
