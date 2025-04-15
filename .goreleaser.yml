@@ -32,28 +32,28 @@ checksum:
   name_template: "checksums.txt"
 snapshot:
   name_template: "0.0.0-{{ .Timestamp }}"
-aurs:
-  - homepage: "https://github.com/sst/sst"
-    description: "Deploy anything"
-    private_key: "{{ .Env.AUR_KEY }}"
-    git_url: "ssh://aur@aur.archlinux.org/sst-bin.git"
-    license: "MIT"
-    package: |-
-      install -Dm755 ./sst "${pkgdir}/usr/bin/sst"
-brews:
-  - repository:
-      owner: sst
-      name: homebrew-tap
-nfpms:
-  - maintainer: sst
-    description: the sst cli
-    formats:
-      - deb
-      - rpm
-    file_name_template: >-
-      {{ .ProjectName }}-
-      {{- if eq .Os "darwin" }}mac
-      {{- else }}{{ .Os }}{{ end }}-{{ .Arch }}
+# aurs:
+#   - homepage: "https://github.com/sst/sst"
+#     description: "Deploy anything"
+#     private_key: "{{ .Env.AUR_KEY }}"
+#     git_url: "ssh://aur@aur.archlinux.org/sst-bin.git"
+#     license: "MIT"
+#     package: |-
+#       install -Dm755 ./sst "${pkgdir}/usr/bin/sst"
+# brews:
+#   - repository:
+#       owner: sst
+#       name: homebrew-tap
+# nfpms:
+#   - maintainer: sst
+#     description: the sst cli
+#     formats:
+#       - deb
+#       - rpm
+#     file_name_template: >-
+#       {{ .ProjectName }}-
+#       {{- if eq .Os "darwin" }}mac
+#       {{- else }}{{ .Os }}{{ end }}-{{ .Arch }}
 
 # scoop:
 #   bucket:

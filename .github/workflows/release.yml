@@ -55,7 +55,7 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.SST_GITHUB_TOKEN }}
-          AUR_KEY: ${{ secrets.AUR_KEY }}
+          # AUR_KEY: ${{ secrets.AUR_KEY }}
 
       - run: |
           cd sdk/js

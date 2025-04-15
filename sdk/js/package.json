@@ -1,13 +1,13 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "name": "sst",
+  "name": "@vanenshi/sst",
   "type": "module",
   "sideEffects": false,
   "version": "0.0.0",
   "main": "./dist/index.js",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sst/sst.git"
+    "url": "git+https://github.com/vanenshi/sst.git"
   },
   "exports": {
     ".": "./dist/index.js",

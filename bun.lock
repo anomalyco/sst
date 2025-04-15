@@ -48,7 +48,7 @@
       },
     },
     "sdk/js": {
-      "name": "sst",
+      "name": "@vanenshi/sst",
       "version": "0.0.0",
       "bin": {
         "sst": "./bin/sst.mjs",
@@ -779,6 +779,8 @@
     "@types/ws": ["@types/ws@8.5.14", "", { "dependencies": { "@types/node": "*" } }, "sha512-bd/YFLW+URhBzMXurx7lWByOu+xzU9+kb3RboOteXYDfW+tr+JZa99OyNmPINEGB/ahzKrEuc8rcv4gnpJmxTw=="],
 
     "@ungap/structured-clone": ["@ungap/structured-clone@1.3.0", "", {}, "sha512-WmoN8qaIAo7WTYWbAZuG8PYEhn5fkz7dZrqTBZ7dtt//lL2Gwms1IcnQ5yHqjDfX8Ft5j4YzDM23f87zBfDe9g=="],
+
+    "@vanenshi/sst": ["@vanenshi/sst@workspace:sdk/js"],
 
     "@vitest/expect": ["@vitest/expect@1.6.1", "", { "dependencies": { "@vitest/spy": "1.6.1", "@vitest/utils": "1.6.1", "chai": "^4.3.10" } }, "sha512-jXL+9+ZNIJKruofqXuuTClf44eSpcHlgj3CiuNihUF3Ioujtmc0zIa3UJOW5RjDK1YLBJZnWBlPuqhYycLioog=="],
 
@@ -1948,7 +1950,7 @@
 
     "ssri": ["ssri@10.0.6", "", { "dependencies": { "minipass": "^7.0.3" } }, "sha512-MGrFH9Z4NP9Iyhqn16sDtBpRRNJ0Y2hNa6D65h736fVSaPCHr4DM4sWUNvVaSuC+0OBGhwsrydQwmgfg5LncqQ=="],
 
-    "sst": ["sst@workspace:sdk/js"],
+    "sst": ["sst@3.9.44", "", { "dependencies": { "aws-sdk": "2.1692.0", "aws4fetch": "1.0.18", "jose": "5.2.3", "opencontrol": "0.0.6", "openid-client": "5.6.4" }, "optionalDependencies": { "sst-darwin-arm64": "3.9.44", "sst-darwin-x64": "3.9.44", "sst-linux-arm64": "3.9.44", "sst-linux-x64": "3.9.44", "sst-linux-x86": "3.9.44" }, "bin": { "sst": "bin/sst.mjs" } }, "sha512-jCUbx/isaoPCez+YwStt12RRWz17AHNLMTYGu5DJKQzlfp4ZpvRFD6T77K/nJ4kVdmGKp/5LUKIh8Udxi42hiA=="],
 
     "sst-darwin-arm64": ["sst-darwin-arm64@3.9.44", "", { "os": "darwin", "cpu": "arm64" }, "sha512-51B0GO+otlE2lOvvh3u4yL6RLc64yoaZv37d6rpCKQ9lb7IWacTwjDbAHffB2bWYE9n+heU/8H66UEhOUGy/9A=="],
 
@@ -2560,6 +2562,8 @@
 
     "@smithy/util-defaults-mode-node/@smithy/smithy-client": ["@smithy/smithy-client@2.5.1", "", { "dependencies": { "@smithy/middleware-endpoint": "^2.5.1", "@smithy/middleware-stack": "^2.2.0", "@smithy/protocol-http": "^3.3.0", "@smithy/types": "^2.12.0", "@smithy/util-stream": "^2.2.0", "tslib": "^2.6.2" } }, "sha512-jrbSQrYCho0yDaaf92qWgd+7nAeap5LtHTI51KXqmpIFCceKU3K9+vIVTUH72bOJngBMqa4kyu1VJhRcSrk/CQ=="],
 
+    "@vanenshi/sst/@types/node": ["@types/node@22.10.0", "", { "dependencies": { "undici-types": "~6.20.0" } }, "sha512-XC70cRZVElFHfIUB40FgZOBbgJYFKKMa5nb9lxcwYstFG/Mi+/Y0bGS+rs6Dmhmkpq4pnNiLiuZAbc02YCOnmA=="],
+
     "@vitest/runner/p-limit": ["p-limit@5.0.0", "", { "dependencies": { "yocto-queue": "^1.0.0" } }, "sha512-/Eaoq+QyLSiXQ4lyYV23f14mZRQcXnxfHrN0vCai+ak9G0pp9iEQukIIZq5NccEvwRB8PUnZT0KsOoDCINS1qQ=="],
 
     "@vscode/emmet-helper/jsonc-parser": ["jsonc-parser@2.3.1", "", {}, "sha512-H8jvkz1O50L3dMZCsLqiuB2tA7muqbSg1AtGEkN0leAqGjsUzDJir3Zwr02BhqdcITPg3ei3mZ+HjMocAknhhg=="],
@@ -2664,8 +2668,6 @@
 
     "sitemap/sax": ["sax@1.4.1", "", {}, "sha512-+aWOz7yVScEGoKNd4PA10LZ8sk0A/z5+nXQG5giUO5rprX9jgYsTdov9qCchZiPIZezbZH+jRut8nPodFAX4Jg=="],
 
-    "sst/@types/node": ["@types/node@22.10.0", "", { "dependencies": { "undici-types": "~6.20.0" } }, "sha512-XC70cRZVElFHfIUB40FgZOBbgJYFKKMa5nb9lxcwYstFG/Mi+/Y0bGS+rs6Dmhmkpq4pnNiLiuZAbc02YCOnmA=="],
-
     "string-width/strip-ansi": ["strip-ansi@6.0.1", "", { "dependencies": { "ansi-regex": "^5.0.1" } }, "sha512-Y38VPSHcqkFrCpFnQ9vuSXmquuv5oXOKpGeT6aGrr3o3Gc9AlVa6JBfUSOCnbxGGZF+/0ooI7KrPuUSztUdU5A=="],
 
     "string-width-cjs/strip-ansi": ["strip-ansi@6.0.1", "", { "dependencies": { "ansi-regex": "^5.0.1" } }, "sha512-Y38VPSHcqkFrCpFnQ9vuSXmquuv5oXOKpGeT6aGrr3o3Gc9AlVa6JBfUSOCnbxGGZF+/0ooI7KrPuUSztUdU5A=="],
@@ -2693,8 +2695,6 @@
     "wrap-ansi-cjs/strip-ansi": ["strip-ansi@6.0.1", "", { "dependencies": { "ansi-regex": "^5.0.1" } }, "sha512-Y38VPSHcqkFrCpFnQ9vuSXmquuv5oXOKpGeT6aGrr3o3Gc9AlVa6JBfUSOCnbxGGZF+/0ooI7KrPuUSztUdU5A=="],
 
     "www/@types/node": ["@types/node@20.17.24", "", { "dependencies": { "undici-types": "~6.19.2" } }, "sha512-d7fGCyB96w9BnWQrOsJtpyiSaBcAYYr75bnK6ZRjDbql2cGLj/3GsL5OYmLPNq76l7Gf2q4Rv9J2o6h5CrD9sA=="],
-
-    "www/sst": ["sst@3.9.44", "", { "dependencies": { "aws-sdk": "2.1692.0", "aws4fetch": "1.0.18", "jose": "5.2.3", "opencontrol": "0.0.6", "openid-client": "5.6.4" }, "optionalDependencies": { "sst-darwin-arm64": "3.9.44", "sst-darwin-x64": "3.9.44", "sst-linux-arm64": "3.9.44", "sst-linux-x64": "3.9.44", "sst-linux-x86": "3.9.44" }, "bin": { "sst": "bin/sst.mjs" } }, "sha512-jCUbx/isaoPCez+YwStt12RRWz17AHNLMTYGu5DJKQzlfp4ZpvRFD6T77K/nJ4kVdmGKp/5LUKIh8Udxi42hiA=="],
 
     "www/typescript": ["typescript@5.3.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-pXWcraxM0uxAS+tN0AG/BF2TyqmHO014Z070UsJ+pFvYuRSq8KH8DmWpnbXe0pEPDHXZV3FcAbJkijJ5oNEnWw=="],
 
