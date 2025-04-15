@@ -7,7 +7,7 @@ import { execFileSync } from "child_process";
 let resolved = process.env.SST_BIN_PATH;
 
 if (!resolved) {
-  const name = `sst-${process.platform}-${process.arch}`;
+  const name = `@vanenshi/sst-${process.platform}-${process.arch}`;
   const binary = process.platform === "win32" ? "sst.exe" : "sst";
 
   try {
