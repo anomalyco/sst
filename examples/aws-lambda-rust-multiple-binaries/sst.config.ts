@@ -11,7 +11,7 @@
  *
  * ```toml title="Cargo.toml" {13,14,15,17,18,19}
  * [package]
- * name = "aws-rust-lambda"
+ * name = "aws-lambda-rust-multi-bin"
  * version = "0.1.0"
  * edition = "2021"
  *
