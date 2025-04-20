@@ -1,7 +1,6 @@
-use std::{env::set_var, time::Duration};
+use std::time::Duration;
 
 use aws_sdk_s3::presigning::PresigningConfig;
-use axum::{routing::get, Router};
 use lambda_runtime::{service_fn, Error, LambdaEvent};
 use serde::Deserialize;
 use serde_json::Value;
