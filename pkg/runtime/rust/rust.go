@@ -81,6 +81,7 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 	var properties Properties
 	json.Unmarshal(input.Properties, &properties)
 
+	// Locate cargo.toml/Cargo.toml
 	cargotomlpath, err := fs.FindUp(input.Handler, "cargo.toml")
 	if err != nil {
 		cargotomlpath, err = fs.FindUp(input.Handler, "Cargo.toml")
