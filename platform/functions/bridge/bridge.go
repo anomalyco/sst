@@ -180,7 +180,7 @@ func run() error {
 // parseTimeout returns a time.Duration based on SST_FUNCTION_TIMEOUT.
 // If the variable is not set or parsing fails, it returns 120 seconds.
 func parseTimeout() time.Duration {
-	// Default timeout is 120 seconds.
+	// Default timeout is 16 seconds.
 	defaultTimeout := time.Second * 16
 
 	// If the environment variable is not set, return the default.
