@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -111,9 +112,10 @@ func run() error {
 	json.NewEncoder(writer).Encode(init)
 	writer.Close()
 
+	timeout := parseTimeout()
 	notRunning, _ := json.Marshal(map[string]string{
 		"statusCode": "500",
-		"body":       "sst dev is not running (worker: " + workerID + ")",
+		"body":       fmt.Sprintf("sst dev is not running (worker: %s timed out after %v)", workerID, timeout),
 	})
 
 	for {
@@ -135,7 +137,6 @@ func run() error {
 			slog.Error("failed to close message", slog.String("requestID", requestID), slog.String("error", err.Error()))
 			continue
 		}
-		timeout := time.Second * 16
 
 	loop:
 		for {
@@ -174,4 +175,29 @@ func run() error {
 		}
 	}
 
+}
+
+// parseTimeout returns a time.Duration based on SST_FUNCTION_TIMEOUT.
+// If the variable is not set or parsing fails, it returns 120 seconds.
+func parseTimeout() time.Duration {
+	// Default timeout is 120 seconds.
+	defaultTimeout := time.Second * 16
+
+	// If the environment variable is not set, return the default.
+	if SST_FUNCTION_TIMEOUT == "" {
+		return defaultTimeout
+	}
+
+	// Attempt to parse as a duration string (e.g., "150s" or "2m").
+	if d, err := time.ParseDuration(SST_FUNCTION_TIMEOUT); err == nil {
+		return d
+	}
+
+	// If parsing as a duration fails, try parsing it as an integer (seconds).
+	if seconds, err := strconv.Atoi(SST_FUNCTION_TIMEOUT); err == nil {
+		return time.Second * time.Duration(seconds)
+	}
+
+	// If all parsing fails, return the default timeout.
+	return defaultTimeout
 }
