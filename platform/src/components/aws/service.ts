@@ -1880,10 +1880,13 @@ export class Service extends Component implements Link.Linkable {
                 throw new VisibleError(
                   `Cannot configure health check for "${k}". Make sure it is defined in "loadBalancer.ports".`,
                 );
+              const protocol = k.split("/")[1];
               return [
                 k,
                 {
-                  path: v.path ?? "/",
+                  path: ["http", "https"].includes(protocol)
+                    ? v.path ?? "/"
+                    : undefined,
                   interval: v.interval ? toSeconds(v.interval) : 30,
                   timeout: v.timeout
                     ? toSeconds(v.timeout)
@@ -1892,7 +1895,12 @@ export class Service extends Component implements Link.Linkable {
                       : 6,
                   healthyThreshold: v.healthyThreshold ?? 5,
                   unhealthyThreshold: v.unhealthyThreshold ?? 2,
-                  matcher: v.successCodes ?? "200",
+                  protocol: ["http", "https"].includes(protocol)
+                    ? undefined
+                    : "TCP",
+                  matcher: ["http", "https"].includes(protocol)
+                    ? v.successCodes ?? "200"
+                    : undefined,
                 },
               ];
             }),
