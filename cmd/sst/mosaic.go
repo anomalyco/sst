@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -24,6 +25,7 @@ import (
 	"github.com/sst/sst/v3/pkg/flag"
 	"github.com/sst/sst/v3/pkg/process"
 	"github.com/sst/sst/v3/pkg/project"
+	"github.com/sst/sst/v3/pkg/project/path"
 	"github.com/sst/sst/v3/pkg/runtime"
 	"github.com/sst/sst/v3/pkg/server"
 	"golang.org/x/sync/errgroup"
@@ -33,14 +35,15 @@ func CmdMosaic(c *cli.Cli) error {
 	cwd, _ := os.Getwd()
 	var wg errgroup.Group
 
+	child := os.Getenv("SST_CHILD")
 	// spawning child process
-	if len(c.Arguments()) > 0 {
+	if len(c.Arguments()) > 0 || child != "" {
 		var args []string
 		for _, arg := range c.Arguments() {
 			args = append(args, strings.Fields(arg)...)
 		}
 		slog.Info("dev mode with target", "args", c.Arguments())
-		cfgPath, err := project.Discover()
+		cfgPath, err := c.Discover()
 		stage, err := c.Stage(cfgPath)
 		if err != nil {
 			return err
@@ -66,9 +69,20 @@ func CmdMosaic(c *cli.Cli) error {
 			currentDir = parentDir
 		}
 		var cmd *exec.Cmd
-		env := map[string]string{}
+		var last *dev.EnvResponse
 		processExited := make(chan bool)
 		timeout := time.Minute * 50
+
+		output := []io.Writer{}
+		if child != "" && flag.SST_LOG_CHILDREN {
+			slog.Info("creating log file for child process")
+			stdout, err := os.Create(filepath.Join(path.ResolveLogDir(cfgPath), child+".log"))
+			if err != nil {
+				return err
+			}
+			defer stdout.Close()
+			output = append(output, stdout)
+		}
 		for {
 			select {
 			case <-c.Context.Done():
@@ -77,7 +91,7 @@ func CmdMosaic(c *cli.Cli) error {
 				c.Cancel()
 				continue
 			case <-time.After(timeout):
-				env = map[string]string{}
+				last = nil
 				go func() {
 					evts <- true
 				}()
@@ -88,40 +102,45 @@ func CmdMosaic(c *cli.Cli) error {
 					return nil
 				}
 				query := "directory=" + cwd
-				if os.Getenv("SST_CHILD") != "" {
-					query = "name=" + os.Getenv("SST_CHILD")
+				if child != "" {
+					query = "name=" + child
 				}
 				nextEnv, err := dev.Env(c.Context, query, url)
 				if err != nil {
 					return err
 				}
-				if _, ok := nextEnv["AWS_ACCESS_KEY_ID"]; ok {
+				if _, ok := nextEnv.Env["AWS_ACCESS_KEY_ID"]; ok {
 					timeout = time.Minute * 45
 				}
-				if diff(env, nextEnv) {
+				if last == nil || diff(last.Env, nextEnv.Env) || last.Command != nextEnv.Command {
 					if cmd != nil && cmd.Process != nil {
 						process.Kill(cmd.Process)
 						<-processExited
 						fmt.Println("\n[restarting]")
 					}
+					fields, _ := shellquote.Split(nextEnv.Command)
+					if len(args) > 0 {
+						fields = args
+					}
 					cmd = process.Command(
-						args[0],
-						args[1:]...,
+						fields[0],
+						fields[1:]...,
 					)
 					cmd.Env = os.Environ()
-					for k, v := range nextEnv {
+					cmd.Env = append(cmd.Env, "FORCE_COLOR=1")
+					for k, v := range nextEnv.Env {
 						cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 					}
 					cmd.Stdin = os.Stdin
-					cmd.Stdout = os.Stdout
-					cmd.Stderr = os.Stderr
+					cmd.Stdout = io.MultiWriter(append(output, os.Stdout)...)
+					cmd.Stderr = io.MultiWriter(append(output, os.Stderr)...)
 					cmd.Start()
 					go func() {
 						cmd.Wait()
 						processExited <- true
 					}()
 				}
-				env = nextEnv
+				last = nextEnv
 			}
 		}
 	}
@@ -206,7 +225,7 @@ func CmdMosaic(c *cli.Cli) error {
 
 	mode := c.String("mode")
 	if mode == "" {
-		multi, err := multiplexer.New(c.Context)
+		multi, err := multiplexer.New()
 		if err != nil {
 			return err
 		}
@@ -217,12 +236,12 @@ func CmdMosaic(c *cli.Cli) error {
 		)
 		multi.AddProcess("deploy", []string{currentExecutable, "ui", "--filter=sst"}, "⑆", "SST", "", false, true, append(multiEnv, "SST_LOG="+p.PathLog("ui-deploy"))...)
 		multi.AddProcess("function", []string{currentExecutable, "ui", "--filter=function"}, "λ", "Functions", "", false, true, append(multiEnv, "SST_LOG="+p.PathLog("ui-function"))...)
-		// multi.AddProcess("task", []string{currentExecutable, "ui", "--filter=task"}, "λ", "Tasks", "", false, true, append(multiEnv, "SST_LOG="+p.PathLog("ui-task"))...)
-		wg.Go(func() error {
-			defer c.Cancel()
+		defer func() {
+			multi.Exit()
+		}()
+		go func() {
 			multi.Start()
-			return nil
-		})
+		}()
 		wg.Go(func() error {
 			evts := bus.Subscribe(&project.CompleteEvent{})
 			defer c.Cancel()
@@ -238,14 +257,13 @@ func CmdMosaic(c *cli.Cli) error {
 								continue
 							}
 							dir := filepath.Join(cwd, d.Directory)
-							words, _ := shellquote.Split(d.Command)
 							title := d.Title
 							if title == "" {
 								title = d.Name
 							}
 							multi.AddProcess(
 								d.Name,
-								append([]string{currentExecutable, "dev", "--"}, words...),
+								append([]string{currentExecutable, "dev"}),
 								"→",
 								title,
 								dir,
@@ -255,7 +273,8 @@ func CmdMosaic(c *cli.Cli) error {
 							)
 						}
 						for name := range evt.Tunnels {
-							multi.AddProcess("tunnel", []string{currentExecutable, "tunnel", "--stage", p.App().Stage}, "⇌", "Tunnel", "", true, true, append(os.Environ(),
+							multi.AddProcess("tunnel", []string{currentExecutable, "tunnel", "--stage", p.App().Stage}, "⇌", "Tunnel", "", true, true, append(
+								multiEnv,
 								"SST_LOG="+p.PathLog("tunnel_"+name),
 							)...)
 						}
@@ -321,12 +340,6 @@ func CmdMosaic(c *cli.Cli) error {
 			}
 		})
 	}
-
-	wg.Go(func() error {
-		<-c.Context.Done()
-		fmt.Println("Cleaning up...")
-		return nil
-	})
 
 	err = wg.Wait()
 	slog.Info("done mosaic", "err", err)

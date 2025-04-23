@@ -4,7 +4,7 @@ import { rpc } from "../../rpc/rpc.js";
 export interface KvKeysInputs {
   store: Input<string>;
   namespace: Input<string>;
-  entries: Input<Record<string, string>>;
+  entries: Input<Record<string, Input<string>>>;
   purge: Input<boolean>;
 }
 

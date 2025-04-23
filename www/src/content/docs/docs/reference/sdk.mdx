@@ -11,7 +11,7 @@ You can use the SDK in your **functions**, **frontends**, and **container applic
 Check out the _SDK_ section in a component's API reference doc.
 :::
 
-Currently, the SDK is only available for JavaScript/TypeScript and Golang. Support for other languages is on the roadmap.
+Currently, the SDK is only available for JavaScript/TypeScript, Golang, and Rust. Support for other languages is on the roadmap.
 
 ---
 
@@ -128,3 +128,45 @@ resource.Get("App", "stage")
 ```
 
 Client functions are currently **not supported** in the Go SDK.
+
+## Rust
+
+Use the SST Rust SDK package in your Rust functions or container applications.
+
+```toml title="Cargo.toml"
+sst_sdk = "0.1.0"
+```
+
+In your runtime, use the `Resource::get()` function to access linked resources as a typesafe struct, or a `serde_json::Value`.
+
+```rust title="main.rs"
+use sst_sdk::Resource;
+
+#[derive(serde::Deserialize, Debug)]
+struct Bucket {
+    name: String,
+}
+
+fn main() {
+    let resource = Resource::init().unwrap();
+    // access your linked resources as a typesafe struct that implements Deserialize
+    let Bucket { name } = resource.get("MyBucket").unwrap();
+    // or as a weakly typed json value (that also implements Deserialize)
+    let openai_key: serde_json::Value = resource.get("OpenaiSecret").unwrap();
+}
+```
+
+where `MyBucket` and `OpenaiSecret` are linked to the function.
+
+```ts title="sst.config.ts"
+const bucket = new sst.aws.Bucket("MyBucket");
+const openai = new sst.Secret("OpenaiSecret");
+
+new sst.aws.Function("MyFunction", {
+  handler: "./",
+  link: [bucket, openai],
+  runtime: "rust"
+});
+```
+
+Client functions are currently **not supported** in the Rust SDK.

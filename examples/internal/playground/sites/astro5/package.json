@@ -1,0 +1,17 @@
+{
+  "name": "astro5",
+  "type": "module",
+  "version": "0.0.1",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "sed -i '' 's/base: .*/base: undefined,/' astro.config.mjs && astro build",
+    "build-base": "sed -i '' 's/base: .*/base: \"\\/astro5\",/' astro.config.mjs && astro build",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "astro": "^5.4.1",
+    "astro-sst": "3.1.2",
+    "sst": "3.9.25"
+  }
+}

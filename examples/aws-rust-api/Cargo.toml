@@ -1,23 +1,17 @@
 [package]
-name = "aws_rust_cluster"
+name = "aws-rust-lambda"
 version = "0.1.0"
 edition = "2021"
 
-[profile.release]
-debug = 0
-incremental = false
-panic = "abort"
-opt-level = 3       # 0-3
-strip = 'symbols'   # strip symbols from binary
-lto = true          # enable link time optimization
-
 [dependencies]
-axum = "0.7.5"
+aws-config = { version = "1.5.16", features = ["behavior-version-latest"] }
+aws-sdk-s3 = "1.73.0"
+axum = "0.8.1"
 lambda_http = "0.13.0"
-lambda_runtime = "0.13.0"
-serde = { version = "1.0.209", features = ["derive"] }
-tokio = { version = ">=1.x", features = ["macros", "rt-multi-thread"] }
-
-[[bin]]
-name = "api"
-path = "src/bin/handlers/api.rs"
+serde = { version = "1.0.217", features = ["derive"] }
+serde_json = "1.0.138"
+# this will break when not in this repo.
+sst_sdk = { version = "0.1.0", path = "../../sdk/rust" }
+# sst_sdk = "0.1.0"
+tokio = { version = "1", features = ["macros"] }
+uuid = { version = "1.13.1", features = ["v4"] }

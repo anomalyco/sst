@@ -1,29 +1,7 @@
 import fs from "fs";
 import path from "path";
-import {
-  ComponentResourceOptions,
-  Output,
-  all,
-  interpolate,
-  output,
-} from "@pulumi/pulumi";
-import { Function } from "./function.js";
-import {
-  SsrSiteArgs,
-  createBucket,
-  createDevServer,
-  createServersAndDistribution,
-  prepare,
-  useCloudFrontFunctionHostHeaderInjection,
-  validatePlan,
-} from "./ssr-site.js";
-import { Cdn } from "./cdn.js";
-import { Bucket } from "./bucket.js";
-import { Component } from "../component.js";
-import { Link } from "../link.js";
-import type { Input } from "../input.js";
-import { buildApp } from "../base/base-ssr-site.js";
-import { URL_UNAVAILABLE } from "./linkable.js";
+import { ComponentResourceOptions, Output, output } from "@pulumi/pulumi";
+import { Plan, SsrSite, SsrSiteArgs } from "./ssr-site.js";
 
 export interface ReactArgs extends SsrSiteArgs {
   /**
@@ -89,6 +67,19 @@ export interface ReactArgs extends SsrSiteArgs {
    */
   permissions?: SsrSiteArgs["permissions"];
   /**
+   * The regions that the [server function](#nodes-server) in your React app will be
+   * deployed to. Requests will be routed to the nearest region based on the user's location.
+   *
+   * @default The default region of the SST app
+   * @example
+   * ```js
+   * {
+   *   regions: ["us-east-1", "eu-west-1"]
+   * }
+   * ```
+   */
+  regions?: SsrSiteArgs["regions"];
+  /**
    * Path to the directory where your React app is located.  This path is relative to your `sst.config.ts`.
    *
    * By default it assumes your React app is in the root of your SST app.
@@ -141,10 +132,10 @@ export interface ReactArgs extends SsrSiteArgs {
    */
   invalidation?: SsrSiteArgs["invalidation"];
   /**
-   * Set [environment variables](https://remix.run/docs/en/main/guides/envvars) in your React app. These are made available:
+   * Set [environment variables](https://vitejs.dev/guide/env-and-mode) in your React app. These are made available:
    *
-   * 1. In `remix build`, they are loaded into `process.env`.
-   * 2. Locally while running `sst dev remix dev`.
+   * 1. In `react-router build`, they are loaded into `process.env`.
+   * 2. Locally while running `react-router dev` through `sst dev`.
    *
    * :::tip
    * You can also `link` resources to your React app and access them in a type-safe way with the [SDK](/docs/reference/sdk/). We recommend linking since it's more secure.
@@ -207,6 +198,84 @@ export interface ReactArgs extends SsrSiteArgs {
    */
   domain?: SsrSiteArgs["domain"];
   /**
+   * Serve your React app through a `Router` component instead of a standalone CloudFront
+   * distribution.
+   *
+   * Let's say you have a Router component.
+   *
+   * ```ts title="sst.config.ts"
+   * const router = new sst.aws.Router("Router", {
+   *   domain: "*.example.com",
+   * });
+   * ```
+   *
+   * You can then match a pattern and route to your app based on:
+   *
+   * - A path like `/docs`
+   * - A domain pattern like `docs.example.com`
+   * - A combined pattern like `dev.example.com/docs`
+   *
+   * For example, to match a path.
+   *
+   * ```ts title="sst.config.ts"
+   * {
+   *   router: {
+   *     instance: router,
+   *     path: "/docs",
+   *   },
+   * }
+   * ```
+   *
+   * Or match a domain.
+   *
+   * ```ts title="sst.config.ts"
+   * {
+   *   router: {
+   *     instance: router,
+   *     domain: "docs.example.com",
+   *   },
+   * }
+   * ```
+   *
+   * Route by both domain and path:
+   *
+   * ```ts title="sst.config.ts"
+   * {
+   *   router: {
+   *     instance: router,
+   *     domain: "dev.example.com",
+   *     path: "/docs",
+   *   },
+   * }
+   * ```
+   *
+   * If you are routing to a path like `/docs`, you must configure the
+   * base path in your React app. The base path must match the path in your
+   * route prop.
+   *
+   * :::caution
+   * If routing to a path, you need to configure that as the base path in your
+   * React app as well.
+   * :::
+   *
+   * For example, if you are routing `/docs` to a React app, you need to set
+   * the `base` property in your `vite.config.ts` and `basename` in your React Router configuration.
+   *
+   * ```js {3} title="vite.config.ts"
+   * export default defineConfig({
+   *   plugins: [tailwindcss(), reactRouter(), tsconfigPaths()],
+   *   base: '/docs/'
+   * });
+   * ```
+   *
+   * ```jsx {2} title="react-router.config.ts"
+   * export const routerConfig = {
+   *   basename: '/docs'
+   * };
+   * ```
+   */
+  router?: SsrSiteArgs["router"];
+  /**
    * The command used internally to build your React app.
    *
    * @default `"npm run build"`
@@ -237,30 +306,6 @@ export interface ReactArgs extends SsrSiteArgs {
    */
   assets?: SsrSiteArgs["assets"];
   /**
-   * Configure where the [server function](#nodes-server) is deployed.
-   *
-   * By default, it's deployed to AWS Lambda in a single region. Enable this option if you want to instead deploy it to Lambda@Edge.
-   * @default `false`
-   * @internal
-   */
-  edge?: Input<boolean>;
-  /**
-   * Configure the [server function](#nodes-server) in your React app to connect
-   * to private subnets in a virtual private cloud or VPC. This allows your app to
-   * access private resources.
-   *
-   * @example
-   * ```js
-   * {
-   *   vpc: {
-   *     securityGroups: ["sg-0399348378a4c256c"],
-   *     subnets: ["subnet-0b6a2b73896dc8c4c", "subnet-021389ebee680c2f0"]
-   *   }
-   * }
-   * ```
-   */
-  vpc?: SsrSiteArgs["vpc"];
-  /**
    * Configure the React app to use an existing CloudFront cache policy. By default,
    * a new cache policy is created. Note that CloudFront has a limit of 20 cache
    * policies per account. This allows you to reuse an existing policy instead of
@@ -277,7 +322,7 @@ export interface ReactArgs extends SsrSiteArgs {
 }
 
 /**
- * The `React` component lets you deploy a [Remix](https://remix.run) app to AWS.
+ * The `React` component lets you deploy a React app built with [React Router](https://reactrouter.com/) app to AWS.
  *
  * @example
  *
@@ -291,11 +336,11 @@ export interface ReactArgs extends SsrSiteArgs {
  *
  * #### Change the path
  *
- * Deploys the React app in the `my-remix-app/` directory.
+ * Deploys the React app in the `my-react-app/` directory.
  *
  * ```js {2}
  * new sst.aws.React("MyWeb", {
- *   path: "my-remix-app/"
+ *   path: "my-react-app/"
  * });
  * ```
  *
@@ -344,298 +389,102 @@ export interface ReactArgs extends SsrSiteArgs {
  * console.log(Resource.MyBucket.name);
  * ```
  */
-export class React extends Component implements Link.Linkable {
-  private cdn?: Output<Cdn>;
-  private assets?: Bucket;
-  private server?: Output<Function>;
-  private devUrl?: Output<string>;
-
+export class React extends SsrSite {
   constructor(
     name: string,
     args: ReactArgs = {},
     opts: ComponentResourceOptions = {},
   ) {
     super(__pulumiType, name, args, opts);
+  }
 
-    const parent = this;
-    const edge = normalizeEdge();
-    const { sitePath, partition } = prepare(parent, args);
-    const dev = normalizeDev();
+  protected normalizeBuildCommand() {}
 
-    if (dev.enabled) {
-      const server = createDevServer(parent, name, args);
-      this.devUrl = dev.url;
-      this.registerOutputs({
-        _metadata: {
-          mode: "placeholder",
-          path: sitePath,
-          edge,
-          server: server.arn,
-        },
-        _dev: {
-          ...dev.outputs,
-          aws: { role: server.nodes.role.arn },
-        },
-      });
-      return;
-    }
+  protected buildPlan(outputPath: Output<string>): Output<Plan> {
+    return output(outputPath).apply((outputPath) => {
+      const assetsPath = path.join("build", "client");
+      const serverPath = (() => {
+        const p = path.join("build", "server");
+        return fs.existsSync(path.join(outputPath, p)) ? p : undefined;
+      })();
+      const indexPage = "index.html";
 
-    const { access, bucket } = createBucket(parent, name, partition, args);
-    const outputPath = buildApp(parent, name, args, sitePath);
-    const buildMeta = loadBuildMetadata();
-    const plan = buildPlan();
-    const { distribution, ssrFunctions, edgeFunctions } =
-      createServersAndDistribution(
-        parent,
-        name,
-        args,
-        outputPath,
-        access,
-        bucket,
-        plan,
-      );
-    const serverFunction = ssrFunctions[0] ?? Object.values(edgeFunctions)[0];
+      // Get base configured in vite config ie. "/docs/"
+      const viteBase = (() => {
+        try {
+          const viteConfig = path.join(outputPath, "vite.config.ts");
+          const content = fs.readFileSync(viteConfig, "utf-8");
+          const match = content.match(/["']?base["']?:\s*["']([^"]+)["']/);
+          return match ? match[1] : undefined;
+        } catch (e) {}
+      })();
 
-    this.assets = bucket;
-    this.cdn = distribution;
-    this.server = serverFunction;
-    this.registerOutputs({
-      _hint: all([this.cdn.domainUrl, this.cdn.url]).apply(
-        ([domainUrl, url]) => domainUrl ?? url,
-      ),
-      _metadata: {
-        mode: "deployed",
-        path: sitePath,
-        url: distribution.apply((d) => d.domainUrl ?? d.url),
-        edge,
-        server: serverFunction.arn,
-      },
-      _dev: {
-        ...dev.outputs,
-        aws: { role: serverFunction.nodes.role.arn },
-      },
-    });
+      // Get base configured in react-router config ie. "/docs/"
+      const reactRouterBase = (() => {
+        try {
+          const rrConfig = path.join(outputPath, "react-router.config.ts");
+          const content = fs.readFileSync(rrConfig, "utf-8");
+          const match = content.match(/["']?basename["']?:\s*["']([^"]+)["']/);
+          return match ? match[1] : undefined;
+        } catch (e) {}
+      })();
 
-    function normalizeDev() {
-      const enabled = $dev && args.dev !== false;
-      const devArgs = args.dev || {};
+      if (viteBase) {
+        if (!viteBase.endsWith("/"))
+          throw new Error(
+            `The "base" value in vite.config.ts must end with a trailing slash ("/"). This is required for correct asset path construction.`,
+          );
+        if (!reactRouterBase)
+          throw new Error(
+            `Found "base" configured in vite.config.ts but missing "basename" in react-router.config.ts. Both configurations are required.`,
+          );
+      }
+      if (reactRouterBase) {
+        if (reactRouterBase.endsWith("/"))
+          throw new Error(
+            `The "basename" value in react-router.config.ts must not end with a trailing slash ("/"). This ensures the root URL is accessible without a trailing slash.`,
+          );
+        if (!viteBase)
+          throw new Error(
+            `Found "basename" configured in react-router.config.ts but missing "base" in vite.config.ts. Both configurations are required.`,
+          );
+      }
 
       return {
-        enabled,
-        url: output(devArgs.url ?? URL_UNAVAILABLE),
-        outputs: {
-          title: devArgs.title,
-          command: output(devArgs.command ?? "npm run dev"),
-          autostart: output(devArgs.autostart ?? true),
-          directory: output(devArgs.directory ?? sitePath),
-          environment: args.environment,
-          links: output(args.link || [])
-            .apply(Link.build)
-            .apply((links) => links.map((link) => link.name)),
-        },
-      };
-    }
+        base: reactRouterBase,
+        server: serverPath
+          ? (() => {
+              // React does perform their own internal ESBuild process, but it doesn't bundle
+              // 3rd party dependencies by default. In the interest of keeping deployments
+              // seamless for users we will create a server bundle with all dependencies included.
 
-    function normalizeEdge() {
-      return output(args?.edge).apply((edge) => edge ?? false);
-    }
+              fs.copyFileSync(
+                path.join(
+                  $cli.paths.platform,
+                  "functions",
+                  "react-server",
+                  "server.mjs",
+                ),
+                path.join(outputPath, "build", "server.mjs"),
+              );
 
-    function loadBuildMetadata() {
-      return all([outputPath]).apply(([outputPath]) => {
-        // The path for all files that need to be in the "/" directory (static assets)
-        // is different when using Vite. These will be located in the "build/client"
-        // path of the output. It will be the "public" folder when using remix config.
-        const assetsPath = path.join("build", "client");
-        const serverPath = path.join("build", "server");
-        return {
-          assetsPath,
-          serverPath: fs.existsSync(path.join(outputPath, serverPath))
-            ? serverPath
-            : undefined,
-          // create 1 behaviour for each top level asset file/folder
-          staticRoutes: fs
-            .readdirSync(path.join(outputPath, assetsPath), {
-              withFileTypes: true,
-            })
-            .map((item) => (item.isDirectory() ? `${item.name}/*` : item.name)),
-        };
-      });
-    }
-
-    function buildPlan() {
-      return all([outputPath, edge, buildMeta]).apply(
-        ([outputPath, edge, buildMeta]) => {
-          const serverConfig = buildMeta.serverPath
-            ? createServerLambdaBundle(outputPath, edge)
-            : undefined;
-
-          const indexPage = "index.html";
-          return validatePlan({
-            edge,
-            cloudFrontFunctions: {
-              serverCfFunction: {
-                injections: [useCloudFrontFunctionHostHeaderInjection()],
-              },
-              staticCfFunction: {
-                injections: [
-                  // Note: When using libraries like remix-flat-routes the file can
-                  // contains special characters like "+". It needs to be encoded.
-                  `event.request.uri = event.request.uri.split('/').map(encodeURIComponent).join('/');`,
-                ],
-              },
-            },
-            defaultRootObject: indexPage,
-            errorResponses: !serverConfig
-              ? [
-                  {
-                    errorCode: 403,
-                    responsePagePath: interpolate`/${indexPage}`,
-                    responseCode: 200,
-                  },
-                  {
-                    errorCode: 404,
-                    responsePagePath: interpolate`/${indexPage}`,
-                    responseCode: 200,
-                  },
-                ]
-              : [],
-            edgeFunctions:
-              edge && serverConfig
-                ? {
-                    server: {
-                      function: serverConfig,
-                    },
-                  }
-                : undefined,
-            origins: {
-              ...(edge || !serverConfig
-                ? {}
-                : {
-                    server: {
-                      server: {
-                        function: serverConfig,
-                      },
-                    },
-                  }),
-              s3: {
-                s3: {
-                  copy: [
-                    {
-                      from: buildMeta.assetsPath,
-                      to: "",
-                      cached: true,
-                    },
-                  ],
-                },
-              },
-            },
-            behaviors: [
-              ...(!serverConfig
-                ? [
-                    {
-                      cacheType: "static",
-                      cfFunction: "serverCfFunction",
-                      origin: "s3",
-                    } as const,
-                  ]
-                : [
-                    edge
-                      ? ({
-                          cacheType: "server",
-                          cfFunction: "serverCfFunction",
-                          edgeFunction: "server",
-                          origin: "s3",
-                        } as const)
-                      : ({
-                          cacheType: "server",
-                          cfFunction: "serverCfFunction",
-                          origin: "server",
-                        } as const),
-                    ...buildMeta.staticRoutes.map(
-                      (route) =>
-                        ({
-                          cacheType: "static",
-                          pattern: route,
-                          cfFunction: "staticCfFunction",
-                          origin: "s3",
-                        }) as const,
-                    ),
-                  ]),
-            ],
-          });
-        },
-      );
-    }
-
-    function createServerLambdaBundle(outputPath: string, isEdge: boolean) {
-      // Create a Lambda@Edge handler for the React server bundle.
-      //
-      // Note: React does perform their own internal ESBuild process, but it
-      // doesn't bundle 3rd party dependencies by default. In the interest of
-      // keeping deployments seamless for users we will create a server bundle
-      // with all dependencies included. We will still need to consider how to
-      // address any need for external dependencies, although I think we should
-      // possibly consider this at a later date.
-
-      // In this path we are assuming that the React build only outputs the
-      // "core server build". We can safely assume this as we have guarded the
-      // remix.config.js to ensure it matches our expectations for the build
-      // configuration.
-      // We need to ensure that the "core server build" is wrapped with an
-      // appropriate Lambda@Edge handler. We will utilise an internal asset
-      // template to create this wrapper within the "core server build" output
-      // directory.
-
-      // Ensure build directory exists
-      const buildPath = path.join(outputPath, "build");
-      fs.mkdirSync(buildPath, { recursive: true });
-
-      // Copy the server lambda handler and pre-append the build injection based
-      // on the config file used.
-      const content = [
-        // When using Vite config, the output build will be "server/index.js"
-        // and when using React config it will be `server.js`.
-        `// Import the server build that was produced by 'remix build'`,
-        `import * as remixServerBuild from "./server/index.js";`,
-        fs.readFileSync(
-          path.join(
-            $cli.paths.platform,
-            "functions",
-            "react-server",
-            isEdge ? "edge-server.mjs" : "regional-server.mjs",
-          ),
-        ),
-      ].join("\n");
-      fs.writeFileSync(path.join(buildPath, "server.mjs"), content);
-
-      // Copy the React polyfil to the server build directory
-      //
-      // Note: We need to ensure that the polyfills are injected above other code that
-      // will depend on them when not using Vite. Importing them within the top of the
-      // lambda code doesn't appear to guarantee this, we therefore leverage ESBUild's
-      // `inject` option to ensure that the polyfills are injected at the top of
-      // the bundle.
-      const polyfillDest = path.join(buildPath, "polyfill.mjs");
-      fs.copyFileSync(
-        path.join(
-          $cli.paths.platform,
-          "functions",
-          "react-server",
-          "polyfill.mjs",
-        ),
-        polyfillDest,
-      );
-
-      return {
-        handler: path.join(buildPath, "server.handler"),
-        nodejs: {
-          esbuild: {
-            inject: [path.resolve(polyfillDest)],
+              return {
+                handler: path.join(outputPath, "build", "server.handler"),
+                streaming: true,
+              };
+            })()
+          : undefined,
+        assets: [
+          {
+            from: assetsPath,
+            to: "",
+            cached: true,
+            versionedSubDir: "assets",
           },
-        },
-        streaming: !isEdge,
+        ],
+        custom404: serverPath ? undefined : `/${indexPage}`,
       };
-    }
+    });
   }
 
   /**
@@ -645,38 +494,7 @@ export class React extends Component implements Link.Linkable {
    * Otherwise, it's the autogenerated CloudFront URL.
    */
   public get url() {
-    return all([this.cdn?.domainUrl, this.cdn?.url, this.devUrl]).apply(
-      ([domainUrl, url, dev]) => domainUrl ?? url ?? dev!,
-    );
-  }
-
-  /**
-   * The underlying [resources](/docs/components/#nodes) this component creates.
-   */
-  public get nodes() {
-    return {
-      /**
-       * The AWS Lambda server function that renders the site.
-       */
-      server: this.server,
-      /**
-       * The Amazon S3 Bucket that stores the assets.
-       */
-      assets: this.assets,
-      /**
-       * The Amazon CloudFront CDN that serves the app.
-       */
-      cdn: this.cdn,
-    };
-  }
-
-  /** @internal */
-  public getSSTLink() {
-    return {
-      properties: {
-        url: this.url,
-      },
-    };
+    return super.url;
   }
 }
 

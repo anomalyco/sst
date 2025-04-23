@@ -82,6 +82,7 @@ var CmdState = &cli.Command{
 					Type: "bool",
 					Description: cli.Description{
 						Short: "Decrypt the state",
+						Long:  "Decrypt the state before printing it out.",
 					},
 				},
 			},
@@ -136,6 +137,78 @@ var CmdState = &cli.Command{
 				encoder.SetIndent("", "  ")
 				encoder.Encode(exported)
 				return err
+			},
+		},
+		{
+			Name: "list",
+			// TODO: Fix https://github.com/sst/sst/issues/5566 before enabling
+			Hidden: true,
+			Description: cli.Description{
+				Short: "List all deployed stages",
+				Long: strings.Join([]string{
+					"Lists all the deployed stages of your app for the current set of credentials.",
+					"",
+					":::note",
+					"This does not list stages that are deployed in other accounts.",
+					":::",
+					"",
+					"This pull the state of your app from the cloud provider and then prints out all the stages that are listed in the state.",
+				}, "\n"),
+			},
+			// Flags: []cli.Flag{
+			// 	{
+			// 		Name: "simple",
+			// 		Type: "bool",
+			// 		Description: cli.Description{
+			// 			Short: "Output a basic list of stages",
+			// 			Long:  "Output a basic list of stages without additional information about the provider.",
+			// 		},
+			// 	},
+			// },
+			Run: func(c *cli.Cli) error {
+				p, err := c.InitProject()
+				if err != nil {
+					return err
+				}
+				defer p.Cleanup()
+				backend := p.Backend()
+
+				stages, err := provider.ListStages(backend, p.App().Name)
+				if err != nil {
+					return err
+				}
+
+				// Not sure if we need to enable this yet
+				// if c.Bool("simple") {
+				// 	for _, stage := range stages {
+				// 		fmt.Println(stage)
+				// 	}
+				// 	return nil
+				// }
+
+				lines, err := provider.Info(backend)
+				if err != nil {
+					ui.Error("Failed to load provider information")
+				}
+
+				renderKeyValue("App", p.App().Name)
+
+				for _, line := range lines {
+					renderKeyValue(line.Key, line.Value)
+				}
+
+				if len(stages) == 0 {
+					return nil
+				}
+
+				renderKeyValue("Stages", stages[0])
+				if len(stages) > 1 {
+					for _, stage := range stages[1:] {
+						fmt.Println(indent("") + ui.TEXT_INFO.Render(stage))
+					}
+				}
+
+				return nil
 			},
 		},
 		{
@@ -363,4 +436,12 @@ func confirmMutations(muts []state.Mutation) error {
 		return util.NewReadableError(nil, "Abandoning changes")
 	}
 	return nil
+}
+
+func indent(key string) string {
+	return fmt.Sprintf("%-12s", key)
+}
+
+func renderKeyValue(key string, value string) {
+	fmt.Println(ui.TEXT_NORMAL_BOLD.Render(indent(key+":")) + ui.TEXT_INFO.Render(value))
 }

@@ -176,25 +176,25 @@ export interface FargateContainerArgs {
   image?: Input<
     | string
     | {
-        /**
-         * The path to the Docker build context. Same as the top-level
-         * [`image.context`](#image-context).
-         */
-        context?: Input<string>;
-        /**
-         * The path to the Dockerfile. Same as the top-level
-         * [`image.dockerfile`](#image-dockerfile).
-         */
-        dockerfile?: Input<string>;
-        /**
-         * Key-value pairs of build args. Same as the top-level [`image.args`](#image-args).
-         */
-        args?: Input<Record<string, Input<string>>>;
-        /**
-         * The stage to build up to. Same as the top-level [`image.target`](#image-target).
-         */
-        target?: Input<string>;
-      }
+      /**
+       * The path to the Docker build context. Same as the top-level
+       * [`image.context`](#image-context).
+       */
+      context?: Input<string>;
+      /**
+       * The path to the Dockerfile. Same as the top-level
+       * [`image.dockerfile`](#image-dockerfile).
+       */
+      dockerfile?: Input<string>;
+      /**
+       * Key-value pairs of build args. Same as the top-level [`image.args`](#image-args).
+       */
+      args?: Input<Record<string, Input<string>>>;
+      /**
+       * The stage to build up to. Same as the top-level [`image.target`](#image-target).
+       */
+      target?: Input<string>;
+    }
   >;
   /**
    * The command to override the default command in the container. Same as the top-level
@@ -239,10 +239,7 @@ export interface FargateContainerArgs {
 
 export interface FargateBaseArgs {
   /**
-   * The cluster to use for the service.
-   *
-   * @example
-   * Create a `Cluster` component.
+   * The ECS Cluster to use. Create a new `Cluster` in your app, if you haven't already.
    *
    * ```js title="sst.config.ts"
    * const vpc = new sst.aws.Vpc("MyVpc");
@@ -418,66 +415,66 @@ export interface FargateBaseArgs {
   image?: Input<
     | string
     | {
-        /**
-         * The path to the [Docker build context](https://docs.docker.com/build/building/context/#local-context). The path is relative to your project's `sst.config.ts`.
-         * @default `"."`
-         * @example
-         *
-         * To change where the Docker build context is located.
-         *
-         * ```js
-         * {
-         *   context: "./app"
-         * }
-         * ```
-         */
-        context?: Input<string>;
-        /**
-         * The path to the [Dockerfile](https://docs.docker.com/reference/cli/docker/image/build/#file).
-         * The path is relative to the build `context`.
-         * @default `"Dockerfile"`
-         * @example
-         * To use a different Dockerfile.
-         * ```js
-         * {
-         *   dockerfile: "Dockerfile.prod"
-         * }
-         * ```
-         */
-        dockerfile?: Input<string>;
-        /**
-         * Key-value pairs of [build args](https://docs.docker.com/build/guide/build-args/) to pass to the Docker build command.
-         * @example
-         * ```js
-         * {
-         *   args: {
-         *     MY_VAR: "value"
-         *   }
-         * }
-         * ```
-         */
-        args?: Input<Record<string, Input<string>>>;
-        /**
-         * Tags to apply to the Docker image.
-         * @example
-         * ```js
-         * {
-         *   tags: ["v1.0.0", "commit-613c1b2"]
-         * }
-         * ```
-         */
-        tags?: Input<Input<string>[]>;
-        /**
-         * The stage to build up to in a [multi-stage Dockerfile](https://docs.docker.com/build/building/multi-stage/#stop-at-a-specific-build-stage).
-         * @example
-         * ```js
-         * {
-         *   target: "stage1"
-         * }
-         * ```
-         */
-        target?: Input<string>;
-      }
+      /**
+       * The path to the [Docker build context](https://docs.docker.com/build/building/context/#local-context). The path is relative to your project's `sst.config.ts`.
+       * @default `"."`
+       * @example
+       *
+       * To change where the Docker build context is located.
+       *
+       * ```js
+       * {
+       *   context: "./app"
+       * }
+       * ```
+       */
+      context?: Input<string>;
+      /**
+       * The path to the [Dockerfile](https://docs.docker.com/reference/cli/docker/image/build/#file).
+       * The path is relative to the build `context`.
+       * @default `"Dockerfile"`
+       * @example
+       * To use a different Dockerfile.
+       * ```js
+       * {
+       *   dockerfile: "Dockerfile.prod"
+       * }
+       * ```
+       */
+      dockerfile?: Input<string>;
+      /**
+       * Key-value pairs of [build args](https://docs.docker.com/build/guide/build-args/) to pass to the Docker build command.
+       * @example
+       * ```js
+       * {
+       *   args: {
+       *     MY_VAR: "value"
+       *   }
+       * }
+       * ```
+       */
+      args?: Input<Record<string, Input<string>>>;
+      /**
+       * Tags to apply to the Docker image.
+       * @example
+       * ```js
+       * {
+       *   tags: ["v1.0.0", "commit-613c1b2"]
+       * }
+       * ```
+       */
+      tags?: Input<Input<string>[]>;
+      /**
+       * The stage to build up to in a [multi-stage Dockerfile](https://docs.docker.com/build/building/multi-stage/#stop-at-a-specific-build-stage).
+       * @example
+       * ```js
+       * {
+       *   target: "stage1"
+       * }
+       * ```
+       */
+      target?: Input<string>;
+    }
   >;
   /**
    * The command to override the default command in the container.
@@ -604,15 +601,15 @@ export interface FargateBaseArgs {
     efs: Input<
       | Efs
       | {
-          /**
-           * The ID of the EFS file system.
-           */
-          fileSystem: Input<string>;
-          /**
-           * The ID of the EFS access point.
-           */
-          accessPoint: Input<string>;
-        }
+        /**
+         * The ID of the EFS file system.
+         */
+        fileSystem: Input<string>;
+        /**
+         * The ID of the EFS access point.
+         */
+        accessPoint: Input<string>;
+      }
     >;
     /**
      * The path to mount the volume.
@@ -787,9 +784,9 @@ export function normalizeContainers(
               efs:
                 volume.efs instanceof Efs
                   ? {
-                      fileSystem: volume.efs.id,
-                      accessPoint: volume.efs.accessPoint,
-                    }
+                    fileSystem: volume.efs.id,
+                    accessPoint: volume.efs.accessPoint,
+                  }
                   : volume.efs,
             })),
         );
@@ -906,9 +903,8 @@ export function createExecutionRole(
           Service: "ecs-tasks.amazonaws.com",
         }),
         managedPolicyArns: [
-          interpolate`arn:${
-            getPartitionOutput({}, opts).partition
-          }:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy`,
+          interpolate`arn:${getPartitionOutput({}, opts).partition
+            }:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy`,
         ],
         inlinePolicies: [
           {

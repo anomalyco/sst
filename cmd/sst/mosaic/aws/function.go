@@ -314,7 +314,7 @@ func function(ctx context.Context, input input) {
 					}
 				}
 			case bridge.MessageNext:
-				writer := input.client.NewWriter(bridge.MessageReboot, input.prefix+"/"+msg.Source+"/in")
+				writer := input.client.NewWriter(bridge.MessagePing, input.prefix+"/"+msg.Source+"/in")
 				json.NewEncoder(writer).Encode(bridge.PingBody{})
 				writer.Close()
 				ch, ok := nextChan[msg.Source]

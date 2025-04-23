@@ -3,31 +3,22 @@
 export default $config({
   app(input) {
     return {
-      name: "aws-rust-function-url",
+      name: "aws-rust-lambda",
       removal: input?.stage === "production" ? "retain" : "remove",
+      protect: ["production"].includes(input?.stage),
       home: "aws",
-      providers: {
-        aws: { region: 'us-east-1' }
-      },
     };
   },
   async run() {
-    const api = new sst.aws.Function("rust-api", {
-      handler: "bootstrap",
-      architecture: "arm64", // or x86_64
-      bundle: "target/lambda/api",
-      runtime: 'provided.al2023',
+    const bucket = new sst.aws.Bucket("Bucket");
+    const lambda = new sst.aws.Function("RustFunction", {
+      runtime: "rust",
+      handler: "./",
       url: true,
+      architecture: "arm64",
+      link: [bucket],
     });
-    const router = new sst.aws.Router("MyRouter", {
-      routes: {
-        "/*": api.url,
-      },
-      domain: "rust.dev.sst.dev",
-    });
-    return {
-      function: api.url,
-      domain: router.url
-    }
-  }
+
+    return { url: lambda.url };
+  },
 });

@@ -195,6 +195,7 @@ func (p *AwsProvider) Bootstrap(region string) (*AwsBootstrapData, error) {
 	p.bootstrapCache[region] = bootstrapData
 	return bootstrapData, nil
 }
+
 func (app *AwsProvider) ResolveAppSync(ctx context.Context) (string, string, error) {
 	client := appsyncSdk.NewFromConfig(app.config)
 	var nextToken *string
@@ -610,6 +611,64 @@ func (a *AwsHome) removeData(key, app, stage string) error {
 	return nil
 }
 
+func (a *AwsHome) cleanup(key, app, stage string) error {
+	bootstrap, err := a.provider.Bootstrap(a.provider.config.Region)
+	if err != nil {
+		return err
+	}
+	s3Client := s3.NewFromConfig(a.provider.config)
+
+	folderPrefix := path.Join(key, app, stage) + "/"
+	slog.Info("cleaning up folder", "bucket", bootstrap.State, "prefix", folderPrefix)
+
+	var continuationToken *string
+	for {
+		listObjectsInput := &s3.ListObjectsV2Input{
+			Bucket: aws.String(bootstrap.State),
+			Prefix: aws.String(folderPrefix),
+		}
+		if continuationToken != nil {
+			listObjectsInput.ContinuationToken = continuationToken
+		}
+
+		listObjectsOutput, err := s3Client.ListObjectsV2(context.TODO(), listObjectsInput)
+		if err != nil {
+			var apiErr smithy.APIError
+			if errors.As(err, &apiErr) {
+				if apiErr.ErrorCode() == "NoSuchBucket" {
+					return ErrBucketMissing
+				}
+			}
+			return err
+		}
+
+		if len(listObjectsOutput.Contents) == 0 {
+			break
+		}
+
+		objectIdentifiers := make([]s3types.ObjectIdentifier, len(listObjectsOutput.Contents))
+		for i, object := range listObjectsOutput.Contents {
+			objectIdentifiers[i] = s3types.ObjectIdentifier{Key: object.Key}
+		}
+
+		_, err = s3Client.DeleteObjects(context.TODO(), &s3.DeleteObjectsInput{
+			Bucket: aws.String(bootstrap.State),
+			Delete: &s3types.Delete{Objects: objectIdentifiers},
+		})
+		if err != nil {
+			return err
+		}
+
+		if listObjectsOutput.IsTruncated == nil || !*listObjectsOutput.IsTruncated {
+			break
+		}
+		continuationToken = listObjectsOutput.NextContinuationToken
+	}
+
+	slog.Info("folder cleanup complete", "prefix", folderPrefix)
+	return nil
+}
+
 func (a *AwsHome) getPassphrase(app string, stage string) (string, error) {
 	ssmClient := ssm.NewFromConfig(a.provider.config)
 
@@ -639,6 +698,57 @@ func (a *AwsHome) setPassphrase(app, stage, passphrase string) error {
 		Overwrite:   aws.Bool(false),
 	})
 	return err
+}
+
+func (a *AwsHome) listStages(app string) ([]string, error) {
+	bootstrap, err := a.provider.Bootstrap(a.provider.config.Region)
+	if err != nil {
+		return nil, err
+	}
+	s3Client := s3.NewFromConfig(a.provider.config)
+
+	data, err := s3Client.ListObjects(context.TODO(), &s3.ListObjectsInput{
+		Bucket: aws.String(bootstrap.State),
+		Prefix: aws.String(path.Join("app", app)),
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	stages := []string{}
+
+	for _, obj := range data.Contents {
+		filename := path.Base(*obj.Key)
+		if strings.HasSuffix(filename, ".json") {
+			stageName := strings.TrimSuffix(filename, ".json")
+			stages = append(stages, stageName)
+		}
+	}
+
+	return stages, nil
+}
+
+func (c *AwsHome) info() (util.KeyValuePairs[string], error) {
+	caller := sts.NewFromConfig(c.provider.config)
+	identity, err := caller.GetCallerIdentity(context.Background(), &sts.GetCallerIdentityInput{})
+	if err != nil {
+		return nil, err
+	}
+
+	lines := util.KeyValuePairs[string]{
+		{Key: "Provider", Value: "AWS"},
+		{Key: "Region", Value: c.provider.config.Region},
+		{Key: "Account", Value: *identity.Account},
+	}
+
+	if len(c.provider.profile) != 0 {
+		lines = append(lines, util.KeyValuePair[string]{
+			Key: "Profile", Value: c.provider.profile,
+		})
+	}
+
+	return lines, nil
 }
 
 func (a *AwsHome) Bootstrap() error {

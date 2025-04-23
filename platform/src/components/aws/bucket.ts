@@ -139,6 +139,206 @@ export interface BucketArgs {
    */
   access?: Input<"public" | "cloudfront">;
   /**
+   * Configure the policy for the bucket.
+   *
+   * @example
+   * Restrict Access to Specific IP Addresses
+   *
+   * ```js
+   * {
+   *   policy: [{
+   *     actions: ["s3:*"],
+   *     principals: "*",
+   *     conditions: [
+   *       {
+   *         test: "IpAddress",
+   *         variable: "aws:SourceIp",
+   *         values: ["10.0.0.0/16"]
+   *       }
+   *     ]
+   *   }]
+   * }
+   * ```
+   *
+   * Allow Specific IAM User Access
+   *
+   * ```js
+   * {
+   *   policy: [{
+   *     actions: ["s3:*"],
+   *     principals: [{
+   *       type: "aws",
+   *       identifiers: ["arn:aws:iam::123456789012:user/specific-user"]
+   *     }],
+   *   }]
+   * }
+   * ```
+   *
+   * Cross-Account Access
+   *
+   * ```js
+   * {
+   *   policy: [{
+   *     actions: ["s3:GetObject", "s3:ListBucket"],
+   *     principals: [{
+   *       type: "aws",
+   *       identifiers: ["123456789012"]
+   *     }],
+   *   }]
+   * }
+   * ```
+   */
+  policy?: Input<
+    Input<{
+      /**
+       * Configures whether the permission is allowed or denied.
+       * @default `"allow"`
+       * @example
+       * ```ts
+       * {
+       *   effect: "deny"
+       * }
+       * ```
+       */
+      effect?: Input<"allow" | "deny">;
+      /**
+       * The [IAM actions](https://docs.aws.amazon.com/service-authorization/latest/reference/reference_policies_actions-resources-contextkeys.html#actions_table) that can be performed.
+       * @example
+       * ```js
+       * {
+       *   actions: ["s3:*"]
+       * }
+       * ```
+       */
+      actions: Input<Input<string>[]>;
+      /**
+       * The principals that can perform the actions.
+       * @example
+       * Allow anyone to perform the actions.
+       *
+       * ```js
+       * {
+       *   principals: "*"
+       * }
+       * ```
+       *
+       * Allow anyone within an AWS account.
+       *
+       * ```js
+       * {
+       *   principals: [{ type: "aws", identifiers: ["123456789012"] }]
+       * }
+       * ```
+       *
+       * Allow specific IAM roles.
+       * ```js
+       * {
+       *   principals: [{
+       *     type: "aws",
+       *     identifiers: [
+       *       "arn:aws:iam::123456789012:role/MyRole",
+       *       "arn:aws:iam::123456789012:role/MyOtherRole"
+       *     ]
+       *   }]
+       * }
+       * ```
+       *
+       * Allow AWS CloudFront.
+       * ```js
+       * {
+       *   principals: [{ type: "service", identifiers: ["cloudfront.amazonaws.com"] }]
+       * }
+       * ```
+       *
+       * Allow OIDC federated users.
+       * ```js
+       * {
+       *   principals: [{
+       *     type: "federated",
+       *     identifiers: ["accounts.google.com"]
+       *   }]
+       * }
+       * ```
+       *
+       * Allow SAML federated users.
+       * ```js
+       * {
+       *   principals: [{
+       *     type: "federated",
+       *     identifiers: ["arn:aws:iam::123456789012:saml-provider/provider-name"]
+       *   }]
+       * }
+       * ```
+       *
+       * Allow Canonical User IDs.
+       * ```js
+       * {
+       *   principals: [{
+       *     type: "canonical",
+       *     identifiers: ["79a59df900b949e55d96a1e698fbacedfd6e09d98eacf8f8d5218e7cd47ef2be"]
+       *   }]
+       * }
+       * ```
+       *
+       * Allow specific IAM users.
+       *
+       */
+      principals: Input<
+        | "*"
+        | Input<{
+          type: Input<"aws" | "service" | "federated" | "canonical">;
+          identifiers: Input<Input<string>[]>;
+        }>[]
+      >;
+      /**
+       * Configure specific conditions for when the policy is in effect.
+       * @example
+       * ```js
+       * {
+       *   conditions: [
+       *     {
+       *       test: "StringEquals",
+       *       variable: "s3:x-amz-server-side-encryption",
+       *       values: ["AES256"]
+       *     }
+       *   ]
+       * }
+       * ```
+       */
+      conditions?: Input<
+        Input<{
+          /**
+           * Name of the [IAM condition operator](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_condition_operators.html) to evaluate.
+           */
+          test: Input<string>;
+          /**
+           * Name of a [Context Variable](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements.html#AvailableKeys) to apply the condition to. Context variables may either be standard AWS variables starting with `aws:` or service-specific variables prefixed with the service name.
+           */
+          variable: Input<string>;
+          /**
+           * The values to evaluate the condition against. If multiple values are provided, the condition matches if at least one of them applies. That is, AWS evaluates multiple values as though using an "OR" boolean operation.
+           */
+          values: Input<Input<string>[]>;
+        }>[]
+      >;
+    }>[]
+  >;
+  /**
+   * Enforce HTTPS for all requests to the bucket.
+   *
+   * By default, the bucket policy will automatically block any HTTP requests.
+   * This is done using the `aws:SecureTransport` condition key.
+   *
+   * @default true
+   * @example
+   * ```js
+   * {
+   *   enforceHttps: false
+   * }
+   * ```
+   */
+  enforceHttps?: Input<boolean>;
+  /**
    * The CORS configuration for the bucket. Defaults to `true`, which is the same as:
    *
    * ```js
@@ -547,6 +747,8 @@ export class Bucket extends Component implements Link.Linkable {
 
     const parent = this;
     const access = normalizeAccess();
+    const enforceHttps = output(args.enforceHttps ?? true);
+    const policyArgs = normalizePolicy();
 
     const bucket = createBucket();
     createVersioning();
@@ -563,6 +765,28 @@ export class Bucket extends Component implements Link.Linkable {
     function normalizeAccess() {
       return all([args.public, args.access]).apply(([pub, access]) =>
         pub === true ? "public" : access,
+      );
+    }
+
+    function normalizePolicy() {
+      return output(args.policy ?? []).apply((policy) =>
+        policy.map((p) => ({
+          ...p,
+          effect:
+            p.effect && p.effect.charAt(0).toUpperCase() + p.effect.slice(1),
+          principals:
+            p.principals === "*"
+              ? [{ type: "*", identifiers: ["*"] }]
+              : p.principals.map((i) => ({
+                ...i,
+                type: {
+                  aws: "AWS",
+                  service: "Service",
+                  federated: "Federated",
+                  canonical: "Canonical",
+                }[i.type],
+              })),
+        })),
       );
     }
 
@@ -619,51 +843,61 @@ export class Bucket extends Component implements Link.Linkable {
     }
 
     function createBucketPolicy() {
-      return access.apply((access) => {
-        const statements = [];
-        if (access) {
-          statements.push({
-            principals: [
-              access === "public"
-                ? { type: "*", identifiers: ["*"] }
-                : {
-                  type: "Service",
-                  identifiers: ["cloudfront.amazonaws.com"],
+      return all([access, enforceHttps, policyArgs]).apply(
+        ([access, enforceHttps, policyArgs]) => {
+          const statements = [];
+          if (access) {
+            statements.push({
+              principals: [
+                access === "public"
+                  ? { type: "*", identifiers: ["*"] }
+                  : {
+                    type: "Service",
+                    identifiers: ["cloudfront.amazonaws.com"],
+                  },
+              ],
+              actions: ["s3:GetObject"],
+              resources: [interpolate`${bucket.arn}/*`],
+            });
+          }
+          if (enforceHttps) {
+            statements.push({
+              effect: "Deny",
+              principals: [{ type: "*", identifiers: ["*"] }],
+              actions: ["s3:*"],
+              resources: [bucket.arn, interpolate`${bucket.arn}/*`],
+              conditions: [
+                {
+                  test: "Bool",
+                  variable: "aws:SecureTransport",
+                  values: ["false"],
                 },
-            ],
-            actions: ["s3:GetObject"],
-            resources: [interpolate`${bucket.arn}/*`],
-          });
-        }
-        statements.push({
-          effect: "Deny",
-          principals: [{ type: "*", identifiers: ["*"] }],
-          actions: ["s3:*"],
-          resources: [bucket.arn, interpolate`${bucket.arn}/*`],
-          conditions: [
-            {
-              test: "Bool",
-              variable: "aws:SecureTransport",
-              values: ["false"],
-            },
-          ],
-        });
+              ],
+            });
+          }
+          statements.push(
+            ...policyArgs.map((p) => ({
+              ...p,
+              resources: [bucket.arn, interpolate`${bucket.arn}/*`],
+            })),
+          );
 
-        return new s3.BucketPolicy(
-          ...transform(
-            args.transform?.policy,
-            `${name}Policy`,
-            {
-              bucket: bucket.bucket,
-              policy: iam.getPolicyDocumentOutput({ statements }).json,
-            },
-            {
-              parent,
-              dependsOn: publicAccessBlock,
-            },
-          ),
-        );
-      });
+          return new s3.BucketPolicy(
+            ...transform(
+              args.transform?.policy,
+              `${name}Policy`,
+              {
+                bucket: bucket.bucket,
+                policy: iam.getPolicyDocumentOutput({ statements }).json,
+              },
+              {
+                parent,
+                dependsOn: publicAccessBlock,
+              },
+            ),
+          );
+        },
+      );
     }
 
     function createCorsRule() {

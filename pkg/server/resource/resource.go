@@ -55,16 +55,29 @@ func (a *AwsResource) config() (aws.Config, error) {
 
 func Register(ctx context.Context, p *project.Project, r *rpc.Server) error {
 	awsResource := &AwsResource{ctx, p}
+	cloudflareResource := &CloudflareResource{ctx, p}
+	vercelResource := &VercelResource{ctx, p}
 	r.RegisterName("Resource.Run", NewRun())
+	
+	// AWS Resources
 	r.RegisterName("Resource.Aws.BucketFiles", &BucketFiles{awsResource})
 	r.RegisterName("Resource.Aws.DistributionDeploymentWaiter", &DistributionDeploymentWaiter{awsResource})
 	r.RegisterName("Resource.Aws.DistributionInvalidation", &DistributionInvalidation{awsResource})
 	r.RegisterName("Resource.Aws.FunctionCodeUpdater", &FunctionCodeUpdater{awsResource})
+	r.RegisterName("Resource.Aws.FunctionEnvironmentUpdate", &FunctionEnvironmentUpdate{awsResource})
 	r.RegisterName("Resource.Aws.HostedZoneLookup", &HostedZoneLookup{awsResource})
 	r.RegisterName("Resource.Aws.KvKeys", &KvKeys{awsResource})
+	r.RegisterName("Resource.Aws.KvRoutesUpdate", &KvRoutesUpdate{awsResource})
 	r.RegisterName("Resource.Aws.OriginAccessIdentity", &OriginAccessIdentity{awsResource})
 	r.RegisterName("Resource.Aws.OriginAccessControl", &OriginAccessControl{awsResource})
 	r.RegisterName("Resource.Aws.RdsRoleLookup", &RdsRoleLookup{awsResource})
 	r.RegisterName("Resource.Aws.VectorTable", &VectorTable{awsResource})
+
+	// Cloudflare Resources
+	r.RegisterName("Resource.Cloudflare.DnsRecord", &CloudflareDnsRecord{cloudflareResource})
+
+	// Vercel Resources
+	r.RegisterName("Resource.Vercel.DnsRecord", &VercelDnsRecord{vercelResource})
+
 	return nil
 }

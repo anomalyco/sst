@@ -8,10 +8,12 @@ export function ZodValidator<Schema extends ZodSchema>(
   };
 }
 
-import { BaseSchema, parse, Input } from "valibot";
+import { parse, BaseSchema, InferInput } from "valibot";
 
-export function ValibotValidator<T extends BaseSchema>(schema: T) {
-  return (value: Input<T>) => {
+export function ValibotValidator<T extends BaseSchema<any, any, any>>(
+  schema: T,
+) {
+  return (value: InferInput<T>) => {
     return parse(schema, value);
   };
 }

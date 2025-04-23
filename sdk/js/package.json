@@ -30,8 +30,8 @@
     "@types/node": "22.10.0",
     "hono": "4.3.9",
     "typescript": "5.7.2",
-    "valibot": "0.30.0",
-    "zod": "3.23.8"
+    "valibot": "^1.0.0-rc.3",
+    "zod": "^3.24.2"
   },
   "files": [
     "dist",
@@ -42,8 +42,10 @@
   },
   "optionalDependencies": {},
   "dependencies": {
-    "aws4fetch": "^1.0.18",
+    "aws-sdk": "2.1692.0",
+    "aws4fetch": "1.0.18",
     "jose": "5.2.3",
+    "opencontrol": "0.0.6",
     "openid-client": "5.6.4"
   }
 }

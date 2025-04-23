@@ -481,7 +481,7 @@ async function generateGlobalConfigDoc(
       renderImports(outputFilePath),
       renderBodyBegin(),
       renderAbout(useModuleComment(module)),
-      renderVariables(module),
+      renderVariables(module, { title: "Variables" }),
       renderFunctions(module, useModuleFunctions(module), {
         title: "Functions",
       }),
@@ -600,6 +600,7 @@ async function generateComponentDoc(
   sdk?: TypeDoc.DeclarationReflection
 ) {
   console.info(`Generating ${component.name}...`);
+
   const sourceFile = component.sources![0].fileName;
   const className = useClassName(component);
   const fullClassName = `${useClassProviderNamespace(component)}.${className}`;
@@ -639,14 +640,28 @@ async function generateComponentDoc(
         const lines = [
           ...renderLinks(component),
           ...renderCloudflareBindings(component),
-          ...(sdk?.name === "realtime" || sdk?.name === "task"
-            ? renderAbout(useModuleComment(sdk))
+          ...(["realtime", "task"].includes(sdk?.name!)
+            ? renderAbout(useModuleComment(sdk!))
             : []),
+          ...(() => {
+            if (!["opencontrol"].includes(sdk?.name!)) return [];
+            for (const variable of sdk!.children!) {
+              if (variable.name === "tools") {
+                // @ts-expect-error
+                variable.type = {
+                  type: "reference",
+                  name: "Tools",
+                  package: "opencontrol",
+                };
+              }
+            }
+            return renderVariables(sdk!);
+          })(),
           ...(sdk
             ? renderFunctions(
                 sdk,
                 useModuleFunctions(sdk),
-                sdk.name === "realtime" || sdk.name === "task"
+                ["realtime", "task"].includes(sdk.name)
                   ? { prefix: sdk.name }
                   : undefined
               )
@@ -769,6 +784,9 @@ function renderType(
     }
     if (type.type === "reference" && type.package === "esbuild") {
       return renderEsbuildType(type);
+    }
+    if (type.type === "reference" && type.package === "opencontrol") {
+      return renderOpencontrolType(type);
     }
     if (
       // when bun is installed globally, package is `bun-types`
@@ -923,6 +941,9 @@ function renderType(
         '<code class="primitive">"arn:aws:lambda:$&#123;string&#125;"</code>',
       ].join("");
     }
+    if (type.name === "SsrSite") {
+      return ['<code class="primitive">All SSR sites</code>'].join("");
+    }
     // types in the same doc (links to the class ie. `subscribe()` return type)
     if (isModuleComponent(module) && type.name === useClassName(module)) {
       return `[<code class="type">${type.name}</code>](.)`;
@@ -966,6 +987,7 @@ function renderType(
       Efs: "efs",
       Function: "function",
       FunctionArgs: "function",
+      FunctionEnvironmentUpdate: "providers/function-environment-update",
       FunctionPermissionArgs: "function",
       Postgres: "postgres",
       PostgresArgs: "postgres",
@@ -978,6 +1000,7 @@ function renderType(
       SnsTopic: "sns-topic",
       SnsTopicLambdaSubscriber: "sns-topic-lambda-subscriber",
       SnsTopicQueueSubscriber: "sns-topic-queue-subscriber",
+      StaticSite: "static-site",
       Task: "task",
       Vpc: "vpc",
     }[type.name];
@@ -1031,11 +1054,18 @@ function renderType(
             `<code class="symbol">&gt;</code>`,
           ].join("");
     }
-    if (type.name === "UnwrappedObject" || type.name === "Unwrap") {
+    if (
+      type.name === "UnwrappedObject" ||
+      type.name === "UnwrappedArray" ||
+      type.name === "Unwrap"
+    ) {
       return renderSomeType(type.typeArguments?.[0]!);
     }
     if (type.name === "ComponentResourceOptions") {
       return `[<code class="type">${type.name}</code>](https://www.pulumi.com/docs/concepts/options/)`;
+    }
+    if (type.name === "CustomResourceOptions") {
+      return `[<code class="type">${type.name}</code>](https://www.pulumi.com/docs/iac/concepts/resources/dynamic-providers/)`;
     }
     if (type.name === "FileAsset") {
       return `[<code class="type">${type.name}</code>](https://www.pulumi.com/docs/iac/concepts/assets-archives/#assets)`;
@@ -1167,6 +1197,9 @@ function renderType(
     const hash = type.name === "Loader" ? `#loader` : "#build";
     return `[<code class="type">${type.name}</code>](https://esbuild.github.io/api/${hash})`;
   }
+  function renderOpencontrolType(type: TypeDoc.ReferenceType) {
+    return `[<code class="type">${type.name}</code>](https://opencontrol.ai/)`;
+  }
   function renderBunShellType(type: TypeDoc.ReferenceType) {
     return `[<code class="type">Bun Shell</code>](https://bun.sh/docs/runtime/shell)`;
   }
@@ -1187,7 +1220,10 @@ function renderType(
   }
 }
 
-function renderVariables(module: TypeDoc.DeclarationReflection) {
+function renderVariables(
+  module: TypeDoc.DeclarationReflection,
+  opts?: { title?: string }
+) {
   const lines: string[] = [];
   const vars = (module.children ?? []).filter(
     (c) =>
@@ -1212,7 +1248,7 @@ function renderVariables(module: TypeDoc.DeclarationReflection) {
     };
   }
 
-  lines.push(``, `## Variables`);
+  if (opts?.title) lines.push(``, `## ${opts.title}`);
 
   for (const v of vars) {
     console.debug(` - variable ${v.name}`);
@@ -1955,6 +1991,7 @@ function useClassMethods(module: TypeDoc.DeclarationReflection) {
       (c) =>
         !c.flags.isExternal &&
         !c.flags.isPrivate &&
+        !c.flags.isProtected &&
         c.signatures &&
         !c.signatures[0].comment?.modifierTags.has("@internal") &&
         !c.signatures[0].comment?.blockTags.find((t) => t.tag === "@deprecated")
@@ -2170,12 +2207,15 @@ async function buildComponents() {
       "../platform/src/components/aws/nuxt.ts",
       "../platform/src/components/aws/realtime.ts",
       "../platform/src/components/aws/realtime-lambda-subscriber.ts",
+      "../platform/src/components/aws/react.ts",
       "../platform/src/components/aws/redis.ts",
+      "../platform/src/components/aws/redis-v1.ts",
       "../platform/src/components/aws/remix.ts",
       "../platform/src/components/aws/queue.ts",
       "../platform/src/components/aws/queue-lambda-subscriber.ts",
       "../platform/src/components/aws/kinesis-stream.ts",
       "../platform/src/components/aws/kinesis-stream-lambda-subscriber.ts",
+      "../platform/src/components/aws/opencontrol.ts",
       "../platform/src/components/aws/router.ts",
       "../platform/src/components/aws/service.ts",
       "../platform/src/components/aws/sns-topic.ts",
@@ -2184,6 +2224,7 @@ async function buildComponents() {
       "../platform/src/components/aws/solid-start.ts",
       "../platform/src/components/aws/static-site.ts",
       "../platform/src/components/aws/svelte-kit.ts",
+      "../platform/src/components/aws/tan-stack-start.ts",
       "../platform/src/components/aws/task.ts",
       "../platform/src/components/aws/vpc.ts",
       "../platform/src/components/aws/vpc-v1.ts",
@@ -2192,13 +2233,14 @@ async function buildComponents() {
       "../platform/src/components/cloudflare/d1.ts",
       "../platform/src/components/cloudflare/kv.ts",
       // internal
-      "../platform/src/components/aws/dns.ts",
-      "../platform/src/components/cloudflare/dns.ts",
-      "../platform/src/components/vercel/dns.ts",
       "../platform/src/components/aws/cdn.ts",
+      "../platform/src/components/aws/dns.ts",
       "../platform/src/components/aws/iam-edit.ts",
       "../platform/src/components/aws/permission.ts",
+      "../platform/src/components/aws/providers/function-environment-update.ts",
       "../platform/src/components/cloudflare/binding.ts",
+      "../platform/src/components/cloudflare/dns.ts",
+      "../platform/src/components/vercel/dns.ts",
     ],
     tsconfig: "../platform/tsconfig.json",
   });
@@ -2225,6 +2267,7 @@ async function buildSdk() {
       "../sdk/js/src/aws/realtime.ts",
       "../sdk/js/src/aws/task.ts",
       "../sdk/js/src/vector/index.ts",
+      "../sdk/js/src/opencontrol.ts",
     ],
     tsconfig: "../sdk/js/tsconfig.json",
   });

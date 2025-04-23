@@ -30,7 +30,8 @@
     "astro-sst": "^2.41.5",
     "js-base64": "^3.7.6",
     "rehype-autolink-headings": "^7.1.0",
-    "sharp": "^0.33.3"
+    "sharp": "^0.33.3",
+    "sst": "3.9.44"
   },
   "devDependencies": {
     "@types/node": "^20.10.5",

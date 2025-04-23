@@ -42,11 +42,11 @@ type ClusterVpcArgs = {
   /**
    * The ID of the Cloud Map namespace to use for the service.
    */
-  cloudmapNamespaceId: Input<string>;
+  cloudmapNamespaceId?: Input<string>;
   /**
    * The name of the Cloud Map namespace to use for the service.
    */
-  cloudmapNamespaceName: Input<string>;
+  cloudmapNamespaceName?: Input<string>;
 };
 
 export interface ClusterArgs {
@@ -58,6 +58,14 @@ export interface ClusterArgs {
    *
    * ```js title="sst.config.ts"
    * const myVpc = new sst.aws.Vpc("MyVpc");
+   * ```
+   *
+   * Or reference an existing VPC.
+   *
+   * ```js title="sst.config.ts"
+   * const myVpc = sst.aws.Vpc.get("MyVpc", {
+   *   id: "vpc-12345678901234567"
+   * });
    * ```
    *
    * And pass it in.
@@ -117,24 +125,22 @@ interface ClusterRef {
 }
 
 /**
- * The `Cluster` component lets you create a cluster of containers to your app. It uses
- * [Amazon ECS](https://aws.amazon.com/ecs/).
+ * The `Cluster` component lets you create an [ECS cluster](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/clusters.html) for your app.
+ * add `Service` and `Task` components to it.
  *
  * @example
- *
- * #### Create a Cluster
  *
  * ```ts title="sst.config.ts"
  * const vpc = new sst.aws.Vpc("MyVpc");
  * const cluster = new sst.aws.Cluster("MyCluster", { vpc });
  * ```
  *
- * Once created, you can add the following to your cluster:
+ * Once created, you can add the following to it:
  *
- * - Services: These are containers that are always running, like web or application servers.
- *   They automatically restart if they fail.
- * - Tasks: These are containers that are used for long running asynchronous work, like data
- *   processing.
+ * 1. `Service`: These are containers that are always running, like web or
+ *   application servers. They automatically restart if they fail.
+ * 2. `Task`: These are containers that are used for long running asynchronous work,
+ *   like data processing.
  */
 export class Cluster extends Component {
   private constructorOpts: ComponentResourceOptions;
@@ -222,6 +228,14 @@ export class Cluster extends Component {
         if (!vpc.containerSubnets && !vpc.serviceSubnets)
           throw new VisibleError(
             `Missing "vpc.containerSubnets" for the "${name}" Cluster component.`,
+          );
+
+        if (
+          (vpc.cloudmapNamespaceId && !vpc.cloudmapNamespaceName) ||
+          (!vpc.cloudmapNamespaceId && vpc.cloudmapNamespaceName)
+        )
+          throw new VisibleError(
+            `You must provide both "vpc.cloudmapNamespaceId" and "vpc.cloudmapNamespaceName" for the "${name}" Cluster component.`,
           );
 
         return {

@@ -1,7 +1,11 @@
-import { defineConfig } from '@tanstack/start/config'
+import { defineConfig } from '@tanstack/react-start/config'
 import tsConfigPaths from 'vite-tsconfig-paths'
+import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
+  tsr: {
+    appDirectory: 'src',
+  },
   server: {
     preset: 'aws-lambda',
     awsLambda: {
@@ -13,6 +17,7 @@ export default defineConfig({
       tsConfigPaths({
         projects: ['./tsconfig.json'],
       }),
+      tailwindcss(),
     ],
   },
 })

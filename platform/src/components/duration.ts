@@ -8,6 +8,8 @@ export type Duration = `${number} ${
   | "day"
   | "days"}`;
 
+export type DurationSeconds = `${number} ${"second" | "seconds"}`;
+
 export type DurationMinutes = `${number} ${
   | "second"
   | "seconds"
@@ -22,7 +24,9 @@ export type DurationHours = `${number} ${
   | "hour"
   | "hours"}`;
 
-export function toSeconds(duration: Duration | DurationMinutes) {
+export function toSeconds(
+  duration: Duration | DurationMinutes | DurationSeconds,
+) {
   const [count, unit] = duration.split(" ");
   const countNum = parseInt(count);
   const unitLower = unit.toLowerCase();

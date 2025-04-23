@@ -23,12 +23,12 @@ var forceExternal = []string{
 }
 
 var targetMap = map[string]esbuild.Target{
-	"nodejs22.x": esbuild.ES2022,
-	"nodejs20.x": esbuild.ES2020,
-	"nodejs18.x": esbuild.ES2018,
-	"nodejs16.x": esbuild.ES2016,
-	"nodejs14.x": esbuild.ES2015,
-	"nodejs12.x": esbuild.ES2015,
+	"nodejs22.x": esbuild.ES2023,
+	"nodejs20.x": esbuild.ES2023,
+	"nodejs18.x": esbuild.ES2022,
+	"nodejs16.x": esbuild.ES2021,
+	"nodejs14.x": esbuild.ES2020,
+	"nodejs12.x": esbuild.ES2019,
 }
 
 func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtime.BuildOutput, error) {
@@ -139,6 +139,7 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 			}, "\n"),
 		},
 		NodePaths: properties.ESBuild.NodePaths,
+		Define:    properties.ESBuild.Define,
 	}
 
 	if !isESM {

@@ -73,7 +73,19 @@ Currently the Console only supports apps **deployed to AWS**.
 
    > Resource handler returned message: "Specified ReservedConcurrentExecutions for function decreases account's UnreservedConcurrentExecution below its minimum value
 
-   This happens because AWS has been limiting the concurrency of Lambda functions for new accounts. It's a good idea to increase this limit before you go to production anyway. To do so, you can [request a quota increase](https://repost.aws/knowledge-center/lambda-concurrency-limit-increase) to the default value of 1000.
+   This happens because AWS has been limiting the concurrency of Lambda functions for new accounts. It's a good idea to increase this limit before you go to production anyway.
+
+   To do so, you can [request a quota increase](https://repost.aws/knowledge-center/lambda-concurrency-limit-increase) to the default value of 1000. You can also do the following to expedite the request.
+
+   <details>
+   <summary>Expedite the request</summary>
+   If you want to expedite the request:
+
+   1. Submit the request.
+   2. Click the **Quota request history** link in the sidebar.
+   3. Click on **AWS Support Center Case** to open your request case details.
+   4. Hit the **Reply** button and select **Chat** to chat with an AWS representative to expedite it.
+   </details>
 
 3. **Invite your team**
 
@@ -297,7 +309,7 @@ Previously, the Console pricing was based on the number of times the Lambda func
 Here are a few of the things the Console does for you.
 
 1. [**Logs**](#logs): View logs from any log group in your app
-2. [**Issues**](#issues): Get real-time alerts for any errors in your functions
+2. [**Issues**](#issues): Get real-time alerts for any errors in your app
 3. [**Local logs**](#local-logs): View logs from your local `sst dev` session
 4. [**Updates**](#updates): View the details of every update made to your app
 5. [**Resources**](#resources): View all the resources in your app and their props
@@ -323,7 +335,7 @@ With the Console, you don't need to go to CloudWatch to look at the logs for you
 
 ### Issues
 
-The Console will automatically show you any errors in your Node.js Lambda functions in real-time. And notify you through Slack or email.
+The Console will automatically show you any errors in your Node.js Lambda functions and containers in real-time. And notify you through Slack or email.
 
 <picture>
   <source srcset={consoleIssuesDark.src} media="(prefers-color-scheme: dark)" />
@@ -335,29 +347,49 @@ With Issues, there is:
 
 - **Nothing to setup**, no code to instrument
 - **Source maps** are supported **automatically**
-- **No impact on performance** or cold starts, since the functions aren't modified
+- **No impact on performance**, since your code isn't modified
 
 :::note
-Issues works out of the box and has no impact on performance or cold starts.
+Issues works out of the box and has no impact on performance.
 :::
 
-Issues currently only supports Node.js functions. Other runtimes and containers are on the roadmap.
+Issues currently only supports Node.js functions and containers. Other languages and runtimes are on the roadmap.
 
 ---
 
 #### Error detection
 
-Issues reports Lambda function failures. In addition, for Node.js it reports errors that are logged using `console.error(new Error("my-error"))`.
+For the Console to automatically report your errors, you need to `console.error` an error object.
 
-:::tip
-In Node.js functions you can use `console.error` to report your errors.
-:::
-
-For the Console to automatically report your errors, you need to pass in an error object with the `console.error` call.
-
-```js title="src/lambda.ts"
+```js title="src/index.ts"
 console.error(new Error("my-error"));
 ```
+
+This works a little differently for containers and functions.
+
+- **Containers**
+
+  In a container applications, your code needs to also import the [SST JS SDK](/docs/reference/sdk/).
+
+  ```js title="src/index.ts" {1}
+  import "sst";
+
+  console.error(new Error("my-error"));
+  ```
+
+  This applies a polyfill to the `console` object to prepend the log lines with a marker that allows Issues to detect errors. [More on this below](#how-it-works-1).
+
+  If you are already importing the SDK, you won't need to add an additional import.
+
+- **Functions**
+
+  In addition, to errors logged using `console.error(new Error("my-error"))`, Issues also reports Lambda function failures.
+
+  ```js title="src/lambda.ts"
+  console.error(new Error("my-error"));
+  ```
+
+  In Lambda you don't need to import the SDK to polyfill the `console` object. Since the Lambda runtime does this automatically for you. 
 
 ---
 
@@ -368,7 +400,9 @@ Here's how Issues works behind the scenes.
 1. When an app is deployed or when an account is first synced, we add a log subscriber to the CloudWatch Log groups in your SST apps.
    - This is added to your AWS account and includes a Lambda function. More on this below.
 2. If the subscriber filter matches anything that looks like an error it invokes the Lambda function.
-3. The Lambda function tries to parse the error and fetches the source maps from the state bucket in your account.
+   - In case of errors from a Lambda function, the Lambda runtime automatically adds a marker to the logs that the filter matches for.
+   - For containers, the SST SDK polyfills the `console` object to add the marker.
+3. The Lambda function tries to parse the error. If the error comes from a Lambda function, it fetches the source maps from the state bucket in your account.
 4. It then hits an endpoint in the SST Console and passes in that error.
 5. Finally, the Console groups similar looking errors together and displays them.
 

@@ -5,6 +5,7 @@ import (
 )
 
 var SST_LOG = os.Getenv("SST_LOG")
+var SST_LOG_CHILDREN = isTrue("SST_LOG_CHILDREN")
 var SST_PRINT_LOGS = isTrue("SST_PRINT_LOGS")
 var SST_NO_CLEANUP = isTrue("SST_NO_CLEANUP")
 var SST_PASSPHRASE = os.Getenv("SST_PASSPHRASE")

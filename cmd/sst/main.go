@@ -164,7 +164,7 @@ var root = &cli.Command{
 			"",
 			"- **macOS**",
 			"",
-			"  The CLI is available via a Homebrew Tap, and as downloadable binary in the [releases](https://github.com/sst/sst/v3/releases/latest).",
+			"  The CLI is available via a Homebrew Tap, and as downloadable binary in the [releases](https://github.com/sst/sst/releases/latest).",
 			"",
 			"  ```bash",
 			"  brew install sst/tap/sst",
@@ -177,7 +177,7 @@ var root = &cli.Command{
 			"",
 			"- **Linux**",
 			"",
-			"  The CLI is available as downloadable binaries in the [releases](https://github.com/sst/sst/v3/releases/latest). Download the `.deb` or `.rpm` and install with `sudo dpkg -i` and `sudo rpm -i`.",
+			"  The CLI is available as downloadable binaries in the [releases](https://github.com/sst/sst/releases/latest). Download the `.deb` or `.rpm` and install with `sudo dpkg -i` and `sudo rpm -i`.",
 			"",
 			"  For Arch Linux, it's available in the [aur](https://aur.archlinux.org/packages/sst-bin).",
 			"---",
@@ -278,6 +278,26 @@ var root = &cli.Command{
 					"```",
 					"This is useful when running in a CI environment.",
 					"",
+				}, "\n"),
+			},
+		},
+		{
+			Name: "config",
+			Type: "string",
+			Description: cli.Description{
+				Short: "Path to the config file",
+				Long: strings.Join([]string{
+					"",
+					"Optionally, pass in a path to the SST config file. This default to",
+					"`sst.config.ts` in the current directory.",
+					"",
+					"```bash",
+					"sst --config path/to/config.ts [command]",
+					"```",
+					"",
+					"This is useful when your monorepo has multiple SST apps in it.",
+					"You can run the SST CLI for a specific app by passing in the path to",
+					"its config file.",
 				}, "\n"),
 			},
 		},
@@ -457,69 +477,7 @@ var root = &cli.Command{
 			Run: CmdMosaic,
 		},
 		CmdDeploy,
-		{
-			Name: "diff",
-			Description: cli.Description{
-				Short: "See what changes will be made",
-				Long: strings.Join([]string{
-					"Builds your app to see what changes will be made when you deploy it.",
-					"",
-					"It displays a list of resources that will be created, updated, or deleted.",
-					"For each of these resources, it'll also show the properties that are changing.",
-					"",
-					":::tip",
-					"Run a `sst diff` to see what changes will be made when you deploy your app.",
-					":::",
-					"",
-					"This is useful for cases when you pull some changes from a teammate and want to",
-					"see what will be deployed; before doing the actual deploy.",
-					"",
-					"Optionally, you can diff a specific component by passing in the name of the component from your `sst.config.ts`.",
-					"",
-					"```bash frame=\"none\"",
-					"sst diff --target MyComponent",
-					"```",
-					"",
-					"By default, this compares to the last deploy of the given stage as it would be",
-					"deployed using `sst deploy`. But if you are working in dev mode using `sst dev`,",
-					"you can use the `--dev` flag.",
-					"",
-					"```bash frame=\"none\"",
-					"sst diff --dev",
-					"```",
-					"",
-					"This is useful because in dev mode, you app is deployed a little differently.",
-				}, "\n"),
-			},
-			Flags: []cli.Flag{
-				{
-					Name: "target",
-					Description: cli.Description{
-						Short: "Run it only for a component",
-						Long:  "Only run it for the given component.",
-					},
-				},
-				{
-					Name: "dev",
-					Type: "bool",
-					Description: cli.Description{
-						Short: "Compare to sst dev",
-						Long: strings.Join([]string{
-							"Compare to the dev version of this stage.",
-						}, "\n"),
-					},
-				},
-			},
-			Examples: []cli.Example{
-				{
-					Content: "sst diff --stage production",
-					Description: cli.Description{
-						Short: "See changes to production",
-					},
-				},
-			},
-			Run: CmdDiff,
-		},
+		CmdDiff,
 		{
 			Name: "add",
 			Description: cli.Description{
@@ -588,7 +546,7 @@ var root = &cli.Command{
 				spin.Suffix = "  Adding provider..."
 				spin.Start()
 				defer spin.Stop()
-				cfgPath, err := project.Discover()
+				cfgPath, err := cli.Discover()
 				if err != nil {
 					return err
 				}
@@ -656,7 +614,7 @@ var root = &cli.Command{
 				}, "\n"),
 			},
 			Run: func(cli *cli.Cli) error {
-				cfgPath, err := project.Discover()
+				cfgPath, err := cli.Discover()
 				if err != nil {
 					return err
 				}

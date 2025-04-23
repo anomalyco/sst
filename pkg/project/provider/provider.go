@@ -12,6 +12,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/sst/sst/v3/internal/util"
 	"github.com/sst/sst/v3/pkg/flag"
 	"github.com/sst/sst/v3/pkg/id"
 	"golang.org/x/exp/slog"
@@ -24,6 +25,9 @@ type Home interface {
 	removeData(key, app, stage string) error
 	setPassphrase(app, stage string, passphrase string) error
 	getPassphrase(app, stage string) (string, error)
+	listStages(app string) ([]string, error)
+	cleanup(key, app, stage string) error
+	info() (util.KeyValuePairs[string], error)
 }
 
 type DevTransport struct {
@@ -150,6 +154,16 @@ func PutUpdate(backend Home, app, stage string, update *Update) error {
 	slog.Info("putting update", "app", app, "stage", stage)
 	update.RunID = flag.SST_RUN_ID
 	return putData(backend, "update", app, stage+"/"+update.ID, false, update)
+}
+
+func Cleanup(backend Home, app, stage string) error {
+	if err := backend.cleanup("eventlog", app, stage); err != nil {
+		return err
+	}
+	if err := backend.cleanup("snapshot", app, stage); err != nil {
+		return err
+	}
+	return nil
 }
 
 func GetSecrets(backend Home, app, stage string) (map[string]string, error) {
@@ -295,6 +309,16 @@ func ForceUnlock(backend Home, version, app, stage string) error {
 		}
 	}
 	return removeData(backend, "lock", app, stage)
+}
+
+func ListStages(backend Home, app string) ([]string, error) {
+	slog.Info("listing stages", "app", app)
+	return backend.listStages(app)
+}
+
+func Info(backend Home) (util.KeyValuePairs[string], error) {
+	slog.Info("fetching backend configuration info")
+	return backend.info()
 }
 
 func putData(backend Home, key, app, stage string, encrypt bool, data interface{}) error {

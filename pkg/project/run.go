@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"os/signal"
 	"path"
 	"path/filepath"
 	"strings"
@@ -175,12 +176,12 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 		Globals: strings.Join(providerShim, "\n"),
 		Code: fmt.Sprintf(`
       import { run } from "%v";
-      import mod from "%v/sst.config.ts";
+			import mod from '%s';
       const result = await run(mod.run);
       export default result;
     `,
 			path.Join(p.PathWorkingDir(), "platform/src/auto/run.ts"),
-			p.PathRoot(),
+			p.PathConfig(),
 		),
 	})
 	if err != nil {
@@ -268,9 +269,9 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	if input.ServerPort != 0 {
 		env = append(env, "SST_SERVER=http://127.0.0.1:"+fmt.Sprint(input.ServerPort))
 	}
-	pulumiPath := flag.SST_PULUMI_PATH
-	if pulumiPath == "" {
-		pulumiPath = filepath.Join(global.BinPath(), "..")
+	pulumiPath := global.PulumiPath()
+	if flag.SST_PULUMI_PATH != "" {
+		pulumiPath = flag.SST_PULUMI_PATH
 	}
 
 	eventlogPath := workdir.EventLogPath()
@@ -335,7 +336,7 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 		}
 	}
 
-	cmd := process.Command(filepath.Join(pulumiPath, "bin/pulumi"), args...)
+	cmd := process.Command(pulumiPath, args...)
 	process.Detach(cmd)
 	cmd.Env = env
 	cmd.Stdout = pulumiStdout
@@ -390,6 +391,24 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 				err := cmd.Process.Signal(syscall.SIGINT)
 				if err != nil {
 					log.Error("failed to send interrupt", "err", err)
+				}
+				bus.Publish(&CancelledEvent{})
+				interruptChannel := make(chan os.Signal, 1)
+				signal.Notify(interruptChannel, syscall.SIGINT, syscall.SIGTERM)
+
+				for {
+					select {
+					case <-exited:
+						return
+					case <-interruptChannel:
+						if cmd.Process != nil {
+							log.Info("sending force interrupt")
+							err := cmd.Process.Signal(syscall.SIGINT)
+							if err != nil {
+								log.Error("failed to send interrupt", "err", err)
+							}
+						}
+					}
 				}
 			}
 		}
@@ -542,7 +561,12 @@ loop:
 		}
 	}
 
-	log.Info("done running stack command")
+	if input.Command == "remove" && len(complete.Resources) == 0 {
+		provider.Cleanup(p.home, p.app.Name, p.app.Stage)
+
+	}
+
+	log.Info("done running stack command", "resources", len(complete.Resources))
 	if cmd.ProcessState.ExitCode() > 0 {
 		return ErrStackRunFailed
 	}

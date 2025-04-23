@@ -1,0 +1,57 @@
+{
+  "name": "aws-analog",
+  "version": "0.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=18.19.1"
+  },
+  "scripts": {
+    "build": "sed -i '' 's/base: .*/base: undefined,/' vite.config.ts && sed -i '' 's/apiPrefix: .*/apiPrefix: undefined,/' vite.config.ts && ng build",
+    "build-base": "sed -i '' 's/base: .*/base: \"\\/analog\",/' vite.config.ts && sed -i '' 's/apiPrefix: .*/apiPrefix: \"analog\\/api\",/' vite.config.ts && ng build",
+    "dev": "ng serve",
+    "ng": "ng",
+    "start": "npm run dev",
+    "test": "ng test",
+    "watch": "ng build --watch --configuration development"
+  },
+  "private": true,
+  "dependencies": {
+    "@analogjs/content": "^1.14.1",
+    "@analogjs/router": "^1.14.1",
+    "@angular/animations": "^19.0.0",
+    "@angular/common": "^19.0.0",
+    "@angular/compiler": "^19.0.0",
+    "@angular/core": "^19.0.0",
+    "@angular/forms": "^19.0.0",
+    "@angular/platform-browser": "^19.0.0",
+    "@angular/platform-browser-dynamic": "^19.0.0",
+    "@angular/platform-server": "^19.0.0",
+    "@angular/router": "^19.0.0",
+    "@aws-sdk/client-s3": "^3.654.0",
+    "@aws-sdk/s3-request-presigner": "^3.654.0",
+    "front-matter": "^4.0.2",
+    "marked": "^5.0.2",
+    "marked-gfm-heading-id": "^3.1.0",
+    "marked-highlight": "^2.0.1",
+    "marked-mangle": "^1.1.7",
+    "prismjs": "^1.29.0",
+    "rxjs": "~7.8.0",
+    "sst": "latest",
+    "tslib": "^2.3.0",
+    "zone.js": "~0.15.0"
+  },
+  "devDependencies": {
+    "@analogjs/platform": "^1.14.1",
+    "@analogjs/vite-plugin-angular": "^1.14.1",
+    "@analogjs/vitest-angular": "^1.14.1",
+    "@angular-devkit/build-angular": "^19.0.0",
+    "@angular/build": "^19.0.0",
+    "@angular/cli": "^19.0.0",
+    "@angular/compiler-cli": "^19.0.0",
+    "jsdom": "^22.0.0",
+    "typescript": "~5.8.0",
+    "vite": "^6.0.0",
+    "vite-tsconfig-paths": "^4.2.0",
+    "vitest": "^3.0.0"
+  }
+}

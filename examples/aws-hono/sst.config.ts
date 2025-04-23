@@ -6,6 +6,7 @@ export default $config({
       name: "aws-hono",
       removal: input?.stage === "production" ? "retain" : "remove",
       home: "aws",
+      version: "3.10.13",
     };
   },
   async run() {

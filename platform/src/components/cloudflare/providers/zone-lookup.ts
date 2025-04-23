@@ -8,6 +8,7 @@ interface Inputs {
 
 interface Outputs {
   zoneId: string;
+  zoneName: string;
 }
 
 export interface ZoneLookupInputs {
@@ -17,12 +18,13 @@ export interface ZoneLookupInputs {
 
 export interface ZoneLookup {
   zoneId: Output<Outputs["zoneId"]>;
+  zoneName: Output<Outputs["zoneName"]>;
 }
 
 class Provider implements dynamic.ResourceProvider {
   async create(inputs: Inputs): Promise<dynamic.CreateResult<Outputs>> {
-    const zoneId = await this.lookup(inputs);
-    return { id: zoneId, outs: { zoneId } };
+    const { zoneId, zoneName } = await this.lookup(inputs);
+    return { id: zoneId, outs: { zoneId, zoneName } };
   }
 
   async update(
@@ -30,11 +32,14 @@ class Provider implements dynamic.ResourceProvider {
     olds: Inputs,
     news: Inputs,
   ): Promise<dynamic.UpdateResult<Outputs>> {
-    const zoneId = await this.lookup(news);
-    return { outs: { zoneId } };
+    const { zoneId, zoneName } = await this.lookup(news);
+    return { outs: { zoneId, zoneName } };
   }
 
-  async lookup(inputs: Inputs, page = 1): Promise<string> {
+  async lookup(
+    inputs: Inputs,
+    page = 1,
+  ): Promise<{ zoneId: string; zoneName: string }> {
     try {
       const qs = new URLSearchParams({
         per_page: "50",
@@ -48,7 +53,7 @@ class Provider implements dynamic.ResourceProvider {
         // ensure `example.com` does not match `myexample.com`
         (z) => inputs.domain === z.name || inputs.domain.endsWith(`.${z.name}`),
       );
-      if (zone) return zone.id;
+      if (zone) return { zoneId: zone.id, zoneName: zone.name };
 
       if (ret.result.length < ret.result_info!.per_page)
         throw new Error(
@@ -72,7 +77,7 @@ export class ZoneLookup extends dynamic.Resource {
     super(
       new Provider(),
       `${name}.sst.cloudflare.ZoneLookup`,
-      { ...args, zoneId: undefined },
+      { ...args, zoneId: undefined, zoneName: undefined },
       opts,
     );
   }

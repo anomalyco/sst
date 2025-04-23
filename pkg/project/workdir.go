@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/pulumi/pulumi/sdk/v3/go/common/apitype"
+	"github.com/sst/sst/v3/pkg/flag"
 	"github.com/sst/sst/v3/pkg/project/provider"
 	"github.com/zeebo/xxh3"
 	"golang.org/x/sync/errgroup"
@@ -32,6 +33,9 @@ func (p *Project) NewWorkdir(id string) (*PulumiWorkdir, error) {
 }
 
 func (w *PulumiWorkdir) Cleanup() {
+	if flag.SST_NO_CLEANUP {
+		return
+	}
 	os.RemoveAll(w.path)
 }
 

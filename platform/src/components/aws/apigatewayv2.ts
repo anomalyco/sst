@@ -232,6 +232,14 @@ export interface ApiGatewayV2Args {
    * const myVpc = new sst.aws.Vpc("MyVpc");
    * ```
    *
+   * Or reference an existing VPC.
+   *
+   * ```js title="sst.config.ts"
+   * const myVpc = sst.aws.Vpc.get("MyVpc", {
+   *   id: "vpc-12345678901234567"
+   * });
+   * ```
+   *
    * And pass it in. The VPC link will be placed in the public subnets.
    *
    * ```js
@@ -890,7 +898,7 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
     function createDomainName() {
       if (!domain || !certificateArn) return;
 
-      return all([domain, certificateArn]).apply(([domain, certificateArn]) => {
+      return output(domain).apply((domain) => {
         return domain.nameId
           ? apigatewayv2.DomainName.get(
               `${name}DomainName`,
@@ -904,11 +912,13 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
                 `${name}DomainName`,
                 {
                   domainName: domain.name!,
-                  domainNameConfiguration: {
-                    certificateArn: certificateArn!,
-                    endpointType: "REGIONAL",
-                    securityPolicy: "TLS_1_2",
-                  },
+                  domainNameConfiguration: certificateArn.apply(
+                    (certificateArn) => ({
+                      certificateArn: certificateArn!,
+                      endpointType: "REGIONAL",
+                      securityPolicy: "TLS_1_2",
+                    }),
+                  ),
                 },
                 { parent },
               ),
@@ -1184,12 +1194,34 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
    * You need to pass `vpc` to add a private route.
    * :::
    *
+   * A couple of things to note:
+   *
+   * 1. Your API Gateway HTTP API also needs to be in the **same VPC** as the service.
+   *
+   * 2. You also need to verify that your VPC's [**availability zones support VPC link**](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-vpc-links.html#http-api-vpc-link-availability).
+   *
+   * 3. Run `aws ec2 describe-availability-zones` to get a list of AZs for your
+   *    account.
+   *
+   * 4. Only list the AZ ID's that support VPC link.
+   *    ```ts title="sst.config.ts" {4}
+   *    vpc: {
+   *      az: ["eu-west-3a", "eu-west-3c"]
+   *    }
+   *    ```
+   *    If the VPC picks an AZ automatically that doesn't support VPC link, you'll get
+   *    the following error:
+   *    ```
+   *    operation error ApiGatewayV2: BadRequestException: Subnet is in Availability
+   *    Zone 'euw3-az2' where service is not available
+   *    ```
+   *
    * @param rawRoute The path for the route.
    * @param arn The ARN of the AWS Load Balancer or Cloud Map service.
    * @param args Configure the route.
    *
    * @example
-   * Add a route to Application Load Balancer.
+   * Here are a few examples using the private route. Add a route to Application Load Balancer.
    *
    * ```js title="sst.config.ts"
    * const loadBalancerArn = "arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/my-load-balancer/50dc6c495c0c9188";

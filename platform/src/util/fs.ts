@@ -47,12 +47,3 @@ export async function existsAsync(input: string) {
     .then(() => true)
     .catch(() => false);
 }
-
-export function readDirRecursivelySync(dir: string, prefix?: string): string[] {
-  return fsSync.readdirSync(dir, { withFileTypes: true }).flatMap((item) => {
-    const path = prefix ? `${prefix}/${item.name}` : item.name;
-    return item.isDirectory()
-      ? readDirRecursivelySync(`${dir}/${item.name}`, path)
-      : [path];
-  });
-}

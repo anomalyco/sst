@@ -82,11 +82,22 @@ func CmdInit(cli *cli.Cli) error {
 		template = "astro"
 		break
 
-	case slices.ContainsFunc(hints, func(s string) bool { return strings.HasPrefix(s, "app.config") }):
+	case slices.ContainsFunc(hints, func(s string) bool {
+		return strings.HasPrefix(s, "app.config") && fileContains(s, "@solidjs/start")
+	}):
 		fmt.Println("  SolidStart detected. This will...")
 		fmt.Println("   - create an sst.config.ts")
 		fmt.Println("   - add sst to package.json")
 		template = "solid-start"
+		break
+
+	case slices.ContainsFunc(hints, func(s string) bool {
+		return strings.HasPrefix(s, "app.config") && fileContains(s, "@tanstack/")
+	}):
+		fmt.Println("  TanStack Start detected. This will...")
+		fmt.Println("   - create an sst.config.ts")
+		fmt.Println("   - add sst to package.json")
+		template = "tanstack-start"
 		break
 
 	case slices.ContainsFunc(hints, func(s string) bool { return strings.HasPrefix(s, "nuxt.config") }):
@@ -197,7 +208,7 @@ func CmdInit(cli *cli.Cli) error {
 	spin.Suffix = "  Installing providers..."
 	spin.Start()
 
-	cfgPath, err := project.Discover()
+	cfgPath, err := cli.Discover()
 	if err != nil {
 		return err
 	}

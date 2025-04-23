@@ -158,7 +158,7 @@ func (p *Project) writeTypes() error {
 	file.WriteString(`  }` + "\n")
 	file.WriteString(`  export const $config: (` + "\n")
 	file.WriteString(`    input: Omit<Config, "app"> & {` + "\n")
-	file.WriteString(`      app(input: AppInput): Omit<App, "providers"> & Providers;` + "\n")
+	file.WriteString(`      app(input: AppInput): Promise<Omit<App, "providers"> & Providers> | (Omit<App, "providers"> & Providers);` + "\n")
 	file.WriteString(`    },` + "\n")
 	file.WriteString(`  ) => Config;` + "\n")
 	file.WriteString(`}` + "\n")

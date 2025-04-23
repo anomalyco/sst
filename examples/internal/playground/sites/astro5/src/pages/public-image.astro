@@ -1,0 +1,7 @@
+---
+import { Image } from 'astro:assets';
+import myImage from '../../public/spongebob-public.jpg';
+---
+
+<p> This image is in public/ with dimentions 2992x2248.</p>
+<Image src={myImage} alt="Spongebob" width={299} height={224} />

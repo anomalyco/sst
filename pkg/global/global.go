@@ -24,7 +24,6 @@ var configDir = (func() string {
 		panic(err)
 	}
 	result := filepath.Join(home, "sst")
-	os.Setenv("PATH", result+"/bin:"+os.Getenv("PATH"))
 	os.MkdirAll(result, 0755)
 	os.MkdirAll(filepath.Join(result, "bin"), 0755)
 	return result

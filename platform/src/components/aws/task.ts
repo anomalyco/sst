@@ -106,18 +106,18 @@ export interface TaskArgs extends FargateBaseArgs {
    * [Live](/docs/live/) and [`sst dev`](/docs/reference/cli/#dev).
    */
   dev?:
-    | false
-    | {
-        /**
-         * The command that `sst dev` runs in dev mode.
-         */
-        command?: Input<string>;
-        /**
-         * Change the directory from where the `command` is run.
-         * @default Uses the `image.dockerfile` path
-         */
-        directory?: Input<string>;
-      };
+  | false
+  | {
+    /**
+     * The command that `sst dev` runs in dev mode.
+     */
+    command?: Input<string>;
+    /**
+     * Change the directory from where the `command` is run.
+     * @default Uses the `image.dockerfile` path
+     */
+    directory?: Input<string>;
+  };
 }
 
 /**
@@ -129,17 +129,22 @@ export interface TaskArgs extends FargateBaseArgs {
  *
  * #### Create a Task
  *
- * Add a task to your cluster.
+ * Tasks are run inside an ECS Cluster. If you haven't already, create one.
  *
  * ```ts title="sst.config.ts"
  * const vpc = new sst.aws.Vpc("MyVpc");
  * const cluster = new sst.aws.Cluster("MyCluster", { vpc });
+ * ```
+ *
+ * Add the task to it.
+ *
+ * ```ts title="sst.config.ts"
  * const task = new sst.aws.Task("MyTask", { cluster });
  * ```
  *
  * #### Configure the container image
  *
- * By default, the task will look for a Dockerfile in the root directory. Optionally
+ * By default, the task will look for a Dockerfile in the root directory. Optionally,
  * configure the image context and dockerfile.
  *
  * ```ts title="sst.config.ts"
@@ -211,7 +216,7 @@ export interface TaskArgs extends FargateBaseArgs {
  * });
  * ```
  *
- * Then from your function start the task.
+ * Then from your function run the task.
  *
  * ```ts title="src/lambda.ts"
  * import { Resource } from "sst";
@@ -280,11 +285,11 @@ export class Task extends Component implements Link.Linkable {
       dev,
       dev
         ? [
-            {
-              actions: ["appsync:*"],
-              resources: ["*"],
-            },
-          ]
+          {
+            actions: ["appsync:*"],
+            resources: ["*"],
+          },
+        ]
         : [],
     );
     this.dev = dev;
@@ -298,23 +303,23 @@ export class Task extends Component implements Link.Linkable {
       self,
       dev
         ? containers.apply(async (v) => {
-            const appsync = await Function.appsync();
-            return [
-              {
-                ...v[0],
-                image: output("ghcr.io/sst/sst/bridge-task:20241224005724"),
-                environment: {
-                  ...v[0].environment,
-                  SST_TASK_ID: name,
-                  SST_REGION: process.env.SST_AWS_REGION!,
-                  SST_APPSYNC_HTTP: appsync.http,
-                  SST_APPSYNC_REALTIME: appsync.realtime,
-                  SST_APP: $app.name,
-                  SST_STAGE: $app.stage,
-                },
+          const appsync = await Function.appsync();
+          return [
+            {
+              ...v[0],
+              image: output("ghcr.io/sst/sst/bridge-task:20241224005724"),
+              environment: {
+                ...v[0].environment,
+                SST_TASK_ID: name,
+                SST_REGION: process.env.SST_AWS_REGION!,
+                SST_APPSYNC_HTTP: appsync.http,
+                SST_APPSYNC_REALTIME: appsync.realtime,
+                SST_APP: $app.name,
+                SST_STAGE: $app.stage,
               },
-            ];
-          })
+            },
+          ];
+        })
         : containers,
       architecture,
       cpu,
