@@ -48,6 +48,7 @@ import { ComponentResourceOptions, output } from "@pulumi/pulumi";
 import { Transform, transform } from "../component";
 import { Input } from "../input";
 import { DEFAULT_ACCOUNT_ID } from "./account-id";
+import { DnsRecord as OverridableDnsRecord } from "./providers/dns-record";
 
 export interface DnsArgs {
   /**
@@ -109,8 +110,40 @@ export function dns(args: DnsArgs = {}) {
   return {
     provider: "cloudflare",
     createAlias,
+    createCaa,
     createRecord,
   } satisfies Dns;
+
+  function lookupZone(
+    namePrefix: string,
+    recordType: string,
+    recordName: string,
+    opts: ComponentResourceOptions,
+  ) {
+    if (args.zone) {
+      const zone = cloudflare.getZoneOutput({
+        zoneId: args.zone,
+      });
+      return {
+        id: zone.id,
+        name: zone.name,
+      };
+    }
+
+    const zone = new ZoneLookup(
+      `${namePrefix}${recordType}${recordName}ZoneLookup`,
+      {
+        accountId: DEFAULT_ACCOUNT_ID,
+        domain: recordName.replace(/\.$/, ""),
+      },
+      opts,
+    );
+
+    return {
+      id: zone.zoneId,
+      name: zone.zoneName,
+    };
+  }
 
   function createAlias(
     namePrefix: string,
@@ -129,6 +162,53 @@ export function dns(args: DnsArgs = {}) {
     );
   }
 
+  function createCaa(
+    namePrefix: string,
+    recordName: string,
+    opts: ComponentResourceOptions,
+  ) {
+    const zone = lookupZone(namePrefix, "CAA", recordName, opts);
+
+    // Need to use the OverridableDnsRecord instead of the cloudflare.Record because
+    // "allowOverride" does not work properly. When CAA records exist, the Terraform
+    // provider will do a look up on existing records and only ignore the error if
+    // there is exactly one match. But in our cases, there are two matches:
+    // 1. CAA 0 issue "amazonaws.com"
+    // 2. CAA 0 issuewild "amazonaws.com"
+    // There can also be others ie. CAA 0 issue "letsencrypt.org"
+    // So we need to use the OverridableDnsRecord to properly ignore existing records.
+    return [
+      new OverridableDnsRecord(
+        `${namePrefix}CAA${recordName}Record`,
+        {
+          zoneId: zone.id,
+          type: "CAA",
+          name: zone.name,
+          data: {
+            flags: "0",
+            tag: "issue",
+            value: "amazonaws.com",
+          },
+        },
+        opts,
+      ),
+      new OverridableDnsRecord(
+        `${namePrefix}CAAWildcard${recordName}Record`,
+        {
+          zoneId: zone.id,
+          type: "CAA",
+          name: zone.name,
+          data: {
+            flags: "0",
+            tag: "issuewild",
+            value: "amazonaws.com",
+          },
+        },
+        opts,
+      ),
+    ];
+  }
+
   function createRecord(
     namePrefix: string,
     record: Record,
@@ -143,68 +223,36 @@ export function dns(args: DnsArgs = {}) {
     opts: ComponentResourceOptions,
   ) {
     return output(record).apply((record) => {
+      const zone = lookupZone(namePrefix, record.type, record.name, opts);
+      const proxy = output(args.proxy).apply(
+        (proxy) => (proxy && record.isAlias) ?? false,
+      );
       const nameSuffix = logicalName(record.name);
-      const zoneId = lookupZone();
-      const dnsRecord = createRecord();
-      return dnsRecord;
-
-      function lookupZone() {
-        if (args.zone) return args.zone;
-
-        return new ZoneLookup(
-          `${namePrefix}${record.type}ZoneLookup${nameSuffix}`,
+      const type = record.type.toUpperCase();
+      return new cloudflare.Record(
+        ...transform(
+          args.transform?.record,
+          `${namePrefix}${record.type}Record${nameSuffix}`,
           {
-            accountId: DEFAULT_ACCOUNT_ID,
-            domain: output(record.name).apply((name) =>
-              name.replace(/\.$/, ""),
-            ),
+            zoneId: zone.id,
+            proxied: output(proxy),
+            type,
+            name: record.name,
+            ...(type === "TXT"
+              ? {
+                  content: record.value.startsWith(`"`)
+                    ? record.value
+                    : `"${record.value}"`,
+                }
+              : {
+                  content: record.value,
+                }),
+            ttl: output(proxy).apply((proxy) => (proxy ? 1 : 60)),
+            allowOverwrite: args.override,
           },
           opts,
-        ).id;
-      }
-
-      function createRecord() {
-        const proxy = output(args.proxy).apply(
-          (proxy) => (proxy && record.isAlias) ?? false,
-        );
-        const type = record.type.toUpperCase();
-        return new cloudflare.Record(
-          ...transform(
-            args.transform?.record,
-            `${namePrefix}${record.type}Record${nameSuffix}`,
-            {
-              zoneId,
-              proxied: output(proxy),
-              type,
-              name: record.name,
-              ...(type === "CAA"
-                ? {
-                    data: (() => {
-                      const parts = record.value.split(" ");
-                      return {
-                        flags: parts[0],
-                        tag: parts[1],
-                        // remove quotes from value
-                        value: parts.slice(2).join(" ").replaceAll(`"`, ""),
-                      };
-                    })(),
-                  }
-                : type === "TXT"
-                  ? {
-                      content: record.value.startsWith(`"`)
-                        ? record.value
-                        : `"${record.value}"`,
-                    }
-                  : {
-                      content: record.value,
-                    }),
-              ttl: output(proxy).apply((proxy) => (proxy ? 1 : 60)),
-              allowOverwrite: args.override,
-            },
-            opts,
-          ),
-        );
-      }
+        ),
+      );
     });
   }
 }

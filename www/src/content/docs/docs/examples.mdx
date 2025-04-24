@@ -844,7 +844,8 @@ A couple of things to note:
    If the VPC picks an AZ automatically that doesn't support VPC link, you'll get
    the following error:
    ```
-   operation error ApiGatewayV2: BadRequestException: Subnet is in Availability Zone 'euw3-az2' where service is not available
+   operation error ApiGatewayV2: BadRequestException: Subnet is in Availability
+   Zone 'euw3-az2' where service is not available
    ```
 ```ts title="sst.config.ts"
 const vpc = new sst.aws.Vpc("MyVpc", {
@@ -955,6 +956,93 @@ new sst.aws.Service("MyService", {
 ```
 
 View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-deno-redis).
+
+
+---
+## Drizzle migrations in CI/CD
+
+An example on how to run Drizzle migrations as a part of your CI/CD.
+
+Start by creating a function that runs migrations. 
+
+```ts title="sst.config.ts"
+const migrator = new sst.aws.Function("DatabaseMigrator", {
+  handler: "src/migrator.handler",
+  link: [rds],
+  vpc,
+  copyFiles: [
+    {
+      from: "migrations",
+      to: "./migrations",
+    },
+  ],
+});
+```
+
+Where `src/migrator.ts` looks like this.
+
+```ts title="src/migrator.ts"
+import { db } from "./drizzle";
+import { migrate } from "drizzle-orm/postgres-js/migrator";
+
+export const handler = async (event: any) => {
+  await migrate(db, {
+    migrationsFolder: "./migrations",
+  });
+};
+```
+
+And we can set it up to run on every deploy.
+
+```ts title="sst.config.ts"
+if (!$dev){
+  new aws.lambda.Invocation("DatabaseMigratorInvocation", {
+    input: Date.now().toString(),
+    functionName: migrator.name,
+  });
+}
+```
+
+We use the current time to make sure the function runs on every deploy.
+```ts title="sst.config.ts"
+const vpc = new sst.aws.Vpc("MyVpc", { bastion: true, nat: "ec2" });
+const rds = new sst.aws.Postgres("MyPostgres", { vpc, proxy: true });
+
+new sst.aws.Function("MyApi", {
+  vpc,
+  url: true,
+  link: [rds],
+  handler: "src/api.handler",
+});
+
+const migrator = new sst.aws.Function("DatabaseMigrator", {
+  handler: "src/migrator.handler",
+  link: [rds],
+  vpc,
+  copyFiles: [
+    {
+      from: "migrations",
+      to: "./migrations",
+    },
+  ],
+});
+
+if (!$dev) {
+  new aws.lambda.Invocation("DatabaseMigratorInvocation", {
+    input: Date.now().toString(),
+    functionName: migrator.name,
+  });
+}
+
+new sst.x.DevCommand("Studio", {
+  link: [rds],
+  dev: {
+    command: "npx drizzle-kit studio",
+  },
+});
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-drizzle-migrations).
 
 
 ---

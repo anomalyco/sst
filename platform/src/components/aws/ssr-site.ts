@@ -37,8 +37,9 @@ import {
   CF_ROUTER_INJECTION,
   CF_BLOCK_CLOUDFRONT_URL_INJECTION,
   KV_SITE_METADATA,
-  RouterRouteArgs,
+  RouterRouteArgsDeprecated,
   normalizeRouteArgs,
+  RouterRouteArgs,
 } from "./router.js";
 import { DistributionInvalidation } from "./providers/distribution-invalidation.js";
 import { toSeconds } from "../duration.js";
@@ -112,7 +113,11 @@ export type Plan = {
 
 export interface SsrSiteArgs extends BaseSsrSiteArgs {
   domain?: CdnArgs["domain"];
-  route?: Prettify<RouterRouteArgs>;
+  /**
+   * @deprecated Use `router` instead.
+   */
+  route?: Prettify<RouterRouteArgsDeprecated>;
+  router?: Prettify<RouterRouteArgs>;
   cachePolicy?: Input<string>;
   invalidation?: Input<
     | false
@@ -839,7 +844,7 @@ async function handler(event) {
     }
 
     function normalizeRoute() {
-      const route = normalizeRouteArgs(args.route);
+      const route = normalizeRouteArgs(args.router, args.route);
 
       if (route) {
         if (args.domain)

@@ -286,9 +286,9 @@ export interface BucketArgs {
       principals: Input<
         | "*"
         | Input<{
-            type: Input<"aws" | "service" | "federated" | "canonical">;
-            identifiers: Input<Input<string>[]>;
-          }>[]
+          type: Input<"aws" | "service" | "federated" | "canonical">;
+          identifiers: Input<Input<string>[]>;
+        }>[]
       >;
       /**
        * Configure specific conditions for when the policy is in effect.
@@ -326,16 +326,16 @@ export interface BucketArgs {
   /**
    * Enforce HTTPS for all requests to the bucket.
    *
-   * If set to `true`, the bucket policy will automatically block any HTTP requests,
-   * ensuring that only secure (HTTPS) connections are allowed. This is done using
-   * the `aws:SecureTransport` condition key.
+   * By default, the bucket policy will automatically block any HTTP requests.
+   * This is done using the `aws:SecureTransport` condition key.
    *
    * @default true
    * @example
-   * js
+   * ```js
    * {
-   *   enforceHttps: false // Allows both HTTP and HTTPS requests (not recommended)
+   *   enforceHttps: false
    * }
+   * ```
    */
   enforceHttps?: Input<boolean>;
   /**
@@ -778,14 +778,14 @@ export class Bucket extends Component implements Link.Linkable {
             p.principals === "*"
               ? [{ type: "*", identifiers: ["*"] }]
               : p.principals.map((i) => ({
-                  ...i,
-                  type: {
-                    aws: "AWS",
-                    service: "Service",
-                    federated: "Federated",
-                    canonical: "Canonical",
-                  }[i.type],
-                })),
+                ...i,
+                type: {
+                  aws: "AWS",
+                  service: "Service",
+                  federated: "Federated",
+                  canonical: "Canonical",
+                }[i.type],
+              })),
         })),
       );
     }
@@ -852,9 +852,9 @@ export class Bucket extends Component implements Link.Linkable {
                 access === "public"
                   ? { type: "*", identifiers: ["*"] }
                   : {
-                      type: "Service",
-                      identifiers: ["cloudfront.amazonaws.com"],
-                    },
+                    type: "Service",
+                    identifiers: ["cloudfront.amazonaws.com"],
+                  },
               ],
               actions: ["s3:GetObject"],
               resources: [interpolate`${bucket.arn}/*`],

@@ -1,0 +1,16 @@
+{
+  "name": "aws-drizzle",
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "db": "sst shell drizzle-kit"
+  },
+  "dependencies": {
+    "@types/aws-lambda": "^8.10.142",
+    "@types/pg": "^8.11.10",
+    "drizzle-kit": "^0.26.2",
+    "drizzle-orm": "^0.35.1",
+    "pg": "^8.13.0",
+    "sst": "latest"
+  }
+}

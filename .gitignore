@@ -12,3 +12,4 @@ Pulumi.yaml
 .env
 tmp
 .termai
+.opencode

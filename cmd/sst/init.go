@@ -94,10 +94,10 @@ func CmdInit(cli *cli.Cli) error {
 	case slices.ContainsFunc(hints, func(s string) bool {
 		return strings.HasPrefix(s, "app.config") && fileContains(s, "@tanstack/")
 	}):
-		fmt.Println("  TanStack detected. This will...")
+		fmt.Println("  TanStack Start detected. This will...")
 		fmt.Println("   - create an sst.config.ts")
 		fmt.Println("   - add sst to package.json")
-		template = "tan-stack-start"
+		template = "tanstack-start"
 		break
 
 	case slices.ContainsFunc(hints, func(s string) bool { return strings.HasPrefix(s, "nuxt.config") }):

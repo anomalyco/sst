@@ -38,7 +38,7 @@ export default $config({
     return ret;
 
     function addVpc() {
-      const vpc = new sst.aws.Vpc("MyVpc");
+      const vpc = new sst.aws.Vpc("MyVpc", { nat: "ec2" });
       return vpc;
     }
 
@@ -221,10 +221,6 @@ export default $config({
     }
 
     function addRouter() {
-      const app = new sst.aws.Function("MyRouterApp", {
-        handler: "functions/router/index.handler",
-        url: true,
-      });
       //const rr7 = new sst.aws.React("MyRouterSite", {
       //  path: "sites/react-router-7-ssr",
       //  cdn: false,
@@ -264,7 +260,6 @@ export default $config({
         //  "/*": app.url,
         //},
       });
-      router.route("api.router.playground.sst.sh/", app.url);
       //router.route("/api", app.url, {
       //rewrite: {
       //  regex: "^/api/(.*)$",
@@ -282,6 +277,16 @@ export default $config({
       //router.routeSite("/remix", remix);
       //router.routeSite("/vite", vite);
       //router.routeSite("/tan", staticSite);
+
+      new sst.aws.Function("MyRouterApp", {
+        handler: "functions/router/index.handler",
+        url: {
+          router: {
+            instance: router,
+            domain: "api.router.playground.sst.sh/",
+          },
+        },
+      });
 
       //const vite = new sst.aws.StaticSite("MyRouterVite", {
       //  path: "sites/vite",
@@ -309,8 +314,8 @@ export default $config({
 
       new sst.aws.Astro("MyRouterAstro", {
         path: "sites/astro5",
-        route: {
-          router,
+        router: {
+          instance: router,
           path: "/astro5",
         },
       });
@@ -478,9 +483,12 @@ export default $config({
         parameters: {
           "maxmemory-policy": "noeviction",
         },
+        //cluster: false,
       });
+      ret.redisHost = redis.host;
       const app = new sst.aws.Function("MyRedisApp", {
-        handler: "functions/redis/index.handler",
+        handler: "functions/redis/cluster-index.handler",
+        //handler: "functions/redis/instance-index.handler",
         url: true,
         vpc,
         link: [redis],

@@ -256,8 +256,8 @@ export interface NextjsArgs extends SsrSiteArgs {
    *
    * ```ts title="sst.config.ts"
    * {
-   *   route: {
-   *     router,
+   *   router: {
+   *     instance: router,
    *     path: "/docs",
    *   },
    * }
@@ -267,8 +267,8 @@ export interface NextjsArgs extends SsrSiteArgs {
    *
    * ```ts title="sst.config.ts"
    * {
-   *   route: {
-   *     router,
+   *   router: {
+   *     instance: router,
    *     domain: "docs.example.com",
    *   },
    * }
@@ -278,8 +278,8 @@ export interface NextjsArgs extends SsrSiteArgs {
    *
    * ```ts title="sst.config.ts"
    * {
-   *   route: {
-   *     router,
+   *   router: {
+   *     instance: router,
    *     domain: "dev.example.com",
    *     path: "/docs",
    *   },
@@ -305,7 +305,7 @@ export interface NextjsArgs extends SsrSiteArgs {
    * });
    * ```
    */
-  route?: SsrSiteArgs["route"];
+  router?: SsrSiteArgs["router"];
   /**
    * Set a custom domain for your Next.js app.
    *

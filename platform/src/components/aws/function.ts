@@ -44,7 +44,11 @@ import { lazy } from "../../util/lazy.js";
 import { Efs } from "./efs.js";
 import { FunctionEnvironmentUpdate } from "./providers/function-environment-update.js";
 import { warnOnce } from "../../util/warn.js";
-import { normalizeRouteArgs, RouterRouteArgs } from "./router.js";
+import {
+  normalizeRouteArgs,
+  RouterRouteArgs,
+  RouterRouteArgsDeprecated,
+} from "./router.js";
 import { KvRoutesUpdate } from "./providers/kv-routes-update.js";
 import { KvKeys } from "./providers/kv-keys.js";
 
@@ -702,6 +706,11 @@ export interface FunctionArgs {
     | boolean
     | {
         /**
+         * @deprecated The `url.router` prop is now the recommended way to serve your
+         * function URL through a `Router` component.
+         */
+        route?: Prettify<RouterRouteArgsDeprecated>;
+        /**
          * Serve your function URL through a `Router` component.
          *
          * Let's say you have a Router component.
@@ -723,8 +732,8 @@ export interface FunctionArgs {
          * ```ts title="sst.config.ts"
          * {
          *   url: {
-         *     route: {
-         *       router,
+         *     router: {
+         *       instance: router,
          *       path: "/api/users",
          *     },
          *   },
@@ -736,8 +745,8 @@ export interface FunctionArgs {
          * ```ts title="sst.config.ts"
          * {
          *   url: {
-         *     route: {
-         *       router,
+         *     router: {
+         *       instance: router,
          *       domain: "api.example.com",
          *     },
          *   },
@@ -749,8 +758,8 @@ export interface FunctionArgs {
          * ```ts title="sst.config.ts"
          * {
          *   url: {
-         *     route: {
-         *       router,
+         *     router: {
+         *       instance: router,
          *       domain: "dev.example.com",
          *       path: "/api/users",
          *     },
@@ -758,7 +767,7 @@ export interface FunctionArgs {
          * }
          * ```
          */
-        route?: Prettify<RouterRouteArgs>;
+        router?: Prettify<RouterRouteArgs>;
         /**
          * The authorization used for the function URL. Supports [IAM authorization](https://docs.aws.amazon.com/lambda/latest/dg/urls-auth.html).
          * @default `"none"`
@@ -1687,7 +1696,11 @@ export class Function extends Component implements Link.Linkable {
                   maxAge: url.cors.maxAge && toSeconds(url.cors.maxAge),
                 };
 
-        return { authorization, cors, route: normalizeRouteArgs(url.route) };
+        return {
+          authorization,
+          cors,
+          route: normalizeRouteArgs(url.router, url.route),
+        };
       });
     }
 

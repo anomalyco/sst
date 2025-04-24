@@ -901,8 +901,8 @@ interface RouterRef {
  * const router = new sst.aws.Router("MyRouter");
  *
  * new sst.aws.Nextjs("Site", {
- *   route: {
- *     router,
+ *   router: {
+ *     instance: router,
  *   },
  * });
  * ```
@@ -913,8 +913,8 @@ interface RouterRef {
  * const router = new sst.aws.Router("MyRouter");
  *
  * new sst.aws.Nextjs("Site", {
- *   route: {
- *     router,
+ *   router: {
+ *     instance: router,
  *     path: "/docs"
  *   },
  * });
@@ -2120,12 +2120,12 @@ export type RouterRouteArgs = {
    * Attach to the Router to receive requests.
    *
    * ```ts title="sst.config.ts"
-   * route: {
-   *   router,
+   * router: {
+   *   instance: router,
    * }
    * ```
    */
-  router: Input<Router>;
+  instance: Input<Router>;
   /**
    * Route requests matching specific domain pattern.
    *
@@ -2143,8 +2143,8 @@ export type RouterRouteArgs = {
    * Then set the domain pattern.
    *
    * ```ts {3} title="sst.config.ts"
-   * route: {
-   *   router,
+   * router: {
+   *   instance: router,
    *   domain: "dev.example.com",
    * }
    * ```
@@ -2157,8 +2157,8 @@ export type RouterRouteArgs = {
    * @example
    *
    * ```ts {3} title="sst.config.ts"
-   * route: {
-   *   router,
+   * router: {
+   *   instance: router,
    *   path: "/docs",
    * }
    * ```
@@ -2166,11 +2166,24 @@ export type RouterRouteArgs = {
   path?: Input<string>;
 };
 
-export function normalizeRouteArgs(route?: Input<RouterRouteArgs>) {
-  if (!route) return undefined;
+export type RouterRouteArgsDeprecated = {
+  router: Input<Router>;
+  domain?: Input<string>;
+  path?: Input<string>;
+};
 
-  return output(route).apply((v) => {
-    return v.router._hasInlineRoutes.apply((hasInlineRoutes) => {
+export function normalizeRouteArgs(
+  route?: Input<RouterRouteArgs>,
+  routeDeprecated?: Input<RouterRouteArgsDeprecated>,
+) {
+  if (!route && !routeDeprecated) return undefined;
+
+  return all([route, routeDeprecated]).apply(([route, routeDeprecated]) => {
+    const v = route
+      ? route
+      : { ...routeDeprecated, instance: routeDeprecated!.router };
+
+    return v.instance._hasInlineRoutes.apply((hasInlineRoutes) => {
       if (hasInlineRoutes)
         throw new VisibleError(
           "Cannot route the site using the provided router. The Router component uses inline routes which has been deprecated.",
@@ -2186,13 +2199,13 @@ export function normalizeRouteArgs(route?: Input<RouterRouteArgs>) {
               .replace(/\*/g, ".*") // Replace * with .*
           : undefined,
         pathPrefix,
-        routerDistributionId: v.router.nodes.cdn.nodes.distribution.id,
-        routerUrl: v.router.url.apply(
+        routerDistributionId: v.instance.nodes.cdn.nodes.distribution.id,
+        routerUrl: v.instance.url.apply(
           (url) =>
             (v.domain ? `https://${v.domain}` : url) + (pathPrefix ?? ""),
         ),
-        routerKvNamespace: v.router._kvNamespace!,
-        routerKvStoreArn: v.router._kvStoreArn!,
+        routerKvNamespace: v.instance._kvNamespace!,
+        routerKvStoreArn: v.instance._kvStoreArn!,
       };
     });
   });

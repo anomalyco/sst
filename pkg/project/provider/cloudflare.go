@@ -91,6 +91,10 @@ type bootstrap struct {
 	State string `json:"state"`
 }
 
+func (c *CloudflareHome) cleanup(key, app, stage string) error {
+	return nil
+}
+
 func (c *CloudflareHome) Bootstrap() error {
 	ctx := context.Background()
 	buckets, err := c.provider.api.ListR2Buckets(ctx, c.provider.identifier, cloudflare.ListR2BucketsParams{

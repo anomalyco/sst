@@ -43,7 +43,7 @@ export interface RedisArgs {
    */
   version?: Input<string>;
   /**
-   * The type of instance to use for the nodes of the Redis cluster. Check out the [supported instance types](https://docs.aws.amazon.com/AmazonElastiCache/latest/red-ug/CacheNodes.SupportedTypes.html).
+   * The type of instance to use for the nodes of the Redis instance. Check out the [supported instance types](https://docs.aws.amazon.com/AmazonElastiCache/latest/red-ug/CacheNodes.SupportedTypes.html).
    *
    * @default `"t4g.micro"`
    * @example
@@ -55,19 +55,41 @@ export interface RedisArgs {
    */
   instance?: Input<string>;
   /**
-   * The number of nodes to use for the Redis cluster.
-   *
-   * @default `1`
-   * @example
-   * ```js
-   * {
-   *   nodes: 4
-   * }
-   * ```
+   * @deprecated The `cluster.nodes` prop is now the recommended way to configure the
+   * number of nodes in the cluster.
    */
   nodes?: Input<number>;
   /**
-   * Key-value pairs that define custom parameters for the Redis cluster's parameter group.
+   * Configure cluster mode for Redis.
+   *
+   * @default `{ nodes: 1 }`
+   * @example
+   * Disable cluster mode.
+   * ```js
+   * {
+   *   cluster: false
+   * }
+   * ```
+   */
+  cluster?: Input<
+    | boolean
+    | {
+        /**
+         * The number of nodes to use for the Redis cluster.
+         *
+         * @default `1`
+         * @example
+         * ```js
+         * {
+         *   nodes: 4
+         * }
+         * ```
+         */
+        nodes: Input<number>;
+      }
+  >;
+  /**
+   * Key-value pairs that define custom parameters for the Redis's parameter group.
    * These values override the defaults set by AWS.
    *
    * @example
@@ -81,7 +103,7 @@ export interface RedisArgs {
    */
   parameters?: Input<Record<string, Input<string>>>;
   /**
-   * The VPC to use for the Redis cluster.
+   * The VPC to use for the Redis instance.
    *
    * @example
    * Create a VPC component.
@@ -113,7 +135,7 @@ export interface RedisArgs {
     | Vpc
     | Input<{
         /**
-         * A list of subnet IDs in the VPC to deploy the Redis cluster in.
+         * A list of subnet IDs in the VPC to deploy the Redis instance in.
          */
         subnets: Input<Input<string>[]>;
         /**
@@ -124,15 +146,15 @@ export interface RedisArgs {
   /**
    * Configure how this component works in `sst dev`.
    *
-   * By default, your Redis cluster is deployed in `sst dev`. But if you want to instead
+   * By default, your Redis instance is deployed in `sst dev`. But if you want to instead
    * connect to a locally running Redis server, you can configure the `dev` prop.
    *
    * :::note
-   * By default, this creates a new Redis ElastiCache cluster even in `sst dev`.
+   * By default, this creates a new Redis ElastiCache instance even in `sst dev`.
    * :::
    *
-   * This will skip deploying a Redis ElastiCache cluster and link to the locally running Redis
-   * server instead.
+   * This will skip deploying a Redis ElastiCache instance and link to the locally running
+   * Redis server instead.
    *
    * @example
    *
@@ -284,7 +306,7 @@ interface RedisRef {
  * [ElastiCache pricing](https://aws.amazon.com/elasticache/pricing/) for more details.
  */
 export class Redis extends Component implements Link.Linkable {
-  private cluster?: elasticache.ReplicationGroup;
+  private cluster?: Output<elasticache.ReplicationGroup>;
   private _authToken?: Output<string>;
   private dev?: {
     enabled: boolean;
@@ -302,7 +324,7 @@ export class Redis extends Component implements Link.Linkable {
 
     if (args && "ref" in args) {
       const ref = reference();
-      this.cluster = ref.cluster;
+      this.cluster = output(ref.cluster);
       this._authToken = ref.authToken;
       return;
     }
@@ -313,7 +335,7 @@ export class Redis extends Component implements Link.Linkable {
       ([engine, v]) => v ?? (engine === "redis" ? "7.1" : "7.2"),
     );
     const instance = output(args.instance).apply((v) => v ?? "t4g.micro");
-    const nodes = output(args.nodes).apply((v) => v ?? 1);
+    const argsCluster = normalizeCluster();
     const vpc = normalizeVpc();
 
     const dev = registerDev();
@@ -426,6 +448,18 @@ Listening on "${dev.host}:${dev.port}"...`,
       return output(args.vpc);
     }
 
+    function normalizeCluster() {
+      return all([args.cluster, args.nodes]).apply(([v, nodes]) => {
+        if (v === false) return undefined;
+        if (v === true) return { nodes: 1 };
+        if (v === undefined) {
+          if (nodes) return { nodes };
+          return { nodes: 1 };
+        }
+        return v;
+      });
+    }
+
     function createAuthToken() {
       const authToken = new RandomPassword(
         `${name}AuthToken`,
@@ -489,13 +523,18 @@ Listening on "${dev.host}:${dev.port}"...`,
                 }[defaultFamily] ?? defaultFamily
               );
             }),
-            parameters: output(args.parameters ?? {}).apply((v) => [
-              {
-                name: "cluster-enabled",
-                value: "yes",
-              },
-              ...Object.entries(v).map(([name, value]) => ({ name, value })),
-            ]),
+            parameters: all([args.parameters ?? {}, argsCluster]).apply(
+              ([parameters, argsCluster]) => [
+                {
+                  name: "cluster-enabled",
+                  value: argsCluster ? "yes" : "no",
+                },
+                ...Object.entries(parameters).map(([name, value]) => ({
+                  name,
+                  value,
+                })),
+              ],
+            ),
           },
           { parent: self },
         ),
@@ -503,36 +542,47 @@ Listening on "${dev.host}:${dev.port}"...`,
     }
 
     function createCluster() {
-      return new elasticache.ReplicationGroup(
-        ...transform(
-          args.transform?.cluster,
-          `${name}Cluster`,
-          {
-            description: "Managed by SST",
-            engine,
-            engineVersion: version,
-            nodeType: interpolate`cache.${instance}`,
-            dataTieringEnabled: instance.apply((v) => v.startsWith("r6gd.")),
-            port: 6379,
-            automaticFailoverEnabled: true,
-            clusterMode: "enabled",
-            numNodeGroups: nodes,
-            replicasPerNodeGroup: 0,
-            multiAzEnabled: false,
-            atRestEncryptionEnabled: true,
-            transitEncryptionEnabled: true,
-            transitEncryptionMode: "required",
-            authToken,
-            subnetGroupName: subnetGroup.name,
-            parameterGroupName: parameterGroup.name,
-            securityGroupIds: vpc.securityGroups,
-            tags: {
-              "sst:component-version": _version.toString(),
-              "sst:ref:secret": secret.id,
-            },
-          },
-          { parent: self },
-        ),
+      return argsCluster.apply(
+        (argsCluster) =>
+          new elasticache.ReplicationGroup(
+            ...transform(
+              args.transform?.cluster,
+              `${name}Cluster`,
+              {
+                description: "Managed by SST",
+                engine,
+                engineVersion: version,
+                nodeType: interpolate`cache.${instance}`,
+                dataTieringEnabled: instance.apply((v) =>
+                  v.startsWith("r6gd."),
+                ),
+                port: 6379,
+                ...(argsCluster
+                  ? {
+                      clusterMode: "enabled",
+                      numNodeGroups: argsCluster.nodes,
+                      replicasPerNodeGroup: 0,
+                      automaticFailoverEnabled: true,
+                    }
+                  : {
+                      clusterMode: "disabled",
+                    }),
+                multiAzEnabled: false,
+                atRestEncryptionEnabled: true,
+                transitEncryptionEnabled: true,
+                transitEncryptionMode: "required",
+                authToken,
+                subnetGroupName: subnetGroup.name,
+                parameterGroupName: parameterGroup.name,
+                securityGroupIds: vpc.securityGroups,
+                tags: {
+                  "sst:component-version": _version.toString(),
+                  "sst:ref:secret": secret.id,
+                },
+              },
+              { parent: self },
+            ),
+          ),
       );
     }
   }
@@ -564,7 +614,11 @@ Listening on "${dev.host}:${dev.port}"...`,
   public get host() {
     return this.dev
       ? this.dev.host
-      : this.cluster!.configurationEndpointAddress;
+      : this.cluster!.clusterEnabled.apply((enabled) =>
+          enabled
+            ? this.cluster!.configurationEndpointAddress
+            : this.cluster!.primaryEndpointAddress,
+        );
   }
 
   /**

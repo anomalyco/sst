@@ -206,8 +206,8 @@ export interface SvelteKitArgs extends SsrSiteArgs {
    *
    * ```ts title="sst.config.ts"
    * {
-   *   route: {
-   *     router,
+   *   router: {
+   *     instance: router,
    *     path: "/docs",
    *   },
    * }
@@ -217,8 +217,8 @@ export interface SvelteKitArgs extends SsrSiteArgs {
    *
    * ```ts title="sst.config.ts"
    * {
-   *   route: {
-   *     router,
+   *   router: {
+   *     instance: router,
    *     domain: "docs.example.com",
    *   },
    * }
@@ -228,8 +228,8 @@ export interface SvelteKitArgs extends SsrSiteArgs {
    *
    * ```ts title="sst.config.ts"
    * {
-   *   route: {
-   *     router,
+   *   router: {
+   *     instance: router,
    *     domain: "dev.example.com",
    *     path: "/docs",
    *   },
@@ -259,7 +259,7 @@ export interface SvelteKitArgs extends SsrSiteArgs {
    * };
    * ```
    */
-  route?: SsrSiteArgs["route"];
+  router?: SsrSiteArgs["router"];
   /**
    * The command used internally to build your SvelteKit app.
    *

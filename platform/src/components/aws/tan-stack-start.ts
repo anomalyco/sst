@@ -8,10 +8,6 @@ export interface TanStackStartArgs extends SsrSiteArgs {
   /**
    * Configure how this component works in `sst dev`.
    *
-   * :::note
-   * In `sst dev` your TanStack Start app is run in dev mode; it's not deployed.
-   * :::
-   *
    * Instead of deploying your TanStack Start app, this starts it in dev mode. It's run
    * as a separate process in the `sst dev` multiplexer. Read more about
    * [`sst dev`](/docs/reference/cli/#dev).
@@ -217,8 +213,8 @@ export interface TanStackStartArgs extends SsrSiteArgs {
    *
    * ```ts title="sst.config.ts"
    * {
-   *   route: {
-   *     router,
+   *   router: {
+   *     instance: router,
    *     domain: "docs.example.com",
    *   },
    * }
@@ -228,7 +224,7 @@ export interface TanStackStartArgs extends SsrSiteArgs {
    * TanStack Start can only be routed from the root "/" and does not currently support base paths.
    * :::
    */
-  route?: SsrSiteArgs["route"];
+  router?: SsrSiteArgs["router"];
   /**
    * The command used internally to build your TanStack Start app.
    *
@@ -362,7 +358,7 @@ export class TanStackStart extends SsrSite {
     super(__pulumiType, name, args, opts);
   }
 
-  protected normalizeBuildCommand() {}
+  protected normalizeBuildCommand() { }
 
   protected buildPlan(outputPath: Output<string>): Output<Plan> {
     return outputPath.apply((outputPath) => {
