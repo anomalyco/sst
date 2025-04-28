@@ -23,6 +23,7 @@ const sidebar = [
       { label: "Hono", slug: "docs/start/aws/hono" },
       { label: "Astro", slug: "docs/start/aws/astro" },
       { label: "Email", slug: "docs/start/aws/email" },
+      { label: "React", slug: "docs/start/aws/react" },
       { label: "Remix", slug: "docs/start/aws/remix" },
       { label: "Svelte", slug: "docs/start/aws/svelte" },
       { label: "Drizzle", slug: "docs/start/aws/drizzle" },
@@ -33,6 +34,7 @@ const sidebar = [
       { label: "Angular", slug: "docs/start/aws/angular" },
       { label: "Express", slug: "docs/start/aws/express" },
       { label: "Realtime", slug: "docs/start/aws/realtime" },
+      { label: "TanStack", slug: "docs/start/aws/tanstack" },
       {
         label: "Cloudflare",
         items: [
@@ -64,6 +66,7 @@ const sidebar = [
       { label: "Custom Domains", slug: "docs/custom-domains" },
       { label: "Import Resources", slug: "docs/import-resources" },
       { label: "Set up a Monorepo", slug: "docs/set-up-a-monorepo" },
+      { label: "Configure a Router", slug: "docs/configure-a-router" },
       { label: "Share Across Stages", slug: "docs/share-across-stages" },
       { label: "Reference Resources", slug: "docs/reference-resources" },
       { label: "Environment Variables", slug: "docs/environment-variables" },
@@ -88,6 +91,7 @@ const sidebar = [
           "docs/component/aws/email",
           "docs/component/aws/react",
           "docs/component/aws/remix",
+          "docs/component/aws/mysql",
           "docs/component/aws/nextjs",
           "docs/component/aws/queue",
           "docs/component/aws/vector",

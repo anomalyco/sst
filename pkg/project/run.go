@@ -176,12 +176,12 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 		Globals: strings.Join(providerShim, "\n"),
 		Code: fmt.Sprintf(`
       import { run } from "%v";
-      import mod from "%v/sst.config.ts";
+			import mod from '%s';
       const result = await run(mod.run);
       export default result;
     `,
 			path.Join(p.PathWorkingDir(), "platform/src/auto/run.ts"),
-			p.PathRoot(),
+			p.PathConfig(),
 		),
 	})
 	if err != nil {
@@ -561,7 +561,12 @@ loop:
 		}
 	}
 
-	log.Info("done running stack command")
+	if input.Command == "remove" && len(complete.Resources) == 0 {
+		provider.Cleanup(p.home, p.app.Name, p.app.Stage)
+
+	}
+
+	log.Info("done running stack command", "resources", len(complete.Resources))
 	if cmd.ProcessState.ExitCode() > 0 {
 		return ErrStackRunFailed
 	}

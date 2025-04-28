@@ -477,69 +477,7 @@ var root = &cli.Command{
 			Run: CmdMosaic,
 		},
 		CmdDeploy,
-		{
-			Name: "diff",
-			Description: cli.Description{
-				Short: "See what changes will be made",
-				Long: strings.Join([]string{
-					"Builds your app to see what changes will be made when you deploy it.",
-					"",
-					"It displays a list of resources that will be created, updated, or deleted.",
-					"For each of these resources, it'll also show the properties that are changing.",
-					"",
-					":::tip",
-					"Run a `sst diff` to see what changes will be made when you deploy your app.",
-					":::",
-					"",
-					"This is useful for cases when you pull some changes from a teammate and want to",
-					"see what will be deployed; before doing the actual deploy.",
-					"",
-					"Optionally, you can diff a specific component by passing in the name of the component from your `sst.config.ts`.",
-					"",
-					"```bash frame=\"none\"",
-					"sst diff --target MyComponent",
-					"```",
-					"",
-					"By default, this compares to the last deploy of the given stage as it would be",
-					"deployed using `sst deploy`. But if you are working in dev mode using `sst dev`,",
-					"you can use the `--dev` flag.",
-					"",
-					"```bash frame=\"none\"",
-					"sst diff --dev",
-					"```",
-					"",
-					"This is useful because in dev mode, you app is deployed a little differently.",
-				}, "\n"),
-			},
-			Flags: []cli.Flag{
-				{
-					Name: "target",
-					Description: cli.Description{
-						Short: "Run it only for a component",
-						Long:  "Only run it for the given component.",
-					},
-				},
-				{
-					Name: "dev",
-					Type: "bool",
-					Description: cli.Description{
-						Short: "Compare to sst dev",
-						Long: strings.Join([]string{
-							"Compare to the dev version of this stage.",
-						}, "\n"),
-					},
-				},
-			},
-			Examples: []cli.Example{
-				{
-					Content: "sst diff --stage production",
-					Description: cli.Description{
-						Short: "See changes to production",
-					},
-				},
-			},
-			Run: CmdDiff,
-		},
+		CmdDiff,
 		{
 			Name: "add",
 			Description: cli.Description{

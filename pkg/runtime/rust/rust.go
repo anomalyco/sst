@@ -81,9 +81,14 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 	var properties Properties
 	json.Unmarshal(input.Properties, &properties)
 
-	cargotomlpath, err := fs.FindUp(input.Handler, "cargo.toml")
+	// split handler into path and function name
+	parts := strings.Split(input.Handler, ".")
+	handler := strings.Join(parts[:len(parts)-1], ".")
+
+	// Locate cargo.toml/Cargo.toml
+	cargotomlpath, err := fs.FindUp(handler, "cargo.toml")
 	if err != nil {
-		cargotomlpath, err = fs.FindUp(input.Handler, "Cargo.toml")
+		cargotomlpath, err = fs.FindUp(handler, "Cargo.toml")
 		if err != nil {
 			return nil, err
 		}
@@ -92,6 +97,7 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 	// root of project
 	root := filepath.Dir(cargotomlpath)
 
+	// append args to the command
 	args := []string{}
 	env := os.Environ()
 	if input.Dev {
@@ -122,13 +128,17 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		return nil, err
 	}
 
+	// if binary name is not specified, use the package name
 	name := cargotoml.Package.Name
-	binary := ""
-	if input.Dev {
-		binary = filepath.Join(root, "target", "debug", name)
-	} else {
-		binary = filepath.Join(root, "target", "lambda", name, "bootstrap")
+	if len(parts) >= 2 {
+		name = parts[len(parts)-1]
 	}
+	binary := filepath.Join(root, "target",
+		map[bool]string{
+			true:  filepath.Join("debug", name),
+			false: filepath.Join("lambda", name, "bootstrap"),
+		}[input.Dev],
+	)
 	out := filepath.Join(input.Out(), "bootstrap")
 
 	r.directories[input.FunctionID], _ = filepath.Abs(root)

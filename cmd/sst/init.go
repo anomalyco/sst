@@ -74,6 +74,14 @@ func CmdInit(cli *cli.Cli) error {
 		template = "nextjs"
 		break
 
+	case slices.ContainsFunc(hints, func(s string) bool { return strings.HasPrefix(s, "react-router.config") }):
+		fmt.Println("  React Router detected. This will...")
+		fmt.Println("   - create an sst.config.ts")
+		fmt.Println("   - modify the tsconfig.json")
+		fmt.Println("   - add sst to package.json")
+		template = "react-router"
+		break
+
 	case slices.ContainsFunc(hints, func(s string) bool { return strings.HasPrefix(s, "astro.config") }):
 		fmt.Println("  Astro detected. This will...")
 		fmt.Println("   - create an sst.config.ts")
@@ -94,10 +102,10 @@ func CmdInit(cli *cli.Cli) error {
 	case slices.ContainsFunc(hints, func(s string) bool {
 		return strings.HasPrefix(s, "app.config") && fileContains(s, "@tanstack/")
 	}):
-		fmt.Println("  TanStack detected. This will...")
+		fmt.Println("  TanStack Start detected. This will...")
 		fmt.Println("   - create an sst.config.ts")
 		fmt.Println("   - add sst to package.json")
-		template = "tan-stack-start"
+		template = "tanstack-start"
 		break
 
 	case slices.ContainsFunc(hints, func(s string) bool { return strings.HasPrefix(s, "nuxt.config") }):

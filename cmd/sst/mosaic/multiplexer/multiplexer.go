@@ -105,7 +105,7 @@ func (s *Multiplexer) Start() {
 			case *EventProcess:
 				for _, p := range s.processes {
 					if p.key == evt.Key {
-						if p.dead {
+						if p.dead && evt.Autostart {
 							p.start()
 							s.sort()
 							s.draw()

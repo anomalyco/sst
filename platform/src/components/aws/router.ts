@@ -18,7 +18,6 @@ import { VisibleError } from "../error";
 import { RouterUrlRoute } from "./router-url-route";
 import { RouterBucketRoute } from "./router-bucket-route";
 import { DurationSeconds } from "../duration";
-import path from "path";
 
 interface InlineUrlRouteArgs extends InlineBaseRouteArgs {
   /**
@@ -221,7 +220,7 @@ interface InlineBaseRouteArgs {
        */
       injection: Input<string>;
       /**
-       * The KV store to associate with the viewer request function.
+       * The KeyValueStore to associate with the viewer request function.
        *
        * @example
        * ```js
@@ -241,7 +240,7 @@ interface InlineBaseRouteArgs {
        */
       kvStore?: Input<string>;
       /**
-       * @deprecated Use `kvStore` instead because CloudFront Functions only support one KV store.
+       * @deprecated Use `kvStore` instead because CloudFront Functions only support one KeyValueStore.
        */
       kvStores?: Input<Input<string>[]>;
     }>;
@@ -307,7 +306,7 @@ interface InlineBaseRouteArgs {
        */
       injection: Input<string>;
       /**
-       * The KV store to associate with the viewer response function.
+       * The KeyValueStore to associate with the viewer response function.
        *
        * @example
        * ```js
@@ -327,7 +326,7 @@ interface InlineBaseRouteArgs {
        */
       kvStore?: Input<string>;
       /**
-       * @deprecated Use `kvStore` instead because CloudFront Functions only support one KV store.
+       * @deprecated Use `kvStore` instead because CloudFront Functions only support one KeyValueStore.
        */
       kvStores?: Input<Input<string>[]>;
     }>;
@@ -668,7 +667,7 @@ export interface RouterArgs {
        */
       injection: Input<string>;
       /**
-       * The KV store to associate with the viewer request function.
+       * The KeyValueStore to associate with the viewer request function.
        *
        * @example
        * ```js
@@ -720,7 +719,7 @@ export interface RouterArgs {
        */
       injection: Input<string>;
       /**
-       * The KV store to associate with the viewer response function.
+       * The KeyValueStore to associate with the viewer response function.
        *
        * @example
        * ```js
@@ -743,7 +742,7 @@ export interface RouterArgs {
    * :::
    * @default Invalidation is turned off
    * @example
-   * Enable invalidations. Setting this to `true` will invalidate all paths. It is equivalent
+   * Setting this to `true` will invalidate all paths. It's equivalent
    * to passing in `{ paths: ["/*"] }`.
    *
    * ```js
@@ -755,59 +754,64 @@ export interface RouterArgs {
   invalidation?: Input<
     | boolean
     | {
-        /**
-         * Configure if `sst deploy` should wait for the CloudFront cache invalidation to finish.
-         *
-         * :::tip
-         * For non-prod environments it might make sense to pass in `false`.
-         * :::
-         *
-         * Waiting for this process to finish ensures that new content will be available after the deploy finishes. However, this process can sometimes take more than 5 mins.
-         * @default `false`
-         * @example
-         * ```js
-         * {
-         *   invalidation: {
-         *     wait: true
-         *   }
-         * }
-         * ```
-         */
-        wait?: Input<boolean>;
-        /**
-         * The invalidation token is used to determine if the cache should be invalidated. If the
-         * token is the same as the previous deployment, the cache will not be invalidated.
-         *
-         * @default A unique value is auto-generated on each deploy
-         * @example
-         * ```js
-         * {
-         *   invalidation: {
-         *     token: "foo123"
-         *   }
-         * }
-         * ```
-         */
-        token?: Input<string>;
-        /**
-         * Specify an array of glob pattern of paths to invalidate.
-         *
-         * :::note
-         * Each glob pattern counts as a single invalidation. However, invalidating `/*` counts as a single invalidation as well.
-         * :::
-         * @default `["/*"]`
-         * @example
-         * Invalidate the `index.html` and all files under the `products/` route. This counts as two invalidations.
-         * ```js
-         * {
-         *   invalidation: {
-         *     paths: ["/index.html", "/products/*"]
-         *   }
-         * }
-         * ```
-         */
-        paths?: Input<Input<string>[]>;
-      }
+      /**
+       * Configure if `sst deploy` should wait for the CloudFront cache invalidation to finish.
+       *
+       * :::tip
+       * For non-prod environments it might make sense to pass in `false`.
+       * :::
+       *
+       * Waiting for this process to finish ensures that new content will be available after the deploy finishes. However, this process can sometimes take more than 5 mins.
+       * @default `false`
+       * @example
+       * ```js
+       * {
+       *   invalidation: {
+       *     wait: true
+       *   }
+       * }
+       * ```
+       */
+      wait?: Input<boolean>;
+      /**
+       * A token used to determine if the cache should be invalidated. If the
+       * token is the same as the previous deployment, the cache will not be invalidated.
+       *
+       * You can set this to a hash that's computed on every deploy. So if the hash
+       * changes, the cache will be invalidated.
+       *
+       * @default A unique value is auto-generated on each deploy
+       * @example
+       * ```js
+       * {
+       *   invalidation: {
+       *     token: "foo123"
+       *   }
+       * }
+       * ```
+       */
+      token?: Input<string>;
+      /**
+       * Specify an array of glob pattern of paths to invalidate.
+       *
+       * :::note
+       * Each glob pattern counts as a single invalidation. Whereas, invalidating
+       * `/*` counts as a single invalidation.
+       * :::
+       * @default `["/*"]`
+       * @example
+       * Invalidate the `index.html` and all files under the `products/` route.
+       * ```js
+       * {
+       *   invalidation: {
+       *     paths: ["/index.html", "/products/*"]
+       *   }
+       * }
+       * ```
+       * This counts as two invalidations.
+       */
+      paths?: Input<Input<string>[]>;
+    }
   >;
 
   /**
@@ -837,29 +841,19 @@ interface RouterRef {
 
 /**
  * The `Router` component lets you use a CloudFront distribution to direct
- * requests to various parts of your application.
+ * requests to various parts of your application like:
  *
- * #### How it works
- *
- * Behind the scenes, this uses:
- *
- * - The default CloudFront distribution behavior
- * - A CloudFront function for routing
- * - And a KV store to store the routing data
- *
- * When a request comes in, it does a lookup in the KV store and dynamically sets
- * the origin based on the routing data.
- *
- * You might notices a _placeholder.sst.dev_ behavior in CloudFront. This is not
- * used and is only there because CloudFront requires a behavior to exist.
+ * - A URL
+ * - A function
+ * - A frontend
+ * - An S3 bucket
  *
  * @example
  *
  * #### Minimal example
  *
  * ```ts title="sst.config.ts"
- * const router = new sst.aws.Router("MyRouter");
- * router.route("/", "https://some-external-service.com");
+ * new sst.aws.Router("MyRouter");
  * ```
  *
  * #### Add a custom domain
@@ -870,22 +864,30 @@ interface RouterRef {
  * });
  * ```
  *
- * #### Route to a function URL
+ * #### Sharing the router across stages
  *
  * ```ts title="sst.config.ts"
- * const myFunction = new sst.aws.Function("MyFunction", {
- *   handler: "src/api.handler",
- *   url: true,
- * });
- *
- * const router = new sst.aws.Router("MyRouter", {
- * });
- * router.route("/", myFunction.url);
+ * const router = $app.stage === "production"
+ *   ? new sst.aws.Router("MyRouter", {
+ *       domain: {
+ *         name: "example.com",
+ *         aliases: ["*.example.com"]
+ *       }
+ *     })
+ *   : sst.aws.Router.get("MyRouter", "E1XWRGCYGTFB7Z");
  * ```
  *
- * #### Route to a bucket
+ * #### Route to a URL
  *
- * ```ts title="sst.config.ts" {2}
+ * ```ts title="sst.config.ts" {3}
+ * const router = new sst.aws.Router("MyRouter");
+ *
+ * router.route("/", "https://some-external-service.com");
+ * ```
+ *
+ * #### Route to an S3 bucket
+ *
+ * ```ts title="sst.config.ts" {2,6}
  * const myBucket = new sst.aws.Bucket("MyBucket", {
  *   access: "cloudfront"
  * });
@@ -894,37 +896,105 @@ interface RouterRef {
  * router.routeBucket("/files", myBucket);
  * ```
  *
- * Make sure to allow CloudFront access to the bucket by setting the `access` prop on the bucket.
+ * You need to allow CloudFront to access the bucket by setting the `access` prop
+ * on the bucket.
+ *
+ * #### Route to a function
+ *
+ * ```ts title="sst.config.ts" {8-11}
+ * const router = new sst.aws.Router("MyRouter", {
+ *   domain: "example.com"
+ * });
+ *
+ * const myFunction = new sst.aws.Function("MyFunction", {
+ *   handler: "src/api.handler",
+ *   url: {
+ *     router: {
+ *       instance: router,
+ *       path: "/api"
+ *     }
+ *   }
+ * });
+ * ```
+ *
+ * Setting the route through the function, instead of `router.route()` makes
+ * it so that `myFunction.url` gives you the URL based on the Router domain.
  *
  * #### Route to a frontend
  *
- * ```ts title="sst.config.ts"
+ * ```ts title="sst.config.ts" {4-6}
  * const router = new sst.aws.Router("MyRouter");
  *
- * new sst.aws.Nextjs("Site", {
- *   route: {
- *     router,
- *   },
+ * const mySite = new sst.aws.Nextjs("MyWeb", {
+ *   router: {
+ *     instance: router
+ *   }
  * });
  * ```
  *
- * #### Route to a frontend on a subpath
+ * Setting the route through the site, instead of `router.route()` makes
+ * it so that `mySite.url` gives you the URL based on the Router domain.
  *
- * ```ts title="sst.config.ts"
+ * #### Route to a frontend on a path
+ *
+ * ```ts title="sst.config.ts" {4-7}
  * const router = new sst.aws.Router("MyRouter");
  *
- * new sst.aws.Nextjs("Site", {
- *   route: {
- *     router,
+ * new sst.aws.Nextjs("MyWeb", {
+ *   router: {
+ *     instance: router,
  *     path: "/docs"
- *   },
+ *   }
  * });
  * ```
  *
- * :::caution
- * If routing to a path, you need to configure that as the base path in your
- * frontend app as well.
- * :::
+ * If you are routing to a path, you'll need to configure the base path in your
+ * frontend app as well. [Learn more](/docs/component/aws/nextjs/#router).
+ *
+ * #### Route to a frontend on a subdomain
+ *
+ * ```ts title="sst.config.ts" {4,9-12}
+ * const router = new sst.aws.Router("MyRouter", {
+ *   domain: {
+ *     name: "example.com",
+ *     aliases: ["*.example.com"]
+ *   }
+ * });
+ *
+ * new sst.aws.Nextjs("MyWeb", {
+ *   router: {
+ *     instance: router,
+ *     domain: "docs.example.com"
+ *   }
+ * });
+ * ```
+ *
+ * We configure `*.example.com` as an alias so that we can route to a subdomain.
+ *
+ * #### How it works
+ *
+ * This uses a CloudFront KeyValueStore to store the routing data and a CloudFront
+ * function to route the request. As routes are added, the store is updated.
+ *
+ * So when a request comes in, it does a lookup in the store and dynamically sets
+ * the origin based on the routing data. For frontends, that have their server
+ * functions deployed to multiple `regions`, it routes to the closest region based
+ * on the user's location.
+ *
+ * You might notice a _placeholder.sst.dev_ behavior in CloudFront. This is not
+ * used and is only there because CloudFront requires a default behavior.
+ *
+ * #### Limits
+ *
+ * There are some limits on this setup but it's managed by SST.
+ *
+ * - The CloudFront function can be a maximum of 10KB in size. But because all
+ *   the route data is stored in the KeyValueStore, the function can be kept small.
+ * - Each value in the KeyValueStore needs to be less than 1KB. This component
+ *   splits the routes into multiple values to keep it under the limit.
+ * - The KeyValueStore can be a maximum of 5MB. This is fairly large. But to
+ *   handle sites that have a lot of files, only top-level assets get individual
+ *   entries.
  */
 export class Router extends Component implements Link.Linkable {
   private constructorName: string;
@@ -1069,16 +1139,16 @@ export class Router extends Component implements Link.Linkable {
         path: string,
         config:
           | {
-              injection: string;
-              kvStore?: string;
-              kvStores?: string[];
-            }
+            injection: string;
+            kvStore?: string;
+            kvStores?: string[];
+          }
           | undefined,
         rewrite:
           | {
-              regex: string;
-              to: string;
-            }
+            regex: string;
+            to: string;
+          }
           | undefined,
         injectHostHeader: boolean,
       ) {
@@ -1091,18 +1161,16 @@ export class Router extends Component implements Link.Linkable {
               : config?.kvStores ?? [],
             code: `
 async function handler(event) {
-  ${
-    injectHostHeader
-      ? `event.request.headers["x-forwarded-host"] = event.request.headers.host;`
-      : ""
-  }
-  ${
-    rewrite
-      ? `
+  ${injectHostHeader
+                ? `event.request.headers["x-forwarded-host"] = event.request.headers.host;`
+                : ""
+              }
+  ${rewrite
+                ? `
 const re = new RegExp("${rewrite.regex}");
 event.request.uri = event.request.uri.replace(re, "${rewrite.to}");`
-      : ""
-  }
+                : ""
+              }
   ${config?.injection ?? ""}
   return event.request;
 }`,
@@ -1209,23 +1277,23 @@ async function handler(event) {
                         functionArn:
                           route.edge?.viewerRequest || route.rewrite
                             ? createCfRequestFunction(
-                                path,
-                                route.edge?.viewerRequest,
-                                route.rewrite,
-                                true,
-                              ).arn
+                              path,
+                              route.edge?.viewerRequest,
+                              route.rewrite,
+                              true,
+                            ).arn
                             : createCfRequestDefaultFunction().arn,
                       },
                       ...(route.edge?.viewerResponse
                         ? [
-                            {
-                              eventType: "viewer-response",
-                              functionArn: createCfResponseFunction(
-                                path,
-                                route.edge.viewerResponse,
-                              ).arn,
-                            },
-                          ]
+                          {
+                            eventType: "viewer-response",
+                            functionArn: createCfResponseFunction(
+                              path,
+                              route.edge.viewerResponse,
+                            ).arn,
+                          },
+                        ]
                         : []),
                     ],
                     viewerProtocolPolicy: "redirect-to-https",
@@ -1264,30 +1332,30 @@ async function handler(event) {
                     functionAssociations: [
                       ...(route.edge?.viewerRequest || route.rewrite
                         ? [
-                            {
-                              eventType: "viewer-request",
-                              functionArn:
-                                route.edge?.viewerRequest || route.rewrite
-                                  ? createCfRequestFunction(
-                                      path,
-                                      route.edge?.viewerRequest,
-                                      route.rewrite,
-                                      false,
-                                    ).arn
-                                  : createCfRequestDefaultFunction().arn,
-                            },
-                          ]
+                          {
+                            eventType: "viewer-request",
+                            functionArn:
+                              route.edge?.viewerRequest || route.rewrite
+                                ? createCfRequestFunction(
+                                  path,
+                                  route.edge?.viewerRequest,
+                                  route.rewrite,
+                                  false,
+                                ).arn
+                                : createCfRequestDefaultFunction().arn,
+                          },
+                        ]
                         : []),
                       ...(route.edge?.viewerResponse
                         ? [
-                            {
-                              eventType: "viewer-response",
-                              functionArn: createCfResponseFunction(
-                                path,
-                                route.edge.viewerResponse,
-                              ).arn,
-                            },
-                          ]
+                          {
+                            eventType: "viewer-response",
+                            functionArn: createCfResponseFunction(
+                              path,
+                              route.edge.viewerResponse,
+                            ).arn,
+                          },
+                        ]
                         : []),
                     ],
                     viewerProtocolPolicy: "redirect-to-https",
@@ -1442,7 +1510,7 @@ async function handler(event) {
         - First sort by host pattern (longest first)
         - Then sort by path prefix (longest first)
       */ ""
-      }
+                }
       .map(r => {
         var parts = r.split(",");
         return { 
@@ -1588,7 +1656,7 @@ async function handler(event) {
    * The URL of the Router.
    *
    * If the `domain` is set, this is the URL with the custom domain.
-   * Otherwise, it's the autogenerated CloudFront URL.
+   * Otherwise, it's the auto-generated CloudFront URL.
    */
   public get url() {
     return all([this.cdn.domainUrl, this.cdn.url]).apply(
@@ -1836,6 +1904,8 @@ async function handler(event) {
    *   router: router.distributionID
    * };
    * ```
+   *
+   * Learn more about [how to configure a router for your app](/docs/configure-a-router).
    */
   public static get(
     name: string,
@@ -1884,7 +1954,7 @@ async function routeSite(kvNamespace, metadata) {
       : ["", ".html", "/index.html"];
     const v = await Promise.any(postfixes.map(p => cf.kvs().get(kvNamespace + ":" + u + p).then(v => p)));
     // files are stored in a subdirectory, add it to the request uri
-    event.request.uri = metadata.s3.dir + baselessUri + v;
+    event.request.uri = metadata.s3.dir + event.request.uri + v;
     setS3Origin(metadata.s3.domain);
     return;
   } catch (e) {}
@@ -1894,7 +1964,15 @@ async function routeSite(kvNamespace, metadata) {
     for (var i=0, l=metadata.s3.routes.length; i<l; i++) {
       const route = metadata.s3.routes[i];
       if (baselessUri.startsWith(route)) {
-        event.request.uri = metadata.s3.dir + baselessUri;
+        event.request.uri = metadata.s3.dir + event.request.uri;
+        // uri ends with /, ie. /usage/ -> /usage/index.html
+        if (event.request.uri.endsWith("/")) {
+          event.request.uri += "index.html";
+        }
+        // uri ends with non-file, ie. /usage -> /usage/index.html
+        else if (!event.request.uri.split("/").pop().includes(".")) {
+          event.request.uri += "/index.html";
+        }
         setS3Origin(metadata.s3.domain);
         return;
       }
@@ -1903,13 +1981,13 @@ async function routeSite(kvNamespace, metadata) {
 
   // Route to S3 custom 404 (no servers)
   if (metadata.custom404) {
-    event.request.uri = metadata.s3.dir + metadata.custom404;
+    event.request.uri = metadata.s3.dir + (metadata.base ? metadata.base : "") + metadata.custom404;
     setS3Origin(metadata.s3.domain);
     return;
   }
 
   // Route to image optimizer
-  if (metadata.image && baselessUri.startsWith(metadata.image.pattern)) {
+  if (metadata.image && baselessUri.startsWith(metadata.image.route)) {
     setUrlOrigin(metadata.image.host);
     return;
   }
@@ -1918,11 +1996,11 @@ async function routeSite(kvNamespace, metadata) {
   if (metadata.servers){
     event.request.headers["x-forwarded-host"] = event.request.headers.host;
     ${
-      // Note: In SvelteKit, form action requests contain "/" in request query string
-      //  ie. POST request with query string "?/action"
-      //  CloudFront does not allow query string with "/". It needs to be encoded.
-      ""
-    }
+  // Note: In SvelteKit, form action requests contain "/" in request query string
+  //  ie. POST request with query string "?/action"
+  //  CloudFront does not allow query string with "/". It needs to be encoded.
+  ""
+  }
     for (var key in event.request.querystring) {
       if (key.includes("/")) {
         event.request.querystring[encodeURIComponent(key)] = event.request.querystring[key];
@@ -1936,10 +2014,10 @@ async function routeSite(kvNamespace, metadata) {
 
   function setNextjsGeoHeaders() {
     ${
-      // Inject the CloudFront viewer country, region, latitude, and longitude headers into
-      // the request headers for OpenNext to use them for OpenNext to use them
-      ""
-    }
+  // Inject the CloudFront viewer country, region, latitude, and longitude headers into
+  // the request headers for OpenNext to use them for OpenNext to use them
+  ""
+  }
     if(event.request.headers["cloudfront-viewer-city"]) {
       event.request.headers["x-open-next-city"] = event.request.headers["cloudfront-viewer-city"];
     }
@@ -1959,11 +2037,11 @@ async function routeSite(kvNamespace, metadata) {
 
   function setNextjsCacheKey() {
     ${
-      // This function is used to improve cache hit ratio by setting the cache key
-      // based on the request headers and the path. `next/image` only needs the
-      // accept header, and this header is not useful for the rest of the query
-      ""
-    }
+  // This function is used to improve cache hit ratio by setting the cache key
+  // based on the request headers and the path. `next/image` only needs the
+  // accept header, and this header is not useful for the rest of the query
+  ""
+  }
     var cacheKey = "";
     if (event.request.uri.startsWith("/_next/image")) {
       cacheKey = getHeader("accept");
@@ -2089,7 +2167,7 @@ export type KV_SITE_METADATA = {
   };
   image?: {
     host: string;
-    path: string;
+    route: string;
   };
   servers?: [string, number, number][];
   origin?: {
@@ -2101,7 +2179,7 @@ export type KV_SITE_METADATA = {
 
 export type RouterRouteArgs = {
   /**
-   * The `Router` component to use to route requests.
+   * The `Router` component to use for routing requests.
    *
    * @example
    *
@@ -2109,64 +2187,89 @@ export type RouterRouteArgs = {
    *
    * ```ts title="sst.config.ts"
    * const router = new sst.aws.Router("MyRouter", {
-   *   domain: "example.com",
+   *   domain: "example.com"
    * });
    * ```
    *
-   * Attach to the Router to receive requests.
+   * You can attach it to the Router, instead of creating a standalone CloudFront
+   * distribution.
    *
-   * ```ts title="sst.config.ts"
-   * route: {
-   *   router,
+   * ```ts
+   * router: {
+   *   instance: router
    * }
    * ```
    */
-  router: Input<Router>;
+  instance: Input<Router>;
   /**
-   * Route requests matching specific domain pattern.
+   * Route requests matching a specific domain pattern.
    *
    * @example
    *
    * You can serve your resource from a subdomain. For example, if you want to make
-   * it available at `https://dev.example.com`, set the `Router` domain to a wildcard.
+   * it available at `https://dev.example.com`, set the `Router` to match the
+   * domain or a wildcard.
    *
    * ```ts {2} title="sst.config.ts"
    * const router = new sst.aws.Router("MyRouter", {
-   *   domain: "*.example.com",
+   *   domain: "*.example.com"
    * });
    * ```
    *
    * Then set the domain pattern.
    *
-   * ```ts {3} title="sst.config.ts"
-   * route: {
-   *   router,
-   *   domain: "dev.example.com",
+   * ```ts {3}
+   * router: {
+   *   instance: router,
+   *   domain: "dev.example.com"
    * }
    * ```
+   *
+   * While `dev.example.com` matches `*.example.com`. Something like
+   * `docs.dev.example.com` will not match `*.example.com`.
+   *
+   * :::tip
+   * Nested wildcards domain patterns are not supported.
+   * :::
+   *
+   * You'll need to add `*.dev.example.com` as an alias.
    */
   domain?: Input<string>;
   /**
-   * Route request smatching specific path prefix.
+   * Route requests matching a specific path prefix.
    *
    * @default `"/"`
+   *
    * @example
    *
-   * ```ts {3} title="sst.config.ts"
-   * route: {
-   *   router,
-   *   path: "/docs",
+   * ```ts {3}
+   * router: {
+   *   instance: router,
+   *   path: "/docs"
    * }
    * ```
    */
   path?: Input<string>;
 };
 
-export function normalizeRouteArgs(route?: Input<RouterRouteArgs>) {
-  if (!route) return undefined;
+export type RouterRouteArgsDeprecated = {
+  router: Input<Router>;
+  domain?: Input<string>;
+  path?: Input<string>;
+};
 
-  return output(route).apply((v) => {
-    return v.router._hasInlineRoutes.apply((hasInlineRoutes) => {
+export function normalizeRouteArgs(
+  route?: Input<RouterRouteArgs>,
+  routeDeprecated?: Input<RouterRouteArgsDeprecated>,
+) {
+  if (!route && !routeDeprecated) return undefined;
+
+  return all([route, routeDeprecated]).apply(([route, routeDeprecated]) => {
+    const v = route
+      ? route
+      : { ...routeDeprecated, instance: routeDeprecated!.router };
+
+    return v.instance._hasInlineRoutes.apply((hasInlineRoutes) => {
       if (hasInlineRoutes)
         throw new VisibleError(
           "Cannot route the site using the provided router. The Router component uses inline routes which has been deprecated.",
@@ -2178,17 +2281,17 @@ export function normalizeRouteArgs(route?: Input<RouterRouteArgs>) {
       return {
         hostPattern: v.domain
           ? v.domain
-              .replace(/[.+?^${}()|[\]\\]/g, "\\$&") // Escape special regex chars
-              .replace(/\*/g, ".*") // Replace * with .*
+            .replace(/[.+?^${}()|[\]\\]/g, "\\$&") // Escape special regex chars
+            .replace(/\*/g, ".*") // Replace * with .*
           : undefined,
         pathPrefix,
-        routerDistributionId: v.router.nodes.cdn.nodes.distribution.id,
-        routerUrl: v.router.url.apply(
+        routerDistributionId: v.instance.nodes.cdn.nodes.distribution.id,
+        routerUrl: v.instance.url.apply(
           (url) =>
             (v.domain ? `https://${v.domain}` : url) + (pathPrefix ?? ""),
         ),
-        routerKvNamespace: v.router._kvNamespace!,
-        routerKvStoreArn: v.router._kvStoreArn!,
+        routerKvNamespace: v.instance._kvNamespace!,
+        routerKvStoreArn: v.instance._kvStoreArn!,
       };
     });
   });

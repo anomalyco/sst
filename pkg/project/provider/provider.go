@@ -26,6 +26,7 @@ type Home interface {
 	setPassphrase(app, stage string, passphrase string) error
 	getPassphrase(app, stage string) (string, error)
 	listStages(app string) ([]string, error)
+	cleanup(key, app, stage string) error
 	info() (util.KeyValuePairs[string], error)
 }
 
@@ -153,6 +154,16 @@ func PutUpdate(backend Home, app, stage string, update *Update) error {
 	slog.Info("putting update", "app", app, "stage", stage)
 	update.RunID = flag.SST_RUN_ID
 	return putData(backend, "update", app, stage+"/"+update.ID, false, update)
+}
+
+func Cleanup(backend Home, app, stage string) error {
+	if err := backend.cleanup("eventlog", app, stage); err != nil {
+		return err
+	}
+	if err := backend.cleanup("snapshot", app, stage); err != nil {
+		return err
+	}
+	return nil
 }
 
 func GetSecrets(backend Home, app, stage string) (map[string]string, error) {

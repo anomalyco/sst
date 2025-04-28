@@ -44,7 +44,11 @@ import { lazy } from "../../util/lazy.js";
 import { Efs } from "./efs.js";
 import { FunctionEnvironmentUpdate } from "./providers/function-environment-update.js";
 import { warnOnce } from "../../util/warn.js";
-import { normalizeRouteArgs, RouterRouteArgs } from "./router.js";
+import {
+  normalizeRouteArgs,
+  RouterRouteArgs,
+  RouterRouteArgsDeprecated,
+} from "./router.js";
 import { KvRoutesUpdate } from "./providers/kv-routes-update.js";
 import { KvKeys } from "./providers/kv-keys.js";
 
@@ -242,6 +246,24 @@ export interface FunctionArgs {
    * ```
    */
   dev?: Input<false>;
+  /**
+   * Configure the maximum number of retry attempts for this function when invoked
+   * asynchronously.
+   *
+   * This only affects asynchronous invocations of the function, ie. when subscribed to
+   * Topics, EventBuses, or Buckets. And not when directly invoking the function.
+   *
+   * Valid values are between 0 and 2.
+   *
+   * @default `2`
+   * @example
+   * ```js
+   * {
+   *   retries: 0
+   * }
+   * ```
+   */
+  retries?: Input<number>;
   /**
    * The name for the function.
    *
@@ -702,63 +724,97 @@ export interface FunctionArgs {
     | boolean
     | {
         /**
-         * Serve your function URL through a `Router` component.
+         * @deprecated The `url.router` prop is now the recommended way to serve your
+         * function URL through a `Router` component.
+         */
+        route?: Prettify<RouterRouteArgsDeprecated>;
+        /**
+         * Serve your function URL through a `Router` instead of a standalone Function URL.
          *
-         * Let's say you have a Router component.
+         * By default, this component creates a direct function URL endpoint. But you might
+         * want to serve it through the distribution of your `Router` as a:
          *
-         * ```ts title="sst.config.ts"
+         * - A path like `/api/users`
+         * - A subdomain like `api.example.com`
+         * - Or a combined pattern like `dev.example.com/api`
+         *
+         * @example
+         *
+         * To serve your function **from a path**, you'll need to configure the root domain
+         * in your `Router` component.
+         *
+         * ```ts title="sst.config.ts" {2}
          * const router = new sst.aws.Router("Router", {
-         *   domain: "*.example.com",
+         *   domain: "example.com"
          * });
          * ```
          *
-         * You can then match a pattern and route to your function based on:
+         * Now set the `router` and the `path` in the `url` prop.
          *
-         * - A path like `/api/users`
-         * - A domain pattern like `api.example.com`
-         * - A combined pattern like `dev.example.com/api`
-         *
-         * For example, to match a path:
-         *
-         * ```ts title="sst.config.ts"
+         * ```ts {4,5}
          * {
          *   url: {
-         *     route: {
-         *       router,
-         *       path: "/api/users",
-         *     },
-         *   },
+         *     router: {
+         *       instance: router,
+         *       path: "/api/users"
+         *     }
+         *   }
          * }
          * ```
          *
-         * Or match a domain:
+         * To serve your function **from a subdomain**, you'll need to configure the
+         * domain in your `Router` component to match both the root and the subdomain.
          *
-         * ```ts title="sst.config.ts"
+         * ```ts title="sst.config.ts" {3,4}
+         * const router = new sst.aws.Router("Router", {
+         *   domain: {
+         *     name: "example.com",
+         *     aliases: ["*.example.com"]
+         *   }
+         * });
+         * ```
+         *
+         * Now set the `domain` in the `router` prop.
+         *
+         * ```ts {5}
          * {
          *   url: {
-         *     route: {
-         *       router,
-         *       domain: "api.example.com",
-         *     },
-         *   },
+         *     router: {
+         *       instance: router,
+         *       domain: "api.example.com"
+         *     }
+         *   }
          * }
          * ```
          *
-         * Route by both domain and path:
+         * Finally, to serve your function **from a combined pattern** like
+         * `dev.example.com/api`, you'll need to configure the domain in your `Router` to
+         * match the subdomain.
          *
-         * ```ts title="sst.config.ts"
+         * ```ts title="sst.config.ts" {3,4}
+         * const router = new sst.aws.Router("Router", {
+         *   domain: {
+         *     name: "example.com",
+         *     aliases: ["*.example.com"]
+         *   }
+         * });
+         * ```
+         *
+         * And set the `domain` and the `path`.
+         *
+         * ```ts {5,6}
          * {
          *   url: {
-         *     route: {
-         *       router,
+         *     router: {
+         *       instance: router,
          *       domain: "dev.example.com",
-         *       path: "/api/users",
-         *     },
-         *   },
+         *       path: "/api/users"
+         *     }
+         *   }
          * }
          * ```
          */
-        route?: Prettify<RouterRouteArgs>;
+        router?: Prettify<RouterRouteArgs>;
         /**
          * The authorization used for the function URL. Supports [IAM authorization](https://docs.aws.amazon.com/lambda/latest/dg/urls-auth.html).
          * @default `"none"`
@@ -1282,6 +1338,11 @@ export interface FunctionArgs {
      * Transform the CloudWatch LogGroup resource.
      */
     logGroup?: Transform<cloudwatch.LogGroupArgs>;
+    /**
+     * Transform the Function Event Invoke Config resource. This is only created
+     * when the `retries` property is set.
+     */
+    eventInvokeConfig?: Transform<lambda.FunctionEventInvokeConfigArgs>;
   };
   /**
    * @internal
@@ -1446,6 +1507,7 @@ export class Function extends Component implements Link.Linkable {
   private role: iam.Role;
   private logGroup: Output<cloudwatch.LogGroup | undefined>;
   private urlEndpoint: Output<string | undefined>;
+  private eventInvokeConfig?: lambda.FunctionEventInvokeConfig;
 
   private static readonly encryptionKey = lazy(
     () =>
@@ -1500,6 +1562,7 @@ export class Function extends Component implements Link.Linkable {
     const fn = createFunction();
     const urlEndpoint = createUrl();
     createProvisioned();
+    const eventInvokeConfig = createEventInvokeConfig();
 
     const links = linkData.apply((input) => input.map((item) => item.name));
 
@@ -1507,6 +1570,7 @@ export class Function extends Component implements Link.Linkable {
     this.role = role;
     this.logGroup = logGroup;
     this.urlEndpoint = urlEndpoint;
+    this.eventInvokeConfig = eventInvokeConfig;
 
     const buildInput = output({
       functionID: name,
@@ -1687,7 +1751,11 @@ export class Function extends Component implements Link.Linkable {
                   maxAge: url.cors.maxAge && toSeconds(url.cors.maxAge),
                 };
 
-        return { authorization, cors, route: normalizeRouteArgs(url.route) };
+        return {
+          authorization,
+          cors,
+          route: normalizeRouteArgs(url.router, url.route),
+        };
       });
     }
 
@@ -2395,6 +2463,24 @@ export class Function extends Component implements Link.Linkable {
         },
       );
     }
+
+    function createEventInvokeConfig() {
+      if (args.retries === undefined) {
+        return undefined;
+      }
+
+      return new lambda.FunctionEventInvokeConfig(
+        ...transform(
+          args.transform?.eventInvokeConfig,
+          `${name}EventInvokeConfig`,
+          {
+            functionName: fn.name,
+            maximumRetryAttempts: args.retries,
+          },
+          { parent },
+        ),
+      );
+    }
   }
 
   /**
@@ -2414,6 +2500,10 @@ export class Function extends Component implements Link.Linkable {
        * The CloudWatch Log Group the function logs are stored.
        */
       logGroup: this.logGroup,
+      /**
+       * The Function Event Invoke Config resource if retries are configured.
+       */
+      eventInvokeConfig: this.eventInvokeConfig,
     };
   }
 

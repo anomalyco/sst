@@ -1,0 +1,24 @@
+[package]
+name = "aws-lambda-rust-multi-bin"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+aws-config = { version = "1.5.16", features = ["behavior-version-latest"] }
+aws-sdk-s3 = "1.73.0"
+lambda_runtime = "0.13.0"
+serde = { version = "1.0.217", features = ["derive"] }
+serde_json = "1.0.138"
+# this will break when not in this repo.
+sst_sdk = { version = "0.1.0", path = "../../sdk/rust" }
+# sst_sdk = "0.1.0"
+tokio = { version = "1", features = ["macros"] }
+uuid = { version = "1.13.1", features = ["v4"] }
+
+[[bin]]
+name = "push"
+path = "src/push.rs"
+
+[[bin]]
+name = "pop"
+path = "src/pop.rs"

@@ -26,6 +26,10 @@ export interface DynamoArgs {
    *
    * While you can have fields field types other than `string`, `number`, and `binary`; you can only use these types for your indexes.
    *
+   * :::caution
+   * Field types cannot be changed after table creation. Any changes to field types will be ignored.
+   * :::
+   *
    * @example
    * ```js
    * {

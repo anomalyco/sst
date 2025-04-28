@@ -1,40 +1,32 @@
 {
-  "name": "tanstack-router-example-react-start-basic-beta",
+  "name": "tanstack-start-example-bare",
   "private": true,
   "sideEffects": false,
   "type": "module",
   "scripts": {
-    "dev": "vinxi dev",
     "build": "vinxi build",
-    "start": "vinxi start",
-    "lint": "prettier --check '**/*' --ignore-unknown && eslint --ext .ts,.tsx ./app",
-    "format": "prettier --write '**/*' --ignore-unknown",
-    "test:e2e": "playwright test --project=chromium"
+    "dev": "vinxi dev",
+    "start": "vinxi start"
   },
   "dependencies": {
-    "@tanstack/react-router": "^1.97.14",
-    "@tanstack/router-devtools": "^1.97.14",
-    "@tanstack/router-plugin": "^1.97.14",
-    "@tanstack/start": "^1.97.15",
-    "isbot": "^5.1.21",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "redaxios": "^0.5.1",
-    "tailwind-merge": "^2.6.0",
-    "vinxi": "^0.5.1"
+    "@aws-sdk/client-s3": "^3.787.0",
+    "@aws-sdk/s3-request-presigner": "^3.787.0",
+    "@tanstack/react-router": "^1.116.0",
+    "@tanstack/react-router-devtools": "^1.116.0",
+    "@tanstack/react-start": "^1.116.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "sst": "latest",
+    "vinxi": "0.5.3",
+    "zod": "^3.24.2"
   },
   "devDependencies": {
-    "@playwright/test": "^1.50.0",
-    "@types/node": "^20.17.16",
-    "@types/react": "^18.3.18",
-    "@types/react-dom": "^18.3.5",
-    "@vitejs/plugin-react": "^4.3.4",
-    "autoprefixer": "^10.4.20",
-    "postcss": "^8.5.1",
-    "prettier": "^3.4.2",
-    "tailwindcss": "^3.4.17",
-    "typescript": "^5.7.3",
-    "vite": "^6.0.11",
+    "@tailwindcss/vite": "^4.0.8",
+    "@types/node": "^22.5.4",
+    "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.0.3",
+    "tailwindcss": "^4.0.8",
+    "typescript": "^5.7.2",
     "vite-tsconfig-paths": "^5.1.4"
   }
 }

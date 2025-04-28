@@ -30,15 +30,17 @@ export default $config({
     //const task = addTask();
     //const postgres = addAuroraPostgres();
     //const postgres = addPostgres();
+    //const mysql = addMysql();
     //const redis = addRedis();
     //const cron = addCron();
     //const topic = addTopic();
     //const bus = addBus();
+    //const dynamo = addDynamo();
 
     return ret;
 
     function addVpc() {
-      const vpc = new sst.aws.Vpc("MyVpc");
+      const vpc = new sst.aws.Vpc("MyVpc", { nat: "ec2" });
       return vpc;
     }
 
@@ -221,10 +223,6 @@ export default $config({
     }
 
     function addRouter() {
-      const app = new sst.aws.Function("MyRouterApp", {
-        handler: "functions/router/index.handler",
-        url: true,
-      });
       //const rr7 = new sst.aws.React("MyRouterSite", {
       //  path: "sites/react-router-7-ssr",
       //  cdn: false,
@@ -264,7 +262,6 @@ export default $config({
         //  "/*": app.url,
         //},
       });
-      router.route("api.router.playground.sst.sh/", app.url);
       //router.route("/api", app.url, {
       //rewrite: {
       //  regex: "^/api/(.*)$",
@@ -282,6 +279,16 @@ export default $config({
       //router.routeSite("/remix", remix);
       //router.routeSite("/vite", vite);
       //router.routeSite("/tan", staticSite);
+
+      new sst.aws.Function("MyRouterApp", {
+        handler: "functions/router/index.handler",
+        url: {
+          router: {
+            instance: router,
+            domain: "api.router.playground.sst.sh/",
+          },
+        },
+      });
 
       //const vite = new sst.aws.StaticSite("MyRouterVite", {
       //  path: "sites/vite",
@@ -309,8 +316,8 @@ export default $config({
 
       new sst.aws.Astro("MyRouterAstro", {
         path: "sites/astro5",
-        route: {
-          router,
+        router: {
+          instance: router,
           path: "/astro5",
         },
       });
@@ -472,15 +479,41 @@ export default $config({
       return postgres;
     }
 
+    function addMysql() {
+      const mysql = new sst.aws.Mysql("MyMysql", {
+        vpc,
+        dev: {
+          username: "root",
+          password: "password",
+          database: "local",
+          port: 3306,
+        },
+      });
+      new sst.aws.Function("MyMysqlApp", {
+        handler: "functions/mysql/index.handler",
+        url: true,
+        vpc,
+        link: [mysql],
+      });
+      ret.mysqlHost = mysql.host;
+      ret.mysqlPort = $interpolate`${mysql.port}`;
+      ret.mysqlUsername = mysql.username;
+      ret.mysqlPassword = mysql.password;
+      return mysql;
+    }
+
     function addRedis() {
       const redis = new sst.aws.Redis("MyRedis", {
         vpc,
         parameters: {
           "maxmemory-policy": "noeviction",
         },
+        //cluster: false,
       });
+      ret.redisHost = redis.host;
       const app = new sst.aws.Function("MyRedisApp", {
-        handler: "functions/redis/index.handler",
+        handler: "functions/redis/cluster-index.handler",
+        //handler: "functions/redis/instance-index.handler",
         url: true,
         vpc,
         link: [redis],
@@ -530,6 +563,21 @@ export default $config({
       });
 
       return bus;
+    }
+
+    function addDynamo() {
+      new sst.aws.Dynamo("MyTable", {
+        fields: {
+          userId: "string",
+          noteId: "string",
+          createdAt: "string",
+        },
+        primaryIndex: { hashKey: "userId", rangeKey: "noteId" },
+        globalIndexes: {
+          CreatedAtIndex: { hashKey: "userId", rangeKey: "createdAt" },
+          CreatedAtIndex2: { hashKey: "userId", rangeKey: "createdAt" },
+        },
+      });
     }
   },
 });

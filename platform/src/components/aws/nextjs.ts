@@ -11,7 +11,7 @@ import { isALteB } from "../../util/compare-semver.js";
 import { Plan, SsrSite, SsrSiteArgs } from "./ssr-site.js";
 import { Bucket } from "./bucket.js";
 
-const DEFAULT_OPEN_NEXT_VERSION = "3.5.4";
+const DEFAULT_OPEN_NEXT_VERSION = "3.5.5";
 
 type BaseFunction = {
   handler: string;
@@ -235,77 +235,104 @@ export interface NextjsArgs extends SsrSiteArgs {
    */
   environment?: SsrSiteArgs["environment"];
   /**
-   * Serve your Next.js app through a `Router` component instead of a standalone CloudFront
+   * Serve your Next.js app through a `Router` instead of a standalone CloudFront
    * distribution.
    *
-   * Let's say you have a Router component.
+   * By default, this component creates a new CloudFront distribution. But you might
+   * want to serve it through the distribution of your `Router` as a:
    *
-   * ```ts title="sst.config.ts"
+   * - A path like `/docs`
+   * - A subdomain like `docs.example.com`
+   * - Or a combined pattern like `dev.example.com/docs`
+   *
+   * @example
+   *
+   * To serve your Next.js app **from a path**, you'll need to configure the root domain
+   * in your `Router` component.
+   *
+   * ```ts title="sst.config.ts" {2}
    * const router = new sst.aws.Router("Router", {
-   *   domain: "*.example.com",
+   *   domain: "example.com"
    * });
    * ```
    *
-   * You can then match a pattern and route to your app based on:
+   * Now set the `router` and the `path`.
    *
-   * - A path like `/docs`
-   * - A domain pattern like `docs.example.com`
-   * - A combined pattern like `dev.example.com/docs`
-   *
-   * For example, to match a path.
-   *
-   * ```ts title="sst.config.ts"
+   * ```ts {3,4}
    * {
-   *   route: {
-   *     router,
-   *     path: "/docs",
-   *   },
+   *   router: {
+   *     instance: router,
+   *     path: "/docs"
+   *   }
    * }
    * ```
    *
-   * Or match a domain.
-   *
-   * ```ts title="sst.config.ts"
-   * {
-   *   route: {
-   *     router,
-   *     domain: "docs.example.com",
-   *   },
-   * }
-   * ```
-   *
-   * Route by both domain and path:
-   *
-   * ```ts title="sst.config.ts"
-   * {
-   *   route: {
-   *     router,
-   *     domain: "dev.example.com",
-   *     path: "/docs",
-   *   },
-   * }
-   * ```
-   *
-   * If you are routing to a path like `/docs`, you must configure the
-   * base path in your Next.js app. The base path must match the path in your
-   * route prop.
+   * You also need to set the [`basePath`](https://nextjs.org/docs/app/api-reference/config/next-config-js/basePath)
+   * in your `next.config.js`.
    *
    * :::caution
-   * If routing to a path, you need to configure that as the base path in your
-   * Next.js app as well.
+   * If routing to a path, you need to set that as the base path in your Next.js
+   * app as well.
    * :::
-   *
-   * For example, if you are routing `/docs` to a Next.js app, you need to set
-   * [`basePath`](https://nextjs.org/docs/app/api-reference/config/next-config-js/basePath)
-   * to `/docs` in your `next.config.js`.
    *
    * ```js title="next.config.js" {2}
    * export default defineConfig({
    *   basePath: "/docs"
    * });
    * ```
+   *
+   * To serve your Next.js app **from a subdomain**, you'll need to configure the
+   * domain in your `Router` component to match both the root and the subdomain.
+   *
+   * ```ts title="sst.config.ts" {3,4}
+   * const router = new sst.aws.Router("Router", {
+   *   domain: {
+   *     name: "example.com",
+   *     aliases: ["*.example.com"]
+   *   }
+   * });
+   * ```
+   *
+   * Now set the `domain` in the `router` prop.
+   *
+   * ```ts {4}
+   * {
+   *   router: {
+   *     instance: router,
+   *     domain: "docs.example.com"
+   *   }
+   * }
+   * ```
+   *
+   * Finally, to serve your Next.js app **from a combined pattern** like
+   * `dev.example.com/docs`, you'll need to configure the domain in your `Router` to
+   * match the subdomain.
+   *
+   * ```ts title="sst.config.ts" {3,4}
+   * const router = new sst.aws.Router("Router", {
+   *   domain: {
+   *     name: "example.com",
+   *     aliases: ["*.example.com"]
+   *   }
+   * });
+   * ```
+   *
+   * And set the `domain` and the `path`.
+   *
+   * ```ts {4,5}
+   * {
+   *   router: {
+   *     instance: router,
+   *     domain: "dev.example.com",
+   *     path: "/docs"
+   *   }
+   * }
+   * ```
+   *
+   * Also, make sure to set this as the `basePath` in your `next.config.js`, like
+   * above.
    */
-  route?: SsrSiteArgs["route"];
+  router?: SsrSiteArgs["router"];
   /**
    * Set a custom domain for your Next.js app.
    *
@@ -623,36 +650,36 @@ export class Nextjs extends SsrSite {
                 },
                 ...(queueArn
                   ? [
-                      {
-                        actions: [
-                          "sqs:SendMessage",
-                          "sqs:GetQueueAttributes",
-                          "sqs:GetQueueUrl",
-                        ],
-                        resources: [queueArn],
-                      },
-                    ]
+                    {
+                      actions: [
+                        "sqs:SendMessage",
+                        "sqs:GetQueueAttributes",
+                        "sqs:GetQueueUrl",
+                      ],
+                      resources: [queueArn],
+                    },
+                  ]
                   : []),
                 ...(tableArn
                   ? [
-                      {
-                        actions: [
-                          "dynamodb:BatchGetItem",
-                          "dynamodb:GetRecords",
-                          "dynamodb:GetShardIterator",
-                          "dynamodb:Query",
-                          "dynamodb:GetItem",
-                          "dynamodb:Scan",
-                          "dynamodb:ConditionCheckItem",
-                          "dynamodb:BatchWriteItem",
-                          "dynamodb:PutItem",
-                          "dynamodb:UpdateItem",
-                          "dynamodb:DeleteItem",
-                          "dynamodb:DescribeTable",
-                        ],
-                        resources: [tableArn, `${tableArn}/*`],
-                      },
-                    ]
+                    {
+                      actions: [
+                        "dynamodb:BatchGetItem",
+                        "dynamodb:GetRecords",
+                        "dynamodb:GetShardIterator",
+                        "dynamodb:Query",
+                        "dynamodb:GetItem",
+                        "dynamodb:Scan",
+                        "dynamodb:ConditionCheckItem",
+                        "dynamodb:BatchWriteItem",
+                        "dynamodb:PutItem",
+                        "dynamodb:UpdateItem",
+                        "dynamodb:DeleteItem",
+                        "dynamodb:DescribeTable",
+                      ],
+                      resources: [tableArn, `${tableArn}/*`],
+                    },
+                  ]
                   : []),
               ],
               injections: [
@@ -953,7 +980,7 @@ export class Nextjs extends SsrSite {
    * The URL of the Next.js app.
    *
    * If the `domain` is set, this is the URL with the custom domain.
-   * Otherwise, it's the autogenerated CloudFront URL.
+   * Otherwise, it's the auto-generated CloudFront URL.
    */
   public get url() {
     return super.url;

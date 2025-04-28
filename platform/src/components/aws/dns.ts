@@ -95,6 +95,7 @@ export function dns(args: DnsArgs = {}) {
   return {
     provider: "aws",
     createAlias,
+    createCaa,
     createRecord,
   } satisfies Dns;
 
@@ -127,6 +128,15 @@ export function dns(args: DnsArgs = {}) {
         opts,
       ),
     );
+  }
+
+  function createCaa(
+    namePrefix: string,
+    recordName: string,
+    opts: ComponentResourceOptions,
+  ) {
+    // placeholder
+    return undefined;
   }
 
   /**

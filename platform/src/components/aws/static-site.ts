@@ -32,6 +32,7 @@ import {
   KV_SITE_METADATA,
   normalizeRouteArgs,
   RouterRouteArgs,
+  RouterRouteArgsDeprecated,
 } from "./router.js";
 import { DistributionInvalidation } from "./providers/distribution-invalidation.js";
 import { VisibleError } from "../error.js";
@@ -94,14 +95,14 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
      *
      * @example
      *
-     * You can pass in the code to inject into the function. The provided code will be
-     * injected at the end of the function.
+     * You can pass in the code to inject into the function. The provided code will
+     * be injected at the start of the function.
      *
      * ```js
      * async function handler(event) {
-     *   // Default behavior code
-     *
      *   // User injected code
+     *
+     *   // Default behavior code
      *
      *   return event.request;
      * }
@@ -392,74 +393,112 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
    */
   domain?: CdnArgs["domain"];
   /**
-   * Serve your stat through a `Router` component instead of a standalone CloudFront
+   * @deprecated The `router` prop is now the recommended way to serve your site
+   * through a `Router` component.
+   */
+  route?: Prettify<RouterRouteArgsDeprecated>;
+  /**
+   * Serve your static site through a `Router` instead of a standalone CloudFront
    * distribution.
    *
-   * Let's say you have a Router component.
-   *
-   * ```ts title="sst.config.ts"
-   * const router = new sst.aws.Router("Router", {
-   *   domain: "*.example.com",
-   * });
-   * ```
-   *
-   * You can then match a pattern and route to your app based on:
+   * By default, this component creates a new CloudFront distribution. But you might
+   * want to serve it through the distribution of your `Router` as a:
    *
    * - A path like `/docs`
-   * - A domain pattern like `docs.example.com`
-   * - A combined pattern like `dev.example.com/docs`
+   * - A subdomain like `docs.example.com`
+   * - Or a combined pattern like `dev.example.com/docs`
    *
-   * For example, to match a path.
+   * @example
    *
-   * ```ts title="sst.config.ts"
-   * {
-   *   route: {
-   *     router,
-   *     path: "/docs",
-   *   },
-   * }
-   * ```
+   * To serve your static site **from a path**, you'll need to configure the root domain
+   * in your `Router` component.
    *
-   * Or match a domain.
-   *
-   * ```ts title="sst.config.ts"
-   * {
-   *   route: {
-   *     router,
-   *     domain: "docs.example.com",
-   *   },
-   * }
-   * ```
-   *
-   * Route by both domain and path:
-   *
-   * ```ts title="sst.config.ts"
-   * {
-   *   route: {
-   *     router,
-   *     domain: "dev.example.com",
-   *     path: "/docs",
-   *   },
-   * }
-   * ```
-   *
-   * If you are using site generator like Vite, first make sure the base path is set in
-   * your static site generator.
-   *
-   * For Vite, set the `base` option in your `vite.config.ts`. The value should end with
-   * `/`. This is to ensure the asset paths (ie. .css, .js) are correctly constructed.
-   * ```js {2} title="vite.config.ts"
-   * export default defineConfig({
-   *   base: "/docs/",
+   * ```ts title="sst.config.ts" {2}
+   * const router = new sst.aws.Router("Router", {
+   *   domain: "example.com"
    * });
    * ```
+   *
+   * Now set the `router` and the `path`.
+   *
+   * ```ts {3,4}
+   * {
+   *   router: {
+   *     instance: router,
+   *     path: "/docs"
+   *   }
+   * }
+   * ```
+   *
+   * If you are using a static site generator make sure the base path is set in your
+   * config.
    *
    * :::caution
    * If routing to a path, you need to configure that as the base path in your
    * static site generator as well.
    * :::
+   *
+   * For Vite, set the `base` option in your `vite.config.ts`. It should end with
+   * a `/` to ensure asset paths like CSS and JS, are constructed correctly.
+   * 
+   * ```js title="vite.config.ts" {2}
+   * export default defineConfig({
+   *   base: "/docs/"
+   * });
+   * ```
+   *
+   * To serve your static site **from a subdomain**, you'll need to configure the
+   * domain in your `Router` component to match both the root and the subdomain.
+   *
+   * ```ts title="sst.config.ts" {3,4}
+   * const router = new sst.aws.Router("Router", {
+   *   domain: {
+   *     name: "example.com",
+   *     aliases: ["*.example.com"]
+   *   }
+   * });
+   * ```
+   *
+   * Now set the `domain` in the `router` prop.
+   *
+   * ```ts {4}
+   * {
+   *   router: {
+   *     instance: router,
+   *     domain: "docs.example.com"
+   *   }
+   * }
+   * ```
+   *
+   * Finally, to serve your static site **from a combined pattern** like
+   * `dev.example.com/docs`, you'll need to configure the domain in your `Router` to
+   * match the subdomain.
+   *
+   * ```ts title="sst.config.ts" {3,4}
+   * const router = new sst.aws.Router("Router", {
+   *   domain: {
+   *     name: "example.com",
+   *     aliases: ["*.example.com"]
+   *   }
+   * });
+   * ```
+   *
+   * And set the `domain` and the `path`.
+   *
+   * ```ts {4,5}
+   * {
+   *   router: {
+   *     instance: router,
+   *     domain: "dev.example.com",
+   *     path: "/docs"
+   *   }
+   * }
+   * ```
+   *
+   * Also, make sure to set the base path in your static site generator
+   * configuration, like above.
    */
-  route?: Prettify<RouterRouteArgs>;
+  router?: Prettify<RouterRouteArgs>;
   /**
    * Configure how the CloudFront cache invalidations are handled. This is run after your static site has been deployed.
    * :::tip
@@ -486,46 +525,46 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
   invalidation?: Input<
     | false
     | {
-        /**
-         * Configure if `sst deploy` should wait for the CloudFront cache invalidation to finish.
-         *
-         * :::tip
-         * For non-prod environments it might make sense to pass in `false`.
-         * :::
-         *
-         * Waiting for the CloudFront cache invalidation process to finish ensures that the new content will be served once the deploy finishes. However, this process can sometimes take more than 5 mins.
-         * @default `false`
-         * @example
-         * ```js
-         * {
-         *   invalidation: {
-         *     wait: true
-         *   }
-         * }
-         * ```
-         */
-        wait?: Input<boolean>;
-        /**
-         * The paths to invalidate.
-         *
-         * You can either pass in an array of glob patterns to invalidate specific files. Or you can use the built-in option `all` to invalidation all files when any file changes.
-         *
-         * :::note
-         * Invalidating `all` counts as one invalidation, while each glob pattern counts as a single invalidation path.
-         * :::
-         * @default `"all"`
-         * @example
-         * Invalidate the `index.html` and all files under the `products/` route.
-         * ```js
-         * {
-         *   invalidation: {
-         *     paths: ["/index.html", "/products/*"]
-         *   }
-         * }
-         * ```
-         */
-        paths?: Input<"all" | string[]>;
-      }
+      /**
+       * Configure if `sst deploy` should wait for the CloudFront cache invalidation to finish.
+       *
+       * :::tip
+       * For non-prod environments it might make sense to pass in `false`.
+       * :::
+       *
+       * Waiting for the CloudFront cache invalidation process to finish ensures that the new content will be served once the deploy finishes. However, this process can sometimes take more than 5 mins.
+       * @default `false`
+       * @example
+       * ```js
+       * {
+       *   invalidation: {
+       *     wait: true
+       *   }
+       * }
+       * ```
+       */
+      wait?: Input<boolean>;
+      /**
+       * The paths to invalidate.
+       *
+       * You can either pass in an array of glob patterns to invalidate specific files. Or you can use the built-in option `all` to invalidation all files when any file changes.
+       *
+       * :::note
+       * Invalidating `all` counts as one invalidation, while each glob pattern counts as a single invalidation path.
+       * :::
+       * @default `"all"`
+       * @example
+       * Invalidate the `index.html` and all files under the `products/` route.
+       * ```js
+       * {
+       *   invalidation: {
+       *     paths: ["/index.html", "/products/*"]
+       *   }
+       * }
+       * ```
+       */
+      paths?: Input<"all" | string[]>;
+    }
   >;
   /**
    * @deprecated The `route.path` prop is now the recommended way to configure the base
@@ -789,7 +828,7 @@ export class StaticSite extends Component implements Link.Linkable {
     }
 
     function normalizeRoute() {
-      const route = normalizeRouteArgs(args.route);
+      const route = normalizeRouteArgs(args.router, args.route);
 
       if (route) {
         if (args.domain)
@@ -837,17 +876,17 @@ export class StaticSite extends Component implements Link.Linkable {
         // remove leading and trailing slashes from the path
         path: args.assets?.path
           ? output(args.assets?.path).apply((v) =>
-              v.replace(/^\//, "").replace(/\/$/, ""),
-            )
+            v.replace(/^\//, "").replace(/\/$/, ""),
+          )
           : undefined,
         purge: output(args.assets?.purge ?? true),
         // normalize to /path format
         routes: args.assets?.routes
           ? output(args.assets?.routes).apply((v) =>
-              v.map(
-                (route) => "/" + route.replace(/^\//, "").replace(/\/$/, ""),
-              ),
-            )
+            v.map(
+              (route) => "/" + route.replace(/^\//, "").replace(/\/$/, ""),
+            ),
+          )
           : [],
       };
     }
@@ -869,8 +908,8 @@ export class StaticSite extends Component implements Link.Linkable {
       const s3Bucket = bucket
         ? bucket.nodes.bucket
         : s3.BucketV2.get(`${name}Assets`, assets.bucket!, undefined, {
-            parent: self,
-          });
+          parent: self,
+        });
 
       return {
         bucketName: s3Bucket.bucket,
@@ -879,70 +918,76 @@ export class StaticSite extends Component implements Link.Linkable {
     }
 
     function uploadAssets() {
-      return all([outputPath, assets]).apply(async ([outputPath, assets]) => {
-        const bucketFiles: BucketFile[] = [];
+      return all([outputPath, assets, route]).apply(
+        async ([outputPath, assets, route]) => {
+          const bucketFiles: BucketFile[] = [];
 
-        // Build fileOptions
-        const fileOptions = assets?.fileOptions ?? [
-          {
-            files: "**/*.html",
-            cacheControl: "max-age=0,no-cache,no-store,must-revalidate",
-          },
-          {
-            files: "**",
-            cacheControl: "max-age=31536000,public,immutable",
-          },
-        ];
+          // Build fileOptions
+          const fileOptions = assets?.fileOptions ?? [
+            {
+              files: "**",
+              cacheControl: "max-age=31536000,public,immutable",
+            },
+            {
+              files: "**/*.html",
+              cacheControl: "max-age=0,no-cache,no-store,must-revalidate",
+            },
+          ];
 
-        // Upload files based on fileOptions
-        const filesProcessed: string[] = [];
-        for (const fileOption of fileOptions.reverse()) {
-          const files = globSync(fileOption.files, {
-            cwd: path.resolve(outputPath),
-            nodir: true,
-            dot: true,
-            ignore: [
-              ".sst/**",
-              ...(typeof fileOption.ignore === "string"
-                ? [fileOption.ignore]
-                : fileOption.ignore ?? []),
-            ],
-          }).filter((file) => !filesProcessed.includes(file));
+          // Upload files based on fileOptions
+          const filesProcessed: string[] = [];
+          for (const fileOption of fileOptions.reverse()) {
+            const files = globSync(fileOption.files, {
+              cwd: path.resolve(outputPath),
+              nodir: true,
+              dot: true,
+              ignore: [
+                ".sst/**",
+                ...(typeof fileOption.ignore === "string"
+                  ? [fileOption.ignore]
+                  : fileOption.ignore ?? []),
+              ],
+            }).filter((file) => !filesProcessed.includes(file));
 
-          bucketFiles.push(
-            ...(await Promise.all(
-              files.map(async (file) => {
-                const source = path.resolve(outputPath, file);
-                const content = await fs.promises.readFile(source, "utf-8");
-                const hash = crypto
-                  .createHash("sha256")
-                  .update(content)
-                  .digest("hex");
-                return {
-                  source,
-                  key: path.posix.join(assets.path ?? "", file),
-                  hash,
-                  cacheControl: fileOption.cacheControl,
-                  contentType:
-                    fileOption.contentType ?? getContentType(file, "UTF-8"),
-                };
-              }),
-            )),
+            bucketFiles.push(
+              ...(await Promise.all(
+                files.map(async (file) => {
+                  const source = path.resolve(outputPath, file);
+                  const content = await fs.promises.readFile(source, "utf-8");
+                  const hash = crypto
+                    .createHash("sha256")
+                    .update(content)
+                    .digest("hex");
+                  return {
+                    source,
+                    key: path.posix.join(
+                      assets.path ?? "",
+                      route?.pathPrefix?.replace(/^\//, "") ?? "",
+                      file,
+                    ),
+                    hash,
+                    cacheControl: fileOption.cacheControl,
+                    contentType:
+                      fileOption.contentType ?? getContentType(file, "UTF-8"),
+                  };
+                }),
+              )),
+            );
+            filesProcessed.push(...files);
+          }
+
+          return new BucketFiles(
+            `${name}AssetFiles`,
+            {
+              bucketName,
+              files: bucketFiles,
+              purge: assets.purge,
+              region: getRegionOutput(undefined, { parent: self }).name,
+            },
+            { parent: self },
           );
-          filesProcessed.push(...files);
-        }
-
-        return new BucketFiles(
-          `${name}AssetFiles`,
-          {
-            bucketName,
-            files: bucketFiles,
-            purge: assets.purge,
-            region: getRegionOutput(undefined, { parent: self }).name,
-          },
-          { parent: self },
-        );
-      });
+        },
+      );
     }
 
     function buildKvNamespace() {
@@ -967,7 +1012,7 @@ export class StaticSite extends Component implements Link.Linkable {
 
         fs.readdirSync(outputPath, { withFileTypes: true }).forEach((item) => {
           if (item.isDirectory()) {
-            dirs.push(path.posix.join("/", item.name, "/"));
+            dirs.push(path.posix.join("/", item.name));
             return;
           }
           kvEntries[path.posix.join("/", item.name)] = "s3";
@@ -1199,7 +1244,7 @@ async function handler(event) {
    * The URL of the website.
    *
    * If the `domain` is set, this is the URL with the custom domain.
-   * Otherwise, it's the autogenerated CloudFront URL.
+   * Otherwise, it's the auto-generated CloudFront URL.
    */
   public get url() {
     return all([this.prodUrl, this.devUrl]).apply(

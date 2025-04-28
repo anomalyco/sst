@@ -21,6 +21,7 @@ export * from "./kinesis-stream.js";
 export * from "./nextjs.js";
 export * from "./opencontrol.js";
 export * from "./postgres.js";
+export * from "./mysql.js";
 export * from "./queue.js";
 export * from "./realtime.js";
 export * from "./react.js";
