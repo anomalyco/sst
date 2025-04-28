@@ -798,7 +798,7 @@ async function handler(event) {
               principal: "cloudfront.amazonaws.com",
               sourceArn: dist.nodes.distribution.arn,
             },
-            { provider, parent },
+            { provider, parent: self },
           );
         });
       },
