@@ -77,7 +77,7 @@ When a function is running live it sets the `SST_DEV` environment variable to `t
 
 ```js title="src/lambda.js" "process.env.SST_DEV"
 export async function main(event) {
-  const body = process.env.SST_DEV ? "Hello, Live!" : "Hello, World!";
+  const body = process.env.SST_DEV ? "Hello, World!" : "Hello, Live!";
 
   return {
     body,
