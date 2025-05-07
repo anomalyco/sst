@@ -1969,14 +1969,14 @@ export class Service extends Component implements Link.Linkable {
                 args.transform?.target,
                 `${name}Target${targetId}`,
                 {
-                  // TargetGroup names allow for 32 chars, but an 8 letter suffix
-                  // ie. "-1234567" is automatically added.
+                  // TargetGroup names allow for 32 chars, but an 6 letter suffix
+                  // ie. "-12345" is automatically added.
                   // - If we don't specify "name" or "namePrefix", we need to ensure
                   //   the component name is less than 24 chars. Hard to guarantee.
                   // - If we specify "name", we need to ensure the $app-$stage-$name
                   //   if less than 32 chars. Hard to guarantee.
                   // - Hence we will use "namePrefix".
-                  namePrefix: forwardProtocol,
+                  namePrefix: forwardProtocol.replace("_", ""),
                   port: forwardPort,
                   protocol: forwardProtocol,
                   targetType: "ip",
