@@ -26,6 +26,7 @@ type EvalOptions struct {
 
 type PackageJson struct {
 	Version         string                 `json:"version"`
+	Type            string                 `json:"type"`
 	Dependencies    map[string]string      `json:"dependencies"`
 	DevDependencies map[string]string      `json:"devDependencies"`
 	Other           map[string]interface{} `json:"-"`

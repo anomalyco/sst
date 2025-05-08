@@ -353,6 +353,10 @@ func (p Project) PathPlatformDir() string {
 	return filepath.Join(p.PathWorkingDir(), "platform")
 }
 
+func (p Project) PathPlatformSST() string {
+	return filepath.Join(p.PathPlatformDir(), "node_modules", "@sst", "platform")
+}
+
 func (p Project) PathRoot() string {
 	return p.root
 }

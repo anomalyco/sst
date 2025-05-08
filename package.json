@@ -3,6 +3,7 @@
   "workspaces": [
     "www",
     "platform",
+    "component",
     "sdk/js"
   ]
 }

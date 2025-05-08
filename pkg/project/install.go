@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -13,6 +12,7 @@ import (
 	"github.com/Masterminds/semver/v3"
 	"github.com/sst/sst/v3/pkg/flag"
 	"github.com/sst/sst/v3/pkg/global"
+	"github.com/sst/sst/v3/pkg/js"
 	"github.com/sst/sst/v3/pkg/npm"
 	"github.com/sst/sst/v3/pkg/process"
 	"github.com/sst/sst/v3/pkg/project/path"
@@ -86,46 +86,29 @@ func (p *Project) Install() error {
 func (p *Project) writePackageJson() error {
 	slog.Info("writing package.json")
 	packageJsonPath := filepath.Join(p.PathPlatformDir(), "package.json")
-	packageJson, err := os.OpenFile(packageJsonPath, os.O_RDWR|os.O_CREATE, 0644)
-	if err != nil {
-		return err
-	}
-	defer packageJson.Close()
 
-	var data []byte
-	data, err = io.ReadAll(packageJson)
-	if err != nil {
-		return err
+	result := js.PackageJson{
+		Version:         "0.0.0",
+		Type:            "module",
+		Dependencies:    map[string]string{},
+		DevDependencies: map[string]string{},
 	}
 
-	var result map[string]interface{}
-	if err := json.Unmarshal(data, &result); err != nil {
-		return err
-	}
-
-	dependencies := result["dependencies"].(map[string]interface{})
 	for _, entry := range p.lock {
 		slog.Info("adding dependency", "name", entry.Name)
-		dependencies[entry.Package] = entry.Version
+		result.Dependencies[entry.Package] = entry.Version
 	}
-	dependencies["@pulumi/pulumi"] = global.PULUMI_VERSION
+	result.Dependencies["@pulumi/pulumi"] = global.PULUMI_VERSION
 
-	dataToWrite, err := json.MarshalIndent(result, "", "  ")
+	file, err := os.OpenFile(packageJsonPath, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return err
+	}
+	err = json.NewEncoder(file).Encode(result)
 	if err != nil {
 		return err
 	}
 
-	if err := packageJson.Truncate(0); err != nil {
-		return err
-	}
-
-	if _, err := packageJson.Seek(0, 0); err != nil {
-		return err
-	}
-
-	if _, err := packageJson.Write(dataToWrite); err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -138,9 +121,8 @@ func (p *Project) writeTypes() error {
 	}
 	defer file.Close()
 
-	file.WriteString(`import "./src/global.d.ts"` + "\n")
-	file.WriteString(`import "../types.generated"` + "\n")
-	file.WriteString(`import { AppInput, App, Config } from "./src/config"` + "\n")
+	file.WriteString(`import "@sst/platform/global.d.ts"` + "\n")
+	file.WriteString(`import { AppInput, App, Config } from "@sst/platform/config"` + "\n")
 
 	for _, entry := range p.lock {
 		file.WriteString(`import * as _` + entry.Alias + ` from "` + entry.Package + `";` + "\n")

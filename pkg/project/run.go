@@ -143,7 +143,7 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 			"home":     global.ConfigDir(),
 			"root":     p.PathRoot(),
 			"work":     p.PathWorkingDir(),
-			"platform": p.PathPlatformDir(),
+			"platform": p.PathPlatformSST(),
 		},
 		"state": map[string]interface{}{
 			"version": completed.Versions,
@@ -162,7 +162,7 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	for _, entry := range p.lock {
 		providerShim = append(providerShim, fmt.Sprintf("import * as %s from \"%s\";", entry.Alias, entry.Package))
 	}
-	providerShim = append(providerShim, fmt.Sprintf("import * as sst from \"%s\";", path.Join(filepath.ToSlash(p.PathPlatformDir()), "src/components")))
+	providerShim = append(providerShim, "import * as sst from \"@sst/platform/components/index.js\";")
 
 	buildResult, err := js.Build(js.EvalOptions{
 		Dir:     p.PathRoot(),
@@ -172,7 +172,7 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 			"$cli": string(cliBytes),
 			"$dev": fmt.Sprintf("%v", input.Dev),
 		},
-		Inject:  []string{filepath.ToSlash(filepath.Join(p.PathWorkingDir(), "platform/src/shim/run.js"))},
+		Inject:  []string{filepath.ToSlash(filepath.Join(p.PathPlatformSST(), "src/shim/run.js"))},
 		Globals: strings.Join(providerShim, "\n"),
 		Code: fmt.Sprintf(`
       import { run } from "%v";
@@ -180,7 +180,7 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
       const result = await run(mod.run);
       export default result;
     `,
-			filepath.ToSlash(path.Join(p.PathWorkingDir(), "platform/src/auto/run.ts")),
+			filepath.ToSlash(path.Join(p.PathPlatformSST(), "src/auto/run.ts")),
 			filepath.ToSlash(p.PathConfig()),
 		),
 	})

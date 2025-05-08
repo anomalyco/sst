@@ -3,6 +3,9 @@
   "name": "@sst/platform",
   "type": "module",
   "prettier": {},
+  "exports": {
+    "./*": "./src/*"
+  },
   "scripts": {
     "test": "vitest run",
     "dev": "tsc --watch --noEmit",
