@@ -754,64 +754,64 @@ export interface RouterArgs {
   invalidation?: Input<
     | boolean
     | {
-      /**
-       * Configure if `sst deploy` should wait for the CloudFront cache invalidation to finish.
-       *
-       * :::tip
-       * For non-prod environments it might make sense to pass in `false`.
-       * :::
-       *
-       * Waiting for this process to finish ensures that new content will be available after the deploy finishes. However, this process can sometimes take more than 5 mins.
-       * @default `false`
-       * @example
-       * ```js
-       * {
-       *   invalidation: {
-       *     wait: true
-       *   }
-       * }
-       * ```
-       */
-      wait?: Input<boolean>;
-      /**
-       * A token used to determine if the cache should be invalidated. If the
-       * token is the same as the previous deployment, the cache will not be invalidated.
-       *
-       * You can set this to a hash that's computed on every deploy. So if the hash
-       * changes, the cache will be invalidated.
-       *
-       * @default A unique value is auto-generated on each deploy
-       * @example
-       * ```js
-       * {
-       *   invalidation: {
-       *     token: "foo123"
-       *   }
-       * }
-       * ```
-       */
-      token?: Input<string>;
-      /**
-       * Specify an array of glob pattern of paths to invalidate.
-       *
-       * :::note
-       * Each glob pattern counts as a single invalidation. Whereas, invalidating
-       * `/*` counts as a single invalidation.
-       * :::
-       * @default `["/*"]`
-       * @example
-       * Invalidate the `index.html` and all files under the `products/` route.
-       * ```js
-       * {
-       *   invalidation: {
-       *     paths: ["/index.html", "/products/*"]
-       *   }
-       * }
-       * ```
-       * This counts as two invalidations.
-       */
-      paths?: Input<Input<string>[]>;
-    }
+        /**
+         * Configure if `sst deploy` should wait for the CloudFront cache invalidation to finish.
+         *
+         * :::tip
+         * For non-prod environments it might make sense to pass in `false`.
+         * :::
+         *
+         * Waiting for this process to finish ensures that new content will be available after the deploy finishes. However, this process can sometimes take more than 5 mins.
+         * @default `false`
+         * @example
+         * ```js
+         * {
+         *   invalidation: {
+         *     wait: true
+         *   }
+         * }
+         * ```
+         */
+        wait?: Input<boolean>;
+        /**
+         * A token used to determine if the cache should be invalidated. If the
+         * token is the same as the previous deployment, the cache will not be invalidated.
+         *
+         * You can set this to a hash that's computed on every deploy. So if the hash
+         * changes, the cache will be invalidated.
+         *
+         * @default A unique value is auto-generated on each deploy
+         * @example
+         * ```js
+         * {
+         *   invalidation: {
+         *     token: "foo123"
+         *   }
+         * }
+         * ```
+         */
+        token?: Input<string>;
+        /**
+         * Specify an array of glob pattern of paths to invalidate.
+         *
+         * :::note
+         * Each glob pattern counts as a single invalidation. Whereas, invalidating
+         * `/*` counts as a single invalidation.
+         * :::
+         * @default `["/*"]`
+         * @example
+         * Invalidate the `index.html` and all files under the `products/` route.
+         * ```js
+         * {
+         *   invalidation: {
+         *     paths: ["/index.html", "/products/*"]
+         *   }
+         * }
+         * ```
+         * This counts as two invalidations.
+         */
+        paths?: Input<Input<string>[]>;
+      }
   >;
 
   /**
@@ -1139,16 +1139,16 @@ export class Router extends Component implements Link.Linkable {
         path: string,
         config:
           | {
-            injection: string;
-            kvStore?: string;
-            kvStores?: string[];
-          }
+              injection: string;
+              kvStore?: string;
+              kvStores?: string[];
+            }
           | undefined,
         rewrite:
           | {
-            regex: string;
-            to: string;
-          }
+              regex: string;
+              to: string;
+            }
           | undefined,
         injectHostHeader: boolean,
       ) {
@@ -1161,16 +1161,18 @@ export class Router extends Component implements Link.Linkable {
               : config?.kvStores ?? [],
             code: `
 async function handler(event) {
-  ${injectHostHeader
-                ? `event.request.headers["x-forwarded-host"] = event.request.headers.host;`
-                : ""
-              }
-  ${rewrite
-                ? `
+  ${
+    injectHostHeader
+      ? `event.request.headers["x-forwarded-host"] = event.request.headers.host;`
+      : ""
+  }
+  ${
+    rewrite
+      ? `
 const re = new RegExp("${rewrite.regex}");
 event.request.uri = event.request.uri.replace(re, "${rewrite.to}");`
-                : ""
-              }
+      : ""
+  }
   ${config?.injection ?? ""}
   return event.request;
 }`,
@@ -1277,23 +1279,23 @@ async function handler(event) {
                         functionArn:
                           route.edge?.viewerRequest || route.rewrite
                             ? createCfRequestFunction(
-                              path,
-                              route.edge?.viewerRequest,
-                              route.rewrite,
-                              true,
-                            ).arn
+                                path,
+                                route.edge?.viewerRequest,
+                                route.rewrite,
+                                true,
+                              ).arn
                             : createCfRequestDefaultFunction().arn,
                       },
                       ...(route.edge?.viewerResponse
                         ? [
-                          {
-                            eventType: "viewer-response",
-                            functionArn: createCfResponseFunction(
-                              path,
-                              route.edge.viewerResponse,
-                            ).arn,
-                          },
-                        ]
+                            {
+                              eventType: "viewer-response",
+                              functionArn: createCfResponseFunction(
+                                path,
+                                route.edge.viewerResponse,
+                              ).arn,
+                            },
+                          ]
                         : []),
                     ],
                     viewerProtocolPolicy: "redirect-to-https",
@@ -1332,30 +1334,30 @@ async function handler(event) {
                     functionAssociations: [
                       ...(route.edge?.viewerRequest || route.rewrite
                         ? [
-                          {
-                            eventType: "viewer-request",
-                            functionArn:
-                              route.edge?.viewerRequest || route.rewrite
-                                ? createCfRequestFunction(
-                                  path,
-                                  route.edge?.viewerRequest,
-                                  route.rewrite,
-                                  false,
-                                ).arn
-                                : createCfRequestDefaultFunction().arn,
-                          },
-                        ]
+                            {
+                              eventType: "viewer-request",
+                              functionArn:
+                                route.edge?.viewerRequest || route.rewrite
+                                  ? createCfRequestFunction(
+                                      path,
+                                      route.edge?.viewerRequest,
+                                      route.rewrite,
+                                      false,
+                                    ).arn
+                                  : createCfRequestDefaultFunction().arn,
+                            },
+                          ]
                         : []),
                       ...(route.edge?.viewerResponse
                         ? [
-                          {
-                            eventType: "viewer-response",
-                            functionArn: createCfResponseFunction(
-                              path,
-                              route.edge.viewerResponse,
-                            ).arn,
-                          },
-                        ]
+                            {
+                              eventType: "viewer-response",
+                              functionArn: createCfResponseFunction(
+                                path,
+                                route.edge.viewerResponse,
+                              ).arn,
+                            },
+                          ]
                         : []),
                     ],
                     viewerProtocolPolicy: "redirect-to-https",
@@ -1435,30 +1437,33 @@ async function handler(event) {
 
       function createCachePolicy() {
         return new cloudfront.CachePolicy(
-          `${name}ServerCachePolicy`,
-          {
-            comment: "SST server response cache policy",
-            defaultTtl: 0,
-            maxTtl: 31536000, // 1 year
-            minTtl: 0,
-            parametersInCacheKeyAndForwardedToOrigin: {
-              cookiesConfig: {
-                cookieBehavior: "none",
-              },
-              headersConfig: {
-                headerBehavior: "whitelist",
-                headers: {
-                  items: ["x-open-next-cache-key"],
+          ...transform(
+            args.transform?.cachePolicy,
+            `${name}ServerCachePolicy`,
+            {
+              comment: "SST server response cache policy",
+              defaultTtl: 0,
+              maxTtl: 31536000, // 1 year
+              minTtl: 0,
+              parametersInCacheKeyAndForwardedToOrigin: {
+                cookiesConfig: {
+                  cookieBehavior: "none",
                 },
+                headersConfig: {
+                  headerBehavior: "whitelist",
+                  headers: {
+                    items: ["x-open-next-cache-key"],
+                  },
+                },
+                queryStringsConfig: {
+                  queryStringBehavior: "all",
+                },
+                enableAcceptEncodingBrotli: true,
+                enableAcceptEncodingGzip: true,
               },
-              queryStringsConfig: {
-                queryStringBehavior: "all",
-              },
-              enableAcceptEncodingBrotli: true,
-              enableAcceptEncodingGzip: true,
             },
-          },
-          { parent: self },
+            { parent: self },
+          ),
         );
       }
 
@@ -1510,7 +1515,7 @@ async function handler(event) {
         - First sort by host pattern (longest first)
         - Then sort by path prefix (longest first)
       */ ""
-                }
+      }
       .map(r => {
         var parts = r.split(",");
         return { 
@@ -1996,11 +2001,11 @@ async function routeSite(kvNamespace, metadata) {
   if (metadata.servers){
     event.request.headers["x-forwarded-host"] = event.request.headers.host;
     ${
-  // Note: In SvelteKit, form action requests contain "/" in request query string
-  //  ie. POST request with query string "?/action"
-  //  CloudFront does not allow query string with "/". It needs to be encoded.
-  ""
-  }
+      // Note: In SvelteKit, form action requests contain "/" in request query string
+      //  ie. POST request with query string "?/action"
+      //  CloudFront does not allow query string with "/". It needs to be encoded.
+      ""
+    }
     for (var key in event.request.querystring) {
       if (key.includes("/")) {
         event.request.querystring[encodeURIComponent(key)] = event.request.querystring[key];
@@ -2014,10 +2019,10 @@ async function routeSite(kvNamespace, metadata) {
 
   function setNextjsGeoHeaders() {
     ${
-  // Inject the CloudFront viewer country, region, latitude, and longitude headers into
-  // the request headers for OpenNext to use them for OpenNext to use them
-  ""
-  }
+      // Inject the CloudFront viewer country, region, latitude, and longitude headers into
+      // the request headers for OpenNext to use them for OpenNext to use them
+      ""
+    }
     if(event.request.headers["cloudfront-viewer-city"]) {
       event.request.headers["x-open-next-city"] = event.request.headers["cloudfront-viewer-city"];
     }
@@ -2037,11 +2042,11 @@ async function routeSite(kvNamespace, metadata) {
 
   function setNextjsCacheKey() {
     ${
-  // This function is used to improve cache hit ratio by setting the cache key
-  // based on the request headers and the path. `next/image` only needs the
-  // accept header, and this header is not useful for the rest of the query
-  ""
-  }
+      // This function is used to improve cache hit ratio by setting the cache key
+      // based on the request headers and the path. `next/image` only needs the
+      // accept header, and this header is not useful for the rest of the query
+      ""
+    }
     var cacheKey = "";
     if (event.request.uri.startsWith("/_next/image")) {
       cacheKey = getHeader("accept");
@@ -2278,8 +2283,8 @@ export function normalizeRouteArgs(
       return {
         hostPattern: v.domain
           ? v.domain
-            .replace(/[.+?^${}()|[\]\\]/g, "\\$&") // Escape special regex chars
-            .replace(/\*/g, ".*") // Replace * with .*
+              .replace(/[.+?^${}()|[\]\\]/g, "\\$&") // Escape special regex chars
+              .replace(/\*/g, ".*") // Replace * with .*
           : undefined,
         pathPrefix,
         routerDistributionId: v.instance.nodes.cdn.nodes.distribution.id,

@@ -58,7 +58,8 @@ export interface PostgresArgs {
    * }
    * ```
    *
-   * Use [Secrets](/docs/component/secret) to manage the password.
+   * You can use a `Secret` to manage the password.
+   *
    * ```js
    * {
    *   password: new sst.Secret("MyDBPassword").value
@@ -109,8 +110,8 @@ export interface PostgresArgs {
    * :::
    *
    * By default, [gp3 storage volumes](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/CHAP_Storage.html#Concepts.Storage.GeneralSSD)
-   * are used without additional provisioned IOPS. This provides a good baseline performance
-   * for most use cases.
+   * are used without additional provisioned IOPS. This provides good baseline
+   * performance for most use cases.
    *
    * The minimum storage size is 20 GB. And the maximum storage size is 64 TB.
    *
@@ -136,52 +137,53 @@ export interface PostgresArgs {
   proxy?: Input<
     | boolean
     | {
-        /**
-         * Additional credentials the proxy can use to connect to the database. You don't
-         * need to specify the master user credentials as they are always added by default.
-         *
-         * :::note
-         * This component will not create the Postgres users listed here. You need to
-         * create them manually in the database.
-         * :::
-         *
-         * @example
-         * ```js
-         * {
-         *   credentials: [
-         *     {
-         *       username: "metabase",
-         *       password: "Passw0rd!",
-         *     }
-         *   ]
-         * }
-         * ```
-         *
-         * Use [Secrets](/docs/component/secret) to manage the password.
-         * ```js
-         * {
-         *   credentials: [
-         *     {
-         *       username: "metabase",
-         *       password: new sst.Secret("MyDBPassword").value,
-         *     }
-         *   ]
-         * }
-         * ```
-         */
-        credentials?: Input<
-          Input<{
-            /**
-             * The username of the user.
-             */
-            username: Input<string>;
-            /**
-             * The password of the user.
-             */
-            password: Input<string>;
-          }>[]
-        >;
-      }
+      /**
+       * Additional credentials the proxy can use to connect to the database. You don't
+       * need to specify the master user credentials as they are always added by default.
+       *
+       * :::note
+       * This component will not create the Postgres users listed here. You need to
+       * create them manually in the database.
+       * :::
+       *
+       * @example
+       * ```js
+       * {
+       *   credentials: [
+       *     {
+       *       username: "metabase",
+       *       password: "Passw0rd!"
+       *     }
+       *   ]
+       * }
+       * ```
+       *
+       * You can use a `Secret` to manage the password.
+       *
+       * ```js
+       * {
+       *   credentials: [
+       *     {
+       *       username: "metabase",
+       *       password: new sst.Secret("MyDBPassword").value
+       *     }
+       *   ]
+       * }
+       * ```
+       */
+      credentials?: Input<
+        Input<{
+          /**
+           * The username of the user.
+           */
+          username: Input<string>;
+          /**
+           * The password of the user.
+           */
+          password: Input<string>;
+        }>[]
+      >;
+    }
   >;
   /**
    * Enable [Multi-AZ](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.MultiAZ.html)
@@ -217,14 +219,14 @@ export interface PostgresArgs {
    * ```js
    * {
    *   vpc: {
-   *     subnets: ["subnet-0db7376a7ad4db5fd ", "subnet-06fc7ee8319b2c0ce"],
+   *     subnets: ["subnet-0db7376a7ad4db5fd ", "subnet-06fc7ee8319b2c0ce"]
    *   }
    * }
    * ```
    *
    * Or create a `Vpc` component.
    *
-   * ```js
+   * ```ts title="sst.config.ts"
    * const myVpc = new sst.aws.Vpc("MyVpc");
    * ```
    *
@@ -237,13 +239,13 @@ export interface PostgresArgs {
    * ```
    */
   vpc:
-    | Vpc
-    | Input<{
-        /**
-         * A list of subnet IDs in the VPC.
-         */
-        subnets: Input<Input<string>[]>;
-      }>;
+  | Vpc
+  | Input<{
+    /**
+     * A list of subnet IDs in the VPC.
+     */
+    subnets: Input<Input<string>[]>;
+  }>;
   /**
    * Configure how this component works in `sst dev`.
    *
@@ -251,7 +253,7 @@ export interface PostgresArgs {
    * connect to a locally running Postgres database, you can configure the `dev` prop.
    *
    * :::note
-   * By default, this creates a new RDS database even in `sst dev`.
+   * This will not create an RDS database in `sst dev`.
    * :::
    *
    * This will skip deploying an RDS database and link to the locally running Postgres database
@@ -435,7 +437,7 @@ interface PostgresRef {
  *
  * That works out to an **additional** $0.015 x 2 x 24 x 30 or **$22 per month**.
  *
- * The above are rough estimates for _us-east-1_, check out the
+ * This is a rough estimate for _us-east-1_, check out the
  * [RDS Proxy pricing](https://aws.amazon.com/rds/proxy/pricing/) for more details.
  */
 export class Postgres extends Component implements Link.Linkable {
@@ -520,8 +522,8 @@ export class Postgres extends Component implements Link.Linkable {
       const proxy = input.proxyId.apply((proxyId) =>
         proxyId
           ? rds.Proxy.get(`${name}Proxy`, proxyId, undefined, {
-              parent: self,
-            })
+            parent: self,
+          })
           : undefined,
       );
 
@@ -637,13 +639,13 @@ Listening on "${dev.host}:${dev.port}"...`,
       return args.password
         ? output(args.password)
         : new RandomPassword(
-            `${name}Password`,
-            {
-              length: 32,
-              special: false,
-            },
-            { parent: self },
-          ).result;
+          `${name}Password`,
+          {
+            length: 32,
+            special: false,
+          },
+          { parent: self },
+        ).result;
     }
 
     function createSubnetGroup() {
@@ -980,10 +982,10 @@ Listening on "${dev.host}:${dev.port}"...`,
    * const database = $app.stage === "frank"
    *   ? sst.aws.Postgres.get("MyDatabase", {
    *       id: "app-dev-mydatabase",
-   *       proxyId: "app-dev-mydatabase-proxy",
+   *       proxyId: "app-dev-mydatabase-proxy"
    *     })
    *   : new sst.aws.Postgres("MyDatabase", {
-   *       proxy: true,
+   *       proxy: true
    *     });
    * ```
    *
@@ -994,7 +996,7 @@ Listening on "${dev.host}:${dev.port}"...`,
    * ```ts title="sst.config.ts"
    * return {
    *   id: database.id,
-   *   proxyId: database.proxyId,
+   *   proxyId: database.proxyId
    * };
    * ```
    */
