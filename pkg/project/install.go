@@ -92,6 +92,7 @@ func (p *Project) writePackageJson() error {
 		Type:            "module",
 		Dependencies:    map[string]string{},
 		DevDependencies: map[string]string{},
+		Overrides:       map[string]string{},
 	}
 
 	for _, entry := range p.lock {
@@ -99,6 +100,7 @@ func (p *Project) writePackageJson() error {
 		result.Dependencies[entry.Package] = entry.Version
 	}
 	result.Dependencies["@pulumi/pulumi"] = global.PULUMI_VERSION
+	result.Overrides["@pulumi/pulumi"] = global.PULUMI_VERSION
 
 	file, err := os.OpenFile(packageJsonPath, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
@@ -245,10 +247,13 @@ func FindProvider(name string, version string) (*ProviderLockEntry, error) {
 		if err != nil {
 			continue
 		}
-		if pkg.Pulumi == nil {
+		if pkg.Pulumi == nil && pkg.SST == nil {
 			continue
 		}
 		alias := pkg.Pulumi.Name
+		if pkg.SST != nil {
+			alias = pkg.SST.Name
+		}
 		if alias == "" || alias == "terraform-provider" {
 			alias = pkg.Name
 			alias = strings.ReplaceAll(alias, "@sst-provider", "")

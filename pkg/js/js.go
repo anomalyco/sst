@@ -25,11 +25,20 @@ type EvalOptions struct {
 }
 
 type PackageJson struct {
-	Version         string                 `json:"version"`
-	Type            string                 `json:"type"`
-	Dependencies    map[string]string      `json:"dependencies"`
-	DevDependencies map[string]string      `json:"devDependencies"`
-	Other           map[string]interface{} `json:"-"`
+	Name            string            `json:"name"`
+	Version         string            `json:"version"`
+	Type            string            `json:"type"`
+	Dependencies    map[string]string `json:"dependencies"`
+	DevDependencies map[string]string `json:"devDependencies"`
+	Overrides       map[string]string `json:"overrides"`
+	Pulumi          *struct {
+		Name    string `json:"name"`
+		Version string `json:"version"`
+	} `json:"pulumi"`
+	SST *struct {
+		Name string `json:"name"`
+	} `json:"sst"`
+	Other map[string]interface{} `json:"-"`
 }
 
 type Metafile struct {
