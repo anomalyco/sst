@@ -9,14 +9,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Masterminds/semver/v3"
 	"github.com/sst/sst/v3/pkg/flag"
 	"github.com/sst/sst/v3/pkg/global"
 	"github.com/sst/sst/v3/pkg/js"
 	"github.com/sst/sst/v3/pkg/npm"
 	"github.com/sst/sst/v3/pkg/process"
 	"github.com/sst/sst/v3/pkg/project/path"
-	"github.com/sst/sst/v3/platform"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -30,83 +28,34 @@ func (err *ErrProviderVersionTooLow) Error() string {
 	return "provider version too low"
 }
 
-func (p *Project) NeedsInstall() bool {
-	if len(p.app.Providers) != len(p.lock) {
-		return true
-	}
-	for _, entry := range p.lock {
-		match, ok := p.app.Providers[entry.Name]
-		if !ok {
-			return false
-		}
-		config := match.(map[string]interface{})
-		version := config["version"]
-		if version == nil || version == "" {
-			continue
-		}
-		slog.Info("checking provider", "name", entry.Name, "version", version, "compare", entry.Version)
-		if version != entry.Version {
-			return true
-		}
-	}
-	return false
-}
-
-func (p *Project) Install() error {
-	slog.Info("installing deps")
-
-	err := p.generateProviderLock()
-	if err != nil {
-		return err
-	}
-
-	err = p.writePackageJson()
-	if err != nil {
-		return err
-	}
-
-	err = p.fetchDeps()
-	if err != nil {
-		return err
-	}
-
-	err = p.writeTypes()
-	if err != nil {
-		return err
-	}
-
-	err = p.writeProviderLock()
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (p *Project) writePackageJson() error {
 	slog.Info("writing package.json")
-	packageJsonPath := filepath.Join(p.PathPlatformDir(), "package.json")
-
-	result := js.PackageJson{
-		Version:         "0.0.0",
-		Type:            "module",
-		Dependencies:    map[string]string{},
-		DevDependencies: map[string]string{},
-		Overrides:       map[string]string{},
-	}
-
-	for _, entry := range p.lock {
-		slog.Info("adding dependency", "name", entry.Name)
-		result.Dependencies[entry.Package] = entry.Version
-	}
-	result.Dependencies["@pulumi/pulumi"] = global.PULUMI_VERSION
-	result.Overrides["@pulumi/pulumi"] = global.PULUMI_VERSION
-
-	file, err := os.OpenFile(packageJsonPath, os.O_RDWR|os.O_CREATE, 0644)
+	file, err := os.OpenFile(filepath.Join(p.PathPlatformDir(), "package.json"), os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return err
 	}
-	err = json.NewEncoder(file).Encode(result)
+	defer file.Close()
+
+	pkg := js.PackageJson{
+		Dependencies: map[string]string{},
+	}
+	json.NewDecoder(file).Decode(&pkg)
+
+	for _, plugin := range p.plugins {
+		slog.Info("adding dependency", "name", plugin.Name)
+		pkg.Dependencies[plugin.Package] = plugin.Version
+	}
+	pkg.Dependencies["@pulumi/pulumi"] = global.PULUMI_VERSION
+
+	if err := file.Truncate(0); err != nil {
+		return err
+	}
+
+	if _, err := file.Seek(0, 0); err != nil {
+		return err
+	}
+
+	err = json.NewEncoder(file).Encode(pkg)
 	if err != nil {
 		return err
 	}
@@ -126,21 +75,29 @@ func (p *Project) writeTypes() error {
 	file.WriteString(`import "@sst/platform/global.d.ts"` + "\n")
 	file.WriteString(`import { AppInput, App, Config } from "@sst/platform/config"` + "\n")
 
-	for _, entry := range p.lock {
-		file.WriteString(`import * as _` + entry.Alias + ` from "` + entry.Package + `";` + "\n")
+	for _, plugin := range p.plugins {
+		file.WriteString(`import * as _` + plugin.Alias + ` from "` + plugin.Package + `";` + "\n")
 	}
 
 	file.WriteString("\n\n")
 
 	file.WriteString(`declare global {` + "\n")
-	for _, entry := range p.lock {
+	for _, plugin := range p.plugins {
 		file.WriteString(`  // @ts-expect-error` + "\n")
-		file.WriteString(`  export import ` + entry.Alias + ` = _` + entry.Alias + "\n")
+		file.WriteString(`  export import ` + plugin.Alias + ` = _` + plugin.Alias + "\n")
 	}
 	file.WriteString(`  interface Providers {` + "\n")
+	file.WriteString(`    /** @deprecated` + "\n")
+	file.WriteString(`     * Use ` + "`plugins`" + ` instead.` + "\n")
+	file.WriteString(`     */` + "\n")
 	file.WriteString(`    providers?: {` + "\n")
-	for _, entry := range p.lock {
-		file.WriteString(`      "` + entry.Name + `"?:  (_` + entry.Alias + `.ProviderArgs & { version?: string }) | boolean | string;` + "\n")
+	for _, plugin := range p.plugins {
+		file.WriteString(`      "` + plugin.Name + `"?:  (_` + plugin.Alias + `.ProviderArgs & { version?: string }) | boolean | string;` + "\n")
+	}
+	file.WriteString(`    }` + "\n")
+	file.WriteString(`    plugins?: {` + "\n")
+	for _, plugin := range p.plugins {
+		file.WriteString(`      "` + plugin.Name + `"?:  { version?: string, alias?: string, config?: _` + plugin.Alias + `.ProviderArgs   } | string;` + "\n")
 	}
 	file.WriteString(`    }` + "\n")
 	file.WriteString(`  }` + "\n")
@@ -169,79 +126,37 @@ func (p *Project) fetchDeps() error {
 	return nil
 }
 
-type ProviderLockEntry struct {
-	Name    string `json:"name"`
-	Package string `json:"package"`
-	Version string `json:"version"`
-	Alias   string `json:"alias"`
-}
-
-type ProviderLock = []*ProviderLockEntry
-
-func (p *Project) loadProviderLock() error {
-	lockPath := path.ResolveProviderLock(p.PathConfig())
-	data, err := os.ReadFile(lockPath)
-	if err != nil {
-		p.lock = ProviderLock{}
-		return nil
-	}
-	err = json.Unmarshal(data, &p.lock)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (p *Project) generateProviderLock() error {
+func resolvePlugins(plugins []*Plugin) (map[string]*Plugin, error) {
 	var wg errgroup.Group
-	out := ProviderLock{}
-	results := make(chan ProviderLockEntry, 1000)
-	pkg, err := platform.PackageJson()
-	if err != nil {
-		return err
-	}
-	for name, config := range p.app.Providers {
-		n := name
-		version := config.(map[string]interface{})["version"]
-		if version == nil || version == "" {
+	results := make(chan *Plugin, len(plugins))
+	for _, plugin := range plugins {
+		n := plugin.Name
+		version := plugin.Version
+		if version == "" {
 			version = "latest"
 		}
 		wg.Go(func() error {
-			result, err := FindProvider(n, version.(string))
+			result, err := FindProvider(n, version)
 			if err != nil {
 				return err
 			}
-			if match, ok := pkg.Dependencies[result.Package]; ok {
-				if version == "latest" {
-					result.Version = match
-				}
-				if semver.MustParse(result.Version).Compare(semver.MustParse(match)) < 0 {
-					results <- *result
-					return &ErrProviderVersionTooLow{
-						Name:    result.Name,
-						Version: result.Version,
-						Needed:  match,
-					}
-				}
-			}
-			results <- *result
+			results <- result
 			return nil
 		})
 	}
-	err = wg.Wait()
+	err := wg.Wait()
 	if err != nil {
-		return err
-	}
-	for range p.app.Providers {
-		r := <-results
-		out = append(out, &r)
+		return nil, err
 	}
 	close(results)
-	p.lock = out
-	return nil
+	result := map[string]*Plugin{}
+	for item := range results {
+		result[item.Name] = item
+	}
+	return result, nil
 }
 
-func FindProvider(name string, version string) (*ProviderLockEntry, error) {
+func FindProvider(name string, version string) (*Plugin, error) {
 	for _, prefix := range []string{"@sst-provider/", "@pulumi/", "@pulumiverse/", "pulumi-", "@", ""} {
 		pkg, err := npm.Get(prefix+name, version)
 		if err != nil {
@@ -262,7 +177,7 @@ func FindProvider(name string, version string) (*ProviderLockEntry, error) {
 			alias = strings.ReplaceAll(alias, "pulumi", "")
 		}
 		alias = strings.ReplaceAll(alias, "-", "")
-		return &ProviderLockEntry{
+		return &Plugin{
 			Name:    name,
 			Package: pkg.Name,
 			Version: pkg.Version,
@@ -273,8 +188,8 @@ func FindProvider(name string, version string) (*ProviderLockEntry, error) {
 }
 
 func (p *Project) writeProviderLock() error {
-	lockPath := path.ResolveProviderLock(p.PathConfig())
-	data, err := json.MarshalIndent(p.lock, "", "  ")
+	lockPath := path.ResolvePluginLock(p.PathConfig())
+	data, err := json.MarshalIndent(p.plugins, "", "  ")
 	if err != nil {
 		return err
 	}

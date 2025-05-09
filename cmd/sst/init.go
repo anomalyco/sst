@@ -220,19 +220,12 @@ func CmdInit(cli *cli.Cli) error {
 	if err != nil {
 		return err
 	}
-	proj, err := project.New(&project.ProjectConfig{
+	_, err = project.New(&project.ProjectConfig{
 		Config:  cfgPath,
 		Stage:   "sst",
 		Version: version,
 	})
 	if err != nil {
-		return err
-	}
-	if err := proj.CopyPlatform(version); err != nil {
-		return err
-	}
-
-	if err := proj.Install(); err != nil {
 		return err
 	}
 

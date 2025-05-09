@@ -25,12 +25,6 @@ type CloudflareProvider struct {
 
 var ErrCloudflareMissingAccount = fmt.Errorf("missing account")
 
-func (c *CloudflareProvider) Env() (map[string]string, error) {
-	return map[string]string{
-		"CLOUDFLARE_DEFAULT_ACCOUNT_ID": c.defaultAccountId,
-	}, nil
-}
-
 func (c *CloudflareProvider) Init(app, stage string, args map[string]interface{}) error {
 	apiToken := os.Getenv("CLOUDFLARE_API_TOKEN")
 	apiKey := os.Getenv("CLOUDFLARE_API_KEY")
@@ -70,6 +64,12 @@ func (c *CloudflareProvider) Init(app, stage string, args map[string]interface{}
 	c.identifier = cloudflare.AccountIdentifier(accountID)
 	slog.Info("cloudflare account selected", "account", accountID)
 	return nil
+}
+
+func (c *CloudflareProvider) Env() (map[string]string, error) {
+	return map[string]string{
+		"CLOUDFLARE_DEFAULT_ACCOUNT_ID": c.defaultAccountId,
+	}, nil
 }
 
 func (c CloudflareProvider) Api() *cloudflare.API {

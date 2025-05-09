@@ -168,12 +168,17 @@ export interface App {
    */
   removal?: "remove" | "retain" | "retain-all";
   /**
-   * The providers that are being used in this app. This allows you to use the resources from
-   * these providers in your app.
+   * @deprecated Use `plugins` instead.
+   */
+  providers?: Record<string, any>;
+
+  /**
+   * The plugins that are being used in this app. This allows you to use the resources from
+   * these plugins in your app.
    *
    * ```ts
    * {
-   *   providers: {
+   *   plugins: {
    *     aws: "6.27.0",
    *     cloudflare: "5.37.1"
    *   }
@@ -183,21 +188,21 @@ export interface App {
    * Check out the full list in the [Directory](/docs/all-providers#directory).
    *
    * :::tip
-   * You'll need to run `sst install` after you update the `providers` in your config.
+   * You'll need to run `sst install` after you update the `plugins` in your config.
    * :::
    *
-   * If you don't set a `provider` it uses your `home` provider with the default config. So if you set `home` to `aws`, it's the same as doing:
+   * If you don't set a `plugin` it uses your `home` provider with the default config. So if you set `home` to `aws`, it's the same as doing:
    *
    * ```ts
    * {
    *   home: "aws",
-   *   providers: {
+   *   plugins: {
    *     aws: "6.27.0"
    *   }
    * }
    * ```
    *
-   * You can also configure the provider props. Here's the config for some common providers:
+   * You can also configure the provider props. Here's the config for some common plugins:
    * - [AWS](https://www.pulumi.com/registry/packages/aws/api-docs/provider/#inputs)
    * - [Cloudflare](https://www.pulumi.com/registry/packages/cloudflare/api-docs/provider/#inputs)
    *
@@ -207,7 +212,7 @@ export interface App {
    *
    * ```ts
    * {
-   *   providers: {
+   *   plugins: {
    *     aws: {
    *       region: "us-west-2"
    *     }
@@ -217,7 +222,8 @@ export interface App {
    *
    * @default The `home` provider.
    */
-  providers?: Record<string, any>;
+  plugins?: Record<string, any>;
+
   /**
    * The provider SST will use to store the state for your app. The state keeps track of all your resources and secrets. The state is generated locally and backed up in your cloud provider.
    *

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
@@ -18,6 +19,7 @@ import (
 	"github.com/sst/sst/v3/pkg/flag"
 	"github.com/sst/sst/v3/pkg/js"
 	"github.com/sst/sst/v3/pkg/process"
+	"github.com/sst/sst/v3/pkg/project/path"
 	"github.com/sst/sst/v3/pkg/project/provider"
 	"github.com/sst/sst/v3/pkg/runtime"
 	"github.com/sst/sst/v3/pkg/runtime/golang"
@@ -28,29 +30,32 @@ import (
 )
 
 type App struct {
-	Name      string                 `json:"name"`
-	Stage     string                 `json:"stage"`
-	Removal   string                 `json:"removal"`
-	Providers map[string]interface{} `json:"providers"`
-	Home      string                 `json:"home"`
-	Version   string                 `json:"version"`
-	Protect   bool                   `json:"protect"`
-	// Deprecated: Backend is now Home
-	Backend string `json:"backend"`
-	// Deprecated: RemovalPolicy is now Removal
-	RemovalPolicy string `json:"removalPolicy"`
+	Name    string
+	Stage   string
+	Removal string
+	Home    string
+	Version string
+	Protect bool
 }
 
 type Project struct {
 	version         string
-	lock            ProviderLock
 	root            string
 	config          string
 	app             *App
 	home            provider.Home
 	env             map[string]string
+	plugins         map[string]*Plugin
 	loadedProviders map[string]provider.Provider
 	Runtime         *runtime.Collection
+}
+
+type Plugin struct {
+	Name    string                 `json:"name"`
+	Package string                 `json:"package"`
+	Version string                 `json:"version"`
+	Alias   string                 `json:"alias"`
+	Config  map[string]interface{} `json:"config"`
 }
 
 func Discover() (string, error) {
@@ -118,12 +123,11 @@ func New(input *ProjectConfig) (*Project, error) {
 	if InvalidStageRegex.MatchString(input.Stage) {
 		return nil, ErrInvalidStageName
 	}
-
 	rootPath := filepath.Dir(input.Config)
-
 	proj := &Project{
 		version: input.Version,
 		root:    rootPath,
+		plugins: map[string]*Plugin{},
 		config:  input.Config,
 		env:     map[string]string{},
 		Runtime: runtime.NewCollection(
@@ -135,19 +139,17 @@ func New(input *ProjectConfig) (*Project, error) {
 			rust.New(),
 		),
 	}
-	tmp := proj.PathWorkingDir()
-
-	_, err := os.Stat(tmp)
+	workdir := proj.PathWorkingDir()
+	_, err := os.Stat(workdir)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			return nil, err
 		}
-		err := os.Mkdir(tmp, 0755)
+		err := os.Mkdir(workdir, 0755)
 		if err != nil {
 			return nil, err
 		}
 	}
-
 	inputBytes, err := json.Marshal(map[string]string{
 		"stage": input.Stage,
 	})
@@ -177,13 +179,26 @@ console.log("~j" + JSON.stringify(await mod.app({
 		return nil, err
 	}
 	defer js.Cleanup(buildResult)
-
 	slog.Info("evaluating config")
 	node := process.Command("node", "--no-warnings", string(buildResult.OutputFiles[1].Path))
 	output, err := node.CombinedOutput()
 	slog.Info("config evaluated")
 	if err != nil {
 		return nil, fmt.Errorf("Error evaluating config: %w\n%s", err, output)
+	}
+	var parsed struct {
+		Name      string                 `json:"name"`
+		Stage     string                 `json:"stage"`
+		Removal   string                 `json:"removal"`
+		Providers map[string]interface{} `json:"providers"`
+		Plugins   map[string]interface{} `json:"plugins"`
+		Home      string                 `json:"home"`
+		Version   string                 `json:"version"`
+		Protect   bool                   `json:"protect"`
+		// Deprecated: Backend is now Home
+		Backend string `json:"backend"`
+		// Deprecated: RemovalPolicy is now Removal
+		RemovalPolicy string `json:"removalPolicy"`
 	}
 	scanner := bufio.NewScanner(bytes.NewReader(output))
 	for scanner.Scan() {
@@ -192,87 +207,9 @@ console.log("~j" + JSON.stringify(await mod.app({
 			return nil, ErrV2Config
 		}
 		if strings.HasPrefix(line, "~j") {
-			var parsed App
 			err = json.Unmarshal([]byte(line[2:]), &parsed)
 			if err != nil {
 				return nil, err
-			}
-			proj.app = &parsed
-			proj.app.Stage = input.Stage
-
-			if proj.app.Providers == nil {
-				proj.app.Providers = map[string]interface{}{}
-			}
-
-			for name, args := range proj.app.Providers {
-				if argsBool, ok := args.(bool); ok && argsBool {
-					proj.app.Providers[name] = make(map[string]interface{})
-				}
-
-				if argsString, ok := args.(string); ok {
-					proj.app.Providers[name] = map[string]interface{}{
-						"version": argsString,
-					}
-				}
-			}
-
-			if proj.app.Name == "" {
-				return nil, fmt.Errorf("Project name is required")
-			}
-
-			if InvalidAppRegex.MatchString(proj.app.Name) {
-				return nil, ErrInvalidAppName
-			}
-
-			// Check if app name has changed by comparing the folder name inside ".pulumi/stacks"
-			// and the app name in the config file.
-			stacksDir := filepath.Join(proj.PathWorkingDir(), ".pulumi", "stacks")
-			files, err := os.ReadDir(stacksDir)
-			if err != nil {
-				if !os.IsNotExist(err) {
-					return nil, err
-				}
-				files = []os.DirEntry{}
-			}
-			if len(files) > 0 {
-				appName := files[0].Name()
-				if appName != proj.app.Name {
-					return nil, ErrAppNameChanged
-				}
-			}
-
-			if proj.app.Home == "" {
-				return nil, util.NewReadableError(nil, `You must specify a "home" provider in the project configuration file.`)
-			}
-
-			if _, ok := proj.app.Providers[proj.app.Home]; !ok && proj.app.Home != "local" {
-				proj.app.Providers[proj.app.Home] = map[string]interface{}{}
-			}
-
-			if proj.app.RemovalPolicy != "" {
-				return nil, util.NewReadableError(nil, `The "removalPolicy" has been renamed to "removal"`)
-			}
-
-			if proj.app.Removal == "" {
-				proj.app.Removal = "retain"
-			}
-
-			if proj.app.Version != "" && input.Version != "dev" {
-				constraint, err := semver.NewConstraint(proj.app.Version)
-				if err != nil {
-					return nil, ErrVersionInvalid
-				}
-				version, err := semver.NewVersion(input.Version)
-				if err != nil {
-					return nil, ErrVersionInvalid
-				}
-				if !constraint.Check(version) {
-					return nil, &ErrVersionMismatch{Needed: input.Version, Received: proj.app.Version}
-				}
-			}
-
-			if proj.app.Removal != "remove" && proj.app.Removal != "retain" && proj.app.Removal != "retain-all" {
-				return nil, fmt.Errorf("Removal must be one of: remove, retain, retain-all")
 			}
 			continue
 		}
@@ -281,9 +218,182 @@ console.log("~j" + JSON.stringify(await mod.app({
 		return nil, err
 	}
 
-	err = proj.loadProviderLock()
+	proj.app = &App{
+		Name:    parsed.Name,
+		Stage:   input.Stage,
+		Removal: parsed.Removal,
+		Home:    parsed.Home,
+		Version: parsed.Version,
+		Protect: parsed.Protect,
+	}
+
+	if proj.app.Name == "" {
+		return nil, fmt.Errorf("Project name is required")
+	}
+
+	if proj.app.Home == "" {
+		return nil, util.NewReadableError(nil, `You must specify a "home" provider in the project configuration file.`)
+	}
+
+	if InvalidAppRegex.MatchString(proj.app.Name) {
+		return nil, ErrInvalidAppName
+	}
+
+	if proj.app.Removal == "" {
+		proj.app.Removal = "retain"
+	}
+
+	if parsed.RemovalPolicy != "" {
+		return nil, util.NewReadableError(nil, `The "removalPolicy" has been renamed to "removal"`)
+	}
+
+	if proj.app.Version != "" && input.Version != "dev" {
+		constraint, err := semver.NewConstraint(proj.app.Version)
+		if err != nil {
+			return nil, ErrVersionInvalid
+		}
+		version, err := semver.NewVersion(input.Version)
+		if err != nil {
+			return nil, ErrVersionInvalid
+		}
+		if !constraint.Check(version) {
+			return nil, &ErrVersionMismatch{Needed: input.Version, Received: proj.app.Version}
+		}
+	}
+
+	if proj.app.Removal != "remove" && proj.app.Removal != "retain" && proj.app.Removal != "retain-all" {
+		return nil, fmt.Errorf("Removal must be one of: remove, retain, retain-all")
+	}
+
+	// Check if app name has changed by comparing the folder name inside ".pulumi/stacks"
+	// and the app name in the config file.
+	stacksDir := filepath.Join(proj.PathWorkingDir(), ".pulumi", "stacks")
+	files, err := os.ReadDir(stacksDir)
 	if err != nil {
-		return nil, err
+		if !os.IsNotExist(err) {
+			return nil, err
+		}
+		files = []os.DirEntry{}
+	}
+	if len(files) > 0 {
+		appName := files[0].Name()
+		if appName != proj.app.Name {
+			return nil, ErrAppNameChanged
+		}
+	}
+
+	if parsed.Plugins != nil {
+		for name, args := range parsed.Plugins {
+			plugin := Plugin{
+				Name:   name,
+				Config: map[string]interface{}{},
+			}
+
+			if argsString, ok := args.(string); ok {
+				plugin.Version = argsString
+			}
+
+			if argsMap, ok := args.(map[string]interface{}); ok {
+				if alias, ok := argsMap["alias"].(string); ok {
+					plugin.Alias = alias
+				}
+				if config, ok := argsMap["config"].(map[string]interface{}); ok {
+					plugin.Config = config
+				}
+				if version, ok := argsMap["version"].(string); ok {
+					plugin.Version = version
+				}
+			}
+			proj.plugins[name] = &plugin
+		}
+	}
+
+	// deprecated
+	if parsed.Providers != nil {
+		for name, args := range parsed.Providers {
+			plugin := Plugin{
+				Name:   name,
+				Config: map[string]interface{}{},
+			}
+
+			if argsString, ok := args.(string); ok {
+				plugin.Version = argsString
+			}
+
+			if argsMap, ok := args.(map[string]interface{}); ok {
+				if version, ok := argsMap["version"].(string); ok {
+					plugin.Version = version
+				}
+				delete(argsMap, "version")
+				plugin.Config = argsMap
+			}
+			proj.plugins[name] = &plugin
+		}
+	}
+
+	if _, ok := proj.plugins[proj.app.Home]; !ok && proj.app.Home != "local" {
+		proj.plugins[proj.app.Home] = &Plugin{
+			Name:   proj.app.Home,
+			Config: map[string]interface{}{},
+		}
+	}
+
+	lock := map[string]*Plugin{}
+	file, err := os.Open(path.ResolvePluginLock(input.Config))
+	if err == nil {
+		err = json.NewDecoder(file).Decode(&lock)
+		file.Close()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	dirty := []*Plugin{}
+	for name, plugin := range proj.plugins {
+		match := lock[name]
+		if match != nil && (plugin.Version == "" || plugin.Version == "latest" || plugin.Version == match.Version) {
+			match.Version = plugin.Version
+			match.Alias = plugin.Alias
+			match.Package = plugin.Package
+			continue
+		}
+		dirty = append(dirty, plugin)
+	}
+
+	if len(dirty) > 0 {
+		slog.Info("plugins outdated", "plugins", slices.Collect(util.Map(slices.Values(dirty), func(item *Plugin) string {
+			return item.Name
+		})))
+		resolved, err := resolvePlugins(dirty)
+		if err != nil {
+			return nil, err
+		}
+		for name, plugin := range resolved {
+			match := proj.plugins[name]
+			match.Version = plugin.Version
+			match.Alias = plugin.Alias
+			match.Package = plugin.Package
+		}
+
+		err = proj.writePackageJson()
+		if err != nil {
+			return nil, err
+		}
+
+		err = proj.fetchDeps()
+		if err != nil {
+			return nil, err
+		}
+
+		err = proj.writeTypes()
+		if err != nil {
+			return nil, err
+		}
+
+		err = proj.writeProviderLock()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return proj, nil
@@ -293,9 +403,9 @@ func (proj *Project) LoadHome() error {
 	slog.Info("loading home")
 	loadedProviders := make(map[string]provider.Provider)
 
-	for key, args := range proj.app.Providers {
+	for _, plugin := range proj.plugins {
 		var match provider.Provider
-		switch key {
+		switch plugin.Name {
 		case "cloudflare":
 			match = &provider.CloudflareProvider{}
 		case "aws":
@@ -304,9 +414,9 @@ func (proj *Project) LoadHome() error {
 		if match == nil {
 			continue
 		}
-		err := match.Init(proj.app.Name, proj.app.Stage, args.(map[string]interface{}))
+		err := match.Init(proj.app.Name, proj.app.Stage, plugin.Config)
 		if err != nil {
-			return util.NewReadableError(err, key+": "+err.Error())
+			return util.NewReadableError(err, plugin.Name+": "+err.Error())
 		}
 		env, err := match.Env()
 		if err != nil {
@@ -315,7 +425,7 @@ func (proj *Project) LoadHome() error {
 		for key, value := range env {
 			proj.env[key] = value
 		}
-		loadedProviders[key] = match
+		loadedProviders[plugin.Name] = match
 	}
 
 	var home provider.Home
@@ -391,6 +501,10 @@ func (p *Project) Cleanup() error {
 		return nil
 	}
 	return nil
+}
+
+func (p *Project) Plugins() map[string]*Plugin {
+	return p.plugins
 }
 
 func (p *Project) PathLog(name string) string {

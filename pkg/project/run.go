@@ -159,8 +159,8 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	}
 
 	providerShim := []string{}
-	for _, entry := range p.lock {
-		providerShim = append(providerShim, fmt.Sprintf("import * as %s from \"%s\";", entry.Alias, entry.Package))
+	for _, plugin := range p.plugins {
+		providerShim = append(providerShim, fmt.Sprintf("import * as %s from \"%s\";", plugin.Alias, plugin.Package))
 	}
 	providerShim = append(providerShim, "import * as sst from \"@sst/platform/components/index.js\";")
 
@@ -288,23 +288,23 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	}
 
 	if input.Command == "deploy" || input.Command == "diff" {
-		for provider, opts := range p.app.Providers {
-			for key, value := range opts.(map[string]interface{}) {
+		for name, plugin := range p.plugins {
+			for key, value := range plugin.Config {
 				switch v := value.(type) {
 				case map[string]interface{}:
 					bytes, err := json.Marshal(v)
 					if err != nil {
 						return err
 					}
-					args = append(args, "--config", fmt.Sprintf("%v:%v=%v", provider, key, string(bytes)))
+					args = append(args, "--config", fmt.Sprintf("%v:%v=%v", name, key, string(bytes)))
 				case []interface{}:
 					bytes, err := json.Marshal(v)
 					if err != nil {
 						return err
 					}
-					args = append(args, "--config", fmt.Sprintf("%v:%v=%v", provider, key, string(bytes)))
+					args = append(args, "--config", fmt.Sprintf("%v:%v=%v", name, key, string(bytes)))
 				case string:
-					args = append(args, "--config", fmt.Sprintf("%v:%v=%v", provider, key, v))
+					args = append(args, "--config", fmt.Sprintf("%v:%v=%v", name, key, v))
 				}
 			}
 		}

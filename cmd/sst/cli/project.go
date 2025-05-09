@@ -109,15 +109,6 @@ func (c *Cli) InitProject() (*project.Project, error) {
 		}
 	}
 
-	if p.NeedsInstall() {
-		spin.Suffix = "  Installing providers..."
-		spin.Start()
-		err = p.Install()
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	if err := p.LoadHome(); err != nil {
 		return nil, err
 	}

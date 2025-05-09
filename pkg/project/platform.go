@@ -33,7 +33,6 @@ func (p *Project) CopyPlatform(version string) error {
 	if err != nil {
 		return err
 	}
-	p.lock = ProviderLock{}
 	if version == "dev" {
 		currentExecutable, _ := os.Executable()
 		info, _ := os.Stat(currentExecutable)

@@ -575,12 +575,6 @@ var root = &cli.Command{
 				if err != nil {
 					return err
 				}
-				if !p.CheckPlatform(version) {
-					err := p.CopyPlatform(version)
-					if err != nil {
-						return err
-					}
-				}
 				entry, err := project.FindProvider(pkg, "latest")
 				if err != nil {
 					return util.NewReadableError(err, "Could not find provider "+pkg)
@@ -595,10 +589,6 @@ var root = &cli.Command{
 					Config:  cfgPath,
 					Stage:   stage,
 				})
-				if err != nil {
-					return err
-				}
-				err = p.Install()
 				if err != nil {
 					return err
 				}
@@ -637,7 +627,7 @@ var root = &cli.Command{
 					return err
 				}
 
-				p, err := project.New(&project.ProjectConfig{
+				_, err = project.New(&project.ProjectConfig{
 					Version: version,
 					Config:  cfgPath,
 					Stage:   stage,
@@ -650,17 +640,6 @@ var root = &cli.Command{
 				defer spin.Stop()
 				spin.Suffix = "  Installing providers..."
 				spin.Start()
-				if !p.CheckPlatform(version) {
-					err := p.CopyPlatform(version)
-					if err != nil {
-						return err
-					}
-				}
-
-				err = p.Install()
-				if err != nil {
-					return err
-				}
 				spin.Stop()
 				ui.Success("Installed providers")
 				return nil
