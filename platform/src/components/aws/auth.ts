@@ -293,6 +293,7 @@ export class Auth extends Component implements Link.Linkable {
         },
         (args) => {
           args.url = {
+            ...(typeof args.url === "object" ? args.url : {}),
             cors: false,
           };
         },
