@@ -225,7 +225,8 @@ func (p *Project) writeTypes() error {
 	file.WriteString(`import { AppInput, AppOutput, Config } from "sst-plugin/config"` + "\n")
 
 	for _, plugin := range p.plugins {
-		file.WriteString(`import * as _` + plugin.Alias + ` from "` + plugin.Package + `";` + "\n")
+		alias := strings.ReplaceAll(plugin.Alias, ".", "_")
+		file.WriteString(`import * as _` + alias + ` from "` + plugin.Package + `";` + "\n")
 	}
 
 	file.WriteString("\n\n")
@@ -250,7 +251,8 @@ func (p *Project) writeTypes() error {
 		if plugin.Hidden {
 			continue
 		}
-		file.WriteString(`      "` + plugin.Name + `"?:  (_` + plugin.Alias + `.ProviderArgs & { version?: string }) | boolean | string;` + "\n")
+		alias := strings.ReplaceAll(plugin.Alias, ".", "_")
+		file.WriteString(`      "` + plugin.Name + `"?:  (_` + alias + `.ProviderArgs & { version?: string }) | boolean | string;` + "\n")
 	}
 	file.WriteString(`    }` + "\n")
 	file.WriteString(`    plugins?: {` + "\n")
@@ -258,7 +260,8 @@ func (p *Project) writeTypes() error {
 		if plugin.Hidden {
 			continue
 		}
-		file.WriteString(`      "` + plugin.Name + `"?:  { version?: string, config?: _` + plugin.Alias + `.ProviderArgs   } | string;` + "\n")
+		alias := strings.ReplaceAll(plugin.Alias, ".", "_")
+		file.WriteString(`      "` + plugin.Name + `"?:  { version?: string, config?: _` + alias + `.ProviderArgs   } | string;` + "\n")
 	}
 	file.WriteString(`    }` + "\n")
 	file.WriteString(`  }` + "\n")

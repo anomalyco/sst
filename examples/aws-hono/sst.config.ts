@@ -7,6 +7,9 @@ export default $config({
       removal: input?.stage === "production" ? "retain" : "remove",
       home: "aws",
       version: "3.10.13",
+      plugins: {
+        example: "0.0.10",
+      },
     };
   },
   async run() {
