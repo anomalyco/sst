@@ -93,7 +93,7 @@
     },
     "plugin/base": {
       "name": "sst-plugin",
-      "version": "0.0.10",
+      "version": "0.0.12",
       "dependencies": {
         "@pulumi/pulumi": "^3.169.0",
         "@types/node": "^22.15.17",

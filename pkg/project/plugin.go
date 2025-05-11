@@ -222,7 +222,7 @@ func (p *Project) writeTypes() error {
 	}
 	defer file.Close()
 
-	file.WriteString(`import { AppInput, App, Config } from "@sst/platform/config"` + "\n")
+	file.WriteString(`import { AppInput, AppOutput, Config } from "sst-plugin/config"` + "\n")
 
 	for _, plugin := range p.plugins {
 		file.WriteString(`import * as _` + plugin.Alias + ` from "` + plugin.Package + `";` + "\n")
@@ -247,18 +247,24 @@ func (p *Project) writeTypes() error {
 	file.WriteString(`     */` + "\n")
 	file.WriteString(`    providers?: {` + "\n")
 	for _, plugin := range p.plugins {
+		if plugin.Hidden {
+			continue
+		}
 		file.WriteString(`      "` + plugin.Name + `"?:  (_` + plugin.Alias + `.ProviderArgs & { version?: string }) | boolean | string;` + "\n")
 	}
 	file.WriteString(`    }` + "\n")
 	file.WriteString(`    plugins?: {` + "\n")
 	for _, plugin := range p.plugins {
-		file.WriteString(`      "` + plugin.Name + `"?:  { version?: string, alias?: string, config?: _` + plugin.Alias + `.ProviderArgs   } | string;` + "\n")
+		if plugin.Hidden {
+			continue
+		}
+		file.WriteString(`      "` + plugin.Name + `"?:  { version?: string, config?: _` + plugin.Alias + `.ProviderArgs   } | string;` + "\n")
 	}
 	file.WriteString(`    }` + "\n")
 	file.WriteString(`  }` + "\n")
 	file.WriteString(`  export const $config: (` + "\n")
 	file.WriteString(`    input: Omit<Config, "app"> & {` + "\n")
-	file.WriteString(`      app(input: AppInput): Promise<Omit<App, "providers"> & Providers> | (Omit<App, "providers"> & Providers);` + "\n")
+	file.WriteString(`      app(input: AppInput): Promise<Omit<AppOutput, "plugins" | "providers"> & Providers> | (Omit<AppOutput, "providers" | "plugins"> & Providers);` + "\n")
 	file.WriteString(`    },` + "\n")
 	file.WriteString(`  ) => Config;` + "\n")
 	file.WriteString(`}` + "\n")
