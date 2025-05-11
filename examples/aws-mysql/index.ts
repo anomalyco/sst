@@ -13,6 +13,6 @@ export async function handler() {
   const [rows] = await connection.execute("SELECT NOW()");
   return {
     statusCode: 200,
-    body: `Querying ${Resource.MyDatabase.host}\n\n` + rows[0].now,
+    body: `Querying ${Resource.MyDatabase.host}\n\n` + rows[0]['NOW()'],
   };
 }

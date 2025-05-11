@@ -479,7 +479,11 @@ export class Email extends Component implements Link.Linkable {
         // When the SES account is in sandbox mode, it seems you have to include verified
         // receipients inside `resources`. Needs further investigation.
         permission({
-          actions: ["ses:SendEmail", "ses:SendRawEmail"],
+          actions: [
+            "ses:SendEmail",
+            "ses:SendRawEmail",
+            "ses:SendTemplatedEmail",
+          ],
           resources: ["*"],
         }),
       ],

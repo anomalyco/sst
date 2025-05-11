@@ -31,7 +31,7 @@ const tmp = `tmp`;
 const binaryPackages = [] as string[];
 for (const artifact of artifacts) {
   if (artifact.type !== "Binary") continue;
-  const os = artifact.goos;
+  const os = artifact.goos === "windows" ? "win32" : artifact.goos;
   const cpu = cpus[artifact.goarch as keyof typeof cpus];
   if (!os || !cpu)
     throw new Error(`Invalid artifact: ${JSON.stringify(artifact)}`);

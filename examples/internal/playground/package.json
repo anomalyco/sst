@@ -18,6 +18,7 @@
     "@aws-sdk/client-sqs": "^3.682.0",
     "@aws-sdk/client-ssm": "^3.759.0",
     "@openauthjs/openauth": "^0.0.19",
+    "@opensearch-project/opensearch": "^3.5.1",
     "aws-sdk": "^2.1692.0",
     "hono": "^4.7.4",
     "ioredis": "^5.4.1",

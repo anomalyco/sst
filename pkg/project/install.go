@@ -35,7 +35,11 @@ func (p *Project) NeedsInstall() bool {
 		return true
 	}
 	for _, entry := range p.lock {
-		config := p.app.Providers[entry.Name].(map[string]interface{})
+		match, ok := p.app.Providers[entry.Name]
+		if !ok {
+			return false
+		}
+		config := match.(map[string]interface{})
 		version := config["version"]
 		if version == nil || version == "" {
 			continue

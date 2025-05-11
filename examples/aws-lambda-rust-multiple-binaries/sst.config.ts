@@ -1,7 +1,7 @@
 /// <reference path="./.sst/platform/config.d.ts" />
 
 /**
- * ## AWS Lamda Rust Multiple-Binaries
+ * ## AWS Lamda Rust multiple-binaries
  *
  * This example shows how to deploy multiple binary rust project to AWS Lambda.
  *

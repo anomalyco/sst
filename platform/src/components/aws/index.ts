@@ -20,6 +20,7 @@ export * from "./function.js";
 export * from "./kinesis-stream.js";
 export * from "./nextjs.js";
 export * from "./opencontrol.js";
+export * from "./open-search.js";
 export * from "./postgres.js";
 export * from "./mysql.js";
 export * from "./queue.js";

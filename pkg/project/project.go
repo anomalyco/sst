@@ -167,7 +167,7 @@ if (mod.stacks || mod.config) {
 console.log("~j" + JSON.stringify(await mod.app({
   stage: $input.stage || undefined,
 })))`,
-				input.Config),
+				filepath.ToSlash(input.Config)),
 		},
 	)
 	if err != nil {

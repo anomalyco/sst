@@ -6,4 +6,11 @@ class Resource:
     class App:
         name: str
         stage: str
+    class MyLinkableValue:
+        foo: str
+        type: str
+    class MyPythonFunction:
+        name: str
+        type: str
+        url: str
 

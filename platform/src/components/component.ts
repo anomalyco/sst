@@ -154,6 +154,7 @@ export class Component extends ComponentResource {
               "aws:lambda/provisionedConcurrencyConfig:ProvisionedConcurrencyConfig",
               "aws:lb/listener:Listener",
               "aws:lb/listenerRule:ListenerRule",
+              "aws:opensearch/domainPolicy:DomainPolicy",
               "aws:rds/proxyDefaultTargetGroup:ProxyDefaultTargetGroup",
               "aws:rds/proxyTarget:ProxyTarget",
               "aws:route53/record:Record",
@@ -250,6 +251,7 @@ export class Component extends ComponentResource {
             // ie. "-1234567" is automatically added
             "aws:lb/loadBalancer:LoadBalancer": ["name", 24],
             "aws:lambda/function:Function": ["name", 64],
+            "aws:opensearch/domain:Domain": ["domainName", 28, { lower: true }],
             "aws:rds/cluster:Cluster": [
               "clusterIdentifier",
               63,

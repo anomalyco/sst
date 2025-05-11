@@ -1,0 +1,290 @@
+---
+title: Frontends are hard
+description: Modern serverless frontends are hard to deploy and here's why.
+template: splash
+author: jay
+lastUpdated: 2025-05-02
+pagefind: false
+---
+
+import { Image } from "astro:assets"
+
+import SpaDiagram from "../../../assets/blog/frontends-are-hard/spa-architecture-diagram.svg";
+import SsrDiagram from "../../../assets/blog/frontends-are-hard/ssr-architecture-diagram.svg";
+import MarketMap from "../../../assets/blog/frontends-are-hard/framework-market-map.svg";
+
+import tweetDark from "../../../assets/blog/frontends-are-hard/cloudfront-announcement-tweet-dark.png";
+import tweetLight from "../../../assets/blog/frontends-are-hard/cloudfront-announcement-tweet-light.png";
+
+Modern frontends like Next.js, Svelte, Remix, Astro, etc. are hard to deploy. There are services like [Netlify](https://www.netlify.com/) and [Vercel](https://vercel.com/) that have built [custom infrastructure](https://vercel.com/blog/framework-defined-infrastructure) just to do this.
+
+In this post we look at why frontends have become **so hard to deploy** and why even the **giant cloud providers** like AWS, GCP, or Azure have **really poor support**.
+
+We also look at how some recent changes have made it possible for SST to better support them.
+
+---
+
+## Background
+
+Back in the 2010s frontends were single-page apps. Hosting them was really easy. You just uploaded it to an S3 bucket and shared the URL with your users. To get fancy, you could add a CDN.
+
+<SpaDiagram style="width: min(100%, 480px);" />
+
+You could do this on any cloud provider. Like AWS or GCP, and it was the **simplest part of your stack**.
+
+Modern frontends now need a combination of infrastructure like S3 buckets, serverless functions, databases, CDNs, edge functions, edge data stores, and more.
+
+<SsrDiagram style="width: min(100%, 480px);" />
+
+There are also a dozen or so competing frameworks.
+
+<MarketMap style="width: min(100%, 480px);" />
+
+This is complicated enough that even AWS and GCP's services like [Amplify](https://aws.amazon.com/amplify/) and [Firebase](https://firebase.google.com/) have really poor support for them. They only support a couple of frameworks, don't support their latest versions, and don't cover all their features.
+
+As a result, most people use secondary cloud providers like Netlify or Vercel. These services have their own custom infrastructure **built on top of the major cloud providers**. They've used this approach to grow to impressive scales. Both of these companies are reportedly doing around $100M in ARR.
+
+But why do we need dedicated services? What's so hard about deploying a frontend? How come even the giant cloud providers are unable to keep up?
+
+---
+
+## Why is it so hard?
+
+There are a few main reasons why frontends are hard to deploy and host:
+
+1. **Complicated infrastructure**
+
+   With single-page apps, it's all just static files. But modern frontends have evolved to support server-side rendering, API routes, image optimization, edge support, middleware, and a lot more. They are now closer to full-stack apps.
+
+   > Modern frontends are now closer to full-stack apps.
+
+   This needs a combination of infrastructure like S3 buckets, serverless functions, databases, CDNs, edge functions, edge KV stores, etc.
+
+   There is no **one-size-fits-all piece of infrastructure** for hosting a modern frontend.
+
+2. **Dozen different frameworks**
+
+   From Next.js to Astro, SvelteKit, Remix, SolidStart, to recent ones like TanStack Start or React Router v7 in Framework mode. There are at least a **dozen competing frameworks** with different features or areas of focus.
+
+   This leads AWS and GCP to pick which ones they support.
+
+3. **Faster pace of updates**
+
+   All these frameworks are also constantly being updated.
+
+   The big cloud providers are slow to release updates on their end. Meaning that the versions they support are almost **always out of date**.
+
+#### Caveats
+
+You could self-host most of these frameworks in a container, or self-host as a single-page app. But these modes of deployment have their limitations and are clearly sub-optimal compared to using a dedicated service.
+
+---
+
+## Open source for the win
+
+When we had first started building SST, deploying frontends was a small part of what we did. But as we grew, we started to get more requests for better frontend support.
+
+> Self-hosting frontends is a perfect fit for an OSS project.
+
+We looked at the above problems; not having a one-size-fits-all solution and a long tail of frameworks and features. And realized that this was a perfect fit for an OSS project.
+
+So here's what we did:
+
+1. **Break down the problem**
+
+   Deploying a frontend is a combination of generating a build output through something called an adapter. And then using that to deploy the infrastructure.
+
+   While the infrastructure is specific to the provider, the adapter could potentially be shared.
+
+   So when we wanted to support frontends in SST, we decided to **separate the two steps**, and open source the adapters.
+
+   This is led us to start the [OpenNext](https://opennext.js.org) project.
+
+   Now providers like Cloudflare, and even Netlify and Vercel, can contribute to the project and help keep it up to date.
+
+2. **Open source everything**
+
+   Aside from adapters, even the infrastructure SST uses to deploy frontends is open source. You can just look at our repo to see how we deploy them.
+
+   This allows people to contribute and makes it so that **SST supports a large number of frameworks**, covers all their features, and remains up to date with new releases.
+
+3. **Work closely with the framework authors**
+
+   Since everything is open source, it also makes it easier for us to collaborate with the framework authors directly.
+
+This made SST the best available option for people that want to deploy their frontend to their infrastructure.
+
+---
+
+#### Good or good enough?
+
+The infrastructure that SST creates when you self-host your frontend is **a little different** from what Netlify or Vercel creates.
+
+It stems from the fact that Netlify and Vercel are _multi-tenant_ and can share some bits of infrastructure across all their users.
+
+Whereas SST creates a completely isolated setup for your frontend where nothing is shared between your sites and you are of course isolated from other SST users.
+
+The downside of our approach is that we **recreate all the infrastructure**, like the CDN distribution, for each of your sites. This means it can take 15-20 mins to create one of these. So if you have multiple frontends or if you were creating preview environments, your deployments will be slower.
+
+And somewhat related, SST didn't really support deploying your frontend to multiple regions.
+
+We had been looking for ways to improve our setup. And now we can, [thanks to this](https://aws.amazon.com/about-aws/whats-new/2024/11/amazon-cloudfront-origin-modifications-cloudfront-functions/).
+
+<picture style="width: min(100%, 480px);">
+  <source srcset={tweetDark.src} media="(prefers-color-scheme: dark)" />
+  <source srcset={tweetLight.src} media="(prefers-color-scheme: light)" />
+  <Image src={tweetLight} alt="CloudFront announcement tweet" />
+</picture>
+
+---
+
+## A new approach
+
+A seemingly trivial _pre:Invent_ announcement made CloudFront a lot more _programmable_. This paved the way for us to support setups that are far **more flexible than Netlify or Vercel**.
+
+The key change here is that you can now use CloudFront Functions in tandem with a CloudFront KeyValueStore to modify the origin of requests. This lets you create custom policies for how traffic is routed from the CDN to your application.
+
+In the past, you'd have to use a Lambda@Edge function and a DynamoDB table which is both a lot more expensive and a lot slower.
+
+---
+
+### Introducing Router
+
+We used this change to build the [`Router`](/docs/component/aws/router/) component. This component lets you use a single CloudFront distribution for your entire app.
+
+```ts title="sst.config.ts"
+const router = new sst.aws.Router("MyRouter", {
+  domain: {
+    name: "example.com",
+    aliases: ["*.example.com"]
+  }
+});
+```
+
+With it:
+
+1. You can **set up routes** to your frontends.
+
+   ```ts title="sst.config.ts" {3}
+   const web = new sst.aws.Nextjs("MyWeb", {
+     router: {
+       instance: router
+     }
+   });
+   ```
+
+   Or functions.
+
+   ```ts title="sst.config.ts" {4,5}
+   const api = new sst.aws.Function("MyApi", {
+     url: true,
+     router: {
+       instance: router,
+       path: "/api"
+     }
+   });
+   ```
+
+   Or S3 buckets.
+
+   ```ts title="sst.config.ts" {5}
+   const bucket = new sst.aws.Bucket("MyBucket", {
+     access: "cloudfront"
+   });
+
+   router.routeBucket("/files", bucket);
+   ```
+
+   Or any URL.
+
+   ```ts title="sst.config.ts"
+   router.route("/external", "https://some-external-service.com");
+   ```
+
+2. You can configure it to **serve a subdomain**.
+
+   ```ts title="sst.config.ts" {4}
+   new sst.aws.Nextjs("MyWeb", {
+     router: {
+       instance: router,
+       domain: "docs.example.com"
+     }
+   });
+   ```
+
+   Or **a path**.
+
+   ```ts title="sst.config.ts" {4}
+   new sst.aws.Nextjs("MyWeb", {
+     router: {
+       instance: router,
+       path: "/docs"
+     }
+   });
+   ```
+
+   For this, you'll also need to set the `basePath` in your `next.config.js`.
+
+3. You can share a router across stages. So your **preview environments can deployed almost instantly**.
+
+   ```ts title="sst.config.ts"
+   const router = $app.stage === "production"
+     ? new sst.aws.Router("MyRouter", {
+        domain: {
+          name: "example.com",
+          aliases: ["*.example.com"]
+        }
+      })
+     : sst.aws.Router.get("MyRouter", "A2WQRGCYGTFB7Z");
+   ```
+4. You can also deploy your frontends to **multiple regions** and it'll route requests to the server function that's nearest to your user.
+
+   ```ts title="sst.config.ts" {2}
+   new sst.aws.Nextjs("MyWeb", {
+     regions: ["us-east-1", "eu-west-1"],
+     router: {
+       instance: router
+     }
+   });
+   ```
+
+---
+
+#### How it works
+
+The Router uses a CloudFront KeyValueStore to store the routing data and a CloudFront Function to route the request. As routes are added, the store is updated.
+
+So when a request comes in, it does a lookup in the store and dynamically sets the origin based on the routing data. For frontends, that have their server functions deployed to multiple regions, it routes to the closest region based on the user's location.
+
+---
+
+### Why this matters
+
+Taking a step back for a second, a dedicated service like Netlify or Vercel is still likely to give you a better out-of-the-box experience.
+
+Where SST shines, is when you start to grow. You start adding multiple frontends. You want serve your API from the same domain. Or you want your preview environments to include more than just your frontend. 
+
+This new setup allows you to do all of that. This is an example of one of SST's design principles. You can start with the simplest setup, without using a Router. Then grow to adding it. And eventually customize it. All through code.
+
+---
+
+### Learn more
+
+You can learn more about this new setup:
+
+- [`Router`](/docs/component/aws/router/) component docs
+- Guide on [**configuring a router**](/docs/configure-a-router)
+- The [`router`](/docs/component/aws/nextjs/#router) prop in your frontend
+- Multiple [`regions`](/docs/component/aws/nextjs/#regions) in your frontend
+
+---
+
+## Final thoughts
+
+There are also some broader questions like:
+
+- Why are there so many frameworks?
+- Why do these frameworks change all the time?
+- And do frontends need to be this complicated?
+
+These are good questions that are worth having nuanced discussions about. We might tackle them in a future post. Or if you have some thoughts, we would love to hear them.

@@ -27,6 +27,7 @@ import { dns as awsDns } from "./dns";
 import { DnsValidatedCertificate } from "./dns-validated-certificate";
 import { ApiGatewayV1IntegrationRoute } from "./apigatewayv1-integration-route";
 import { ApiGatewayV1UsagePlan } from "./apigatewayv1-usage-plan";
+import { useProvider } from "./helpers/provider";
 
 export interface ApiGatewayV1DomainArgs {
   /**
@@ -1231,6 +1232,7 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
     const parent = this;
     const api = this.api;
     const routes = this.routes;
+    const region = this.region;
     const endpointType = this.endpointType;
     const accessLog = normalizeAccessLog();
     const domain = normalizeDomain();
@@ -1498,47 +1500,57 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
     function createSsl() {
       if (!domain) return;
 
-      return domain.apply((domain) => {
-        if (domain.cert) return output(domain.cert);
-        if (domain.nameId) return output(undefined);
+      return all([domain, endpointType, region]).apply(
+        ([domain, endpointType, region]) => {
+          if (domain.cert) return output(domain.cert);
+          if (domain.nameId) return output(undefined);
 
-        return new DnsValidatedCertificate(
-          `${name}Ssl`,
-          {
-            domainName: domain.name,
-            dns: domain.dns!,
-          },
-          { parent },
-        ).arn;
-      });
+          return new DnsValidatedCertificate(
+            `${name}Ssl`,
+            {
+              domainName: domain.name,
+              dns: domain.dns!,
+            },
+            {
+              parent,
+              provider:
+                endpointType === "EDGE" && region !== "us-east-1"
+                  ? useProvider("us-east-1")
+                  : undefined,
+            },
+          ).arn;
+        },
+      );
     }
 
     function createDomainName() {
       if (!domain || !certificateArn) return;
 
-      return all([domain, certificateArn, endpointType]).apply(
-        ([domain, certificateArn, endpointType]) =>
-          domain.nameId
-            ? apigateway.DomainName.get(
+      return all([domain, endpointType]).apply(([domain, endpointType]) =>
+        domain.nameId
+          ? apigateway.DomainName.get(
+              `${name}DomainName`,
+              domain.nameId,
+              {},
+              { parent },
+            )
+          : new apigateway.DomainName(
+              ...transform(
+                args.transform?.domainName,
                 `${name}DomainName`,
-                domain.nameId,
-                {},
+                {
+                  domainName: domain?.name,
+                  endpointConfiguration: { types: endpointType },
+                  ...(endpointType === "REGIONAL"
+                    ? {
+                        regionalCertificateArn:
+                          certificateArn as Output<string>,
+                      }
+                    : { certificateArn: certificateArn as Output<string> }),
+                },
                 { parent },
-              )
-            : new apigateway.DomainName(
-                ...transform(
-                  args.transform?.domainName,
-                  `${name}DomainName`,
-                  {
-                    domainName: domain?.name,
-                    endpointConfiguration: { types: endpointType },
-                    ...(endpointType === "REGIONAL"
-                      ? { regionalCertificateArn: certificateArn }
-                      : { certificateArn }),
-                  },
-                  { parent },
-                ),
               ),
+            ),
       );
     }
 

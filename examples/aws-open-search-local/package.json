@@ -1,5 +1,5 @@
 {
-  "name": "aws-python",
+  "name": "aws-open-search-local",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
@@ -10,6 +10,10 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@opensearch-project/opensearch": "^3.5.1",
     "sst": "latest"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "8.10.145"
   }
 }

@@ -36,6 +36,7 @@ export default $config({
     //const topic = addTopic();
     //const bus = addBus();
     //const dynamo = addDynamo();
+    //addOpenSearch();
 
     return ret;
 
@@ -578,6 +579,19 @@ export default $config({
           CreatedAtIndex2: { hashKey: "userId", rangeKey: "createdAt" },
         },
       });
+    }
+
+    function addOpenSearch() {
+      const os = new sst.aws.OpenSearch("MyOpenSearch");
+      new sst.aws.Function("MyOpenSearchApp", {
+        handler: "functions/open-search/index.handler",
+        url: true,
+        link: [os],
+      });
+      ret.osUrl = os.url;
+      ret.osUsername = os.username;
+      ret.osPassword = os.password;
+      return os;
     }
   },
 });

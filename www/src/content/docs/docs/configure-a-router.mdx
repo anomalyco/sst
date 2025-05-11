@@ -3,7 +3,11 @@ title: Configure a Router
 description: Create a shared CloudFront distribution for your entire app.
 ---
 
+import { Image } from "astro:assets"
 import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+import DevDiagram from "../../../assets/docs/router/dev-architecture.svg";
+import ProdDiagram from "../../../assets/docs/router/prod-architecture.svg";
 
 You can set [custom domains](/docs/custom-domains) on components like your frontends, APIs, or services. Each of these create their own CloudFront distribution. But as your app grows you might:
 
@@ -51,6 +55,10 @@ This has a frontend, a docs site, and an API. In production we'd like to have:
 - `example.com/api` serve `MyApi`
 - `docs.example.com` serve `MyDocs`
 
+We'll create a Router for production.
+
+<ProdDiagram style="width: min(100%, 400px);" />
+
 In our dev stage we'd like to have:
 
 - `dev.example.com` serve `MyWeb`
@@ -62,6 +70,10 @@ For our PR stages or preview environments we'd like to have:
 - `pr-123.dev.example.com` serve `MyWeb`
 - `pr-123.dev.example.com/api` serve `MyApi`
 - `docs-pr-123.dev.example.com` serve `MyDocs`
+
+We'll create a separate Router for the dev stage and share it across all the PR stages.
+
+<DevDiagram style="width: min(100%, 640px);" />
 
 We are doing `docs-pr-123.dev.` instead of `docs.pr-123.dev.` because of a limitation with custom domains in CloudFront that we'll look at below.
 
@@ -177,7 +189,7 @@ To do that, let's modify how we create the `Router`.
        domain: {
          name: domain,
          aliases: [`*.${domain}`]
-       },
+       }
      })
 +   : sst.aws.Router.get("MyRouter", "A2WQRGCYGTFB7Z");
 ```
@@ -269,7 +281,7 @@ const router = isPermanentStage
      domain: {
        name: domain,
        aliases: [`*.${domain}`]
-     },
+     }
    })
   : sst.aws.Router.get("MyRouter", "A2WQRGCYGTFB7Z");
 

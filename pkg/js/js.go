@@ -174,4 +174,3 @@ func Cleanup(result esbuild.BuildResult) {
 		os.Remove(file.Path)
 	}
 }
-

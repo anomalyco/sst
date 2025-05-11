@@ -335,3 +335,11 @@
 .sl-markdown-content tr:nth-child(2n):not(:where(.not-content *)) {
   background-color: transparent;
 }
+
+/**
+ * Centered images
+ */
+.sl-markdown-content > :is(img, picture, video, canvas, svg, iframe):not(:where(.not-content *)) {
+  margin-left: auto;
+  margin-right: auto;
+}

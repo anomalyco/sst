@@ -963,7 +963,7 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-deno-re
 
 An example on how to run Drizzle migrations as a part of your CI/CD.
 
-Start by creating a function that runs migrations. 
+Start by creating a function that runs migrations.
 
 ```ts title="sst.config.ts"
 const migrator = new sst.aws.Function("DatabaseMigrator", {
@@ -979,7 +979,7 @@ const migrator = new sst.aws.Function("DatabaseMigrator", {
 });
 ```
 
-Where `src/migrator.ts` looks like this.
+Where `src/migrator.ts` looks like.
 
 ```ts title="src/migrator.ts"
 import { db } from "./drizzle";
@@ -2144,6 +2144,76 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-lambda-
 
 
 ---
+## AWS Lamda Rust multiple-binaries
+
+This example shows how to deploy multiple binary rust project to AWS Lambda.
+
+SST relies on the work of [cargo lambda](https://cargo-lambda) to build and deploy Rust Lambda functions.
+
+What is special about the following file is that we are defining multiple binaries using the `[[bin]]` section in the `Cargo.toml` file.
+
+```toml title="Cargo.toml" {13,14,15,17,18,19}
+[package]
+name = "aws-lambda-rust-multi-bin"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+lambda_runtime = "0.13.0"
+serde = { version = "1.0.217", features = ["derive"] }
+serde_json = "1.0.138"
+tokio = { version = "1", features = ["macros"] }
+# -- please note ommited dependencies --
+
+[[bin]]
+name = "push"
+path = "src/push.rs"
+
+[[bin]]
+name = "pop"
+path = "src/pop.rs"
+```
+
+We then utilise the . syntax to specify the handler binary
+
+```ts title="sst.config.ts" {5,11}
+new sst.aws.Function("push", {
+  url: true,
+  runtime: "rust",
+  link: [bucket],
+  handler: "./.push",
+});
+new sst.aws.Function("pop", {
+  url: true,
+  runtime: "rust",
+  link: [bucket],
+  handler: "./.pop",
+});
+```
+```ts title="sst.config.ts"
+const bucket = new sst.aws.Bucket("Bucket");
+const push = new sst.aws.Function("push", {
+  runtime: "rust",
+  handler: "./.push",
+  url: true,
+  architecture: "arm64",
+  link: [bucket],
+});
+const pop = new sst.aws.Function("pop", {
+  runtime: "rust",
+  handler: "./.pop",
+  url: true,
+  architecture: "arm64",
+  link: [bucket],
+});
+
+return { push_url: push.url, pop_url: pop.url };
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-lambda-rust-multiple-binaries).
+
+
+---
 ## AWS Lambda streaming
 
 An example on how to enable streaming for Lambda functions.
@@ -2313,6 +2383,154 @@ return {
 ```
 
 View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-multi-region).
+
+
+---
+## AWS MySQL local
+
+In this example, we connect to a locally running MySQL instance for dev. While
+on deploy, we use RDS.
+
+We use the [`docker run`](https://docs.docker.com/reference/cli/docker/container/run/) CLI
+to start a local container with MySQL. You don't have to use Docker, you can use
+any other way to run MySQL locally.
+
+```bash
+docker run \
+  --rm \
+  -p 3306:3306 \
+  -v $(pwd)/.sst/storage/mysql:/var/lib/mysql/data \
+  -e MYSQL_ROOT_PASSWORD=password \
+  -e MYSQL_DATABASE=local \
+  mysql:8.0
+```
+
+The data is saved to the `.sst/storage` directory. So if you restart the dev server, the
+data will still be there.
+
+We then configure the `dev` property of the `Mysql` component with the settings for the
+local MySQL instance.
+
+```ts title="sst.config.ts"
+dev: {
+  username: "root",
+  password: "password",
+  database: "local",
+  host: "localhost",
+  port: 3306,
+}
+```
+
+By providing the `dev` prop for Mysql, SST will use the local MySQL instance and
+not deploy a new RDS database when running `sst dev`.
+
+It also allows us to access the database through a Resource `link` without having to
+conditionally check if we are running locally.
+
+```ts title="index.ts"
+const pool = new Pool({
+  host: Resource.MyDatabase.host,
+  port: Resource.MyDatabase.port,
+  user: Resource.MyDatabase.username,
+  password: Resource.MyDatabase.password,
+  database: Resource.MyDatabase.database,
+});
+```
+
+The above will work in both `sst dev` and `sst deploy`.
+```ts title="sst.config.ts"
+const vpc = new sst.aws.Vpc("MyVpc", { nat: "ec2" });
+
+const mysql = new sst.aws.Mysql("MyDatabase", {
+  dev: {
+    username: "root",
+    password: "password",
+    database: "local",
+    host: "localhost",
+    port: 3306,
+  },
+  vpc,
+});
+
+new sst.aws.Function("MyFunction", {
+  vpc,
+  url: true,
+  link: [mysql],
+  handler: "index.handler",
+});
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-mysql-local).
+
+
+---
+## AWS MySQL
+
+In this example, we deploy an RDS MySQL database.
+
+```ts title="sst.config.ts"
+const mysql = new sst.aws.Mysql("MyDatabase", {
+  vpc,
+});
+```
+
+And link it to a Lambda function.
+
+```ts title="sst.config.ts" {3}
+new sst.aws.Function("MyApp", {
+  handler: "index.handler",
+  link: [mysql],
+  url: true,
+  vpc,
+});
+```
+
+Now in the function we can access the database.
+
+```ts title="index.ts"
+const connection = await mysql.createConnection({
+  database: Resource.MyDatabase.database,
+  host: Resource.MyDatabase.host,
+  port: Resource.MyDatabase.port,
+  user: Resource.MyDatabase.username,
+  password: Resource.MyDatabase.password,
+});
+```
+
+We also enable the `bastion` option for the VPC. This allows us to connect to
+the database from our local machine with the `sst tunnel` CLI.
+
+```bash "sudo"
+sudo npx sst tunnel install
+```
+
+This needs _sudo_ to create a network interface on your machine. You’ll only
+need to do this once on your machine.
+
+Now you can run `npx sst dev` and you can connect to the database from your local machine.
+```ts title="sst.config.ts"
+const vpc = new sst.aws.Vpc("MyVpc", { nat: "ec2", bastion: true });
+const mysql = new sst.aws.Mysql("MyDatabase", {
+  vpc,
+});
+const app = new sst.aws.Function("MyApp", {
+  handler: "index.handler",
+  link: [mysql],
+  url: true,
+  vpc,
+});
+
+return {
+  app: app.url,
+  host: mysql.host,
+  port: mysql.port,
+  username: mysql.username,
+  password: mysql.password,
+  database: mysql.database,
+};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-mysql).
 
 
 ---
@@ -2633,6 +2851,77 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-nextjs-
 
 
 ---
+## AWS OpenSearch local
+
+In this example, we connect to a locally running OpenSearch process for dev. While
+on deploy, we use OpenSearch.
+
+We use the [`docker run`](https://docs.docker.com/reference/cli/docker/container/run/)
+CLI to start a local container with OpenSearch. You don't have to use Docker, you can use
+any other way to run OpenSearch locally.
+
+```bash
+docker run \
+  --rm \
+  -p 9200:9200 \
+  -v $(pwd)/.sst/storage/opensearch:/usr/share/opensearch/data \
+  -e discovery.type=single-node \
+  -e plugins.security.disabled=true \
+  -e OPENSEARCH_INITIAL_ADMIN_PASSWORD=^Passw0rd^ \
+  opensearchproject/opensearch:2.17.0
+```
+
+The data is saved to the `.sst/storage` directory. So if you restart the dev server, the
+data will still be there.
+
+We then configure the `dev` property of the `OpenSearch` component with the settings for
+the local OpenSearch instance.
+
+```ts title="sst.config.ts"
+dev: {
+  url: "http://localhost:9200",
+  username: "admin",
+  password: "^Passw0rd^"
+}
+```
+
+By providing the `dev` prop for OpenSearch, SST will use the local OpenSearch process and
+not deploy a new OpenSearch domain when running `sst dev`.
+
+It also allows us to access the local process through a Resource `link` without having
+to conditionally check if we are running locally.
+
+```ts title="index.ts"
+const client = new Client({
+  node: Resource.MySearch.url,
+  auth: {
+    username: Resource.MySearch.username,
+    password: Resource.MySearch.password,
+  },
+});
+```
+
+The above will work in both `sst dev` and `sst deploy`.
+```ts title="sst.config.ts"
+const search = new sst.aws.OpenSearch("MySearch", {
+  dev: {
+    url: "http://localhost:9200",
+    username: "admin",
+    password: "^Passw0rd^",
+  },
+});
+
+new sst.aws.Function("MyApp", {
+  handler: "index.handler",
+  url: true,
+  link: [search],
+});
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-open-search-local).
+
+
+---
 ## AWS Postgres local
 
 In this example, we connect to a locally running Postgres instance for dev. While
@@ -2898,6 +3187,240 @@ return {
 ```
 
 View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-puppeteer).
+
+
+---
+## AWS Lambda Python container
+
+Python Lambda function that use large dependencies like `numpy` and `pandas`, can
+hit the 250MB Lambda package limit. To work around this, you can deploy them
+as a container image to Lambda.
+
+:::tip
+Container images on Lambda have a limit of 10GB.
+:::
+
+In this example, we deploy two functions as container image.
+
+```ts title="sst.config.ts" {2-4}
+const base = new sst.aws.Function("PythonFn", {
+  python: {
+    container: true,
+  },
+  handler: "./functions/src/functions/api.handler",
+  runtime: "python3.11",
+  link: [linkableValue],
+  url: true,
+});
+```
+
+Now when you run `sst deploy`, it uses a built-in Dockerfile to build the image
+and deploy it. You'll need to have the Docker daemon running.
+
+:::note
+You need to have the Docker daemon running locally.
+:::
+
+To use a custom Dockerfile, you can place a `Dockerfile` in the root of the
+uv workspace for your function.
+
+```ts title="sst.config.ts" {5}
+const custom = new sst.aws.Function("PythonFnCustom", {
+  python: {
+    container: true,
+  },
+  handler: "./custom_dockerfile/src/custom_dockerfile/api.handler",
+  runtime: "python3.11",
+  link: [linkableValue],
+  url: true,
+});
+```
+
+Here we have a `Dockerfile` in the `custom_dockerfile/` directory.
+
+```dockerfile title="custom_dockerfile/Dockerfile"
+# The python version to use is supplied as an arg from SST
+ARG PYTHON_VERSION=3.11
+
+# Use an official AWS Lambda base image for Python
+FROM public.ecr.aws/lambda/python:${PYTHON_VERSION}
+
+# ...
+```
+
+The project structure looks something like this.
+
+```txt {5}
+├── sst.config.ts
+├── pyproject.toml
+└── custom_dockerfile
+    ├── pyproject.toml
+    ├── Dockerfile
+    └── src
+        └── custom_dockerfile
+            └── api.py
+```
+
+Locally, you want to set the Python version in your `pyproject.toml` to make sure
+that `sst dev` uses the same version as `sst deploy`.
+```ts title="sst.config.ts"
+const linkableValue = new sst.Linkable("MyLinkableValue", {
+  properties: {
+    foo: "Hello World",
+  },
+});
+
+const base = new sst.aws.Function("PythonFn", {
+  python: {
+    container: true,
+  },
+  handler: "./functions/src/functions/api.handler",
+  runtime: "python3.11",
+  link: [linkableValue],
+  url: true,
+});
+
+const custom = new sst.aws.Function("PythonFnCustom", {
+  python: {
+    container: true,
+  },
+  handler: "./custom_dockerfile/src/custom_dockerfile/api.handler",
+  runtime: "python3.11",
+  link: [linkableValue],
+  url: true,
+});
+
+return {
+  base: base.url,
+  custom: custom.url,
+};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-python-container).
+
+
+---
+## AWS Lambda Python Hugging Face
+
+Uses a Python Lambda container image to deploy a lightweight
+[Hugging Face](https://huggingface.co/) model.
+
+Uses the [transformers](https://github.com/huggingface/transformers) library to
+generate text using the
+[TinyStories-33M](https://huggingface.co/roneneldan/TinyStories-33M) model. The
+backend is the pytorch cpu runtime.
+
+:::note
+This is not a production ready example.
+:::
+
+This example also shows how it is possible to use custom index resolution to get
+dependencies from a private pypi server such as the pytorch cpu link. This
+example also shows how to use a custom Dockerfile to handle complex builds such
+as installing pytorch and pruning the build size.
+```ts title="sst.config.ts"
+new sst.aws.Function("MyPythonFunction", {
+  python: {
+    container: true,
+  },
+  handler: "functions/src/functions/api.handler",
+  runtime: "python3.12",
+  timeout: "60 seconds",
+  url: true,
+});
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-python-huggingface).
+
+
+---
+## AWS Lambda Python
+
+SST uses [uv](https://github.com/astral-sh/uv) to manage your Python runtime, make
+sure you have it [installed](https://docs.astral.sh/uv/getting-started/installation/).
+
+Any [uv workspace](https://docs.astral.sh/uv/concepts/projects/workspaces/#workspace-sources)
+package can be built and deployed as a Lambda function using SST. Drop-in mode
+is currently not supported.
+
+:::note
+Builds currently do not tree shake so lots of workspaces can make the build
+larger than necessary.
+:::
+
+In this example we deploy a handler from the `functions/` directory. It depends
+on shared code from another uv workspace in the `core/` directory.
+
+```txt
+├── sst.config.ts
+├── pyproject.toml
+├── core
+│   ├── pyproject.toml
+│   └── src
+│       └── core
+│           └── __init__.py
+└── functions
+    ├── pyproject.toml
+    └── src
+        └── functions
+            ├── __init__.py
+            └── api.py
+```
+
+The `handler` is the path to the handler file and the name of the handler function
+in it.
+
+```ts title="sst.config.ts" {2}
+new sst.aws.Function("MyPythonFunction", {
+  handler: "functions/src/functions/api.handler",
+  runtime: "python3.11",
+  link: [linkableValue],
+  url: true,
+});
+```
+SST will traverse up from the handler path and look for the nearest
+`pyproject.toml`. And will throw an error if it can't find one.
+
+To access linked resources, you can use the SST SDK.
+
+```py title="functions/src/functions/api.py" {1}
+from sst import Resource
+
+def handler(event, context):
+    print(Resource.MyLinkableValue.foo)
+```
+
+Where the `sst` package can be added to your `pyproject.toml`.
+
+```toml title="functions/pyproject.toml"
+[tool.uv.sources]
+sst = { git = "https://github.com/sst/sst.git", subdirectory = "sdk/python", branch = "dev" }
+```
+
+You also want to set the Python version in your `pyproject.toml` to the same
+version as the one in Lambda.
+
+```toml title="functions/pyproject.toml"
+requires-python = "==3.11.*"
+```
+
+This makes sure that your functions work the same in `sst dev` as `sst deploy`.
+```ts title="sst.config.ts"
+const linkableValue = new sst.Linkable("MyLinkableValue", {
+  properties: {
+    foo: "Hello World",
+  },
+});
+
+new sst.aws.Function("MyPythonFunction", {
+  handler: "functions/src/functions/api.handler",
+  runtime: "python3.11",
+  link: [linkableValue],
+  url: true,
+});
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-python).
 
 
 ---

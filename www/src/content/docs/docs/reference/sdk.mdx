@@ -11,7 +11,7 @@ You can use the SDK in your **functions**, **frontends**, and **container applic
 Check out the _SDK_ section in a component's API reference doc.
 :::
 
-Currently, the SDK is only available for JavaScript/TypeScript, Golang, and Rust. Support for other languages is on the roadmap.
+Currently, the SDK is only available for JS/TS, Python, Golang, and Rust. Support for other languages is on the roadmap.
 
 ---
 
@@ -93,6 +93,42 @@ The JS SDK first checks the `process.env` and then the `globalThis` for the link
 
 ---
 
+## Python
+
+SST uses [uv](https://docs.astral.sh/uv/) to package your Python functions. Your functions need to be in a [uv workspace](https://docs.astral.sh/uv/concepts/projects/workspaces/#workspace-sources).
+
+To use the SDK, add it to your `pyproject.toml`.
+
+```toml title="functions/pyproject.toml"
+[tool.uv.sources]
+sst = { git = "https://github.com/sst/sst.git", subdirectory = "sdk/python", branch = "dev" }
+```
+
+And in your function, import the `resource` module and access the linked resource.
+
+```py title="functions/src/functions/api.py" {1} "Resource.MyBucket.name"
+from sst import Resource
+
+def handler(event, context):
+    print(Resource.MyBucket.name)
+```
+
+Here `MyBucket` is the name of a bucket that's linked to the function.
+
+```ts title="sst.config.ts" {6}
+const bucket = new sst.aws.Bucket("MyBucket");
+
+new sst.aws.Function("MyFunction", {
+  handler: "functions/src/functions/api.handler",
+  runtime: "python3.11",
+  link: [bucket]
+});
+```
+
+Client functions are currently **not supported** in the Python SDK.
+
+---
+
 ## Golang
 
 Use the SST Go SDK package in your Golang functions or container applications.
@@ -128,6 +164,8 @@ resource.Get("App", "stage")
 ```
 
 Client functions are currently **not supported** in the Go SDK.
+
+---
 
 ## Rust
 

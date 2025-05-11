@@ -72,6 +72,23 @@ export interface TaskArgs extends FargateBaseArgs {
    */
   containers?: Input<Prettify<FargateContainerArgs>>[];
   /**
+   * Assign a public IP address to the task.
+   *
+   * Defaults:
+   * - If an SST VPC component is passed to the `vpc` property, tasks run in public subnets
+   * by default and `publicIp` defaults to `true`.
+   * - If a non-SST VPC is used, tasks run in the specified subnets and `publicIp` defaults
+   * to `false`.
+   *
+   * @example
+   * ```ts
+   * {
+   *   publicIp: true
+   * }
+   * ```
+   */
+  publicIp?: Input<boolean>;
+  /**
    * Configure how this component works in `sst dev`.
    *
    * :::note
@@ -106,18 +123,18 @@ export interface TaskArgs extends FargateBaseArgs {
    * [Live](/docs/live/) and [`sst dev`](/docs/reference/cli/#dev).
    */
   dev?:
-  | false
-  | {
-    /**
-     * The command that `sst dev` runs in dev mode.
-     */
-    command?: Input<string>;
-    /**
-     * Change the directory from where the `command` is run.
-     * @default Uses the `image.dockerfile` path
-     */
-    directory?: Input<string>;
-  };
+    | false
+    | {
+        /**
+         * The command that `sst dev` runs in dev mode.
+         */
+        command?: Input<string>;
+        /**
+         * Change the directory from where the `command` is run.
+         * @default Uses the `image.dockerfile` path
+         */
+        directory?: Input<string>;
+      };
 }
 
 /**
@@ -258,6 +275,7 @@ export class Task extends Component implements Link.Linkable {
   private readonly executionRole: iam.Role;
   private readonly taskRole: iam.Role;
   private readonly _taskDefinition: Output<ecs.TaskDefinition>;
+  private readonly _publicIp: Output<boolean>;
   private readonly containerNames: Output<Output<string>[]>;
   private readonly dev: boolean;
 
@@ -276,6 +294,7 @@ export class Task extends Component implements Link.Linkable {
     const storage = normalizeStorage(args);
     const containers = normalizeContainers("task", args, name, architecture);
     const vpc = normalizeVpc();
+    const publicIp = normalizePublicIp();
 
     const taskRole = createTaskRole(
       name,
@@ -285,11 +304,11 @@ export class Task extends Component implements Link.Linkable {
       dev,
       dev
         ? [
-          {
-            actions: ["appsync:*"],
-            resources: ["*"],
-          },
-        ]
+            {
+              actions: ["appsync:*"],
+              resources: ["*"],
+            },
+          ]
         : [],
     );
     this.dev = dev;
@@ -303,23 +322,23 @@ export class Task extends Component implements Link.Linkable {
       self,
       dev
         ? containers.apply(async (v) => {
-          const appsync = await Function.appsync();
-          return [
-            {
-              ...v[0],
-              image: output("ghcr.io/sst/sst/bridge-task:20241224005724"),
-              environment: {
-                ...v[0].environment,
-                SST_TASK_ID: name,
-                SST_REGION: process.env.SST_AWS_REGION!,
-                SST_APPSYNC_HTTP: appsync.http,
-                SST_APPSYNC_REALTIME: appsync.realtime,
-                SST_APP: $app.name,
-                SST_STAGE: $app.stage,
+            const appsync = await Function.appsync();
+            return [
+              {
+                ...v[0],
+                image: output("ghcr.io/sst/sst/bridge-task:20241224005724"),
+                environment: {
+                  ...v[0].environment,
+                  SST_TASK_ID: name,
+                  SST_REGION: process.env.SST_AWS_REGION!,
+                  SST_APPSYNC_HTTP: appsync.http,
+                  SST_APPSYNC_REALTIME: appsync.realtime,
+                  SST_APP: $app.name,
+                  SST_STAGE: $app.stage,
+                },
               },
-            },
-          ];
-        })
+            ];
+          })
         : containers,
       architecture,
       cpu,
@@ -333,6 +352,7 @@ export class Task extends Component implements Link.Linkable {
     this.vpc = vpc;
     this.executionRole = executionRole;
     this._taskDefinition = taskDefinition;
+    this._publicIp = publicIp;
     this.containerNames = containers.apply((v) => v.map((v) => output(v.name)));
     this.registerOutputs({
       _task: all([args.dev, containers]).apply(([v, containers]) => ({
@@ -373,6 +393,12 @@ export class Task extends Component implements Link.Linkable {
           v.securityGroups.map((v) => output(v)),
         ),
       };
+    }
+
+    function normalizePublicIp() {
+      return all([args.publicIp, vpc.isSstVpc]).apply(
+        ([publicIp, isSstVpc]) => publicIp ?? isSstVpc,
+      );
     }
   }
 
@@ -420,7 +446,7 @@ export class Task extends Component implements Link.Linkable {
    * @internal
    */
   public get assignPublicIp() {
-    return this.vpc.isSstVpc;
+    return this._publicIp;
   }
 
   /**
