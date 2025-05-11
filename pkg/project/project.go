@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
@@ -19,7 +18,6 @@ import (
 	"github.com/sst/sst/v3/pkg/flag"
 	"github.com/sst/sst/v3/pkg/js"
 	"github.com/sst/sst/v3/pkg/process"
-	"github.com/sst/sst/v3/pkg/project/path"
 	"github.com/sst/sst/v3/pkg/project/provider"
 	"github.com/sst/sst/v3/pkg/runtime"
 	"github.com/sst/sst/v3/pkg/runtime/golang"
@@ -30,12 +28,12 @@ import (
 )
 
 type App struct {
-	Name    string
-	Stage   string
-	Removal string
-	Home    string
-	Version string
-	Protect bool
+	Name    string `json:"name"`
+	Stage   string `json:"stage"`
+	Removal string `json:"removal"`
+	Home    string `json:"home"`
+	Version string `json:"version"`
+	Protect bool   `json:"protect"`
 }
 
 type Project struct {
@@ -54,8 +52,9 @@ type Plugin struct {
 	Name    string                 `json:"name"`
 	Package string                 `json:"package"`
 	Version string                 `json:"version"`
-	Alias   string                 `json:"alias"`
 	Config  map[string]interface{} `json:"config"`
+	Alias   string                 `json:"alias"`
+	Hidden  bool                   `json:"hidden"`
 }
 
 func Discover() (string, error) {
@@ -182,7 +181,6 @@ console.log("~j" + JSON.stringify(await mod.app({
 	slog.Info("evaluating config")
 	node := process.Command("node", "--no-warnings", string(buildResult.OutputFiles[1].Path))
 	output, err := node.CombinedOutput()
-	slog.Info("config evaluated")
 	if err != nil {
 		return nil, fmt.Errorf("Error evaluating config: %w\n%s", err, output)
 	}
@@ -285,8 +283,9 @@ console.log("~j" + JSON.stringify(await mod.app({
 	if parsed.Plugins != nil {
 		for name, args := range parsed.Plugins {
 			plugin := Plugin{
-				Name:   name,
-				Config: map[string]interface{}{},
+				Name:    name,
+				Config:  map[string]interface{}{},
+				Version: "latest",
 			}
 
 			if argsString, ok := args.(string); ok {
@@ -312,8 +311,9 @@ console.log("~j" + JSON.stringify(await mod.app({
 	if parsed.Providers != nil {
 		for name, args := range parsed.Providers {
 			plugin := Plugin{
-				Name:   name,
-				Config: map[string]interface{}{},
+				Name:    name,
+				Config:  map[string]interface{}{},
+				Version: "latest",
 			}
 
 			if argsString, ok := args.(string); ok {
@@ -333,67 +333,23 @@ console.log("~j" + JSON.stringify(await mod.app({
 
 	if _, ok := proj.plugins[proj.app.Home]; !ok && proj.app.Home != "local" {
 		proj.plugins[proj.app.Home] = &Plugin{
-			Name:   proj.app.Home,
-			Config: map[string]interface{}{},
+			Name:    proj.app.Home,
+			Config:  map[string]interface{}{},
+			Version: "latest",
 		}
 	}
 
-	lock := map[string]*Plugin{}
-	file, err := os.Open(path.ResolvePluginLock(input.Config))
-	if err == nil {
-		err = json.NewDecoder(file).Decode(&lock)
-		file.Close()
-		if err != nil {
-			return nil, err
-		}
+	proj.plugins["sst-plugin"] = &Plugin{
+		Name:    "sst-plugin",
+		Version: "0.0.12",
+		Hidden:  true,
+		Config:  map[string]interface{}{},
 	}
+	proj.plugins["sst-plugin"].Version = "link:sst-plugin"
 
-	dirty := []*Plugin{}
-	for name, plugin := range proj.plugins {
-		match := lock[name]
-		if match != nil && (plugin.Version == "" || plugin.Version == "latest" || plugin.Version == match.Version) {
-			match.Version = plugin.Version
-			match.Alias = plugin.Alias
-			match.Package = plugin.Package
-			continue
-		}
-		dirty = append(dirty, plugin)
-	}
-
-	if len(dirty) > 0 {
-		slog.Info("plugins outdated", "plugins", slices.Collect(util.Map(slices.Values(dirty), func(item *Plugin) string {
-			return item.Name
-		})))
-		resolved, err := resolvePlugins(dirty)
-		if err != nil {
-			return nil, err
-		}
-		for name, plugin := range resolved {
-			match := proj.plugins[name]
-			match.Version = plugin.Version
-			match.Alias = plugin.Alias
-			match.Package = plugin.Package
-		}
-
-		err = proj.writePackageJson()
-		if err != nil {
-			return nil, err
-		}
-
-		err = proj.fetchDeps()
-		if err != nil {
-			return nil, err
-		}
-
-		err = proj.writeTypes()
-		if err != nil {
-			return nil, err
-		}
-
-		err = proj.writeProviderLock()
-		if err != nil {
-			return nil, err
-		}
+	err = proj.loadPlugins()
+	if err != nil {
+		return nil, err
 	}
 
 	return proj, nil

@@ -3,6 +3,7 @@ package npm
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -26,8 +27,16 @@ func Get(name string, version string) (*js.PackageJson, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("failed to fetch package: %s", resp.Status)
 	}
+	buffer, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
 	var data js.PackageJson
-	err = json.NewDecoder(resp.Body).Decode(&data)
+	err = json.Unmarshal(buffer, &data)
+	if err != nil {
+		return nil, err
+	}
+	err = json.Unmarshal(buffer, &data.Other)
 	if err != nil {
 		return nil, err
 	}

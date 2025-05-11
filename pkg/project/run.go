@@ -10,7 +10,6 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
-	"path"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -158,29 +157,33 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 		return err
 	}
 
-	providerShim := []string{}
+	file, err := os.OpenFile(filepath.Join(p.PathPlatformDir(), "shim.js"), os.O_RDWR|os.O_CREATE, 0644)
+	external := []string{}
 	for _, plugin := range p.plugins {
-		providerShim = append(providerShim, fmt.Sprintf("import * as %s from \"%s\";", plugin.Alias, plugin.Package))
+		alias := strings.ReplaceAll(plugin.Alias, ".", "_")
+		file.WriteString(`import * as _` + alias + ` from "` + plugin.Package + `";` + "\n")
+		file.WriteString(`export { _` + alias + ` as "` + plugin.Alias + `" };` + "\n")
+		external = append(external, plugin.Package)
 	}
-	providerShim = append(providerShim, "import * as sst from \"@sst/platform/components/index.js\";")
-
+	file.Close()
+	external = append(external, "sst-plugin")
+	external = append(external, "@pulumi/pulumi")
 	buildResult, err := js.Build(js.EvalOptions{
-		Dir:     p.PathRoot(),
-		Outfile: outfile,
+		Dir:      p.PathRoot(),
+		Outfile:  outfile,
+		External: external,
 		Define: map[string]string{
 			"$app": string(appBytes),
 			"$cli": string(cliBytes),
 			"$dev": fmt.Sprintf("%v", input.Dev),
 		},
-		Inject:  []string{filepath.ToSlash(filepath.Join(p.PathPlatformSST(), "src/shim/run.js"))},
-		Globals: strings.Join(providerShim, "\n"),
+		Inject: []string{"sst-plugin/runtime/shim", filepath.Join(p.PathPlatformDir(), "shim.js")},
 		Code: fmt.Sprintf(`
-      import { run } from "%v";
+      import { run } from "sst-plugin/runtime/run";
 			import mod from '%s';
       const result = await run(mod.run);
       export default result;
     `,
-			filepath.ToSlash(path.Join(p.PathPlatformSST(), "src/auto/run.ts")),
 			filepath.ToSlash(p.PathConfig()),
 		),
 	})

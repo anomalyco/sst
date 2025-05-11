@@ -34,7 +34,7 @@ var transformers = []ErrorTransformer{
 	exact(project.ErrProtectedStage, "Cannot remove protected stage. To remove a protected stage edit your sst.config.ts and remove the `protect` property."),
 	exact(provider.ErrLockNotFound, "This app / stage is not locked"),
 	exact(aws.ErrAppsyncNotReady, "SST creates an appsync event api to power live lambda. After 10 seconds of waiting this cli could not connect to it."),
-	exact(js.ErrTopLevelImport, "Your sst.config.ts has top level imports - this is not allowed. Move imports inside the function they are used and do a dynamic import: `const mod = await import(\"./mod\")`"),
+	exact(js.ErrTopLevelImport, "Your sst.config.ts has top level imports - this is not allowed. Move imports inside the run function and do a dynamic import: `const mod = await import(\"./mod\")`"),
 	match(func(err *project.ErrBuildFailed) string {
 		result := "Failed to build sst.config.ts"
 		for _, msg := range err.Errors {
@@ -51,6 +51,9 @@ var transformers = []ErrorTransformer{
 	}),
 	match(func(err *project.ErrVersionMismatch) string {
 		return fmt.Sprintf("You are using v%s which does not match v%s in your \"sst.config.ts\".", err.Needed, err.Received)
+	}),
+	match(func(err *project.ErrPluginNotFound) string {
+		return fmt.Sprintf("Could not find plugin %s@%s", err.Name, err.Version)
 	}),
 	func(err error) (bool, error) {
 		msg := err.Error()

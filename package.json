@@ -4,6 +4,7 @@
     "www",
     "platform",
     "component",
+    "plugin/*",
     "sdk/js"
   ]
 }

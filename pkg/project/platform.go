@@ -26,7 +26,7 @@ func (p *Project) CheckPlatform(version string) bool {
 
 func (p *Project) CopyPlatform(version string) error {
 	slog.Info("installing platform")
-	os.RemoveAll(p.PathPlatformDir())
+	os.RemoveAll(p.PathPlatformSST())
 	platformDir := p.PathPlatformSST()
 	os.MkdirAll(platformDir, 0755)
 	err := platform.CopyTo(".", platformDir)

@@ -5,15 +5,6 @@
 
 declare module "sst" {
   export interface Resource {
-    "Hono": {
-      "name": string
-      "type": "sst.aws.Function"
-      "url": string
-    }
-    "MyBucket": {
-      "name": string
-      "type": "sst.aws.Bucket"
-    }
   }
 }
 /// <reference path="sst-env.d.ts" />

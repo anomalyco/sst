@@ -14,31 +14,26 @@ import (
 var ErrTopLevelImport = fmt.Errorf("ErrTopLevelImport")
 
 type EvalOptions struct {
-	Dir     string
-	Outfile string
-	Code    string
-	Env     []string
-	Globals string
-	Banner  string
-	Inject  []string
-	Define  map[string]string
+	External []string
+	Dir      string
+	Outfile  string
+	Code     string
+	Env      []string
+	Globals  string
+	Banner   string
+	Inject   []string
+	Define   map[string]string
 }
 
 type PackageJson struct {
-	Name            string            `json:"name,omitempty"`
-	Version         string            `json:"version,omitempty"`
-	Type            string            `json:"type,omitempty"`
-	Dependencies    map[string]string `json:"dependencies,omitempty"`
-	DevDependencies map[string]string `json:"devDependencies,omitempty"`
-	Overrides       map[string]string `json:"overrides,omitempty"`
-	Pulumi          *struct {
-		Name    string `json:"name,omitempty"`
-		Version string `json:"version,omitempty"`
-	} `json:"pulumi,omitempty"`
-	SST *struct {
-		Name string `json:"name,omitempty"`
-	} `json:"sst,omitempty"`
-	Other map[string]interface{} `json:"-"`
+	Name            string                 `json:"name,omitempty"`
+	Version         string                 `json:"version,omitempty"`
+	Type            string                 `json:"type,omitempty"`
+	Dependencies    map[string]string      `json:"dependencies,omitempty"`
+	DevDependencies map[string]string      `json:"devDependencies,omitempty"`
+	Overrides       map[string]string      `json:"overrides,omitempty"`
+	Exports         map[string]interface{} `json:"exports,omitempty"`
+	Other           map[string]any         `json:"-"`
 }
 
 type Metafile struct {
@@ -83,6 +78,7 @@ const __dirname = topLevelFileUrlToPath(new topLevelURL(".", import.meta.url))
 		MainFields: []string{"module", "main"},
 		Format:     esbuild.FormatESModule,
 		Platform:   esbuild.PlatformNode,
+		Target:     esbuild.ES2023,
 		Sourcemap:  esbuild.SourceMapLinked,
 		Stdin: &esbuild.StdinOptions{
 			Contents:   input.Code,
@@ -130,17 +126,7 @@ const __dirname = topLevelFileUrlToPath(new topLevelURL(".", import.meta.url))
 				},
 			},
 		},
-		External: []string{
-			"@pulumi/*",
-			"undici",
-			"@pulumiverse/*",
-			"@sst-provider/*",
-			"@aws-sdk/*",
-			"esbuild",
-			"archiver",
-			"glob",
-			"vite", // The remix component uses vite to resolve the user's vite config file. We don't want to bundle it.
-		},
+		External: input.External,
 		Define:   input.Define,
 		Inject:   input.Inject,
 		Outfile:  outfile,

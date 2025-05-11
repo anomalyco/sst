@@ -10,6 +10,10 @@ func ResolvePlatformDir(cfgPath string) string {
 	return filepath.Join(ResolveWorkingDir(cfgPath), "platform")
 }
 
+func ResolvePlatformPackageJson(cfgPath string) string {
+	return filepath.Join(ResolvePlatformDir(cfgPath), "package.json")
+}
+
 func ResolveLogDir(cfgPath string) string {
 	return filepath.Join(ResolveWorkingDir(cfgPath), "log")
 }

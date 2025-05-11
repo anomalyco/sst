@@ -1,10 +1,12 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "name": "sst-component",
+  "name": "sst-plugin-platform",
+  "version": "0.0.5",
   "type": "module",
   "prettier": {},
   "exports": {
-    ".": "./src/components/index.ts"
+    ".": "./dist/esm/components/index.ts",
+    "./*": "./dist/esm/*"
   },
   "sst": {
     "name": "sst"
@@ -61,5 +63,8 @@
   },
   "overrides": {
     "string-width": "4.2.3"
-  }
+  },
+  "files": [
+    "dist"
+  ]
 }
