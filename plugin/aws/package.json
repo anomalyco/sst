@@ -1,14 +1,14 @@
 {
-  "name": "sst-plugin",
+  "name": "sst-plugin-aws",
   "version": "0.0.12",
   "type": "module",
   "scripts": {
-    "build": "tsc"
+    "build": "./script/build.ts"
   },
   "devDependencies": {
     "typescript": "5.8.3",
     "@tsconfig/node22": "22.0.1",
-    "@types/node": "^22.15.17"
+    "@types/node": "22.15.17"
   },
   "exports": {
     ".": "./dist/index.js",
@@ -21,6 +21,6 @@
     "@pulumi/pulumi": "3.169.0"
   },
   "sst": {
-    "name": "sst"
+    "name": "sst.aws"
   }
 }

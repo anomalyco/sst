@@ -9,6 +9,7 @@ export default $config({
       version: "3.10.13",
       plugins: {
         example: "0.0.10",
+        "sst-plugin-aws": "link:sst-plugin-aws",
       },
     };
   },

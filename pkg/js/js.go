@@ -19,7 +19,6 @@ type EvalOptions struct {
 	Outfile  string
 	Code     string
 	Env      []string
-	Globals  string
 	Banner   string
 	Inject   []string
 	Define   map[string]string
@@ -94,35 +93,12 @@ const __dirname = topLevelFileUrlToPath(new topLevelURL(".", import.meta.url))
 				Name: "DisallowImports",
 				Setup: func(build esbuild.PluginBuild) {
 					build.OnResolve(esbuild.OnResolveOptions{Filter: ".*"}, func(args esbuild.OnResolveArgs) (esbuild.OnResolveResult, error) {
-						if input.Globals == "" && filepath.Base(args.Importer) == "sst.config.ts" && args.Kind == esbuild.ResolveJSImportStatement {
+						if filepath.Base(args.Importer) == "sst.config.ts" && args.Kind == esbuild.ResolveJSImportStatement {
 							err = ErrTopLevelImport
 							return esbuild.OnResolveResult{}, ErrTopLevelImport
 						}
 						return esbuild.OnResolveResult{}, nil
 					})
-				},
-			},
-			{
-				Name: "InjectGlobals",
-				Setup: func(build esbuild.PluginBuild) {
-					build.OnLoad(esbuild.OnLoadOptions{Filter: `\.(js|ts|jsx|tsx)$`},
-						func(args esbuild.OnLoadArgs) (esbuild.OnLoadResult, error) {
-							if filepath.HasPrefix(args.Path, filepath.Join(input.Dir, ".sst")) {
-								return esbuild.OnLoadResult{}, nil
-							}
-							contents, err := os.ReadFile(args.Path)
-							if err != nil {
-								return esbuild.OnLoadResult{}, err
-							}
-							newContents := string(contents)
-							if !strings.Contains(args.Path, ".sst") {
-								newContents = input.Globals + "\n" + newContents
-							}
-							return esbuild.OnLoadResult{
-								Contents: &newContents,
-								Loader:   esbuild.LoaderDefault,
-							}, nil
-						})
 				},
 			},
 		},

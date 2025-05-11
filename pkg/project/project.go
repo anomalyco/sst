@@ -50,11 +50,12 @@ type Project struct {
 
 type Plugin struct {
 	Name    string                 `json:"name"`
-	Package string                 `json:"package"`
 	Version string                 `json:"version"`
 	Config  map[string]interface{} `json:"config"`
-	Alias   string                 `json:"alias"`
-	Hidden  bool                   `json:"hidden"`
+
+	Package string `json:"package"`
+	Alias   string `json:"alias"`
+	Hidden  bool   `json:"hidden"`
 }
 
 func Discover() (string, error) {
