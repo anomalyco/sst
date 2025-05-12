@@ -15,7 +15,6 @@ import { Vpc } from "./vpc";
 import { Vpc as VpcV1 } from "./vpc-v1.js";
 import { Task, TaskArgs } from "./task";
 import { VisibleError } from "../error";
-import { PrivateDnsNamespace } from "@pulumi/aws/servicediscovery";
 export type { ClusterArgs as ClusterV1Args } from "./cluster-v1";
 
 type ClusterVpcArgs = {
