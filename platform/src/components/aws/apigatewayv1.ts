@@ -610,6 +610,14 @@ export interface ApiGatewayV1RouteArgs {
      */
     integration?: Transform<apigateway.IntegrationArgs>;
   };
+
+  /**
+   * An existing parent resource for the route.
+   *
+   * By default, the route is added to the root path, but if you want to add the route to an
+   * existing path you can pass in the parent resource here.
+   */
+  parent?: apigateway.GetResourceResult;
 }
 
 export interface ApiGatewayV1IntegrationArgs {
@@ -761,12 +769,12 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
     this.endpointType = endpoint.types;
 
     function normalizeRegion() {
-      return getRegionOutput(undefined, { parent }).name;
+      return getRegionOutput(undefined, {parent}).name;
     }
 
     function normalizeEndpoint() {
       return output(args.endpoint).apply((endpoint) => {
-        if (!endpoint) return { types: "EDGE" as const };
+        if (!endpoint) return {types: "EDGE" as const};
 
         if (endpoint.type === "private" && !endpoint.vpcEndpointIds)
           throw new VisibleError(
@@ -774,13 +782,13 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
           );
 
         return endpoint.type === "regional"
-          ? { types: "REGIONAL" as const }
+          ? {types: "REGIONAL" as const}
           : endpoint.type === "private"
             ? {
-                types: "PRIVATE" as const,
-                vpcEndpointIds: endpoint.vpcEndpointIds,
-              }
-            : { types: "EDGE" as const };
+              types: "PRIVATE" as const,
+              vpcEndpointIds: endpoint.vpcEndpointIds,
+            }
+            : {types: "EDGE" as const};
       });
     }
 
@@ -804,9 +812,9 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
   public get url() {
     return this.apigDomain && this.apiMapping
       ? all([this.apigDomain.domainName, this.apiMapping.basePath]).apply(
-          ([domain, key]) =>
-            key ? `https://${domain}/${key}/` : `https://${domain}`,
-        )
+        ([domain, key]) =>
+          key ? `https://${domain}/${key}/` : `https://${domain}`,
+      )
       : interpolate`https://${this.api.id}.execute-api.${this.region}.amazonaws.com/${$app.stage}/`;
   }
 
@@ -932,14 +940,14 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
     handler: Input<string | FunctionArgs | FunctionArn>,
     args: ApiGatewayV1RouteArgs = {},
   ) {
-    const { method, path } = this.parseRoute(route);
-    this.createResource(path);
+    const {method, path, pathWithParent} = this.parseRoute(route, args);
+    this.createResource(path, args);
 
     const transformed = transform(
       this.constructorArgs.transform?.route?.args,
-      this.buildRouteId(method, path),
+      this.buildRouteId(method, pathWithParent),
       args,
-      { provider: this.constructorOpts.provider },
+      {provider: this.constructorOpts.provider},
     );
 
     const apigRoute = new ApiGatewayV1LambdaRoute(
@@ -951,8 +959,8 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
           executionArn: this.api.executionArn,
         },
         method,
-        path,
-        resourceId: this.resources[path],
+        path: pathWithParent,
+        resourceId: this.resources[pathWithParent],
         handler,
         handlerTransform: this.constructorArgs.transform?.route?.handler,
         ...transformed[1],
@@ -998,14 +1006,14 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
     integration: ApiGatewayV1IntegrationArgs,
     args: ApiGatewayV1RouteArgs = {},
   ) {
-    const { method, path } = this.parseRoute(route);
-    this.createResource(path);
+    const {method, path, pathWithParent} = this.parseRoute(route, args);
+    this.createResource(path, args);
 
     const transformed = transform(
       this.constructorArgs.transform?.route?.args,
-      this.buildRouteId(method, path),
+      this.buildRouteId(method, pathWithParent),
       args,
-      { provider: this.constructorOpts.provider },
+      {provider: this.constructorOpts.provider},
     );
 
     const apigRoute = new ApiGatewayV1IntegrationRoute(
@@ -1017,8 +1025,8 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
           executionArn: this.api.executionArn,
         },
         method,
-        path,
-        resourceId: this.resources[path],
+        path: pathWithParent,
+        resourceId: this.resources[pathWithParent],
         integration,
         ...transformed[1],
       },
@@ -1030,7 +1038,7 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
     return apigRoute;
   }
 
-  private parseRoute(route: string) {
+  private parseRoute(route: string, args: ApiGatewayV1RouteArgs) {
     const parts = route.split(" ");
     if (parts.length !== 2) {
       throw new VisibleError(
@@ -1058,7 +1066,7 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
         `Invalid path ${path} in route ${route}. Path must start with "/".`,
       );
 
-    return { method, path };
+    return {method, path, pathWithParent: (args.parent?.path ?? '') + path};
   }
 
   private buildRouteId(method: string, path: string) {
@@ -1068,29 +1076,35 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
     return `${this.constructorName}Route${suffix}`;
   }
 
-  private createResource(path: string) {
+  private createResource(path: string, args: ApiGatewayV1RouteArgs = {}) {
     const pathParts = path.replace(/^\//, "").split("/");
     for (let i = 0, l = pathParts.length; i < l; i++) {
-      const parentPath = "/" + pathParts.slice(0, i).join("/");
-      const subPath = "/" + pathParts.slice(0, i + 1).join("/");
-      if (!this.resources[subPath]) {
+      const parentPath = (args.parent?.path ?? '') + "/" + pathParts.slice(0, i).join("/");
+      const subPath = (args.parent?.path ?? '') + "/" + pathParts.slice(0, i + 1).join("/");
+      if (!this.resources[subPath] && !args.parent?.path.startsWith(subPath)) {
         const suffix = logicalName(
           hashStringToPrettyString([this.api.id, subPath].join(""), 6),
         );
-        const resource = new apigateway.Resource(
-          `${this.constructorName}Resource${suffix}`,
-          {
-            restApi: this.api.id,
-            parentId:
-              parentPath === "/"
-                ? this.api.rootResourceId
-                : this.resources[parentPath],
-            pathPart: pathParts[i],
-          },
-          { parent: this },
-        );
 
-        this.resources[subPath] = resource.id;
+        let resourceId: Output<string> | undefined;
+        if (args.parent && subPath === `${args.parent.path}/`) {
+          resourceId = output(args.parent.id)
+        } else {
+          const resource = new apigateway.Resource(
+            `${this.constructorName}Resource${suffix}`,
+            {
+              restApi: this.api.id,
+              parentId: parentPath === `${args.parent?.path}/`
+                ? args.parent?.id ?? this.api.rootResourceId
+                : this.resources[parentPath],
+              pathPart: pathParts[i],
+            },
+            {parent: this},
+          );
+          resourceId = resource.id;
+        }
+
+        this.resources[subPath] = resourceId;
       }
     }
   }
