@@ -41,9 +41,9 @@ type ClusterVpcArgs = {
    */
   loadBalancerSubnets: Input<Input<string>[]>;
   /**
-   * The Cloud Map namespace to use for the service.
+   * The ID of the Cloud Map namespace to use for the service.
    */
-  cloudmapNamespace?: Input<PrivateDnsNamespace>
+  cloudmapNamespaceId?: Input<string>;
   /**
    * The name of the Cloud Map namespace to use for the service.
    */
@@ -232,8 +232,8 @@ export class Cluster extends Component {
           );
 
         if (
-          (vpc.cloudmapNamespace && !vpc.cloudmapNamespaceName) ||
-          (!vpc.cloudmapNamespace && vpc.cloudmapNamespaceName)
+          (vpc.cloudmapNamespaceId && !vpc.cloudmapNamespaceName) ||
+          (!vpc.cloudmapNamespaceId && vpc.cloudmapNamespaceName)
         )
           throw new VisibleError(
             `You must provide both "vpc.cloudmapNamespaceId" and "vpc.cloudmapNamespaceName" for the "${name}" Cluster component.`,
