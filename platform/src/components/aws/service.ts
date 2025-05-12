@@ -1702,7 +1702,7 @@ export class Service extends Component implements Link.Linkable {
           ),
           containerSubnets: vpc.publicSubnets,
           securityGroups: vpc.securityGroups,
-          cloudmapNamespaceId: vpc.nodes.cloudmapNamespace.id,
+          cloudmapNamespace: vpc.nodes.cloudmapNamespace,
           cloudmapNamespaceName: vpc.nodes.cloudmapNamespace.name,
         };
       }
@@ -2125,24 +2125,24 @@ export class Service extends Component implements Link.Linkable {
     }
 
     function createCloudmapService() {
-      return output(vpc.cloudmapNamespaceId).apply((cloudmapNamespaceId) => {
-        if (!cloudmapNamespaceId) return;
+      return output(vpc.cloudmapNamespace).apply((cloudmapNamespace) => {
+        if (!cloudmapNamespace?.id) return;
 
         return new servicediscovery.Service(
           `${name}CloudmapService`,
           {
             name: `${name}.${$app.stage}.${$app.name}`,
-            namespaceId: cloudmapNamespaceId,
+            namespaceId: cloudmapNamespace.id,
             forceDestroy: true,
             dnsConfig: {
-              namespaceId: cloudmapNamespaceId,
+              namespaceId: cloudmapNamespace.id,
               dnsRecords: [
                 ...(args.serviceRegistry ? [{ ttl: 60, type: "SRV" }] : []),
                 { ttl: 60, type: "A" },
               ],
             },
           },
-          { parent: self },
+          { parent: self, dependsOn: [cloudmapNamespace] },
         );
       });
     }
@@ -2222,7 +2222,7 @@ export class Service extends Component implements Link.Linkable {
                 },
                 waitForSteadyState: wait,
               },
-              { parent: self },
+              { parent: self, dependsOn: cloudmapService ? [cloudmapService] : [] },
             ),
           ),
       );

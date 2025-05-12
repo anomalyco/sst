@@ -15,6 +15,7 @@ import { Vpc } from "./vpc";
 import { Vpc as VpcV1 } from "./vpc-v1.js";
 import { Task, TaskArgs } from "./task";
 import { VisibleError } from "../error";
+import { PrivateDnsNamespace } from "@pulumi/aws/servicediscovery";
 export type { ClusterArgs as ClusterV1Args } from "./cluster-v1";
 
 type ClusterVpcArgs = {
@@ -40,9 +41,9 @@ type ClusterVpcArgs = {
    */
   loadBalancerSubnets: Input<Input<string>[]>;
   /**
-   * The ID of the Cloud Map namespace to use for the service.
+   * The Cloud Map namespace to use for the service.
    */
-  cloudmapNamespaceId?: Input<string>;
+  cloudmapNamespace?: Input<PrivateDnsNamespace>
   /**
    * The name of the Cloud Map namespace to use for the service.
    */
@@ -231,8 +232,8 @@ export class Cluster extends Component {
           );
 
         if (
-          (vpc.cloudmapNamespaceId && !vpc.cloudmapNamespaceName) ||
-          (!vpc.cloudmapNamespaceId && vpc.cloudmapNamespaceName)
+          (vpc.cloudmapNamespace && !vpc.cloudmapNamespaceName) ||
+          (!vpc.cloudmapNamespace && vpc.cloudmapNamespaceName)
         )
           throw new VisibleError(
             `You must provide both "vpc.cloudmapNamespaceId" and "vpc.cloudmapNamespaceName" for the "${name}" Cluster component.`,
