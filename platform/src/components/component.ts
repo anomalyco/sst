@@ -282,6 +282,7 @@ export class Component extends ComponentResource {
               64,
               { lower: true },
             ],
+            "aws:sfn/stateMachine:StateMachine": ["name", 80],
             "aws:sns/topic:Topic": [
               "name",
               256,

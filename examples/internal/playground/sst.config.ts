@@ -168,11 +168,24 @@ export default $config({
 
     function addApiV1() {
       const api = new sst.aws.ApiGatewayV1("MyApiV1");
-      api.route("GET /", {
-        handler: "functions/apiv2/index.handler",
-        link: [bucket],
-      });
+      api.route(
+        "GET /",
+        {
+          handler: "functions/apiv2/index.handler",
+          link: [bucket],
+        },
+        {
+          apiKey: true,
+        }
+      );
       api.deploy();
+      const plan = api.addUsagePlan("MyUsagePlan", {
+        quota: { limit: 1000, period: "day" },
+      });
+      plan.addApiKey("MyApiKey", {
+        value: "1234567890123456789012345678901234567890",
+      });
+
       return api;
     }
 

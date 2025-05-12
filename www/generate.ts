@@ -858,7 +858,9 @@ function renderType(
       console.error(type);
       throw new Error(`Unsupported templateLiteral type`);
     }
-    return `<code class="symbol">&ldquo;</code><code class="primitive">${type.head}$\\{${type.tail[0][0].name}\\}${type.tail[0][1]}</code><code class="symbol">&rdquo;</code>`;
+    const head = type.head.replace("{", "\\{").replace("}", "\\}");
+    const tail = type.tail[0][1].replace("{", "\\{").replace("}", "\\}");
+    return `<code class="symbol">&ldquo;</code><code class="primitive">${head}$\\{${type.tail[0][0].name}\\}${tail}</code><code class="symbol">&rdquo;</code>`;
   }
   function renderUnionType(type: TypeDoc.UnionType) {
     return type.types
@@ -1004,6 +1006,29 @@ function renderType(
       StaticSite: "static-site",
       Task: "task",
       Vpc: "vpc",
+      State: "step-functions/state",
+      CatchArgs: "step-functions/state",
+      RetryArgs: "step-functions/state",
+      TaskArgs: "step-functions/task",
+      Choice: "step-functions/choice",
+      ChoiceArgs: "step-functions/choice",
+      Fail: "step-functions/fail",
+      FailArgs: "step-functions/fail",
+      Map: "step-functions/map",
+      MapArgs: "step-functions/map",
+      Parallel: "step-functions/parallel",
+      ParallelArgs: "step-functions/parallel",
+      Pass: "step-functions/pass",
+      PassArgs: "step-functions/pass",
+      Succeed: "step-functions/succeed",
+      SucceedArgs: "step-functions/succeed",
+      Wait: "step-functions/wait",
+      WaitArgs: "step-functions/wait",
+      EcsRunTaskArgs: "step-functions/task",
+      EventBridgePutEventsArgs: "step-functions/task",
+      SqsSendMessageArgs: "step-functions/task",
+      SnsPublishArgs: "step-functions/task",
+      LambdaInvokeArgs: "step-functions/task",
     }[type.name];
     if (externalModule) {
       const hash = type.name.endsWith("Args")
@@ -2121,6 +2146,24 @@ function patchCode() {
     "\ntype AwsPermission = {};\n" +
     "\ntype CloudflareBinding = {};\n"
   );
+  // patch StepFunctions
+  ["map.ts", "parallel.ts", "pass.ts", "task.ts", "wait.ts"].forEach((file) => {
+    fs.cpSync(
+      `../platform/src/components/aws/step-functions/${file}`,
+      `../platform/src/components/aws/step-functions/${file}.bk`
+    );
+    fs.writeFileSync(
+      `../platform/src/components/aws/step-functions/${file}`,
+      fs
+        .readFileSync(`../platform/src/components/aws/step-functions/${file}`)
+        .toString()
+        .trim()
+        .replace(
+          "public next<T extends State>(state: T): T {",
+          "public next(state: State): State {"
+        )
+    );
+  });
 }
 
 function restoreCode() {
@@ -2136,6 +2179,13 @@ function restoreCode() {
     "../platform/src/components/linkable.ts.bk",
     "../platform/src/components/linkable.ts"
   );
+  // restore StepFunctions
+  ["map.ts", "parallel.ts", "pass.ts", "task.ts", "wait.ts"].forEach((file) => {
+    fs.renameSync(
+      `../platform/src/components/aws/step-functions/${file}.bk`,
+      `../platform/src/components/aws/step-functions/${file}`
+    );
+  });
 }
 
 async function buildComponents() {
@@ -2193,6 +2243,7 @@ async function buildComponents() {
       "../platform/src/components/aws/mysql.ts",
       "../platform/src/components/aws/postgres.ts",
       "../platform/src/components/aws/postgres-v1.ts",
+      "../platform/src/components/aws/step-functions.ts",
       "../platform/src/components/aws/vector.ts",
       "../platform/src/components/aws/astro.ts",
       "../platform/src/components/aws/nextjs.ts",
@@ -2231,6 +2282,15 @@ async function buildComponents() {
       "../platform/src/components/aws/iam-edit.ts",
       "../platform/src/components/aws/permission.ts",
       "../platform/src/components/aws/providers/function-environment-update.ts",
+      "../platform/src/components/aws/step-functions/choice.ts",
+      "../platform/src/components/aws/step-functions/fail.ts",
+      "../platform/src/components/aws/step-functions/map.ts",
+      "../platform/src/components/aws/step-functions/parallel.ts",
+      "../platform/src/components/aws/step-functions/pass.ts",
+      "../platform/src/components/aws/step-functions/state.ts",
+      "../platform/src/components/aws/step-functions/succeed.ts",
+      "../platform/src/components/aws/step-functions/task.ts",
+      "../platform/src/components/aws/step-functions/wait.ts",
       "../platform/src/components/cloudflare/binding.ts",
       "../platform/src/components/cloudflare/dns.ts",
       "../platform/src/components/vercel/dns.ts",
