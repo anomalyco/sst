@@ -7,8 +7,10 @@ import {
 
 import { app } from "../app.js";
 import { VisibleError } from "../error.js";
+import { createRPC } from "../rpc.js";
 
 export async function run(program: automation.PulumiFn) {
+  createRPC();
   addTransformationToRetainResourcesOnDelete();
   addTransformationToAddTags();
   addTransformationToCheckBucketsHaveMultiplePolicies();

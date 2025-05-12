@@ -342,11 +342,21 @@ console.log("~j" + JSON.stringify(await mod.app({
 
 	proj.plugins["sst-plugin"] = &Plugin{
 		Name:    "sst-plugin",
-		Version: "0.0.12",
+		Version: input.Version,
 		Hidden:  true,
 		Config:  map[string]interface{}{},
 	}
-	proj.plugins["sst-plugin"].Version = "link:sst-plugin"
+	proj.plugins["sst-plugin-aws"] = &Plugin{
+		Name:    "sst-plugin-aws",
+		Version: input.Version,
+		Hidden:  true,
+		Config:  map[string]interface{}{},
+	}
+
+	if input.Version == "dev" {
+		proj.plugins["sst-plugin"].Version = "link:sst-plugin"
+		proj.plugins["sst-plugin-aws"].Version = "link:sst-plugin-aws"
+	}
 
 	err = proj.loadPlugins()
 	if err != nil {

@@ -9,11 +9,35 @@ export default $config({
       version: "3.10.13",
       plugins: {
         example: "0.0.10",
-        "sst-plugin-aws": "link:sst-plugin-aws",
       },
     };
   },
   async run() {
-    new aws.s3.Bucket("MyBucket", {});
+    const MyResource = sst.resource({
+      type: "MyResource",
+      async create(inputs: { butt: number }) {
+        return {
+          id: "123",
+          outputs: {
+            hello: "world",
+            updated: Date.now(),
+          },
+        };
+      },
+      async delete(id, inputs) {
+        console.log("remove");
+      },
+      async update(id, state, news) {
+        return {
+          ...state.outputs,
+          updated: Date.now(),
+        };
+      },
+    });
+
+    const resource = new MyResource("my-resource", {
+      butt: Date.now(),
+    });
+    resource.updated.apply(console.log);
   },
 });
