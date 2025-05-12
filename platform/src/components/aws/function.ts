@@ -88,7 +88,7 @@ export type FunctionPermissionArgs = {
    * }
    * ```
    */
-  resources: Input<string>[];
+  resources: Input<Input<string>[]>;
 };
 
 interface FunctionUrlCorsArgs {

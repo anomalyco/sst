@@ -116,6 +116,7 @@ const sidebar = [
           "docs/component/aws/kinesis-stream",
           "docs/component/aws/apigatewayv1",
           "docs/component/aws/apigatewayv2",
+          "docs/component/aws/step-functions",
           "docs/component/aws/cognito-user-pool",
           "docs/component/aws/cognito-identity-pool",
           "docs/component/aws/apigateway-websocket",
