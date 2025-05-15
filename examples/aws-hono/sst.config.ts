@@ -9,6 +9,7 @@ export default $config({
       version: "3.10.13",
       plugins: {
         example: "0.0.10",
+        myplugin: "workspace:*",
       },
     };
   },
@@ -35,9 +36,10 @@ export default $config({
       },
     });
 
-    const resource = new MyResource("my-resource", {
-      butt: Date.now(),
+    let first = false;
+    process.on("beforeExit", () => {
+      if (first) return;
+      first = true;
     });
-    resource.updated.apply(console.log);
   },
 });

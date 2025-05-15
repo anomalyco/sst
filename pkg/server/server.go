@@ -117,10 +117,7 @@ func New() (*Server, error) {
 			select {
 			case <-ctx.Done():
 				return
-			case req, ok := <-tunnel:
-				if !ok {
-					return
-				}
+			case req := <-tunnel:
 				err := json.NewEncoder(w).Encode(req)
 				if err != nil {
 					log.Error("failed to encode rpc request", "err", err)
