@@ -202,20 +202,6 @@ export class SnsTopic extends Component {
   }
 
   /**
-   * The ARN of the SNS Topic.
-   */
-  public get arn() {
-    return this.topic.arn;
-  }
-
-  /**
-   * The name of the SNS Topic.
-   */
-  public get name() {
-    return this.topic.name;
-  }
-
-  /**
    * The underlying [resources](/docs/components/#nodes) this component creates.
    */
   public get nodes() {

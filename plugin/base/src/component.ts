@@ -53,6 +53,7 @@ export class Component extends ComponentResource {
       transform({ name, props: args, opts });
     }
     super(type, name, args, {
+      ...opts,
       transformations: [
         (args) => {
           // Ensure component names do not contain spaces
@@ -92,7 +93,6 @@ export class Component extends ComponentResource {
         }),
         ...(opts?.transformations ?? []),
       ],
-      ...opts,
     });
   }
 }

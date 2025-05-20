@@ -87,7 +87,7 @@
       "name": "sst",
       "version": "0.0.0",
       "bin": {
-        "sst": "./bin/sst.mjs"
+        "sst": "./bin/sst.mjs",
       },
       "dependencies": {
         "aws-sdk": "2.1692.0",

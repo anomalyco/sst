@@ -26,6 +26,7 @@ export class Component extends BaseComponent {
     opts?: ComponentResourceOptions
   ) {
     super(type, name, args, {
+      ...opts,
       transformations: [
         // Ensure logical and physical names are prefixed
         (args) => {
@@ -306,7 +307,6 @@ export class Component extends BaseComponent {
           };
         },
       ],
-      ...opts,
     });
 
     this.componentType = type;
