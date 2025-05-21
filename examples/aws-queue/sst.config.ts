@@ -15,7 +15,11 @@ export default $config({
   },
   async run() {
     const queue = new sst.aws.Queue("MyQueue");
-    queue.subscribe("subscriber.handler");
+    queue.subscribe("subscriber.handler", {
+      batch: {
+        partialResponses: true,
+      }
+    });
 
     const app = new sst.aws.Function("MyApp", {
       handler: "publisher.handler",
