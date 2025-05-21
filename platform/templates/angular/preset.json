@@ -1,0 +1,15 @@
+{
+  "steps": [
+    {
+      "type": "copy"
+    },
+    {
+      "type": "npm",
+      "properties": {
+        "file": "package.json",
+        "package": "sst"
+      }
+    }
+  ]
+}
+

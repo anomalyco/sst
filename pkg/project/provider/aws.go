@@ -539,6 +539,33 @@ func (a *AwsHome) pathForPassphrase(app string, stage string) string {
 	return "/" + strings.Join([]string{"sst", "passphrase", app, stage}, "/")
 }
 
+func (a *AwsHome) get(key string) (io.Reader, error) {
+	bootstrap, err := a.provider.Bootstrap(a.provider.config.Region)
+	if err != nil {
+		return nil, err
+	}
+	s3Client := s3.NewFromConfig(a.provider.config)
+
+	result, err := s3Client.GetObject(context.TODO(), &s3.GetObjectInput{
+		Bucket: aws.String(bootstrap.State),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		var apiErr smithy.APIError
+		if errors.As(err, &apiErr) {
+			if apiErr.ErrorCode() == "NoSuchBucket" {
+				return nil, ErrBucketMissing
+			}
+		}
+		var nsk *s3types.NoSuchKey
+		if errors.As(err, &nsk) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return result.Body, nil
+}
+
 func (a *AwsHome) getData(key, app, stage string) (io.Reader, error) {
 	bootstrap, err := a.provider.Bootstrap(a.provider.config.Region)
 	if err != nil {
@@ -567,6 +594,10 @@ func (a *AwsHome) getData(key, app, stage string) (io.Reader, error) {
 }
 
 func (a *AwsHome) putData(key, app, stage string, data io.Reader) error {
+	return a.put(a.pathForData(key, app, stage), "application/json", data)
+}
+
+func (a *AwsHome) put(key string, contentType string, data io.Reader) error {
 	bootstrap, err := a.provider.Bootstrap(a.provider.config.Region)
 	if err != nil {
 		return err
@@ -575,9 +606,9 @@ func (a *AwsHome) putData(key, app, stage string, data io.Reader) error {
 
 	_, err = s3Client.PutObject(context.TODO(), &s3.PutObjectInput{
 		Bucket:      aws.String(bootstrap.State),
-		Key:         aws.String(a.pathForData(key, app, stage)),
+		Key:         aws.String(key),
 		Body:        data,
-		ContentType: aws.String("application/json"),
+		ContentType: aws.String(contentType),
 	})
 	if err != nil {
 		return err

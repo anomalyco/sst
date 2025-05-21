@@ -1,0 +1,22 @@
+{
+  "steps": [
+    {
+      "type": "copy"
+    },
+    {
+      "type": "npm",
+      "properties": {
+        "file": "package.json",
+        "package": "sst"
+      }
+    },
+    {
+      "type": "npm",
+      "properties": {
+        "file": "package.json",
+        "package": "@types/aws-lambda",
+        "dev": true
+      }
+    }
+  ]
+}

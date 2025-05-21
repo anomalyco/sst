@@ -16,11 +16,7 @@ export default $config({
     const { MyResource } = await import("./resource");
 
     new MyResource("my-resource", {
-      butt: 1,
-    });
-
-    new sst.aws.SnsTopic("MyTopic", {
-      fifo: true,
+      butt: Date.now(),
     });
 
     let first = false;

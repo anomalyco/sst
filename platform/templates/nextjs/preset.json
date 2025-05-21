@@ -1,0 +1,34 @@
+{
+  "steps": [
+    {
+      "type": "copy"
+    },
+    {
+      "type": "patch",
+      "properties": {
+        "file": "tsconfig.json",
+        "patch": [
+          {
+            "op": "add",
+            "path": "/exclude/-",
+            "value": "sst.config.ts"
+          }
+        ]
+      }
+    },
+    {
+      "type": "npm",
+      "properties": {
+        "file": "package.json",
+        "package": "sst"
+      }
+    },
+    {
+      "type": "gitignore",
+      "properties": {
+        "name": "# open-next",
+        "path": ".open-next"
+      }
+    }
+  ]
+}

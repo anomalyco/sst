@@ -23,6 +23,7 @@ import (
 	"github.com/sst/sst/v3/pkg/id"
 	"github.com/sst/sst/v3/pkg/js"
 	"github.com/sst/sst/v3/pkg/process"
+	"github.com/sst/sst/v3/pkg/project/path"
 	"github.com/sst/sst/v3/pkg/project/provider"
 	"github.com/sst/sst/v3/pkg/telemetry"
 	"github.com/sst/sst/v3/pkg/types"
@@ -169,9 +170,10 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	external = append(external, "sst-plugin")
 	external = append(external, "@pulumi/pulumi")
 	buildResult, err := js.Build(js.EvalOptions{
-		Dir:      p.PathRoot(),
-		Outfile:  outfile,
-		External: external,
+		ResourceDir: workdir.path,
+		Dir:         p.PathRoot(),
+		Outfile:     outfile,
+		External:    external,
 		Define: map[string]string{
 			"$app": string(appBytes),
 			"$cli": string(cliBytes),
@@ -198,6 +200,21 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	if !flag.SST_NO_CLEANUP {
 		defer js.Cleanup(buildResult)
 	}
+
+	err = filepath.Walk(path.ResolveResourceDir(p.PathConfig()), func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		fmt.Println(path)
+		err = provider.PutResource(p.home, path)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
 
 	// disable for now until we hash env too
 	if input.SkipHash != "" && buildResult.OutputFiles[0].Hash == input.SkipHash && false {

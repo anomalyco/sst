@@ -16,14 +16,15 @@ import (
 var ErrTopLevelImport = fmt.Errorf("ErrTopLevelImport")
 
 type EvalOptions struct {
-	External []string
-	Dir      string
-	Outfile  string
-	Code     string
-	Env      []string
-	Banner   string
-	Inject   []string
-	Define   map[string]string
+	External    []string
+	Dir         string
+	ResourceDir string
+	Outfile     string
+	Code        string
+	Env         []string
+	Banner      string
+	Inject      []string
+	Define      map[string]string
 }
 
 type PackageJson struct {
@@ -107,7 +108,7 @@ const __dirname = topLevelFileUrlToPath(new topLevelURL(".", import.meta.url))
 				Name: "ExtractResources",
 				Setup: func(build esbuild.PluginBuild) {
 					pattern := regexp.MustCompile(`(export\s+const\s+)([a-zA-Z0-9_]+)(\s*=\s*sst\.resource\s*\()(\s*\{)`)
-					dir := filepath.Join(filepath.Dir(outfile), "resources")
+					dir := filepath.Join(filepath.Dir(outfile), "resource")
 					os.RemoveAll(dir)
 					os.MkdirAll(dir, 0755)
 
@@ -136,7 +137,6 @@ const __dirname = topLevelFileUrlToPath(new topLevelURL(".", import.meta.url))
 							})
 							if found {
 								processedContent = "import { resource } from \"sst-plugin\";\n" + processedContent
-								fmt.Println(processedContent)
 								result := esbuild.Build(esbuild.BuildOptions{
 									AbsWorkingDir: filepath.Dir(args.Path),
 									External:      []string{"sst-plugin"},
@@ -147,7 +147,7 @@ const __dirname = topLevelFileUrlToPath(new topLevelURL(".", import.meta.url))
 										Contents:   processedContent,
 										Loader:     esbuild.LoaderTS,
 									},
-									Outfile: filepath.Join(dir, hash+".js"),
+									Outfile: filepath.Join(dir, hash+".mjs"),
 									Bundle:  true,
 									Write:   true,
 									Format:  esbuild.FormatESModule,

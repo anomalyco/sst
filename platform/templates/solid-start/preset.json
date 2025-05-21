@@ -1,0 +1,42 @@
+{
+  "steps": [
+    {
+      "type": "copy"
+    },
+    {
+      "type": "patch",
+      "properties": {
+        "file": "package.json",
+        "patch": [
+          {
+            "op": "add",
+            "path": "/overrides/nitropack",
+            "value": "npm:nitropack-nightly@latest"
+          }
+        ]
+      }
+    },
+    {
+      "type": "npm",
+      "properties": {
+        "file": "package.json",
+        "package": "sst"
+      }
+    },
+    {
+      "type": "instructions",
+      "properties": [
+        "Next steps: update app.config.ts",
+        "",
+        "export default defineConfig({",
+        "  server: {",
+        "    preset: \"aws-lambda\",",
+        "    awsLambda: {",
+        "      streaming: true,",
+        "    },",
+        "  },",
+        "});"
+      ]
+    }
+  ]
+}

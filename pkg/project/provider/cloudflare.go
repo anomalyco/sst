@@ -131,13 +131,27 @@ func (c *CloudflareHome) Bootstrap() error {
 //go:linkname makeRequestContext github.com/cloudflare/cloudflare-go.(*API).makeRequestContext
 func makeRequestContext(*cloudflare.API, context.Context, string, string, interface{}) ([]byte, error)
 
-func (c *CloudflareHome) putData(kind, app, stage string, data io.Reader) error {
-	path := filepath.Join(kind, app, stage)
-	_, err := makeRequestContext(c.provider.api, context.Background(), http.MethodPut, "/accounts/"+c.provider.identifier.Identifier+"/r2/buckets/"+c.bootstrap.State+"/objects/"+path, data)
+func (c *CloudflareHome) put(key string, contentType string, data io.Reader) error {
+	_, err := makeRequestContext(c.provider.api, context.Background(), http.MethodPut, "/accounts/"+c.provider.identifier.Identifier+"/r2/buckets/"+c.bootstrap.State+"/objects/"+key, data)
 	if err != nil {
 		return err
 	}
 	return nil
+}
+
+func (c *CloudflareHome) putData(kind, app, stage string, data io.Reader) error {
+	return c.put(filepath.Join(kind, app, stage), "application/json", data)
+}
+
+func (c *CloudflareHome) get(key string) (io.Reader, error) {
+	data, err := makeRequestContext(c.provider.api, context.Background(), http.MethodGet, "/accounts/"+c.provider.identifier.Identifier+"/r2/buckets/"+c.bootstrap.State+"/objects/"+key, nil)
+	if err != nil {
+		if err.Error() == "The specified key does not exist. (10007)" {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return bytes.NewReader(data), nil
 }
 
 func (c *CloudflareHome) getData(kind, app, stage string) (io.Reader, error) {

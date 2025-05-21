@@ -11,13 +11,4 @@ export const MyResource = sst.resource({
       },
     };
   },
-  async delete(id, inputs) {
-    console.log("remove");
-  },
-  async update(id, state, inputs) {
-    return {
-      ...state.outputs,
-      updated: Date.now(),
-    };
-  },
 });

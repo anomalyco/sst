@@ -1,0 +1,43 @@
+{
+  "steps": [
+    {
+      "type": "copy"
+    },
+    {
+      "type": "patch",
+      "properties": {
+        "file": "package.json",
+        "patch": [
+          {
+            "op": "add",
+            "path": "/overrides/nitropack",
+            "value": "npm:nitropack-nightly@latest"
+          }
+        ]
+      }
+    },
+    {
+      "type": "npm",
+      "properties": {
+        "file": "package.json",
+        "package": "sst"
+      }
+    },
+    {
+      "type": "instructions",
+      "properties": [
+        "Next steps: update plugins in vite.config.ts",
+        "",
+        "export default defineConfig({",
+        "  plugins: [",
+        "    analog({",
+        "      nitro: {",
+        "        preset: \"aws-lambda\",",
+        "      }",
+        "    })",
+        "  ],",
+        "});"
+      ]
+    }
+  ]
+}

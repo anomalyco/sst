@@ -5,6 +5,7 @@ class DynamicResource extends CustomResource {
   constructor(
     public readonly type: string,
     name: string,
+    source: any,
     inputs: {},
   ) {
     super(
@@ -12,6 +13,7 @@ class DynamicResource extends CustomResource {
       name,
       {
         type,
+        source,
         inputs,
         outputs: undefined,
       },
@@ -56,7 +58,8 @@ export function resource<Inputs, Outputs>(
   definitions[def.type] = def;
   return class {
     constructor(name: string, inputs: Inputs) {
-      const res = new DynamicResource(def.type, name, inputs);
+      // @ts-ignore
+      const res = new DynamicResource(def.type, name, def["__source"], inputs);
       return new Proxy(res, {
         get(target, prop) {
           if (prop in target) {
@@ -66,6 +69,7 @@ export function resource<Inputs, Outputs>(
         },
       });
     }
+    static definition = def;
   } as any;
 }
 
