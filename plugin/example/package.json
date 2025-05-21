@@ -6,8 +6,9 @@
     "build": "tsc"
   },
   "devDependencies": {
-    "typescript": "5.8.3",
-    "@tsconfig/node22": "22.0.1"
+    "@tsconfig/node22": "22.0.1",
+    "@types/node": "22.15.17",
+    "typescript": "5.8.3"
   },
   "exports": {
     ".": "./dist/index.js",
@@ -16,10 +17,6 @@
   "files": [
     "dist"
   ],
-  "dependencies": {
-    "@pulumi/pulumi": "^3.169.0",
-    "@types/node": "^22.15.17"
-  },
   "sst": {
     "name": "sst.example"
   }

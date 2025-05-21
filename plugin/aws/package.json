@@ -6,9 +6,9 @@
     "build": "./script/build.ts"
   },
   "devDependencies": {
-    "typescript": "5.8.3",
     "@tsconfig/node22": "22.0.1",
-    "@types/node": "22.15.17"
+    "@types/node": "22.15.17",
+    "typescript": "5.8.3"
   },
   "exports": {
     ".": "./dist/index.js",
@@ -19,8 +19,8 @@
   ],
   "dependencies": {
     "@pulumi/aws": "^6.81.0",
-    "sst-plugin": "workspace:*",
-    "@pulumi/pulumi": "3.169.0"
+    "@pulumi/pulumi": "3.169.0",
+    "sst-plugin": "workspace:*"
   },
   "sst": {
     "name": "sst.aws"

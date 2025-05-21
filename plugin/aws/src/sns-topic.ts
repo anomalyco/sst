@@ -2,7 +2,7 @@ import { ComponentResourceOptions, output } from "@pulumi/pulumi";
 import { sns } from "@pulumi/aws";
 import { Transform, transform } from "sst-plugin/component";
 import { Input } from "sst-plugin/input";
-import { Component } from "./component.js";
+import { AWSComponent } from "./component.js";
 
 export interface SnsTopicArgs {
   /**
@@ -149,13 +149,23 @@ interface SnsTopicRef {
  * }));
  * ```
  */
-export class SnsTopic extends Component {
+export class SnsTopic extends AWSComponent {
   private constructorName: string;
   private constructorOpts: ComponentResourceOptions;
   private topic: sns.Topic;
 
+  /**
+   * The ARN of the SNS Topic.
+   */
   public get arn() {
     return this.topic.arn;
+  }
+
+  /**
+   * The name of the SNS Topic.
+   */
+  public get name() {
+    return this.topic.name;
   }
 
   constructor(

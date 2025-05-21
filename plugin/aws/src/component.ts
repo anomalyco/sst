@@ -15,7 +15,7 @@ import { Component as BaseComponent } from "sst-plugin/component";
 export const outputId =
   "Calling [toString] on an [Output<T>] is not supported.\n\nTo get the value of an Output<T> as an Output<string> consider either:\n1: o.apply(v => `prefix${v}suffix`)\n2: pulumi.interpolate `prefix${v}suffix`\n\nSee https://www.pulumi.com/docs/concepts/inputs-outputs for more details.\nThis function may throw in a future version of @pulumi/pulumi.";
 
-export class Component extends BaseComponent {
+export class AWSComponent extends BaseComponent {
   private componentType: string;
   private componentName: string;
 
@@ -23,7 +23,7 @@ export class Component extends BaseComponent {
     type: string,
     name: string,
     args?: Inputs,
-    opts?: ComponentResourceOptions
+    opts?: ComponentResourceOptions,
   ) {
     super(type, name, args, {
       ...opts,
@@ -227,7 +227,7 @@ export class Component extends BaseComponent {
               {
                 suffix: () =>
                   output(args.props.fifoTopic).apply((fifo) =>
-                    fifo ? ".fifo" : ""
+                    fifo ? ".fifo" : "",
                   ),
               },
             ],
@@ -237,7 +237,7 @@ export class Component extends BaseComponent {
               {
                 suffix: () =>
                   output(args.props.fifoQueue).apply((fifo) =>
-                    fifo ? ".fifo" : ""
+                    fifo ? ".fifo" : "",
                   ),
               },
             ],
@@ -263,7 +263,7 @@ export class Component extends BaseComponent {
           const rule = namingRules[args.type];
           if (!rule)
             throw new VisibleError(
-              `In "${name}" component, the physical name of "${args.name}" (${args.type}) is not prefixed`
+              `In "${name}" component, the physical name of "${args.name}" (${args.type}) is not prefixed`,
             );
 
           // name is already set
@@ -331,7 +331,7 @@ export class Component extends BaseComponent {
           [
             `The value of "forceUpgrade" does not match the version of "${className}" component.`,
             `Set "forceUpgrade" to "v${newVersion}" to upgrade to the new version.`,
-          ].join("\n")
+          ].join("\n"),
         );
       }
       // Version upgraded without forceUpgrade
@@ -344,7 +344,7 @@ export class Component extends BaseComponent {
           [
             `It seems you are trying to use an older version of "${className}".`,
             `You need to recreate this component to rollback - https://sst.dev/docs/components/#versioning`,
-          ].join("\n")
+          ].join("\n"),
         );
       }
     }
