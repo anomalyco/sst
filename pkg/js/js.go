@@ -5,10 +5,12 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
 	esbuild "github.com/evanw/esbuild/pkg/api"
+	"github.com/zeebo/xxh3"
 )
 
 var ErrTopLevelImport = fmt.Errorf("ErrTopLevelImport")
@@ -99,6 +101,68 @@ const __dirname = topLevelFileUrlToPath(new topLevelURL(".", import.meta.url))
 						}
 						return esbuild.OnResolveResult{}, nil
 					})
+				},
+			},
+			{
+				Name: "ExtractResources",
+				Setup: func(build esbuild.PluginBuild) {
+					pattern := regexp.MustCompile(`(export\s+const\s+)([a-zA-Z0-9_]+)(\s*=\s*sst\.resource\s*\()(\s*\{)`)
+					dir := filepath.Join(filepath.Dir(outfile), "resources")
+					os.RemoveAll(dir)
+					os.MkdirAll(dir, 0755)
+
+					build.OnLoad(esbuild.OnLoadOptions{Filter: `\.([jt]sx?|mjs|cjs)$`},
+						func(args esbuild.OnLoadArgs) (esbuild.OnLoadResult, error) {
+							content, err := os.ReadFile(args.Path)
+							if err != nil {
+								return esbuild.OnLoadResult{}, fmt.Errorf("failed to read file: %v", err)
+							}
+
+							hash := fmt.Sprint(xxh3.Hash(content))
+							fileContent := string(content)
+							found := false
+							processedContent := pattern.ReplaceAllStringFunc(fileContent, func(match string) string {
+								found = true
+								submatch := pattern.FindStringSubmatch(match)
+								if len(submatch) < 5 {
+									return match
+								}
+
+								constPart := submatch[1]
+								resourceName := submatch[2]
+
+								return fmt.Sprintf(`%s%s = resource({"type": "%s", "__source": { type: "dynamic", hash: "%s", export: "%s" }, `,
+									constPart, resourceName, resourceName, hash, resourceName)
+							})
+							if found {
+								processedContent = "import { resource } from \"sst-plugin\";\n" + processedContent
+								fmt.Println(processedContent)
+								result := esbuild.Build(esbuild.BuildOptions{
+									AbsWorkingDir: filepath.Dir(args.Path),
+									External:      []string{"sst-plugin"},
+									MainFields:    []string{"module", "main"},
+									Stdin: &esbuild.StdinOptions{
+										Sourcefile: args.Path,
+										ResolveDir: filepath.Dir(args.Path),
+										Contents:   processedContent,
+										Loader:     esbuild.LoaderTS,
+									},
+									Outfile: filepath.Join(dir, hash+".js"),
+									Bundle:  true,
+									Write:   true,
+									Format:  esbuild.FormatESModule,
+									Target:  esbuild.ES2023,
+								})
+								if len(result.Errors) > 0 {
+									return esbuild.OnLoadResult{}, fmt.Errorf("failed to build resource: %v", result.Errors)
+								}
+							}
+
+							return esbuild.OnLoadResult{
+								Contents: &processedContent,
+								Loader:   esbuild.LoaderTS,
+							}, nil
+						})
 				},
 			},
 		},
