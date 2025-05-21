@@ -19,6 +19,10 @@ export default $config({
       butt: 1,
     });
 
+    new sst.aws.SnsTopic("MyTopic", {
+      fifo: true,
+    });
+
     let first = false;
     process.on("beforeExit", () => {
       if (first) return;

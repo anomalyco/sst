@@ -154,10 +154,14 @@ export class SnsTopic extends Component {
   private constructorOpts: ComponentResourceOptions;
   private topic: sns.Topic;
 
+  public get arn() {
+    return this.topic.arn;
+  }
+
   constructor(
     name: string,
     args: SnsTopicArgs = {},
-    opts: ComponentResourceOptions = {}
+    opts: ComponentResourceOptions = {},
   ) {
     super(__pulumiType, name, args, opts);
     const self = this;
@@ -195,8 +199,8 @@ export class SnsTopic extends Component {
           {
             fifoTopic: fifo,
           },
-          { parent: self }
-        )
+          { parent: self },
+        ),
       );
     }
   }
@@ -246,7 +250,7 @@ export class SnsTopic extends Component {
   public static get(
     name: string,
     topicArn: Input<string>,
-    opts?: ComponentResourceOptions
+    opts?: ComponentResourceOptions,
   ) {
     return new SnsTopic(
       name,
@@ -254,7 +258,7 @@ export class SnsTopic extends Component {
         ref: true,
         topicArn,
       } as SnsTopicArgs,
-      opts
+      opts,
     );
   }
 }

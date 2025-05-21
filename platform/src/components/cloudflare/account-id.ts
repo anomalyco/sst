@@ -1,1 +1,0 @@
-export const DEFAULT_ACCOUNT_ID = process.env.CLOUDFLARE_DEFAULT_ACCOUNT_ID!;

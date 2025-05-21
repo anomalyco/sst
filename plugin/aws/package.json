@@ -18,7 +18,9 @@
     "dist"
   ],
   "dependencies": {
-    "sst-plugin": "workspace:*"
+    "@pulumi/aws": "^6.81.0",
+    "sst-plugin": "workspace:*",
+    "@pulumi/pulumi": "3.169.0"
   },
   "sst": {
     "name": "sst.aws"
