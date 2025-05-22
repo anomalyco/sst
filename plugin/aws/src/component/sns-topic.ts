@@ -1,8 +1,8 @@
 import { ComponentResourceOptions, output } from "@pulumi/pulumi";
 import { sns } from "@pulumi/aws";
-import { Transform, transform } from "sst-plugin/component";
-import { Input } from "sst-plugin/input";
-import { AWSComponent } from "./component.js";
+import { Transform, transform } from "sst-plugin/internal/transform";
+import * as sst from "sst-plugin";
+import { AWSComponent } from "../component.js";
 
 export interface SnsTopicArgs {
   /**
@@ -20,7 +20,7 @@ export interface SnsTopicArgs {
    * }
    * ```
    */
-  fifo?: Input<boolean>;
+  fifo?: sst.Input<boolean>;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
@@ -76,7 +76,7 @@ export interface SnsTopicSubscriberArgs {
    * }
    * ```
    */
-  filter?: Input<Record<string, any>>;
+  filter?: sst.Input<Record<string, any>>;
   /**
    * [Transform](/docs/components#transform) how this subscription creates its underlying
    * resources.
@@ -91,7 +91,7 @@ export interface SnsTopicSubscriberArgs {
 
 interface SnsTopicRef {
   ref: true;
-  topicArn: Input<string>;
+  topicArn: sst.Input<string>;
 }
 
 /**
@@ -259,7 +259,7 @@ export class SnsTopic extends AWSComponent {
    */
   public static get(
     name: string,
-    topicArn: Input<string>,
+    topicArn: sst.Input<string>,
     opts?: ComponentResourceOptions,
   ) {
     return new SnsTopic(

@@ -41,3 +41,5 @@ export const paths = {
   artifacts: process.env.SST_PATH_ARTIFACTS!,
   working: process.env.SST_PATH_WORKING!,
 };
+
+export const command = "unknown";

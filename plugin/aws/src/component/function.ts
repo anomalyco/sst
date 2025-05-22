@@ -45,6 +45,7 @@ import {
 } from "@pulumi/aws";
 import { Prettify } from "sst-plugin/internal/prettify";
 import { link } from "sst-plugin/internal/link";
+import { AWSComponent } from "../component.js";
 
 /**
  * Helper type to define function ARN type
@@ -1611,7 +1612,7 @@ export interface FunctionArgs {
  * Or override it entirely by passing in your own function `bundle`.
  */
 
-export class Function extends sst.Component implements sst.Linkable {
+export class Function extends AWSComponent implements sst.Linkable {
   private constructorName: string;
   private function: sst.Output<lambda.Function>;
   private role: iam.Role;

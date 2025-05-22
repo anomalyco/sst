@@ -6,10 +6,12 @@
     },
     "plugin/aws": {
       "name": "sst-plugin-aws",
-      "version": "0.0.12",
+      "version": "0.0.0",
       "dependencies": {
         "@pulumi/aws": "^6.81.0",
         "@pulumi/pulumi": "3.169.0",
+        "@pulumi/random": "^4.18.2",
+        "@pulumi/tls": "^5.2.0",
         "sst-plugin": "workspace:*",
       },
       "devDependencies": {
@@ -20,7 +22,7 @@
     },
     "plugin/base": {
       "name": "sst-plugin",
-      "version": "0.0.12",
+      "version": "0.0.0",
       "dependencies": {
         "@pulumi/pulumi": "catalog:",
       },
@@ -378,6 +380,10 @@
     "@pulumi/aws": ["@pulumi/aws@6.81.0", "", { "dependencies": { "@pulumi/pulumi": "^3.142.0", "mime": "^2.0.0" } }, "sha512-DPQPyV1I1JxQJU7yRkvh5vKOceTw3BZm3H/e9Hh02w662vUCOhp/Koci/ZPyWWbfOKam35eUsGIPvdYsWJw/EQ=="],
 
     "@pulumi/pulumi": ["@pulumi/pulumi@3.169.0", "", { "dependencies": { "@grpc/grpc-js": "^1.10.1", "@logdna/tail-file": "^2.0.6", "@npmcli/arborist": "^7.3.1", "@opentelemetry/api": "^1.9", "@opentelemetry/exporter-zipkin": "^1.28", "@opentelemetry/instrumentation": "^0.55", "@opentelemetry/instrumentation-grpc": "^0.55", "@opentelemetry/resources": "^1.28", "@opentelemetry/sdk-trace-base": "^1.28", "@opentelemetry/sdk-trace-node": "^1.28", "@types/google-protobuf": "^3.15.5", "@types/semver": "^7.5.6", "@types/tmp": "^0.2.6", "execa": "^5.1.0", "fdir": "^6.1.1", "google-protobuf": "^3.5.0", "got": "^11.8.6", "ini": "^2.0.0", "js-yaml": "^3.14.0", "minimist": "^1.2.6", "normalize-package-data": "^6.0.0", "picomatch": "^3.0.1", "pkg-dir": "^7.0.0", "require-from-string": "^2.0.1", "semver": "^7.5.2", "source-map-support": "^0.5.6", "tmp": "^0.2.1", "upath": "^1.1.0" }, "peerDependencies": { "ts-node": ">= 7.0.1 < 12", "typescript": ">= 3.8.3 < 6" }, "optionalPeers": ["ts-node", "typescript"] }, "sha512-l8x+gTySKWG2dRGvlScfl9EJaYgymkcUFaNAaz7lONYcvqllXXVw/mhbnsleNhC02gDiuP0p/9CfctHLqf75+Q=="],
+
+    "@pulumi/random": ["@pulumi/random@4.18.2", "", { "dependencies": { "@pulumi/pulumi": "^3.142.0" } }, "sha512-jC0HfgkFKwgUGmocM7Tw6UyOrpLFXGO8kYfV6f5Q9R/yziaVxEVPQ0Uup2HfosDh926EZHJrt2EUIJHWCyOvFA=="],
+
+    "@pulumi/tls": ["@pulumi/tls@5.2.0", "", { "dependencies": { "@pulumi/pulumi": "^3.142.0" } }, "sha512-wnhjCa3pz0eEv1DS5msN7yo5Ew1HrsbkMVZEiGve8fApIPKEIzfWnK11NlLlJyJNn2ffTuGao6hbAD4RKPiuuA=="],
 
     "@rollup/pluginutils": ["@rollup/pluginutils@5.1.4", "", { "dependencies": { "@types/estree": "^1.0.0", "estree-walker": "^2.0.2", "picomatch": "^4.0.2" }, "peerDependencies": { "rollup": "^1.20.0||^2.0.0||^3.0.0||^4.0.0" }, "optionalPeers": ["rollup"] }, "sha512-USm05zrsFxYLPdWWq+K3STlWiT/3ELn3RcV5hJMghpeAIhxfsUIg6mt12CBJBInWMV4VneoV7SfGv8xIwo2qNQ=="],
 

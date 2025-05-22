@@ -5,9 +5,10 @@ export {
   concat,
   secret,
   unsecret,
+  Unwrap,
 } from "@pulumi/pulumi";
 
-export type { Input, Output } from "@pulumi/pulumi";
+export type { Resource, Input, Output } from "@pulumi/pulumi";
 
 import { jsonParse, jsonStringify } from "@pulumi/pulumi";
 

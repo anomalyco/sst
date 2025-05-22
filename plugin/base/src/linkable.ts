@@ -1,5 +1,5 @@
 import { Component } from "./component.js";
-import { Output, output } from "./util.js";
+import { Input, Output, output } from "./util.js";
 
 export interface Definition<
   Properties extends Record<string, any> = Record<string, any>,
@@ -283,4 +283,11 @@ export class Link<T extends Record<string, any>>
       return cb(this);
     };
   }
+}
+
+export function env(env: Record<string, Input<string>>) {
+  return {
+    type: "environment" as const,
+    env,
+  };
 }

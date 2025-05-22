@@ -1,13 +1,7 @@
-import {
-  ComponentResource,
-  ComponentResourceOptions,
-  Inputs,
-  output,
-  Output,
-} from "@pulumi/pulumi";
-import { prefixName, physicalName } from "sst-plugin/naming";
+import * as sst from "sst-plugin";
 import { VisibleError } from "sst-plugin/error";
 import { Component as BaseComponent } from "sst-plugin/component";
+import { ComponentResource, ComponentResourceOptions } from "@pulumi/pulumi";
 
 // Previously, `this.api.id` was used as the ID. `this.api.id` was of type Output<string>
 // the value evaluates to the mistake id.
@@ -22,8 +16,8 @@ export class AWSComponent extends BaseComponent {
   constructor(
     type: string,
     name: string,
-    args?: Inputs,
-    opts?: ComponentResourceOptions,
+    args?: Record<string, sst.Input<any>>,
+    opts?: sst.ComponentOptions,
   ) {
     super(type, name, args, {
       ...opts,
@@ -130,7 +124,7 @@ export class AWSComponent extends BaseComponent {
               {
                 lower?: boolean;
                 replace?: (name: string) => string;
-                suffix?: () => Output<string>;
+                suffix?: () => sst.Output<string>;
               }?,
             ]
           > = {
@@ -226,9 +220,9 @@ export class AWSComponent extends BaseComponent {
               256,
               {
                 suffix: () =>
-                  output(args.props.fifoTopic).apply((fifo) =>
-                    fifo ? ".fifo" : "",
-                  ),
+                  sst
+                    .output(args.props.fifoTopic)
+                    .apply((fifo) => (fifo ? ".fifo" : "")),
               },
             ],
             "aws:sqs/queue:Queue": [
@@ -236,9 +230,9 @@ export class AWSComponent extends BaseComponent {
               80,
               {
                 suffix: () =>
-                  output(args.props.fifoQueue).apply((fifo) =>
-                    fifo ? ".fifo" : "",
-                  ),
+                  sst
+                    .output(args.props.fifoQueue)
+                    .apply((fifo) => (fifo ? ".fifo" : "")),
               },
             ],
             "cloudflare:index/d1Database:D1Database": [
@@ -280,7 +274,7 @@ export class AWSComponent extends BaseComponent {
                 tags: {
                   // @ts-expect-error
                   ...args.tags,
-                  Name: prefixName(length, args.name),
+                  Name: sst.naming.prefix(length, args.name),
                 },
               },
               opts: args.opts,
@@ -288,14 +282,14 @@ export class AWSComponent extends BaseComponent {
           }
 
           // Handle prefix field is name
-          const suffix = options?.suffix ? options.suffix() : output("");
+          const suffix = options?.suffix ? options.suffix() : sst.output("");
           return {
             props: {
               ...args.props,
               [nameField]: suffix.apply((suffix) => {
                 let v = options?.lower
-                  ? physicalName(length, args.name, suffix).toLowerCase()
-                  : physicalName(length, args.name, suffix);
+                  ? sst.naming.physical(length, args.name, suffix).toLowerCase()
+                  : sst.naming.physical(length, args.name, suffix);
                 if (options?.replace) v = options.replace(v);
                 return v;
               }),
