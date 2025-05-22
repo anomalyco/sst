@@ -1,15 +1,12 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "@tsconfig/node22/tsconfig.json",
   "compilerOptions": {
-    "skipLibCheck": true,
     "declaration": true,
     "outDir": "dist",
     "target": "ES2023",
     "module": "NodeNext",
-    "moduleResolution": "nodenext",
-    "typeRoots": [
-      "./node_modules/@types"
-    ]
+    "moduleResolution": "nodenext"
   },
   "include": [
     "src"

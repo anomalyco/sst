@@ -5,6 +5,7 @@ export {
   concat as $concat,
   interpolate as $interpolate,
 } from "../util.js";
+export { transform as $transform } from "../transform.js";
 
 // deprecated
 import { json } from "../util.js";

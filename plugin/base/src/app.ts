@@ -33,3 +33,11 @@ export const app: App = {
   protect: true,
   removal: "retain",
 };
+
+export const dev = process.env.SST_DEV === "true";
+
+export const paths = {
+  root: process.env.SST_PATH_ROOT!,
+  artifacts: process.env.SST_PATH_ARTIFACTS!,
+  working: process.env.SST_PATH_WORKING!,
+};

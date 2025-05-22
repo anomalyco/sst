@@ -7,8 +7,10 @@ import {
 
 import { app } from "../app.js";
 import { VisibleError } from "../error.js";
+import { link } from "./link.js";
 
 export async function run(program: automation.PulumiFn) {
+  link.reset();
   addTransformationToRetainResourcesOnDelete();
   addTransformationToAddTags();
   addTransformationToCheckBucketsHaveMultiplePolicies();

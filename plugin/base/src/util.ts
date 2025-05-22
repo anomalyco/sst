@@ -3,8 +3,11 @@ export {
   all as resolve,
   interpolate,
   concat,
-  Input,
+  secret,
+  unsecret,
 } from "@pulumi/pulumi";
+
+export type { Input, Output } from "@pulumi/pulumi";
 
 import { jsonParse, jsonStringify } from "@pulumi/pulumi";
 
