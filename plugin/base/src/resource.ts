@@ -26,7 +26,6 @@ class DynamicResource extends CustomResource {
 }
 
 interface Definition<Inputs = any, Outputs = any> {
-  type: string;
   create: (
     name: string,
     inputs: Inputs,
@@ -72,3 +71,22 @@ export function resource<Inputs, Outputs>(
     static definition = def;
   } as any;
 }
+
+export const MyResource = resource({
+  async create(name, inputs: { butt: number }) {
+    return {
+      id: "123",
+      outputs: {
+        hello: "world",
+        updated: Date.now(),
+      },
+    };
+  },
+  async update(name, olds, news) {
+    console.log(name, olds, news);
+    return {
+      ...olds.outputs,
+      updated: Date.now(),
+    };
+  },
+});

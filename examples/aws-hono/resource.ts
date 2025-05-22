@@ -1,18 +1,21 @@
 export const MyResource = sst.resource({
-  async create(name, inputs: { butt: number }) {
+  async create(name, inputs: { foo: string }) {
+    const result = await fetch("http://infrastructure.com/create", {
+      method: "POST",
+      body: JSON.stringify(inputs),
+    }).then((res) => res.json());
     return {
-      id: "123",
-      outputs: {
-        hello: "world",
-        updated: Date.now(),
-      },
+      id: result.id,
+      outputs: result,
     };
   },
-  async update(name, olds, news) {
-    console.log(name, olds, news);
-    return {
-      ...olds.outputs,
-      updated: Date.now(),
-    };
+  async delete(name, state) {
+    await fetch("http://infrastructure.com/create/" + state.outputs.id, {
+      method: "DELETE",
+    }).then((res) => res.json());
   },
+});
+
+new MyResource("Example", {
+  foo: "some-value",
 });
