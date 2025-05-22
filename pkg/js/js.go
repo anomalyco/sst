@@ -136,15 +136,18 @@ const __dirname = topLevelFileUrlToPath(new topLevelURL(".", import.meta.url))
 									constPart, resourceName, resourceName, hash, resourceName)
 							})
 							if found {
-								processedContent = "import { resource } from \"sst-plugin\";\n" + processedContent
+								shimmed := `function resource(input) { return input }` + "\n" + processedContent
 								result := esbuild.Build(esbuild.BuildOptions{
 									AbsWorkingDir: filepath.Dir(args.Path),
-									External:      []string{"sst-plugin"},
+									External:      []string{"sst-plugin", "@pulumi/pulumi"},
 									MainFields:    []string{"module", "main"},
+									Define: map[string]string{
+										"__SST__": "true",
+									},
 									Stdin: &esbuild.StdinOptions{
 										Sourcefile: args.Path,
 										ResolveDir: filepath.Dir(args.Path),
-										Contents:   processedContent,
+										Contents:   shimmed,
 										Loader:     esbuild.LoaderTS,
 									},
 									Outfile: filepath.Join(dir, hash+".mjs"),
@@ -156,6 +159,8 @@ const __dirname = topLevelFileUrlToPath(new topLevelURL(".", import.meta.url))
 								if len(result.Errors) > 0 {
 									return esbuild.OnLoadResult{}, fmt.Errorf("failed to build resource: %v", result.Errors)
 								}
+
+								processedContent = "import { resource } from \"sst-plugin\";\n" + processedContent
 							}
 
 							return esbuild.OnLoadResult{

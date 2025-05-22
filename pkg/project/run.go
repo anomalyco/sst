@@ -208,7 +208,6 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 		if info.IsDir() {
 			return nil
 		}
-		fmt.Println(path)
 		err = provider.PutResource(p.home, path)
 		if err != nil {
 			return err
@@ -285,6 +284,7 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 		// "PULUMI_DISABLE_AUTOMATIC_PLUGIN_ACQUISITION=true",
 		"NODE_OPTIONS=--enable-source-maps --no-deprecation",
 		"PULUMI_HOME="+global.ConfigDir(),
+		"SST_BUN_PATH="+global.BunPath(),
 	)
 	if input.ServerPort != 0 {
 		env = append(env, "SST_SERVER=http://127.0.0.1:"+fmt.Sprint(input.ServerPort))

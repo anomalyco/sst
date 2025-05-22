@@ -1,14 +1,18 @@
-import { S3Client } from "@aws-sdk/client-s3";
-
 export const MyResource = sst.resource({
-  async create(inputs: { butt: number }) {
-    console.log(S3Client);
+  async create(name, inputs: { butt: number }) {
     return {
       id: "123",
       outputs: {
         hello: "world",
         updated: Date.now(),
       },
+    };
+  },
+  async update(name, olds, news) {
+    console.log(name, olds, news);
+    return {
+      ...olds.outputs,
+      updated: Date.now(),
     };
   },
 });

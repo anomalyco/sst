@@ -27,7 +27,10 @@ class DynamicResource extends CustomResource {
 
 interface Definition<Inputs = any, Outputs = any> {
   type: string;
-  create: (inputs: Inputs) => Promise<{
+  create: (
+    name: string,
+    inputs: Inputs,
+  ) => Promise<{
     id: string;
     outputs: Outputs;
   }>;
@@ -42,8 +45,6 @@ interface Definition<Inputs = any, Outputs = any> {
   ) => Promise<void>;
 }
 
-export const definitions: Record<string, Definition> = {};
-
 export function resource<Inputs, Outputs>(
   def: Definition<Inputs, Outputs>,
 ): new (
@@ -55,7 +56,6 @@ export function resource<Inputs, Outputs>(
 } & {
   [K in keyof Outputs]: Output<Outputs[K]>;
 } {
-  definitions[def.type] = def;
   return class {
     constructor(name: string, inputs: Inputs) {
       // @ts-ignore
@@ -72,20 +72,3 @@ export function resource<Inputs, Outputs>(
     static definition = def;
   } as any;
 }
-
-resource({
-  type: "Test",
-  async create(inputs: { test: string }) {
-    return {
-      id: "test",
-      outputs: {
-        updated: Date.now(),
-      },
-    };
-  },
-  async update(id, olds, news) {
-    return {
-      updated: Date.now(),
-    };
-  },
-});

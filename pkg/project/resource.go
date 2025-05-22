@@ -1,7 +1,6 @@
 package project
 
 import (
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -14,7 +13,6 @@ func (p *Project) DownloadResource(hash string) (string, error) {
 	name := hash + ".mjs"
 	dir := path.ResolveResourceDir(p.PathConfig())
 	destination := filepath.Join(dir, name)
-	fmt.Println(destination)
 
 	if _, err := os.Stat(destination); err == nil {
 		return destination, nil
