@@ -1,38 +1,32 @@
-import {
-  ComponentResourceOptions,
-  Input,
-  Output,
-  interpolate,
-  output,
-} from "@pulumi/pulumi";
-import { Component, transform } from "../component";
-import { Function, FunctionArgs } from "./function";
-import { BucketSubscriberArgs } from "./bucket";
 import { lambda, s3 } from "@pulumi/aws";
-import { FunctionBuilder, functionBuilder } from "./helpers/function-builder";
+import * as sst from "sst-plugin";
+import { transform, Transform } from "sst-plugin/internal/transform";
+import { BucketSubscriberArgs } from "./bucket.js";
+import { FunctionArgs } from "./function.js";
+import { FunctionBuilder, functionBuilder } from "./util/function-builder.js";
 
 export interface Args extends BucketSubscriberArgs {
   /**
    * The bucket to use.
    */
-  bucket: Input<{
+  bucket: sst.Input<{
     /**
      * The name of the bucket.
      */
-    name: Input<string>;
+    name: sst.Input<string>;
     /**
      * The ARN of the bucket.
      */
-    arn: Input<string>;
+    arn: sst.Input<string>;
   }>;
   /**
    * The subscriber ID.
    */
-  subscriberId: Input<string>;
+  subscriberId: sst.Input<string>;
   /**
    * The subscriber function.
    */
-  subscriber: Input<string | FunctionArgs>;
+  subscriber: sst.Input<string | FunctionArgs>;
 }
 
 /**
@@ -45,19 +39,19 @@ export interface Args extends BucketSubscriberArgs {
  *
  * You'll find this component returned by the `subscribe` method of the `Bucket` component.
  */
-export class BucketLambdaSubscriber extends Component {
+export class BucketLambdaSubscriber extends sst.Component {
   private readonly fn: FunctionBuilder;
   private readonly permission: lambda.Permission;
   private readonly notification: s3.BucketNotification;
 
-  constructor(name: string, args: Args, opts?: ComponentResourceOptions) {
+  constructor(name: string, args: Args, opts?: sst.ComponentOptions) {
     super(__pulumiType, name, args, opts);
 
     const self = this;
-    const bucket = output(args.bucket);
+    const bucket = sst.output(args.bucket);
     const events = args.events
-      ? output(args.events)
-      : output([
+      ? sst.output(args.events)
+      : sst.output([
           "s3:ObjectCreated:*",
           "s3:ObjectRemoved:*",
           "s3:ObjectRestore:*",
@@ -118,7 +112,7 @@ export class BucketLambdaSubscriber extends Component {
             bucket: bucket.name,
             lambdaFunctions: [
               {
-                id: interpolate`Notification${args.subscriberId}`,
+                id: sst.interpolate`Notification${args.subscriberId}`,
                 lambdaFunctionArn: fn.arn,
                 events,
                 filterPrefix: args.filterPrefix,

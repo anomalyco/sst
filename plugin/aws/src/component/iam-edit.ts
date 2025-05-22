@@ -1,11 +1,12 @@
-import { Input, jsonStringify, output, UnwrappedObject } from "@pulumi/pulumi";
+import * as sst from "sst-plugin";
 import { iam } from "@pulumi/aws";
-import { Prettify } from "../component";
+import { jsonStringify } from "@pulumi/pulumi";
+import { Prettify } from "sst-plugin/internal/prettify";
 
 type PartialUnwrappedPolicyDocument = {
   Id?: string;
   Version: "2008-10-17" | "2012-10-17";
-  Statement: Input<iam.PolicyStatement>[];
+  Statement: sst.Input<iam.PolicyStatement>[];
 };
 
 /**
@@ -37,10 +38,10 @@ type PartialUnwrappedPolicyDocument = {
  * ```
  */
 export function iamEdit(
-  policy: Input<iam.PolicyDocument | string>,
+  policy: sst.Input<iam.PolicyDocument | string>,
   cb: (doc: Prettify<PartialUnwrappedPolicyDocument>) => void,
 ) {
-  return output(policy).apply((v) => {
+  return sst.output(policy).apply((v) => {
     const json = typeof v === "string" ? JSON.parse(v) : v;
     cb(json);
     return iam.getPolicyDocumentOutput({

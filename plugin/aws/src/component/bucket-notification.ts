@@ -1,30 +1,25 @@
-import {
-  ComponentResourceOptions,
-  Input,
-  Output,
-  output,
-} from "@pulumi/pulumi";
-import { Component, transform } from "../component";
-import { BucketNotificationsArgs } from "./bucket";
-import { iam, lambda, s3, sns } from "@pulumi/aws";
-import { FunctionBuilder, functionBuilder } from "./helpers/function-builder";
-import { VisibleError } from "../error";
-import { SnsTopic } from "./sns-topic";
-import { Queue } from "./queue";
+import { s3, lambda, sns, iam } from "@pulumi/aws";
+import * as sst from "sst-plugin";
+import { VisibleError } from "sst-plugin/error";
+import { transform, Transform } from "sst-plugin/internal/transform";
+import { BucketNotificationsArgs } from "./bucket.js";
+import { Queue } from "./queue.js";
+import { SnsTopic } from "./sns-topic.js";
+import { FunctionBuilder, functionBuilder } from "./util/function-builder.js";
 
 export interface Args extends BucketNotificationsArgs {
   /**
    * The bucket to use.
    */
-  bucket: Input<{
+  bucket: sst.Input<{
     /**
      * The name of the bucket.
      */
-    name: Input<string>;
+    name: sst.Input<string>;
     /**
      * The ARN of the bucket.
      */
-    arn: Input<string>;
+    arn: sst.Input<string>;
   }>;
 }
 
@@ -38,15 +33,15 @@ export interface Args extends BucketNotificationsArgs {
  *
  * You'll find this component returned by the `notify` method of the `Bucket` component.
  */
-export class BucketNotification extends Component {
-  private readonly functionBuilders: Output<FunctionBuilder[]>;
+export class BucketNotification extends sst.Component {
+  private readonly functionBuilders: sst.Output<FunctionBuilder[]>;
   private readonly notification: s3.BucketNotification;
 
-  constructor(name: string, args: Args, opts?: ComponentResourceOptions) {
+  constructor(name: string, args: Args, opts?: sst.ComponentOptions) {
     super(__pulumiType, name, args, opts);
 
     const self = this;
-    const bucket = output(args.bucket);
+    const bucket = sst.output(args.bucket);
     const notifications = normalizeNotifications();
     const { config, functionBuilders } = createNotificationsConfig();
     const notification = createNotification();
@@ -55,7 +50,7 @@ export class BucketNotification extends Component {
     this.notification = notification;
 
     function normalizeNotifications() {
-      return output(args.notifications).apply((notifications) =>
+      return sst.output(args.notifications).apply((notifications) =>
         notifications.map((n) => {
           const count =
             (n.function ? 1 : 0) + (n.queue ? 1 : 0) + (n.topic ? 1 : 0);
@@ -121,7 +116,7 @@ export class BucketNotification extends Component {
 
           if (n.topic) {
             const arn =
-              n.topic instanceof SnsTopic ? n.topic.arn : output(n.topic);
+              n.topic instanceof SnsTopic ? n.topic.arn : sst.output(n.topic);
             const policy = new sns.TopicPolicy(
               `${name}Notification${n.name}Policy`,
               {
@@ -155,7 +150,7 @@ export class BucketNotification extends Component {
 
           if (n.queue) {
             const arn =
-              n.queue instanceof Queue ? n.queue.arn : output(n.queue);
+              n.queue instanceof Queue ? n.queue.arn : sst.output(n.queue);
             const policy = Queue.createPolicy(
               `${name}Notification${n.name}Policy`,
               arn,
@@ -235,9 +230,11 @@ export class BucketNotification extends Component {
        * The functions that will be notified.
        */
       get functions() {
-        return output(self.functionBuilders).apply((functionBuilders) =>
-          functionBuilders.map((builder) => builder.getFunction()),
-        );
+        return sst
+          .output(self.functionBuilders)
+          .apply((functionBuilders) =>
+            functionBuilders.map((builder) => builder.getFunction()),
+          );
       },
       /**
        * The notification resource that's created.

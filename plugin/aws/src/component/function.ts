@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import archiver from "archiver";
+
 import type { BuildOptions, Loader } from "esbuild";
 import { glob } from "glob";
 
@@ -44,7 +45,7 @@ import {
   types,
 } from "@pulumi/aws";
 import { Prettify } from "sst-plugin/internal/prettify";
-import { link } from "sst-plugin/internal/link";
+import { link } from "sst-plugin/runtime/link";
 import { AWSComponent } from "../component.js";
 
 /**

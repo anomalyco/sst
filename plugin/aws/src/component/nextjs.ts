@@ -1,15 +1,15 @@
 import fs from "fs";
-import path from "path";
-import { ComponentResourceOptions, Output, all, output } from "@pulumi/pulumi";
-import { Size } from "../size.js";
-import { Function } from "./function.js";
-import { VisibleError } from "../error.js";
-import type { Input } from "../input.js";
-import { Queue } from "./queue.js";
+import * as sst from "sst-plugin";
+import { VisibleError } from "sst-plugin/error";
 import { dynamodb, getRegionOutput, lambda } from "@pulumi/aws";
-import { isALteB } from "../../util/compare-semver.js";
-import { Plan, SsrSite, SsrSiteArgs } from "./ssr-site.js";
+import { ComponentResourceOptions, all } from "@pulumi/pulumi";
+import path from "path";
+import { Size } from "../size.js";
 import { Bucket } from "./bucket.js";
+import { Queue } from "./queue.js";
+import { SsrSiteArgs, SsrSite, Plan } from "./ssr-site.js";
+import { isALteB } from "./util/compare-semver.js";
+import { Function } from "./function.js";
 
 const DEFAULT_OPEN_NEXT_VERSION = "3.6.1";
 
@@ -413,7 +413,7 @@ export interface NextjsArgs extends SsrSiteArgs {
    * }
    * ```
    */
-  openNextVersion?: Input<string>;
+  openNextVersion?: sst.Input<string>;
   /**
    * Configure the Lambda function used for image optimization.
    * @default `{memory: "1024 MB"}`
@@ -547,9 +547,9 @@ export interface NextjsArgs extends SsrSiteArgs {
  * ```
  */
 export class Nextjs extends SsrSite {
-  private revalidationQueue?: Output<Queue | undefined>;
-  private revalidationTable?: Output<dynamodb.Table | undefined>;
-  private revalidationFunction?: Output<Function | undefined>;
+  private revalidationQueue?: sst.Output<Queue | undefined>;
+  private revalidationTable?: sst.Output<dynamodb.Table | undefined>;
+  private revalidationFunction?: sst.Output<Function | undefined>;
 
   constructor(
     name: string,
@@ -573,11 +573,11 @@ export class Nextjs extends SsrSite {
   }
 
   protected buildPlan(
-    outputPath: Output<string>,
+    outputPath: sst.Output<string>,
     name: string,
     args: NextjsArgs,
     { bucket }: { bucket: Bucket },
-  ): Output<Plan> {
+  ): sst.Output<Plan> {
     const parent = this;
 
     const ret = all([outputPath, args?.imageOptimization]).apply(
@@ -971,7 +971,7 @@ export class Nextjs extends SsrSite {
 
     this.revalidationQueue = ret.revalidationQueue;
     this.revalidationTable = ret.revalidationTable;
-    this.revalidationFunction = output(ret.revalidationFunction);
+    this.revalidationFunction = sst.output(ret.revalidationFunction);
 
     return ret.plan;
   }

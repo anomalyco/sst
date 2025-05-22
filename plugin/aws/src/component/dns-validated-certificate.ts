@@ -1,8 +1,10 @@
-import { ComponentResourceOptions, Output, all } from "@pulumi/pulumi";
-import { Component } from "../component";
-import { Input } from "../input.js";
-import { Dns } from "../dns";
+import * as sst from "sst-plugin";
+import { transform, Transform } from "sst-plugin/internal/transform";
+import { AWSComponent } from "../component.js";
+import { permission } from "../permission.js";
 import { acm } from "@pulumi/aws";
+import { ComponentResourceOptions, all } from "@pulumi/pulumi";
+import { Dns } from "sst-plugin/dns";
 
 /**
  * Properties to create a DNS validated certificate managed by AWS Certificate Manager.
@@ -11,21 +13,21 @@ export interface DnsValidatedCertificateArgs {
   /**
    * The fully qualified domain name in the certificate.
    */
-  domainName: Input<string>;
+  domainName: sst.Input<string>;
   /**
    * Set of domains that should be SANs in the issued certificate
    */
-  alternativeNames?: Input<string[]>;
+  alternativeNames?: sst.Input<string[]>;
   /**
    * The DNS adapter you want to use for managing DNS records.
    */
-  dns: Input<Dns & {}>;
+  dns: sst.Input<Dns & {}>;
 }
 
-export class DnsValidatedCertificate extends Component {
+export class DnsValidatedCertificate extends sst.Component {
   private certificateValidation:
     | acm.CertificateValidation
-    | Output<acm.CertificateValidation>;
+    | sst.Output<acm.CertificateValidation>;
 
   constructor(
     name: string,

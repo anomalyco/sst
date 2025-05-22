@@ -1,25 +1,27 @@
-import { ComponentResourceOptions, Input, output } from "@pulumi/pulumi";
-import { Component, transform } from "../component";
-import { FunctionArgs } from "./function";
-import { DynamoSubscriberArgs } from "./dynamo";
+import * as sst from "sst-plugin";
+import { transform, Transform } from "sst-plugin/internal/transform";
+import { AWSComponent } from "../component.js";
+import { permission } from "../permission.js";
 import { lambda } from "@pulumi/aws";
-import { FunctionBuilder, functionBuilder } from "./helpers/function-builder";
-import { parseFunctionArn } from "./helpers/arn";
+import { DynamoSubscriberArgs } from "./dynamo.js";
+import { FunctionArgs } from "./function.js";
+import { FunctionBuilder, functionBuilder } from "./util/function-builder.js";
+import { arn } from "../arn.js";
 
 export interface Args extends DynamoSubscriberArgs {
   /**
    * The DynamoDB table to use.
    */
-  dynamo: Input<{
+  dynamo: sst.Input<{
     /**
      * The ARN of the stream.
      */
-    streamArn: Input<string>;
+    streamArn: sst.Input<string>;
   }>;
   /**
    * The subscriber function.
    */
-  subscriber: Input<string | FunctionArgs>;
+  subscriber: sst.Input<string | FunctionArgs>;
   /**
    * In early versions of SST, parent were forgotten to be set for resources in components.
    * This flag is used to disable the automatic setting of the parent to prevent breaking
@@ -39,15 +41,15 @@ export interface Args extends DynamoSubscriberArgs {
  *
  * You'll find this component returned by the `subscribe` method of the `Dynamo` component.
  */
-export class DynamoLambdaSubscriber extends Component {
+export class DynamoLambdaSubscriber extends AWSComponent {
   private readonly fn: FunctionBuilder;
   private readonly eventSourceMapping: lambda.EventSourceMapping;
 
-  constructor(name: string, args: Args, opts?: ComponentResourceOptions) {
+  constructor(name: string, args: Args, opts?: sst.ComponentOptions) {
     super(__pulumiType, name, args, opts);
 
     const self = this;
-    const dynamo = output(args.dynamo);
+    const dynamo = sst.output(args.dynamo);
     const fn = createFunction();
     const eventSourceMapping = createEventSourceMapping();
 
@@ -85,10 +87,10 @@ export class DynamoLambdaSubscriber extends Component {
           {
             eventSourceArn: dynamo.streamArn,
             functionName: fn.arn.apply(
-              (arn) => parseFunctionArn(arn).functionName,
+              (item) => arn.parseFunction(item).functionName,
             ),
             filterCriteria: args.filters
-              ? output(args.filters).apply((filters) => ({
+              ? sst.output(args.filters).apply((filters) => ({
                   filters: filters.map((filter) => ({
                     pattern: JSON.stringify(filter),
                   })),

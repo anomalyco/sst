@@ -1,17 +1,15 @@
-import { ComponentResourceOptions, output } from "@pulumi/pulumi";
-import { Component, Transform, transform } from "../component";
-import { Input } from "../input";
-import { Link } from "../link";
 import { cognito } from "@pulumi/aws";
-import { CognitoIdentityProviderArgs } from "./cognito-user-pool";
-import { OpenIdConnectProvider } from "@pulumi/aws/iam";
-import { VisibleError } from "../error";
+import * as sst from "sst-plugin";
+import { VisibleError } from "sst-plugin/error";
+import { transform, Transform } from "sst-plugin/internal/transform";
+import { CognitoIdentityProviderArgs } from "./cognito-user-pool.js";
+import { AWSComponent } from "../component.js";
 
 export interface Args extends CognitoIdentityProviderArgs {
   /**
    * The Cognito user pool ID.
    */
-  userPool: Input<string>;
+  userPool: sst.Input<string>;
 }
 
 /**
@@ -24,10 +22,10 @@ export interface Args extends CognitoIdentityProviderArgs {
  *
  * You'll find this component returned by the `addIdentityProvider` method of the `CognitoUserPool` component.
  */
-export class CognitoIdentityProvider extends Component {
+export class CognitoIdentityProvider extends AWSComponent {
   private identityProvider: cognito.IdentityProvider;
 
-  constructor(name: string, args: Args, opts?: ComponentResourceOptions) {
+  constructor(name: string, args: Args, opts?: sst.ComponentOptions) {
     super(__pulumiType, name, args, opts);
 
     const parent = this;
@@ -38,7 +36,7 @@ export class CognitoIdentityProvider extends Component {
     this.identityProvider = identityProvider;
 
     function normalizeProviderType() {
-      const type = output(args.type).apply(
+      const type = sst.output(args.type).apply(
         (type) =>
           ({
             saml: "SAML",

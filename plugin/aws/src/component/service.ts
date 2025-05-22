@@ -1,43 +1,35 @@
-import {
-  ComponentResourceOptions,
-  Output,
-  all,
-  interpolate,
-  output,
-} from "@pulumi/pulumi";
-import { Component, Prettify, Transform, transform } from "../component.js";
 import { dns as awsDns } from "./dns.js";
-import { VisibleError } from "../error.js";
-import { DnsValidatedCertificate } from "./dns-validated-certificate.js";
-import { Link } from "../link.js";
-import { URL_UNAVAILABLE } from "./linkable.js";
+import * as sst from "sst-plugin";
+import { Transform, transform } from "sst-plugin/internal/transform";
+import { VisibleError } from "sst-plugin/error";
 import {
-  appautoscaling,
-  ec2,
   ecs,
-  getRegionOutput,
-  iam,
   lb,
+  ec2,
+  appautoscaling,
   servicediscovery,
+  iam,
+  getRegionOutput,
 } from "@pulumi/aws";
-import { Vpc } from "./vpc.js";
-import { DevCommand } from "../experimental/dev-command.js";
+import { Dns } from "sst-plugin/dns";
+import { Prettify } from "sst-plugin/internal/prettify";
 import { DurationMinutes, toSeconds } from "../duration.js";
-import { Input } from "../input.js";
+import { DnsValidatedCertificate } from "./dns-validated-certificate.js";
 import {
-  FargateBaseArgs,
   FargateContainerArgs,
-  createExecutionRole,
-  createTaskDefinition,
-  createTaskRole,
+  FargateBaseArgs,
   normalizeArchitecture,
-  normalizeContainers,
   normalizeCpu,
   normalizeMemory,
   normalizeStorage,
+  normalizeContainers,
+  createTaskRole,
+  createExecutionRole,
+  createTaskDefinition,
 } from "./fargate.js";
-import { Dns } from "../dns.js";
-import { hashStringToPrettyString } from "../naming.js";
+import { URL_UNAVAILABLE } from "./linkable.js";
+import { Vpc } from "./vpc.js";
+import { AWSComponent } from "../component.js";
 
 type Port = `${number}/${"http" | "https" | "tcp" | "udp" | "tcp_udp" | "tls"}`;
 
@@ -52,7 +44,7 @@ interface ServiceRules {
    * }
    * ```
    */
-  listen: Input<Port>;
+  listen: sst.Input<Port>;
   /**
    * The port and protocol of the container the service forwards the traffic to. Uses the
    * format `{port}/{protocol}`.
@@ -65,7 +57,7 @@ interface ServiceRules {
    * ```
    * @default The same port and protocol as `listen`.
    */
-  forward?: Input<Port>;
+  forward?: sst.Input<Port>;
   /**
    * The name of the container to forward the traffic to. This maps to the `name` defined in the
    * `container` prop.
@@ -73,7 +65,7 @@ interface ServiceRules {
    * You only need this if there's more than one container. If there's only one container, the
    * traffic is automatically forwarded there.
    */
-  container?: Input<string>;
+  container?: sst.Input<string>;
   /**
    * The port and protocol to redirect the traffic to. Uses the format `{port}/{protocol}`.
    *
@@ -84,15 +76,15 @@ interface ServiceRules {
    * }
    * ```
    */
-  redirect?: Input<Port>;
+  redirect?: sst.Input<Port>;
   /**
    * @deprecated Use `conditions.path` instead.
    */
-  path?: Input<string>;
+  path?: sst.Input<string>;
   /**
    * The conditions for the redirect. Only applicable to `http` and `https` protocols.
    */
-  conditions?: Input<{
+  conditions?: sst.Input<{
     /**
      * Configure path-based routing. Only requests matching the path are forwarded to
      * the container.
@@ -111,7 +103,7 @@ interface ServiceRules {
      *
      * @default Requests to all paths are forwarded.
      */
-    path?: Input<string>;
+    path?: sst.Input<string>;
     /**
      * Configure query string based routing. Only requests matching one of the query
      * string conditions are forwarded to the container.
@@ -167,19 +159,19 @@ interface ServiceRules {
      * }
      * ```
      */
-    query?: Input<
-      Input<{
+    query?: sst.Input<
+      sst.Input<{
         /**
          * The name of the query string parameter.
          */
-        key?: Input<string>;
+        key?: sst.Input<string>;
         /**
          * The value of the query string parameter.
          *
          * If no `key` is provided, it'll match any request where a query string parameter with
          * the given value exists.
          */
-        value: Input<string>;
+        value: sst.Input<string>;
       }>[]
     >;
     /**
@@ -205,18 +197,18 @@ interface ServiceRules {
      * }
      * ```
      */
-    header?: Input<{
+    header?: sst.Input<{
       /**
        * The name of the HTTP header field to check. This is case-insensitive.
        */
-      name: Input<string>;
+      name: sst.Input<string>;
 
       /**
        * The values to match against the header value. The rule matches if the
        * request header matches any of these values. Values are case-insensitive
        * and support wildcards (`*` and `?`) for pattern matching.
        */
-      values: Input<Input<string>>[];
+      values: sst.Input<sst.Input<string>>[];
     }>;
   }>;
 }
@@ -236,17 +228,17 @@ interface ServiceContainerArgs extends FargateContainerArgs {
      * The command that `sst dev` runs to start this in dev mode. Same as the top-level
      * [`dev.command`](#dev-command).
      */
-    command: Input<string>;
+    command: sst.Input<string>;
     /**
      * Configure if you want to automatically start this when `sst dev` starts. Same as the
      * top-level [`dev.autostart`](#dev-autostart).
      */
-    autostart?: Input<boolean>;
+    autostart?: sst.Input<boolean>;
     /**
      * Change the directory from where the `command` is run. Same as the top-level
      * [`dev.directory`](#dev-directory).
      */
-    directory?: Input<string>;
+    directory?: sst.Input<string>;
   };
 }
 
@@ -276,23 +268,23 @@ export interface ServiceArgs extends FargateBaseArgs {
          * have a placeholder URL. It avoids having to handle it being `undefined`.
          * @default `"http://url-unavailable-in-dev.mode"`
          */
-        url?: Input<string>;
+        url?: sst.Input<string>;
         /**
          * The command that `sst dev` runs to start this in dev mode. This is the command you run
          * when you want to run your service locally.
          */
-        command?: Input<string>;
+        command?: sst.Input<string>;
         /**
          * Configure if you want to automatically start this when `sst dev` starts. You can still
          * start it manually later.
          * @default `true`
          */
-        autostart?: Input<boolean>;
+        autostart?: sst.Input<boolean>;
         /**
          * Change the directory from where the `command` is run.
          * @default Uses the `image.dockerfile` path
          */
-        directory?: Input<string>;
+        directory?: sst.Input<string>;
       };
   /**
    * Configure a public endpoint for the service. When configured, a load balancer
@@ -315,7 +307,7 @@ export interface ServiceArgs extends FargateBaseArgs {
    * }
    * ```
    */
-  public?: Input<{
+  public?: sst.Input<{
     /**
      * Set a custom domain for your public endpoint.
      *
@@ -349,7 +341,7 @@ export interface ServiceArgs extends FargateBaseArgs {
      * }
      * ```
      */
-    domain?: Input<
+    domain?: sst.Input<
       | string
       | {
           /**
@@ -374,7 +366,7 @@ export interface ServiceArgs extends FargateBaseArgs {
            * }
            * ```
            */
-          name: Input<string>;
+          name: sst.Input<string>;
           /**
            * Alias domains that should be used.
            *
@@ -388,7 +380,7 @@ export interface ServiceArgs extends FargateBaseArgs {
            * }
            * ```
            */
-          aliases?: Input<string[]>;
+          aliases?: sst.Input<string[]>;
           /**
            * The ARN of an ACM (AWS Certificate Manager) certificate that proves ownership of the
            * domain. By default, a certificate is created and validated automatically.
@@ -414,7 +406,7 @@ export interface ServiceArgs extends FargateBaseArgs {
            * }
            * ```
            */
-          cert?: Input<string>;
+          cert?: sst.Input<string>;
           /**
            * The DNS provider to use for the domain. Defaults to the AWS.
            *
@@ -463,11 +455,11 @@ export interface ServiceArgs extends FargateBaseArgs {
            * }
            * ```
            */
-          dns?: Input<false | (Dns & {})>;
+          dns?: sst.Input<false | (Dns & {})>;
         }
     >;
     /** @deprecated Use `rules` instead. */
-    ports?: Input<Prettify<ServiceRules>[]>;
+    ports?: sst.Input<Prettify<ServiceRules>[]>;
     /**
      * Configure the mapping for the ports the public endpoint listens to and forwards to
      * the service.
@@ -522,7 +514,7 @@ export interface ServiceArgs extends FargateBaseArgs {
      * }
      * ```
      */
-    rules?: Input<Prettify<ServiceRules>[]>;
+    rules?: sst.Input<Prettify<ServiceRules>[]>;
   }>;
   /**
    * Configure a load balancer to route traffic to the containers.
@@ -552,7 +544,7 @@ export interface ServiceArgs extends FargateBaseArgs {
    * }
    * ```
    */
-  loadBalancer?: Input<{
+  loadBalancer?: sst.Input<{
     /**
      * Configure if the load balancer should be public or private.
      *
@@ -561,7 +553,7 @@ export interface ServiceArgs extends FargateBaseArgs {
      *
      * @default `true`
      */
-    public?: Input<boolean>;
+    public?: sst.Input<boolean>;
     /**
      * Set a custom domain for your load balancer endpoint.
      *
@@ -595,7 +587,7 @@ export interface ServiceArgs extends FargateBaseArgs {
      * }
      * ```
      */
-    domain?: Input<
+    domain?: sst.Input<
       | string
       | {
           /**
@@ -630,7 +622,7 @@ export interface ServiceArgs extends FargateBaseArgs {
            * }
            * ```
            */
-          name: Input<string>;
+          name: sst.Input<string>;
           /**
            * Alias domains that should be used.
            *
@@ -644,7 +636,7 @@ export interface ServiceArgs extends FargateBaseArgs {
            * }
            * ```
            */
-          aliases?: Input<string[]>;
+          aliases?: sst.Input<string[]>;
           /**
            * The ARN of an ACM (AWS Certificate Manager) certificate that proves ownership of the
            * domain. By default, a certificate is created and validated automatically.
@@ -670,7 +662,7 @@ export interface ServiceArgs extends FargateBaseArgs {
            * }
            * ```
            */
-          cert?: Input<string>;
+          cert?: sst.Input<string>;
           /**
            * The DNS provider to use for the domain. Defaults to the AWS.
            *
@@ -719,11 +711,11 @@ export interface ServiceArgs extends FargateBaseArgs {
            * }
            * ```
            */
-          dns?: Input<false | (Dns & {})>;
+          dns?: sst.Input<false | (Dns & {})>;
         }
     >;
     /** @deprecated Use `rules` instead. */
-    ports?: Input<Prettify<ServiceRules>[]>;
+    ports?: sst.Input<Prettify<ServiceRules>[]>;
     /**
      * Configure the mapping for the ports the load balancer listens to, forwards, or redirects to
      * the service.
@@ -804,7 +796,7 @@ export interface ServiceArgs extends FargateBaseArgs {
      * }
      * ```
      */
-    rules?: Input<Prettify<ServiceRules>[]>;
+    rules?: sst.Input<Prettify<ServiceRules>[]>;
     /**
      * Configure the health check that the load balancer runs on your containers.
      *
@@ -889,40 +881,40 @@ export interface ServiceArgs extends FargateBaseArgs {
      * ```
      *
      */
-    health?: Input<
+    health?: sst.Input<
       Record<
         Port,
-        Input<{
+        sst.Input<{
           /**
            * The URL path to ping on the service for health checks. Only applicable to
            * `http` and `https` protocols.
            * @default `"/"`
            */
-          path?: Input<string>;
+          path?: sst.Input<string>;
           /**
            * The time period between each health check request. Must be between `5 seconds`
            * and `300 seconds`.
            * @default `"30 seconds"`
            */
-          interval?: Input<DurationMinutes>;
+          interval?: sst.Input<DurationMinutes>;
           /**
            * The timeout for each health check request. If no response is received within this
            * time, it is considered failed. Must be between `2 seconds` and `120 seconds`.
            * @default `"5 seconds"`
            */
-          timeout?: Input<DurationMinutes>;
+          timeout?: sst.Input<DurationMinutes>;
           /**
            * The number of consecutive successful health check requests required to consider the
            * target healthy. Must be between 2 and 10.
            * @default `5`
            */
-          healthyThreshold?: Input<number>;
+          healthyThreshold?: sst.Input<number>;
           /**
            * The number of consecutive failed health check requests required to consider the
            * target unhealthy. Must be between 2 and 10.
            * @default `2`
            */
-          unhealthyThreshold?: Input<number>;
+          unhealthyThreshold?: sst.Input<number>;
           /**
            * One or more HTTP response codes the health check treats as successful. Only
            * applicable to `http` and `https` protocols.
@@ -935,7 +927,7 @@ export interface ServiceArgs extends FargateBaseArgs {
            * }
            * ```
            */
-          successCodes?: Input<string>;
+          successCodes?: sst.Input<string>;
         }>
       >
     >;
@@ -957,7 +949,7 @@ export interface ServiceArgs extends FargateBaseArgs {
    * }
    * ```
    */
-  serviceRegistry?: Input<{
+  serviceRegistry?: sst.Input<{
     /**
      * The port in the service to forward requests to.
      */
@@ -982,7 +974,7 @@ export interface ServiceArgs extends FargateBaseArgs {
    * }
    * ```
    */
-  scaling?: Input<{
+  scaling?: sst.Input<{
     /**
      * The minimum number of containers to scale down to.
      * @default `1`
@@ -995,7 +987,7 @@ export interface ServiceArgs extends FargateBaseArgs {
      * }
      * ```
      */
-    min?: Input<number>;
+    min?: sst.Input<number>;
     /**
      * The maximum number of containers to scale up to.
      * @default `1`
@@ -1008,7 +1000,7 @@ export interface ServiceArgs extends FargateBaseArgs {
      * }
      * ```
      */
-    max?: Input<number>;
+    max?: sst.Input<number>;
     /**
      * The target CPU utilization percentage to scale up or down. It'll scale up
      * when the CPU utilization is above the target and scale down when it's below the target.
@@ -1022,7 +1014,7 @@ export interface ServiceArgs extends FargateBaseArgs {
      * }
      * ```
      */
-    cpuUtilization?: Input<false | number>;
+    cpuUtilization?: sst.Input<false | number>;
     /**
      * The target memory utilization percentage to scale up or down. It'll scale up
      * when the memory utilization is above the target and scale down when it's below the target.
@@ -1036,7 +1028,7 @@ export interface ServiceArgs extends FargateBaseArgs {
      * }
      * ```
      */
-    memoryUtilization?: Input<false | number>;
+    memoryUtilization?: sst.Input<false | number>;
     /**
      * The target request count to scale up or down. It'll scale up when the request count is
      * above the target and scale down when it's below the target.
@@ -1050,7 +1042,7 @@ export interface ServiceArgs extends FargateBaseArgs {
      * }
      * ```
      */
-    requestCount?: Input<false | number>;
+    requestCount?: sst.Input<false | number>;
   }>;
   /**
    * Configure the capacity provider; regular Fargate or Fargate Spot, for this service.
@@ -1156,13 +1148,13 @@ export interface ServiceArgs extends FargateBaseArgs {
    *   }
    *   ```
    */
-  capacity?: Input<
+  capacity?: sst.Input<
     | "spot"
     | {
         /**
          * Configure how the regular Fargate capacity is allocated.
          */
-        fargate?: Input<{
+        fargate?: sst.Input<{
           /**
            * Start the first `base` number of tasks with the given capacity.
            *
@@ -1170,16 +1162,16 @@ export interface ServiceArgs extends FargateBaseArgs {
            * You can only specify `base` for one capacity provider.
            * :::
            */
-          base?: Input<number>;
+          base?: sst.Input<number>;
           /**
            * Ensure the given ratio of tasks are started for this capacity.
            */
-          weight: Input<number>;
+          weight: sst.Input<number>;
         }>;
         /**
          * Configure how the Fargate spot capacity is allocated.
          */
-        spot?: Input<{
+        spot?: sst.Input<{
           /**
            * Start the first `base` number of tasks with the given capacity.
            *
@@ -1187,11 +1179,11 @@ export interface ServiceArgs extends FargateBaseArgs {
            * You can only specify `base` for one capacity provider.
            * :::
            */
-          base?: Input<number>;
+          base?: sst.Input<number>;
           /**
            * Ensure the given ratio of tasks are started for this capacity.
            */
-          weight: Input<number>;
+          weight: sst.Input<number>;
         }>;
       }
   >;
@@ -1223,7 +1215,7 @@ export interface ServiceArgs extends FargateBaseArgs {
    * }
    * ```
    */
-  health?: Input<{
+  health?: sst.Input<{
     /**
      * A string array representing the command that the container runs to determine if it is
      * healthy.
@@ -1238,32 +1230,32 @@ export interface ServiceArgs extends FargateBaseArgs {
      * }
      * ```
      */
-    command: Input<string[]>;
+    command: sst.Input<string[]>;
     /**
      * The grace period to provide containers time to bootstrap before failed health checks
      * count towards the maximum number of retries. Must be between `0 seconds` and
      * `300 seconds`.
      * @default `"0 seconds"`
      */
-    startPeriod?: Input<DurationMinutes>;
+    startPeriod?: sst.Input<DurationMinutes>;
     /**
      * The maximum time to allow one command to run. Must be between `2 seconds` and
      * `60 seconds`.
      * @default `"5 seconds"`
      */
-    timeout?: Input<DurationMinutes>;
+    timeout?: sst.Input<DurationMinutes>;
     /**
      * The time between running the command for the health check. Must be between `5 seconds`
      * and `300 seconds`.
      * @default `"30 seconds"`
      */
-    interval?: Input<DurationMinutes>;
+    interval?: sst.Input<DurationMinutes>;
     /**
      * The number of consecutive failures required to consider the check to have failed. Must
      * be between `1` and `10`.
      * @default `3`
      */
-    retries?: Input<number>;
+    retries?: sst.Input<number>;
   }>;
   /**
    * The containers to run in the service.
@@ -1314,7 +1306,7 @@ export interface ServiceArgs extends FargateBaseArgs {
    *
    * You will need to pass in `image` as a part of the `containers`.
    */
-  containers?: Input<Prettify<ServiceContainerArgs>>[];
+  containers?: sst.Input<Prettify<ServiceContainerArgs>>[];
   /**
    * Configure if `sst deploy` should wait for the service to be stable.
    *
@@ -1332,7 +1324,7 @@ export interface ServiceArgs extends FargateBaseArgs {
    * }
    * ```
    */
-  wait?: Input<boolean>;
+  wait?: sst.Input<boolean>;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
@@ -1586,27 +1578,27 @@ export interface ServiceArgs extends FargateBaseArgs {
  * [Network Load Balancer pricing](https://aws.amazon.com/elasticloadbalancing/pricing/)
  * for more details.
  */
-export class Service extends Component implements Link.Linkable {
+export class Service extends AWSComponent implements sst.Linkable {
   private readonly _name: string;
-  private readonly _service?: Output<ecs.Service>;
-  private readonly cloudmapNamespace?: Output<string | undefined>;
-  private readonly cloudmapService?: Output<
+  private readonly _service?: sst.Output<ecs.Service>;
+  private readonly cloudmapNamespace?: sst.Output<string | undefined>;
+  private readonly cloudmapService?: sst.Output<
     servicediscovery.Service | undefined
   >;
   private readonly executionRole?: iam.Role;
   private readonly taskRole: iam.Role;
-  private readonly taskDefinition?: Output<ecs.TaskDefinition>;
+  private readonly taskDefinition?: sst.Output<ecs.TaskDefinition>;
   private readonly loadBalancer?: lb.LoadBalancer;
   private readonly autoScalingTarget?: appautoscaling.Target;
-  private readonly domain?: Output<string | undefined>;
-  private readonly _url?: Output<string>;
-  private readonly devUrl?: Output<string>;
+  private readonly domain?: sst.Output<string | undefined>;
+  private readonly _url?: sst.Output<string>;
+  private readonly devUrl?: sst.Output<string>;
   private readonly dev: boolean;
 
   constructor(
     name: string,
     args: ServiceArgs,
-    opts: ComponentResourceOptions = {},
+    opts: sst.ComponentOptions = {},
   ) {
     super(__pulumiType, name, args, opts);
     this._name = name;
@@ -1616,7 +1608,7 @@ export class Service extends Component implements Link.Linkable {
     const clusterName = args.cluster.nodes.cluster.name;
     const region = getRegionOutput({}, opts).name;
     const dev = normalizeDev();
-    const wait = output(args.wait ?? false);
+    const wait = sst.output(args.wait ?? false);
     const architecture = normalizeArchitecture(args);
     const cpu = normalizeCpu(args);
     const memory = normalizeMemory(cpu, args);
@@ -1670,23 +1662,24 @@ export class Service extends Component implements Link.Linkable {
     this.autoScalingTarget = autoScalingTarget;
     this.domain = lbArgs?.domain
       ? lbArgs.domain.apply((domain) => domain?.name)
-      : output(undefined);
+      : sst.output(undefined);
     this._url = !self.loadBalancer
       ? undefined
-      : all([self.domain, self.loadBalancer?.dnsName]).apply(
-          ([domain, loadBalancer]) =>
+      : sst
+          .resolve([self.domain, self.loadBalancer?.dnsName])
+          .apply(([domain, loadBalancer]) =>
             domain ? `https://${domain}/` : `http://${loadBalancer}`,
-        );
+          );
 
     this.registerOutputs({ _hint: this._url });
     registerReceiver();
 
     function normalizeDev() {
-      if (!$dev) return undefined;
+      if (!sst.dev) return undefined;
       if (args.dev === false) return undefined;
 
       return {
-        url: output(args.dev?.url ?? URL_UNAVAILABLE),
+        url: sst.output(args.dev?.url ?? URL_UNAVAILABLE),
       };
     }
 
@@ -1708,14 +1701,14 @@ export class Service extends Component implements Link.Linkable {
       }
 
       // "vpc" is object
-      return output(args.cluster.vpc).apply((vpc) => ({
+      return sst.output(args.cluster.vpc).apply((vpc) => ({
         isSstVpc: false,
         ...vpc,
       }));
     }
 
     function normalizeScaling() {
-      return all([lbArgs?.type, args.scaling]).apply(([type, v]) => {
+      return sst.resolve([lbArgs?.type, args.scaling]).apply(([type, v]) => {
         if (type !== "application" && v?.requestCount)
           throw new VisibleError(
             `Request count scaling is only supported for http/https protocols.`,
@@ -1734,7 +1727,7 @@ export class Service extends Component implements Link.Linkable {
     function normalizeCapacity() {
       if (!args.capacity) return;
 
-      return output(args.capacity).apply((v) => {
+      return sst.output(args.capacity).apply((v) => {
         if (v === "spot")
           return { spot: { weight: 1 }, fargate: { weight: 0 } };
         return v;
@@ -1747,8 +1740,9 @@ export class Service extends Component implements Link.Linkable {
       if (!loadBalancer) return;
 
       // normalize rules
-      const rules = all([loadBalancer, containers]).apply(
-        ([lb, containers]) => {
+      const rules = sst
+        .resolve([loadBalancer, containers])
+        .apply(([lb, containers]) => {
           // validate rules
           const lbRules = lb.rules ?? lb.ports;
           if (!lbRules || lbRules.length === 0)
@@ -1841,11 +1835,10 @@ export class Service extends Component implements Link.Linkable {
           });
 
           return rules;
-        },
-      );
+        });
 
       // normalize domain
-      const domain = output(loadBalancer).apply((lb) => {
+      const domain = sst.output(loadBalancer).apply((lb) => {
         if (!lb.domain) return undefined;
 
         // normalize domain
@@ -1860,16 +1853,21 @@ export class Service extends Component implements Link.Linkable {
       });
 
       // normalize type
-      const type = output(rules).apply((rules) =>
-        rules[0].listenProtocol.startsWith("http") ? "application" : "network",
-      );
+      const type = sst
+        .output(rules)
+        .apply((rules) =>
+          rules[0].listenProtocol.startsWith("http")
+            ? "application"
+            : "network",
+        );
 
       // normalize public/private
-      const pub = output(loadBalancer).apply((lb) => lb?.public ?? true);
+      const pub = sst.output(loadBalancer).apply((lb) => lb?.public ?? true);
 
       // normalize health check
-      const health = all([type, rules, loadBalancer]).apply(
-        ([type, rules, lb]) =>
+      const health = sst
+        .resolve([type, rules, loadBalancer])
+        .apply(([type, rules, lb]) =>
           Object.fromEntries(
             Object.entries(lb?.health ?? {}).map(([k, v]) => {
               if (
@@ -1897,7 +1895,7 @@ export class Service extends Component implements Link.Linkable {
               ];
             }),
           ),
-      );
+        );
 
       return { type, rules, domain, pub, health };
     }
@@ -1952,51 +1950,55 @@ export class Service extends Component implements Link.Linkable {
     function createTargets() {
       if (!loadBalancer || !lbArgs) return;
 
-      return all([lbArgs.rules, lbArgs.health]).apply(([rules, health]) => {
-        const targets: Record<string, lb.TargetGroup> = {};
+      return sst
+        .resolve([lbArgs.rules, lbArgs.health])
+        .apply(([rules, health]) => {
+          const targets: Record<string, lb.TargetGroup> = {};
 
-        rules.forEach((r) => {
-          if (r.type !== "forward") return;
+          rules.forEach((r) => {
+            if (r.type !== "forward") return;
 
-          const container = r.container;
-          const forwardProtocol = r.forwardProtocol.toUpperCase();
-          const forwardPort = r.forwardPort;
-          const targetId = `${container}${forwardProtocol}${forwardPort}`;
-          const target =
-            targets[targetId] ??
-            new lb.TargetGroup(
-              ...transform(
-                args.transform?.target,
-                `${name}Target${targetId}`,
-                {
-                  // TargetGroup names allow for 32 chars, but an 8 letter suffix
-                  // ie. "-1234567" is automatically added.
-                  // - If we don't specify "name" or "namePrefix", we need to ensure
-                  //   the component name is less than 24 chars. Hard to guarantee.
-                  // - If we specify "name", we need to ensure the $app-$stage-$name
-                  //   if less than 32 chars. Hard to guarantee.
-                  // - Hence we will use "namePrefix".
-                  namePrefix: forwardProtocol,
-                  port: forwardPort,
-                  protocol: forwardProtocol,
-                  targetType: "ip",
-                  vpcId: vpc.id,
-                  healthCheck: health[`${r.forwardPort}/${r.forwardProtocol}`],
-                },
-                { parent: self },
-              ),
-            );
-          targets[targetId] = target;
+            const container = r.container;
+            const forwardProtocol = r.forwardProtocol.toUpperCase();
+            const forwardPort = r.forwardPort;
+            const targetId = `${container}${forwardProtocol}${forwardPort}`;
+            const target =
+              targets[targetId] ??
+              new lb.TargetGroup(
+                ...transform(
+                  args.transform?.target,
+                  `${name}Target${targetId}`,
+                  {
+                    // TargetGroup names allow for 32 chars, but an 8 letter suffix
+                    // ie. "-1234567" is automatically added.
+                    // - If we don't specify "name" or "namePrefix", we need to ensure
+                    //   the component name is less than 24 chars. Hard to guarantee.
+                    // - If we specify "name", we need to ensure the $app-$stage-$name
+                    //   if less than 32 chars. Hard to guarantee.
+                    // - Hence we will use "namePrefix".
+                    namePrefix: forwardProtocol,
+                    port: forwardPort,
+                    protocol: forwardProtocol,
+                    targetType: "ip",
+                    vpcId: vpc.id,
+                    healthCheck:
+                      health[`${r.forwardPort}/${r.forwardProtocol}`],
+                  },
+                  { parent: self },
+                ),
+              );
+            targets[targetId] = target;
+          });
+          return targets;
         });
-        return targets;
-      });
     }
 
     function createListeners() {
       if (!lbArgs || !loadBalancer || !targetGroups) return;
 
-      return all([lbArgs.rules, targetGroups, certificateArn]).apply(
-        ([rules, targets, cert]) => {
+      return sst
+        .resolve([lbArgs.rules, targetGroups, certificateArn])
+        .apply(([rules, targets, cert]) => {
           // Group listeners by protocol and port
           // Because listeners with the same protocol and port but different path
           // are just rules of the same listener.
@@ -2074,7 +2076,7 @@ export class Service extends Component implements Link.Linkable {
             customRules.forEach(
               (r) =>
                 new lb.ListenerRule(
-                  `${name}Listener${listenerId}Rule${hashStringToPrettyString(
+                  `${name}Listener${listenerId}Rule${sst.naming.hashStringToPrettyString(
                     JSON.stringify(r.listenConditions),
                     4,
                   )}`,
@@ -2102,16 +2104,15 @@ export class Service extends Component implements Link.Linkable {
 
             return listener;
           });
-        },
-      );
+        });
     }
 
     function createSsl() {
-      if (!lbArgs) return output(undefined);
+      if (!lbArgs) return sst.output(undefined);
 
       return lbArgs.domain.apply((domain) => {
-        if (!domain) return output(undefined);
-        if (domain.cert) return output(domain.cert);
+        if (!domain) return sst.output(undefined);
+        if (domain.cert) return sst.output(domain.cert);
 
         return new DnsValidatedCertificate(
           `${name}Ssl`,
@@ -2126,26 +2127,32 @@ export class Service extends Component implements Link.Linkable {
     }
 
     function createCloudmapService() {
-      return output(vpc.cloudmapNamespaceId).apply((cloudmapNamespaceId) => {
-        if (!cloudmapNamespaceId) return;
+      return sst
+        .output(vpc.cloudmapNamespaceId)
+        .apply((cloudmapNamespaceId) => {
+          if (!cloudmapNamespaceId) return;
 
-        return new servicediscovery.Service(
-          `${name}CloudmapService`,
-          {
-            name: `${name}.${$app.stage}.${$app.name}`,
-            namespaceId: output(vpc.cloudmapNamespaceId).apply((id) => id!),
-            forceDestroy: true,
-            dnsConfig: {
-              namespaceId: output(vpc.cloudmapNamespaceId).apply((id) => id!),
-              dnsRecords: [
-                ...(args.serviceRegistry ? [{ ttl: 60, type: "SRV" }] : []),
-                { ttl: 60, type: "A" },
-              ],
+          return new servicediscovery.Service(
+            `${name}CloudmapService`,
+            {
+              name: `${name}.${sst.app.stage}.${sst.app.name}`,
+              namespaceId: sst
+                .output(vpc.cloudmapNamespaceId)
+                .apply((id) => id!),
+              forceDestroy: true,
+              dnsConfig: {
+                namespaceId: sst
+                  .output(vpc.cloudmapNamespaceId)
+                  .apply((id) => id!),
+                dnsRecords: [
+                  ...(args.serviceRegistry ? [{ ttl: 60, type: "SRV" }] : []),
+                  { ttl: 60, type: "A" },
+                ],
+              },
             },
-          },
-          { parent: self },
-        );
-      });
+            { parent: self },
+          );
+        });
     }
 
     function createService() {
@@ -2204,21 +2211,24 @@ export class Service extends Component implements Link.Linkable {
                 },
                 loadBalancers:
                   lbArgs &&
-                  all([lbArgs.rules, targetGroups!]).apply(([rules, targets]) =>
-                    Object.values(targets).map((target) => ({
-                      targetGroupArn: target.arn,
-                      containerName: target.port.apply(
-                        (port) =>
-                          rules.find((r) => r.forwardPort === port)!.container!,
-                      ),
-                      containerPort: target.port.apply((port) => port!),
-                    })),
-                  ),
+                  sst
+                    .resolve([lbArgs.rules, targetGroups!])
+                    .apply(([rules, targets]) =>
+                      Object.values(targets).map((target) => ({
+                        targetGroupArn: target.arn,
+                        containerName: target.port.apply(
+                          (port) =>
+                            rules.find((r) => r.forwardPort === port)!
+                              .container!,
+                        ),
+                        containerPort: target.port.apply((port) => port!),
+                      })),
+                    ),
                 enableExecuteCommand: true,
                 serviceRegistries: cloudmapService && {
                   registryArn: cloudmapService.arn,
                   port: args.serviceRegistry
-                    ? output(args.serviceRegistry).port
+                    ? sst.output(args.serviceRegistry).port
                     : undefined,
                 },
                 waitForSteadyState: wait,
@@ -2237,7 +2247,7 @@ export class Service extends Component implements Link.Linkable {
           {
             serviceNamespace: "ecs",
             scalableDimension: "ecs:service:DesiredCount",
-            resourceId: interpolate`service/${clusterName}/${service.name}`,
+            resourceId: sst.interpolate`service/${clusterName}/${service.name}`,
             maxCapacity: scaling.max,
             minCapacity: scaling.min,
           },
@@ -2245,7 +2255,7 @@ export class Service extends Component implements Link.Linkable {
         ),
       );
 
-      output(scaling.cpuUtilization).apply((cpuUtilization) => {
+      sst.output(scaling.cpuUtilization).apply((cpuUtilization) => {
         if (cpuUtilization === false) return;
         new appautoscaling.Policy(
           `${name}AutoScalingCpuPolicy`,
@@ -2265,7 +2275,7 @@ export class Service extends Component implements Link.Linkable {
         );
       });
 
-      output(scaling.memoryUtilization).apply((memoryUtilization) => {
+      sst.output(scaling.memoryUtilization).apply((memoryUtilization) => {
         if (memoryUtilization === false) return;
         new appautoscaling.Policy(
           `${name}AutoScalingMemoryPolicy`,
@@ -2285,8 +2295,9 @@ export class Service extends Component implements Link.Linkable {
         );
       });
 
-      all([scaling.requestCount, targetGroups]).apply(
-        ([requestCount, targetGroups]) => {
+      sst
+        .resolve([scaling.requestCount, targetGroups])
+        .apply(([requestCount, targetGroups]) => {
           if (requestCount === false) return;
           if (!targetGroups) return;
 
@@ -2302,31 +2313,29 @@ export class Service extends Component implements Link.Linkable {
               targetTrackingScalingPolicyConfiguration: {
                 predefinedMetricSpecification: {
                   predefinedMetricType: "ALBRequestCountPerTarget",
-                  resourceLabel: all([
-                    loadBalancer?.arn,
-                    targetGroup.arn,
-                  ]).apply(([loadBalancerArn, targetGroupArn]) => {
-                    // arn:...:loadbalancer/app/frank-MyServiceLoadBalan/005af2ad12da1e52
-                    // => app/frank-MyServiceLoadBalan/005af2ad12da1e52
-                    const lbPart = loadBalancerArn
-                      ?.split(":")
-                      .pop()
-                      ?.split("/")
-                      .slice(1)
-                      .join("/");
-                    // arn:...:targetgroup/HTTP20250103004618450100000001/e0811b8cf3a60762
-                    // => targetgroup/HTTP20250103004618450100000001
-                    const tgPart = targetGroupArn?.split(":").pop();
-                    return `${lbPart}/${tgPart}`;
-                  }),
+                  resourceLabel: sst
+                    .resolve([loadBalancer?.arn, targetGroup.arn])
+                    .apply(([loadBalancerArn, targetGroupArn]) => {
+                      // arn:...:loadbalancer/app/frank-MyServiceLoadBalan/005af2ad12da1e52
+                      // => app/frank-MyServiceLoadBalan/005af2ad12da1e52
+                      const lbPart = loadBalancerArn
+                        ?.split(":")
+                        .pop()
+                        ?.split("/")
+                        .slice(1)
+                        .join("/");
+                      // arn:...:targetgroup/HTTP20250103004618450100000001/e0811b8cf3a60762
+                      // => targetgroup/HTTP20250103004618450100000001
+                      const tgPart = targetGroupArn?.split(":").pop();
+                      return `${lbPart}/${tgPart}`;
+                    }),
                 },
                 targetValue: requestCount,
               },
             },
             { parent: self },
           );
-        },
-      );
+        });
 
       return target;
     }
@@ -2354,7 +2363,7 @@ export class Service extends Component implements Link.Linkable {
     }
 
     function registerReceiver() {
-      all([containers]).apply(([val]) => {
+      sst.resolve([containers]).apply(([val]) => {
         for (const container of val) {
           const title = val.length == 1 ? name : `${name}${container.name}`;
           new DevCommand(`${title}Dev`, {
@@ -2405,18 +2414,18 @@ export class Service extends Component implements Link.Linkable {
    * The name of the Cloud Map service. This is useful for service discovery.
    */
   public get service() {
-    return all([this.cloudmapNamespace, this.cloudmapService]).apply(
-      ([namespace, service]) => {
+    return sst
+      .resolve([this.cloudmapNamespace, this.cloudmapService])
+      .apply(([namespace, service]) => {
         if (!namespace)
           throw new VisibleError(
             `Cannot access the AWS Cloud Map service name for the "${this._name}" Service. Cloud Map is not configured for the cluster.`,
           );
 
         return this.dev
-          ? interpolate`dev.${namespace}`
-          : interpolate`${service!.name}.${namespace}`;
-      },
-    );
+          ? sst.interpolate`dev.${namespace}`
+          : sst.interpolate`${service!.name}.${namespace}`;
+      });
   }
 
   /**
@@ -2485,7 +2494,7 @@ export class Service extends Component implements Link.Linkable {
             "Cannot access `nodes.cloudmapService` in dev mode.",
           );
 
-        return output(self.cloudmapService).apply((service) => {
+        return sst.output(self.cloudmapService).apply((service) => {
           if (!service)
             throw new VisibleError(
               `Cannot access "nodes.cloudmapService" for the "${self._name}" Service. Cloud Map is not configured for the cluster.`,
@@ -2501,9 +2510,9 @@ export class Service extends Component implements Link.Linkable {
     return {
       properties: {
         url: this.dev ? this.devUrl : this._url,
-        service: output(this.cloudmapNamespace).apply((namespace) =>
-          namespace ? this.service : undefined,
-        ),
+        service: sst
+          .output(this.cloudmapNamespace)
+          .apply((namespace) => (namespace ? this.service : undefined)),
       },
     };
   }

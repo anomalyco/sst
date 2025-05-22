@@ -1,36 +1,32 @@
-import {
-  ComponentResourceOptions,
-  Input,
-  interpolate,
-  output,
-} from "@pulumi/pulumi";
-import { Component, transform } from "../component";
-import { BucketSubscriberArgs } from "./bucket";
-import { s3, sqs } from "@pulumi/aws";
-import { Queue } from "./queue";
+import { sqs, s3 } from "@pulumi/aws";
+import { ComponentResourceOptions } from "@pulumi/pulumi";
+import * as sst from "sst-plugin";
+import { transform, Transform } from "sst-plugin/internal/transform";
+import { BucketSubscriberArgs } from "./bucket.js";
+import { Queue } from "./queue.js";
 
 export interface Args extends BucketSubscriberArgs {
   /**
    * The bucket to use.
    */
-  bucket: Input<{
+  bucket: sst.Input<{
     /**
      * The name of the bucket.
      */
-    name: Input<string>;
+    name: sst.Input<string>;
     /**
      * The ARN of the bucket.
      */
-    arn: Input<string>;
+    arn: sst.Input<string>;
   }>;
   /**
    * The subscriber ID.
    */
-  subscriberId: Input<string>;
+  subscriberId: sst.Input<string>;
   /**
    * The ARN of the SQS Queue.
    */
-  queue: Input<string>;
+  queue: sst.Input<string>;
 }
 
 /**
@@ -43,7 +39,7 @@ export interface Args extends BucketSubscriberArgs {
  *
  * You'll find this component returned by the `subscribeQueue` method of the `Bucket` component.
  */
-export class BucketQueueSubscriber extends Component {
+export class BucketQueueSubscriber extends sst.Component {
   private readonly policy: sqs.QueuePolicy;
   private readonly notification: s3.BucketNotification;
 
@@ -51,11 +47,11 @@ export class BucketQueueSubscriber extends Component {
     super(__pulumiType, name, args, opts);
 
     const self = this;
-    const queueArn = output(args.queue);
-    const bucket = output(args.bucket);
+    const queueArn = sst.output(args.queue);
+    const bucket = sst.output(args.bucket);
     const events = args.events
-      ? output(args.events)
-      : output([
+      ? sst.output(args.events)
+      : sst.output([
           "s3:ObjectCreated:*",
           "s3:ObjectRemoved:*",
           "s3:ObjectRestore:*",
@@ -86,7 +82,7 @@ export class BucketQueueSubscriber extends Component {
             bucket: bucket.name,
             queues: [
               {
-                id: interpolate`Notification${args.subscriberId}`,
+                id: sst.interpolate`Notification${args.subscriberId}`,
                 queueArn,
                 events,
                 filterPrefix: args.filterPrefix,

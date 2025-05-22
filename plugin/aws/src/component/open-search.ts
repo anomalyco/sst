@@ -1,18 +1,12 @@
-import {
-  ComponentResourceOptions,
-  interpolate,
-  jsonStringify,
-  Output,
-  output,
-} from "@pulumi/pulumi";
-import { $print, Component, Transform, transform } from "../component";
-import { Link } from "../link";
-import { Input } from "../input.js";
-import { iam, opensearch, secretsmanager } from "@pulumi/aws";
+import * as sst from "sst-plugin";
+import { Transform, transform } from "sst-plugin/internal/transform";
+import { VisibleError } from "sst-plugin/error";
+import { opensearch, iam, secretsmanager } from "@pulumi/aws";
+import { ComponentResourceOptions, jsonStringify } from "@pulumi/pulumi";
 import { RandomPassword } from "@pulumi/random";
-import { VisibleError } from "../error";
-import { SizeGbTb, toGBs } from "../size";
-import { DevCommand } from "../experimental/dev-command.js";
+import { $jsonParse } from "sst-plugin/runtime/shim";
+import { SizeGbTb, toGBs } from "../size.js";
+import { AWSComponent } from "../component.js";
 
 export interface OpenSearchArgs {
   /**
@@ -25,7 +19,7 @@ export interface OpenSearchArgs {
    * }
    * ```
    */
-  version?: Input<string>;
+  version?: sst.Input<string>;
   /**
    * The username of the master user.
    *
@@ -41,7 +35,7 @@ export interface OpenSearchArgs {
    * }
    * ```
    */
-  username?: Input<string>;
+  username?: sst.Input<string>;
   /**
    * The password of the master user.
    * @default A random password is generated.
@@ -59,7 +53,7 @@ export interface OpenSearchArgs {
    * }
    * ```
    */
-  password?: Input<string>;
+  password?: sst.Input<string>;
   /**
    * The type of instance to use for the domain. Check out the [supported instance types](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/supported-instance-types.html).
    *
@@ -71,7 +65,7 @@ export interface OpenSearchArgs {
    * }
    * ```
    */
-  instance?: Input<string>;
+  instance?: sst.Input<string>;
   /**
    * The storage limit for the domain.
    *
@@ -83,7 +77,7 @@ export interface OpenSearchArgs {
    * }
    * ```
    */
-  storage?: Input<SizeGbTb>;
+  storage?: sst.Input<SizeGbTb>;
   /**
    * Configure how this component works in `sst dev`.
    *
@@ -117,17 +111,17 @@ export interface OpenSearchArgs {
      * The URL of the local OpenSearch to connect to when running in dev.
      * @default `"http://localhost:9200"`
      */
-    url?: Input<string>;
+    url?: sst.Input<string>;
     /**
      * The username of the local OpenSearch to connect to when running in dev.
      * @default Inherit from the top-level [`username`](#username).
      */
-    username?: Input<string>;
+    username?: sst.Input<string>;
     /**
      * The password of the local OpenSearch to connect to when running in dev.
      * @default Inherit from the top-level [`password`](#password).
      */
-    password?: Input<string>;
+    password?: sst.Input<string>;
   };
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
@@ -147,7 +141,7 @@ export interface OpenSearchArgs {
 
 interface OpenSearchRef {
   ref: boolean;
-  id: Input<string>;
+  id: sst.Input<string>;
 }
 
 /**
@@ -244,15 +238,15 @@ interface OpenSearchRef {
  * The above are rough estimates for _us-east-1_, check out the [OpenSearch Service pricing](https://aws.amazon.com/opensearch-service/pricing/)
  * for more details.
  */
-export class OpenSearch extends Component implements Link.Linkable {
+export class OpenSearch extends AWSComponent implements sst.Linkable {
   private domain?: opensearch.Domain;
-  private _username?: Output<string>;
-  private _password?: Output<string>;
+  private _username?: sst.Output<string>;
+  private _password?: sst.Output<string>;
   private dev?: {
     enabled: boolean;
-    url: Output<string>;
-    username: Output<string>;
-    password: Output<string>;
+    url: sst.Output<string>;
+    username: sst.Output<string>;
+    password: sst.Output<string>;
   };
 
   constructor(
@@ -271,11 +265,13 @@ export class OpenSearch extends Component implements Link.Linkable {
       return;
     }
 
-    const engineVersion = output(args.version).apply(
-      (v) => v ?? "OpenSearch_2.17",
-    );
-    const instanceType = output(args.instance).apply((v) => v ?? "t3.small");
-    const username = output(args.username).apply((v) => v ?? "admin");
+    const engineVersion = sst
+      .output(args.version)
+      .apply((v) => v ?? "OpenSearch_2.17");
+    const instanceType = sst
+      .output(args.instance)
+      .apply((v) => v ?? "t3.small");
+    const username = sst.output(args.username).apply((v) => v ?? "admin");
     const storage = normalizeStorage();
 
     const dev = registerDev();
@@ -334,7 +330,7 @@ export class OpenSearch extends Component implements Link.Linkable {
     }
 
     function normalizeStorage() {
-      return output(args.storage ?? "10 GB").apply((v) => {
+      return sst.output(args.storage ?? "10 GB").apply((v) => {
         const size = toGBs(v);
         if (size < 10) {
           throw new VisibleError(
@@ -349,7 +345,7 @@ export class OpenSearch extends Component implements Link.Linkable {
       if (!args.dev) return undefined;
 
       if (
-        $dev &&
+        sst.dev &&
         args.dev.password === undefined &&
         args.password === undefined
       ) {
@@ -359,10 +355,10 @@ export class OpenSearch extends Component implements Link.Linkable {
       }
 
       const dev = {
-        enabled: $dev,
-        url: output(args.dev.url ?? "http://localhost:9200"),
-        username: args.dev.username ? output(args.dev.username) : username,
-        password: output(args.dev.password ?? args.password ?? ""),
+        enabled: sst.dev,
+        url: sst.output(args.dev.url ?? "http://localhost:9200"),
+        username: args.dev.username ? sst.output(args.dev.username) : username,
+        password: sst.output(args.dev.password ?? args.password ?? ""),
       };
 
       new DevCommand(`${name}Dev`, {
@@ -372,7 +368,7 @@ export class OpenSearch extends Component implements Link.Linkable {
           command: `sst print-and-not-quit`,
         },
         environment: {
-          SST_DEV_COMMAND_MESSAGE: interpolate`Make sure your local OpenSearch server is using:
+          SST_DEV_COMMAND_MESSAGE: sst.interpolate`Make sure your local OpenSearch server is using:
 
   username: "${dev.username}"
   password: "${dev.password}"
@@ -386,18 +382,18 @@ Listening on "${dev.url}"...`,
 
     function createPassword() {
       return args.password
-        ? output(args.password)
+        ? sst.output(args.password)
         : new RandomPassword(
-          `${name}Password`,
-          {
-            length: 32,
-            minLower: 1,
-            minUpper: 1,
-            minNumeric: 1,
-            minSpecial: 1,
-          },
-          { parent: self },
-        ).result;
+            `${name}Password`,
+            {
+              length: 32,
+              minLower: 1,
+              minUpper: 1,
+              minNumeric: 1,
+              minSpecial: 1,
+            },
+            { parent: self },
+          ).result;
     }
 
     function createSecret() {
@@ -432,7 +428,7 @@ Listening on "${dev.url}"...`,
           {
             engineVersion,
             clusterConfig: {
-              instanceType: interpolate`${instanceType}.search`,
+              instanceType: sst.interpolate`${instanceType}.search`,
               instanceCount: 1,
               dedicatedMasterEnabled: false,
               zoneAwarenessEnabled: false,
@@ -494,7 +490,7 @@ Listening on "${dev.url}"...`,
    * The ID of the OpenSearch component.
    */
   public get id() {
-    if (this.dev?.enabled) return output("placeholder");
+    if (this.dev?.enabled) return sst.output("placeholder");
     return this.domain!.id;
   }
 
@@ -515,7 +511,7 @@ Listening on "${dev.url}"...`,
    */
   public get url() {
     if (this.dev?.enabled) return this.dev.url;
-    return interpolate`https://${this.domain!.endpoint}`;
+    return sst.interpolate`https://${this.domain!.endpoint}`;
   }
 
   public get nodes() {
@@ -570,7 +566,7 @@ Listening on "${dev.url}"...`,
    */
   public static get(
     name: string,
-    id: Input<string>,
+    id: sst.Input<string>,
     opts?: ComponentResourceOptions,
   ) {
     return new OpenSearch(

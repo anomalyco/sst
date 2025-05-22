@@ -1,21 +1,16 @@
-import {
-  ComponentResourceOptions,
-  Input,
-  Output,
-  interpolate,
-  output,
-} from "@pulumi/pulumi";
-import { Component, transform } from "../component";
-import { Function, FunctionArgs } from "./function";
-import { BusBaseSubscriberArgs, createRule } from "./bus-base-subscriber";
-import { cloudwatch, lambda } from "@pulumi/aws";
-import { FunctionBuilder, functionBuilder } from "./helpers/function-builder";
+import { lambda, cloudwatch } from "@pulumi/aws";
+import { ComponentResourceOptions } from "@pulumi/pulumi";
+import * as sst from "sst-plugin";
+import { transform, Transform } from "sst-plugin/internal/transform";
+import { BusBaseSubscriberArgs, createRule } from "./bus-base-subscriber.js";
+import { FunctionArgs } from "./function.js";
+import { FunctionBuilder, functionBuilder } from "./util/function-builder.js";
 
 export interface Args extends BusBaseSubscriberArgs {
   /**
    * The subscriber function.
    */
-  subscriber: Input<string | FunctionArgs>;
+  subscriber: sst.Input<string | FunctionArgs>;
 }
 
 /**
@@ -28,7 +23,7 @@ export interface Args extends BusBaseSubscriberArgs {
  *
  * You'll find this component returned by the `subscribe` method of the `Bus` component.
  */
-export class BusLambdaSubscriber extends Component {
+export class BusLambdaSubscriber extends sst.Component {
   private readonly fn: FunctionBuilder;
   private readonly permission: lambda.Permission;
   private readonly rule: cloudwatch.EventRule;
@@ -38,7 +33,7 @@ export class BusLambdaSubscriber extends Component {
     super(__pulumiType, name, args, opts);
 
     const self = this;
-    const bus = output(args.bus);
+    const bus = sst.output(args.bus);
     const rule = createRule(name, bus.name, args, self);
     const fn = createFunction();
     const permission = createPermission();
@@ -54,7 +49,7 @@ export class BusLambdaSubscriber extends Component {
         `${name}Function`,
         args.subscriber,
         {
-          description: interpolate`Subscribed to ${bus.name}`,
+          description: sst.interpolate`Subscribed to ${bus.name}`,
         },
         undefined,
         { parent: self },

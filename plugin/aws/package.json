@@ -7,6 +7,7 @@
   },
   "devDependencies": {
     "@tsconfig/node22": "catalog:",
+    "@types/archiver": "^6.0.3",
     "@types/node": "catalog:",
     "typescript": "catalog:"
   },
@@ -18,10 +19,12 @@
     "dist"
   ],
   "dependencies": {
-    "@pulumi/aws": "^6.81.0",
+    "@pulumi/aws": "6.66.2",
+    "@pulumi/docker-build": "0.0.8",
     "@pulumi/pulumi": "3.169.0",
     "@pulumi/random": "^4.18.2",
     "@pulumi/tls": "^5.2.0",
+    "archiver": "^7.0.1",
     "sst-plugin": "workspace:*"
   },
   "sst": {

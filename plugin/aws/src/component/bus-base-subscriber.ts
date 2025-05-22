@@ -1,29 +1,29 @@
-import { Input, output } from "@pulumi/pulumi";
-import { Component, transform } from "../component";
 import { cloudwatch } from "@pulumi/aws";
-import { BusSubscriberArgs } from "./bus";
+import * as sst from "sst-plugin";
+import { transform, Transform } from "sst-plugin/internal/transform";
+import { BusSubscriberArgs } from "./bus.js";
 
 export interface BusBaseSubscriberArgs extends BusSubscriberArgs {
   /**
    * The bus to use.
    */
-  bus: Input<{
+  bus: sst.Input<{
     /**
      * The ARN of the bus.
      */
-    arn: Input<string>;
+    arn: sst.Input<string>;
     /**
      * The name of the bus.
      */
-    name: Input<string>;
+    name: sst.Input<string>;
   }>;
 }
 
 export function createRule(
   name: string,
-  eventBusName: Input<string>,
+  eventBusName: sst.Input<string>,
   args: BusBaseSubscriberArgs,
-  parent: Component,
+  parent: sst.Component,
 ) {
   return new cloudwatch.EventRule(
     ...transform(
@@ -32,7 +32,7 @@ export function createRule(
       {
         eventBusName,
         eventPattern: args.pattern
-          ? output(args.pattern).apply((pattern) =>
+          ? sst.output(args.pattern).apply((pattern) =>
               JSON.stringify({
                 "detail-type": pattern.detailType,
                 source: pattern.source,

@@ -1,14 +1,15 @@
-import { ComponentResourceOptions, Output, all, output } from "@pulumi/pulumi";
-import { Component, Prettify, Transform, transform } from "../component";
-import { Input } from "../input";
-import { Link } from "../link";
-import { CognitoIdentityProvider } from "./cognito-identity-provider";
-import { CognitoUserPoolClient } from "./cognito-user-pool-client";
-import { Function, FunctionArgs, FunctionArn } from "./function.js";
-import { VisibleError } from "../error";
+import * as sst from "sst-plugin";
+import { transform, Transform } from "sst-plugin/internal/transform";
+import { AWSComponent } from "../component.js";
 import { cognito, lambda } from "@pulumi/aws";
-import { permission } from "./permission";
-import { functionBuilder } from "./helpers/function-builder";
+import { ComponentResourceOptions, all } from "@pulumi/pulumi";
+import { VisibleError } from "sst-plugin/error";
+import { Prettify } from "sst-plugin/internal/prettify";
+import { CognitoIdentityProvider } from "./cognito-identity-provider.js";
+import { CognitoUserPoolClient } from "./cognito-user-pool-client.js";
+import { FunctionArgs, FunctionArn } from "./function.js";
+import { functionBuilder } from "./util/function-builder.js";
+import { permission } from "../permission.js";
 
 interface Triggers {
   /**
@@ -17,14 +18,14 @@ interface Triggers {
    * When `customEmailSender` or `customSmsSender` are configured, Cognito encrypts the
    * verification code and temporary passwords before sending them to your Lambda functions.
    */
-  kmsKey?: Input<string>;
+  kmsKey?: sst.Input<string>;
   /**
    * Triggered after the user successfully responds to the previous challenge, and a new
    * challenge needs to be created.
    *
    * Takes the handler path, the function args, or a function ARN.
    */
-  createAuthChallenge?: Input<string | FunctionArgs | FunctionArn>;
+  createAuthChallenge?: sst.Input<string | FunctionArgs | FunctionArn>;
   /**
    * Triggered during events like user sign-up, password recovery, email/phone number
    * verification, and when an admin creates a user. Use this trigger to customize the
@@ -32,7 +33,7 @@ interface Triggers {
    *
    * Takes the handler path, the function args, or a function ARN.
    */
-  customEmailSender?: Input<string | FunctionArgs | FunctionArn>;
+  customEmailSender?: sst.Input<string | FunctionArgs | FunctionArn>;
   /**
    * Triggered during events like user sign-up, password recovery, email/phone number
    * verification, and when an admin creates a user. Use this trigger to customize the
@@ -40,14 +41,14 @@ interface Triggers {
    *
    * Takes the handler path, the function args, or a function ARN.
    */
-  customMessage?: Input<string | FunctionArgs | FunctionArn>;
+  customMessage?: sst.Input<string | FunctionArgs | FunctionArn>;
   /**
    * Triggered when an SMS message needs to be sent, such as for MFA or verification codes.
    * Use this trigger to customize the SMS provider.
    *
    * Takes the handler path, the function args, or a function ARN.
    */
-  customSmsSender?: Input<string | FunctionArgs | FunctionArn>;
+  customSmsSender?: sst.Input<string | FunctionArgs | FunctionArn>;
   /**
    * Triggered after each challenge response to determine the next action. Evaluates whether the
    * user has completed the authentication process or if additional challenges are needed.
@@ -55,14 +56,14 @@ interface Triggers {
    *
    * Takes the handler path, the function args, or a function ARN.
    */
-  defineAuthChallenge?: Input<string | FunctionArgs | FunctionArn>;
+  defineAuthChallenge?: sst.Input<string | FunctionArgs | FunctionArn>;
   /**
    * Triggered after a successful authentication event. Use this to perform custom actions,
    * such as logging or modifying user attributes, after the user is authenticated.
    *
    * Takes the handler path, the function args, or a function ARN.
    */
-  postAuthentication?: Input<string | FunctionArgs | FunctionArn>;
+  postAuthentication?: sst.Input<string | FunctionArgs | FunctionArn>;
   /**
    * Triggered after a user is successfully confirmed; sign-up or email/phone number
    * verification. Use this to perform additional actions, like sending a welcome email or
@@ -70,7 +71,7 @@ interface Triggers {
    *
    * Takes the handler path, the function args, or a function ARN.
    */
-  postConfirmation?: Input<string | FunctionArgs | FunctionArn>;
+  postConfirmation?: sst.Input<string | FunctionArgs | FunctionArn>;
   /**
    * Triggered before the authentication process begins. Use this to implement custom
    * validation or checks (like checking if the user is banned) before continuing
@@ -78,21 +79,21 @@ interface Triggers {
    *
    * Takes the handler path, the function args, or a function ARN.
    */
-  preAuthentication?: Input<string | FunctionArgs | FunctionArn>;
+  preAuthentication?: sst.Input<string | FunctionArgs | FunctionArn>;
   /**
    * Triggered before the user sign-up process completes. Use this to perform custom
    * validation, auto-confirm users, or auto-verify attributes based on custom logic.
    *
    * Takes the handler path, the function args, or a function ARN.
    */
-  preSignUp?: Input<string | FunctionArgs | FunctionArn>;
+  preSignUp?: sst.Input<string | FunctionArgs | FunctionArn>;
   /**
    * Triggered before tokens are generated in the authentication process. Use this to
    * customize or add claims to the tokens that will be generated and returned to the user.
    *
    * Takes the handler path, the function args, or a function ARN.
    */
-  preTokenGeneration?: Input<string | FunctionArgs | FunctionArn>;
+  preTokenGeneration?: sst.Input<string | FunctionArgs | FunctionArn>;
   /**
    * The version of the preTokenGeneration trigger to use. Higher versions have access to
    * more information that support new features.
@@ -106,7 +107,7 @@ interface Triggers {
    *
    * Takes the handler path, the function args, or a function ARN.
    */
-  userMigration?: Input<string | FunctionArgs | FunctionArn>;
+  userMigration?: sst.Input<string | FunctionArgs | FunctionArn>;
   /**
    * Triggered after the user responds to a custom authentication challenge. Use this to
    * verify the user's response to the challenge and determine whether to continue
@@ -114,7 +115,7 @@ interface Triggers {
    *
    * Takes the handler path, the function args, or a function ARN.
    */
-  verifyAuthChallengeResponse?: Input<string | FunctionArgs | FunctionArn>;
+  verifyAuthChallengeResponse?: sst.Input<string | FunctionArgs | FunctionArn>;
 }
 
 export interface CognitoUserPoolArgs {
@@ -135,7 +136,7 @@ export interface CognitoUserPoolArgs {
    * }
    * ```
    */
-  aliases?: Input<Input<"email" | "phone" | "preferred_username">[]>;
+  aliases?: sst.Input<sst.Input<"email" | "phone" | "preferred_username">[]>;
   /**
    * Allow users to be able to sign up and sign in with an email addresses or phone number
    * as their username.
@@ -154,7 +155,7 @@ export interface CognitoUserPoolArgs {
    * }
    * ```
    */
-  usernames?: Input<Input<"email" | "phone">[]>;
+  usernames?: sst.Input<sst.Input<"email" | "phone">[]>;
   /**
    * Enable advanced security features.
    *
@@ -169,7 +170,7 @@ export interface CognitoUserPoolArgs {
    * }
    * ```
    */
-  advancedSecurity?: Input<"audit" | "enforced">;
+  advancedSecurity?: sst.Input<"audit" | "enforced">;
   /**
    * Configure the multi-factor authentication (MFA) settings for the User Pool.
    *
@@ -185,7 +186,7 @@ export interface CognitoUserPoolArgs {
    * }
    * ```
    */
-  mfa?: Input<"on" | "optional">;
+  mfa?: sst.Input<"on" | "optional">;
   /**
    * Configure the SMS settings for the User Pool.
    *
@@ -202,22 +203,22 @@ export interface CognitoUserPoolArgs {
    * }
    * ```
    */
-  sms?: Input<{
+  sms?: sst.Input<{
     /**
      * The external ID used in IAM role trust relationships.
      *
      * Learn more about [external IDs](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_common-scenarios_third-party.html).
      */
-    externalId: Input<string>;
+    externalId: sst.Input<string>;
     /**
      * The ARN of the IAM role that Amazon Cognito can assume to access the Amazon SNS
      *
      */
-    snsCallerArn: Input<string>;
+    snsCallerArn: sst.Input<string>;
     /**
      * The AWS Region that Amazon Cognito uses to send SMS messages.
      */
-    snsRegion?: Input<string>;
+    snsRegion?: sst.Input<string>;
   }>;
   /**
    * The message template for SMS messages sent to users who are being authenticated.
@@ -234,11 +235,11 @@ export interface CognitoUserPoolArgs {
    * }
    * ```
    */
-  smsAuthenticationMessage?: Input<string>;
+  smsAuthenticationMessage?: sst.Input<string>;
   /**
    * Configure the verification message sent to users who are being authenticated.
    */
-  verify?: Input<{
+  verify?: sst.Input<{
     /**
      * Subject line for Email messages sent to users who are being authenticated.
      *
@@ -253,7 +254,7 @@ export interface CognitoUserPoolArgs {
      * }
      * ```
      */
-    emailSubject?: Input<string>;
+    emailSubject?: sst.Input<string>;
     /**
      * The template for email messages sent to users who are being authenticated.
      *
@@ -271,7 +272,7 @@ export interface CognitoUserPoolArgs {
      * }
      * ```
      */
-    emailMessage?: Input<string>;
+    emailMessage?: sst.Input<string>;
     /**
      * The template for SMS messages sent to users who are being authenticated.
      *
@@ -289,7 +290,7 @@ export interface CognitoUserPoolArgs {
      * }
      * ```
      */
-    smsMessage?: Input<string>;
+    smsMessage?: sst.Input<string>;
   }>;
   /**
    * Enable software token MFA for the User Pool.
@@ -303,7 +304,7 @@ export interface CognitoUserPoolArgs {
    * }
    * ```
    */
-  softwareToken?: Input<boolean>;
+  softwareToken?: sst.Input<boolean>;
   /**
    * Configure triggers for this User Pool
    * @default No triggers
@@ -318,7 +319,7 @@ export interface CognitoUserPoolArgs {
    * }
    * ```
    */
-  triggers?: Input<Prettify<Triggers>>;
+  triggers?: sst.Input<Prettify<Triggers>>;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
@@ -335,7 +336,7 @@ export interface CognitoIdentityProviderArgs {
   /**
    * The type of identity provider.
    */
-  type: Input<"oidc" | "saml" | "google" | "facebook" | "apple" | "amazon">;
+  type: sst.Input<"oidc" | "saml" | "google" | "facebook" | "apple" | "amazon">;
   /**
    * Configure the identity provider details, including the scopes, URLs, and identifiers.
    *
@@ -347,7 +348,7 @@ export interface CognitoIdentityProviderArgs {
    * }
    * ```
    */
-  details: Input<Record<string, Input<string>>>;
+  details: sst.Input<Record<string, sst.Input<string>>>;
   /**
    * Define a mapping between identity provider attributes and user pool attributes.
    *
@@ -358,7 +359,7 @@ export interface CognitoIdentityProviderArgs {
    * }
    * ```
    */
-  attributes?: Input<Record<string, Input<string>>>;
+  attributes?: sst.Input<Record<string, sst.Input<string>>>;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
@@ -404,7 +405,7 @@ export interface CognitoUserPoolClientArgs {
    *
    * This ensures the client is created after the provider.
    */
-  providers?: Input<Input<string>[]>;
+  providers?: sst.Input<sst.Input<string>[]>;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
@@ -477,9 +478,9 @@ interface CognitoUserPoolRef {
  * userPool.addClient("Web");
  * ```
  */
-export class CognitoUserPool extends Component implements Link.Linkable {
+export class CognitoUserPool extends AWSComponent implements sst.Linkable {
   private constructorOpts: ComponentResourceOptions;
-  private userPool: Output<cognito.UserPool>;
+  private userPool: sst.Output<cognito.UserPool>;
 
   constructor(
     name: string,
@@ -491,7 +492,7 @@ export class CognitoUserPool extends Component implements Link.Linkable {
     if (args && "ref" in args) {
       const ref = args as unknown as CognitoUserPoolRef;
       this.constructorOpts = opts;
-      this.userPool = output(ref.userPool);
+      this.userPool = sst.output(ref.userPool);
       return;
     }
 
@@ -517,7 +518,7 @@ export class CognitoUserPool extends Component implements Link.Linkable {
     function normalizeTriggers() {
       if (!args.triggers) return;
 
-      return output(args.triggers).apply((triggers) => {
+      return sst.output(args.triggers).apply((triggers) => {
         if (
           (triggers.customEmailSender || triggers.customSmsSender) &&
           !triggers.kmsKey
@@ -537,7 +538,7 @@ export class CognitoUserPool extends Component implements Link.Linkable {
     function normalizeVerify() {
       if (!args.verify) return;
 
-      return output(args.verify).apply((verify) => {
+      return sst.output(args.verify).apply((verify) => {
         return {
           defaultEmailOption: "CONFIRM_WITH_CODE",
           emailMessage:
@@ -552,7 +553,7 @@ export class CognitoUserPool extends Component implements Link.Linkable {
     }
 
     function createUserPool() {
-      return output(args.softwareToken).apply(
+      return sst.output(args.softwareToken).apply(
         (softwareToken) =>
           new cognito.UserPool(
             ...transform(
@@ -561,19 +562,23 @@ export class CognitoUserPool extends Component implements Link.Linkable {
               {
                 aliasAttributes:
                   args.aliases &&
-                  output(args.aliases).apply((aliases) => [
-                    ...(aliases.includes("email") ? ["email"] : []),
-                    ...(aliases.includes("phone") ? ["phone_number"] : []),
-                    ...(aliases.includes("preferred_username")
-                      ? ["preferred_username"]
-                      : []),
-                  ]),
+                  sst
+                    .output(args.aliases)
+                    .apply((aliases) => [
+                      ...(aliases.includes("email") ? ["email"] : []),
+                      ...(aliases.includes("phone") ? ["phone_number"] : []),
+                      ...(aliases.includes("preferred_username")
+                        ? ["preferred_username"]
+                        : []),
+                    ]),
                 usernameAttributes:
                   args.usernames &&
-                  output(args.usernames).apply((usernames) => [
-                    ...(usernames.includes("email") ? ["email"] : []),
-                    ...(usernames.includes("phone") ? ["phone_number"] : []),
-                  ]),
+                  sst
+                    .output(args.usernames)
+                    .apply((usernames) => [
+                      ...(usernames.includes("email") ? ["email"] : []),
+                      ...(usernames.includes("phone") ? ["phone_number"] : []),
+                    ]),
                 accountRecoverySetting: {
                   recoveryMechanisms: [
                     {
@@ -607,13 +612,13 @@ export class CognitoUserPool extends Component implements Link.Linkable {
                 },
                 verificationMessageTemplate: verify,
                 userPoolAddOns: {
-                  advancedSecurityMode: output(args.advancedSecurity).apply(
-                    (v) => (v ?? "off").toUpperCase(),
-                  ),
+                  advancedSecurityMode: sst
+                    .output(args.advancedSecurity)
+                    .apply((v) => (v ?? "off").toUpperCase()),
                 },
-                mfaConfiguration: output(args.mfa).apply((v) =>
-                  (v ?? "off").toUpperCase(),
-                ),
+                mfaConfiguration: sst
+                  .output(args.mfa)
+                  .apply((v) => (v ?? "off").toUpperCase()),
                 smsAuthenticationMessage: args.smsAuthenticationMessage,
                 smsConfiguration: args.sms,
                 softwareTokenMfaConfiguration: softwareToken
@@ -854,7 +859,7 @@ export class CognitoUserPool extends Component implements Link.Linkable {
    */
   public static get(
     name: string,
-    userPoolID: Input<string>,
+    userPoolID: sst.Input<string>,
     opts?: ComponentResourceOptions,
   ) {
     const userPool = cognito.UserPool.get(

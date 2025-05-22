@@ -1,20 +1,14 @@
-import {
-  Output,
-  ComponentResourceOptions,
-  output,
-  interpolate,
-  all,
-} from "@pulumi/pulumi";
+import { cloudfront } from "@pulumi/aws";
+import { ComponentResourceOptions, all } from "@pulumi/pulumi";
+import * as sst from "sst-plugin";
+import { Dns } from "sst-plugin/dns";
+import { Prettify } from "sst-plugin/internal/prettify";
+import { transform, Transform } from "sst-plugin/internal/transform";
+import { useProvider } from "../provider.js";
+import { DistributionDeploymentWaiter } from "../providers/distribution-deployment-waiter.js";
 import { DnsValidatedCertificate } from "./dns-validated-certificate.js";
 import { HttpsRedirect } from "./https-redirect.js";
-import { useProvider } from "./helpers/provider.js";
-import { Component, Prettify, Transform, transform } from "../component.js";
-import { Input } from "../input.js";
-import { DistributionDeploymentWaiter } from "./providers/distribution-deployment-waiter.js";
-import { Dns } from "../dns.js";
 import { dns as awsDns } from "./dns.js";
-import { cloudfront } from "@pulumi/aws";
-import { logicalName } from "../naming.js";
 
 export interface CdnDomainArgs {
   /**
@@ -39,7 +33,7 @@ export interface CdnDomainArgs {
    * }
    * ```
    */
-  name: Input<string>;
+  name: sst.Input<string>;
   /**
    * Alternate domains to be used. Visitors to the alternate domains will be redirected to the
    * main `name`.
@@ -59,7 +53,7 @@ export interface CdnDomainArgs {
    * }
    * ```
    */
-  redirects?: Input<string[]>;
+  redirects?: sst.Input<string[]>;
   /**
    * Alias domains that should be used. Unlike the `redirect` option, this keeps your visitors
    * on this alias domain.
@@ -76,7 +70,7 @@ export interface CdnDomainArgs {
    * }
    * ```
    */
-  aliases?: Input<string[]>;
+  aliases?: sst.Input<string[]>;
   /**
    * The ARN of an ACM (AWS Certificate Manager) certificate that proves ownership of the
    * domain. By default, a certificate is created and validated automatically.
@@ -105,7 +99,7 @@ export interface CdnDomainArgs {
    * }
    * ```
    */
-  cert?: Input<string>;
+  cert?: sst.Input<string>;
   /**
    * The DNS provider to use for the domain. Defaults to the AWS.
    *
@@ -154,14 +148,14 @@ export interface CdnDomainArgs {
    * }
    * ```
    */
-  dns?: Input<false | (Dns & {})>;
+  dns?: sst.Input<false | (Dns & {})>;
 }
 
 export interface CdnArgs {
   /**
    * A comment to describe the distribution. It cannot be longer than 128 characters.
    */
-  comment?: Input<string>;
+  comment?: sst.Input<string>;
   /**
    * One or more origins for this distribution.
    */
@@ -230,18 +224,18 @@ export interface CdnArgs {
    * }
    * ```
    */
-  domain?: Input<string | Prettify<CdnDomainArgs>>;
+  domain?: sst.Input<string | Prettify<CdnDomainArgs>>;
   /**
    * Whether to wait for the CloudFront distribution to be deployed before
    * completing the deployment of the app. This is necessary if you need to use the
    * distribution URL in other resources.
    * @default `true`
    */
-  wait?: Input<boolean>;
+  wait?: sst.Input<boolean>;
   /**
    * Tags to apply to the distribution.
    */
-  tags?: Input<Record<string, Input<string>>>;
+  tags?: sst.Input<Record<string, sst.Input<string>>>;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying resources.
    */
@@ -255,7 +249,7 @@ export interface CdnArgs {
 
 interface CdnRef {
   ref: boolean;
-  distributionID: Input<string>;
+  distributionID: sst.Input<string>;
 }
 
 /**
@@ -279,9 +273,9 @@ interface CdnRef {
  * });
  * ```
  */
-export class Cdn extends Component {
-  private distribution: Output<cloudfront.Distribution>;
-  private _domainUrl: Output<string | undefined>;
+export class Cdn extends sst.Component {
+  private distribution: sst.Output<cloudfront.Distribution>;
+  private _domainUrl: sst.Output<string | undefined>;
 
   constructor(name: string, args: CdnArgs, opts?: ComponentResourceOptions) {
     super(pulumiType, name, args, opts);
@@ -289,7 +283,7 @@ export class Cdn extends Component {
 
     if (args && "ref" in args) {
       const ref = reference();
-      this.distribution = output(ref.distribution);
+      this.distribution = sst.output(ref.distribution);
       this._domainUrl = ref.distribution.aliases.apply((aliases) =>
         aliases?.length ? `https://${aliases[0]}` : undefined,
       );
@@ -306,8 +300,8 @@ export class Cdn extends Component {
 
     this.distribution = waiter.isDone.apply(() => distribution);
     this._domainUrl = domain?.name
-      ? interpolate`https://${domain.name}`
-      : output(undefined);
+      ? sst.interpolate`https://${domain.name}`
+      : sst.output(undefined);
 
     function reference() {
       const ref = args as unknown as CdnRef;
@@ -324,7 +318,7 @@ export class Cdn extends Component {
     function normalizeDomain() {
       if (!args.domain) return;
 
-      return output(args.domain).apply((domain) => {
+      return sst.output(args.domain).apply((domain) => {
         const norm = typeof domain === "string" ? { name: domain } : domain;
 
         // validate
@@ -345,7 +339,7 @@ export class Cdn extends Component {
     }
 
     function createSsl() {
-      if (!domain) return output(undefined);
+      if (!domain) return sst.output(undefined);
 
       return domain.cert.apply((cert) => {
         if (cert) return domain.cert;
@@ -384,10 +378,9 @@ export class Cdn extends Component {
               },
             },
             aliases: domain
-              ? output(domain).apply((domain) => [
-                  domain.name,
-                  ...domain.aliases,
-                ])
+              ? sst
+                  .output(domain)
+                  .apply((domain) => [domain.name, ...domain.aliases])
               : [],
             viewerCertificate: certificateArn.apply((arn) =>
               arn
@@ -409,7 +402,7 @@ export class Cdn extends Component {
     }
 
     function createDistributionDeploymentWaiter() {
-      return output(args.wait).apply((wait) => {
+      return sst.output(args.wait).apply((wait) => {
         return new DistributionDeploymentWaiter(
           `${name}Waiter`,
           {
@@ -448,7 +441,7 @@ export class Cdn extends Component {
           //
           // As a workaround, starting v3.0.79, we prefix the logical name with a unique
           // index for records with logical names that will trash.
-          const key = logicalName(recordName);
+          const key = sst.naming.logical(recordName);
           const namePrefix = existing.includes(key) ? `${name}${i}` : name;
           existing.push(key);
 
@@ -491,7 +484,7 @@ export class Cdn extends Component {
    * The CloudFront URL of the distribution.
    */
   public get url() {
-    return interpolate`https://${this.distribution.domainName}`;
+    return sst.interpolate`https://${this.distribution.domainName}`;
   }
 
   /**
@@ -529,7 +522,7 @@ export class Cdn extends Component {
    */
   public static get(
     name: string,
-    distributionID: Input<string>,
+    distributionID: sst.Input<string>,
     opts?: ComponentResourceOptions,
   ) {
     return new Cdn(

@@ -1,9 +1,9 @@
 import * as sst from "sst-plugin";
 import { transform, Transform } from "sst-plugin/internal/transform";
-import { VisibleError } from "sst-plugin/error";
-import { ec2, efs } from "@pulumi/aws";
-import { Vpc } from "./vpc.js";
 import { AWSComponent } from "../component.js";
+import { efs, ec2 } from "@pulumi/aws";
+import { VisibleError } from "sst-plugin/error";
+import { Vpc } from "./vpc.js";
 
 export interface EfsArgs {
   /**

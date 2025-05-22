@@ -1,11 +1,11 @@
-import { ComponentResourceOptions, interpolate, output } from "@pulumi/pulumi";
-import { Component, Transform, transform } from "../component";
+import { cognito, iam, getRegionOutput } from "@pulumi/aws";
+import { ComponentResourceOptions } from "@pulumi/pulumi";
+import * as sst from "sst-plugin";
+import { transform, Transform } from "sst-plugin/internal/transform";
 import { FunctionArgs } from "./function.js";
-import { Input } from "../input";
-import { Link } from "../link";
-import { cognito, getRegionOutput, iam } from "@pulumi/aws";
-import { permission } from "./permission";
-import { parseRoleArn } from "./helpers/arn";
+import { AWSComponent } from "../component.js";
+import { permission } from "../permission.js";
+import { arn } from "../arn.js";
 
 export interface CognitoIdentityPoolArgs {
   /**
@@ -22,16 +22,16 @@ export interface CognitoIdentityPoolArgs {
    * }
    * ```
    */
-  userPools?: Input<
-    Input<{
+  userPools?: sst.Input<
+    sst.Input<{
       /**
        * The Cognito user pool ID.
        */
-      userPool: Input<string>;
+      userPool: sst.Input<string>;
       /**
        * The Cognito User Pool client ID.
        */
-      client: Input<string>;
+      client: sst.Input<string>;
     }>[]
   >;
   /**
@@ -58,7 +58,7 @@ export interface CognitoIdentityPoolArgs {
    * }
    * ```
    */
-  permissions?: Input<{
+  permissions?: sst.Input<{
     /**
      * Attaches the given list of permissions to the authenticated users.
      */
@@ -132,7 +132,7 @@ interface CognitoUserPoolRef {
  * });
  * ```
  */
-export class CognitoIdentityPool extends Component implements Link.Linkable {
+export class CognitoIdentityPool extends AWSComponent implements sst.Linkable {
   private identityPool: cognito.IdentityPool;
   private authRole: iam.Role;
   private unauthRole: iam.Role;
@@ -178,10 +178,10 @@ export class CognitoIdentityPool extends Component implements Link.Linkable {
             allowUnauthenticatedIdentities: true,
             cognitoIdentityProviders:
               args.userPools &&
-              output(args.userPools).apply((userPools) =>
+              sst.output(args.userPools).apply((userPools) =>
                 userPools.map((v) => ({
                   clientId: v.client,
-                  providerName: interpolate`cognito-idp.${region}.amazonaws.com/${v.userPool}`,
+                  providerName: sst.interpolate`cognito-idp.${region}.amazonaws.com/${v.userPool}`,
                 })),
               ),
             supportedLoginProviders: {},
@@ -192,7 +192,7 @@ export class CognitoIdentityPool extends Component implements Link.Linkable {
     }
 
     function createAuthRole() {
-      const policy = output(args.permissions).apply((permissions) =>
+      const policy = sst.output(args.permissions).apply((permissions) =>
         iam.getPolicyDocumentOutput({
           statements: [
             {
@@ -248,7 +248,7 @@ export class CognitoIdentityPool extends Component implements Link.Linkable {
     }
 
     function createUnauthRole() {
-      const policy = output(args.permissions).apply((permissions) =>
+      const policy = sst.output(args.permissions).apply((permissions) =>
         iam.getPolicyDocumentOutput({
           statements: [
             {
@@ -390,7 +390,7 @@ export class CognitoIdentityPool extends Component implements Link.Linkable {
    */
   public static get(
     name: string,
-    identityPoolID: Input<string>,
+    identityPoolID: sst.Input<string>,
     opts?: ComponentResourceOptions,
   ) {
     const identityPool = cognito.IdentityPool.get(
@@ -407,14 +407,16 @@ export class CognitoIdentityPool extends Component implements Link.Linkable {
     );
     const authRole = iam.Role.get(
       `${name}AuthRole`,
-      attachment.roles.authenticated.apply((arn) => parseRoleArn(arn).roleName),
+      attachment.roles.authenticated.apply(
+        (item) => arn.parseRole(item).roleName,
+      ),
       undefined,
       opts,
     );
     const unauthRole = iam.Role.get(
       `${name}UnauthRole`,
       attachment.roles.unauthenticated.apply(
-        (arn) => parseRoleArn(arn).roleName,
+        (item) => arn.parseRole(item).roleName,
       ),
       undefined,
       opts,

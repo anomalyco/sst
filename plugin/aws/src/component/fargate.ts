@@ -1,33 +1,31 @@
-import fs from "fs";
-import path from "path";
-import { ComponentResourceOptions, interpolate, secret } from "@pulumi/pulumi";
-import { all, output } from "@pulumi/pulumi";
-import { Input } from "../input";
-import { Efs } from "./efs";
-import { FunctionArgs } from "./function";
-import { RETENTION } from "./logging";
-import { toGBs, toMBs } from "../size";
-import { VisibleError } from "../error";
-import { ServiceArgs } from "./service";
-import { ImageArgs, Platform } from "@pulumi/docker-build";
-import { Component, Transform, transform } from "../component";
+import * as sst from "sst-plugin";
+import { Transform, transform } from "sst-plugin/internal/transform";
+import { VisibleError } from "sst-plugin/error";
 import {
-  cloudwatch,
-  ecr,
+  iam,
   ecs,
+  cloudwatch,
   getCallerIdentityOutput,
   getPartitionOutput,
   getRegionOutput,
-  iam,
+  ecr,
 } from "@pulumi/aws";
-import { Link } from "../link";
-import { Permission } from "./permission";
-import { bootstrap } from "./helpers/bootstrap";
-import { imageBuilder } from "./helpers/container-builder";
-import { toNumber } from "../cpu";
-import { toSeconds } from "../duration";
-import { Cluster } from "./cluster";
-import { physicalName } from "../naming";
+import { ImageArgs, Platform } from "@pulumi/docker-build";
+import path from "path";
+import { $jsonStringify } from "sst-plugin/runtime/shim";
+import { bootstrap } from "../bootstrap.js";
+import { toNumber } from "../cpu.js";
+import { toSeconds } from "../duration.js";
+import { RETENTION } from "../logging.js";
+import { Permission } from "../permission.js";
+import { toGBs, toMBs } from "../size.js";
+import { Efs } from "./efs.js";
+import { FunctionArgs } from "./function.js";
+import { ServiceArgs } from "./service.js";
+import { imageBuilder } from "./util/container-builder.js";
+import { link } from "sst-plugin/runtime/link";
+import { Cluster } from "./cluster.js";
+import { existsSync, readFileSync, writeFileSync } from "fs";
 
 export const supportedCpus = {
   "0.25 vCPU": 256,
@@ -136,7 +134,7 @@ export interface FargateContainerArgs {
    *
    * This is used as the `--name` option in the Docker run command.
    */
-  name: Input<string>;
+  name: sst.Input<string>;
   /**
    * The amount of CPU allocated to the container.
    *
@@ -174,39 +172,39 @@ export interface FargateContainerArgs {
   /**
    * Configure the Docker image for the container. Same as the top-level [`image`](#image).
    */
-  image?: Input<
+  image?: sst.Input<
     | string
     | {
         /**
          * The path to the Docker build context. Same as the top-level
          * [`image.context`](#image-context).
          */
-        context?: Input<string>;
+        context?: sst.Input<string>;
         /**
          * The path to the Dockerfile. Same as the top-level
          * [`image.dockerfile`](#image-dockerfile).
          */
-        dockerfile?: Input<string>;
+        dockerfile?: sst.Input<string>;
         /**
          * Key-value pairs of build args. Same as the top-level [`image.args`](#image-args).
          */
-        args?: Input<Record<string, Input<string>>>;
+        args?: sst.Input<Record<string, sst.Input<string>>>;
         /**
          * The stage to build up to. Same as the top-level [`image.target`](#image-target).
          */
-        target?: Input<string>;
+        target?: sst.Input<string>;
       }
   >;
   /**
    * The command to override the default command in the container. Same as the top-level
    * [`command`](#command).
    */
-  command?: Input<string[]>;
+  command?: sst.Input<string[]>;
   /**
    * The entrypoint to override the default entrypoint in the container. Same as the top-level
    * [`entrypoint`](#entrypoint).
    */
-  entrypoint?: Input<string[]>;
+  entrypoint?: sst.Input<string[]>;
   /**
    * Key-value pairs of values that are set as container environment variables. Same as the
    * top-level [`environment`](#environment).
@@ -215,15 +213,15 @@ export interface FargateContainerArgs {
   /**
    * Configure the logs in CloudWatch. Same as the top-level [`logging`](#logging).
    */
-  logging?: Input<{
+  logging?: sst.Input<{
     /**
      * The duration the logs are kept in CloudWatch. Same as the top-level [`logging.retention`](#logging-retention).
      */
-    retention?: Input<keyof typeof RETENTION>;
+    retention?: sst.Input<keyof typeof RETENTION>;
     /**
      * The name of the CloudWatch log group. Same as the top-level [`logging.name`](#logging-name).
      */
-    name?: Input<string>;
+    name?: sst.Input<string>;
   }>;
   /**
    * Key-value pairs of AWS Systems Manager Parameter Store parameter ARNs or AWS Secrets
@@ -266,7 +264,7 @@ export interface FargateBaseArgs {
    * }
    * ```
    */
-  architecture?: Input<"x86_64" | "arm64">;
+  architecture?: sst.Input<"x86_64" | "arm64">;
   /**
    * The amount of CPU allocated to the container. If there are multiple containers, this is
    * the total amount of CPU shared across all the containers.
@@ -413,7 +411,7 @@ export interface FargateBaseArgs {
    * }
    * ```
    */
-  image?: Input<
+  image?: sst.Input<
     | string
     | {
         /**
@@ -429,7 +427,7 @@ export interface FargateBaseArgs {
          * }
          * ```
          */
-        context?: Input<string>;
+        context?: sst.Input<string>;
         /**
          * The path to the [Dockerfile](https://docs.docker.com/reference/cli/docker/image/build/#file).
          * The path is relative to the build `context`.
@@ -442,7 +440,7 @@ export interface FargateBaseArgs {
          * }
          * ```
          */
-        dockerfile?: Input<string>;
+        dockerfile?: sst.Input<string>;
         /**
          * Key-value pairs of [build args](https://docs.docker.com/build/guide/build-args/) to pass to the Docker build command.
          * @example
@@ -454,7 +452,7 @@ export interface FargateBaseArgs {
          * }
          * ```
          */
-        args?: Input<Record<string, Input<string>>>;
+        args?: sst.Input<Record<string, sst.Input<string>>>;
         /**
          * Tags to apply to the Docker image.
          * @example
@@ -464,7 +462,7 @@ export interface FargateBaseArgs {
          * }
          * ```
          */
-        tags?: Input<Input<string>[]>;
+        tags?: sst.Input<sst.Input<string>[]>;
         /**
          * The stage to build up to in a [multi-stage Dockerfile](https://docs.docker.com/build/building/multi-stage/#stop-at-a-specific-build-stage).
          * @example
@@ -474,7 +472,7 @@ export interface FargateBaseArgs {
          * }
          * ```
          */
-        target?: Input<string>;
+        target?: sst.Input<string>;
       }
   >;
   /**
@@ -486,7 +484,7 @@ export interface FargateBaseArgs {
    * }
    * ```
    */
-  command?: Input<Input<string>[]>;
+  command?: sst.Input<sst.Input<string>[]>;
   /**
    * The entrypoint that overrides the default entrypoint in the container.
    * @example
@@ -496,7 +494,7 @@ export interface FargateBaseArgs {
    * }
    * ```
    */
-  entrypoint?: Input<string[]>;
+  entrypoint?: sst.Input<string[]>;
   /**
    * Key-value pairs of values that are set as [container environment variables](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/taskdef-envfiles.html).
    * The keys need to:
@@ -529,7 +527,7 @@ export interface FargateBaseArgs {
    * }
    * ```
    */
-  ssm?: Input<Record<string, Input<string>>>;
+  ssm?: sst.Input<Record<string, sst.Input<string>>>;
   /**
    * Configure the logs in CloudWatch.
    * @default `{ retention: "1 month" }`
@@ -542,18 +540,18 @@ export interface FargateBaseArgs {
    * }
    * ```
    */
-  logging?: Input<{
+  logging?: sst.Input<{
     /**
      * The duration the logs are kept in CloudWatch.
      * @default `"1 month"`
      */
-    retention?: Input<keyof typeof RETENTION>;
+    retention?: sst.Input<keyof typeof RETENTION>;
     /**
      * The name of the CloudWatch log group. If omitted, the log group name is generated
      * based on the cluster name, service name, and container name.
      * @default `"/sst/cluster/${CLUSTER_NAME}/${SERVICE_NAME}/${CONTAINER_NAME}"`
      */
-    name?: Input<string>;
+    name?: sst.Input<string>;
   }>;
   /**
    * Mount Amazon EFS file systems into the container.
@@ -595,27 +593,27 @@ export interface FargateBaseArgs {
    * }
    * ```
    */
-  volumes?: Input<{
+  volumes?: sst.Input<{
     /**
      * The Amazon EFS file system to mount.
      */
-    efs: Input<
+    efs: sst.Input<
       | Efs
       | {
           /**
            * The ID of the EFS file system.
            */
-          fileSystem: Input<string>;
+          fileSystem: sst.Input<string>;
           /**
            * The ID of the EFS access point.
            */
-          accessPoint: Input<string>;
+          accessPoint: sst.Input<string>;
         }
     >;
     /**
      * The path to mount the volume.
      */
-    path: Input<string>;
+    path: sst.Input<string>;
   }>[];
   /**
    * Assigns the given IAM role name to the containers. This allows you to pass in a previously
@@ -639,7 +637,7 @@ export interface FargateBaseArgs {
    * }
    * ```
    */
-  taskRole?: Input<string>;
+  taskRole?: sst.Input<string>;
   /**
    * Assigns the given IAM role name to AWS ECS to launch and manage the containers. This
    * allows you to pass in a previously created role.
@@ -654,7 +652,7 @@ export interface FargateBaseArgs {
    * }
    * ```
    */
-  executionRole?: Input<string>;
+  executionRole?: sst.Input<string>;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
@@ -684,11 +682,11 @@ export interface FargateBaseArgs {
 }
 
 export function normalizeArchitecture(args: FargateBaseArgs) {
-  return output(args.architecture ?? "x86_64").apply((v) => v);
+  return sst.output(args.architecture ?? "x86_64").apply((v) => v);
 }
 
 export function normalizeCpu(args: FargateBaseArgs) {
-  return output(args.cpu ?? "0.25 vCPU").apply((v) => {
+  return sst.output(args.cpu ?? "0.25 vCPU").apply((v) => {
     if (!supportedCpus[v]) {
       throw new Error(
         `Unsupported CPU: ${v}. The supported values for CPU are ${Object.keys(
@@ -704,7 +702,7 @@ export function normalizeMemory(
   cpu: ReturnType<typeof normalizeCpu>,
   args: FargateBaseArgs,
 ) {
-  return all([cpu, args.memory ?? "0.5 GB"]).apply(([cpu, v]) => {
+  return sst.resolve([cpu, args.memory ?? "0.5 GB"]).apply(([cpu, v]) => {
     if (!(v in supportedMemories[cpu])) {
       throw new Error(
         `Unsupported memory: ${v}. The supported values for memory for a ${cpu} CPU are ${Object.keys(
@@ -717,7 +715,7 @@ export function normalizeMemory(
 }
 
 export function normalizeStorage(args: FargateBaseArgs) {
-  return output(args.storage ?? "20 GB").apply((v) => {
+  return sst.output(args.storage ?? "20 GB").apply((v) => {
     const storage = toGBs(v);
     if (storage < 20 || storage > 200)
       throw new Error(
@@ -768,7 +766,7 @@ export function normalizeContainers(
   ];
 
   // Normalize container props
-  return output(containers).apply((containers) =>
+  return sst.output(containers).apply((containers) =>
     containers.map((v) => {
       return {
         ...v,
@@ -778,7 +776,7 @@ export function normalizeContainers(
       };
 
       function normalizeVolumes() {
-        return output(v.volumes).apply(
+        return sst.output(v.volumes).apply(
           (volumes) =>
             volumes?.map((volume) => ({
               path: volume.path,
@@ -794,32 +792,36 @@ export function normalizeContainers(
       }
 
       function normalizeImage() {
-        return all([v.image, architecture]).apply(([image, architecture]) => {
-          if (typeof image === "string") return image;
+        return sst
+          .resolve([v.image, architecture])
+          .apply(([image, architecture]) => {
+            if (typeof image === "string") return image;
 
-          return {
-            ...image,
-            context: image?.context ?? ".",
-            platform:
-              architecture === "arm64"
-                ? Platform.Linux_arm64
-                : Platform.Linux_amd64,
-          };
-        });
+            return {
+              ...image,
+              context: image?.context ?? ".",
+              platform:
+                architecture === "arm64"
+                  ? Platform.Linux_arm64
+                  : Platform.Linux_amd64,
+            };
+          });
       }
 
       function normalizeLogging() {
-        return all([v.logging, args.cluster.nodes.cluster.name]).apply(
-          ([logging, clusterName]) => ({
+        return sst
+          .resolve([v.logging, args.cluster.nodes.cluster.name])
+          .apply(([logging, clusterName]) => ({
             ...logging,
             retention: logging?.retention ?? "1 month",
             name:
               logging?.name ??
               // In the case of shared Cluster across stage, log group name can thrash
               // if Task name is the same. Need to suffix the task name with random hash.
-              `/sst/cluster/${clusterName}/${physicalName(64, name)}/${v.name}`,
-          }),
-        );
+              `/sst/cluster/${clusterName}/${sst.naming.physical(64, name)}/${
+                v.name
+              }`,
+          }));
       }
     }),
   );
@@ -828,43 +830,45 @@ export function normalizeContainers(
 export function createTaskRole(
   name: string,
   args: FargateBaseArgs,
-  opts: ComponentResourceOptions,
-  parent: Component,
+  opts: sst.ComponentOptions,
+  parent: sst.Component,
   dev: boolean,
   additionalPermissions?: FunctionArgs["permissions"],
 ) {
   if (args.taskRole)
     return iam.Role.get(`${name}TaskRole`, args.taskRole, {}, { parent });
 
-  const policy = all([
-    args.permissions || [],
-    Link.getInclude<Permission>("aws.permission", args.link),
-    additionalPermissions,
-  ]).apply(([argsPermissions, linkPermissions, additionalPermissions]) =>
-    iam.getPolicyDocumentOutput({
-      statements: [
-        ...argsPermissions,
-        ...linkPermissions,
-        ...(additionalPermissions ?? []),
-        {
-          actions: [
-            "ssmmessages:CreateControlChannel",
-            "ssmmessages:CreateDataChannel",
-            "ssmmessages:OpenControlChannel",
-            "ssmmessages:OpenDataChannel",
-          ],
-          resources: ["*"],
-        },
-      ].map((item) => ({
-        effect: (() => {
-          const effect = item.effect ?? "allow";
-          return effect.charAt(0).toUpperCase() + effect.slice(1);
-        })(),
-        actions: item.actions,
-        resources: item.resources,
-      })),
-    }),
-  );
+  const policy = sst
+    .resolve([
+      args.permissions || [],
+      link.getInclude<Permission>("aws.permission", args.link),
+      additionalPermissions,
+    ])
+    .apply(([argsPermissions, linkPermissions, additionalPermissions]) =>
+      iam.getPolicyDocumentOutput({
+        statements: [
+          ...argsPermissions,
+          ...linkPermissions,
+          ...(additionalPermissions ?? []),
+          {
+            actions: [
+              "ssmmessages:CreateControlChannel",
+              "ssmmessages:CreateDataChannel",
+              "ssmmessages:OpenControlChannel",
+              "ssmmessages:OpenDataChannel",
+            ],
+            resources: ["*"],
+          },
+        ].map((item) => ({
+          effect: (() => {
+            const effect = item.effect ?? "allow";
+            return effect.charAt(0).toUpperCase() + effect.slice(1);
+          })(),
+          actions: item.actions,
+          resources: item.resources,
+        })),
+      }),
+    );
 
   return new iam.Role(
     ...transform(
@@ -887,8 +891,8 @@ export function createTaskRole(
 export function createExecutionRole(
   name: string,
   args: FargateBaseArgs,
-  opts: ComponentResourceOptions,
-  parent: Component,
+  opts: sst.ComponentOptions,
+  parent: sst.Component,
 ) {
   if (args.executionRole)
     return iam.Role.get(
@@ -907,7 +911,7 @@ export function createExecutionRole(
           Service: "ecs-tasks.amazonaws.com",
         }),
         managedPolicyArns: [
-          interpolate`arn:${
+          sst.interpolate`arn:${
             getPartitionOutput({}, opts).partition
           }:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy`,
         ],
@@ -939,8 +943,8 @@ export function createExecutionRole(
 export function createTaskDefinition(
   name: string,
   args: ServiceArgs,
-  opts: ComponentResourceOptions,
-  parent: Component,
+  opts: sst.ComponentOptions,
+  parent: sst.Component,
   containers: ReturnType<typeof normalizeContainers>,
   architecture: ReturnType<typeof normalizeArchitecture>,
   cpu: ReturnType<typeof normalizeCpu>,
@@ -952,29 +956,30 @@ export function createTaskDefinition(
   const clusterName = args.cluster.nodes.cluster.name;
   const region = getRegionOutput({}, opts).name;
   const bootstrapData = region.apply((region) => bootstrap.forRegion(region));
-  const linkEnvs = Link.propertiesToEnv(Link.getProperties(args.link));
-  const containerDefinitions = output(containers).apply((containers) =>
+  const linkEnvs = link.propertiesToEnv(link.getProperties(args.link));
+  const containerDefinitions = sst.output(containers).apply((containers) =>
     containers.map((container) => ({
       name: container.name,
       image: (() => {
-        if (typeof container.image === "string") return output(container.image);
+        if (typeof container.image === "string")
+          return sst.output(container.image);
 
         const containerImage = container.image;
-        const contextPath = path.join($cli.paths.root, container.image.context);
+        const contextPath = path.join(sst.paths.root, container.image.context);
         const dockerfile = container.image.dockerfile ?? "Dockerfile";
         const dockerfilePath = path.join(contextPath, dockerfile);
-        const dockerIgnorePath = fs.existsSync(
+        const dockerIgnorePath = existsSync(
           path.join(contextPath, `${dockerfile}.dockerignore`),
         )
           ? path.join(contextPath, `${dockerfile}.dockerignore`)
           : path.join(contextPath, ".dockerignore");
 
         // add .sst to .dockerignore if not exist
-        const lines = fs.existsSync(dockerIgnorePath)
-          ? fs.readFileSync(dockerIgnorePath).toString().split("\n")
+        const lines = existsSync(dockerIgnorePath)
+          ? readFileSync(dockerIgnorePath).toString().split("\n")
           : [];
         if (!lines.find((line) => line === ".sst")) {
-          fs.writeFileSync(
+          writeFileSync(
             dockerIgnorePath,
             [...lines, "", "# sst", ".sst"].join("\n"),
           );
@@ -995,7 +1000,7 @@ export function createTaskDefinition(
               target: container.image.target,
               platforms: [container.image.platform],
               tags: [container.name, ...(container.image.tags ?? [])].map(
-                (tag) => interpolate`${bootstrapData.assetEcrUrl}:${tag}`,
+                (tag) => sst.interpolate`${bootstrapData.assetEcrUrl}:${tag}`,
               ),
               registries: [
                 ecr
@@ -1007,21 +1012,21 @@ export function createTaskDefinition(
                   )
                   .apply((authToken) => ({
                     address: authToken.proxyEndpoint,
-                    password: secret(authToken.password),
+                    password: sst.secret(authToken.password),
                     username: authToken.userName,
                   })),
               ],
               cacheFrom: [
                 {
                   registry: {
-                    ref: interpolate`${bootstrapData.assetEcrUrl}:${container.name}-cache`,
+                    ref: sst.interpolate`${bootstrapData.assetEcrUrl}:${container.name}-cache`,
                   },
                 },
               ],
               cacheTo: [
                 {
                   registry: {
-                    ref: interpolate`${bootstrapData.assetEcrUrl}:${container.name}-cache`,
+                    ref: sst.interpolate`${bootstrapData.assetEcrUrl}:${container.name}-cache`,
                     imageManifest: true,
                     ociMediaTypes: true,
                     mode: "max",
@@ -1034,7 +1039,7 @@ export function createTaskDefinition(
           ),
         );
 
-        return interpolate`${bootstrapData.assetEcrUrl}@${image.digest}`;
+        return sst.interpolate`${bootstrapData.assetEcrUrl}@${image.digest}`;
       })(),
       cpu: container.cpu ? toNumber(container.cpu) : undefined,
       memory: container.memory ? toMBs(container.memory) : undefined,
@@ -1096,7 +1101,7 @@ export function createTaskDefinition(
           args.transform?.taskDefinition,
           `${name}Task`,
           {
-            family: interpolate`${clusterName}-${name}`,
+            family: sst.interpolate`${clusterName}-${name}`,
             trackLatest: true,
             cpu: cpu.apply((v) => toNumber(v).toString()),
             memory: memory.apply((v) => toMBs(v).toString()),
@@ -1112,7 +1117,7 @@ export function createTaskDefinition(
             },
             executionRoleArn: executionRole.arn,
             taskRoleArn: taskRole.arn,
-            volumes: output(containers).apply((containers) => {
+            volumes: sst.output(containers).apply((containers) => {
               const uniqueAccessPoints: Set<string> = new Set();
               return containers.flatMap((container) =>
                 (container.volumes ?? []).flatMap((volume) => {

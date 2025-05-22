@@ -1,28 +1,22 @@
-import {
-  ComponentResourceOptions,
-  Output,
-  all,
-  interpolate,
-  output,
-} from "@pulumi/pulumi";
-import { Component, Prettify, Transform, transform } from "../component";
-import { Link } from "../link";
-import { Input } from "../input";
-import { Dns } from "../dns";
-import { dns as awsDns } from "./dns.js";
-import { ses, sesv2 } from "@pulumi/aws";
-import { permission } from "./permission";
+import * as sst from "sst-plugin";
+import { transform, Transform } from "sst-plugin/internal/transform";
+import { AWSComponent } from "../component.js";
+import { permission } from "../permission.js";
+import { sesv2, ses } from "@pulumi/aws";
+import { ComponentResourceOptions, all } from "@pulumi/pulumi";
+import { Dns } from "sst-plugin/dns";
+import { Prettify } from "sst-plugin/internal/prettify";
 
 interface Events {
   /**
    * The name of the event.
    */
-  name: Input<string>;
+  name: sst.Input<string>;
   /**
    * The types of events to send.
    */
-  types: Input<
-    Input<
+  types: sst.Input<
+    sst.Input<
       | "send"
       | "reject"
       | "bounce"
@@ -38,11 +32,11 @@ interface Events {
   /**
    * The ARN of the SNS topic to send events to.
    */
-  topic?: Input<string>;
+  topic?: sst.Input<string>;
   /**
    * The ARN of the EventBridge bus to send events to.
    */
-  bus?: Input<string>;
+  bus?: sst.Input<string>;
 }
 
 export interface EmailArgs {
@@ -90,7 +84,7 @@ export interface EmailArgs {
    * }
    * ```
    */
-  sender: Input<string>;
+  sender: sst.Input<string>;
   /**
    * The DNS adapter you want to use for managing DNS records. Only specify this if you
    * are using a domain name as the `sender`.
@@ -122,7 +116,7 @@ export interface EmailArgs {
    * }
    * ```
    */
-  dns?: Input<false | (Dns & {})>;
+  dns?: sst.Input<false | (Dns & {})>;
   /**
    * The DMARC policy for the domain. This'll create a DNS record with the given DMARC policy.
    * Only specify this if you are using a domain name as the `sender`.
@@ -136,7 +130,7 @@ export interface EmailArgs {
    * }
    * ```
    */
-  dmarc?: Input<string>;
+  dmarc?: sst.Input<string>;
   /**
    * Configure event notifications for this Email component.
    *
@@ -153,7 +147,7 @@ export interface EmailArgs {
    * }
    * ```
    */
-  events?: Input<Prettify<Events>[]>;
+  events?: sst.Input<Prettify<Events>[]>;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
@@ -172,7 +166,7 @@ export interface EmailArgs {
 
 interface EmailRef {
   ref: boolean;
-  sender: Input<string>;
+  sender: sst.Input<string>;
 }
 
 /**
@@ -254,8 +248,8 @@ interface EmailRef {
  * );
  * ```
  */
-export class Email extends Component implements Link.Linkable {
-  private _sender: Output<string>;
+export class Email extends AWSComponent implements sst.Linkable {
+  private _sender: sst.Output<string>;
   private identity: sesv2.EmailIdentity;
   private configurationSet: sesv2.ConfigurationSet;
 
@@ -284,7 +278,7 @@ export class Email extends Component implements Link.Linkable {
       waitForVerification();
     });
 
-    this._sender = output(args.sender);
+    this._sender = sst.output(args.sender);
     this.identity = identity;
     this.configurationSet = configurationSet;
 
@@ -310,7 +304,7 @@ export class Email extends Component implements Link.Linkable {
     }
 
     function checkIsDomain() {
-      return output(args.sender).apply((sender) => !sender.includes("@"));
+      return sst.output(args.sender).apply((sender) => !sender.includes("@"));
     }
 
     function normalizeDns() {
@@ -361,7 +355,7 @@ export class Email extends Component implements Link.Linkable {
     }
 
     function createEvents() {
-      output(args.events ?? []).apply((events) =>
+      sst.output(args.events ?? []).apply((events) =>
         events.forEach((event) => {
           new sesv2.ConfigurationSetEventDestination(
             `${name}Event${event.name}`,
@@ -397,7 +391,7 @@ export class Email extends Component implements Link.Linkable {
               name,
               {
                 type: "CNAME",
-                name: interpolate`${token}._domainkey.${args.sender}`,
+                name: sst.interpolate`${token}._domainkey.${args.sender}`,
                 value: `${token}.dkim.amazonses.com`,
               },
               { parent: self },
@@ -408,14 +402,14 @@ export class Email extends Component implements Link.Linkable {
     }
 
     function createDmarcRecord() {
-      output(dns).apply((dns) => {
+      sst.output(dns).apply((dns) => {
         if (!dns) return;
 
         dns.createRecord(
           name,
           {
             type: "TXT",
-            name: interpolate`_dmarc.${args.sender}`,
+            name: sst.interpolate`_dmarc.${args.sender}`,
             value: dmarc,
           },
           { parent: self },
@@ -513,7 +507,7 @@ export class Email extends Component implements Link.Linkable {
    */
   public static get(
     name: string,
-    sender: Input<string>,
+    sender: sst.Input<string>,
     opts?: ComponentResourceOptions,
   ) {
     return new Email(

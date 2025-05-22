@@ -1,14 +1,8 @@
-import {
-  ComponentResourceOptions,
-  jsonParse,
-  output,
-  Output,
-} from "@pulumi/pulumi";
-import { Component, Transform, transform } from "../component.js";
-import { Link } from "../link.js";
-import { Input } from "../input.js";
+import * as sst from "sst-plugin";
+import { Transform, transform } from "sst-plugin/internal/transform";
 import { rds, secretsmanager } from "@pulumi/aws";
-import { permission } from "./permission.js";
+import { AWSComponent } from "../component.js";
+import { permission } from "../permission.js";
 
 type ACU = `${number} ACU`;
 
@@ -28,7 +22,7 @@ export interface PostgresArgs {
    * }
    * ```
    */
-  version?: Input<string>;
+  version?: sst.Input<string>;
   /**
    * Name of a database that is automatically created inside the cluster.
    *
@@ -42,7 +36,7 @@ export interface PostgresArgs {
    * }
    * ```
    */
-  databaseName?: Input<string>;
+  databaseName?: sst.Input<string>;
   /**
    * The Aurora Serverless v2 scaling config. By default, the cluster has one DB instance that
    * is used for both writes and reads. The instance can scale from the minimum number of ACUs
@@ -62,7 +56,7 @@ export interface PostgresArgs {
    *
    * @default `{min: "0.5 ACU", max: "4 ACU"}`
    */
-  scaling?: Input<{
+  scaling?: sst.Input<{
     /**
      * The minimum number of ACUs, ranges from 0.5 to 128, in increments of 0.5.
      *
@@ -83,7 +77,7 @@ export interface PostgresArgs {
      * }
      * ```
      */
-    min?: Input<ACU>;
+    min?: sst.Input<ACU>;
     /**
      * The maximum number of ACUs, ranges from 1 to 128, in increments of 0.5.
      *
@@ -97,7 +91,7 @@ export interface PostgresArgs {
      * }
      * ```
      */
-    max?: Input<ACU>;
+    max?: sst.Input<ACU>;
   }>;
   /**
    * The VPC to use for the database cluster.
@@ -134,16 +128,16 @@ export interface PostgresArgs {
    */
   vpc:
     | "default"
-    | Input<{
+    | sst.Input<{
         /**
          * A list of private subnet IDs in the VPC. The database will be placed in the private
          * subnets.
          */
-        privateSubnets: Input<Input<string>[]>;
+        privateSubnets: sst.Input<sst.Input<string>[]>;
         /**
          * A list of VPC security group IDs.
          */
-        securityGroups: Input<Input<string>[]>;
+        securityGroups: sst.Input<sst.Input<string>[]>;
       }>;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
@@ -246,15 +240,11 @@ interface PostgresRef {
  * });
  * ```
  */
-export class Postgres extends Component implements Link.Linkable {
+export class Postgres extends AWSComponent implements sst.Linkable {
   private cluster: rds.Cluster;
   private instance: rds.ClusterInstance;
 
-  constructor(
-    name: string,
-    args: PostgresArgs,
-    opts?: ComponentResourceOptions,
-  ) {
+  constructor(name: string, args: PostgresArgs, opts?: sst.ComponentOptions) {
     super(__pulumiType, name, args, opts);
 
     if (args && "ref" in args) {
@@ -277,20 +267,20 @@ export class Postgres extends Component implements Link.Linkable {
     this.instance = instance;
 
     function normalizeScaling() {
-      return output(args.scaling).apply((scaling) => ({
+      return sst.output(args.scaling).apply((scaling) => ({
         minCapacity: parseACU(scaling?.min ?? "0.5 ACU"),
         maxCapacity: parseACU(scaling?.max ?? "4 ACU"),
       }));
     }
 
     function normalizeVersion() {
-      return output(args.version).apply((version) => version ?? "15.5");
+      return sst.output(args.version).apply((version) => version ?? "15.5");
     }
 
     function normalizeDatabaseName() {
-      return output(args.databaseName).apply(
-        (name) => name ?? $app.name.replaceAll("-", "_"),
-      );
+      return sst
+        .output(args.databaseName)
+        .apply((name) => name ?? sst.app.name.replaceAll("-", "_"));
     }
 
     function createSubnetGroup() {
@@ -300,7 +290,7 @@ export class Postgres extends Component implements Link.Linkable {
           args.transform?.subnetGroup,
           `${name}SubnetGroup`,
           {
-            subnetIds: output(args.vpc).privateSubnets,
+            subnetIds: sst.output(args.vpc).privateSubnets,
           },
           { parent },
         ),
@@ -326,7 +316,7 @@ export class Postgres extends Component implements Link.Linkable {
             vpcSecurityGroupIds:
               args.vpc === "default"
                 ? undefined
-                : output(args.vpc).securityGroups,
+                : sst.output(args.vpc).securityGroups,
           },
           { parent },
         ),
@@ -351,7 +341,9 @@ export class Postgres extends Component implements Link.Linkable {
     }
   }
 
-  private _dbSecret?: Output<secretsmanager.GetSecretVersionResult> | undefined;
+  private _dbSecret?:
+    | sst.Output<secretsmanager.GetSecretVersionResult>
+    | undefined;
   private get secret() {
     return this.secretArn.apply((val) => {
       if (this._dbSecret) return this._dbSecret;
@@ -392,12 +384,12 @@ export class Postgres extends Component implements Link.Linkable {
   /** The password of the master user. */
   public get password() {
     return this.cluster.masterPassword.apply((val) => {
-      if (val) return output(val);
-      const parsed = jsonParse(
+      if (val) return sst.output(val);
+      const parsed = sst.json.parse(
         this.secret.apply((secret) =>
-          secret ? secret.secretString : output("{}"),
+          secret ? secret.secretString : sst.output("{}"),
         ),
-      ) as Output<{ username: string; password: string }>;
+      ) as sst.Output<{ username: string; password: string }>;
       return parsed.password;
     });
   }
@@ -496,7 +488,7 @@ export class Postgres extends Component implements Link.Linkable {
    * };
    * ```
    */
-  public static get(name: string, clusterID: Input<string>) {
+  public static get(name: string, clusterID: sst.Input<string>) {
     const cluster = rds.Cluster.get(`${name}Cluster`, clusterID);
     const instances = rds.getInstancesOutput({
       filters: [{ name: "db-cluster-id", values: [clusterID] }],

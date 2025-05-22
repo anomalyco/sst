@@ -41,7 +41,6 @@ export * from "./svelte-kit.js";
 export * from "./vector.js";
 export * from "./vpc.js";
 export { linkable } from "./linkable.js";
-export { permission } from "./permission.js";
 export { iamEdit } from "./iam-edit.js";
 
 // internal components

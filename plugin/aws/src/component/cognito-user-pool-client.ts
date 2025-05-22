@@ -1,15 +1,14 @@
-import { ComponentResourceOptions, output } from "@pulumi/pulumi";
-import { Component, Transform, transform } from "../component";
-import { Input } from "../input";
-import { CognitoUserPoolClientArgs } from "./cognito-user-pool.js";
-import { Link } from "../link";
 import { cognito } from "@pulumi/aws";
+import * as sst from "sst-plugin";
+import { transform, Transform } from "sst-plugin/internal/transform";
+import { AWSComponent } from "../component.js";
+import { CognitoUserPoolClientArgs } from "./cognito-user-pool.js";
 
 export interface Args extends CognitoUserPoolClientArgs {
   /**
    * The Cognito user pool ID.
    */
-  userPool: Input<string>;
+  userPool: sst.Input<string>;
 }
 
 /**
@@ -22,10 +21,13 @@ export interface Args extends CognitoUserPoolClientArgs {
  *
  * You'll find this component returned by the `addClient` method of the `CognitoUserPool` component.
  */
-export class CognitoUserPoolClient extends Component implements Link.Linkable {
+export class CognitoUserPoolClient
+  extends AWSComponent
+  implements sst.Linkable
+{
   private client: cognito.UserPoolClient;
 
-  constructor(name: string, args: Args, opts?: ComponentResourceOptions) {
+  constructor(name: string, args: Args, opts?: sst.ComponentOptions) {
     super(__pulumiType, name, args, opts);
 
     const parent = this;
@@ -37,7 +39,7 @@ export class CognitoUserPoolClient extends Component implements Link.Linkable {
 
     function normalizeProviders() {
       if (!args.providers) return ["COGNITO"];
-      return output(args.providers);
+      return sst.output(args.providers);
     }
 
     function createClient() {

@@ -1,14 +1,12 @@
-import { ComponentResourceOptions, Output, output } from "@pulumi/pulumi";
-import { Component, Transform, transform } from "../component";
-import { Link } from "../link";
-import type { Input } from "../input";
-import { FunctionArgs, FunctionArn } from "./function";
-import { parseEventBusArn } from "./helpers/arn";
-import { BusLambdaSubscriber } from "./bus-lambda-subscriber";
 import { cloudwatch } from "@pulumi/aws";
-import { permission } from "./permission";
-import { Queue } from "./queue";
-import { BusQueueSubscriber } from "./bus-queue-subscriber";
+import * as sst from "sst-plugin";
+import { transform, Transform } from "sst-plugin/internal/transform";
+import { BusLambdaSubscriber } from "./bus-lambda-subscriber.js";
+import { BusQueueSubscriber } from "./bus-queue-subscriber.js";
+import { FunctionArgs, FunctionArn } from "./function.js";
+import { Queue } from "./queue.js";
+import { arn } from "../arn.js";
+import { permission } from "../permission.js";
 
 export interface BusArgs {
   /**
@@ -57,7 +55,7 @@ export interface BusSubscriberArgs {
    * }
    * ```
    */
-  pattern?: Input<{
+  pattern?: sst.Input<{
     /**
      * A list of `source` values to match against. The `source` indicates where the
      * event originated.
@@ -123,7 +121,7 @@ export interface BusSubscriberArgs {
 
 interface BusRef {
   ref: true;
-  busName: Input<string>;
+  busName: sst.Input<string>;
 }
 
 /**
@@ -181,15 +179,15 @@ interface BusRef {
  * }));
  * ```
  */
-export class Bus extends Component implements Link.Linkable {
+export class Bus extends sst.Component implements sst.Linkable {
   private constructorName: string;
-  private constructorOpts: ComponentResourceOptions;
+  private constructorOpts: sst.ComponentOptions;
   private bus: cloudwatch.EventBus;
 
   constructor(
     name: string,
     args: BusArgs = {},
-    opts: ComponentResourceOptions = {},
+    opts: sst.ComponentOptions = {},
   ) {
     super(__pulumiType, name, args, opts);
     const self = this;
@@ -292,7 +290,7 @@ export class Bus extends Component implements Link.Linkable {
    */
   public subscribe(
     name: string,
-    subscriber: Input<string | FunctionArgs | FunctionArn>,
+    subscriber: sst.Input<string | FunctionArgs | FunctionArn>,
     args: BusSubscriberArgs = {},
   ) {
     return Bus._subscribeFunction(
@@ -349,12 +347,12 @@ export class Bus extends Component implements Link.Linkable {
    */
   public static subscribe(
     name: string,
-    busArn: Input<string>,
-    subscriber: Input<string | FunctionArgs | FunctionArn>,
+    busArn: sst.Input<string>,
+    subscriber: sst.Input<string | FunctionArgs | FunctionArn>,
     args?: BusSubscriberArgs,
   ) {
-    return output(busArn).apply((busArn) => {
-      const busName = parseEventBusArn(busArn).busName;
+    return sst.output(busArn).apply((busArn) => {
+      const busName = arn.parseEventBus(busArn).busName;
       return this._subscribeFunction(
         busName,
         name,
@@ -369,13 +367,13 @@ export class Bus extends Component implements Link.Linkable {
   private static _subscribeFunction(
     name: string,
     subscriberName: string,
-    busName: Input<string>,
-    busArn: string | Output<string>,
-    subscriber: Input<string | FunctionArgs | FunctionArn>,
+    busName: sst.Input<string>,
+    busArn: string | sst.Output<string>,
+    subscriber: sst.Input<string | FunctionArgs | FunctionArn>,
     args: BusSubscriberArgs = {},
-    opts: ComponentResourceOptions = {},
+    opts: sst.ComponentOptions = {},
   ) {
-    return output(args).apply((args) => {
+    return sst.output(args).apply((args) => {
       return new BusLambdaSubscriber(
         `${name}Subscriber${subscriberName}`,
         {
@@ -427,7 +425,7 @@ export class Bus extends Component implements Link.Linkable {
    */
   public subscribeQueue(
     name: string,
-    queue: Input<string | Queue>,
+    queue: sst.Input<string | Queue>,
     args: BusSubscriberArgs = {},
   ) {
     return Bus._subscribeQueue(
@@ -481,12 +479,12 @@ export class Bus extends Component implements Link.Linkable {
    */
   public static subscribeQueue(
     name: string,
-    busArn: Input<string>,
-    queue: Input<string | Queue>,
+    busArn: sst.Input<string>,
+    queue: sst.Input<string | Queue>,
     args?: BusSubscriberArgs,
   ) {
-    return output(busArn).apply((busArn) => {
-      const busName = parseEventBusArn(busArn).busName;
+    return sst.output(busArn).apply((busArn) => {
+      const busName = arn.parseEventBus(busArn).busName;
       return this._subscribeQueue(busName, name, busArn, busName, queue, args);
     });
   }
@@ -494,12 +492,12 @@ export class Bus extends Component implements Link.Linkable {
   private static _subscribeQueue(
     name: string,
     subscriberName: string,
-    busArn: Input<string>,
-    busName: Input<string>,
-    queue: Input<string | Queue>,
+    busArn: sst.Input<string>,
+    busName: sst.Input<string>,
+    queue: sst.Input<string | Queue>,
     args: BusSubscriberArgs = {},
   ) {
-    return output(args).apply((args) => {
+    return sst.output(args).apply((args) => {
       return new BusQueueSubscriber(`${name}Subscriber${subscriberName}`, {
         bus: { name: busName, arn: busArn },
         queue,
@@ -556,8 +554,8 @@ export class Bus extends Component implements Link.Linkable {
    */
   public static get(
     name: string,
-    busName: Input<string>,
-    opts?: ComponentResourceOptions,
+    busName: sst.Input<string>,
+    opts?: sst.ComponentOptions,
   ) {
     return new Bus(
       name,

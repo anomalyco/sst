@@ -43,3 +43,5 @@ export const paths = {
 };
 
 export const command = "unknown";
+
+export const version: Record<string, number> = {};

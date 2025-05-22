@@ -1,7 +1,8 @@
 import fs from "fs";
 import path from "path";
-import { ComponentResourceOptions, Output } from "@pulumi/pulumi";
-import { Plan, SsrSite, SsrSiteArgs } from "./ssr-site.js";
+import * as sst from "sst-plugin";
+import { ComponentResourceOptions } from "@pulumi/pulumi";
+import { SsrSiteArgs, SsrSite, Plan } from "./ssr-site.js";
 
 export interface NuxtArgs extends SsrSiteArgs {
   /**
@@ -493,9 +494,9 @@ export class Nuxt extends SsrSite {
     super(__pulumiType, name, args, opts);
   }
 
-  protected normalizeBuildCommand() { }
+  protected normalizeBuildCommand() {}
 
-  protected buildPlan(outputPath: Output<string>): Output<Plan> {
+  protected buildPlan(outputPath: sst.Output<string>): sst.Output<Plan> {
     return outputPath.apply((outputPath) => {
       const basepath = fs
         .readFileSync(path.join(outputPath, "nuxt.config.ts"), "utf-8")

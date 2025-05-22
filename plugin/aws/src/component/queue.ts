@@ -1,21 +1,13 @@
-import {
-  ComponentResourceOptions,
-  all,
-  output,
-  jsonStringify,
-  Output,
-} from "@pulumi/pulumi";
-import { Component, Transform, transform } from "../component";
-import { Link } from "../link";
-import type { Input } from "../input";
-import { FunctionArgs, FunctionArn } from "./function";
-import { VisibleError } from "../error";
-import { hashStringToPrettyString, logicalName } from "../naming";
-import { parseQueueArn } from "./helpers/arn";
-import { QueueLambdaSubscriber } from "./queue-lambda-subscriber";
-import { iam, lambda, sqs } from "@pulumi/aws";
-import { DurationHours, DurationMinutes, toSeconds } from "../duration";
-import { permission } from "./permission.js";
+import * as sst from "sst-plugin";
+import { Transform, transform } from "sst-plugin/internal/transform";
+import { VisibleError } from "sst-plugin/error";
+import { sqs, lambda, iam } from "@pulumi/aws";
+import { DurationMinutes, DurationHours, toSeconds } from "../duration.js";
+import { FunctionArgs, FunctionArn } from "./function.js";
+import { QueueLambdaSubscriber } from "./queue-lambda-subscriber.js";
+import { AWSComponent } from "../component.js";
+import { arn } from "../arn.js";
+import { permission } from "../permission.js";
 
 export interface QueueArgs {
   /**
@@ -44,7 +36,7 @@ export interface QueueArgs {
    * }
    * ```
    */
-  fifo?: Input<
+  fifo?: sst.Input<
     | boolean
     | {
         /**
@@ -53,7 +45,7 @@ export interface QueueArgs {
          *
          * @default `false`
          */
-        contentBasedDeduplication?: Input<boolean>;
+        contentBasedDeduplication?: sst.Input<boolean>;
       }
   >;
   /**
@@ -69,7 +61,7 @@ export interface QueueArgs {
    * }
    * ```
    */
-  delay?: Input<DurationMinutes>;
+  delay?: sst.Input<DurationMinutes>;
   /**
    * Visibility timeout is a period of time during which a message is temporarily
    * invisible to other consumers after a consumer has retrieved it from the queue.
@@ -86,7 +78,7 @@ export interface QueueArgs {
    * }
    * ```
    */
-  visibilityTimeout?: Input<DurationHours>;
+  visibilityTimeout?: sst.Input<DurationHours>;
   /**
    * Optionally add a dead-letter queue or DLQ for this queue.
    *
@@ -118,18 +110,18 @@ export interface QueueArgs {
    * });
    * ```
    */
-  dlq?: Input<
+  dlq?: sst.Input<
     | string
     | {
         /**
          * The ARN of the dead-letter queue.
          */
-        queue: Input<string>;
+        queue: sst.Input<string>;
         /**
          * The number of times the main queue will retry the message before sending it to the dead-letter queue.
          * @default `3`
          */
-        retry: Input<number>;
+        retry: sst.Input<number>;
       }
   >;
   /**
@@ -192,12 +184,12 @@ export interface QueueSubscriberArgs {
    * }
    * ```
    */
-  filters?: Input<Input<Record<string, any>>[]>;
+  filters?: sst.Input<sst.Input<Record<string, any>>[]>;
   /**
    * Configure batch processing options for the consumer function.
    * @default `{size: 10, window: "20 seconds", partialResponses: false}`
    */
-  batch?: Input<{
+  batch?: sst.Input<{
     /**
      * The maximum number of events that will be processed together in a single invocation
      * of the consumer function.
@@ -219,7 +211,7 @@ export interface QueueSubscriberArgs {
      * }
      * ```
      */
-    size?: Input<number>;
+    size?: sst.Input<number>;
     /**
      * The maximum amount of time to wait for collecting events before sending the batch to
      * the consumer function, even if the batch size hasn't been reached.
@@ -235,7 +227,7 @@ export interface QueueSubscriberArgs {
      * }
      * ```
      */
-    window?: Input<DurationMinutes>;
+    window?: sst.Input<DurationMinutes>;
     /**
      * Whether to return partial successful responses for a batch.
      *
@@ -278,7 +270,7 @@ export interface QueueSubscriberArgs {
      *
      * This makes only id2 and id4 visible again in the queue.
      */
-    partialResponses?: Input<boolean>;
+    partialResponses?: sst.Input<boolean>;
   }>;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
@@ -294,7 +286,7 @@ export interface QueueSubscriberArgs {
 
 interface QueueRef {
   ref: true;
-  queueUrl: Input<string>;
+  queueUrl: sst.Input<string>;
 }
 
 /**
@@ -348,16 +340,16 @@ interface QueueRef {
  * }));
  * ```
  */
-export class Queue extends Component implements Link.Linkable {
+export class Queue extends AWSComponent implements sst.Linkable {
   private constructorName: string;
-  private constructorOpts: ComponentResourceOptions;
+  private constructorOpts: sst.ComponentOptions;
   private queue: sqs.Queue;
   private isSubscribed: boolean = false;
 
   constructor(
     name: string,
     args: QueueArgs = {},
-    opts: ComponentResourceOptions = {},
+    opts: sst.ComponentOptions = {},
   ) {
     super(__pulumiType, name, args, opts);
     const self = this;
@@ -372,8 +364,10 @@ export class Queue extends Component implements Link.Linkable {
 
     const fifo = normalizeFifo();
     const dlq = normalizeDlq();
-    const visibilityTimeout = output(args?.visibilityTimeout ?? "30 seconds");
-    const delay = output(args?.delay ?? "0 seconds");
+    const visibilityTimeout = sst.output(
+      args?.visibilityTimeout ?? "30 seconds",
+    );
+    const delay = sst.output(args?.delay ?? "0 seconds");
 
     this.queue = createQueue();
 
@@ -387,7 +381,7 @@ export class Queue extends Component implements Link.Linkable {
     }
 
     function normalizeFifo() {
-      return output(args?.fifo).apply((v) => {
+      return sst.output(args?.fifo).apply((v) => {
         if (!v) return false;
         if (v === true)
           return {
@@ -403,9 +397,9 @@ export class Queue extends Component implements Link.Linkable {
     function normalizeDlq() {
       if (args?.dlq === undefined) return;
 
-      return output(args?.dlq).apply((v) =>
-        typeof v === "string" ? { queue: v, retry: 3 } : v,
-      );
+      return sst
+        .output(args?.dlq)
+        .apply((v) => (typeof v === "string" ? { queue: v, retry: 3 } : v));
     }
 
     function createQueue() {
@@ -424,7 +418,7 @@ export class Queue extends Component implements Link.Linkable {
             delaySeconds: delay.apply((v) => toSeconds(v)),
             redrivePolicy:
               dlq &&
-              jsonStringify({
+              sst.json.stringify({
                 deadLetterTargetArn: dlq.queue,
                 maxReceiveCount: dlq.retry,
               }),
@@ -503,9 +497,9 @@ export class Queue extends Component implements Link.Linkable {
    * ```
    */
   public subscribe(
-    subscriber: Input<string | FunctionArgs | FunctionArn>,
+    subscriber: sst.Input<string | FunctionArgs | FunctionArn>,
     args?: QueueSubscriberArgs,
-    opts?: ComponentResourceOptions,
+    opts?: sst.ComponentOptions,
   ) {
     if (this.isSubscribed)
       throw new VisibleError(
@@ -567,31 +561,35 @@ export class Queue extends Component implements Link.Linkable {
    * ```
    */
   public static subscribe(
-    queueArn: Input<string>,
-    subscriber: Input<string | FunctionArgs | FunctionArn>,
+    queueArn: sst.Input<string>,
+    subscriber: sst.Input<string | FunctionArgs | FunctionArn>,
     args?: QueueSubscriberArgs,
-    opts?: ComponentResourceOptions,
+    opts?: sst.ComponentOptions,
   ) {
-    return output(queueArn).apply((queueArn) =>
-      this._subscribeFunction(
-        logicalName(parseQueueArn(queueArn).queueName),
-        queueArn,
-        subscriber,
-        args,
-        opts,
-      ),
-    );
+    return sst
+      .output(queueArn)
+      .apply((queueArn) =>
+        this._subscribeFunction(
+          sst.naming.logical(arn.parseQueue(queueArn).queueName),
+          queueArn,
+          subscriber,
+          args,
+          opts,
+        ),
+      );
   }
 
   private static _subscribeFunction(
     name: string,
-    queueArn: Input<string>,
-    subscriber: Input<string | FunctionArgs | FunctionArn>,
+    queueArn: sst.Input<string>,
+    subscriber: sst.Input<string | FunctionArgs | FunctionArn>,
     args: QueueSubscriberArgs = {},
-    opts?: ComponentResourceOptions,
+    opts?: sst.ComponentOptions,
   ) {
-    return output(queueArn).apply((queueArn) => {
-      const suffix = logicalName(hashStringToPrettyString(queueArn, 6));
+    return sst.output(queueArn).apply((queueArn) => {
+      const suffix = sst.naming.logical(
+        sst.naming.hashStringToPrettyString(queueArn, 6),
+      );
 
       return new QueueLambdaSubscriber(
         `${name}Subscriber${suffix}`,
@@ -638,8 +636,8 @@ export class Queue extends Component implements Link.Linkable {
    */
   public static get(
     name: string,
-    queueUrl: Input<string>,
-    opts?: ComponentResourceOptions,
+    queueUrl: sst.Input<string>,
+    opts?: sst.ComponentOptions,
   ) {
     return new Queue(
       name,
@@ -669,18 +667,18 @@ export class Queue extends Component implements Link.Linkable {
   /** @internal */
   static createPolicy(
     name: string,
-    arn: Output<string>,
-    opts?: ComponentResourceOptions,
+    arnID: sst.Output<string>,
+    opts?: sst.ComponentOptions,
   ) {
     return new sqs.QueuePolicy(
       name,
       {
-        queueUrl: arn.apply((arn) => parseQueueArn(arn).queueUrl),
+        queueUrl: arnID.apply((value) => arn.parseQueue(value).queueUrl),
         policy: iam.getPolicyDocumentOutput({
           statements: [
             {
               actions: ["sqs:SendMessage"],
-              resources: [arn],
+              resources: [arnID],
               principals: [
                 {
                   type: "Service",

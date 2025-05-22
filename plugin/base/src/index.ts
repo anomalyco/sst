@@ -1,4 +1,4 @@
-export { command, app, App, dev, paths } from "./app.js";
+export { command, app, App, dev, paths, version } from "./app.js";
 export * from "./util.js";
 export { resource } from "./resource.js";
 export { ComponentOptions, Component } from "./component.js";

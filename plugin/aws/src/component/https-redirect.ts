@@ -1,11 +1,10 @@
-import { ComponentResourceOptions, all, output } from "@pulumi/pulumi";
-import { DnsValidatedCertificate } from "./dns-validated-certificate.js";
+import * as sst from "sst-plugin";
+import { s3, cloudfront } from "@pulumi/aws";
+import { ComponentResourceOptions, all } from "@pulumi/pulumi";
+import { Dns } from "sst-plugin/dns";
+import { useProvider } from "../provider.js";
 import { Bucket } from "./bucket.js";
-import { Component } from "../component.js";
-import { useProvider } from "./helpers/provider.js";
-import { Input } from "../input.js";
-import { Dns } from "../dns.js";
-import { cloudfront, s3 } from "@pulumi/aws";
+import { DnsValidatedCertificate } from "./dns-validated-certificate.js";
 import { CF_BLOCK_CLOUDFRONT_URL_INJECTION } from "./router.js";
 
 /**
@@ -17,29 +16,29 @@ export interface HttpsRedirectArgs {
    * will be created that points to your CloudFront distribution. Root domain
    * or sub-domain can be supplied.
    */
-  targetDomain: Input<string>;
+  targetDomain: sst.Input<string>;
   /**
    * The domain names that will redirect to `targetDomain`
    *
    * @default Domain name of the hosted zone
    */
-  sourceDomains: Input<string[]>;
+  sourceDomains: sst.Input<string[]>;
   /**
    * The ARN of an ACM (AWS Certificate Manager) certificate that proves ownership of the
    * domain. By default, a certificate is created and validated automatically.
    */
-  cert?: Input<string>;
+  cert?: sst.Input<string>;
   /**
    * The DNS adapter you want to use for managing DNS records.
    */
-  dns?: Input<Dns & {}>;
+  dns?: sst.Input<Dns & {}>;
 }
 
 /**
  * Allows creating a domainA -> domainB redirect using CloudFront and S3.
  * You can specify multiple domains to be redirected.
  */
-export class HttpsRedirect extends Component {
+export class HttpsRedirect extends sst.Component {
   constructor(
     name: string,
     args: HttpsRedirectArgs,
@@ -69,10 +68,12 @@ export class HttpsRedirect extends Component {
       return new DnsValidatedCertificate(
         `${name}Ssl`,
         {
-          domainName: output(args.sourceDomains).apply((domains) => domains[0]),
-          alternativeNames: output(args.sourceDomains).apply((domains) =>
-            domains.slice(1),
-          ),
+          domainName: sst
+            .output(args.sourceDomains)
+            .apply((domains) => domains[0]),
+          alternativeNames: sst
+            .output(args.sourceDomains)
+            .apply((domains) => domains.slice(1)),
           dns: args.dns!,
         },
         { parent, provider: useProvider("us-east-1") },

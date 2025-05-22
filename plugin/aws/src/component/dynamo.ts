@@ -1,20 +1,13 @@
-import {
-  ComponentResourceOptions,
-  Output,
-  all,
-  interpolate,
-  output,
-} from "@pulumi/pulumi";
-import { Component, outputId, Transform, transform } from "../component";
-import { Link } from "../link";
-import type { Input } from "../input";
-import { FunctionArgs, FunctionArn } from "./function";
-import { hashStringToPrettyString, logicalName } from "../naming";
-import { parseDynamoStreamArn } from "./helpers/arn";
-import { DynamoLambdaSubscriber } from "./dynamo-lambda-subscriber";
+import * as sst from "sst-plugin";
+import { transform, Transform } from "sst-plugin/internal/transform";
+import { AWSComponent, outputId } from "../component.js";
+import { permission } from "../permission.js";
 import { dynamodb, lambda } from "@pulumi/aws";
-import { permission } from "./permission";
-import { isFunctionSubscriber } from "./helpers/subscriber";
+import { ComponentResourceOptions, all } from "@pulumi/pulumi";
+import { DynamoLambdaSubscriber } from "./dynamo-lambda-subscriber.js";
+import { FunctionArgs, FunctionArn } from "./function.js";
+import { isFunctionSubscriber } from "./util/subscriber.js";
+import { arn } from "../arn.js";
 
 export interface DynamoArgs {
   /**
@@ -40,7 +33,7 @@ export interface DynamoArgs {
    * }
    * ```
    */
-  fields: Input<Record<string, "string" | "number" | "binary">>;
+  fields: sst.Input<Record<string, "string" | "number" | "binary">>;
   /**
    * Define the table's primary index. You can only have one primary index.
    *
@@ -51,15 +44,15 @@ export interface DynamoArgs {
    * }
    * ```
    */
-  primaryIndex: Input<{
+  primaryIndex: sst.Input<{
     /**
      * The hash key field of the index. This field needs to be defined in the `fields`.
      */
-    hashKey: Input<string>;
+    hashKey: sst.Input<string>;
     /**
      * The range key field of the index. This field needs to be defined in the `fields`.
      */
-    rangeKey?: Input<string>;
+    rangeKey?: sst.Input<string>;
   }>;
   /**
    * Configure the table's global secondary indexes.
@@ -76,18 +69,18 @@ export interface DynamoArgs {
    * }
    * ```
    */
-  globalIndexes?: Input<
+  globalIndexes?: sst.Input<
     Record<
       string,
-      Input<{
+      sst.Input<{
         /**
          * The hash key field of the index. This field needs to be defined in the `fields`.
          */
-        hashKey: Input<string>;
+        hashKey: sst.Input<string>;
         /**
          * The range key field of the index. This field needs to be defined in the `fields`.
          */
-        rangeKey?: Input<string>;
+        rangeKey?: sst.Input<string>;
         /**
          * The fields to project into the index.
          * @default `"all"`
@@ -110,7 +103,7 @@ export interface DynamoArgs {
          * }
          * ```
          */
-        projection?: Input<"all" | "keys-only" | Input<string>[]>;
+        projection?: sst.Input<"all" | "keys-only" | sst.Input<string>[]>;
       }>
     >
   >;
@@ -130,14 +123,14 @@ export interface DynamoArgs {
    * }
    * ```
    */
-  localIndexes?: Input<
+  localIndexes?: sst.Input<
     Record<
       string,
-      Input<{
+      sst.Input<{
         /**
          * The range key field of the index. This field needs to be defined in the `fields`.
          */
-        rangeKey: Input<string>;
+        rangeKey: sst.Input<string>;
         /**
          * The fields to project into the index.
          * @default `"all"`
@@ -158,7 +151,7 @@ export interface DynamoArgs {
          * }
          * ```
          */
-        projection?: Input<"all" | "keys-only" | Input<string>[]>;
+        projection?: sst.Input<"all" | "keys-only" | sst.Input<string>[]>;
       }>
     >
   >;
@@ -189,7 +182,7 @@ export interface DynamoArgs {
    * }
    * ```
    */
-  stream?: Input<
+  stream?: sst.Input<
     "keys-only" | "new-image" | "old-image" | "new-and-old-images"
   >;
   /**
@@ -206,7 +199,7 @@ export interface DynamoArgs {
    * }
    * ```
    */
-  ttl?: Input<string>;
+  ttl?: sst.Input<string>;
   /**
    * Enable deletion protection for the table. When enabled, the table cannot be deleted.
    *
@@ -217,7 +210,7 @@ export interface DynamoArgs {
    * }
    * ```
    */
-  deletionProtection?: Input<boolean>;
+  deletionProtection?: sst.Input<boolean>;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
@@ -293,7 +286,7 @@ export interface DynamoSubscriberArgs {
    * }
    * ```
    */
-  filters?: Input<Input<Record<string, any>>[]>;
+  filters?: sst.Input<sst.Input<Record<string, any>>[]>;
   /**
    * [Transform](/docs/components#transform) how this subscription creates its underlying
    * resources.
@@ -412,10 +405,10 @@ interface DynamoRef {
  * }));
  * ```
  */
-export class Dynamo extends Component implements Link.Linkable {
+export class Dynamo extends AWSComponent implements sst.Linkable {
   private constructorName: string;
   private constructorOpts: ComponentResourceOptions;
-  private table: Output<dynamodb.Table>;
+  private table: sst.Output<dynamodb.Table>;
   private isStreamEnabled: boolean = false;
 
   constructor(
@@ -429,7 +422,7 @@ export class Dynamo extends Component implements Link.Linkable {
 
     if (args && "ref" in args) {
       const ref = args as unknown as DynamoRef;
-      this.table = output(ref.table);
+      this.table = sst.output(ref.table);
       return;
     }
 
@@ -599,18 +592,18 @@ export class Dynamo extends Component implements Link.Linkable {
    */
   public subscribe(
     name: string,
-    subscriber: Input<string | FunctionArgs | FunctionArn>,
+    subscriber: sst.Input<string | FunctionArgs | FunctionArn>,
     args?: DynamoSubscriberArgs,
-  ): Output<DynamoLambdaSubscriber>;
+  ): sst.Output<DynamoLambdaSubscriber>;
   /**
    * @deprecated The subscribe function now requires a `name` parameter as the first argument.
    * To migrate, remove the current subscriber, deploy the changes, and then add the subscriber
    * back with the new `name` argument.
    */
   public subscribe(
-    subscriber: Input<string | FunctionArgs | FunctionArn>,
+    subscriber: sst.Input<string | FunctionArgs | FunctionArn>,
     args?: DynamoSubscriberArgs,
-  ): Output<DynamoLambdaSubscriber>;
+  ): sst.Output<DynamoLambdaSubscriber>;
 
   public subscribe(nameOrSubscriber: any, subscriberOrArgs?: any, args?: any) {
     const sourceName = this.constructorName;
@@ -692,20 +685,20 @@ export class Dynamo extends Component implements Link.Linkable {
    */
   public static subscribe(
     name: string,
-    streamArn: Input<string>,
-    subscriber: Input<string | FunctionArgs | FunctionArn>,
+    streamArn: sst.Input<string>,
+    subscriber: sst.Input<string | FunctionArgs | FunctionArn>,
     args?: DynamoSubscriberArgs,
-  ): Output<DynamoLambdaSubscriber>;
+  ): sst.Output<DynamoLambdaSubscriber>;
   /**
    * @deprecated The subscribe function now requires a `name` parameter as the first argument.
    * To migrate, remove the current subscriber, deploy the changes, and then add the subscriber
    * back with the new `name` argument.
    */
   public static subscribe(
-    streamArn: Input<string>,
-    subscriber: Input<string | FunctionArgs | FunctionArn>,
+    streamArn: sst.Input<string>,
+    subscriber: sst.Input<string | FunctionArgs | FunctionArn>,
     args?: DynamoSubscriberArgs,
-  ): Output<DynamoLambdaSubscriber>;
+  ): sst.Output<DynamoLambdaSubscriber>;
 
   public static subscribe(
     nameOrStreamArn: any,
@@ -715,18 +708,18 @@ export class Dynamo extends Component implements Link.Linkable {
   ) {
     return isFunctionSubscriber(subscriberOrArgs).apply((v) =>
       v
-        ? output(streamArnOrSubscriber).apply((streamArn) =>
+        ? sst.output(streamArnOrSubscriber).apply((streamArn) =>
             this._subscribe(
               nameOrStreamArn, // name
-              logicalName(parseDynamoStreamArn(streamArn).tableName),
+              sst.naming.logical(arn.parseDynamoStream(streamArn).tableName),
               streamArn,
               subscriberOrArgs, // subscriber
               args,
             ),
           )
-        : output(nameOrStreamArn).apply((streamArn) =>
+        : sst.output(nameOrStreamArn).apply((streamArn) =>
             this._subscribeV1(
-              logicalName(parseDynamoStreamArn(streamArn).tableName),
+              sst.naming.logical(arn.parseDynamoStream(streamArn).tableName),
               streamArn,
               streamArnOrSubscriber, // subscriber
               subscriberOrArgs, // args
@@ -738,12 +731,12 @@ export class Dynamo extends Component implements Link.Linkable {
   private static _subscribe(
     subscriberName: string,
     name: string,
-    streamArn: string | Output<string>,
-    subscriber: Input<string | FunctionArgs | FunctionArn>,
+    streamArn: string | sst.Output<string>,
+    subscriber: sst.Input<string | FunctionArgs | FunctionArn>,
     args: DynamoSubscriberArgs = {},
     opts: ComponentResourceOptions = {},
   ) {
-    return output(args).apply(
+    return sst.output(args).apply(
       (args) =>
         new DynamoLambdaSubscriber(
           `${name}Subscriber${subscriberName}`,
@@ -759,14 +752,14 @@ export class Dynamo extends Component implements Link.Linkable {
 
   private static _subscribeV1(
     name: string,
-    streamArn: string | Output<string>,
-    subscriber: Input<string | FunctionArgs | FunctionArn>,
+    streamArn: string | sst.Output<string>,
+    subscriber: sst.Input<string | FunctionArgs | FunctionArn>,
     args: DynamoSubscriberArgs = {},
     opts: ComponentResourceOptions = {},
   ) {
     return all([name, subscriber, args]).apply(([name, subscriber, args]) => {
-      const suffix = logicalName(
-        hashStringToPrettyString(
+      const suffix = sst.naming.logical(
+        sst.naming.hashStringToPrettyString(
           [
             typeof streamArn === "string" ? streamArn : outputId,
             JSON.stringify(args.filters ?? {}),
@@ -823,7 +816,7 @@ export class Dynamo extends Component implements Link.Linkable {
    */
   public static get(
     name: string,
-    tableName: Input<string>,
+    tableName: sst.Input<string>,
     opts?: ComponentResourceOptions,
   ) {
     return new Dynamo(name, {
@@ -841,7 +834,7 @@ export class Dynamo extends Component implements Link.Linkable {
       include: [
         permission({
           actions: ["dynamodb:*"],
-          resources: [this.arn, interpolate`${this.arn}/*`],
+          resources: [this.arn, sst.interpolate`${this.arn}/*`],
         }),
       ],
     };

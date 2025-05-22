@@ -1,35 +1,31 @@
-import {
-  ComponentResourceOptions,
-  Input,
-  interpolate,
-  output,
-} from "@pulumi/pulumi";
-import { Component, transform } from "../component";
-import { BucketSubscriberArgs } from "./bucket";
-import { iam, s3, sns } from "@pulumi/aws";
+import { sns, s3, iam } from "@pulumi/aws";
+import { ComponentResourceOptions } from "@pulumi/pulumi";
+import * as sst from "sst-plugin";
+import { transform, Transform } from "sst-plugin/internal/transform";
+import { BucketSubscriberArgs } from "./bucket.js";
 
 export interface Args extends BucketSubscriberArgs {
   /**
    * The bucket to use.
    */
-  bucket: Input<{
+  bucket: sst.Input<{
     /**
      * The name of the bucket.
      */
-    name: Input<string>;
+    name: sst.Input<string>;
     /**
      * The ARN of the bucket.
      */
-    arn: Input<string>;
+    arn: sst.Input<string>;
   }>;
   /**
    * The subscriber ID.
    */
-  subscriberId: Input<string>;
+  subscriberId: sst.Input<string>;
   /**
    * The ARN of the SNS Topic.
    */
-  topic: Input<string>;
+  topic: sst.Input<string>;
 }
 
 /**
@@ -42,7 +38,7 @@ export interface Args extends BucketSubscriberArgs {
  *
  * You'll find this component returned by the `subscribeTopic` method of the `Bucket` component.
  */
-export class BucketTopicSubscriber extends Component {
+export class BucketTopicSubscriber extends sst.Component {
   private readonly policy: sns.TopicPolicy;
   private readonly notification: s3.BucketNotification;
 
@@ -50,11 +46,11 @@ export class BucketTopicSubscriber extends Component {
     super(__pulumiType, name, args, opts);
 
     const self = this;
-    const topicArn = output(args.topic);
-    const bucket = output(args.bucket);
+    const topicArn = sst.output(args.topic);
+    const bucket = sst.output(args.bucket);
     const events = args.events
-      ? output(args.events)
-      : output([
+      ? sst.output(args.events)
+      : sst.output([
           "s3:ObjectCreated:*",
           "s3:ObjectRemoved:*",
           "s3:ObjectRestore:*",
@@ -108,7 +104,7 @@ export class BucketTopicSubscriber extends Component {
             bucket: bucket.name,
             topics: [
               {
-                id: interpolate`Notification${args.subscriberId}`,
+                id: sst.interpolate`Notification${args.subscriberId}`,
                 topicArn,
                 events,
                 filterPrefix: args.filterPrefix,

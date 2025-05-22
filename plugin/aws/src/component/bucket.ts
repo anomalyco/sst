@@ -1,10 +1,3 @@
-import {
-  ComponentResourceOptions,
-  output,
-  interpolate,
-  all,
-  Output,
-} from "@pulumi/pulumi";
 import { iam, s3 } from "@pulumi/aws";
 import { Transform, transform } from "sst-plugin/internal/transform";
 import * as sst from "sst-plugin";
@@ -727,14 +720,14 @@ interface BucketRef {
  */
 export class Bucket extends AWSComponent implements sst.Linkable {
   private constructorName: string;
-  private constructorOpts: ComponentResourceOptions;
+  private constructorOpts: sst.ComponentOptions;
   private isSubscribed: boolean = false;
-  private bucket: Output<s3.BucketV2>;
+  private bucket: sst.Output<s3.BucketV2>;
 
   constructor(
     name: string,
     args: BucketArgs = {},
-    opts: ComponentResourceOptions = {},
+    opts: sst.ComponentOptions = {},
   ) {
     super(__pulumiType, name, args, opts);
     this.constructorName = name;
@@ -742,13 +735,13 @@ export class Bucket extends AWSComponent implements sst.Linkable {
 
     if (args && "ref" in args) {
       const ref = args as BucketRef;
-      this.bucket = output(ref.bucket);
+      this.bucket = sst.output(ref.bucket);
       return;
     }
 
     const parent = this;
     const access = normalizeAccess();
-    const enforceHttps = output(args.enforceHttps ?? true);
+    const enforceHttps = sst.output(args.enforceHttps ?? true);
     const policyArgs = normalizePolicy();
 
     const bucket = createBucket();
@@ -764,13 +757,13 @@ export class Bucket extends AWSComponent implements sst.Linkable {
     this.bucket = policy.urn.apply(() => bucket);
 
     function normalizeAccess() {
-      return all([args.public, args.access]).apply(([pub, access]) =>
-        pub === true ? "public" : access,
-      );
+      return sst
+        .resolve([args.public, args.access])
+        .apply(([pub, access]) => (pub === true ? "public" : access));
     }
 
     function normalizePolicy() {
-      return output(args.policy ?? []).apply((policy) =>
+      return sst.output(args.policy ?? []).apply((policy) =>
         policy.map((p) => ({
           ...p,
           effect:
@@ -805,7 +798,7 @@ export class Bucket extends AWSComponent implements sst.Linkable {
     }
 
     function createVersioning() {
-      return output(args.versioning).apply((versioning) => {
+      return sst.output(args.versioning).apply((versioning) => {
         if (!versioning) return;
 
         return new s3.BucketVersioningV2(
@@ -844,8 +837,9 @@ export class Bucket extends AWSComponent implements sst.Linkable {
     }
 
     function createBucketPolicy() {
-      return all([access, enforceHttps, policyArgs]).apply(
-        ([access, enforceHttps, policyArgs]) => {
+      return sst
+        .resolve([access, enforceHttps, policyArgs])
+        .apply(([access, enforceHttps, policyArgs]) => {
           const statements = [];
           if (access) {
             statements.push({
@@ -858,7 +852,7 @@ export class Bucket extends AWSComponent implements sst.Linkable {
                     },
               ],
               actions: ["s3:GetObject"],
-              resources: [interpolate`${bucket.arn}/*`],
+              resources: [sst.interpolate`${bucket.arn}/*`],
             });
           }
           if (enforceHttps) {
@@ -866,7 +860,7 @@ export class Bucket extends AWSComponent implements sst.Linkable {
               effect: "Deny",
               principals: [{ type: "*", identifiers: ["*"] }],
               actions: ["s3:*"],
-              resources: [bucket.arn, interpolate`${bucket.arn}/*`],
+              resources: [bucket.arn, sst.interpolate`${bucket.arn}/*`],
               conditions: [
                 {
                   test: "Bool",
@@ -879,7 +873,7 @@ export class Bucket extends AWSComponent implements sst.Linkable {
           statements.push(
             ...policyArgs.map((p) => ({
               ...p,
-              resources: [bucket.arn, interpolate`${bucket.arn}/*`],
+              resources: [bucket.arn, sst.interpolate`${bucket.arn}/*`],
             })),
           );
 
@@ -897,12 +891,11 @@ export class Bucket extends AWSComponent implements sst.Linkable {
               },
             ),
           );
-        },
-      );
+        });
     }
 
     function createCorsRule() {
-      return output(args.cors).apply((cors) => {
+      return sst.output(args.cors).apply((cors) => {
         if (cors === false) return;
 
         return new s3.BucketCorsConfigurationV2(
@@ -1002,7 +995,7 @@ export class Bucket extends AWSComponent implements sst.Linkable {
   public static get(
     name: string,
     bucketName: string,
-    opts?: ComponentResourceOptions,
+    opts?: sst.ComponentOptions,
   ) {
     return new Bucket(name, {
       ref: true,
@@ -1241,7 +1234,7 @@ export class Bucket extends AWSComponent implements sst.Linkable {
     subscriber: sst.Input<string | FunctionArgs | FunctionArn>,
     args?: BucketSubscriberArgs,
   ) {
-    return output(bucketArn).apply((bucketArn) => {
+    return sst.output(bucketArn).apply((bucketArn) => {
       const bucketName = arn.parseBucket(bucketArn).bucketName;
       return this._subscribeFunction(
         bucketName,
@@ -1259,10 +1252,11 @@ export class Bucket extends AWSComponent implements sst.Linkable {
     bucketArn: sst.Input<string>,
     subscriber: sst.Input<string | FunctionArgs | FunctionArn>,
     args: BucketSubscriberArgs = {},
-    opts: ComponentResourceOptions = {},
+    opts: sst.ComponentOptions = {},
   ) {
-    return all([bucketArn, subscriber, args]).apply(
-      ([bucketArn, subscriber, args]) => {
+    return sst
+      .resolve([bucketArn, subscriber, args])
+      .apply(([bucketArn, subscriber, args]) => {
         const subscriberId = this.buildSubscriberId(
           bucketArn,
           typeof subscriber === "string" ? subscriber : subscriber.handler,
@@ -1278,8 +1272,7 @@ export class Bucket extends AWSComponent implements sst.Linkable {
           },
           opts,
         );
-      },
-    );
+      });
   }
 
   /**
@@ -1388,7 +1381,7 @@ export class Bucket extends AWSComponent implements sst.Linkable {
     queueArn: sst.Input<string>,
     args?: BucketSubscriberArgs,
   ) {
-    return output(bucketArn).apply((bucketArn) => {
+    return sst.output(bucketArn).apply((bucketArn) => {
       const bucketName = arn.parseBucket(bucketArn).bucketName;
       return this._subscribeQueue(
         bucketName,
@@ -1406,10 +1399,11 @@ export class Bucket extends AWSComponent implements sst.Linkable {
     bucketArn: sst.Input<string>,
     queueArn: sst.Input<string>,
     args: BucketSubscriberArgs = {},
-    opts: ComponentResourceOptions = {},
+    opts: sst.ComponentOptions = {},
   ) {
-    return all([bucketArn, queueArn, args]).apply(
-      ([bucketArn, queueArn, args]) => {
+    return sst
+      .resolve([bucketArn, queueArn, args])
+      .apply(([bucketArn, queueArn, args]) => {
         const subscriberId = this.buildSubscriberId(bucketArn, queueArn);
 
         return new BucketQueueSubscriber(
@@ -1422,8 +1416,7 @@ export class Bucket extends AWSComponent implements sst.Linkable {
           },
           opts,
         );
-      },
-    );
+      });
   }
 
   /**
@@ -1532,7 +1525,7 @@ export class Bucket extends AWSComponent implements sst.Linkable {
     topicArn: sst.Input<string>,
     args?: BucketSubscriberArgs,
   ) {
-    return output(bucketArn).apply((bucketArn) => {
+    return sst.output(bucketArn).apply((bucketArn) => {
       const bucketName = arn.parseBucket(bucketArn).bucketName;
       return this._subscribeTopic(
         bucketName,
@@ -1550,10 +1543,11 @@ export class Bucket extends AWSComponent implements sst.Linkable {
     bucketArn: sst.Input<string>,
     topicArn: sst.Input<string>,
     args: BucketSubscriberArgs = {},
-    opts: ComponentResourceOptions = {},
+    opts: sst.ComponentOptions = {},
   ) {
-    return all([bucketArn, topicArn, args]).apply(
-      ([bucketArn, topicArn, args]) => {
+    return sst
+      .resolve([bucketArn, topicArn, args])
+      .apply(([bucketArn, topicArn, args]) => {
         const subscriberId = this.buildSubscriberId(bucketArn, topicArn);
 
         return new BucketTopicSubscriber(
@@ -1566,8 +1560,7 @@ export class Bucket extends AWSComponent implements sst.Linkable {
           },
           opts,
         );
-      },
-    );
+      });
   }
 
   private static buildSubscriberId(bucketArn: string, _discriminator: string) {
@@ -1617,7 +1610,7 @@ export class Bucket extends AWSComponent implements sst.Linkable {
       include: [
         permission({
           actions: ["s3:*"],
-          resources: [this.arn, interpolate`${this.arn}/*`],
+          resources: [this.arn, sst.interpolate`${this.arn}/*`],
         }),
       ],
     };

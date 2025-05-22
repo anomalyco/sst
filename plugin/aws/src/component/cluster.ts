@@ -1,52 +1,49 @@
-import { ComponentResourceOptions, Output, output } from "@pulumi/pulumi";
-import {
-  Component,
-  ComponentVersion,
-  parseComponentVersion,
-  Prettify,
-  Transform,
-  transform,
-} from "../component";
-import { Input } from "../input";
-import { Service, ServiceArgs } from "./service";
 import { ecs } from "@pulumi/aws";
-import { Cluster as ClusterV1 } from "./cluster-v1";
-import { Vpc } from "./vpc";
-import { Vpc as VpcV1 } from "./vpc-v1.js";
-import { Task, TaskArgs } from "./task";
-import { VisibleError } from "../error";
-export type { ClusterArgs as ClusterV1Args } from "./cluster-v1";
+import { ComponentResourceOptions } from "@pulumi/pulumi";
+import * as sst from "sst-plugin";
+import { VisibleError } from "sst-plugin/error";
+import { Prettify } from "sst-plugin/internal/prettify";
+import { transform, Transform } from "sst-plugin/internal/transform";
+import {
+  parseComponentVersion,
+  ComponentVersion,
+  AWSComponent,
+} from "../component.js";
+import { ServiceArgs, Service } from "./service-v1.js";
+import { TaskArgs, Task } from "./task.js";
+import { Vpc } from "./vpc.js";
+import { Cluster as ClusterV1 } from "./cluster-v1.js";
 
 type ClusterVpcArgs = {
   /**
    * The ID of the VPC.
    */
-  id: Input<string>;
+  id: sst.Input<string>;
   /**
    * A list of VPC security group IDs for the service.
    */
-  securityGroups: Input<Input<string>[]>;
+  securityGroups: sst.Input<sst.Input<string>[]>;
   /**
    * A list of subnet IDs in the VPC to place the services in.
    * @deprecated Use `containerSubnets` instead.
    */
-  serviceSubnets?: Input<Input<string>[]>;
+  serviceSubnets?: sst.Input<sst.Input<string>[]>;
   /**
    * A list of subnet IDs in the VPC to place the containers in.
    */
-  containerSubnets?: Input<Input<string>[]>;
+  containerSubnets?: sst.Input<sst.Input<string>[]>;
   /**
    * A list of subnet IDs in the VPC to place the load balancer in.
    */
-  loadBalancerSubnets: Input<Input<string>[]>;
+  loadBalancerSubnets: sst.Input<sst.Input<string>[]>;
   /**
    * The ID of the Cloud Map namespace to use for the service.
    */
-  cloudmapNamespaceId?: Input<string>;
+  cloudmapNamespaceId?: sst.Input<string>;
   /**
    * The name of the Cloud Map namespace to use for the service.
    */
-  cloudmapNamespaceName?: Input<string>;
+  cloudmapNamespaceName?: sst.Input<string>;
 };
 
 export interface ClusterArgs {
@@ -92,7 +89,7 @@ export interface ClusterArgs {
    * }
    * ```
    */
-  vpc: Vpc | Input<Prettify<ClusterVpcArgs>>;
+  vpc: Vpc | sst.Input<Prettify<ClusterVpcArgs>>;
   /** @internal */
   forceUpgrade?: "v2";
   /**
@@ -111,7 +108,7 @@ export interface ClusterGetArgs {
   /**
    * The ID of the cluster.
    */
-  id: Input<string>;
+  id: sst.Input<string>;
   /**
    * The VPC used for the cluster.
    */
@@ -120,7 +117,7 @@ export interface ClusterGetArgs {
 
 interface ClusterRef {
   ref: true;
-  id: Input<string>;
+  id: sst.Input<string>;
   vpc: ClusterArgs["vpc"];
 }
 
@@ -142,12 +139,12 @@ interface ClusterRef {
  * 2. `Task`: These are containers that are used for long running asynchronous work,
  *   like data processing.
  */
-export class Cluster extends Component {
+export class Cluster extends AWSComponent {
   private constructorOpts: ComponentResourceOptions;
-  private cluster: Output<ecs.Cluster>;
+  private cluster: sst.Output<ecs.Cluster>;
   private _vpc:
     | Vpc
-    | Output<
+    | sst.Output<
         Required<Pick<ClusterVpcArgs, "containerSubnets">> &
           Omit<ClusterVpcArgs, "containerSubnets" | "serviceSubnets">
       >;
@@ -176,7 +173,7 @@ export class Cluster extends Component {
     const cluster = createCluster();
     createCapacityProviders();
 
-    this.cluster = output(cluster);
+    this.cluster = sst.output(cluster);
     this._vpc = vpc;
 
     function reference() {
@@ -208,7 +205,7 @@ export class Cluster extends Component {
 
     function normalizeVpc() {
       // "vpc" is a Vpc.v1 component
-      if (args.vpc instanceof VpcV1) {
+      if (args.vpc instanceof Vpc.v1) {
         throw new VisibleError(
           `You are using the "Vpc.v1" component. Please migrate to the latest "Vpc" component.`,
         );
@@ -220,7 +217,7 @@ export class Cluster extends Component {
       }
 
       // "vpc" is object
-      return output(args.vpc).apply((vpc) => {
+      return sst.output(args.vpc).apply((vpc) => {
         if (vpc.containerSubnets && vpc.serviceSubnets)
           throw new VisibleError(
             `You cannot provide both "vpc.containerSubnets" and "vpc.serviceSubnets" in the "${name}" Cluster component. The "serviceSubnets" property has been deprecated. Use "containerSubnets" instead.`,
@@ -263,8 +260,7 @@ export class Cluster extends Component {
 
     function registerVersion(overrideVersion?: ComponentVersion) {
       const newMajorVersion = _version.major;
-      const oldMajorVersion =
-        overrideVersion?.major ?? $cli.state.version[name];
+      const oldMajorVersion = overrideVersion?.major ?? sst.version[name];
       self.registerVersion({
         new: newMajorVersion,
         old: oldMajorVersion,
@@ -278,8 +274,8 @@ export class Cluster extends Component {
           `To upgrade:`,
           `  - Set \`forceUpgrade: "v${newMajorVersion}"\` on the "Cluster" component. Learn more https://sst.dev/docs/component/aws/cluster#forceupgrade`,
           ``,
-          `To continue using v${$cli.state.version[name]}:`,
-          `  - Rename "Cluster" to "Cluster.v${$cli.state.version[name]}". Learn more about versioning - https://sst.dev/docs/components/#versioning`,
+          `To continue using v${sst.version[name]}:`,
+          `  - Rename "Cluster" to "Cluster.v${sst.version[name]}". Learn more about versioning - https://sst.dev/docs/components/#versioning`,
         ].join("\n"),
         forceUpgrade: args.forceUpgrade,
       });

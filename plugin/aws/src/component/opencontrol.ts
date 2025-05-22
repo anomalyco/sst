@@ -1,9 +1,7 @@
-import { all, ComponentResourceOptions, Output } from "@pulumi/pulumi";
+import * as sst from "sst-plugin";
 import { RandomPassword } from "@pulumi/random";
-import { Component } from "../component";
-import { FunctionArgs, Function } from ".";
-import { functionBuilder } from "./helpers/function-builder";
-import { Input } from "../input";
+import { FunctionArgs, Function } from "./function.js";
+import { functionBuilder } from "./util/function-builder.js";
 
 export interface OpenControlArgs {
   /**
@@ -43,7 +41,7 @@ export interface OpenControlArgs {
    * Learn more in the [OpenControl docs](https://opencontrol.ai) on how to
    * configure the `server` function.
    */
-  server: Input<string | FunctionArgs>;
+  server: sst.Input<string | FunctionArgs>;
 }
 
 /**
@@ -65,7 +63,7 @@ export interface OpenControlArgs {
  * });
  * ```
  *
- * #### Link your AI API keys 
+ * #### Link your AI API keys
  *
  * ```ts title="sst.config.ts" {6}
  * const anthropicKey = new sst.Secret("AnthropicKey");
@@ -144,14 +142,14 @@ export interface OpenControlArgs {
  * Learn more in the [OpenControl docs](https://opencontrol.ai) on how to configure
  * the `server` function.
  */
-export class OpenControl extends Component {
-  private readonly _server: Output<Function>;
-  private readonly _key: Output<string>;
+export class OpenControl extends sst.Component {
+  private readonly _server: sst.Output<Function>;
+  private readonly _key: sst.Output<string>;
 
   constructor(
     name: string,
     args: OpenControlArgs,
-    opts?: ComponentResourceOptions,
+    opts?: sst.ComponentOptions,
   ) {
     super(__pulumiType, name, args, opts);
     const self = this;

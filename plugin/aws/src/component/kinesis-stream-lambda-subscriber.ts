@@ -1,26 +1,27 @@
+import * as sst from "sst-plugin";
+import { Transform, transform } from "sst-plugin/internal/transform";
+import { VisibleError } from "sst-plugin/error";
 import { lambda } from "@pulumi/aws";
-import { output } from "@pulumi/pulumi";
-import { Component, transform } from "../component";
-import { Input } from "../input.js";
 import { FunctionArgs } from "./function.js";
 import { KinesisStreamLambdaSubscriberArgs } from "./kinesis-stream.js";
-import { FunctionBuilder, functionBuilder } from "./helpers/function-builder";
-import { parseFunctionArn } from "./helpers/arn";
+import { FunctionBuilder, functionBuilder } from "./util/function-builder.js";
+import { AWSComponent } from "../component.js";
+import { arn } from "../arn.js";
 
 export interface Args extends KinesisStreamLambdaSubscriberArgs {
   /**
    * The Kinesis stream to use.
    */
-  stream: Input<{
+  stream: sst.Input<{
     /**
      * The ARN of the stream.
      */
-    arn: Input<string>;
+    arn: sst.Input<string>;
   }>;
   /**
    * The subscriber function.
    */
-  subscriber: Input<string | FunctionArgs>;
+  subscriber: sst.Input<string | FunctionArgs>;
 }
 
 /**
@@ -33,14 +34,14 @@ export interface Args extends KinesisStreamLambdaSubscriberArgs {
  *
  * You'll find this component returned by the `subscribe` method of the `KinesisStream` component.
  */
-export class KinesisStreamLambdaSubscriber extends Component {
+export class KinesisStreamLambdaSubscriber extends AWSComponent {
   private readonly fn: FunctionBuilder;
   private readonly eventSourceMapping: lambda.EventSourceMapping;
-  constructor(name: string, args: Args, opts?: $util.ComponentResourceOptions) {
+  constructor(name: string, args: Args, opts?: sst.ComponentOptions) {
     super(__pulumiType, name, args, opts);
 
     const self = this;
-    const stream = output(args.stream);
+    const stream = sst.output(args.stream);
     const fn = createFunction();
     const eventSourceMapping = createEventSourceMapping();
 
@@ -48,7 +49,7 @@ export class KinesisStreamLambdaSubscriber extends Component {
     this.eventSourceMapping = eventSourceMapping;
 
     function createFunction() {
-      return output(args.subscriber).apply((subscriber) => {
+      return sst.output(args.subscriber).apply((subscriber) => {
         return functionBuilder(
           `${name}Function`,
           subscriber,
@@ -83,11 +84,11 @@ export class KinesisStreamLambdaSubscriber extends Component {
           {
             eventSourceArn: stream.arn,
             functionName: fn.arn.apply(
-              (arn) => parseFunctionArn(arn).functionName,
+              (item) => arn.parseFunction(item).functionName,
             ),
             startingPosition: "LATEST",
             filterCriteria: args.filters && {
-              filters: output(args.filters).apply((filters) =>
+              filters: sst.output(args.filters).apply((filters) =>
                 filters.map((filter) => ({
                   pattern: JSON.stringify(filter),
                 })),

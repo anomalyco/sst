@@ -1,14 +1,14 @@
-import { ComponentResourceOptions, Input, output } from "@pulumi/pulumi";
-import { Component, transform } from "../component";
-import { BusBaseSubscriberArgs, createRule } from "./bus-base-subscriber";
-import { cloudwatch, sqs } from "@pulumi/aws";
-import { Queue } from "./queue";
+import { sqs, cloudwatch } from "@pulumi/aws";
+import * as sst from "sst-plugin";
+import { transform, Transform } from "sst-plugin/internal/transform";
+import { BusBaseSubscriberArgs, createRule } from "./bus-base-subscriber.js";
+import { Queue } from "./queue.js";
 
 export interface Args extends BusBaseSubscriberArgs {
   /**
    * The ARN of the SQS Queue.
    */
-  queue: Input<string | Queue>;
+  queue: sst.Input<string | Queue>;
 }
 
 /**
@@ -21,19 +21,21 @@ export interface Args extends BusBaseSubscriberArgs {
  *
  * You'll find this component returned by the `subscribeQueue` method of the `Bus` component.
  */
-export class BusQueueSubscriber extends Component {
+export class BusQueueSubscriber extends sst.Component {
   private readonly policy: sqs.QueuePolicy;
   private readonly rule: cloudwatch.EventRule;
   private readonly target: cloudwatch.EventTarget;
 
-  constructor(name: string, args: Args, opts?: ComponentResourceOptions) {
+  constructor(name: string, args: Args, opts?: sst.ComponentOptions) {
     super(__pulumiType, name, args, opts);
 
     const self = this;
-    const bus = output(args.bus);
-    const queueArn = output(args.queue).apply((queue) =>
-      queue instanceof Queue ? queue.arn : output(queue),
-    );
+    const bus = sst.output(args.bus);
+    const queueArn = sst
+      .output(args.queue)
+      .apply((queue) =>
+        queue instanceof Queue ? queue.arn : sst.output(queue),
+      );
     const policy = createPolicy();
     const rule = createRule(name, bus.name, args, self);
     const target = createTarget();

@@ -1,11 +1,12 @@
 import * as sst from "sst-plugin";
-import { FunctionArgs, FunctionArn } from "./function.js";
-import { Task } from "./task.js";
-import { Transform, transform } from "sst-plugin/internal/transform";
-import { cloudwatch, iam, lambda } from "@pulumi/aws";
+import { transform, Transform } from "sst-plugin/internal/transform";
 import { AWSComponent } from "../component.js";
-import { functionBuilder, FunctionBuilder } from "./util/function-builder.js";
+import { permission } from "../permission.js";
+import { cloudwatch, lambda, iam } from "@pulumi/aws";
 import { VisibleError } from "sst-plugin/error";
+import { FunctionArgs, FunctionArn, Function } from "./function.js";
+import { Task } from "./task.js";
+import { FunctionBuilder, functionBuilder } from "./util/function-builder.js";
 
 export interface CronArgs {
   /**
