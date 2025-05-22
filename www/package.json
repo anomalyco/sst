@@ -34,10 +34,10 @@
     "sst": "3.13.20"
   },
   "devDependencies": {
-    "@tsconfig/node22": "22.0.1",
-    "@types/node": "22.15.17",
+    "@tsconfig/node22": "catalog:",
+    "@types/node": "catalog:",
     "tsx": "^4.7.0",
     "typedoc": "0.25.7",
-    "typescript": "5.8.3"
+    "typescript": "catalog:"
   }
 }

@@ -1,14 +1,14 @@
 {
   "name": "sst-plugin-aws",
-  "version": "0.0.12",
+  "version": "0.0.0",
   "type": "module",
   "scripts": {
     "build": "./script/build.ts"
   },
   "devDependencies": {
-    "@tsconfig/node22": "22.0.1",
-    "@types/node": "22.15.17",
-    "typescript": "5.8.3"
+    "@tsconfig/node22": "catalog:",
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
   },
   "exports": {
     ".": "./dist/index.js",

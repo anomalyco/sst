@@ -13,21 +13,21 @@
         "sst-plugin": "workspace:*",
       },
       "devDependencies": {
-        "@tsconfig/node22": "22.0.1",
-        "@types/node": "22.15.17",
-        "typescript": "5.8.3",
+        "@tsconfig/node22": "catalog:",
+        "@types/node": "catalog:",
+        "typescript": "catalog:",
       },
     },
     "plugin/base": {
       "name": "sst-plugin",
       "version": "0.0.12",
       "dependencies": {
-        "@pulumi/pulumi": "3.169.0",
+        "@pulumi/pulumi": "catalog:",
       },
       "devDependencies": {
-        "@tsconfig/node22": "22.0.1",
-        "@types/node": "22.15.17",
-        "typescript": "5.8.3",
+        "@tsconfig/node22": "catalog:",
+        "@types/node": "catalog:",
+        "typescript": "catalog:",
       },
     },
     "plugin/cloudflare": {
@@ -61,11 +61,10 @@
         "openid-client": "5.6.4",
       },
       "devDependencies": {
-        "@tsconfig/node20": "20.1.4",
-        "@tsconfig/node22": "22.0.1",
-        "@types/node": "22.15.17",
+        "@tsconfig/node22": "catalog:",
+        "@types/node": "catalog:",
         "hono": "4.3.9",
-        "typescript": "5.8.3",
+        "typescript": "catalog:",
         "valibot": "^1.0.0-rc.3",
         "zod": "^3.24.2",
       },
@@ -91,13 +90,19 @@
         "sst": "3.13.20",
       },
       "devDependencies": {
-        "@tsconfig/node22": "22.0.1",
-        "@types/node": "22.15.17",
+        "@tsconfig/node22": "catalog:",
+        "@types/node": "catalog:",
         "tsx": "^4.7.0",
         "typedoc": "0.25.7",
-        "typescript": "5.8.3",
+        "typescript": "catalog:",
       },
     },
+  },
+  "catalog": {
+    "@pulumi/pulumi": "3.169.0",
+    "@tsconfig/node22": "22.0.1",
+    "@types/node": "22.15.17",
+    "typescript": "5.8.3",
   },
   "packages": {
     "@astro-community/astro-embed-youtube": ["@astro-community/astro-embed-youtube@0.5.6", "", { "dependencies": { "lite-youtube-embed": "^0.3.3" }, "peerDependencies": { "astro": "^2.0.0 || ^3.0.0-beta || ^4.0.0-beta || ^5.0.0-beta" } }, "sha512-/mRfCl/eTBUz0kmjD1psOy0qoDDBorVp0QumUacjFcIkBullYtbeFQ2ZGZ+3N/tA6cR/OIyzr2QA4dQXlY6USg=="],
@@ -449,8 +454,6 @@
     "@szmarczak/http-timer": ["@szmarczak/http-timer@4.0.6", "", { "dependencies": { "defer-to-connect": "^2.0.0" } }, "sha512-4BAffykYOgO+5nzBWYwE3W90sBgLJoUPRWWcL8wlyiM8IB8ipJz3UMJ9KXQd1RKQXpKp8Tutn80HZtWsu2u76w=="],
 
     "@tsconfig/bun": ["@tsconfig/bun@1.0.7", "", {}, "sha512-udGrGJBNQdXGVulehc1aWT73wkR9wdaGBtB6yL70RJsqwW/yJhIg6ZbRlPOfIUiFNrnBuYLBi9CSmMKfDC7dvA=="],
-
-    "@tsconfig/node20": ["@tsconfig/node20@20.1.4", "", {}, "sha512-sqgsT69YFeLWf5NtJ4Xq/xAF8p4ZQHlmGW74Nu2tD4+g5fAsposc4ZfaaPixVu4y01BEiDCWLRDCvDM5JOsRxg=="],
 
     "@tsconfig/node22": ["@tsconfig/node22@22.0.1", "", {}, "sha512-VkgOa3n6jvs1p+r3DiwBqeEwGAwEvnVCg/hIjiANl5IEcqP3G0u5m8cBJspe1t9qjZRlZ7WFgqq5bJrGdgAKMg=="],
 

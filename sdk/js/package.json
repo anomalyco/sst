@@ -26,11 +26,10 @@
     "release": "./scripts/release.ts"
   },
   "devDependencies": {
-    "@tsconfig/node20": "20.1.4",
-    "@tsconfig/node22": "22.0.1",
-    "@types/node": "22.15.17",
+    "@tsconfig/node22": "catalog:",
+    "@types/node": "catalog:",
     "hono": "4.3.9",
-    "typescript": "5.8.3",
+    "typescript": "catalog:",
     "valibot": "^1.0.0-rc.3",
     "zod": "^3.24.2"
   },
