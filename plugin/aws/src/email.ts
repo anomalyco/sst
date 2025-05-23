@@ -4,7 +4,7 @@ import { AWSComponent } from "./component.js";
 import { permission } from "./permission.js";
 import { sesv2, ses } from "@pulumi/aws";
 import { ComponentResourceOptions, all } from "@pulumi/pulumi";
-import { Dns } from "sst-plugin/dns";
+import { Dns } from "sst-plugin/internal/dns";
 import { Prettify } from "sst-plugin/internal/prettify";
 import { dns as awsDns } from "./dns.js";
 

@@ -1,5 +1,5 @@
 import * as sst from "sst-plugin";
-import { Dns } from "sst-plugin/dns";
+import { Dns } from "sst-plugin/internal/dns";
 
 export interface ApiGatewayV2DomainArgs {
   /**

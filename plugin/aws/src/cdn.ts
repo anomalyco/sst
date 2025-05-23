@@ -1,7 +1,7 @@
 import { cloudfront } from "@pulumi/aws";
 import { ComponentResourceOptions, all } from "@pulumi/pulumi";
 import * as sst from "sst-plugin";
-import { Dns } from "sst-plugin/dns";
+import { Dns } from "sst-plugin/internal/dns";
 import { Prettify } from "sst-plugin/internal/prettify";
 import { transform, Transform } from "sst-plugin/internal/transform";
 import { useProvider } from "./provider.js";

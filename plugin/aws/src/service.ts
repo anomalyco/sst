@@ -11,7 +11,7 @@ import {
   iam,
   getRegionOutput,
 } from "@pulumi/aws";
-import { Dns } from "sst-plugin/dns";
+import { Dns } from "sst-plugin/internal/dns";
 import { Prettify } from "sst-plugin/internal/prettify";
 import { DurationMinutes, toSeconds } from "./util/duration.js";
 import { DnsValidatedCertificate } from "./dns-validated-certificate.js";

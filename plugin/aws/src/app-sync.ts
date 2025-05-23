@@ -1,6 +1,6 @@
 import { appsync, iam } from "@pulumi/aws";
 import * as sst from "sst-plugin";
-import { Dns } from "sst-plugin/dns";
+import { Dns } from "sst-plugin/internal/dns";
 import { VisibleError } from "sst-plugin/error";
 import { Transform, transform } from "sst-plugin/internal/transform";
 import { useProvider } from "./provider.js";

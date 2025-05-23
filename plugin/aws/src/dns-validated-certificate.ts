@@ -4,7 +4,7 @@ import { AWSComponent } from "./component.js";
 import { permission } from "./permission.js";
 import { acm } from "@pulumi/aws";
 import { ComponentResourceOptions, all } from "@pulumi/pulumi";
-import { Dns } from "sst-plugin/dns";
+import { Dns } from "sst-plugin/internal/dns";
 
 /**
  * Properties to create a DNS validated certificate managed by AWS Certificate Manager.

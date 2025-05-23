@@ -1,7 +1,7 @@
 import { ecs, iam, lb, ec2, cloudwatch } from "@pulumi/aws";
 import { ComponentResourceOptions } from "@pulumi/pulumi";
 import * as sst from "sst-plugin";
-import { Dns } from "sst-plugin/dns";
+import { Dns } from "sst-plugin/internal/dns";
 import { transform, Transform } from "sst-plugin/internal/transform";
 import { RETENTION } from "./logging.js";
 import { FunctionArgs } from "./function.js";

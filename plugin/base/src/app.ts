@@ -1,3 +1,5 @@
+import { VisibleError } from "./error.js";
+
 export interface App
   extends Readonly<{
     /**
@@ -26,6 +28,11 @@ export interface App
      */
     protect: boolean;
   }> {}
+
+if (!process.env.SST_ENVIRONMENT)
+  throw new VisibleError(
+    "sst code must be run through the `sst` cli, not directly.",
+  );
 
 export const app: App = {
   name: "test",

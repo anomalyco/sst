@@ -1,7 +1,7 @@
 import * as sst from "sst-plugin";
 import { s3, cloudfront } from "@pulumi/aws";
 import { ComponentResourceOptions, all } from "@pulumi/pulumi";
-import { Dns } from "sst-plugin/dns";
+import { Dns } from "sst-plugin/internal/dns";
 import { useProvider } from "./provider.js";
 import { Bucket } from "./bucket.js";
 import { DnsValidatedCertificate } from "./dns-validated-certificate.js";
