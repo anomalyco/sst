@@ -19,6 +19,8 @@
     "dist"
   ],
   "dependencies": {
+    "@aws-sdk/client-lambda": "^3.816.0",
+    "@aws-sdk/client-rds-data": "^3.816.0",
     "@pulumi/aws": "6.66.2",
     "@pulumi/command": "^1.0.5",
     "@pulumi/docker-build": "0.0.8",

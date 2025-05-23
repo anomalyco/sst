@@ -1955,7 +1955,10 @@ export class Function extends AWSComponent implements sst.Linkable {
           if (dev) {
             return {
               handler: "bootstrap",
-              bundle: import.meta.resolve("sst-plugin-aws/dist/support/bridge"),
+              bundle: new URL(
+                ".",
+                import.meta.resolve("sst-plugin-aws/support/bridge/"),
+              ).pathname,
             };
           }
 

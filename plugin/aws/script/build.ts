@@ -16,6 +16,8 @@ for (const item of [
   "cf-ssr-site-router-worker",
   "empty-function",
   "empty-site",
+  "remix-server",
+  "react-server",
 ]) {
   await $`cp -a ./support/${item}/ ./dist/support/`;
 }

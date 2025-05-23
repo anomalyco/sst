@@ -134,7 +134,7 @@ func (r *Runtime) Run(ctx context.Context, input *runtime.RunInput) (runtime.Wor
 		"--enable-source-maps",
 		filepath.Join(
 			path.ResolvePlatformDir(input.CfgPath),
-			"/dist/nodejs-runtime/index.js",
+			"/node_modules/sst-plugin-aws/dist/support/nodejs-runtime/index.js",
 		),
 		filepath.Join(input.Build.Out, input.Build.Handler),
 		input.WorkerID,

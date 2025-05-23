@@ -942,9 +942,10 @@ async function handler(event) {
             runtime: "nodejs20.x",
             timeout: "20 seconds",
             memory: "128 MB",
-            bundle: import.meta.resolve(
-              "sst-plugin-aws/dist/functions/empty-function",
-            ),
+            bundle: new URL(
+              ".",
+              import.meta.resolve("sst-plugin-aws/support/empty-function/"),
+            ).pathname,
             handler: "index.handler",
             environment: args.environment,
             permissions: args.permissions,
@@ -1082,9 +1083,10 @@ async function handler(event) {
                   schedule: "rate(5 minutes)",
                   job: {
                     description: `${name} warmer`,
-                    bundle: import.meta.resolve(
-                      "sst-plugin-aws/support/ssr-warmer",
-                    ),
+                    bundle: new URL(
+                      ".",
+                      import.meta.resolve("sst-plugin-aws/support/ssr-warmer/"),
+                    ).pathname,
                     runtime: "nodejs20.x",
                     handler: "index.handler",
                     timeout: "900 seconds",

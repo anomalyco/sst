@@ -478,9 +478,11 @@ export class React extends SsrSite {
               // seamless for users we will create a server bundle with all dependencies included.
 
               fs.copyFileSync(
-                import.meta.resolve(
-                  "sst-plugin-aws/dist/react-server/server.mjs",
-                ),
+                new URL(
+                  import.meta.resolve(
+                    "sst-plugin-aws/dist/react-server/server.mjs",
+                  ),
+                ).pathname.slice(0, -3),
                 path.join(outputPath, "build", "server.mjs"),
               );
 

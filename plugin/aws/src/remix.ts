@@ -534,9 +534,11 @@ export class Remix extends SsrSite {
               : `import * as remixServerBuild from "./index.js";`,
             ``,
             fs.readFileSync(
-              import.meta.resolve(
-                "sst-plugin-aws/dist/functions/remix-server/regional-server.mjs",
-              ),
+              new URL(
+                import.meta.resolve(
+                  "sst-plugin-aws/support/remix-server/regional-server.mjs",
+                ),
+              ).pathname.slice(0, -3),
             ),
           ].join("\n");
           fs.writeFileSync(path.join(buildPath, "server.mjs"), content);
@@ -550,9 +552,11 @@ export class Remix extends SsrSite {
           // the bundle.
           const polyfillDest = path.join(buildPath, "polyfill.mjs");
           fs.copyFileSync(
-            import.meta.resolve(
-              "sst-plugin-aws/dist/functions/remix-server/polyfill.mjs",
-            ),
+            new URL(
+              import.meta.resolve(
+                "sst-plugin-aws/support/remix-server/polyfill.mjs",
+              ),
+            ).pathname.slice(0, -3),
             polyfillDest,
           );
 

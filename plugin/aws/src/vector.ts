@@ -184,7 +184,10 @@ export class Vector extends AWSComponent implements sst.Linkable {
     }
 
     function useBundlePath() {
-      return import.meta.resolve("sst-plugin-aws/dist/vector-handler");
+      return new URL(
+        ".",
+        import.meta.resolve("sst-plugin-aws/support/vector-handler/"),
+      ).pathname;
     }
 
     function useHandlerEnvironment() {
