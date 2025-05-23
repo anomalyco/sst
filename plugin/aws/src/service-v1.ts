@@ -299,7 +299,7 @@ export class Service extends AWSComponent implements sst.Linkable {
     function createImage() {
       // Edit .dockerignore file
       const imageArgsNew = imageArgs.apply((imageArgs) => {
-        const context = path.join(sst.paths.root, imageArgs.context);
+        const context = path.join(sst.path.root, imageArgs.context);
         const dockerfile = imageArgs.dockerfile ?? "Dockerfile";
 
         // get .dockerignore file
@@ -330,14 +330,14 @@ export class Service extends AWSComponent implements sst.Linkable {
           {
             context: {
               location: imageArgsNew.apply((v) =>
-                path.join(sst.paths.root, v.context),
+                path.join(sst.path.root, v.context),
               ),
             },
             dockerfile: {
               location: imageArgsNew.apply((v) =>
                 v.dockerfile
-                  ? path.join(sst.paths.root, v.dockerfile)
-                  : path.join(sst.paths.root, v.context, "Dockerfile"),
+                  ? path.join(sst.path.root, v.dockerfile)
+                  : path.join(sst.path.root, v.context, "Dockerfile"),
               ),
             },
             buildArgs: imageArgsNew.apply((v) => v.args ?? {}),

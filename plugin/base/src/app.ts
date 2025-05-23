@@ -34,21 +34,13 @@ if (!process.env.SST_ENVIRONMENT)
     "sst code must be run through the `sst` cli, not directly.",
   );
 
-export const app: App = {
-  name: "test",
-  stage: "test",
-  protect: true,
-  removal: "retain",
-};
+const parsed = JSON.parse(process.env.SST_ENVIRONMENT);
+export const app: App = parsed.app;
 
-export const dev = process.env.SST_DEV === "true";
+export const dev = parsed.dev;
 
-export const paths = {
-  root: process.env.SST_PATH_ROOT!,
-  artifacts: process.env.SST_PATH_ARTIFACTS!,
-  working: process.env.SST_PATH_WORKING!,
-};
+export const path = parsed.path;
 
-export const command: string = "unknown";
+export const command: string = parsed.command;
 
-export const version: Record<string, number> = {};
+export const version: Record<string, number> = parsed.version;

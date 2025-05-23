@@ -276,6 +276,20 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	for key, value := range secrets {
 		env = append(env, fmt.Sprintf("SST_SECRET_%v=%v", key, value))
 	}
+	sstEnvironment, err := json.Marshal(map[string]any{
+		"app": p.app,
+		"dev": input.Dev,
+		"path": map[string]any{
+			"root":      p.PathRoot(),
+			"artifacts": filepath.Join(p.PathWorkingDir(), "artifacts"),
+			"working":   p.PathWorkingDir(),
+		},
+		"command": input.Command,
+		"version": completed.Versions,
+	})
+	if err != nil {
+		return err
+	}
 	env = append(env,
 		"PULUMI_CONFIG_PASSPHRASE="+passphrase,
 		"PULUMI_SKIP_UPDATE_CHECK=true",
@@ -285,6 +299,7 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 		"NODE_OPTIONS=--enable-source-maps --no-deprecation",
 		"PULUMI_HOME="+global.ConfigDir(),
 		"SST_BUN_PATH="+global.BunPath(),
+		"SST_ENVIRONMENT="+string(sstEnvironment),
 	)
 	if input.ServerPort != 0 {
 		env = append(env, "SST_SERVER=http://127.0.0.1:"+fmt.Sprint(input.ServerPort))

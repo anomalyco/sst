@@ -290,7 +290,7 @@ export function buildApp(
       update: sst.output(build).command,
       dir: sst
         .output(sitePath)
-        .apply((sitePath) => path.join(sst.paths.root, sitePath)),
+        .apply((sitePath) => path.join(sst.path.root, sitePath)),
       environment,
       triggers: [Date.now().toString()],
     },

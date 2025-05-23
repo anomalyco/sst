@@ -8,5 +8,13 @@ export default $config({
       home: "aws",
     };
   },
-  async run() {},
+  async run() {
+    console.log(sst.app);
+    console.log(sst.paths);
+    new sst.aws.Bucket("MyBucket");
+    new sst.aws.Function("MyFunction", {
+      handler: "./src/index.handler",
+      url: true,
+    });
+  },
 });

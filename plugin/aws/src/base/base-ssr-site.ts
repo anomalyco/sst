@@ -155,19 +155,19 @@ export function buildApp(
 
         if (
           fs.existsSync(path.join(sitePath, "yarn.lock")) ||
-          fs.existsSync(path.join(sst.paths.root, "yarn.lock"))
+          fs.existsSync(path.join(sst.path.root, "yarn.lock"))
         )
           return "yarn run build";
         if (
           fs.existsSync(path.join(sitePath, "pnpm-lock.yaml")) ||
-          fs.existsSync(path.join(sst.paths.root, "pnpm-lock.yaml"))
+          fs.existsSync(path.join(sst.path.root, "pnpm-lock.yaml"))
         )
           return "pnpm run build";
         if (
           fs.existsSync(path.join(sitePath, "bun.lockb")) ||
-          fs.existsSync(path.join(sst.paths.root, "bun.lockb")) ||
+          fs.existsSync(path.join(sst.path.root, "bun.lockb")) ||
           fs.existsSync(path.join(sitePath, "bun.lock")) ||
-          fs.existsSync(path.join(sst.paths.root, "bun.lock"))
+          fs.existsSync(path.join(sst.path.root, "bun.lock"))
         )
           return "bun run build";
 
@@ -198,7 +198,7 @@ export function buildApp(
           {
             create: cmd,
             update: cmd,
-            dir: path.join(sst.paths.root, sitePath),
+            dir: path.join(sst.path.root, sitePath),
             environment: linkEnvs.apply((linkEnvs) => ({
               SST: "1",
               ...process.env,

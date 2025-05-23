@@ -1885,7 +1885,7 @@ export class Function extends AWSComponent implements sst.Linkable {
       return sst.output(args.copyFiles ?? []).apply((copyFiles) =>
         Promise.all(
           copyFiles.map(async (entry) => {
-            const from = path.join(sst.paths.root, entry.from);
+            const from = path.join(sst.path.root, entry.from);
             const to = entry.to || entry.from;
             if (path.isAbsolute(to)) {
               throw new VisibleError(
@@ -2198,7 +2198,7 @@ export class Function extends AWSComponent implements sst.Linkable {
             {
               tags: [sst.interpolate`${bootstrapData.assetEcrUrl}:latest`],
               context: {
-                location: path.join(sst.paths.root, "artifacts", `${name}-src`),
+                location: path.join(sst.path.root, "artifacts", `${name}-src`),
               },
               cacheFrom: [
                 {
@@ -2265,7 +2265,7 @@ export class Function extends AWSComponent implements sst.Linkable {
             if (isContainer) return;
 
             const zipPath = path.resolve(
-              sst.paths.root,
+              sst.path.root,
               "artifacts",
               name,
               "code.zip",

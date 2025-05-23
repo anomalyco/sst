@@ -965,7 +965,7 @@ export function createTaskDefinition(
           return sst.output(container.image);
 
         const containerImage = container.image;
-        const contextPath = path.join(sst.paths.root, container.image.context);
+        const contextPath = path.join(sst.path.root, container.image.context);
         const dockerfile = container.image.dockerfile ?? "Dockerfile";
         const dockerfilePath = path.join(contextPath, dockerfile);
         const dockerIgnorePath = existsSync(
