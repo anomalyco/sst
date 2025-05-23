@@ -5,6 +5,7 @@ import { Prettify } from "sst-plugin/internal/prettify";
 import { BaseSiteFileOptions } from "./base-site.js";
 import { VisibleError } from "sst-plugin/error";
 import { Resource } from "@pulumi/pulumi";
+import { siteBuilder } from "../util/site-builder.js";
 
 export type BaseStaticSiteAssets = {
   /**

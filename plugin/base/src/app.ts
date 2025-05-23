@@ -42,6 +42,6 @@ export const paths = {
   working: process.env.SST_PATH_WORKING!,
 };
 
-export const command = "unknown";
+export const command: string = "unknown";
 
 export const version: Record<string, number> = {};

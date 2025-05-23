@@ -27,7 +27,7 @@ import {
   createExecutionRole,
   createTaskDefinition,
 } from "./fargate.js";
-import { URL_UNAVAILABLE } from "./linkable.js";
+import { URL_UNAVAILABLE } from "./util/url-unvailable.js";
 import { Vpc } from "./vpc.js";
 import { AWSComponent } from "./component.js";
 
@@ -2366,7 +2366,7 @@ export class Service extends AWSComponent implements sst.Linkable {
       sst.resolve([containers]).apply(([val]) => {
         for (const container of val) {
           const title = val.length == 1 ? name : `${name}${container.name}`;
-          new DevCommand(`${title}Dev`, {
+          new sst.x.DevCommand(`${title}Dev`, {
             link: args.link,
             dev: {
               title,

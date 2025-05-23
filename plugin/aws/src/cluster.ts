@@ -9,7 +9,7 @@ import {
   ComponentVersion,
   AWSComponent,
 } from "./component.js";
-import { ServiceArgs, Service } from "./service-v1.js";
+import { ServiceArgs, Service } from "./service.js";
 import { TaskArgs, Task } from "./task.js";
 import { Vpc } from "./vpc.js";
 import { Cluster as ClusterV1 } from "./cluster-v1.js";

@@ -11,6 +11,8 @@ import {
   ssm,
 } from "@pulumi/aws";
 import { VisibleError } from "sst-plugin/error";
+import { Vpc as VpcV1 } from "./vpc-v1.js";
+import { AWSComponent } from "./component.js";
 
 export interface VpcArgs {
   /**
@@ -329,7 +331,7 @@ interface VpcRef {
  * [EC2 Data Transfer pricing](https://aws.amazon.com/ec2/pricing/on-demand/#Data_Transfer)
  * for more details.
  */
-export class Vpc extends sst.Component implements sst.Linkable {
+export class Vpc extends AWSComponent implements sst.Linkable {
   private vpc: ec2.Vpc;
   private internetGateway: ec2.InternetGateway;
   private securityGroup: ec2.SecurityGroup;
@@ -653,11 +655,11 @@ export class Vpc extends sst.Component implements sst.Linkable {
     function registerVersion(overrideVersion?: number) {
       self.registerVersion({
         new: _version,
-        old: overrideVersion ?? $cli.state.version[name],
+        old: overrideVersion ?? sst.version[name],
         message: [
           `There is a new version of "Vpc" that has breaking changes.`,
           ``,
-          `To continue using the previous version, rename "Vpc" to "Vpc.v${$cli.state.version[name]}". Or recreate this component to update - https://sst.dev/docs/components/#versioning`,
+          `To continue using the previous version, rename "Vpc" to "Vpc.v${sst.version[name]}". Or recreate this component to update - https://sst.dev/docs/components/#versioning`,
         ].join("\n"),
       });
     }

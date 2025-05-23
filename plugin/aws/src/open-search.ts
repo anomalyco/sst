@@ -361,7 +361,7 @@ export class OpenSearch extends AWSComponent implements sst.Linkable {
         password: sst.output(args.dev.password ?? args.password ?? ""),
       };
 
-      new DevCommand(`${name}Dev`, {
+      new sst.x.DevCommand(`${name}Dev`, {
         dev: {
           title: name,
           autostart: true,

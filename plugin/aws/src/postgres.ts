@@ -604,7 +604,7 @@ export class Postgres extends AWSComponent implements sst.Linkable {
         database: args.dev.database ? sst.output(args.dev.database) : dbName,
       };
 
-      new DevCommand(`${name}Dev`, {
+      new sst.x.DevCommand(`${name}Dev`, {
         dev: {
           title: name,
           autostart: true,

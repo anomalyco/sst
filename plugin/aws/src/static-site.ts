@@ -31,6 +31,7 @@ import {
   CF_ROUTER_INJECTION,
 } from "./router.js";
 import { toPosix } from "./util/posix.js";
+import { URL_UNAVAILABLE } from "./util/url-unvailable.js";
 
 export interface StaticSiteArgs extends BaseStaticSiteArgs {
   /**

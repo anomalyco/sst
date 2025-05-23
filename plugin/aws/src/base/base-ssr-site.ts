@@ -6,6 +6,7 @@ import { Prettify } from "sst-plugin/internal/prettify";
 import { VisibleError } from "sst-plugin/error";
 import { link } from "sst-plugin/runtime/link";
 import { Resource } from "@pulumi/pulumi";
+import { siteBuilder } from "../util/site-builder.js";
 
 export interface BaseSsrSiteArgs {
   dev?: false | Prettify<BaseSiteDev>;

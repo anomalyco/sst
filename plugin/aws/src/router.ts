@@ -1381,6 +1381,7 @@ async function handler(event) {
                   ...distributionData.find(
                     (d) => d.behavior.pathPattern === "/*",
                   )!.behavior,
+                  // @ts-expect-error
                   pathPattern: undefined,
                 },
                 orderedCacheBehaviors: distributionData

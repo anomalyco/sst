@@ -17,7 +17,7 @@ import { BaseSiteFileOptions, getContentType } from "./base/base-site.js";
 import { BaseSsrSiteArgs, buildApp } from "./base/base-ssr-site.js";
 import { KvKeys } from "./providers/kv-keys.js";
 
-import { URL_UNAVAILABLE } from "./linkable.js";
+import { URL_UNAVAILABLE } from "./util/url-unvailable.js";
 import {
   CF_ROUTER_INJECTION,
   CF_BLOCK_CLOUDFRONT_URL_INJECTION,

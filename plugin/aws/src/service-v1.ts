@@ -26,7 +26,7 @@ import {
   supportedMemories,
 } from "./cluster-v1.js";
 import { DnsValidatedCertificate } from "./dns-validated-certificate.js";
-import { URL_UNAVAILABLE } from "./linkable.js";
+import { URL_UNAVAILABLE } from "./util/url-unvailable.js";
 import { Vpc } from "./vpc.js";
 import { dns as awsDns } from "./dns.js";
 import { link } from "sst-plugin/runtime/link";

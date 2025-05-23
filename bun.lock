@@ -9,6 +9,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@pulumi/aws": "6.66.2",
+        "@pulumi/command": "^1.0.5",
         "@pulumi/docker-build": "0.0.8",
         "@pulumi/pulumi": "3.169.0",
         "@pulumi/random": "^4.18.2",
@@ -382,6 +383,8 @@
     "@protobufjs/utf8": ["@protobufjs/utf8@1.1.0", "", {}, "sha512-Vvn3zZrhQZkkBE8LSuW3em98c0FwgO4nxzv6OdSxPKJIEKY2bGbHn+mhGIPerzI4twdxaP8/0+06HBpwf345Lw=="],
 
     "@pulumi/aws": ["@pulumi/aws@6.66.2", "", { "dependencies": { "@pulumi/pulumi": "^3.142.0", "mime": "^2.0.0" } }, "sha512-jO5L4JcjYriqXBGYH9LVb+GjawHUJvkWvLtb5nXxIKpkykEO1LyWVZdR4ngFcT7Hlw99Tg1ms4ut7LdETPCuUw=="],
+
+    "@pulumi/command": ["@pulumi/command@1.0.5", "", { "dependencies": { "@pulumi/pulumi": "^3.142.0" } }, "sha512-tOsdyFGOPe9UdfkMJlw2OIz1d1bshzG19L07DWJzej6D3G6HeusoYdnrnfHKXQN29juRXkqY1519N1LzPORRlg=="],
 
     "@pulumi/docker-build": ["@pulumi/docker-build@0.0.8", "", { "dependencies": { "@pulumi/pulumi": "^3.136.0" } }, "sha512-tS6UUgmDjQ+LVekMXGC/6ND7riY75h3oO9fLiVOrvNafCBumxK+Cjm6ZZ9tUChLYvw6H+rZRExZEhfC8F/SQgQ=="],
 

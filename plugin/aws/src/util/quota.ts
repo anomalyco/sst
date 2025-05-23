@@ -1,6 +1,6 @@
 import { servicequotas } from "@pulumi/aws";
 import { Output } from "@pulumi/pulumi";
-import { useProvider } from "../../provider.js";
+import { useProvider } from "../provider.js";
 
 const QUOTA_CODE = {
   "cloudfront-response-timeout": ["cloudfront", "L-AECE9FA7"],

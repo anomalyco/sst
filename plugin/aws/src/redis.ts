@@ -406,7 +406,7 @@ export class Redis extends AWSComponent implements sst.Linkable {
         password: args.dev.password ? sst.output(args.dev.password) : undefined,
       };
 
-      new DevCommand(`${name}Dev`, {
+      new sst.x.DevCommand(`${name}Dev`, {
         dev: {
           title: name,
           autostart: true,
