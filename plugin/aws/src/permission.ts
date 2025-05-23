@@ -15,7 +15,7 @@
  */
 
 import { Prettify } from "sst-plugin/internal/prettify";
-import type { FunctionPermissionArgs } from "./component/function.js";
+import type { FunctionPermissionArgs } from "./function.js";
 
 export interface InputArgs extends Prettify<FunctionPermissionArgs> {}
 
