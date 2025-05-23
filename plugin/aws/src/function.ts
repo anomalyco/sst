@@ -2264,12 +2264,7 @@ export class Function extends AWSComponent implements sst.Linkable {
           ]) => {
             if (isContainer) return;
 
-            const zipPath = path.resolve(
-              sst.path.root,
-              "artifacts",
-              name,
-              "code.zip",
-            );
+            const zipPath = path.resolve(sst.path.artifacts, name, "code.zip");
             await fs.promises.mkdir(path.dirname(zipPath), {
               recursive: true,
             });

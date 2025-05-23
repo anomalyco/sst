@@ -35,6 +35,7 @@ if (!process.env.SST_ENVIRONMENT)
   );
 
 const parsed = JSON.parse(process.env.SST_ENVIRONMENT);
+console.log(parsed);
 export const app: App = parsed.app;
 
 export const dev = parsed.dev;
