@@ -1,28 +1,23 @@
-import {
-  ComponentResourceOptions,
-  Input,
-  jsonStringify,
-  output,
-} from "@pulumi/pulumi";
-import { Component, transform } from "../component";
-import { SnsTopicSubscriberArgs } from "./sns-topic";
-import { sns, sqs } from "@pulumi/aws";
-import { Queue } from "./queue";
+import * as sst from "sst-plugin";
+import { transform } from "sst-plugin/internal/transform";
+import { sqs, sns } from "@pulumi/aws";
+import { Queue } from "./queue.js";
+import { SnsTopicSubscriberArgs } from "./sns-topic.js";
 
 export interface Args extends SnsTopicSubscriberArgs {
   /**
    * The SNS Topic to use.
    */
-  topic: Input<{
+  topic: sst.Input<{
     /**
      * The ARN of the SNS Topic.
      */
-    arn: Input<string>;
+    arn: sst.Input<string>;
   }>;
   /**
    * The ARN of the SQS Queue.
    */
-  queue: Input<string | Queue>;
+  queue: sst.Input<string | Queue>;
   /**
    * In early versions of SST, parent were forgotten to be set for resources in components.
    * This flag is used to disable the automatic setting of the parent to prevent breaking
@@ -42,18 +37,20 @@ export interface Args extends SnsTopicSubscriberArgs {
  *
  * You'll find this component returned by the `subscribeQueue` method of the `SnsTopic` component.
  */
-export class SnsTopicQueueSubscriber extends Component {
+export class SnsTopicQueueSubscriber extends sst.Component {
   private readonly policy: sqs.QueuePolicy;
   private readonly subscription: sns.TopicSubscription;
 
-  constructor(name: string, args: Args, opts?: ComponentResourceOptions) {
+  constructor(name: string, args: Args, opts?: sst.ComponentOptions) {
     super(__pulumiType, name, args, opts);
 
     const self = this;
-    const topic = output(args.topic);
-    const queueArn = output(args.queue).apply((queue) =>
-      queue instanceof Queue ? queue.arn : output(queue),
-    );
+    const topic = sst.output(args.topic);
+    const queueArn = sst
+      .output(args.queue)
+      .apply((queue) =>
+        queue instanceof Queue ? queue.arn : sst.output(queue),
+      );
     const policy = createPolicy();
     const subscription = createSubscription();
 
@@ -75,7 +72,7 @@ export class SnsTopicQueueSubscriber extends Component {
             topic: topic.arn,
             protocol: "sqs",
             endpoint: queueArn,
-            filterPolicy: args.filter && jsonStringify(args.filter),
+            filterPolicy: args.filter && sst.json.stringify(args.filter),
           },
           { parent: args.disableParent ? undefined : self },
         ),

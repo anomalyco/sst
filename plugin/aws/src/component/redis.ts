@@ -1,20 +1,12 @@
-import {
-  all,
-  ComponentResourceOptions,
-  interpolate,
-  jsonStringify,
-  Output,
-  output,
-} from "@pulumi/pulumi";
-import { RandomPassword } from "@pulumi/random";
-import { Component, Transform, transform } from "../component.js";
-import { Link } from "../link.js";
-import { Input } from "../input.js";
+import * as sst from "sst-plugin";
+import { Transform, transform } from "sst-plugin/internal/transform";
+import { VisibleError } from "sst-plugin/error";
+import { Redis as RedisV1 } from "./redis-v1.js";
 import { elasticache, secretsmanager } from "@pulumi/aws";
+import { ComponentResourceOptions, all, jsonStringify } from "@pulumi/pulumi";
+import { RandomPassword } from "@pulumi/random";
 import { Vpc } from "./vpc.js";
-import { VisibleError } from "../error.js";
-import { DevCommand } from "../experimental/dev-command.js";
-import { Redis as RedisV1 } from "./redis-v1";
+import { AWSComponent } from "../component.js";
 
 export interface RedisArgs {
   /**
@@ -25,7 +17,7 @@ export interface RedisArgs {
    *
    * @default `"redis"`
    */
-  engine?: Input<"redis" | "valkey">;
+  engine?: sst.Input<"redis" | "valkey">;
   /**
    * The version of Redis.
    *
@@ -41,7 +33,7 @@ export interface RedisArgs {
    * }
    * ```
    */
-  version?: Input<string>;
+  version?: sst.Input<string>;
   /**
    * The type of instance to use for the nodes of the Redis instance. Check out the [supported instance types](https://docs.aws.amazon.com/AmazonElastiCache/latest/red-ug/CacheNodes.SupportedTypes.html).
    *
@@ -53,12 +45,12 @@ export interface RedisArgs {
    * }
    * ```
    */
-  instance?: Input<string>;
+  instance?: sst.Input<string>;
   /**
    * @deprecated The `cluster.nodes` prop is now the recommended way to configure the
    * number of nodes in the cluster.
    */
-  nodes?: Input<number>;
+  nodes?: sst.Input<number>;
   /**
    * Configure cluster mode for Redis.
    *
@@ -71,7 +63,7 @@ export interface RedisArgs {
    * }
    * ```
    */
-  cluster?: Input<
+  cluster?: sst.Input<
     | boolean
     | {
         /**
@@ -85,7 +77,7 @@ export interface RedisArgs {
          * }
          * ```
          */
-        nodes: Input<number>;
+        nodes: sst.Input<number>;
       }
   >;
   /**
@@ -101,7 +93,7 @@ export interface RedisArgs {
    * }
    * ```
    */
-  parameters?: Input<Record<string, Input<string>>>;
+  parameters?: sst.Input<Record<string, sst.Input<string>>>;
   /**
    * The VPC to use for the Redis instance.
    *
@@ -133,15 +125,15 @@ export interface RedisArgs {
    */
   vpc:
     | Vpc
-    | Input<{
+    | sst.Input<{
         /**
          * A list of subnet IDs in the VPC to deploy the Redis instance in.
          */
-        subnets: Input<Input<string>[]>;
+        subnets: sst.Input<sst.Input<string>[]>;
         /**
          * A list of VPC security group IDs.
          */
-        securityGroups: Input<Input<string>[]>;
+        securityGroups: sst.Input<sst.Input<string>[]>;
       }>;
   /**
    * Configure how this component works in `sst dev`.
@@ -175,22 +167,22 @@ export interface RedisArgs {
      * The host of the local Redis server to connect to when running in dev.
      * @default `"localhost"`
      */
-    host?: Input<string>;
+    host?: sst.Input<string>;
     /**
      * The port of the local Redis server when running in dev.
      * @default `6379`
      */
-    port?: Input<number>;
+    port?: sst.Input<number>;
     /**
      * The username of the local Redis server to connect to when running in dev.
      * @default `"default"`
      */
-    username?: Input<string>;
+    username?: sst.Input<string>;
     /**
      * The password of the local Redis server to connect to when running in dev.
      * @default No password
      */
-    password?: Input<string>;
+    password?: sst.Input<string>;
   };
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
@@ -214,7 +206,7 @@ export interface RedisArgs {
 
 interface RedisRef {
   ref: boolean;
-  clusterId: Input<string>;
+  clusterId: sst.Input<string>;
 }
 
 /**
@@ -305,15 +297,15 @@ interface RedisRef {
  * The above are rough estimates for _us-east-1_, check out the
  * [ElastiCache pricing](https://aws.amazon.com/elasticache/pricing/) for more details.
  */
-export class Redis extends Component implements Link.Linkable {
-  private cluster?: Output<elasticache.ReplicationGroup>;
-  private _authToken?: Output<string>;
+export class Redis extends AWSComponent implements sst.Linkable {
+  private cluster?: sst.Output<elasticache.ReplicationGroup>;
+  private _authToken?: sst.Output<string>;
   private dev?: {
     enabled: boolean;
-    host: Output<string>;
-    port: Output<number>;
-    username: Output<string>;
-    password?: Output<string>;
+    host: sst.Output<string>;
+    port: sst.Output<number>;
+    username: sst.Output<string>;
+    password?: sst.Output<string>;
   };
   public static v1 = RedisV1;
 
@@ -324,17 +316,17 @@ export class Redis extends Component implements Link.Linkable {
 
     if (args && "ref" in args) {
       const ref = reference();
-      this.cluster = output(ref.cluster);
+      this.cluster = sst.output(ref.cluster);
       this._authToken = ref.authToken;
       return;
     }
 
     registerVersion();
-    const engine = output(args.engine).apply((v) => v ?? "redis");
+    const engine = sst.output(args.engine).apply((v) => v ?? "redis");
     const version = all([engine, args.version]).apply(
       ([engine, v]) => v ?? (engine === "redis" ? "7.1" : "7.2"),
     );
-    const instance = output(args.instance).apply((v) => v ?? "t4g.micro");
+    const instance = sst.output(args.instance).apply((v) => v ?? "t4g.micro");
     const argsCluster = normalizeCluster();
     const vpc = normalizeVpc();
 
@@ -390,7 +382,7 @@ export class Redis extends Component implements Link.Linkable {
     }
 
     function registerVersion(overrideVersion?: number) {
-      const oldVersion = overrideVersion ?? $cli.state.version[name];
+      const oldVersion = overrideVersion ?? sst.version[name];
       self.registerVersion({
         new: _version,
         old: oldVersion,
@@ -407,11 +399,11 @@ export class Redis extends Component implements Link.Linkable {
       if (!args.dev) return undefined;
 
       const dev = {
-        enabled: $dev,
-        host: output(args.dev.host ?? "localhost"),
-        port: output(args.dev.port ?? 6379),
-        username: output(args.dev.username ?? "default"),
-        password: args.dev.password ? output(args.dev.password) : undefined,
+        enabled: sst.dev,
+        host: sst.output(args.dev.host ?? "localhost"),
+        port: sst.output(args.dev.port ?? 6379),
+        username: sst.output(args.dev.username ?? "default"),
+        password: args.dev.password ? sst.output(args.dev.password) : undefined,
       };
 
       new DevCommand(`${name}Dev`, {
@@ -421,7 +413,7 @@ export class Redis extends Component implements Link.Linkable {
           command: `sst print-and-not-quit`,
         },
         environment: {
-          SST_DEV_COMMAND_MESSAGE: interpolate`Make sure your local Redis server is using:
+          SST_DEV_COMMAND_MESSAGE: sst.interpolate`Make sure your local Redis server is using:
 
   username: "${dev.username}"
   password: ${
@@ -438,14 +430,14 @@ Listening on "${dev.host}:${dev.port}"...`,
     function normalizeVpc() {
       // "vpc" is a Vpc component
       if (args.vpc instanceof Vpc) {
-        return output({
+        return sst.output({
           subnets: args.vpc.privateSubnets,
           securityGroups: args.vpc.securityGroups,
         });
       }
 
       // "vpc" is object
-      return output(args.vpc);
+      return sst.output(args.vpc);
     }
 
     function normalizeCluster() {
@@ -552,7 +544,7 @@ Listening on "${dev.host}:${dev.port}"...`,
                 description: "Managed by SST",
                 engine,
                 engineVersion: version,
-                nodeType: interpolate`cache.${instance}`,
+                nodeType: sst.interpolate`cache.${instance}`,
                 dataTieringEnabled: instance.apply((v) =>
                   v.startsWith("r6gd."),
                 ),
@@ -591,21 +583,21 @@ Listening on "${dev.host}:${dev.port}"...`,
    * The ID of the Redis cluster.
    */
   public get clusterId() {
-    return this.dev ? output("placeholder") : this.cluster!.id;
+    return this.dev ? sst.output("placeholder") : this.cluster!.id;
   }
 
   /**
    * The username to connect to the Redis cluster.
    */
   public get username() {
-    return this.dev ? this.dev.username : output("default");
+    return this.dev ? this.dev.username : sst.output("default");
   }
 
   /**
    * The password to connect to the Redis cluster.
    */
   public get password() {
-    return this.dev ? this.dev.password ?? output("") : this._authToken;
+    return this.dev ? this.dev.password ?? sst.output("") : this._authToken;
   }
 
   /**
@@ -691,7 +683,7 @@ Listening on "${dev.host}:${dev.port}"...`,
    */
   public static get(
     name: string,
-    clusterId: Input<string>,
+    clusterId: sst.Input<string>,
     opts?: ComponentResourceOptions,
   ) {
     return new Redis(

@@ -30,12 +30,12 @@ import { DistributionInvalidation } from "../providers/distribution-invalidation
 import { KvRoutesUpdate } from "../providers/kv-routes-update.js";
 import { toSeconds } from "../duration.js";
 import { CONSOLE_URL, getQuota } from "./util/quota.js";
-import { toPosix } from "../posix.js";
 import { Prettify } from "sst-plugin/internal/prettify";
 import { AWSComponent } from "../component.js";
 import { Resource } from "@pulumi/pulumi";
 import { useProvider } from "../provider.js";
 import { link } from "sst-plugin/runtime/link";
+import { toPosix } from "./util/posix.js";
 
 const supportedRegions = {
   "af-south-1": { lat: -33.9249, lon: 18.4241 }, // Cape Town, South Africa

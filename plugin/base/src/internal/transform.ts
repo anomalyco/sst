@@ -1,3 +1,4 @@
+import { CustomResourceOptions } from "@pulumi/pulumi";
 import { ComponentOptions } from "../component.js";
 
 export type Transform<T> =
@@ -8,7 +9,7 @@ export function transform<T extends object>(
   transform: Transform<T> | undefined,
   name: string,
   args: T,
-  opts: ComponentOptions,
+  opts: CustomResourceOptions,
 ) {
   // Case: transform is a function
   if (typeof transform === "function") {

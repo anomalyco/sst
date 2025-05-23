@@ -1,6 +1,5 @@
-import { ComponentResourceOptions, Output, all, output } from "@pulumi/pulumi";
-import { Component, Transform, transform } from "../component";
-import { Input } from "../input";
+import * as sst from "sst-plugin";
+import { Transform, transform } from "sst-plugin/internal/transform";
 import { ec2, getAvailabilityZonesOutput } from "@pulumi/aws";
 
 export interface VpcArgs {
@@ -15,7 +14,7 @@ export interface VpcArgs {
    * }
    * ```
    */
-  az?: Input<number>;
+  az?: sst.Input<number>;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
@@ -65,12 +64,12 @@ interface VpcRef {
   vpc: ec2.Vpc;
   internetGateway: ec2.InternetGateway;
   securityGroup: ec2.SecurityGroup;
-  privateSubnets: Output<ec2.Subnet[]>;
-  privateRouteTables: Output<ec2.RouteTable[]>;
-  publicSubnets: Output<ec2.Subnet[]>;
-  publicRouteTables: Output<ec2.RouteTable[]>;
-  natGateways: Output<ec2.NatGateway[]>;
-  elasticIps: Output<ec2.Eip[]>;
+  privateSubnets: sst.Output<ec2.Subnet[]>;
+  privateRouteTables: sst.Output<ec2.RouteTable[]>;
+  publicSubnets: sst.Output<ec2.Subnet[]>;
+  publicRouteTables: sst.Output<ec2.RouteTable[]>;
+  natGateways: sst.Output<ec2.NatGateway[]>;
+  elasticIps: sst.Output<ec2.Eip[]>;
 }
 
 /**
@@ -119,18 +118,18 @@ interface VpcRef {
  * });
  * ```
  */
-export class Vpc extends Component {
+export class Vpc extends sst.Component {
   private vpc: ec2.Vpc;
   private internetGateway: ec2.InternetGateway;
   private securityGroup: ec2.SecurityGroup;
-  private natGateways: Output<ec2.NatGateway[]>;
-  private elasticIps: Output<ec2.Eip[]>;
-  private _publicSubnets: Output<ec2.Subnet[]>;
-  private _privateSubnets: Output<ec2.Subnet[]>;
-  private publicRouteTables: Output<ec2.RouteTable[]>;
-  private privateRouteTables: Output<ec2.RouteTable[]>;
+  private natGateways: sst.Output<ec2.NatGateway[]>;
+  private elasticIps: sst.Output<ec2.Eip[]>;
+  private _publicSubnets: sst.Output<ec2.Subnet[]>;
+  private _privateSubnets: sst.Output<ec2.Subnet[]>;
+  private publicRouteTables: sst.Output<ec2.RouteTable[]>;
+  private privateRouteTables: sst.Output<ec2.RouteTable[]>;
 
-  constructor(name: string, args?: VpcArgs, opts?: ComponentResourceOptions) {
+  constructor(name: string, args?: VpcArgs, opts?: sst.ComponentOptions) {
     super(__pulumiType, name, args, opts);
 
     if (args && "ref" in args) {
@@ -138,11 +137,11 @@ export class Vpc extends Component {
       this.vpc = ref.vpc;
       this.internetGateway = ref.internetGateway;
       this.securityGroup = ref.securityGroup;
-      this._publicSubnets = output(ref.publicSubnets);
-      this._privateSubnets = output(ref.privateSubnets);
-      this.publicRouteTables = output(ref.publicRouteTables);
-      this.privateRouteTables = output(ref.privateRouteTables);
-      this.natGateways = output(ref.natGateways);
+      this._publicSubnets = sst.output(ref.publicSubnets);
+      this._privateSubnets = sst.output(ref.privateSubnets);
+      this.publicRouteTables = sst.output(ref.publicRouteTables);
+      this.privateRouteTables = sst.output(ref.privateRouteTables);
+      this.natGateways = sst.output(ref.natGateways);
       this.elasticIps = ref.elasticIps;
       return;
     }
@@ -172,7 +171,7 @@ export class Vpc extends Component {
       const zones = getAvailabilityZonesOutput({
         state: "available",
       });
-      return all([zones, args?.az ?? 2]).apply(([zones, az]) =>
+      return sst.resolve([zones, args?.az ?? 2]).apply(([zones, az]) =>
         Array(az)
           .fill(0)
           .map((_, i) => zones.names[i]),
@@ -484,7 +483,7 @@ export class Vpc extends Component {
    * };
    * ```
    */
-  public static get(name: string, vpcID: Input<string>) {
+  public static get(name: string, vpcID: sst.Input<string>) {
     const vpc = ec2.Vpc.get(`${name}Vpc`, vpcID);
     const internetGateway = ec2.InternetGateway.get(
       `${name}InstanceGateway`,
@@ -555,7 +554,7 @@ export class Vpc extends Component {
       nats.map((nat, i) =>
         ec2.Eip.get(
           `${name}ElasticIp${i + 1}`,
-          nat.allocationId as Output<string>,
+          nat.allocationId as sst.Output<string>,
         ),
       ),
     );

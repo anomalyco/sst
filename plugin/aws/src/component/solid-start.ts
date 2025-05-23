@@ -1,8 +1,10 @@
 import fs from "fs";
+import * as sst from "sst-plugin";
+import { Transform, transform } from "sst-plugin/internal/transform";
+import { VisibleError } from "sst-plugin/error";
+import { AWSComponent } from "../component.js";
 import path from "path";
-import { ComponentResourceOptions, Output } from "@pulumi/pulumi";
-import { VisibleError } from "../error.js";
-import { Plan, SsrSite, SsrSiteArgs } from "./ssr-site.js";
+import { SsrSiteArgs, SsrSite, Plan } from "./ssr-site.js";
 
 export interface SolidStartArgs extends SsrSiteArgs {
   /**
@@ -408,14 +410,14 @@ export class SolidStart extends SsrSite {
   constructor(
     name: string,
     args: SolidStartArgs = {},
-    opts: ComponentResourceOptions = {},
+    opts: sst.ComponentOptions = {},
   ) {
     super(__pulumiType, name, args, opts);
   }
 
-  protected normalizeBuildCommand() { }
+  protected normalizeBuildCommand() {}
 
-  protected buildPlan(outputPath: Output<string>): Output<Plan> {
+  protected buildPlan(outputPath: sst.Output<string>): sst.Output<Plan> {
     return outputPath.apply((outputPath) => {
       // Make sure aws-lambda preset is used in nitro.json
       const nitro = JSON.parse(

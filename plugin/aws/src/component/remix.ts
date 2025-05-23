@@ -1,9 +1,11 @@
 import fs from "fs";
 import path from "path";
-import { ComponentResourceOptions, Output, all } from "@pulumi/pulumi";
-import type { Input } from "../input.js";
-import { VisibleError } from "../error.js";
-import { Plan, SsrSite, SsrSiteArgs } from "./ssr-site.js";
+import * as sst from "sst-plugin";
+import { Transform, transform } from "sst-plugin/internal/transform";
+import { VisibleError } from "sst-plugin/error";
+import { AWSComponent } from "../component.js";
+import { ComponentResourceOptions, all } from "@pulumi/pulumi";
+import { SsrSiteArgs, SsrSite, Plan } from "./ssr-site.js";
 
 export interface RemixArgs extends SsrSiteArgs {
   /**
@@ -306,7 +308,7 @@ export interface RemixArgs extends SsrSiteArgs {
    *
    * @default `"build"`
    */
-  buildDirectory?: Input<string>;
+  buildDirectory?: sst.Input<string>;
   /**
    * Configure how the Remix app assets are uploaded to S3.
    *
@@ -422,13 +424,13 @@ export class Remix extends SsrSite {
     super(__pulumiType, name, args, opts);
   }
 
-  protected normalizeBuildCommand() { }
+  protected normalizeBuildCommand() {}
 
   protected buildPlan(
-    outputPath: Output<string>,
+    outputPath: sst.Output<string>,
     _name: string,
     args: RemixArgs,
-  ): Output<Plan> {
+  ): sst.Output<Plan> {
     return all([outputPath, args.buildDirectory]).apply(
       async ([outputPath, buildDirectory]) => {
         // The path for all files that need to be in the "/" directory (static assets)
@@ -532,11 +534,8 @@ export class Remix extends SsrSite {
               : `import * as remixServerBuild from "./index.js";`,
             ``,
             fs.readFileSync(
-              path.join(
-                $cli.paths.platform,
-                "functions",
-                "remix-server",
-                "regional-server.mjs",
+              import.meta.resolve(
+                "sst-plugin-aws/dist/functions/remix-server/regional-server.mjs",
               ),
             ),
           ].join("\n");
@@ -551,11 +550,8 @@ export class Remix extends SsrSite {
           // the bundle.
           const polyfillDest = path.join(buildPath, "polyfill.mjs");
           fs.copyFileSync(
-            path.join(
-              $cli.paths.platform,
-              "functions",
-              "remix-server",
-              "polyfill.mjs",
+            import.meta.resolve(
+              "sst-plugin-aws/dist/functions/remix-server/polyfill.mjs",
             ),
             polyfillDest,
           );

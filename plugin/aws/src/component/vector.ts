@@ -1,12 +1,10 @@
-import path from "path";
-import { ComponentResourceOptions } from "@pulumi/pulumi";
-import { Component, Transform, transform } from "../component.js";
-import { Postgres, PostgresArgs } from "./postgres-v1.js";
-import { VectorTable } from "./providers/vector-table.js";
+import * as sst from "sst-plugin";
+import { Transform, transform } from "sst-plugin/internal/transform";
+import { AWSComponent } from "../component.js";
+import { VectorTable } from "../providers/vector-table.js";
+import { PostgresArgs, Postgres } from "./postgres-v1.js";
 import { Function } from "./function.js";
-import { Link } from "../link.js";
-import { Input } from "../input.js";
-import { permission } from "./permission.js";
+import { permission } from "../permission.js";
 
 export interface VectorArgs {
   /**
@@ -27,7 +25,7 @@ export interface VectorArgs {
    * }
    * ```
    */
-  dimension: Input<number>;
+  dimension: sst.Input<number>;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
@@ -81,13 +79,13 @@ interface VectorRef {
  * });
  * ```
  */
-export class Vector extends Component implements Link.Linkable {
+export class Vector extends AWSComponent implements sst.Linkable {
   private postgres: Postgres;
   private queryHandler: Function;
   private putHandler: Function;
   private removeHandler: Function;
 
-  constructor(name: string, args: VectorArgs, opts?: ComponentResourceOptions) {
+  constructor(name: string, args: VectorArgs, opts?: sst.ComponentOptions) {
     super(__pulumiType, name, args, opts);
 
     const parent = this;
@@ -186,7 +184,7 @@ export class Vector extends Component implements Link.Linkable {
     }
 
     function useBundlePath() {
-      return path.join($cli.paths.platform, "dist", "vector-handler");
+      return import.meta.resolve("sst-plugin-aws/dist/vector-handler");
     }
 
     function useHandlerEnvironment() {
@@ -251,7 +249,7 @@ export class Vector extends Component implements Link.Linkable {
    * lambda functions.
    * :::
    */
-  public static get(name: string, clusterID: Input<string>) {
+  public static get(name: string, clusterID: sst.Input<string>) {
     const postgres = Postgres.get(`${name}Database`, clusterID);
     return new Vector(name, {
       ref: true,

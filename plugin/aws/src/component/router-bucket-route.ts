@@ -1,25 +1,25 @@
-import { ComponentResourceOptions, Input, all, output } from "@pulumi/pulumi";
-import { Component } from "../component";
+import * as sst from "sst-plugin";
+import { toSeconds } from "../duration.js";
+import { Bucket } from "./bucket.js";
 import {
+  RouterBaseRouteArgs,
+  parsePattern,
   buildKvNamespace,
   createKvRouteData,
-  parsePattern,
-  RouterBaseRouteArgs,
   updateKvRoutes,
-} from "./router-base-route";
-import { Bucket } from "./bucket";
-import { RouterBucketRouteArgs } from "./router";
-import { toSeconds } from "../duration";
+} from "./router-base-route.js";
+import { RouterBucketRouteArgs } from "./router.js";
+import { AWSComponent } from "../component.js";
 
 export interface Args extends RouterBaseRouteArgs {
   /**
    * The bucket to route to.
    */
-  bucket: Input<Bucket>;
+  bucket: sst.Input<Bucket>;
   /**
    * Additional arguments for the route.
    */
-  routeArgs?: Input<RouterBucketRouteArgs>;
+  routeArgs?: sst.Input<RouterBucketRouteArgs>;
 }
 
 /**
@@ -32,29 +32,31 @@ export interface Args extends RouterBaseRouteArgs {
  *
  * You'll find this component returned by the `routeBucket` method of the `Router` component.
  */
-export class RouterBucketRoute extends Component {
-  constructor(name: string, args: Args, opts?: ComponentResourceOptions) {
+export class RouterBucketRoute extends AWSComponent {
+  constructor(name: string, args: Args, opts?: sst.ComponentOptions) {
     super(__pulumiType, name, args, opts);
 
     const self = this;
 
-    all([args.pattern, args.routeArgs]).apply(([pattern, routeArgs]) => {
-      const patternData = parsePattern(pattern);
-      const namespace = buildKvNamespace(name);
-      createKvRouteData(name, args, self, namespace, {
-        domain: output(args.bucket).nodes.bucket.bucketRegionalDomainName,
-        rewrite: routeArgs?.rewrite,
-        origin: {
-          connectionAttempts: routeArgs?.connectionAttempts,
-          timeouts: {
-            connectionTimeout:
-              routeArgs?.connectionTimeout &&
-              toSeconds(routeArgs?.connectionTimeout),
+    sst
+      .resolve([args.pattern, args.routeArgs])
+      .apply(([pattern, routeArgs]) => {
+        const patternData = parsePattern(pattern);
+        const namespace = buildKvNamespace(name);
+        createKvRouteData(name, args, self, namespace, {
+          domain: sst.output(args.bucket).nodes.bucket.bucketRegionalDomainName,
+          rewrite: routeArgs?.rewrite,
+          origin: {
+            connectionAttempts: routeArgs?.connectionAttempts,
+            timeouts: {
+              connectionTimeout:
+                routeArgs?.connectionTimeout &&
+                toSeconds(routeArgs?.connectionTimeout),
+            },
           },
-        },
+        });
+        updateKvRoutes(name, args, self, "bucket", namespace, patternData);
       });
-      updateKvRoutes(name, args, self, "bucket", namespace, patternData);
-    });
   }
 }
 

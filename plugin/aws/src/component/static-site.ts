@@ -1,43 +1,36 @@
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
-import {
-  ComponentResourceOptions,
-  Output,
-  Resource,
-  all,
-  interpolate,
-  output,
-} from "@pulumi/pulumi";
 import { Cdn, CdnArgs } from "./cdn.js";
 import { Bucket, BucketArgs } from "./bucket.js";
-import { Component, Prettify, Transform, transform } from "../component.js";
-import { Link } from "../link.js";
-import { Input } from "../input.js";
 import { globSync } from "glob";
-import { BucketFile, BucketFiles } from "./providers/bucket-files.js";
-import { getContentType, BaseSiteDev } from "../base/base-site.js";
+import { cloudfront, getRegionOutput, s3 } from "@pulumi/aws";
+import { ComponentResourceOptions, all } from "@pulumi/pulumi";
+import { Prettify } from "sst-plugin/internal/prettify";
+import * as sst from "sst-plugin";
+import { Transform, transform } from "sst-plugin/internal/transform";
+import { VisibleError } from "sst-plugin/error";
+import { AWSComponent } from "../component.js";
+import { BucketFile, BucketFiles } from "../providers/bucket-files.js";
+import { DistributionInvalidation } from "../providers/distribution-invalidation.js";
+import { KvKeys } from "../providers/kv-keys.js";
+import { KvRoutesUpdate } from "../providers/kv-routes-update.js";
+import { BaseSiteDev, getContentType } from "./base/base-site.js";
+import { buildApp } from "./base/base-static-site.js";
 import {
   BaseStaticSiteArgs,
   BaseStaticSiteAssets,
-  buildApp,
   prepare,
-} from "../base/base-static-site.js";
-import { cloudfront, getRegionOutput, s3 } from "@pulumi/aws";
-import { URL_UNAVAILABLE } from "./linkable.js";
-import { KvKeys } from "./providers/kv-keys.js";
+} from "./base/base-static-site.js";
 import {
+  RouterRouteArgsDeprecated,
+  RouterRouteArgs,
+  normalizeRouteArgs,
+  KV_SITE_METADATA,
   CF_BLOCK_CLOUDFRONT_URL_INJECTION,
   CF_ROUTER_INJECTION,
-  KV_SITE_METADATA,
-  normalizeRouteArgs,
-  RouterRouteArgs,
-  RouterRouteArgsDeprecated,
 } from "./router.js";
-import { DistributionInvalidation } from "./providers/distribution-invalidation.js";
-import { VisibleError } from "../error.js";
-import { KvRoutesUpdate } from "./providers/kv-routes-update.js";
-import { toPosix } from "../path.js";
+import { toPosix } from "./util/posix.js";
 
 export interface StaticSiteArgs extends BaseStaticSiteArgs {
   /**
@@ -81,7 +74,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
   /**
    * Configure CloudFront Functions to customize the behavior of HTTP requests and responses at the edge.
    */
-  edge?: Input<{
+  edge?: sst.Input<{
     /**
      * Configure the viewer request function.
      *
@@ -123,7 +116,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
      *
      * You can use this add basic auth, [check out an example](/docs/examples/#aws-static-site-basic-auth).
      */
-    viewerRequest?: Input<{
+    viewerRequest?: sst.Input<{
       /**
        * The code to inject into the viewer request function.
        *
@@ -140,7 +133,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
        * }
        * ```
        */
-      injection: Input<string>;
+      injection: sst.Input<string>;
       /**
        * The KV store to associate with the viewer request function.
        *
@@ -155,11 +148,11 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
        * }
        * ```
        */
-      kvStore?: Input<string>;
+      kvStore?: sst.Input<string>;
       /**
        * @deprecated Use `kvStore` instead because CloudFront Functions only support one KV store.
        */
-      kvStores?: Input<Input<string>[]>;
+      kvStores?: sst.Input<sst.Input<string>[]>;
     }>;
     /**
      * Configure the viewer response function.
@@ -196,7 +189,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
      * }
      * ```
      */
-    viewerResponse?: Input<{
+    viewerResponse?: sst.Input<{
       /**
        * The code to inject into the viewer response function.
        *
@@ -213,7 +206,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
        * }
        * ```
        */
-      injection: Input<string>;
+      injection: sst.Input<string>;
       /**
        * The KV store to associate with the viewer response function.
        *
@@ -230,11 +223,11 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
        * }
        * ```
        */
-      kvStore?: Input<string>;
+      kvStore?: sst.Input<string>;
       /**
        * @deprecated Use `kvStore` instead because CloudFront Functions only support one KV store.
        */
-      kvStores?: Input<Input<string>[]>;
+      kvStores?: sst.Input<sst.Input<string>[]>;
     }>;
   }>;
   /**
@@ -313,7 +306,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
        * }
        * ```
        */
-      bucket?: Input<string>;
+      bucket?: sst.Input<string>;
       /**
        * The path into the S3 bucket where the assets should be uploaded.
        * @default Root of the bucket
@@ -326,7 +319,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
        * }
        * ```
        */
-      path?: Input<string>;
+      path?: sst.Input<string>;
       /**
        * Configure if files from previous deployments should be purged from the bucket.
        * @default `true`
@@ -339,7 +332,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
        * }
        * ```
        */
-      purge?: Input<boolean>;
+      purge?: sst.Input<boolean>;
       /**
        * Configure additional asset routes for serving files directly from the S3 bucket.
        *
@@ -361,7 +354,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
        * }
        * ```
        */
-      routes?: Input<Input<string>[]>;
+      routes?: sst.Input<sst.Input<string>[]>;
     }
   >;
   /**
@@ -523,7 +516,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
    * }
    * ```
    */
-  invalidation?: Input<
+  invalidation?: sst.Input<
     | false
     | {
         /**
@@ -544,7 +537,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
          * }
          * ```
          */
-        wait?: Input<boolean>;
+        wait?: sst.Input<boolean>;
         /**
          * The paths to invalidate.
          *
@@ -564,20 +557,20 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
          * }
          * ```
          */
-        paths?: Input<"all" | string[]>;
+        paths?: sst.Input<"all" | string[]>;
       }
   >;
   /**
    * @deprecated The `route.path` prop is now the recommended way to configure the base
    * path for the site.
    */
-  base?: Input<string>;
+  base?: sst.Input<string>;
   /**
    * @deprecated The `route` prop is now the recommended way to use the `Router` component
    * to serve your site. Setting `route` will not create a standalone CloudFront
    * distribution.
    */
-  cdn?: Input<boolean>;
+  cdn?: sst.Input<boolean>;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
@@ -738,11 +731,11 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
  * });
  * ```
  */
-export class StaticSite extends Component implements Link.Linkable {
+export class StaticSite extends AWSComponent implements sst.Linkable {
   private cdn?: Cdn;
   private bucket?: Bucket;
-  private devUrl?: Output<string>;
-  private prodUrl?: Output<string | undefined>;
+  private devUrl?: sst.Output<string>;
+  private prodUrl?: sst.Output<string | undefined>;
 
   constructor(
     name: string,
@@ -780,10 +773,10 @@ export class StaticSite extends Component implements Link.Linkable {
     const kvNamespace = buildKvNamespace();
 
     let distribution: Cdn | undefined;
-    let distributionId: Output<string>;
-    let kvStoreArn: Output<string>;
-    let invalidationDependsOn: Resource[] = [];
-    let prodUrl: Output<string | undefined>;
+    let distributionId: sst.Output<string>;
+    let kvStoreArn: sst.Output<string>;
+    let invalidationDependsOn: sst.Resource[] = [];
+    let prodUrl: sst.Output<string | undefined>;
     if (route) {
       kvStoreArn = route.routerKvStoreArn;
       distributionId = route.routerDistributionId;
@@ -794,7 +787,7 @@ export class StaticSite extends Component implements Link.Linkable {
       distribution = createDistribution();
       distributionId = distribution.nodes.distribution.id;
       prodUrl = distribution.domainUrl.apply((domainUrl) =>
-        output(domainUrl ?? distribution!.url),
+        sst.output(domainUrl ?? distribution!.url),
       );
     }
 
@@ -847,18 +840,18 @@ export class StaticSite extends Component implements Link.Linkable {
     }
 
     function normalizeDev() {
-      const enabled = $dev && args.dev !== false;
+      const enabled = sst.dev && args.dev !== false;
       const devArgs = args.dev || {};
 
       return {
         enabled,
-        url: output(devArgs.url ?? URL_UNAVAILABLE),
+        url: sst.output(devArgs.url ?? URL_UNAVAILABLE),
         outputs: {
           title: devArgs.title,
           environment,
-          command: output(devArgs.command ?? "npm run dev"),
-          autostart: output(devArgs.autostart ?? true),
-          directory: output(devArgs.directory ?? sitePath),
+          command: sst.output(devArgs.command ?? "npm run dev"),
+          autostart: sst.output(devArgs.autostart ?? true),
+          directory: sst.output(devArgs.directory ?? sitePath),
         },
       };
     }
@@ -876,18 +869,20 @@ export class StaticSite extends Component implements Link.Linkable {
         ...args.assets,
         // remove leading and trailing slashes from the path
         path: args.assets?.path
-          ? output(args.assets?.path).apply((v) =>
-              v.replace(/^\//, "").replace(/\/$/, ""),
-            )
+          ? sst
+              .output(args.assets?.path)
+              .apply((v) => v.replace(/^\//, "").replace(/\/$/, ""))
           : undefined,
-        purge: output(args.assets?.purge ?? true),
+        purge: sst.output(args.assets?.purge ?? true),
         // normalize to /path format
         routes: args.assets?.routes
-          ? output(args.assets?.routes).apply((v) =>
-              v.map(
-                (route) => "/" + route.replace(/^\//, "").replace(/\/$/, ""),
-              ),
-            )
+          ? sst
+              .output(args.assets?.routes)
+              .apply((v) =>
+                v.map(
+                  (route) => "/" + route.replace(/^\//, "").replace(/\/$/, ""),
+                ),
+              )
           : [],
       };
     }
@@ -997,7 +992,7 @@ export class StaticSite extends Component implements Link.Linkable {
       // In the case multiple sites use the same kv store, we need to namespace the keys
       return crypto
         .createHash("md5")
-        .update(`${$app.name}-${$app.stage}-${name}`)
+        .update(`${sst.app.name}-${sst.app.stage}-${name}`)
         .digest("hex")
         .substring(0, 4);
     }
@@ -1064,9 +1059,9 @@ export class StaticSite extends Component implements Link.Linkable {
     }
 
     function createRequestKvStore() {
-      return output(args.edge).apply((edge) => {
+      return sst.output(args.edge).apply((edge) => {
         const viewerRequest = edge?.viewerRequest;
-        if (viewerRequest?.kvStore) return output(viewerRequest?.kvStore);
+        if (viewerRequest?.kvStore) return sst.output(viewerRequest?.kvStore);
 
         return new cloudfront.KeyValueStore(
           `${name}KvStore`,
@@ -1077,7 +1072,7 @@ export class StaticSite extends Component implements Link.Linkable {
     }
 
     function createRequestFunction() {
-      return output(args.edge).apply((edge) => {
+      return sst.output(args.edge).apply((edge) => {
         const userInjection = edge?.viewerRequest?.injection ?? "";
         const blockCloudfrontUrlInjection = args.domain
           ? CF_BLOCK_CLOUDFRONT_URL_INJECTION
@@ -1087,7 +1082,7 @@ export class StaticSite extends Component implements Link.Linkable {
           {
             runtime: "cloudfront-js-2.0",
             keyValueStoreAssociations: kvStoreArn ? [kvStoreArn] : [],
-            code: interpolate`
+            code: sst.interpolate`
 import cf from "cloudfront";
 async function handler(event) {
   ${userInjection}
@@ -1113,7 +1108,7 @@ async function handler(event) {
     }
 
     function createResponseFunction() {
-      return output(args.edge).apply((edge) => {
+      return sst.output(args.edge).apply((edge) => {
         const userConfig = edge?.viewerResponse;
         const userInjection = userConfig?.injection;
         const kvStoreArn = userConfig?.kvStore ?? userConfig?.kvStores?.[0];

@@ -1,32 +1,27 @@
-import {
-  ComponentResourceOptions,
-  Input,
-  Output,
-  interpolate,
-  output,
-} from "@pulumi/pulumi";
-import { Component, transform } from "../component";
-import { Function, FunctionArgs } from "./function";
-import { RealtimeSubscriberArgs } from "./realtime";
-import { lambda } from "@pulumi/aws";
-import { iot } from "@pulumi/aws";
-import { FunctionBuilder, functionBuilder } from "./helpers/function-builder";
-import { parseFunctionArn } from "./helpers/arn";
+import * as sst from "sst-plugin";
+import { Transform, transform } from "sst-plugin/internal/transform";
+import { VisibleError } from "sst-plugin/error";
+import { AWSComponent } from "../component.js";
+import { lambda, iot } from "@pulumi/aws";
+import { FunctionArgs } from "./function.js";
+import { RealtimeSubscriberArgs } from "./realtime.js";
+import { FunctionBuilder, functionBuilder } from "./util/function-builder.js";
+import { arn } from "../arn.js";
 
 export interface Args extends RealtimeSubscriberArgs {
   /**
    * The IoT WebSocket server to use.
    */
-  iot: Input<{
+  iot: sst.Input<{
     /**
      * The name of the Realtime component.
      */
-    name: Input<string>;
+    name: sst.Input<string>;
   }>;
   /**
    * The subscriber function.
    */
-  subscriber: Input<string | FunctionArgs>;
+  subscriber: sst.Input<string | FunctionArgs>;
 }
 
 /**
@@ -39,17 +34,17 @@ export interface Args extends RealtimeSubscriberArgs {
  *
  * You'll find this component returned by the `subscribe` method of the `Realtime` component.
  */
-export class RealtimeLambdaSubscriber extends Component {
+export class RealtimeLambdaSubscriber extends sst.Component {
   private readonly fn: FunctionBuilder;
   private readonly permission: lambda.Permission;
   private readonly rule: iot.TopicRule;
 
-  constructor(name: string, args: Args, opts?: ComponentResourceOptions) {
+  constructor(name: string, args: Args, opts?: sst.ComponentOptions) {
     super(__pulumiType, name, args, opts);
 
     const self = this;
-    const normalizedIot = output(args.iot);
-    const filter = output(args.filter);
+    const normalizedIot = sst.output(args.iot);
+    const filter = sst.output(args.filter);
     const fn = createFunction();
     const rule = createRule();
     const permission = createPermission();
@@ -63,7 +58,7 @@ export class RealtimeLambdaSubscriber extends Component {
         `${name}Handler`,
         args.subscriber,
         {
-          description: interpolate`Subscribed to ${normalizedIot.name} on ${filter}`,
+          description: sst.interpolate`Subscribed to ${normalizedIot.name} on ${filter}`,
         },
         undefined,
         { parent: self },
@@ -77,7 +72,7 @@ export class RealtimeLambdaSubscriber extends Component {
           `${name}Rule`,
           {
             sqlVersion: "2016-03-23",
-            sql: interpolate`SELECT * FROM '${filter}'`,
+            sql: sst.interpolate`SELECT * FROM '${filter}'`,
             enabled: true,
             lambdas: [{ functionArn: fn.arn }],
           },
@@ -91,7 +86,7 @@ export class RealtimeLambdaSubscriber extends Component {
         `${name}Permission`,
         {
           action: "lambda:InvokeFunction",
-          function: fn.arn.apply((arn) => parseFunctionArn(arn).functionName),
+          function: fn.arn.apply((val) => arn.parseFunction(val).functionName),
           principal: "iot.amazonaws.com",
           sourceArn: rule.arn,
         },

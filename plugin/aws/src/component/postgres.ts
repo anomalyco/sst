@@ -1,24 +1,15 @@
-import {
-  all,
-  ComponentResourceOptions,
-  interpolate,
-  jsonStringify,
-  Output,
-  output,
-} from "@pulumi/pulumi";
-import { Component, Transform, transform } from "../component";
-import { Link } from "../link";
-import { Input } from "../input.js";
-import { iam, rds, secretsmanager } from "@pulumi/aws";
+import { Postgres as PostgresV1 } from "./postgres-v1.js";
+import * as sst from "sst-plugin";
+import { Transform, transform } from "sst-plugin/internal/transform";
+import { VisibleError } from "sst-plugin/error";
+import { rds, secretsmanager, iam } from "@pulumi/aws";
 import { RandomPassword } from "@pulumi/random";
-import { Vpc } from "./vpc";
-import { Vpc as VpcV1 } from "./vpc-v1";
-import { VisibleError } from "../error";
-import { Postgres as PostgresV1 } from "./postgres-v1";
-import { SizeGbTb, toGBs } from "../size";
-import { DevCommand } from "../experimental/dev-command.js";
-import { RdsRoleLookup } from "./providers/rds-role-lookup";
-export type { PostgresArgs as PostgresV1Args } from "./postgres-v1";
+import { $jsonParse } from "sst-plugin/runtime/shim";
+import { RdsRoleLookup } from "../providers/rds-role-lookup.js";
+import { SizeGbTb, toGBs } from "../size.js";
+import { Vpc } from "./vpc.js";
+import { AWSComponent } from "../component.js";
+import { Vpc as VpcV1 } from "./vpc-v1.js";
 
 export interface PostgresArgs {
   /**
@@ -31,7 +22,7 @@ export interface PostgresArgs {
    * }
    * ```
    */
-  version?: Input<string>;
+  version?: sst.Input<string>;
   /**
    * The username of the master user.
    *
@@ -47,7 +38,7 @@ export interface PostgresArgs {
    * }
    * ```
    */
-  username?: Input<string>;
+  username?: sst.Input<string>;
   /**
    * The password of the master user.
    * @default A random password is generated.
@@ -66,7 +57,7 @@ export interface PostgresArgs {
    * }
    * ```
    */
-  password?: Input<string>;
+  password?: sst.Input<string>;
   /**
    * Name of a database that is automatically created.
    *
@@ -82,7 +73,7 @@ export interface PostgresArgs {
    * }
    * ```
    */
-  database?: Input<string>;
+  database?: sst.Input<string>;
   /**
    * The type of instance to use for the database. Check out the [supported instance types](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.DBInstanceClass.Types.html).
    *
@@ -98,7 +89,7 @@ export interface PostgresArgs {
    * applied in the next maintenance window. Check out the [full list](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_ModifyInstance.Settings.html)
    * of props that are not applied immediately.
    */
-  instance?: Input<string>;
+  instance?: sst.Input<string>;
   /**
    * The maximum storage limit for the database.
    *
@@ -123,7 +114,7 @@ export interface PostgresArgs {
    * }
    * ```
    */
-  storage?: Input<SizeGbTb>;
+  storage?: sst.Input<SizeGbTb>;
   /**
    * Enable [RDS Proxy](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/rds-proxy.html) for the database.
    * @default `false`
@@ -134,56 +125,56 @@ export interface PostgresArgs {
    * }
    * ```
    */
-  proxy?: Input<
+  proxy?: sst.Input<
     | boolean
     | {
-      /**
-       * Additional credentials the proxy can use to connect to the database. You don't
-       * need to specify the master user credentials as they are always added by default.
-       *
-       * :::note
-       * This component will not create the Postgres users listed here. You need to
-       * create them manually in the database.
-       * :::
-       *
-       * @example
-       * ```js
-       * {
-       *   credentials: [
-       *     {
-       *       username: "metabase",
-       *       password: "Passw0rd!"
-       *     }
-       *   ]
-       * }
-       * ```
-       *
-       * You can use a `Secret` to manage the password.
-       *
-       * ```js
-       * {
-       *   credentials: [
-       *     {
-       *       username: "metabase",
-       *       password: new sst.Secret("MyDBPassword").value
-       *     }
-       *   ]
-       * }
-       * ```
-       */
-      credentials?: Input<
-        Input<{
-          /**
-           * The username of the user.
-           */
-          username: Input<string>;
-          /**
-           * The password of the user.
-           */
-          password: Input<string>;
-        }>[]
-      >;
-    }
+        /**
+         * Additional credentials the proxy can use to connect to the database. You don't
+         * need to specify the master user credentials as they are always added by default.
+         *
+         * :::note
+         * This component will not create the Postgres users listed here. You need to
+         * create them manually in the database.
+         * :::
+         *
+         * @example
+         * ```js
+         * {
+         *   credentials: [
+         *     {
+         *       username: "metabase",
+         *       password: "Passw0rd!"
+         *     }
+         *   ]
+         * }
+         * ```
+         *
+         * You can use a `Secret` to manage the password.
+         *
+         * ```js
+         * {
+         *   credentials: [
+         *     {
+         *       username: "metabase",
+         *       password: new sst.Secret("MyDBPassword").value
+         *     }
+         *   ]
+         * }
+         * ```
+         */
+        credentials?: sst.Input<
+          sst.Input<{
+            /**
+             * The username of the user.
+             */
+            username: sst.Input<string>;
+            /**
+             * The password of the user.
+             */
+            password: sst.Input<string>;
+          }>[]
+        >;
+      }
   >;
   /**
    * Enable [Multi-AZ](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.MultiAZ.html)
@@ -207,11 +198,11 @@ export interface PostgresArgs {
    * }
    * ```
    */
-  multiAz?: Input<boolean>;
+  multiAz?: sst.Input<boolean>;
   /**
    * @internal
    */
-  replicas?: Input<number>;
+  replicas?: sst.Input<number>;
   /**
    * The VPC subnets to use for the database.
    *
@@ -239,13 +230,13 @@ export interface PostgresArgs {
    * ```
    */
   vpc:
-  | Vpc
-  | Input<{
-    /**
-     * A list of subnet IDs in the VPC.
-     */
-    subnets: Input<Input<string>[]>;
-  }>;
+    | Vpc
+    | sst.Input<{
+        /**
+         * A list of subnet IDs in the VPC.
+         */
+        subnets: sst.Input<sst.Input<string>[]>;
+      }>;
   /**
    * Configure how this component works in `sst dev`.
    *
@@ -281,27 +272,27 @@ export interface PostgresArgs {
      * The host of the local Postgres to connect to when running in dev.
      * @default `"localhost"`
      */
-    host?: Input<string>;
+    host?: sst.Input<string>;
     /**
      * The port of the local Postgres to connect to when running in dev.
      * @default `5432`
      */
-    port?: Input<number>;
+    port?: sst.Input<number>;
     /**
      * The database of the local Postgres to connect to when running in dev.
      * @default Inherit from the top-level [`database`](#database).
      */
-    database?: Input<string>;
+    database?: sst.Input<string>;
     /**
      * The username of the local Postgres to connect to when running in dev.
      * @default Inherit from the top-level [`username`](#username).
      */
-    username?: Input<string>;
+    username?: sst.Input<string>;
     /**
      * The password of the local Postgres to connect to when running in dev.
      * @default Inherit from the top-level [`password`](#password).
      */
-    password?: Input<string>;
+    password?: sst.Input<string>;
   };
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
@@ -331,17 +322,17 @@ export interface PostgresGetArgs {
   /**
    * The ID of the database.
    */
-  id: Input<string>;
+  id: sst.Input<string>;
   /**
    * The ID of the proxy.
    */
-  proxyId?: Input<string>;
+  proxyId?: sst.Input<string>;
 }
 
 interface PostgresRef {
   ref: boolean;
-  id: Input<string>;
-  proxyId?: Input<string>;
+  id: sst.Input<string>;
+  proxyId?: sst.Input<string>;
 }
 
 /**
@@ -440,25 +431,21 @@ interface PostgresRef {
  * This is a rough estimate for _us-east-1_, check out the
  * [RDS Proxy pricing](https://aws.amazon.com/rds/proxy/pricing/) for more details.
  */
-export class Postgres extends Component implements Link.Linkable {
+export class Postgres extends AWSComponent implements sst.Linkable {
   private instance?: rds.Instance;
-  private _password?: Output<string>;
-  private proxy?: Output<rds.Proxy | undefined>;
+  private _password?: sst.Output<string>;
+  private proxy?: sst.Output<rds.Proxy | undefined>;
   private dev?: {
     enabled: boolean;
-    host: Output<string>;
-    port: Output<number>;
-    username: Output<string>;
-    password: Output<string>;
-    database: Output<string>;
+    host: sst.Output<string>;
+    port: sst.Output<number>;
+    username: sst.Output<string>;
+    password: sst.Output<string>;
+    database: sst.Output<string>;
   };
   public static v1 = PostgresV1;
 
-  constructor(
-    name: string,
-    args: PostgresArgs,
-    opts?: ComponentResourceOptions,
-  ) {
+  constructor(name: string, args: PostgresArgs, opts?: sst.ComponentOptions) {
     super(__pulumiType, name, args, opts);
     const _version = 2;
     const self = this;
@@ -467,19 +454,21 @@ export class Postgres extends Component implements Link.Linkable {
       const ref = reference();
       this.instance = ref.instance;
       this._password = ref.password;
-      this.proxy = output(ref.proxy);
+      this.proxy = sst.output(ref.proxy);
       return;
     }
 
     registerVersion();
-    const multiAz = output(args.multiAz).apply((v) => v ?? false);
-    const engineVersion = output(args.version).apply((v) => v ?? "16.4");
-    const instanceType = output(args.instance).apply((v) => v ?? "t4g.micro");
-    const username = output(args.username).apply((v) => v ?? "postgres");
+    const multiAz = sst.output(args.multiAz).apply((v) => v ?? false);
+    const engineVersion = sst.output(args.version).apply((v) => v ?? "16.4");
+    const instanceType = sst
+      .output(args.instance)
+      .apply((v) => v ?? "t4g.micro");
+    const username = sst.output(args.username).apply((v) => v ?? "postgres");
     const storage = normalizeStorage();
-    const dbName = output(args.database).apply(
-      (v) => v ?? $app.name.replaceAll("-", "_"),
-    );
+    const dbName = sst
+      .output(args.database)
+      .apply((v) => v ?? sst.app.name.replaceAll("-", "_"));
     const vpc = normalizeVpc();
 
     const dev = registerDev();
@@ -514,7 +503,7 @@ export class Postgres extends Component implements Link.Linkable {
         );
 
         return {
-          proxyId: output(ref.proxyId),
+          proxyId: sst.output(ref.proxyId),
           passwordTag: tags?.["sst:lookup:password"],
         };
       });
@@ -522,8 +511,8 @@ export class Postgres extends Component implements Link.Linkable {
       const proxy = input.proxyId.apply((proxyId) =>
         proxyId
           ? rds.Proxy.get(`${name}Proxy`, proxyId, undefined, {
-            parent: self,
-          })
+              parent: self,
+            })
           : undefined,
       );
 
@@ -548,17 +537,17 @@ export class Postgres extends Component implements Link.Linkable {
     function registerVersion(overrideVersion?: number) {
       self.registerVersion({
         new: _version,
-        old: overrideVersion ?? $cli.state.version[name],
+        old: overrideVersion ?? sst.version[name],
         message: [
           `This component has been renamed. Please change:\n`,
-          `"sst.aws.Postgres" to "sst.aws.Postgres.v${$cli.state.version[name]}"\n`,
+          `"sst.aws.Postgres" to "sst.aws.Postgres.v${sst.version[name]}"\n`,
           `Learn more https://sst.dev/docs/components/#versioning`,
         ].join("\n"),
       });
     }
 
     function normalizeStorage() {
-      return output(args.storage ?? "20 GB").apply((v) => {
+      return sst.output(args.storage ?? "20 GB").apply((v) => {
         const size = toGBs(v);
         if (size < 20) {
           throw new VisibleError(
@@ -590,14 +579,14 @@ export class Postgres extends Component implements Link.Linkable {
       }
 
       // "vpc" is object
-      return output(args.vpc);
+      return sst.output(args.vpc);
     }
 
     function registerDev() {
       if (!args.dev) return undefined;
 
       if (
-        $dev &&
+        sst.dev &&
         args.dev.password === undefined &&
         args.password === undefined
       ) {
@@ -607,12 +596,12 @@ export class Postgres extends Component implements Link.Linkable {
       }
 
       const dev = {
-        enabled: $dev,
-        host: output(args.dev.host ?? "localhost"),
-        port: output(args.dev.port ?? 5432),
-        username: args.dev.username ? output(args.dev.username) : username,
-        password: output(args.dev.password ?? args.password ?? ""),
-        database: args.dev.database ? output(args.dev.database) : dbName,
+        enabled: sst.dev,
+        host: sst.output(args.dev.host ?? "localhost"),
+        port: sst.output(args.dev.port ?? 5432),
+        username: args.dev.username ? sst.output(args.dev.username) : username,
+        password: sst.output(args.dev.password ?? args.password ?? ""),
+        database: args.dev.database ? sst.output(args.dev.database) : dbName,
       };
 
       new DevCommand(`${name}Dev`, {
@@ -622,7 +611,7 @@ export class Postgres extends Component implements Link.Linkable {
           command: `sst print-and-not-quit`,
         },
         environment: {
-          SST_DEV_COMMAND_MESSAGE: interpolate`Make sure your local PostgreSQL server is using:
+          SST_DEV_COMMAND_MESSAGE: sst.interpolate`Make sure your local PostgreSQL server is using:
 
   username: "${dev.username}"
   password: "${dev.password}"
@@ -637,15 +626,15 @@ Listening on "${dev.host}:${dev.port}"...`,
 
     function createPassword() {
       return args.password
-        ? output(args.password)
+        ? sst.output(args.password)
         : new RandomPassword(
-          `${name}Password`,
-          {
-            length: 32,
-            special: false,
-          },
-          { parent: self },
-        ).result;
+            `${name}Password`,
+            {
+              length: 32,
+              special: false,
+            },
+            { parent: self },
+          ).result;
     }
 
     function createSubnetGroup() {
@@ -698,7 +687,7 @@ Listening on "${dev.host}:${dev.port}"...`,
         `${name}ProxySecretVersion`,
         {
           secretId: secret.id,
-          secretString: jsonStringify({
+          secretString: sst.json.stringify({
             username,
             password,
           }),
@@ -719,7 +708,7 @@ Listening on "${dev.host}:${dev.port}"...`,
             dbSubnetGroupName: subnetGroup.name,
             engine: "postgres",
             engineVersion,
-            instanceClass: interpolate`db.${instanceType}`,
+            instanceClass: sst.interpolate`db.${instanceType}`,
             username,
             password,
             parameterGroupName: parameterGroup.name,
@@ -742,14 +731,14 @@ Listening on "${dev.host}:${dev.port}"...`,
     }
 
     function createReplicas() {
-      return output(args.replicas ?? 0).apply((replicas) =>
+      return sst.output(args.replicas ?? 0).apply((replicas) =>
         Array.from({ length: replicas }).map(
           (_, i) =>
             new rds.Instance(
               `${name}Replica${i}`,
               {
                 replicateSourceDb: instance.identifier,
-                dbName: interpolate`${instance.dbName}_replica${i}`,
+                dbName: sst.interpolate`${instance.dbName}_replica${i}`,
                 dbSubnetGroupName: instance.dbSubnetGroupName,
                 availabilityZone: instance.availabilityZone,
                 engine: instance.engine,
@@ -773,7 +762,7 @@ Listening on "${dev.host}:${dev.port}"...`,
     }
 
     function createProxy() {
-      return output(args.proxy).apply((proxy) => {
+      return sst.output(args.proxy).apply((proxy) => {
         if (!proxy) return;
 
         const credentials = proxy === true ? [] : proxy.credentials ?? [];
@@ -792,7 +781,7 @@ Listening on "${dev.host}:${dev.port}"...`,
             `${name}ProxySecretVersion${credential.username}`,
             {
               secretId: secret.id,
-              secretString: jsonStringify({
+              secretString: sst.json.stringify({
                 username: credential.username,
                 password: credential.password,
               }),
@@ -883,7 +872,7 @@ Listening on "${dev.host}:${dev.port}"...`,
    * The identifier of the Postgres instance.
    */
   public get id() {
-    if (this.dev?.enabled) return output("placeholder");
+    if (this.dev?.enabled) return sst.output("placeholder");
     return this.instance!.identifier;
   }
 
@@ -891,7 +880,7 @@ Listening on "${dev.host}:${dev.port}"...`,
    * The name of the Postgres proxy.
    */
   public get proxyId() {
-    if (this.dev?.enabled) return output("placeholder");
+    if (this.dev?.enabled) return sst.output("placeholder");
 
     return this.proxy!.apply((v) => {
       if (!v) {
@@ -937,9 +926,12 @@ Listening on "${dev.host}:${dev.port}"...`,
   public get host() {
     if (this.dev?.enabled) return this.dev.host;
 
-    return all([this.instance!.endpoint, this.proxy!]).apply(
-      ([endpoint, proxy]) => proxy?.endpoint ?? output(endpoint.split(":")[0]),
-    );
+    return sst
+      .resolve([this.instance!.endpoint, this.proxy!])
+      .apply(
+        ([endpoint, proxy]) =>
+          proxy?.endpoint ?? sst.output(endpoint.split(":")[0]),
+      );
   }
 
   public get nodes() {
@@ -1003,7 +995,7 @@ Listening on "${dev.host}:${dev.port}"...`,
   public static get(
     name: string,
     args: PostgresGetArgs,
-    opts?: ComponentResourceOptions,
+    opts?: sst.ComponentOptions,
   ) {
     return new Postgres(
       name,

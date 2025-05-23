@@ -1,4 +1,3 @@
-import { ComponentResourceOptions, output } from "@pulumi/pulumi";
 import { sns } from "@pulumi/aws";
 import { Transform, transform } from "sst-plugin/internal/transform";
 import * as sst from "sst-plugin";
@@ -151,7 +150,7 @@ interface SnsTopicRef {
  */
 export class SnsTopic extends AWSComponent {
   private constructorName: string;
-  private constructorOpts: ComponentResourceOptions;
+  private constructorOpts: sst.ComponentOptions;
   private topic: sns.Topic;
 
   /**
@@ -171,7 +170,7 @@ export class SnsTopic extends AWSComponent {
   constructor(
     name: string,
     args: SnsTopicArgs = {},
-    opts: ComponentResourceOptions = {},
+    opts: sst.ComponentOptions = {},
   ) {
     super(__pulumiType, name, args, opts);
     const self = this;
@@ -198,7 +197,7 @@ export class SnsTopic extends AWSComponent {
     }
 
     function normalizeFifo() {
-      return output(args.fifo).apply((v) => v ?? false);
+      return sst.output(args.fifo).apply((v) => v ?? false);
     }
 
     function createTopic() {
@@ -260,7 +259,7 @@ export class SnsTopic extends AWSComponent {
   public static get(
     name: string,
     topicArn: sst.Input<string>,
-    opts?: ComponentResourceOptions,
+    opts?: sst.ComponentOptions,
   ) {
     return new SnsTopic(
       name,

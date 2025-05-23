@@ -1,30 +1,24 @@
-import {
-  ComponentResourceOptions,
-  Input,
-  jsonStringify,
-  Output,
-  output,
-} from "@pulumi/pulumi";
-import { Component, transform } from "../component";
-import { Function, FunctionArgs } from "./function";
-import { SnsTopicSubscriberArgs } from "./sns-topic";
+import * as sst from "sst-plugin";
+import { transform } from "sst-plugin/internal/transform";
 import { lambda, sns } from "@pulumi/aws";
-import { FunctionBuilder, functionBuilder } from "./helpers/function-builder";
+import { FunctionArgs } from "./function.js";
+import { SnsTopicSubscriberArgs } from "./sns-topic.js";
+import { FunctionBuilder, functionBuilder } from "./util/function-builder.js";
 
 export interface Args extends SnsTopicSubscriberArgs {
   /**
    * The Topic to use.
    */
-  topic: Input<{
+  topic: sst.Input<{
     /**
      * The ARN of the Topic.
      */
-    arn: Input<string>;
+    arn: sst.Input<string>;
   }>;
   /**
    * The subscriber function.
    */
-  subscriber: Input<string | FunctionArgs>;
+  subscriber: sst.Input<string | FunctionArgs>;
 }
 
 /**
@@ -37,16 +31,16 @@ export interface Args extends SnsTopicSubscriberArgs {
  *
  * You'll find this component returned by the `subscribe` method of the `SnsTopic` component.
  */
-export class SnsTopicLambdaSubscriber extends Component {
+export class SnsTopicLambdaSubscriber extends sst.Component {
   private readonly fn: FunctionBuilder;
   private readonly permission: lambda.Permission;
   private readonly subscription: sns.TopicSubscription;
 
-  constructor(name: string, args: Args, opts?: ComponentResourceOptions) {
+  constructor(name: string, args: Args, opts?: sst.ComponentOptions) {
     super(__pulumiType, name, args, opts);
 
     const self = this;
-    const topic = output(args.topic);
+    const topic = sst.output(args.topic);
     const fn = createFunction();
     const permission = createPermission();
     const subscription = createSubscription();
@@ -89,7 +83,7 @@ export class SnsTopicLambdaSubscriber extends Component {
             topic: topic.arn,
             protocol: "lambda",
             endpoint: fn.arn,
-            filterPolicy: args.filter && jsonStringify(args.filter),
+            filterPolicy: args.filter && sst.json.stringify(args.filter),
           },
           { parent: self, dependsOn: [permission] },
         ),

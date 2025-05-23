@@ -1,31 +1,28 @@
-import {
-  ComponentResourceOptions,
-  Input,
-  Output,
-  output,
-} from "@pulumi/pulumi";
-import { Component, transform } from "../component";
-import { Function, FunctionArgs } from "./function";
-import { QueueSubscriberArgs } from "./queue";
+import * as sst from "sst-plugin";
+import { Transform, transform } from "sst-plugin/internal/transform";
+import { VisibleError } from "sst-plugin/error";
+import { AWSComponent } from "../component.js";
+import { QueueSubscriberArgs } from "./queue.js";
 import { lambda } from "@pulumi/aws";
-import { toSeconds } from "../duration";
-import { FunctionBuilder, functionBuilder } from "./helpers/function-builder";
-import { parseFunctionArn } from "./helpers/arn";
+import { toSeconds } from "../duration.js";
+import { FunctionArgs } from "./function.js";
+import { FunctionBuilder, functionBuilder } from "./util/function-builder.js";
+import { arn } from "../arn.js";
 
 export interface Args extends QueueSubscriberArgs {
   /**
    * The queue to use.
    */
-  queue: Input<{
+  queue: sst.Input<{
     /**
      * The ARN of the queue.
      */
-    arn: Input<string>;
+    arn: sst.Input<string>;
   }>;
   /**
    * The subscriber function.
    */
-  subscriber: Input<string | FunctionArgs>;
+  subscriber: sst.Input<string | FunctionArgs>;
 }
 
 /**
@@ -38,15 +35,15 @@ export interface Args extends QueueSubscriberArgs {
  *
  * You'll find this component returned by the `subscribe` method of the `Queue` component.
  */
-export class QueueLambdaSubscriber extends Component {
+export class QueueLambdaSubscriber extends AWSComponent {
   private readonly fn: FunctionBuilder;
   private readonly eventSourceMapping: lambda.EventSourceMapping;
 
-  constructor(name: string, args: Args, opts?: ComponentResourceOptions) {
+  constructor(name: string, args: Args, opts?: sst.ComponentOptions) {
     super(__pulumiType, name, args, opts);
 
     const self = this;
-    const queue = output(args.queue);
+    const queue = sst.output(args.queue);
     const fn = createFunction();
     const eventSourceMapping = createEventSourceMapping();
 
@@ -83,19 +80,23 @@ export class QueueLambdaSubscriber extends Component {
           args.transform?.eventSourceMapping,
           `${name}EventSourceMapping`,
           {
-            functionResponseTypes: output(args.batch).apply((batch) =>
-              batch?.partialResponses ? ["ReportBatchItemFailures"] : [],
-            ),
-            batchSize: output(args.batch).apply((batch) => batch?.size ?? 10),
-            maximumBatchingWindowInSeconds: output(args.batch).apply((batch) =>
-              batch?.window ? toSeconds(batch.window) : 0,
-            ),
+            functionResponseTypes: sst
+              .output(args.batch)
+              .apply((batch) =>
+                batch?.partialResponses ? ["ReportBatchItemFailures"] : [],
+              ),
+            batchSize: sst
+              .output(args.batch)
+              .apply((batch) => batch?.size ?? 10),
+            maximumBatchingWindowInSeconds: sst
+              .output(args.batch)
+              .apply((batch) => (batch?.window ? toSeconds(batch.window) : 0)),
             eventSourceArn: queue.arn,
             functionName: fn.arn.apply(
-              (arn) => parseFunctionArn(arn).functionName,
+              (item) => arn.parseFunction(item).functionName,
             ),
             filterCriteria: args.filters && {
-              filters: output(args.filters).apply((filters) =>
+              filters: sst.output(args.filters).apply((filters) =>
                 filters.map((filter) => ({
                   pattern: JSON.stringify(filter),
                 })),

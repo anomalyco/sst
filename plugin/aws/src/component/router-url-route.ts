@@ -1,24 +1,26 @@
-import { ComponentResourceOptions, Input, all } from "@pulumi/pulumi";
-import { Component } from "../component";
+import * as sst from "sst-plugin";
+import { Transform, transform } from "sst-plugin/internal/transform";
+import { VisibleError } from "sst-plugin/error";
+import { AWSComponent } from "../component.js";
 import {
   buildKvNamespace,
   createKvRouteData,
   parsePattern,
   RouterBaseRouteArgs,
   updateKvRoutes,
-} from "./router-base-route";
-import { RouterUrlRouteArgs } from "./router";
-import { toSeconds } from "../duration";
+} from "./router-base-route.js";
+import { toSeconds } from "../duration.js";
+import { RouterUrlRouteArgs } from "./router.js";
 
 export interface Args extends RouterBaseRouteArgs {
   /**
    * The URL to route to.
    */
-  url: Input<string>;
+  url: sst.Input<string>;
   /**
    * Additional arguments for the route.
    */
-  routeArgs?: Input<RouterUrlRouteArgs>;
+  routeArgs?: sst.Input<RouterUrlRouteArgs>;
 }
 
 /**
@@ -31,14 +33,15 @@ export interface Args extends RouterBaseRouteArgs {
  *
  * You'll find this component returned by the `route` method of the `Router` component.
  */
-export class RouterUrlRoute extends Component {
-  constructor(name: string, args: Args, opts?: ComponentResourceOptions) {
+export class RouterUrlRoute extends sst.Component {
+  constructor(name: string, args: Args, opts?: sst.ComponentOptions) {
     super(__pulumiType, name, args, opts);
 
     const self = this;
 
-    all([args.url, args.pattern, args.routeArgs]).apply(
-      ([url, pattern, routeArgs]) => {
+    sst
+      .resolve([args.url, args.pattern, args.routeArgs])
+      .apply(([url, pattern, routeArgs]) => {
         const u = new URL(url);
         const host = u.host;
         const protocol = u.protocol.slice(0, -1);
@@ -65,8 +68,7 @@ export class RouterUrlRoute extends Component {
           },
         });
         updateKvRoutes(name, args, self, "url", namespace, patternData);
-      },
-    );
+      });
   }
 }
 

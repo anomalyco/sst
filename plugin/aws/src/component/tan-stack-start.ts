@@ -1,10 +1,10 @@
 import fs from "fs";
 import path from "path";
-import { ComponentResourceOptions, Output } from "@pulumi/pulumi";
-import { VisibleError } from "../error.js";
+import * as sst from "sst-plugin";
+import { VisibleError } from "sst-plugin/error";
 import { Plan, SsrSite, SsrSiteArgs } from "./ssr-site.js";
+import { Prettify } from "sst-plugin/internal/prettify";
 import { RouterRouteArgs } from "./router.js";
-import { Prettify } from "../component.js";
 
 export interface TanStackStartArgs extends SsrSiteArgs {
   /**
@@ -348,14 +348,14 @@ export class TanStackStart extends SsrSite {
   constructor(
     name: string,
     args: TanStackStartArgs = {},
-    opts: ComponentResourceOptions = {},
+    opts: sst.ComponentOptions = {},
   ) {
     super(__pulumiType, name, args, opts);
   }
 
-  protected normalizeBuildCommand() { }
+  protected normalizeBuildCommand() {}
 
-  protected buildPlan(outputPath: Output<string>): Output<Plan> {
+  protected buildPlan(outputPath: sst.Output<string>): sst.Output<Plan> {
     return outputPath.apply((outputPath) => {
       const nitro = JSON.parse(
         fs.readFileSync(

@@ -1,11 +1,11 @@
-import { ComponentResourceOptions, Output, all } from "@pulumi/pulumi";
-import { Component, Transform, transform } from "../component";
-import { Link } from "../link";
-import type { Input } from "../input";
-import { Function, FunctionArgs, FunctionArn } from "./function";
-import { hashStringToPrettyString, logicalName } from "../naming";
-import { RealtimeLambdaSubscriber } from "./realtime-lambda-subscriber";
+import * as sst from "sst-plugin";
+import { Transform, transform } from "sst-plugin/internal/transform";
+import { VisibleError } from "sst-plugin/error";
+import { AWSComponent } from "../component.js";
 import { iot, lambda } from "@pulumi/aws";
+import { ComponentResourceOptions, all } from "@pulumi/pulumi";
+import { FunctionArgs, FunctionArn, Function } from "./function.js";
+import { RealtimeLambdaSubscriber } from "./realtime-lambda-subscriber.js";
 
 export interface RealtimeArgs {
   /**
@@ -17,7 +17,7 @@ export interface RealtimeArgs {
    * }
    * ```
    */
-  authorizer: Input<string | FunctionArgs>;
+  authorizer: sst.Input<string | FunctionArgs>;
   /**
    * [Transform](/docs/components#transform) how this subscription creates its underlying
    * resources.
@@ -53,7 +53,7 @@ export interface RealtimeSubscriberArgs {
    * }
    * ```
    */
-  filter: Input<string>;
+  filter: sst.Input<string>;
   /**
    * [Transform](/docs/components#transform) how this subscription creates its underlying
    * resources.
@@ -154,12 +154,12 @@ export interface RealtimeSubscriberArgs {
  * );
  * ```
  */
-export class Realtime extends Component implements Link.Linkable {
+export class Realtime extends AWSComponent implements sst.Linkable {
   private readonly constructorName: string;
   private constructorOpts: ComponentResourceOptions;
-  private readonly authHadler: Output<Function>;
+  private readonly authHadler: sst.Output<Function>;
   private readonly iotAuthorizer: iot.Authorizer;
-  private readonly iotEndpoint: Output<string>;
+  private readonly iotEndpoint: sst.Output<string>;
 
   constructor(
     name: string,
@@ -175,9 +175,12 @@ export class Realtime extends Component implements Link.Linkable {
     createPermission();
 
     this.constructorOpts = opts;
-    this.iotEndpoint = iot.getEndpointOutput({
-      endpointType: "iot:Data-ATS",
-    }, { parent }).endpointAddress;
+    this.iotEndpoint = iot.getEndpointOutput(
+      {
+        endpointType: "iot:Data-ATS",
+      },
+      { parent },
+    ).endpointAddress;
     this.constructorName = name;
     this.authHadler = authHadler;
     this.iotAuthorizer = iotAuthorizer;
@@ -295,12 +298,12 @@ export class Realtime extends Component implements Link.Linkable {
    * ```
    */
   public subscribe(
-    subscriber: Input<string | FunctionArgs | FunctionArn>,
+    subscriber: sst.Input<string | FunctionArgs | FunctionArn>,
     args: RealtimeSubscriberArgs,
   ) {
     return all([subscriber, args.filter]).apply(([subscriber, filter]) => {
-      const suffix = logicalName(
-        hashStringToPrettyString(
+      const suffix = sst.naming.logical(
+        sst.naming.hashStringToPrettyString(
           [
             filter,
             typeof subscriber === "string" ? subscriber : subscriber.handler,

@@ -1,22 +1,25 @@
+import * as sst from "sst-plugin";
+import { Transform, transform } from "sst-plugin/internal/transform";
+import { VisibleError } from "sst-plugin/error";
+import { AWSComponent } from "../component.js";
+import { jsonStringify } from "@pulumi/pulumi";
+import { KvKeys } from "../providers/kv-keys.js";
+import { KvRoutesUpdate } from "../providers/kv-routes-update.js";
 import crypto from "crypto";
-import { Input, jsonStringify } from "@pulumi/pulumi";
-import { Component } from "../component";
-import { KvRoutesUpdate } from "./providers/kv-routes-update";
-import { KvKeys } from "./providers/kv-keys";
 
 export interface RouterBaseRouteArgs {
   /**
    * The KV Namespace to use.
    */
-  routerNamespace: Input<string>;
+  routerNamespace: sst.Input<string>;
   /**
    * The KV Store to use.
    */
-  store: Input<string>;
+  store: sst.Input<string>;
   /**
    * The pattern to match.
    */
-  pattern: Input<string>;
+  pattern: sst.Input<string>;
 }
 
 export function parsePattern(pattern: string) {
@@ -33,7 +36,7 @@ export function buildKvNamespace(name: string) {
   // In the case multiple sites use the same kv store, we need to namespace the keys
   return crypto
     .createHash("md5")
-    .update(`${$app.name}-${$app.stage}-${name}`)
+    .update(`${sst.app.name}-${sst.app.stage}-${name}`)
     .digest("hex")
     .substring(0, 4);
 }
@@ -41,7 +44,7 @@ export function buildKvNamespace(name: string) {
 export function createKvRouteData(
   name: string,
   args: RouterBaseRouteArgs,
-  parent: Component,
+  parent: sst.Component,
   routeNs: string,
   data: any,
 ) {
@@ -62,7 +65,7 @@ export function createKvRouteData(
 export function updateKvRoutes(
   name: string,
   args: RouterBaseRouteArgs,
-  parent: Component,
+  parent: sst.Component,
   routeType: "url" | "bucket" | "site",
   routeNs: string,
   pattern: {

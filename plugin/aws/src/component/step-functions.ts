@@ -1,35 +1,28 @@
+import * as sst from "sst-plugin";
+import { Transform, transform } from "sst-plugin/internal/transform";
+import { AWSComponent } from "../component.js";
+import { sfn, cloudwatch, iam } from "@pulumi/aws";
+import { RETENTION } from "../logging.js";
+import { functionBuilder } from "./util/function-builder.js";
+import { State } from "./step-functions/state.js";
 import {
-  all,
-  ComponentResourceOptions,
-  interpolate,
-  output,
-} from "@pulumi/pulumi";
-import { Component, Transform, transform } from "../component";
-import { cloudwatch, iam, sfn } from "@pulumi/aws";
-import { Link } from "../link";
-import { permission } from "./permission";
-import { State } from "./step-functions/state";
-import { Choice, ChoiceArgs } from "./step-functions/choice";
-import { Fail, FailArgs } from "./step-functions/fail";
-import { Map, MapArgs } from "./step-functions/map";
-import { Parallel, ParallelArgs } from "./step-functions/parallel";
-import { Pass, PassArgs } from "./step-functions/pass";
-import { Succeed, SucceedArgs } from "./step-functions/succeed";
-import {
-  Task,
-  TaskArgs,
+  EcsRunTaskArgs,
+  EventBridgePutEventsArgs,
   LambdaInvokeArgs,
   SnsPublishArgs,
   SqsSendMessageArgs,
-  EcsRunTaskArgs,
-  EventBridgePutEventsArgs,
-} from "./step-functions/task";
-import { Wait, WaitArgs } from "./step-functions/wait";
-import { Input } from "../input";
-import { RETENTION } from "./logging";
-import { physicalName } from "../naming";
-import { functionBuilder } from "./helpers/function-builder";
-import { Function } from "./function";
+  Task,
+  TaskArgs,
+} from "./step-functions/task.js";
+import { Choice, ChoiceArgs } from "./step-functions/choice.js";
+import { FailArgs, Fail } from "./step-functions/fail.js";
+import { ParallelArgs, Parallel } from "./step-functions/parallel.js";
+import { PassArgs, Pass } from "./step-functions/pass.js";
+import { SucceedArgs, Succeed } from "./step-functions/succeed.js";
+import { WaitArgs, Wait } from "./step-functions/wait.js";
+import { Map, MapArgs } from "./step-functions/map.js";
+import { Function } from "./function.js";
+import { permission } from "../permission.js";
 
 export interface StepFunctionsArgs {
   /**
@@ -55,7 +48,7 @@ export interface StepFunctionsArgs {
    * }
    * ```
    */
-  type?: Input<"standard" | "express">;
+  type?: sst.Input<"standard" | "express">;
   /**
    * The definition of the state machine. It takes a chain of `State` objects.
    *
@@ -81,7 +74,7 @@ export interface StepFunctionsArgs {
    * }
    * ```
    */
-  logging?: Input<
+  logging?: sst.Input<
     | false
     | {
         /**
@@ -97,7 +90,7 @@ export interface StepFunctionsArgs {
          * }
          * ```
          */
-        retention?: Input<keyof typeof RETENTION>;
+        retention?: sst.Input<keyof typeof RETENTION>;
         /**
          * Specify whether execution data is included in the logs.
          *
@@ -111,7 +104,7 @@ export interface StepFunctionsArgs {
          * }
          * ```
          */
-        includeData?: Input<boolean>;
+        includeData?: sst.Input<boolean>;
         /**
          * Specify the type of execution events that are logged. Read more about the
          * [Step Functions log level](https://docs.aws.amazon.com/step-functions/latest/dg/cw-logs.html#cloudwatch-log-level).
@@ -126,7 +119,7 @@ export interface StepFunctionsArgs {
          * }
          * ```
          */
-        level?: Input<"all" | "error" | "fatal">;
+        level?: sst.Input<"all" | "error" | "fatal">;
       }
   >;
   /**
@@ -204,19 +197,19 @@ export interface StepFunctionsArgs {
  * });
  * ```
  */
-export class StepFunctions extends Component implements Link.Linkable {
+export class StepFunctions extends AWSComponent implements sst.Linkable {
   private stateMachine: sfn.StateMachine;
 
   constructor(
     name: string,
     args: StepFunctionsArgs,
-    opts?: ComponentResourceOptions,
+    opts?: sst.ComponentOptions,
   ) {
     super(__pulumiType, name, args, opts);
 
     const parent = this;
 
-    const type = output(args.type ?? "standard");
+    const type = sst.output(args.type ?? "standard");
     const logging = normalizeLogging();
     const logGroup = createLogGroup();
     const role = createRole();
@@ -225,7 +218,7 @@ export class StepFunctions extends Component implements Link.Linkable {
     this.stateMachine = stateMachine;
 
     function normalizeLogging() {
-      return output(args.logging).apply((logging) => {
+      return sst.output(args.logging).apply((logging) => {
         if (logging === false) return undefined;
 
         return {
@@ -245,7 +238,7 @@ export class StepFunctions extends Component implements Link.Linkable {
             args.transform?.logGroup,
             `${name}LogGroup`,
             {
-              name: interpolate`/aws/states/${physicalName(
+              name: sst.interpolate`/aws/states/${sst.naming.physical(
                 64,
                 `${name}StateMachine`,
               )}`,
@@ -316,18 +309,18 @@ export class StepFunctions extends Component implements Link.Linkable {
           `${name}StateMachine`,
           {
             type: type.apply((type) => type.toUpperCase()),
-            definition: $jsonStringify({
+            definition: sst.json.stringify({
               StartAt: root.name,
               States: root.serialize(),
             }),
             roleArn: role.arn,
-            loggingConfiguration: all([logging, logGroup]).apply(
-              ([logging, logGroup]) => ({
+            loggingConfiguration: sst
+              .resolve([logging, logGroup])
+              .apply(([logging, logGroup]) => ({
                 includeExecutionData: logging?.includeData ?? false,
                 level: (logging?.level ?? "off").toUpperCase(),
-                logDestination: interpolate`${logGroup?.arn}:*`,
-              }),
-            ),
+                logDestination: sst.interpolate`${logGroup?.arn}:*`,
+              })),
           },
           { parent },
         ),
@@ -691,16 +684,16 @@ export class StepFunctions extends Component implements Link.Linkable {
         },
         Overrides:
           args.environment &&
-          all([args.environment, args.task.containers]).apply(
-            ([environment, containers]) => ({
+          sst
+            .resolve([args.environment, args.task.containers])
+            .apply(([environment, containers]) => ({
               ContainerOverrides: containers.map((name) => ({
                 Name: name,
                 Environment: Object.entries(environment).map(
                   ([name, value]) => ({ Name: name, Value: value }),
                 ),
               })),
-            }),
-          ),
+            })),
       },
       permissions: [
         {
@@ -731,17 +724,21 @@ export class StepFunctions extends Component implements Link.Linkable {
    * ```
    */
   public static eventBridgePutEvents(args: EventBridgePutEventsArgs) {
-    const busArns = output(args.events).apply((events) =>
-      all(events.map((event) => event.bus.arn)).apply((arns) =>
-        arns.filter((arn, index, self) => self.indexOf(arn) === index),
-      ),
-    );
+    const busArns = sst
+      .output(args.events)
+      .apply((events) =>
+        sst
+          .resolve(events.map((event) => event.bus.arn))
+          .apply((arns) =>
+            arns.filter((arn, index, self) => self.indexOf(arn) === index),
+          ),
+      );
 
     return new Task({
       ...args,
       resource: "arn:aws:states:::events:putEvents",
       arguments: {
-        Entries: output(args.events).apply((events) =>
+        Entries: sst.output(args.events).apply((events) =>
           events.map((event) => ({
             EventBusName: event.bus.name,
             Source: event.source,

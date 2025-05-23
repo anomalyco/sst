@@ -1,24 +1,23 @@
-import { all, ComponentResourceOptions, Output, output } from "@pulumi/pulumi";
-import { Component, Prettify } from "../component.js";
-import { Link } from "../link.js";
-import { Cluster } from "./cluster.js";
-import { ecs, iam } from "@pulumi/aws";
-import { permission } from "./permission.js";
-import { Vpc } from "./vpc.js";
+import * as sst from "sst-plugin";
+import { AWSComponent } from "../component.js";
+import { iam, ecs } from "@pulumi/aws";
+import { Prettify } from "sst-plugin/internal/prettify";
 import { Function } from "./function.js";
 import {
   FargateBaseArgs,
   FargateContainerArgs,
-  createExecutionRole,
-  createTaskDefinition,
-  createTaskRole,
   normalizeArchitecture,
-  normalizeContainers,
   normalizeCpu,
   normalizeMemory,
   normalizeStorage,
+  normalizeContainers,
+  createTaskRole,
+  createExecutionRole,
+  createTaskDefinition,
 } from "./fargate.js";
-import { Input } from "../input.js";
+import { Vpc } from "./vpc.js";
+import { Cluster } from "./cluster.js";
+import { permission } from "../permission.js";
 
 export interface TaskArgs extends FargateBaseArgs {
   /**
@@ -70,7 +69,7 @@ export interface TaskArgs extends FargateBaseArgs {
    *
    * You will need to pass in `image` as a part of the `containers`.
    */
-  containers?: Input<Prettify<FargateContainerArgs>>[];
+  containers?: sst.Input<Prettify<FargateContainerArgs>>[];
   /**
    * Assign a public IP address to the task.
    *
@@ -87,7 +86,7 @@ export interface TaskArgs extends FargateBaseArgs {
    * }
    * ```
    */
-  publicIp?: Input<boolean>;
+  publicIp?: sst.Input<boolean>;
   /**
    * Configure how this component works in `sst dev`.
    *
@@ -128,12 +127,12 @@ export interface TaskArgs extends FargateBaseArgs {
         /**
          * The command that `sst dev` runs in dev mode.
          */
-        command?: Input<string>;
+        command?: sst.Input<string>;
         /**
          * Change the directory from where the `command` is run.
          * @default Uses the `image.dockerfile` path
          */
-        directory?: Input<string>;
+        directory?: sst.Input<string>;
       };
 }
 
@@ -265,25 +264,21 @@ export interface TaskArgs extends FargateBaseArgs {
  * [Fargate pricing](https://aws.amazon.com/fargate/pricing/) and the
  * [Public IPv4 Address pricing](https://aws.amazon.com/vpc/pricing/) for more details.
  */
-export class Task extends Component implements Link.Linkable {
+export class Task extends AWSComponent implements sst.Linkable {
   private readonly _cluster: Cluster;
   private readonly vpc: {
     isSstVpc: boolean;
-    containerSubnets: Output<Output<string>[]>;
-    securityGroups: Output<Output<string>[]>;
+    containerSubnets: sst.Output<sst.Output<string>[]>;
+    securityGroups: sst.Output<sst.Output<string>[]>;
   };
   private readonly executionRole: iam.Role;
   private readonly taskRole: iam.Role;
-  private readonly _taskDefinition: Output<ecs.TaskDefinition>;
-  private readonly _publicIp: Output<boolean>;
-  private readonly containerNames: Output<Output<string>[]>;
+  private readonly _taskDefinition: sst.Output<ecs.TaskDefinition>;
+  private readonly _publicIp: sst.Output<boolean>;
+  private readonly containerNames: sst.Output<sst.Output<string>[]>;
   private readonly dev: boolean;
 
-  constructor(
-    name: string,
-    args: TaskArgs,
-    opts: ComponentResourceOptions = {},
-  ) {
+  constructor(name: string, args: TaskArgs, opts: sst.ComponentOptions = {}) {
     super(__pulumiType, name, args, opts);
 
     const self = this;
@@ -326,15 +321,15 @@ export class Task extends Component implements Link.Linkable {
             return [
               {
                 ...v[0],
-                image: output("ghcr.io/sst/sst/bridge-task:20241224005724"),
+                image: sst.output("ghcr.io/sst/sst/bridge-task:20241224005724"),
                 environment: {
                   ...v[0].environment,
                   SST_TASK_ID: name,
                   SST_REGION: process.env.SST_AWS_REGION!,
                   SST_APPSYNC_HTTP: appsync.http,
                   SST_APPSYNC_REALTIME: appsync.realtime,
-                  SST_APP: $app.name,
-                  SST_STAGE: $app.stage,
+                  SST_APP: sst.app.name,
+                  SST_STAGE: sst.app.stage,
                 },
               },
             ];
@@ -353,9 +348,11 @@ export class Task extends Component implements Link.Linkable {
     this.executionRole = executionRole;
     this._taskDefinition = taskDefinition;
     this._publicIp = publicIp;
-    this.containerNames = containers.apply((v) => v.map((v) => output(v.name)));
+    this.containerNames = containers.apply((v) =>
+      v.map((v) => sst.output(v.name)),
+    );
     this.registerOutputs({
-      _task: all([args.dev, containers]).apply(([v, containers]) => ({
+      _task: sst.resolve([args.dev, containers]).apply(([v, containers]) => ({
         directory: (() => {
           if (!containers[0].image) return "";
           if (typeof containers[0].image === "string") return "";
@@ -367,7 +364,7 @@ export class Task extends Component implements Link.Linkable {
     });
 
     function normalizeDev() {
-      if (!$dev) return false;
+      if (!sst.dev) return false;
       if (args.dev === false) return false;
       return true;
     }
@@ -386,19 +383,19 @@ export class Task extends Component implements Link.Linkable {
       // "vpc" is object
       return {
         isSstVpc: false,
-        containerSubnets: output(args.cluster.vpc).apply((v) =>
-          v.containerSubnets.map((v) => output(v)),
-        ),
-        securityGroups: output(args.cluster.vpc).apply((v) =>
-          v.securityGroups.map((v) => output(v)),
-        ),
+        containerSubnets: sst
+          .output(args.cluster.vpc)
+          .apply((v) => v.containerSubnets.map((v) => sst.output(v))),
+        securityGroups: sst
+          .output(args.cluster.vpc)
+          .apply((v) => v.securityGroups.map((v) => sst.output(v))),
       };
     }
 
     function normalizePublicIp() {
-      return all([args.publicIp, vpc.isSstVpc]).apply(
-        ([publicIp, isSstVpc]) => publicIp ?? isSstVpc,
-      );
+      return sst
+        .resolve([args.publicIp, vpc.isSstVpc])
+        .apply(([publicIp, isSstVpc]) => publicIp ?? isSstVpc);
     }
   }
 
