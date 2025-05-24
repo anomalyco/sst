@@ -2,6 +2,8 @@ import {
   ComponentResourceOptions,
   jsonStringify,
   Output,
+  output,
+  all,
 } from "@pulumi/pulumi";
 import { Component } from "../component";
 import { Link } from "../link";
@@ -10,6 +12,7 @@ import { functionBuilder } from "./helpers/function-builder";
 import { env } from "../linkable";
 import { Auth as AuthV1 } from "./auth-v1";
 import { Input } from "../input";
+import { Permission } from "./permission";
 
 export interface AuthArgs {
   /**
@@ -79,6 +82,47 @@ export interface AuthArgs {
    * the `issuer` function.
    */
   issuer?: Input<string | FunctionArgs>;
+  /**
+   * [Link resources](/docs/linking/) to your Auth issuer function. This will:
+   *
+   * 1. Grant the permissions needed to access the resources.
+   * 2. Allow you to access it in your function using the [SDK](/docs/reference/sdk/).
+   *
+   * @example
+   *
+   * Takes a list of components to link to the issuer function.
+   *
+   * ```js
+   * {
+   *   link: [bucket, stripeKey]
+   * }
+   * ```
+   */
+  link?: Input<any[]>;
+  /**
+   * Key-value pairs that are made available to the issuer function as environment
+   * variables. The keys need to:
+   * - Start with a letter
+   * - Be at least 2 characters long
+   * - Contain only letters, numbers, or underscores
+   *
+   * They can be accessed in your function using `process.env.<key>`.
+   *
+   * :::note
+   * The total size of the environment variables cannot exceed 4 KB.
+   * :::
+   *
+   * @example
+   *
+   * ```js
+   * {
+   *   environment: {
+   *     DEBUG: "true"
+   *   }
+   * }
+   * ```
+   */
+  environment?: Input<Record<string, Input<string>>>;
   /**
    * Set a custom domain for your Auth server.
    *
@@ -194,6 +238,73 @@ export interface AuthArgs {
  *   domain: "auth.example.com"
  * });
  * ```
+ * 
+ * #### Customize theme with assets
+ * 
+ * You can link a bucket to store and serve assets for your auth UI theme, like logos.
+ * 
+ * ```ts title="sst.config.ts"
+ * // Create a bucket for assets
+ * const bucket = new sst.aws.Bucket("Assets", {
+ *   cors: true,
+ *   cdk: {
+ *     bucket: {
+ *       publicReadAccess: true
+ *     }
+ *   }
+ * });
+ * 
+ * // Link the bucket to Auth
+ * new sst.aws.Auth("MyAuth", {
+ *   issuer: "src/auth.handler",
+ *   link: [bucket]
+ * });
+ * ```
+ * 
+ * Then in your issuer function, you can use the bucket URL for assets in your theme:
+ * 
+ * ```ts title="src/auth.ts"
+ * import { Resource } from "sst";
+ * 
+ * const app = issuer({
+ *   subjects,
+ *   theme: {
+ *     title: "My App",
+ *     // Use the bucket URL for the logo
+ *     logo: {
+ *       light: `${Resource.Assets.url}/logo-light.svg`,
+ *       dark: `${Resource.Assets.url}/logo-dark.svg`
+ *     },
+ *     // ... other theme options
+ *   },
+ *   // ... other options
+ * });
+ * ```
+ *
+ * #### Link resources to Auth
+ *
+ * You can link resources to your Auth component. This allows the issuer function
+ * to access these resources.
+ *
+ * ```ts title="sst.config.ts" {3}
+ * new sst.aws.Auth("MyAuth", {
+ *   issuer: "src/auth.handler",
+ *   link: [bucket, stripeKey]
+ * });
+ * ```
+ *
+ * #### Set environment variables
+ *
+ * You can set environment variables for the issuer function.
+ *
+ * ```ts title="sst.config.ts" {3-5}
+ * new sst.aws.Auth("MyAuth", {
+ *   issuer: "src/auth.handler",
+ *   environment: {
+ *     STRIPE_SECRET_KEY: "sk_test_123"
+ *   }
+ * });
+ * ```
  *
  * #### Link to a resource
  *
@@ -278,17 +389,23 @@ export class Auth extends Component implements Link.Linkable {
     function createIssuer() {
       const fn = args.authorizer || args.issuer;
       if (!fn) throw new Error("Auth: issuer field must be set");
+
+      const linkData = output(args.link || []).apply((links: any[]) => Link.build(links));
+      const linkPermissions = Link.getInclude<Permission>("aws.permission", args.link);
+
       return functionBuilder(
         `${name}Issuer`,
         fn,
         {
-          link: [table],
-          environment: {
+          link: all([args.link, table]).apply(([link, table]) => [table, ...(link || [])]),
+          environment: all([args.environment]).apply(([environment]) => ({
             OPENAUTH_STORAGE: jsonStringify({
               type: "dynamo",
               options: { table: table.name },
             }),
-          },
+            ...(environment ?? {}),
+          })),
+          permissions: linkPermissions,
           _skipHint: true,
         },
         (args) => {
@@ -297,7 +414,7 @@ export class Auth extends Component implements Link.Linkable {
           };
         },
         { parent: self },
-      ).apply((v) => v.getFunction());
+      ).apply(v => v.getFunction());
     }
 
     function createRouter() {
