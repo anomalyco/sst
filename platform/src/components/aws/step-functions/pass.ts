@@ -1,7 +1,7 @@
 import { Input } from "../../input";
 import { Nextable, State, StateArgs } from "./state";
 
-export interface PassArgs extends StateArgs {}
+export interface PassArgs extends StateArgs { }
 
 /**
  * The `Pass` state is internally used by the `StepFunctions` component to add a [Pass
@@ -20,10 +20,17 @@ export class Pass extends State implements Nextable {
   }
 
   /**
-   * Add a next state to the `Pass` state. If the state completes successfully,
-   * continue execution with the given state.
+   * Add a next state to the `Pass` state. After this state completes, it'll
+   * transition to the given `state`.
    *
-   * @param state The state to transition to.
+   * @example
+   *
+   * ```ts title="sst.config.ts"
+   * sst.aws.StepFunctions.pass({
+   *   // ...
+   * })
+   * .next(state);
+   * ```
    */
   public next<T extends State>(state: T): T {
     return this.addNext(state);

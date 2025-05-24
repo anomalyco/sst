@@ -58,7 +58,7 @@ export interface R2BucketBinding {
 export interface D1DatabaseBinding {
   type: "d1DatabaseBindings";
   properties: {
-    databaseId: Input<string>;
+    id: Input<string>;
   };
 }
 

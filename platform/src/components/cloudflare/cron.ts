@@ -1,4 +1,4 @@
-import { all, ComponentResourceOptions, Output, } from "@pulumi/pulumi";
+import { all, ComponentResourceOptions, Output } from "@pulumi/pulumi";
 import * as cf from "@pulumi/cloudflare";
 import * as cloudflare from "@pulumi/cloudflare";
 import { Component, Transform, transform } from "../component";
@@ -126,19 +126,19 @@ export class Cron extends Component {
 
     function createTrigger() {
       return all([args.schedules]).apply(([schedules]) => {
-        return new cloudflare.WorkerCronTrigger(
+        return new cloudflare.WorkersCronTrigger(
           ...transform(
             args.transform?.trigger,
             `${name}Trigger`,
             {
               accountId: DEFAULT_ACCOUNT_ID,
-              scriptName: worker.script.name,
-              schedules: schedules,
+              scriptName: worker.script.scriptName,
+              schedules: schedules.map((s) => ({ cron: s })),
             },
             { parent },
           ),
         );
-      })
+      });
     }
   }
 

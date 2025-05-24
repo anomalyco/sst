@@ -12,6 +12,7 @@ import { Kv, KvArgs } from "./kv.js";
 import { Worker, WorkerArgs } from "./worker.js";
 import { KvData } from "./providers/kv-data.js";
 import { DEFAULT_ACCOUNT_ID } from "./account-id.js";
+import { toPosix } from "../path.js";
 
 type Plan = ReturnType<typeof validatePlan>;
 export interface SsrSiteArgs extends BaseSsrSiteArgs {
@@ -97,7 +98,7 @@ export function createRouter(
             {
               files: "**",
               ignore: copy.versionedSubDir
-                ? path.posix.join(copy.versionedSubDir, "**")
+                ? toPosix(path.join(copy.versionedSubDir, "**"))
                 : undefined,
               cacheControl:
                 assets?.nonVersionedFilesCacheHeader ??
@@ -107,7 +108,7 @@ export function createRouter(
             ...(copy.versionedSubDir
               ? [
                   {
-                    files: path.posix.join(copy.versionedSubDir, "**"),
+                    files: toPosix(path.join(copy.versionedSubDir, "**")),
                     cacheControl:
                       assets?.versionedFilesCacheHeader ??
                       `public,max-age=${versionedFilesTTL},immutable`,
@@ -132,14 +133,14 @@ export function createRouter(
               ...(await Promise.all(
                 files.map(async (file) => {
                   const source = path.resolve(outputPath, copy.from, file);
-                  const content = await fs.promises.readFile(source, 'utf-8');
+                  const content = await fs.promises.readFile(source, "utf-8");
                   const hash = crypto
                     .createHash("sha256")
                     .update(content)
                     .digest("hex");
                   return {
                     source,
-                    key: path.posix.join(copy.to, file),
+                    key: toPosix(path.join(copy.to, file)),
                     hash,
                     cacheControl: fileOption.cacheControl,
                     contentType:
@@ -217,18 +218,21 @@ export function createRouter(
           },
           transform: {
             worker: (workerArgs) => {
-              workerArgs.kvNamespaceBindings = [
-                {
-                  name: "ASSETS",
-                  namespaceId: storage.id,
-                },
-              ];
-              workerArgs.serviceBindings = [
-                {
-                  name: "SERVER",
-                  service: server.nodes.worker.name,
-                },
-              ];
+              workerArgs.bindings = output(workerArgs.bindings ?? []).apply(
+                (bindings) => [
+                  ...bindings,
+                  {
+                    type: "kv_namespace",
+                    name: "ASSETS",
+                    namespaceId: storage.id,
+                  },
+                  {
+                    type: "service",
+                    name: "SERVER",
+                    service: server.nodes.worker.scriptName,
+                  },
+                ],
+              );
             },
           },
         },

@@ -151,8 +151,8 @@ interface OpenSearchRef {
 }
 
 /**
- * The `OpenSearch` component lets you add an OpenSearch domain to your app using
- * [Amazon OpenSearch Service](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/what-is.html).
+ * The `OpenSearch` component lets you add a deployed instance of OpenSearch, or an
+ * OpenSearch _domain_ to your app using [Amazon OpenSearch Service](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/what-is.html).
  *
  * @example
  *
@@ -182,8 +182,8 @@ interface OpenSearchRef {
  *   node: Resource.MySearch.url,
  *   auth: {
  *     username: Resource.MySearch.username,
- *     password: Resource.MySearch.password,
- *   },
+ *     password: Resource.MySearch.password
+ *   }
  * });
  *
  * // Add a document
@@ -388,16 +388,16 @@ Listening on "${dev.url}"...`,
       return args.password
         ? output(args.password)
         : new RandomPassword(
-            `${name}Password`,
-            {
-              length: 32,
-              minLower: 1,
-              minUpper: 1,
-              minNumeric: 1,
-              minSpecial: 1,
-            },
-            { parent: self },
-          ).result;
+          `${name}Password`,
+          {
+            length: 32,
+            minLower: 1,
+            minUpper: 1,
+            minNumeric: 1,
+            minSpecial: 1,
+          },
+          { parent: self },
+        ).result;
     }
 
     function createSecret() {
@@ -564,7 +564,7 @@ Listening on "${dev.url}"...`,
    *
    * ```ts title="sst.config.ts"
    * return {
-   *   id: search.id,
+   *   id: search.id
    * };
    * ```
    */

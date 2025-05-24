@@ -4,7 +4,7 @@
  * ## AWS OpenSearch local
  *
  * In this example, we connect to a locally running OpenSearch process for dev. While
- * on deploy, we use OpenSearch.
+ * on deploy, we use AWS' OpenSearch Service.
  *
  * We use the [`docker run`](https://docs.docker.com/reference/cli/docker/container/run/)
  * CLI to start a local container with OpenSearch. You don't have to use Docker, you can use

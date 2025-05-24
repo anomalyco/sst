@@ -174,9 +174,9 @@ export class Component extends ComponentResource {
               "aws:sns/topicSubscription:TopicSubscription",
               "aws:sqs/queuePolicy:QueuePolicy",
               "aws:ssm/parameter:Parameter",
-              "cloudflare:index/record:Record",
-              "cloudflare:index/workerCronTrigger:WorkerCronTrigger",
-              "cloudflare:index/workerDomain:WorkerDomain",
+              "cloudflare:index/dnsRecord:DnsRecord",
+              "cloudflare:index/workersCronTrigger:WorkersCronTrigger",
+              "cloudflare:index/workersCustomDomain:WorkersCustomDomain",
               "docker-build:index:Image",
               "vercel:index/dnsRecord:DnsRecord",
             ].includes(args.type)
@@ -309,12 +309,12 @@ export class Component extends ComponentResource {
               { lower: true },
             ],
             "cloudflare:index/r2Bucket:R2Bucket": ["name", 64, { lower: true }],
-            "cloudflare:index/workerScript:WorkerScript": [
-              "name",
+            "cloudflare:index/workersScript:WorkersScript": [
+              "scriptName",
               64,
               { lower: true },
             ],
-            "cloudflare:index/queue:Queue": ["name", 64, { lower: true }],
+            "cloudflare:index/queue:Queue": ["queueName", 64, { lower: true }],
             "cloudflare:index/workersKvNamespace:WorkersKvNamespace": [
               "title",
               64,

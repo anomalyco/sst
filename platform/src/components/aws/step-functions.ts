@@ -28,14 +28,24 @@ import { Wait, WaitArgs } from "./step-functions/wait";
 import { Input } from "../input";
 import { RETENTION } from "./logging";
 import { physicalName } from "../naming";
+import { functionBuilder } from "./helpers/function-builder";
+import { Function } from "./function";
 
 export interface StepFunctionsArgs {
   /**
-   * The type of state machine to create.
+   * The type of state machine workflow to create.
    *
    * :::caution
-   * Changing a standard state machine to an express state machine (or the other way around) will cause the state machine to be destroyed and recreated.
+   * Changing the type of the state machine workflow will cause the state machine
+   * to be destroyed and recreated.
    * :::
+   *
+   * The `standard` workflow is the default and is meant for long running workflows.
+   * The `express` workflow is meant for workflows shorter than 5 minutes.
+   *
+   * This is because the `express` workflow is run in a single Lambda function. As a
+   * result, it's faster and cheaper to run. So if your workflow are short, the
+   * `express` workflow is recommended.
    *
    * @default `"standard"`
    * @example
@@ -51,12 +61,12 @@ export interface StepFunctionsArgs {
    *
    * @example
    *
-   * ```ts
+   * ```ts title="sst.config.ts"
    * const foo = sst.aws.StepFunctions.pass({ name: "Foo" });
    * const bar = sst.aws.StepFunctions.succeed({ name: "Bar" });
    *
    * new sst.aws.StepFunctions("MyStateMachine", {
-   *   definition: foo.next(bar),
+   *   definition: foo.next(bar)
    * });
    * ```
    */
@@ -103,9 +113,8 @@ export interface StepFunctionsArgs {
          */
         includeData?: Input<boolean>;
         /**
-         * Specify the category of execution events that are logged.
-         *
-         * Read more about the [Step Functions log level](https://docs.aws.amazon.com/step-functions/latest/dg/cw-logs.html#cloudwatch-log-level)
+         * Specify the type of execution events that are logged. Read more about the
+         * [Step Functions log level](https://docs.aws.amazon.com/step-functions/latest/dg/cw-logs.html#cloudwatch-log-level).
          *
          * @default `"error"`
          * @example
@@ -136,22 +145,30 @@ export interface StepFunctionsArgs {
 }
 
 /**
- * The `StepFunctions` component lets you add state machines to your app.
+ * The `StepFunctions` component lets you add state machines to your app
  * using [AWS Step Functions](https://docs.aws.amazon.com/step-functions/latest/dg/welcome.html).
  *
  * :::note
  * This component is currently in beta. Please [report any issues](https://github.com/sst/sst/issues) you find.
  * :::
  *
+ * You define your state machine using a collection of states. Where each state
+ * needs a unique name. It uses [JSONata](https://jsonata.org) for transforming
+ * data between states.
+ *
  * @example
  * #### Minimal example
+ *
+ * The state machine definition is compiled into JSON and passed to AWS.
  *
  * ```ts title="sst.config.ts"
  * const foo = sst.aws.StepFunctions.pass({ name: "Foo" });
  * const bar = sst.aws.StepFunctions.succeed({ name: "Bar" });
  *
+ * const definition = foo.next(bar);
+ *
  * new sst.aws.StepFunctions("MyStateMachine", {
- *   definition: foo.next(bar),
+ *   definition
  * });
  * ```
  *
@@ -161,21 +178,21 @@ export interface StepFunctionsArgs {
  *
  * ```ts title="sst.config.ts" {5-8,12}
  * const myFunction = new sst.aws.Function("MyFunction", {
- *   handler: "src/index.handler",
+ *   handler: "src/index.handler"
  * });
  *
  * const invoke = sst.aws.StepFunctions.lambdaInvoke({
  *   name: "InvokeMyFunction",
- *   function: myFunction,
+ *   function: myFunction
  * });
  * const done = sst.aws.StepFunctions.succeed({ name: "Done" });
  *
  * new sst.aws.StepFunctions("MyStateMachine", {
- *   definition: invoke.next(done),
+ *   definition: invoke.next(done)
  * });
  * ```
  *
- * #### Use express workflow
+ * #### Use the express workflow
  *
  * ```ts title="sst.config.ts" {5}
  * const foo = sst.aws.StepFunctions.pass({ name: "Foo" });
@@ -183,7 +200,7 @@ export interface StepFunctionsArgs {
  *
  * new sst.aws.StepFunctions("MyStateMachine", {
  *   type: "express",
- *   definition: foo.next(bar),
+ *   definition: foo.next(bar)
  * });
  * ```
  */
@@ -271,6 +288,13 @@ export class StepFunctions extends Component implements Link.Linkable {
                     ],
                     resources: ["*"],
                   },
+                  {
+                    actions: [
+                      "states:StartExecution",
+                      "states:DescribeExecution",
+                    ],
+                    resources: ["*"],
+                  },
                   ...args.definition.getRoot().getPermissions(),
                 ],
               }).json,
@@ -331,15 +355,13 @@ export class StepFunctions extends Component implements Link.Linkable {
   }
 
   /**
-   * Create a Choice state.
-   *
-   * A Choice state is used to conditionally continue to different states based
+   * A `Choice` state is used to conditionally continue to different states based
    * on the matched condition.
    *
-   * @param args The arguments for creating a Choice state.
    * @example
-   * ```ts
+   * ```ts title="sst.config.ts"
    * const processPayment = sst.aws.StepFunctions.choice({ name: "ProcessPayment" });
+   *
    * const makePayment = sst.aws.StepFunctions.lambdaInvoke({ name: "MakePayment" });
    * const sendReceipt = sst.aws.StepFunctions.lambdaInvoke({ name: "SendReceipt" });
    * const failure = sst.aws.StepFunctions.fail({ name: "Failure" });
@@ -354,13 +376,10 @@ export class StepFunctions extends Component implements Link.Linkable {
   }
 
   /**
-   * Create a Fail state.
+   * A `Fail` state is used to fail the execution of a state machine.
    *
-   * A Fail state is used to fail the execution of a state machine.
-   *
-   * @param args The arguments for creating a Fail state.
    * @example
-   * ```ts
+   * ```ts title="sst.config.ts"
    * sst.aws.StepFunctions.fail({ name: "Failure" });
    * ```
    */
@@ -369,23 +388,20 @@ export class StepFunctions extends Component implements Link.Linkable {
   }
 
   /**
-   * Create a Map state.
-   *
-   * A Map state is used to iterate over a list of items and execute a task for each item.
-   *
-   * @param args The arguments for creating a Map state.
+   * A `Map` state is used to iterate over a list of items and execute a task for
+   * each item.
    *
    * @example
-   * ```ts
+   * ```ts title="sst.config.ts"
    * const processor = sst.aws.StepFunctions.lambdaInvoke({
    *   name: "Processor",
-   *   function: "src/processor.handler",
+   *   function: "src/processor.handler"
    * });
    *
    * sst.aws.StepFunctions.map({
+   *   processor,
    *   name: "Map",
-   *   items: "{% $states.input.items %}",
-   *   processor: processor,
+   *   items: "{% $states.input.items %}"
    * });
    * ```
    */
@@ -394,27 +410,24 @@ export class StepFunctions extends Component implements Link.Linkable {
   }
 
   /**
-   * Create a Parallel state.
-   *
-   * A Parallel state is used to execute multiple branches of states in parallel.
-   *
-   * @param args The arguments for creating a Parallel state.
+   * A `Parallel` state is used to execute multiple branches of a state in parallel.
    *
    * @example
-   * ```ts
+   * ```ts title="sst.config.ts"
    * const processorA = sst.aws.StepFunctions.lambdaInvoke({
    *   name: "ProcessorA",
-   *   function: "src/processorA.handler",
+   *   function: "src/processorA.handler"
    * });
    *
    * const processorB = sst.aws.StepFunctions.lambdaInvoke({
    *   name: "ProcessorB",
-   *   function: "src/processorB.handler",
+   *   function: "src/processorB.handler"
    * });
    *
    * const parallel = sst.aws.StepFunctions.parallel({ name: "Parallel" });
-   * parallel.brance(processorA);
-   * parallel.brance(processorB);
+   *
+   * parallel.branch(processorA);
+   * parallel.branch(processorB);
    * ```
    */
   public static parallel(args: ParallelArgs) {
@@ -422,18 +435,14 @@ export class StepFunctions extends Component implements Link.Linkable {
   }
 
   /**
-   * Create a Pass state.
-   *
-   * A Pass state is used to pass the input to the next state. It's useful for
-   * transforming the input before passing it to the next state.
-   *
-   * @param args The arguments for creating a Pass state.
+   * A `Pass` state is used to pass the input to the next state. It's useful for
+   * transforming the input before passing it along.
    *
    * @example
-   * ```ts
+   * ```ts title="sst.config.ts"
    * sst.aws.StepFunctions.pass({
    *   name: "Pass",
-   *   output: "{% $states.input.message %}",
+   *   output: "{% $states.input.message %}"
    * });
    * ```
    */
@@ -442,15 +451,11 @@ export class StepFunctions extends Component implements Link.Linkable {
   }
 
   /**
-   * Create a Succeed state.
-   *
-   * A Succeed state is used to indicate that the execution of a state machine has
-   * succeeded.
-   *
-   * @param args The arguments for creating a Succeed state.
+   * A `Succeed` state is used to indicate that the execution of a state machine
+   * has succeeded.
    *
    * @example
-   * ```ts
+   * ```ts title="sst.config.ts"
    * sst.aws.StepFunctions.succeed({ name: "Succeed" });
    * ```
    */
@@ -459,30 +464,26 @@ export class StepFunctions extends Component implements Link.Linkable {
   }
 
   /**
-   * Create a Wait state.
-   *
-   * A Wait state is used to wait for a specific amount of time before continuing
+   * A `Wait` state is used to wait for a specific amount of time before continuing
    * to the next state.
-   *
-   * @param args The arguments for creating a Wait state.
    *
    * @example
    *
-   * Wait for 10 seconds before continuing to the next state.
+   * For example, wait for 10 seconds before continuing to the next state.
    *
-   * ```ts
+   * ```ts title="sst.config.ts"
    * sst.aws.StepFunctions.wait({
    *   name: "Wait",
-   *   time: 10,
+   *   time: 10
    * });
    * ```
    *
    * Alternatively, you can wait until a specific timestamp.
    *
-   * ```ts
+   * ```ts title="sst.config.ts"
    * sst.aws.StepFunctions.wait({
    *   name: "Wait",
-   *   timestamp: "2026-01-01T00:00:00Z",
+   *   timestamp: "2026-01-01T00:00:00Z"
    * });
    * ```
    */
@@ -491,34 +492,33 @@ export class StepFunctions extends Component implements Link.Linkable {
   }
 
   /**
-   * Create a Task state.
+   * A `Task` state can be used to make calls to AWS resources. We created a few
+   * convenience methods for common tasks like:
    *
-   * A Task state is used to make calls to AWS resources.
+   * - `sst.aws.StepFunctions.lambdaInvoke` to invoke a Lambda function.
+   * - `sst.aws.StepFunctions.ecsRunTask` to run an ECS task.
+   * - `sst.aws.StepFunctions.eventBridgePutEvents` to send custom events to
+   *   EventBridge.
    *
-   * For common tasks, you should use the convenience methods. For example,
-   * - use `sst.aws.StepFunctions.lambdaInvoke` to invoke a Lambda function
-   * - use `sst.aws.StepFunctions.ecsRunTask` to run an ECS task
-   * - use `sst.aws.StepFunctions.eventBridgePutEvents` to send custom events to EventBridge
-   *
-   * @param args The arguments for creating a Task state.
+   * For everything else, you can use the `Task` state.
    *
    * @example
    *
-   * Create a Task state that starts an AWS CodeBuild build.
+   * For example, to start an AWS CodeBuild build.
    *
-   * ```ts
+   * ```ts title="sst.config.ts"
    * sst.aws.StepFunctions.task({
    *   name: "Task",
    *   resource: "arn:aws:states:::codebuild:startBuild",
    *   arguments: {
-   *     projectName: "my-codebuild-project",
+   *     projectName: "my-codebuild-project"
    *   },
    *   permissions: [
    *     {
    *       actions: ["codebuild:StartBuild"],
-   *       resources: ["*"],
-   *     },
-   *   ],
+   *       resources: ["*"]
+   *     }
+   *   ]
    * });
    * ```
    */
@@ -527,52 +527,83 @@ export class StepFunctions extends Component implements Link.Linkable {
   }
 
   /**
-   * Create a Task state invoking a Lambda function. Learn more about invoking a Lambda function - https://docs.aws.amazon.com/lambda/latest/api/API_Invoke.html
-   *
-   * @param args The arguments for creating a Lambda Invoke task.
+   * Create a `Task` state that invokes a Lambda function. [Learn more](https://docs.aws.amazon.com/lambda/latest/api/API_Invoke.html).
    *
    * @example
-   * ```ts
+   * ```ts title="sst.config.ts"
+   * sst.aws.StepFunctions.lambdaInvoke({
+   *   name: "LambdaInvoke",
+   *   function: "src/index.handler"
+   * });
+   * ```
+   *
+   * Customize the function.
+   *
+   * ```ts title="sst.config.ts"
+   * sst.aws.StepFunctions.lambdaInvoke({
+   *   name: "LambdaInvoke",
+   *   function: {
+   *     handler: "src/index.handler"
+   *     timeout: "60 seconds",
+   *   }
+   * });
+   * ```
+   *
+   * Pass in an existing `Function` component.
+   *
+   * ```ts title="sst.config.ts"
    * const myLambda = new sst.aws.Function("MyLambda", {
-   *   handler: "src/index.handler",
+   *   handler: "src/index.handler"
    * });
    *
    * sst.aws.StepFunctions.lambdaInvoke({
    *   name: "LambdaInvoke",
-   *   function: myLambda,
+   *   function: myLambda
+   * });
+   * ```
+   *
+   * Or pass in the ARN of an existing Lambda function.
+   *
+   * ```ts title="sst.config.ts"
+   * sst.aws.StepFunctions.lambdaInvoke({
+   *   name: "LambdaInvoke",
+   *   function: "arn:aws:lambda:us-east-1:123456789012:function:my-function"
    * });
    * ```
    */
   public static lambdaInvoke(args: LambdaInvokeArgs) {
+    const fn =
+      args.function instanceof Function
+        ? args.function
+        : functionBuilder(`${args.name}Function`, args.function, {});
+
     return new Task({
       ...args,
       resource: "arn:aws:states:::lambda:invoke",
       arguments: {
-        FunctionName: args.function.arn,
+        FunctionName: fn.arn,
         Payload: args.payload,
       },
       permissions: [
         {
           actions: ["lambda:InvokeFunction"],
-          resources: [args.function.arn],
+          resources: [fn.arn],
         },
       ],
     });
   }
 
   /**
-   * Create a Task state publishing a message to an SNS topic. Learn more about publishing a message to an SNS topic - https://docs.aws.amazon.com/sns/latest/api/API_Publish.html
-   *
-   * @param args The arguments for creating an SNS Publish task.
+   * Create a `Task` state that publishes a message to an SNS topic. [Learn more](https://docs.aws.amazon.com/sns/latest/api/API_Publish.html).
    *
    * @example
-   * ```ts
+   * ```ts title="sst.config.ts"
    * const myTopic = new sst.aws.SnsTopic("MyTopic");
    *
    * sst.aws.StepFunctions.snsPublish({
    *   name: "SnsPublish",
    *   topic: myTopic,
-   *   message: "Hello, world!",
+   *   message: "Hello, world!"
    * });
    * ```
    */
@@ -598,19 +629,16 @@ export class StepFunctions extends Component implements Link.Linkable {
   }
 
   /**
-   * Create a Task state sending a message to an SQS queue. Learn more about sending
-   * messages to an SQS queue - https://docs.aws.amazon.com/AWSSimpleQueueService/latest/APIReference/API_SendMessage.html
-   *
-   * @param args The arguments for creating an SQS Send Message task.
+   * Create a `Task` state that sends a message to an SQS queue. [Learn more](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/APIReference/API_SendMessage.html).
    *
    * @example
-   * ```ts
+   * ```ts title="sst.config.ts"
    * const myQueue = new sst.aws.Queue("MyQueue");
    *
    * sst.aws.StepFunctions.sqsSendMessage({
    *   name: "SqsSendMessage",
    *   queue: myQueue,
-   *   messageBody: "Hello, world!",
+   *   messageBody: "Hello, world!"
    * });
    * ```
    */
@@ -635,18 +663,16 @@ export class StepFunctions extends Component implements Link.Linkable {
   }
 
   /**
-   * Create a Task state running an ECS task. Learn more about running an ECS task - https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_RunTask.html
-   *
-   * @param args The arguments for creating an ECS Run Task task.
+   * Create a `Task` state that runs an ECS task using the [`Task`](/docs/component/aws/task) component. [Learn more](https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_RunTask.html).
    *
    * @example
-   * ```ts
+   * ```ts title="sst.config.ts"
    * const myCluster = new sst.aws.Cluster("MyCluster");
    * const myTask = new sst.aws.Task("MyTask", { cluster: myCluster });
    *
    * sst.aws.StepFunctions.ecsRunTask({
    *   name: "RunTask",
-   *   task: myTask,
+   *   task: myTask
    * });
    * ```
    */
@@ -686,13 +712,11 @@ export class StepFunctions extends Component implements Link.Linkable {
   }
 
   /**
-   * Create a Task state sending custom events to one or more EventBridge buses. Learn more
-   * about sending custom events to EventBridge - https://docs.aws.amazon.com/eventbridge/latest/APIReference/API_PutEvents.html
-   *
-   * @param args The arguments for creating an EventBridge Put Events task.
+   * Create a `Task` state that sends custom events to one or more EventBridge buses
+   * using the [`Bus`](/docs/component/aws/bus) component. [Learn more](https://docs.aws.amazon.com/eventbridge/latest/APIReference/API_PutEvents.html).
    *
    * @example
-   * ```ts
+   * ```ts title="sst.config.ts"
    * const myBus = new sst.aws.EventBus("MyBus");
    *
    * sst.aws.StepFunctions.eventBridgePutEvents({
@@ -700,9 +724,9 @@ export class StepFunctions extends Component implements Link.Linkable {
    *   events: [
    *     {
    *       bus: myBus,
-   *       source: "my-source",
-   *     },
-   *   ],
+   *       source: "my-source"
+   *     }
+   *   ]
    * });
    * ```
    */
@@ -750,6 +774,14 @@ export class StepFunctions extends Component implements Link.Linkable {
               (arn) => `${arn.replace("stateMachine", "execution")}:*`,
             ),
           ],
+        }),
+        permission({
+          actions: [
+            "states:SendTaskSuccess",
+            "states:SendTaskFailure",
+            "states:SendTaskHeartbeat",
+          ],
+          resources: ["*"],
         }),
       ],
     };

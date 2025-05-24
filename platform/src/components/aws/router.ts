@@ -398,7 +398,7 @@ export interface RouterUrlRouteArgs extends RouteArgs {
    * When compared to the `connectionTimeout`, this is the total time for the
    * request.
    *
-   * @default `"30 seconds"`
+   * @default `"20 seconds"`
    * @example
    * ```js
    * {
@@ -1531,9 +1531,19 @@ async function handler(event) {
           : b.path.length - a.path.length;
       })
       .find(r => {
-        const hostMatches = r.host === "" || new RegExp(r.host).test("^" + requestHost + "$");
-        const pathMatches = event.request.uri.startsWith(r.path);
-        return hostMatches && pathMatches;
+        return (
+          // matching hosts
+          (
+            r.host === "" || (
+            r.host.includes("*")
+              ? new RegExp(r.host).test("^" + requestHost + "$")
+              : r.host.replaceAll("\\\\.", ".") === requestHost
+            )
+          )
+          && 
+          // matching paths
+          event.request.uri.startsWith(r.path)
+        );
       });
 
     // Load metadata

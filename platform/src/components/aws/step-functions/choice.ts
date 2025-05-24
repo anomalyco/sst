@@ -1,6 +1,6 @@
 import { isJSONata, JSONata, State, StateArgs } from "./state";
 
-export interface ChoiceArgs extends StateArgs {}
+export interface ChoiceArgs extends StateArgs { }
 
 /**
  * The `Choice` state is internally used by the `StepFunctions` component to add a [Choice
@@ -26,9 +26,23 @@ export class Choice extends State {
 
   /**
    * Add a matching condition to the `Choice` state. If the given condition matches,
-   * continue execution with the given state.
+   * it'll continue execution to the given state.
    *
-   * @param condition The condition to evaluate.
+   * The condition needs to be a JSONata expression that evaluates to a boolean.
+   *
+   * @example
+   *
+   * ```ts
+   * sst.aws.StepFunctions.choice({
+   *   // ...
+   * })
+   * .when(
+   *   "{% $states.input.status === 'unpaid' %}",
+   *   state
+   * );
+   * ```
+   *
+   * @param condition The JSONata condition to evaluate.
    * @param next The state to transition to.
    */
   public when(condition: JSONata, next: State) {
@@ -42,8 +56,6 @@ export class Choice extends State {
   /**
    * Add a default next state to the `Choice` state. If no other condition matches,
    * continue execution with the given state.
-   *
-   * @param next The state to transition to.
    */
   public otherwise(next: State) {
     this.defaultNext = next;

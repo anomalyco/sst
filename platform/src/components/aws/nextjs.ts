@@ -11,7 +11,7 @@ import { isALteB } from "../../util/compare-semver.js";
 import { Plan, SsrSite, SsrSiteArgs } from "./ssr-site.js";
 import { Bucket } from "./bucket.js";
 
-const DEFAULT_OPEN_NEXT_VERSION = "3.6.1";
+const DEFAULT_OPEN_NEXT_VERSION = "3.6.2";
 
 type BaseFunction = {
   handler: string;
@@ -650,36 +650,36 @@ export class Nextjs extends SsrSite {
                 },
                 ...(queueArn
                   ? [
-                    {
-                      actions: [
-                        "sqs:SendMessage",
-                        "sqs:GetQueueAttributes",
-                        "sqs:GetQueueUrl",
-                      ],
-                      resources: [queueArn],
-                    },
-                  ]
+                      {
+                        actions: [
+                          "sqs:SendMessage",
+                          "sqs:GetQueueAttributes",
+                          "sqs:GetQueueUrl",
+                        ],
+                        resources: [queueArn],
+                      },
+                    ]
                   : []),
                 ...(tableArn
                   ? [
-                    {
-                      actions: [
-                        "dynamodb:BatchGetItem",
-                        "dynamodb:GetRecords",
-                        "dynamodb:GetShardIterator",
-                        "dynamodb:Query",
-                        "dynamodb:GetItem",
-                        "dynamodb:Scan",
-                        "dynamodb:ConditionCheckItem",
-                        "dynamodb:BatchWriteItem",
-                        "dynamodb:PutItem",
-                        "dynamodb:UpdateItem",
-                        "dynamodb:DeleteItem",
-                        "dynamodb:DescribeTable",
-                      ],
-                      resources: [tableArn, `${tableArn}/*`],
-                    },
-                  ]
+                      {
+                        actions: [
+                          "dynamodb:BatchGetItem",
+                          "dynamodb:GetRecords",
+                          "dynamodb:GetShardIterator",
+                          "dynamodb:Query",
+                          "dynamodb:GetItem",
+                          "dynamodb:Scan",
+                          "dynamodb:ConditionCheckItem",
+                          "dynamodb:BatchWriteItem",
+                          "dynamodb:PutItem",
+                          "dynamodb:UpdateItem",
+                          "dynamodb:DeleteItem",
+                          "dynamodb:DescribeTable",
+                        ],
+                        resources: [tableArn, `${tableArn}/*`],
+                      },
+                    ]
                   : []),
               ],
               injections: [
@@ -726,7 +726,7 @@ export class Nextjs extends SsrSite {
                 to: "_assets",
                 cached: true,
                 versionedSubDir: "_next",
-                deepRoute: true,
+                deepRoute: "_next",
               },
             ],
             isrCache: {

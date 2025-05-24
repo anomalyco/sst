@@ -286,9 +286,9 @@ export interface BucketArgs {
       principals: Input<
         | "*"
         | Input<{
-          type: Input<"aws" | "service" | "federated" | "canonical">;
-          identifiers: Input<Input<string>[]>;
-        }>[]
+            type: Input<"aws" | "service" | "federated" | "canonical">;
+            identifiers: Input<Input<string>[]>;
+          }>[]
       >;
       /**
        * Configure specific conditions for when the policy is in effect.
@@ -760,7 +760,7 @@ export class Bucket extends Component implements Link.Linkable {
     // (ie. bucket.name). Also, a bucket can only have one policy. We want to ensure
     // the policy created here is created first. And SST will throw an error if
     // another policy is created after this one.
-    this.bucket = policy.apply(() => bucket);
+    this.bucket = policy.urn.apply(() => bucket);
 
     function normalizeAccess() {
       return all([args.public, args.access]).apply(([pub, access]) =>
@@ -778,14 +778,14 @@ export class Bucket extends Component implements Link.Linkable {
             p.principals === "*"
               ? [{ type: "*", identifiers: ["*"] }]
               : p.principals.map((i) => ({
-                ...i,
-                type: {
-                  aws: "AWS",
-                  service: "Service",
-                  federated: "Federated",
-                  canonical: "Canonical",
-                }[i.type],
-              })),
+                  ...i,
+                  type: {
+                    aws: "AWS",
+                    service: "Service",
+                    federated: "Federated",
+                    canonical: "Canonical",
+                  }[i.type],
+                })),
         })),
       );
     }
@@ -852,9 +852,9 @@ export class Bucket extends Component implements Link.Linkable {
                 access === "public"
                   ? { type: "*", identifiers: ["*"] }
                   : {
-                    type: "Service",
-                    identifiers: ["cloudfront.amazonaws.com"],
-                  },
+                      type: "Service",
+                      identifiers: ["cloudfront.amazonaws.com"],
+                    },
               ],
               actions: ["s3:GetObject"],
               resources: [interpolate`${bucket.arn}/*`],

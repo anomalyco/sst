@@ -109,11 +109,12 @@ const web = new sst.aws.Nextjs("MyWeb", {
 
 // API
 const api = new sst.aws.Function("MyApi", {
-  url: true,
   handler: "packages/functions/api.handler",
-+  router: {
-+    instance: router,
-+    path: "/api"
++  url: {
++    router: {
++      instance: router,
++      path: "/api"
++    }
 +  }
 });
 
@@ -295,11 +296,12 @@ const web = new sst.aws.Nextjs("MyWeb", {
 
 // API
 const api = new sst.aws.Function("MyApi", {
-  url: true,
   handler: "packages/functions/api.handler",
-  router: {
-    instance: router,
-    path: "/api"
+  url: {
+    router: {
+      instance: router,
+      path: "/api"
+    }
   }
 });
 

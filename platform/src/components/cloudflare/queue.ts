@@ -40,7 +40,7 @@ export class Queue extends Component implements Link.Linkable {
           args?.transform?.queue,
           `${name}Queue`,
           {
-            name: "",
+            queueName: "",
             accountId: DEFAULT_ACCOUNT_ID,
           },
           { parent },
@@ -56,7 +56,7 @@ export class Queue extends Component implements Link.Linkable {
         binding({
           type: "queueBindings",
           properties: {
-            queue: this.queue.name,
+            queue: this.queue.queueName,
           },
         }),
       ],

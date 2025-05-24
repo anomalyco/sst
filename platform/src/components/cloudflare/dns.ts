@@ -63,21 +63,6 @@ export interface DnsArgs {
    */
   zone?: Input<string>;
   /**
-   * Set to `true` to allow the creation of new DNS records that can replace existing ones.
-   *
-   * This is useful for switching a domain to a new site without removing old DNS records,
-   * helping to prevent downtime.
-   *
-   * @default `false`
-   * @example
-   * ```js
-   * {
-   *   override: true
-   * }
-   * ```
-   */
-  override?: Input<boolean>;
-  /**
    * Configure ALIAS DNS records as [proxy records](https://developers.cloudflare.com/learning-paths/get-started-free/onboarding/proxy-dns-records/).
    *
    * :::tip
@@ -229,7 +214,7 @@ export function dns(args: DnsArgs = {}) {
       );
       const nameSuffix = logicalName(record.name);
       const type = record.type.toUpperCase();
-      return new cloudflare.Record(
+      return new cloudflare.DnsRecord(
         ...transform(
           args.transform?.record,
           `${namePrefix}${record.type}Record${nameSuffix}`,
@@ -248,7 +233,6 @@ export function dns(args: DnsArgs = {}) {
                   content: record.value,
                 }),
             ttl: output(proxy).apply((proxy) => (proxy ? 1 : 60)),
-            allowOverwrite: args.override,
           },
           opts,
         ),

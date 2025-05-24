@@ -4,19 +4,43 @@ import { State, StateArgs } from "./state";
 export interface FailArgs extends StateArgs {
   /**
    * A custom string that describes the cause of the error.
+   *
+   * ```ts
+   * {
+   *   cause: "User not found"
+   * }
+   * ```
+   *
    * Alternatively, you can specify a JSONata expression that evaluates to a string.
+   *
+   * ```ts
+   * {
+   *   cause: "{% $states.input.user %}"
+   * }
+   * ```
    */
   cause?: Input<string>;
   /**
-   * An error name that you can provide to perform error handling using `retry` or `catch`.
+   * An error name that you can provide to perform error handling using `retry` or
+   * `catch`.
+   * ```ts
+   * {
+   *   error: "UserNotFound"
+   * }
+   * ```
    * Alternatively, you can specify a JSONata expression that evaluates to a string.
+   * ```ts
+   * {
+   *   error: "{% $states.input.error %}"
+   * }
+   * ```
    */
   error?: Input<string>;
 }
 
 /**
- * The `Fail` state is internally used by the `StepFunctions` component to add a [Fail
- * workflow state](https://docs.aws.amazon.com/step-functions/latest/dg/state-fail.html)
+ * The `Fail` state is internally used by the `StepFunctions` component to add a
+ * [Fail workflow state](https://docs.aws.amazon.com/step-functions/latest/dg/state-fail.html)
  * to a state machine.
  *
  * :::note

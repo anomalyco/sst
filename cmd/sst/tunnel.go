@@ -126,8 +126,11 @@ var CmdTunnel = &cli.Command{
 		slog.Info("starting tunnel", "cmd", tunnelCmd.Args)
 		fmt.Println(ui.TEXT_HIGHLIGHT_BOLD.Render("Tunnel"))
 		fmt.Println()
-		fmt.Print(ui.TEXT_HIGHLIGHT_BOLD.Render("➜"))
-		fmt.Println(ui.TEXT_NORMAL.Render("  Forwarding ranges"))
+		fmt.Print(ui.TEXT_HIGHLIGHT_BOLD.Render("▤"))
+		fmt.Println(ui.TEXT_NORMAL.Render("  " + tun.IP))
+		fmt.Println()
+		fmt.Print(ui.TEXT_SUCCESS_BOLD.Render("➜"))
+		fmt.Println(ui.TEXT_NORMAL.Render("  Ranges"))
 		for _, subnet := range tun.Subnets {
 			fmt.Println(ui.TEXT_DIM.Render("   " + subnet))
 		}

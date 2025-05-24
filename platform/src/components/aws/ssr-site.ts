@@ -44,6 +44,8 @@ import {
 import { DistributionInvalidation } from "./providers/distribution-invalidation.js";
 import { toSeconds } from "../duration.js";
 import { KvRoutesUpdate } from "./providers/kv-routes-update.js";
+import { CONSOLE_URL, getQuota } from "./helpers/quota.js";
+import { toPosix } from "../path.js";
 
 const supportedRegions = {
   "af-south-1": { lat: -33.9249, lon: 18.4241 }, // Cape Town, South Africa
@@ -101,7 +103,7 @@ export type Plan = {
     to: string;
     cached: boolean;
     versionedSubDir?: string;
-    deepRoute?: boolean;
+    deepRoute?: string;
   }[];
   isrCache?: {
     from: string;
@@ -235,8 +237,22 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
      */
     runtime?: Input<"nodejs18.x" | "nodejs20.x" | "nodejs22.x">;
     /**
-     * The maximum amount of time the server function can run. The minimum timeout is 1
-     * second and the maximum is 60 seconds.
+     * The maximum amount of time the server function can run.
+     *
+     * While Lambda supports timeouts up to 900 seconds, your requests are served
+     * through AWS CloudFront. And it has a default limit of 60 seconds.
+     *
+     * If you set a timeout that's longer than 60 seconds, this component will
+     * check if your account can allow for that timeout. If not, it'll throw an
+     * error.
+     *
+     * :::tip
+     * If you need a timeout longer than 60 seconds, you'll need to request a
+     * limit increase.
+     * :::
+     *
+     * You can increase this to 180 seconds for your account by contacting AWS
+     * Support and [requesting a limit increase](https://console.aws.amazon.com/support/home#/case/create?issueType=service-limit-increase).
      *
      * @default `"20 seconds"`
      * @example
@@ -247,6 +263,9 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
      *   }
      * }
      * ```
+     *
+     * If you need a timeout longer than what CloudFront supports, we recommend
+     * using a separate Lambda `Function` with the `url` enabled instead.
      */
     timeout?: FunctionArgs["timeout"];
     /**
@@ -937,11 +956,16 @@ async function handler(event) {
     function normalizeServerTimeout() {
       return output(args.server?.timeout).apply((v) => {
         if (!v) return v;
+
         const seconds = toSeconds(v);
-        if (seconds > 60)
-          throw new VisibleError(
-            `Server timeout for "${name}" cannot be greater than 60 seconds.`,
-          );
+        if (seconds > 60) {
+          getQuota("cloudfront-response-timeout").apply((quota) => {
+            if (seconds > quota)
+              throw new VisibleError(
+                `Server timeout for "${name}" is longer than the allowed CloudFront response timeout of ${quota} seconds. You can contact AWS Support to increase the timeout - ${CONSOLE_URL}`,
+              );
+          });
+        }
         return v;
       });
     }
@@ -1207,7 +1231,7 @@ async function handler(event) {
               {
                 files: "**",
                 ignore: copy.versionedSubDir
-                  ? path.posix.join(copy.versionedSubDir, "**")
+                  ? toPosix(path.join(copy.versionedSubDir, "**"))
                   : undefined,
                 cacheControl:
                   assets?.nonVersionedFilesCacheHeader ??
@@ -1217,7 +1241,7 @@ async function handler(event) {
               ...(copy.versionedSubDir
                 ? [
                   {
-                    files: path.posix.join(copy.versionedSubDir, "**"),
+                    files: toPosix(path.join(copy.versionedSubDir, "**")),
                     cacheControl:
                       assets?.versionedFilesCacheHeader ??
                       `public,max-age=${versionedFilesTTL},immutable`,
@@ -1248,10 +1272,12 @@ async function handler(event) {
                       .digest("hex");
                     return {
                       source,
-                      key: path.posix.join(
-                        copy.to,
-                        route?.pathPrefix?.replace(/^\//, "") ?? "",
-                        file,
+                      key: toPosix(
+                        path.join(
+                          copy.to,
+                          route?.pathPrefix?.replace(/^\//, "") ?? "",
+                          file,
+                        ),
                       ),
                       hash,
                       cacheControl: fileOption.cacheControl,
@@ -1311,7 +1337,7 @@ async function handler(event) {
                 withFileTypes: true,
               }).forEach((item) => {
                 if (item.isFile()) {
-                  kvEntries[path.posix.join("/", item.name)] = "s3";
+                  kvEntries[toPosix(path.join("/", item.name))] = "s3";
                   return;
                 }
 
@@ -1320,8 +1346,8 @@ async function handler(event) {
                 // image optimization requests are prefixed with /_next/image. We cannot
                 // route by 1 level of subdirs (ie. /_next/`), so we need to route by 2
                 // levels of subdirs.
-                if (!copy.deepRoute) {
-                  dirs.push(path.posix.join("/", item.name));
+                if (item.name !== copy.deepRoute) {
+                  dirs.push(toPosix(path.join("/", item.name)));
                   return;
                 }
 
@@ -1329,11 +1355,12 @@ async function handler(event) {
                   withFileTypes: true,
                 }).forEach((subItem) => {
                   if (subItem.isFile()) {
-                    kvEntries[path.posix.join("/", item.name, subItem.name)] =
-                      "s3";
+                    kvEntries[
+                      toPosix(path.join("/", item.name, subItem.name))
+                    ] = "s3";
                     return;
                   }
-                  dirs.push(path.posix.join("/", item.name, subItem.name));
+                  dirs.push(toPosix(path.join("/", item.name, subItem.name)));
                 });
               });
             });
@@ -1429,7 +1456,7 @@ async function handler(event) {
             cachedS3Files.forEach((item) => {
               if (!item.versionedSubDir) return;
               invalidationPaths.push(
-                path.posix.join("/", item.to, item.versionedSubDir, "*"),
+                toPosix(path.join("/", item.to, item.versionedSubDir, "*")),
               );
             });
           } else {
@@ -1467,7 +1494,7 @@ async function handler(event) {
               if (invalidation.paths !== "versioned") {
                 globSync("**", {
                   ignore: item.versionedSubDir
-                    ? [path.posix.join(item.versionedSubDir, "**")]
+                    ? [toPosix(path.join(item.versionedSubDir, "**"))]
                     : undefined,
                   dot: true,
                   nodir: true,

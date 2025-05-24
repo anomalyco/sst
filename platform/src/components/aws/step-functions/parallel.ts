@@ -10,7 +10,8 @@ import {
 
 export interface ParallelArgs extends StateArgs {
   /**
-   * Used to pass information to the API actions of connected resources. Values can include JSONata expressions. For more information, see [Transforming data with JSONata in Step Functions](https://docs.aws.amazon.com/step-functions/latest/dg/transforming-data.html).
+   * The arguments to be passed to the APIs of the connected resources. Values can
+   * include outputs from other resources and JSONata expressions.
    *
    * @example
    *
@@ -18,6 +19,7 @@ export interface ParallelArgs extends StateArgs {
    * {
    *   arguments: {
    *     product: "{% $states.input.order.product %}",
+   *     url: api.url,
    *     count: 32
    *   }
    * }
@@ -45,9 +47,18 @@ export class Parallel extends State implements Nextable, Failable {
   }
 
   /**
-   * Add a branch to the `Parallel` state. Each branch runs concurrently.
+   * Add a branch state to the `Parallel` state. Each branch runs concurrently.
    *
    * @param branch The state to add as a branch.
+   *
+   * @example
+   *
+   * ```ts title="sst.config.ts"
+   * const parallel = sst.aws.StepFunctions.parallel({ name: "Parallel" });
+   * 
+   * parallel.branch(processorA);
+   * parallel.branch(processorB);
+   * ```
    */
   public branch(branch: State) {
     const head = branch.getHead();
@@ -58,30 +69,68 @@ export class Parallel extends State implements Nextable, Failable {
 
   /**
    * Add a next state to the `Parallel` state. If all branches complete successfully,
-   * continue execution with the given state.
+   * this'll continue execution to the given `state`.
    *
    * @param state The state to transition to.
+   *
+   * @example
+   *
+   * ```ts title="sst.config.ts"
+   * sst.aws.StepFunctions.parallel({
+   *   // ...
+   * })
+   * .next(state);
+   * ```
    */
   public next<T extends State>(state: T): T {
     return this.addNext(state);
   }
 
   /**
-   * Add retry behavior to the `Parallel` state. If the state fails with any of the
+   * Add a retry behavior to the `Parallel` state. If the state fails with any of the
    * specified errors, retry execution using the specified parameters.
    *
-   * @param args Optional retry properties to customize retry behavior.
+   * @param args Properties to define the retry behavior.
+   *
+   * @example
+   *
+   * This defaults to.
+   *
+   * ```ts title="sst.config.ts" {5-8}
+   * sst.aws.StepFunctions.parallel({
+   *   // ...
+   * })
+   * .retry({
+   *   errors: ["States.ALL"],
+   *   interval: "1 second",
+   *   maxAttempts: 3,
+   *   backoffRate: 2
+   * });
+   * ```
    */
   public retry(args?: RetryArgs) {
     return this.addRetry(args);
   }
 
   /**
-   * Add catch behavior to the `Parallel` state. If the state fails with any of the
-   * specified errors, continue execution with the given state.
+   * Add a catch behavior to the `Parallel` state. So if the state fails with any
+   * of the specified errors, it'll continue execution to the given `state`.
    *
    * @param state The state to transition to on error.
-   * @param args Optional catch properties to customize error handling.
+   * @param args Properties to customize error handling.
+   *
+   * @example
+   *
+   * This defaults to.
+   *
+   * ```ts title="sst.config.ts" {5}
+   * sst.aws.StepFunctions.parallel({
+   *   // ...
+   * })
+   * .catch({
+   *   errors: ["States.ALL"]
+   * });
+   * ```
    */
   public catch(state: State, args: CatchArgs = {}) {
     return this.addCatch(state, args);

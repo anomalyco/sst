@@ -1,0 +1,22 @@
+{
+  "name": "aws-step-functions-task-token",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "deploy": "go run ../../cmd/sst deploy",
+    "remove": "go run ../../cmd/sst remove",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@aws-sdk/client-sfn": "^3.812.0",
+    "sst": "latest"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.11"
+  }
+}

@@ -267,7 +267,7 @@ export class Worker extends Component implements Link.Linkable {
     this.workerUrl = workerUrl;
     this.workerDomain = workerDomain;
 
-    all([dev, buildInput, script.name]).apply(
+    all([dev, buildInput, script.scriptName]).apply(
       async ([dev, buildInput, scriptName]) => {
         if (!dev) return undefined;
         await rpc.call("Runtime.AddTarget", {
@@ -290,7 +290,7 @@ export class Worker extends Component implements Link.Linkable {
             runtime: "worker",
             properties: {
               accountID: DEFAULT_ACCOUNT_ID,
-              scriptName: script.name,
+              scriptName: script.scriptName,
               build,
             },
           };
@@ -310,17 +310,16 @@ export class Worker extends Component implements Link.Linkable {
     }
 
     function buildBindings() {
-      const result = {
-        plainTextBindings: [
-          {
-            name: "SST_RESOURCE_App",
-            text: jsonStringify({
-              name: $app.name,
-              stage: $app.stage,
-            }),
-          },
-        ],
-      } as Record<Binding["type"], any[]>;
+      const result = [
+        {
+          type: "plain_text",
+          name: "SST_RESOURCE_App",
+          text: jsonStringify({
+            name: $app.name,
+            stage: $app.stage,
+          }),
+        },
+      ] as cf.types.input.WorkerScriptBinding[];
       if (!args.link) return result;
       return output(args.link).apply((links) => {
         for (let link of links) {
@@ -330,26 +329,27 @@ export class Worker extends Component implements Link.Linkable {
           const b = item.include?.find(
             (i) => i.type === "cloudflare.binding",
           ) as ReturnType<typeof binding>;
-          if (b) {
-            if (!result[b.binding]) result[b.binding] = [];
-            result[b.binding].push({
-              // for some reason queue bindings have a different format
-              ...(b.binding === "queueBindings"
-                ? {
-                    binding: name,
-                  }
-                : {
-                    name,
-                  }),
-              ...b.properties,
-            });
-            continue;
-          }
-          if (!result.secretTextBindings) result.secretTextBindings = [];
-          result.secretTextBindings.push({
-            name,
-            text: jsonStringify(item.properties),
-          });
+          result.push(
+            b
+              ? {
+                  type: {
+                    plainTextBindings: "plain_text",
+                    secretTextBindings: "secret_text",
+                    queueBindings: "queue",
+                    serviceBindings: "service",
+                    kvNamespaceBindings: "kv_namespace",
+                    d1DatabaseBindings: "d1",
+                    r2BucketBindings: "r2_bucket",
+                  }[b.binding],
+                  name,
+                  ...b.properties,
+                }
+              : {
+                  type: "secret_text",
+                  name: name,
+                  text: jsonStringify(item.properties),
+                },
+          );
         }
         return result;
       });
@@ -413,45 +413,42 @@ export class Worker extends Component implements Link.Linkable {
     function createScript() {
       return all([build, args.environment, iamCredentials, bindings]).apply(
         async ([build, environment, iamCredentials, bindings]) =>
-          new cf.WorkerScript(
+          new cf.WorkersScript(
             ...transform(
               args.transform?.worker,
               `${name}Script`,
               {
-                name: "",
+                scriptName: "",
+                // this can be anything b/c worker code is passed in as a string
+                // through `content`, but this is required to imply esm
+                mainModule: "placeholder",
                 accountId: DEFAULT_ACCOUNT_ID,
                 content: (
                   await fs.readFile(path.join(build.out, build.handler))
                 ).toString(),
-                module: true,
-                compatibilityDate: "2024-09-23",
+                compatibilityDate: "2025-05-05",
                 compatibilityFlags: ["nodejs_compat"],
-                ...bindings,
-                plainTextBindings: [
+                bindings: [
+                  ...bindings,
                   ...(iamCredentials
                     ? [
                         {
+                          type: "plain_text",
                           name: "AWS_ACCESS_KEY_ID",
                           text: iamCredentials.id,
                         },
-                      ]
-                    : []),
-                  ...Object.entries(environment ?? {}).map(([key, value]) => ({
-                    name: key,
-                    text: value,
-                  })),
-                  ...(bindings.plainTextBindings || []),
-                ],
-                secretTextBindings: [
-                  ...(iamCredentials
-                    ? [
                         {
+                          type: "secret_text",
                           name: "AWS_SECRET_ACCESS_KEY",
                           text: iamCredentials.secret,
                         },
                       ]
                     : []),
-                  ...(bindings.secretTextBindings || []),
+                  ...Object.entries(environment ?? {}).map(([key, value]) => ({
+                    type: "plain_text",
+                    name: key,
+                    text: value,
+                  })),
                 ],
               },
               { parent },
@@ -465,7 +462,7 @@ export class Worker extends Component implements Link.Linkable {
         `${name}Url`,
         {
           accountId: DEFAULT_ACCOUNT_ID,
-          scriptName: script.name,
+          scriptName: script.scriptName,
           enabled: urlEnabled,
         },
         { parent },
@@ -484,13 +481,14 @@ export class Worker extends Component implements Link.Linkable {
         { parent },
       );
 
-      return new cf.WorkerDomain(
+      return new cf.WorkersCustomDomain(
         `${name}Domain`,
         {
           accountId: DEFAULT_ACCOUNT_ID,
-          service: script.name,
+          service: script.scriptName,
           hostname: args.domain,
           zoneId: zone.id,
+          environment: "production",
         },
         { parent },
       );

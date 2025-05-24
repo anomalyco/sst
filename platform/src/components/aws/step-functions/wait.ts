@@ -5,33 +5,48 @@ import { isJSONata, JSONata, Nextable, State, StateArgs } from "./state";
 
 export interface WaitArgs extends StateArgs {
   /**
-   * Specify the amount of time to wait before beginning the state specified in the Next
-   * field. Alternatively, you can specify a JSONata expression that evaluates to a number
-   * in seconds.
-   *
-   * Must be between 0 and 99999999.
+   * Specify the amount of time to wait before starting the next state.
    * @example
+   *
    * ```ts
    * {
    *   time: "10 seconds"
    * }
    * ```
+   *
+   * Alternatively, you can specify a JSONata expression that evaluates to a number
+   * in seconds.
+   *
+   * ```ts
+   * {
+   *   time: "{% $states.input.wait_time %}"
+   * }
+   * ```
+   *
+   * Here `wait_time` is a number in seconds.
    */
   time?: Input<JSONata | Duration>;
   /**
-   * The timestamp to wait for.
+   * A timestamp to wait till.
    *
-   * Timestamps must conform to the RFC3339 profile of ISO 8601, with the further
-   * restrictions that an uppercase T must separate the date and time portions, and an
-   * uppercase Z must denote that a numeric time zone offset is not present.
+   * Timestamps must conform to the RFC3339 profile of ISO 8601 and it needs:
    *
-   * Alternatively, you can use a JSONata expression to evaluate to a timestamp that
-   * conforms to the above format.
+   * 1. An uppercase T as a delimiter between the date and time.
+   * 2. An uppercase Z to denote that a time zone offset is not present.
    *
    * @example
    * ```ts
    * {
-   *   timestamp: "2026-01-01T00:00:00Z",
+   *   timestamp: "2026-01-01T00:00:00Z"
+   * }
+   * ```
+   *
+   * Alternatively, you can use a JSONata expression to evaluate to a timestamp that
+   * conforms to the above format.
+   *
+   * ```ts
+   * {
+   *   timestamp: "{% $states.input.timestamp %}"
    * }
    * ```
    */
@@ -55,10 +70,18 @@ export class Wait extends State implements Nextable {
   }
 
   /**
-   * Add a next state to the `Wait` state. After the wait completes,
-   * continue execution with the given state.
+   * Add a next state to the `Wait` state. After the wait completes, it'll transition
+   * to the given `state`.
    *
-   * @param state The state to transition to.
+   * @example
+   *
+   * ```ts title="sst.config.ts"
+   * sst.aws.StepFunctions.wait({
+   *   name: "Wait",
+   *   time: "10 seconds"
+   * })
+   * .next(state);
+   * ```
    */
   public next<T extends State>(state: T): T {
     return this.addNext(state);
@@ -72,8 +95,8 @@ export class Wait extends State implements Nextable {
       Type: "Wait",
       Seconds: this.args.time
         ? output(this.args.time).apply((t) =>
-            isJSONata(t) ? t : toSeconds(t as Duration),
-          )
+          isJSONata(t) ? t : toSeconds(t as Duration),
+        )
         : undefined,
       Timestamp: this.args.timestamp,
       ...super.toJSON(),
