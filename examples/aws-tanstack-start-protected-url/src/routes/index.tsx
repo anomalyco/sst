@@ -1,30 +1,42 @@
-import { Resource } from 'sst'
-import Form from '~/components/Form'
-import { createServerFn } from '@tanstack/react-start'
-import { createFileRoute } from '@tanstack/react-router'
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
+import { createFileRoute } from "@tanstack/react-router";
+import { createServerFn } from "@tanstack/react-start";
 
-export const getPresignedUrl = createServerFn().handler(async () => {
-  const command = new PutObjectCommand({
-    Key: crypto.randomUUID(),
-    Bucket: Resource.MyBucket.name,
+const greetUser = createServerFn({ method: "POST" })
+  .validator((data: any) => {
+    if (!data.name || !data.age) {
+      throw new Error("Name and age are required");
+    }
+
+    return {
+      name: String(data.name),
+      age: parseInt(data.age, 10),
+    };
   })
-  return await getSignedUrl(new S3Client({}), command)
-})
+  .handler(async ({ data: { name, age } }) => {
+    return `Hello, ${name}! You are ${age} years old.`;
+  });
 
-export const Route = createFileRoute('/')({
-  component: RouteComponent,
-  loader: async () => {
-    return { url: await getPresignedUrl() }
-  },
-})
+export const Route = createFileRoute("/")({
+  component: Home,
+});
 
-function RouteComponent() {
-  const { url } = Route.useLoaderData()
+function Home() {
   return (
-    <main>
-      <Form url={url} />
-    </main>
-  )
+    <div className="p-2">
+      <form
+        onSubmit={async (event) => {
+          event.preventDefault();
+          const formData = new FormData(event.currentTarget);
+          const name = formData.get("name");
+          const age = formData.get("age");
+          const response = await greetUser({ data: { name, age } });
+          console.log(response);
+        }}
+      >
+        <input name="name" placeholder="Name" />
+        <input name="age" placeholder="Age" />
+        <button type="submit">Submit</button>
+      </form>
+    </div>
+  );
 }

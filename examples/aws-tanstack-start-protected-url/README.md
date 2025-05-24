@@ -1,5 +1,5 @@
 # Tanstack Start with Protected Lambda URL Example
 
-This example demonstrates how to use Tanstack Start with a protected Lambda URL.
+A demonstration of Tanstack Start integration with AWS Lambda URLs requiring request signing.
 
-It includes a global middleware that automatically adds the `x-amz-content-sha256` header to all POST and PUT requests.
+Features a global middleware that automatically adds the `x-amz-content-sha256` header to all POST and PUT requests.

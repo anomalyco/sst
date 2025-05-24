@@ -3,19 +3,15 @@
 export default $config({
   app(input) {
     return {
-      name: "aws-tanstack-start",
+      name: "aws-tanstack-start-protected-url",
       removal: input?.stage === "production" ? "retain" : "remove",
       home: "aws",
     };
   },
   async run() {
-    const bucket = new sst.aws.Bucket("MyBucket", {
-      access: "public"
-    });
-
     new sst.aws.TanStackStart("MyWeb", {
-      link: [bucket],
       server: {
+        runtime: "nodejs22.x",
         protectedUrl: true,
       },
     });
