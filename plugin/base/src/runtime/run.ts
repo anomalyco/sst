@@ -5,11 +5,12 @@ import {
   output,
 } from "@pulumi/pulumi";
 
-import { app } from "../app.js";
+import { app, path } from "../app.js";
 import { VisibleError } from "../error.js";
 import { link } from "./link.js";
 
 export async function run(program: automation.PulumiFn) {
+  process.chdir(path.root);
   link.reset();
   addTransformationToRetainResourcesOnDelete();
   addTransformationToAddTags();

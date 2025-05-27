@@ -39,8 +39,11 @@ export const app: App = parsed.app;
 
 export const dev = parsed.dev;
 
-export const path = parsed.path;
-
+export const path = parsed.path as {
+  root: string;
+  working: string;
+  artifacts: string;
+};
 export const command: string = parsed.command;
 
 export const version: Record<string, number> = parsed.version;
