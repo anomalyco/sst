@@ -182,6 +182,11 @@ We are setting Prisma Studio to not auto-start since it pops up a browser window
 Let's create a simple schema. Add this to your `schema.prisma`.
 
 ```prisma title="schema.prisma"
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
 model User {
   id    Int     @id @default(autoincrement())
   name  String?
