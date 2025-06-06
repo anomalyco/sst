@@ -11,7 +11,7 @@ import { isALteB } from "../../util/compare-semver.js";
 import { Plan, SsrSite, SsrSiteArgs } from "./ssr-site.js";
 import { Bucket } from "./bucket.js";
 
-const DEFAULT_OPEN_NEXT_VERSION = "3.6.4";
+const DEFAULT_OPEN_NEXT_VERSION = "3.6.5";
 
 type BaseFunction = {
   handler: string;
