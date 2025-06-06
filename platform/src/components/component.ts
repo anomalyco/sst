@@ -92,7 +92,7 @@ export class Component extends ComponentResource {
           // note: We are setting the default names here instead of inline when creating
           //       the resource is b/c the physical name is inferred from the logical name.
           //       And it's convenient to access the logical name here.
-          if (args.type.startsWith("sst:")) return;
+          if (args.type.startsWith("sst:") || args.type.startsWith("pulumi-nodejs:dynamic")) return;
           if (
             [
               // resources manually named
@@ -103,7 +103,6 @@ export class Component extends ComponentResource {
               "aws:servicediscovery/privateDnsNamespace:PrivateDnsNamespace",
               "aws:servicediscovery/service:Service",
               // resources not prefixed
-              "pulumi-nodejs:dynamic:Resource",
               "random:index/randomId:RandomId",
               "random:index/randomPassword:RandomPassword",
               "command:local:Command",
@@ -435,7 +434,7 @@ export function $transform<T, Args, Options>(
 ) {
   // @ts-expect-error
   const type = resource.__pulumiType;
-  if (type.startsWith("sst:")) {
+  if (type.startsWith("sst:") || type.startsWith("pulumi-nodejs:dynamic")) {
     let transforms = ComponentTransforms.get(type);
     if (!transforms) {
       transforms = [];
