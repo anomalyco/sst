@@ -88,12 +88,15 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 		[]byte("name: "+p.app.Name+"\nruntime: nodejs\nmain: "+outfile+"\n"),
 		0644,
 	)
-	pulumiStdout, err := os.Create(p.PathLog("pulumi"))
+	pulumiStdoutPath := p.PathLog("pulumi")
+	pulumiStdout, err := os.Create(pulumiStdoutPath)
 	if err != nil {
 		return err
 	}
 	defer pulumiStdout.Close()
-	pulumiStderr, err := os.Create(p.PathLog("pulumi.err"))
+
+	pulumiStderrPath := p.PathLog("pulumi.err")
+	pulumiStderr, err := os.Create(pulumiStderrPath)
 	if err != nil {
 		return err
 	}
@@ -269,6 +272,11 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	if input.ServerPort != 0 {
 		env = append(env, "SST_SERVER=http://127.0.0.1:"+fmt.Sprint(input.ServerPort))
 	}
+
+	errors := []Error{}
+	finished := false
+	importDiffs := map[string][]ImportDiff{}
+
 	pulumiPath := global.PulumiPath()
 	if flag.SST_PULUMI_PATH != "" {
 		pulumiPath = flag.SST_PULUMI_PATH
@@ -313,10 +321,24 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	switch input.Command {
 	case "diff":
 		args = append([]string{"preview"}, args...)
+		if input.PolicyPath != "" {
+			policyPath := input.PolicyPath
+			if !filepath.IsAbs(policyPath) {
+				policyPath = filepath.Join(p.PathRoot(), policyPath)
+			}
+			args = append(args, "--policy-pack", policyPath)
+		}
 	case "refresh":
 		args = append([]string{"refresh", "--yes"}, args...)
 	case "deploy":
 		args = append([]string{"up", "--yes", "-f"}, args...)
+		if input.PolicyPath != "" {
+			policyPath := input.PolicyPath
+			if !filepath.IsAbs(policyPath) {
+				policyPath = filepath.Join(p.PathRoot(), policyPath)
+			}
+			args = append(args, "--policy-pack", policyPath)
+		}
 	case "remove":
 		args = append([]string{"destroy", "--yes", "-f"}, args...)
 	}
@@ -343,10 +365,6 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	cmd.Stderr = pulumiStderr
 	cmd.Dir = workdir.Backend()
 	log.Info("starting pulumi", "args", cmd.Args)
-
-	errors := []Error{}
-	finished := false
-	importDiffs := map[string][]ImportDiff{}
 
 	partial := make(chan int, 1000)
 	partialContext, partialCancel := context.WithCancel(ctx)
@@ -446,10 +464,6 @@ loop:
 		}
 
 		if event.DiagnosticEvent != nil && event.DiagnosticEvent.Severity == "error" {
-			if strings.HasPrefix(event.DiagnosticEvent.Message, "update failed") || strings.Contains(event.DiagnosticEvent.Message, "failed to register new resource") {
-				continue
-			}
-
 			// check if the error is a common error
 			help := []string{}
 			for _, commonError := range CommonErrors {
@@ -473,15 +487,32 @@ loop:
 			}
 
 			if !exists {
+				log.Info("captured error", "message", event.DiagnosticEvent.Message)
+				isPolicyViolation := strings.Contains(strings.ToLower(event.DiagnosticEvent.Message), "policy violation") ||
+					strings.Contains(strings.ToLower(event.DiagnosticEvent.Message), "policy check") ||
+					strings.Contains(strings.ToLower(event.DiagnosticEvent.Message), "mandatory policy") ||
+					strings.Contains(strings.ToLower(event.DiagnosticEvent.Message), "preview failed")
+
+				isPolicyConfigError := (strings.Contains(strings.ToLower(event.DiagnosticEvent.Message), "policy configuration") &&
+					strings.Contains(strings.ToLower(event.DiagnosticEvent.Message), "error")) ||
+					strings.Contains(strings.ToLower(event.DiagnosticEvent.Message), "failed to load pulumi policy")
+
 				errors = append(errors, Error{
-					Message: strings.TrimSpace(event.DiagnosticEvent.Message),
-					URN:     event.DiagnosticEvent.URN,
-					Help:    help,
+					Message:           strings.TrimSpace(event.DiagnosticEvent.Message),
+					URN:               event.DiagnosticEvent.URN,
+					Help:              help,
+					PolicyViolation:   isPolicyViolation,
+					PolicyConfigError: isPolicyConfigError,
 				})
-				log.Info("telemetry tracking error")
+
+				log.Info("telemetry tracking error",
+					"isPolicyViolation", isPolicyViolation,
+					"isPolicyConfigError", isPolicyConfigError)
 				telemetry.Track("cli.resource.error", map[string]interface{}{
-					"error": event.DiagnosticEvent.Message,
-					"urn":   event.DiagnosticEvent.URN,
+					"error":               event.DiagnosticEvent.Message,
+					"urn":                 event.DiagnosticEvent.URN,
+					"isPolicyViolation":   isPolicyViolation,
+					"isPolicyConfigError": isPolicyConfigError,
 				})
 			}
 		}
@@ -519,6 +550,7 @@ loop:
 	}
 
 	log.Info("parsing state")
+
 	complete, err := getCompletedEvent(context.Background(), passphrase, workdir)
 	if err != nil {
 		return err
@@ -566,8 +598,33 @@ loop:
 	}
 
 	log.Info("done running stack command", "resources", len(complete.Resources))
+
 	if cmd.ProcessState.ExitCode() > 0 {
-		return ErrStackRunFailed
+		if len(errors) > 0 {
+			for _, err := range errors {
+				if err.PolicyViolation {
+					log.Info("policy violations detected")
+					logFile := filepath.Join(p.PathLog("pulumi"))
+					return CheckPolicyViolations(p, logFile, filepath.Join(p.PathLog("pulumi.err")))
+				}
+				if err.PolicyConfigError {
+					log.Info("policy configuration error detected")
+					return ErrPolicyConfigError
+				}
+			}
+			return ErrStackRunFailed
+		} else {
+			if input.PolicyPath != "" {
+				logFile := filepath.Join(p.PathLog("pulumi"))
+				errLogFile := filepath.Join(p.PathLog("pulumi.err"))
+				return CheckPolicyViolations(p, logFile, errLogFile)
+			}
+
+			log.Warn("command exited with non-zero status but no errors were detected",
+				"exitCode", cmd.ProcessState.ExitCode())
+			return fmt.Errorf("command exited with non-zero status (%d) but no errors were detected",
+				cmd.ProcessState.ExitCode())
+		}
 	}
 	return nil
 }

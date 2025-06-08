@@ -1,0 +1,17 @@
+{
+  "name": "aws-stack",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "sst dev",
+    "build": "sst build",
+    "deploy": "sst deploy",
+    "diff": "sst diff",
+    "remove": "sst remove"
+  },
+  "devDependencies": {
+    "sst": "^3.0.0",
+    "@aws-sdk/client-s3": "^3.0.0"
+  }
+}

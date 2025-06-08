@@ -1,0 +1,17 @@
+{
+  "name": "iam-permission-boundary-policy",
+  "version": "0.1.0",
+  "description": "A Pulumi policy pack that enforces IAM roles to have permission boundaries",
+  "main": "dist/index.js",
+  "dependencies": {
+    "@pulumi/policy": "^1.3.0",
+    "@pulumi/pulumi": "^3.0.0",
+    "@pulumi/aws": "^5.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^4.9.0"
+  },
+  "scripts": {
+    "build": "tsc"
+  }
+}

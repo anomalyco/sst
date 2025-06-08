@@ -284,7 +284,7 @@ func (u *UI) Event(unknown interface{}) {
 		}
 
 	case *apitype.ResOpFailedEvent:
-		break
+		// No special handling needed for failed operations
 
 	case *apitype.ResOutputsEvent:
 		if slices.Contains(IGNORED_RESOURCES, evt.Metadata.Type) {
@@ -350,6 +350,12 @@ func (u *UI) Event(unknown interface{}) {
 			)
 		}
 		if evt.Metadata.Op == apitype.OpReplace {
+			u.printProgress(
+				TEXT_SUCCESS,
+				"Replaced",
+				duration,
+				evt.Metadata.URN,
+			)
 		}
 
 	case *apitype.DiagnosticEvent:
@@ -447,24 +453,71 @@ func (u *UI) Event(unknown interface{}) {
 			)
 		}
 		if len(evt.Errors) > 0 {
-			u.println(
-				TEXT_DANGER_BOLD.Render(IconX),
-				TEXT_NORMAL_BOLD.Render("  Failed    "),
-			)
+			hasPolicyViolations := false
+			hasPolicyConfigErrors := false
+
+			for _, status := range evt.Errors {
+				if status.PolicyViolation {
+					hasPolicyViolations = true
+				}
+				if status.PolicyConfigError {
+					hasPolicyConfigErrors = true
+				}
+			}
+			if hasPolicyViolations {
+				u.println(
+					TEXT_DANGER_BOLD.Render(IconX),
+					TEXT_DANGER_BOLD.Render("  Failed: Policy Violations    "),
+				)
+			} else if hasPolicyConfigErrors {
+				u.println(
+					TEXT_DANGER_BOLD.Render(IconX),
+					TEXT_DANGER_BOLD.Render("  Failed: Policy Configuration Error    "),
+				)
+			} else {
+				u.println(
+					TEXT_DANGER_BOLD.Render(IconX),
+					TEXT_NORMAL_BOLD.Render("  Failed    "),
+				)
+			}
 
 			u.blank()
 			for _, status := range evt.Errors {
+				if status.PolicyViolation {
+					u.println(TEXT_DANGER_BOLD.Render("POLICY VIOLATION"))
+				} else if status.PolicyConfigError {
+					u.println(TEXT_DANGER_BOLD.Render("POLICY CONFIGURATION ERROR"))
+				}
+
 				if status.URN != "" {
-					u.println(TEXT_DANGER_BOLD.Render(u.FormatURN(status.URN)))
+					formattedURN := u.FormatURN(status.URN)
+					if formattedURN == "" && status.URN != "" {
+						formattedURN = "Resource: " + status.URN
+					}
+					u.println(TEXT_DANGER_BOLD.Render(formattedURN))
 				}
+
 				for _, line := range parseError(status.Message) {
-					u.println(TEXT_NORMAL.Render(line))
+					if status.PolicyViolation || status.PolicyConfigError {
+						u.println(TEXT_DANGER.Render(line))
+					} else {
+						u.println(TEXT_NORMAL.Render(line))
+					}
 				}
+
 				for i, line := range status.Help {
 					if i == 0 {
 						u.println()
 					}
 					u.println(TEXT_NORMAL.Render(line))
+				}
+
+				if status.PolicyViolation {
+					u.println(TEXT_DANGER.Render("This deployment was blocked by a policy violation."))
+					u.println()
+				} else if status.PolicyConfigError {
+					u.println(TEXT_DANGER.Render("This deployment failed due to a policy configuration error."))
+					u.println()
 				}
 
 				importDiffs, ok := evt.ImportDiffs[status.URN]
@@ -643,29 +696,29 @@ func (u *UI) FormatURN(urn string) string {
 		return ""
 	}
 
-	child := resource.URN(urn)
-	name := child.Name()
-	typeName := child.Type().DisplayName()
-	splits := strings.SplitN(child.Name(), ".", 2)
-	if len(splits) > 1 {
-		name = splits[0]
-		typeName = strings.ReplaceAll(splits[1], ".", ":")
+	if strings.HasPrefix(urn, "policy-violation:") {
+		return strings.TrimPrefix(urn, "policy-violation:")
 	}
-	result := name + " " + typeName
 
-	for {
-		parent := resource.URN(u.parents[string(child)])
-		if parent == "" {
-			break
+	var result string
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				result = urn
+			}
+		}()
+
+		child := resource.URN(urn)
+		name := child.Name()
+		typeName := child.Type().DisplayName()
+		splits := strings.SplitN(child.Name(), ".", 2)
+		if len(splits) > 1 {
+			name = splits[0]
+			typeName = strings.ReplaceAll(splits[1], ".", ":")
 		}
-		if slices.Contains(IGNORED_RESOURCES, parent.Type().DisplayName()) {
-			break
-		}
-		child = parent
-	}
-	if string(child) != urn {
-		result = child.Name() + " " + child.Type().DisplayName() + " → " + result
-	}
+		result = fmt.Sprintf("%s (%s)", name, typeName)
+	}()
+
 	return result
 }
 

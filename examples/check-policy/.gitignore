@@ -1,0 +1,21 @@
+# SST
+.build
+.sst/*
+!.sst/state.json
+!.sst/platform/
+
+# Node.js
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Build
+dist
+build

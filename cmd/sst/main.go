@@ -76,7 +76,13 @@ func main() {
 			slog.Error("exited with error", "err", err)
 			// check if context cancelled error
 			if err != context.Canceled {
-				ui.Error("Unexpected error occurred. Please run with --print-logs or check .sst/log/sst.log if available.")
+				errMsg := err.Error()
+				if errMsg == "policy violations detected" || errMsg == "policy configuration error" {
+					// These errors are already handled in the command implementations
+					// No need to print the generic error message
+				} else {
+					ui.Error("Unexpected error occurred. Please run with --print-logs or check .sst/log/sst.log if available.")
+				}
 			}
 		}
 		telemetry.Close()
@@ -458,6 +464,14 @@ var root = &cli.Command{
 						Long:  "Defaults to using `multi` mode. Use `mono` to get a single stream of all child process logs or `basic` to not spawn any child processes.",
 					},
 				},
+				{
+					Name: "policy",
+					Type: "string",
+					Description: cli.Description{
+						Short: "Path to Pulumi policy pack",
+						Long:  "Path to a folder containing Pulumi policy packs to apply during deployment.",
+					},
+				},
 			},
 			Args: []cli.Argument{
 				{
@@ -484,6 +498,12 @@ var root = &cli.Command{
 					Content: "sst dev -- next dev --turbo",
 					Description: cli.Description{
 						Short: "Use -- to pass flags to the command",
+					},
+				},
+				{
+					Content: "sst dev --policy ./policies",
+					Description: cli.Description{
+						Short: "Run in development mode with Pulumi policy packs",
 					},
 				},
 			},

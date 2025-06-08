@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -68,12 +69,26 @@ var CmdDiff = &cli.Command{
 				}, "\n"),
 			},
 		},
+		{
+			Name: "policy",
+			Type: "string",
+			Description: cli.Description{
+				Short: "Path to Pulumi policy pack",
+				Long:  "Path to a folder containing Pulumi policy packs to apply during deployment.",
+			},
+		},
 	},
 	Examples: []cli.Example{
 		{
 			Content: "sst diff --stage production",
 			Description: cli.Description{
 				Short: "See changes to production",
+			},
+		},
+		{
+			Content: "sst diff --policy ./policies",
+			Description: cli.Description{
+				Short: "Preview with Pulumi policy packs",
 			},
 		},
 	},
@@ -122,8 +137,12 @@ var CmdDiff = &cli.Command{
 			Dev:        c.Bool("dev"),
 			Target:     target,
 			Verbose:    c.Bool("verbose"),
+			PolicyPath: c.String("policy"),
 		})
 		if err != nil {
+			if errors.Is(err, project.ErrPolicyViolation) || errors.Is(err, project.ErrPolicyConfigError) {
+				return handlePolicyError(err)
+			}
 			return err
 		}
 		if len(outputs) == 0 {

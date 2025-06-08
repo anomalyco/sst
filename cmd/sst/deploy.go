@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"strings"
 
 	"github.com/sst/sst/v3/cmd/sst/cli"
@@ -60,6 +61,12 @@ var CmdDeploy = &cli.Command{
 			"```bash frame=\"none\"",
 			"SST_BUILD_CONCURRENCY_SITE=2 SST_BUILD_CONCURRENCY_CONTAINER=2 SST_BUILD_CONCURRENCY_FUNCTION=8 sst deploy",
 			"```",
+			"You can also apply Pulumi policy packs during deployment:",
+			"",
+			"```bash frame=\"none\"",
+			"sst deploy --policy /path/to/policy",
+			"```",
+			"",
 			"Typically, this command exits when there's an error deploying a resource.",
 			"But sometimes you want to be able to `--continue` deploying as many resources as possible;",
 			"",
@@ -105,6 +112,14 @@ var CmdDeploy = &cli.Command{
 				Long:  "Deploy resources like `sst dev` would.",
 			},
 		},
+		{
+			Name: "policy",
+			Type: "string",
+			Description: cli.Description{
+				Short: "Path to Pulumi policy pack",
+				Long:  "Path to a folder containing Pulumi policy packs to apply during deployment.",
+			},
+		},
 	},
 	Examples: []cli.Example{
 		{
@@ -113,10 +128,19 @@ var CmdDeploy = &cli.Command{
 				Short: "Deploy to production",
 			},
 		},
+		{
+			Content: "sst deploy --policy ./policies",
+			Description: cli.Description{
+				Short: "Deploy with Pulumi policy packs",
+			},
+		},
 	},
 	Run: func(c *cli.Cli) error {
 		p, err := c.InitProject()
 		if err != nil {
+			if errors.Is(err, project.ErrPolicyViolation) || errors.Is(err, project.ErrPolicyConfigError) {
+				return handlePolicyError(err)
+			}
 			return err
 		}
 		defer p.Cleanup()
@@ -133,6 +157,9 @@ var CmdDeploy = &cli.Command{
 		ui := ui.New(c.Context)
 		s, err := server.New()
 		if err != nil {
+			if errors.Is(err, project.ErrPolicyViolation) || errors.Is(err, project.ErrPolicyConfigError) {
+				return handlePolicyError(err)
+			}
 			return err
 		}
 		wg.Go(func() error {
@@ -156,8 +183,12 @@ var CmdDeploy = &cli.Command{
 			ServerPort: s.Port,
 			Verbose:    c.Bool("verbose"),
 			Continue:   c.Bool("continue"),
+			PolicyPath: c.String("policy"),
 		})
 		if err != nil {
+			if errors.Is(err, project.ErrPolicyViolation) || errors.Is(err, project.ErrPolicyConfigError) {
+				return handlePolicyError(err)
+			}
 			return err
 		}
 		return nil
