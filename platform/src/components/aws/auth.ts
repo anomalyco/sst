@@ -80,6 +80,23 @@ export interface AuthArgs {
    */
   issuer?: Input<string | FunctionArgs>;
   /**
+   * [Link resources](/docs/linking/) to your function. This will:
+   *
+   * 1. Grant the permissions needed to access the resources.
+   * 2. Allow you to access it in your function using the [SDK](/docs/reference/sdk/).
+   *
+   * @example
+   *
+   * Takes a list of components to link to the function.
+   *
+   * ```js
+   * {
+   *   link: [bucket, stripeKey]
+   * }
+   * ```
+   */
+  link?: Input<any[]>;
+  /**
    * Set a custom domain for your Auth server.
    *
    * Automatically manages domains hosted on AWS Route 53, Cloudflare, and Vercel. For other
@@ -282,7 +299,7 @@ export class Auth extends Component implements Link.Linkable {
         `${name}Issuer`,
         fn,
         {
-          link: [table],
+          link: [table, ...args.link],
           environment: {
             OPENAUTH_STORAGE: jsonStringify({
               type: "dynamo",
