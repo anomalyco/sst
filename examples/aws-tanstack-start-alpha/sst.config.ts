@@ -2,7 +2,7 @@
 export default $config({
   app(input) {
     return {
-      name: 'aws-tanstackstart-alpha',
+      name: 'aws-tanstack-start-alpha',
       removal: input?.stage === 'production' ? 'retain' : 'remove',
       home: 'aws',
     }
