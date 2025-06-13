@@ -1,7 +1,9 @@
 import { ComponentResourceOptions } from "@pulumi/pulumi";
 import * as cloudflare from "@pulumi/cloudflare";
-import { Component, Transform, transform } from "../component";
-import { Link } from "../link";
+import * as sst from "sst-plugin";
+import { CloudflareComponent } from "./component";
+import { Transform, transform } from "sst-plugin/internal/transform";
+import { Link } from "sst-plugin/link";
 import { binding } from "./binding";
 import { DEFAULT_ACCOUNT_ID } from "./account-id";
 
@@ -50,7 +52,7 @@ export interface KvArgs {
  * await Resource.MyStorage.get("someKey");
  * ```
  */
-export class Kv extends Component implements Link.Linkable {
+export class Kv extends CloudflareComponent implements Link.Linkable {
   private namespace: cloudflare.WorkersKvNamespace;
 
   constructor(name: string, args?: KvArgs, opts?: ComponentResourceOptions) {
