@@ -1,6 +1,7 @@
 import { ComponentResourceOptions } from "@pulumi/pulumi";
 import * as cloudflare from "@pulumi/cloudflare";
-import { Component } from "./component";
+import * as sst from "sst-plugin";
+import { CloudflareComponent } from "./component";
 import { Transform, transform } from "sst-plugin/internal/transform";
 import { Link } from "sst-plugin/link";
 import { binding } from "./binding";
@@ -51,7 +52,7 @@ export interface BucketArgs {
  * await Resource.MyBucket.list();
  * ```
  */
-export class Bucket extends Component implements Link.Linkable {
+export class Bucket extends CloudflareComponent implements Link.Linkable {
   private bucket: cloudflare.R2Bucket;
 
   constructor(
