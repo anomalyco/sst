@@ -1,9 +1,11 @@
 import { ComponentResourceOptions } from "@pulumi/pulumi";
 import * as cloudflare from "@pulumi/cloudflare";
-import { Component, Transform, transform } from "../component";
-import { Link } from "../link";
+import * as sst from "sst-plugin";
+import { CloudflareComponent } from "./component";
+import { Transform, transform } from "sst-plugin/internal/transform";
+import { Link } from "sst-plugin/link";
 import { binding } from "./binding";
-import { DEFAULT_ACCOUNT_ID } from ".";
+import { DEFAULT_ACCOUNT_ID } from "./account-id";
 
 export interface D1Args {
   /**
@@ -52,7 +54,7 @@ export interface D1Args {
  * ).first();
  * ```
  */
-export class D1 extends Component implements Link.Linkable {
+export class D1 extends CloudflareComponent implements Link.Linkable {
   private database: cloudflare.D1Database;
 
   constructor(name: string, args?: D1Args, opts?: ComponentResourceOptions) {
