@@ -10,16 +10,13 @@ import {
 } from "@pulumi/pulumi";
 import * as cf from "@pulumi/cloudflare";
 import type { Loader, BuildOptions } from "esbuild";
-import { Component, Transform, transform } from "../component";
+import * as sst from "sst-plugin";
+import { CloudflareComponent } from "./component";
 import { WorkerUrl } from "./providers/worker-url";
-import { Link } from "../link";
-import type { Input } from "../input";
 import { ZoneLookup } from "./providers/zone-lookup";
 import { iam } from "@pulumi/aws";
-import { Permission } from "../aws/permission";
 import { Binding, binding } from "./binding";
 import { DEFAULT_ACCOUNT_ID } from "./account-id";
-import { rpc } from "../rpc/rpc";
 
 export interface WorkerArgs {
   /**
@@ -229,7 +226,7 @@ export interface WorkerArgs {
  * });
  * ```
  */
-export class Worker extends Component implements Link.Linkable {
+export class Worker extends CloudflareComponent implements sst.Linkable {
   private script: Output<cf.WorkerScript>;
   private workerUrl: WorkerUrl;
   private workerDomain?: cf.WorkerDomain;

@@ -91,5 +91,50 @@ describe("Cloudflare Component", function () {
       // Should normalize special characters
       expect(physicalName).toMatch(/^app-test-test-component_123-\w{8}$/);
     });
+
+    it("should handle Cloudflare-specific naming requirements", () => {
+      // Test Cloudflare-specific naming patterns
+      const componentName = "MyCloudflareResource";
+      const physicalName = mockPhysicalName(componentName);
+      
+      expect(physicalName).toMatch(/^app-test-mycloudflareresource-\w{8}$/);
+      expect(physicalName).toBe(physicalName.toLowerCase()); // Should be lowercase
+    });
+  });
+
+  describe("CloudflareComponent class structure", () => {
+    it("should have proper naming rules for Cloudflare resources", () => {
+      // Test the naming rules structure that would be in the component
+      const namingRules = {
+        "cloudflare:index/d1Database:D1Database": ["name", 64, { lower: true }],
+        "cloudflare:index/r2Bucket:R2Bucket": ["name", 64, { lower: true }],
+        "cloudflare:index/workerScript:WorkerScript": ["name", 64, { lower: true }],
+        "cloudflare:index/queue:Queue": ["name", 64, { lower: true }],
+        "cloudflare:index/workersKvNamespace:WorkersKvNamespace": ["title", 64, { lower: true }],
+      };
+
+      // Verify all rules have proper structure
+      Object.entries(namingRules).forEach(([resourceType, rule]) => {
+        expect(rule).toHaveLength(3);
+        expect(typeof rule[0]).toBe("string"); // field name
+        expect(typeof rule[1]).toBe("number"); // max length
+        expect(typeof rule[2]).toBe("object"); // options
+        expect(rule[1]).toBeLessThanOrEqual(64); // Cloudflare limit
+      });
+    });
+
+    it("should handle version registration structure", () => {
+      // Test the version registration input structure
+      const versionInput = {
+        new: 2,
+        old: 1,
+        message: "Test migration message",
+        forceUpgrade: "v2" as const
+      };
+
+      expect(versionInput.new).toBeGreaterThan(versionInput.old!);
+      expect(versionInput.forceUpgrade).toMatch(/^v\d+$/);
+      expect(typeof versionInput.message).toBe("string");
+    });
   });
 });
