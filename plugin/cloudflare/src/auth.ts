@@ -4,7 +4,7 @@ import {
   output,
   secret,
 } from "@pulumi/pulumi";
-import { Component } from "./component";
+import { CloudflareComponent } from "./component";
 import { Transform } from "sst-plugin/internal/transform";
 import { Link } from "sst-plugin/link";
 import { WorkerArgs, Worker } from "./worker";
@@ -18,7 +18,7 @@ export interface AuthArgs {
   };
 }
 
-export class Auth extends Component implements Link.Linkable {
+export class Auth extends CloudflareComponent implements Link.Linkable {
   private readonly _key: PrivateKey;
   private readonly _authenticator: Output<Worker>;
 
