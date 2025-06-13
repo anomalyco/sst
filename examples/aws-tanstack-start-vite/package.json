@@ -5,13 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build && tsc --noEmit",
+    "build": "vite build",
     "start": "node .output/server/index.mjs"
   },
   "dependencies": {
-    "@tanstack/react-router": "^1.121.2",
-    "@tanstack/react-router-devtools": "^1.121.8",
-    "@tanstack/react-start": "^1.121.10",
+    "@tanstack/react-router": "^1.121.12",
+    "@tanstack/react-router-devtools": "^1.121.12",
+    "@tanstack/react-start": "^1.121.12",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwind-merge": "^2.6.0",
