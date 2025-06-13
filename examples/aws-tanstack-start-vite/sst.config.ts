@@ -2,12 +2,12 @@
 export default $config({
   app(input) {
     return {
-      name: 'aws-tanstackstart-alpha',
-      removal: input?.stage === 'production' ? 'retain' : 'remove',
-      home: 'aws',
-    }
+      name: "aws-tanstack-start-vite",
+      removal: input?.stage === "production" ? "retain" : "remove",
+      home: "aws",
+    };
   },
   async run() {
-    new sst.aws.TanStackStart('MyWeb')
+    new sst.aws.TanStackStart("MyWeb");
   },
-})
+});
