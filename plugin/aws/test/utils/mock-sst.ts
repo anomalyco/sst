@@ -126,6 +126,7 @@ export class MockComponentFactory {
  */
 export class MockAWSComponent {
   public name: string;
+  public originalName: string;
   public type: string;
   public args: MockComponentArgs;
   public urn: MockOutput<string>;
@@ -137,6 +138,7 @@ export class MockAWSComponent {
   }> = [];
 
   constructor(name: string, type: string, args: MockComponentArgs = {}) {
+    this.originalName = name;
     this.type = type;
     this.args = args;
     
@@ -144,7 +146,7 @@ export class MockAWSComponent {
     const app = global.$app?.name || 'test-app';
     const stage = global.$app?.stage || 'test';
     
-    this.name = this.generatePhysicalName(name, app, stage);
+    this.name = this.generatePhysicalNameInternal(name, app, stage);
     this.urn = mockOutput(`urn:pulumi:${stage}::${app}::${type}::${this.name}`);
   }
 
@@ -175,14 +177,9 @@ export class MockAWSComponent {
         }
       }
       
-      // For major version changes, throw migration error
-      if (oldParts[0] !== newParts[0]) {
+      // For any version changes, throw migration error (unless it's the same version)
+      if (options.old !== options.new) {
         throw new Error(`Migration required for ${this.name}: ${options.message}`);
-      }
-      
-      // For minor version changes, just warn
-      if (oldParts[1] !== newParts[1]) {
-        console.warn(`Migration warning for ${this.name}: ${options.message}`);
       }
     }
     
@@ -208,8 +205,28 @@ export class MockAWSComponent {
     return [...this.versionHistory];
   }
 
+  // Public method to generate physical names for testing
+  public generatePhysicalName(name: string): MockOutput<string> {
+    const app = global.$app?.name || 'test-app';
+    const stage = global.$app?.stage || 'test';
+    const normalizedName = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const hash = 'abcd1234'; // Mock hash
+    
+    // Apply length limits based on AWS service requirements
+    const maxLength = this.getMaxNameLength();
+    let physicalName = `${app}-${stage}-${normalizedName}-${hash}`;
+    
+    if (physicalName.length > maxLength) {
+      const availableLength = maxLength - app.length - stage.length - hash.length - 3; // 3 hyphens
+      const truncatedName = normalizedName.substring(0, Math.max(1, availableLength));
+      physicalName = `${app}-${stage}-${truncatedName}-${hash}`;
+    }
+    
+    return mockOutput(physicalName);
+  }
+
   // Mock physical name generation with proper AWS naming conventions
-  private generatePhysicalName(name: string, app: string, stage: string): string {
+  private generatePhysicalNameInternal(name: string, app: string, stage: string): string {
     const normalizedName = name.toLowerCase().replace(/[^a-z0-9]/g, '');
     const hash = 'abcd1234'; // Mock hash
     

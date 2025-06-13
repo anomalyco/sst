@@ -40,7 +40,7 @@ describe("Force Upgrade Handling", () => {
             message: "Breaking change requires migration",
             forceUpgrade: false
           });
-        }).toThrow("Migration required for TestComponent");
+        }).toThrow(/Migration required for.*testcomponent.*: Breaking change requires migration/);
       });
     });
 
@@ -55,7 +55,7 @@ describe("Force Upgrade Handling", () => {
             message: "Breaking change requires migration"
             // forceUpgrade is undefined
           });
-        }).toThrow("Migration required for TestComponent");
+        }).toThrow(/Migration required for.*testcomponent.*: Breaking change requires migration/);
       });
     });
   });

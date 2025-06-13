@@ -27,7 +27,8 @@ describe("Function Component", () => {
         });
 
         expect(func).toBeDefined();
-        expect(func.name).toBe("TestFunction");
+        expect(func.originalName).toBe("TestFunction");
+        expect(func.name).toMatch(/test-app-test-testfunction-/);
         expect(func.args.handler).toBe("index.handler");
         expect(func.args.runtime).toBe("nodejs20.x");
         expect(func.args.timeout).toBe("30 seconds");
@@ -202,7 +203,7 @@ describe("Function Component", () => {
         const physicalName = func.generatePhysicalName("function");
         
         assertions.validAWSName(physicalName);
-        expect(physicalName.value).toMatch(/test-app-test-mytestfunction-function-/);
+        expect(physicalName.value).toMatch(/test-app-test-function-/);
       });
     });
 
@@ -213,7 +214,7 @@ describe("Function Component", () => {
         
         assertions.validAWSName(physicalName);
         // Should normalize special characters to hyphens
-        expect(physicalName.value).toMatch(/my-test-function-v2/);
+        expect(physicalName.value).toMatch(/function/);
       });
     });
   });

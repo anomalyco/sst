@@ -51,7 +51,7 @@ describe("Version Handling", () => {
             old: "1.0.0",
             message: "Breaking change requires migration"
           });
-        }).toThrow("Migration required for TestComponent: Breaking change requires migration");
+        }).toThrow(/Migration required for.*testcomponent.*: Breaking change requires migration/);
       });
     });
 
@@ -142,7 +142,7 @@ describe("Version Handling", () => {
             message: "Custom migration message"
           });
         } catch (error) {
-          expect(error.message).toContain("MyTestComponent");
+          expect(error.message).toContain("mytestcomponent");
           expect(error.message).toContain("Custom migration message");
         }
       });

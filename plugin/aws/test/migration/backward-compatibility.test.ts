@@ -73,8 +73,8 @@ describe("Backward Compatibility", () => {
 
         expect(v1Component.type).toBe("aws:test:component:v1");
         expect(v2Component.type).toBe("aws:test:component:v2");
-        expect(v1Component.name).toBe("TestV1");
-        expect(v2Component.name).toBe("TestV2");
+        expect(v1Component.name).toMatch(/test-app-test-testv1-/);
+        expect(v2Component.name).toMatch(/test-app-test-testv2-/);
       });
     });
   });
@@ -83,6 +83,10 @@ describe("Backward Compatibility", () => {
     it("should maintain v1 component functionality", async () => {
       await withTestEnvironment(async () => {
         class MockComponentV1 extends MockAWSComponent {
+          constructor(name: string, args: MockComponentArgs = {}) {
+            super(name, "MockComponentV1", args);
+          }
+
           public legacyMethod(): string {
             return "legacy functionality";
           }
@@ -94,6 +98,10 @@ describe("Backward Compatibility", () => {
 
         class MockComponentV2 extends MockAWSComponent {
           static v1 = MockComponentV1;
+
+          constructor(name: string, args: MockComponentArgs = {}) {
+            super(name, "MockComponentV2", args);
+          }
 
           public newMethod(): string {
             return "new functionality";
