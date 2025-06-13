@@ -1,7 +1,7 @@
-import { Component } from "./component.js";
-import { VisibleError } from "./error.js";
-import { Linkable } from "./linkable.js";
-import { Input, output, Output, secret } from "./util.js";
+import { Component } from "./component";
+import { VisibleError } from "./error";
+import { Linkable } from "./linkable";
+import { Input, output, Output, secret } from "./util";
 
 export class SecretMissingError extends VisibleError {
   constructor(public readonly secretName: string) {

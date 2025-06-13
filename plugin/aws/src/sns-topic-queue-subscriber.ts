@@ -1,8 +1,8 @@
 import * as sst from "sst-plugin";
 import { transform } from "sst-plugin/internal/transform";
 import { sqs, sns } from "@pulumi/aws";
-import { Queue } from "./queue.js";
-import { SnsTopicSubscriberArgs } from "./sns-topic.js";
+import { Queue } from "./queue";
+import { SnsTopicSubscriberArgs } from "./sns-topic";
 
 export interface Args extends SnsTopicSubscriberArgs {
   /**

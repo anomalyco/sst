@@ -1,16 +1,16 @@
 import * as sst from "sst-plugin";
-import { Task as ServiceTask } from "../task.js";
+import { Task as ServiceTask } from "../task";
 import { Prettify } from "sst-plugin/internal/prettify";
-import { Duration, toSeconds } from "../util/duration.js";
-import { Bus } from "../bus.js";
+import { Duration, toSeconds } from "../util/duration";
+import { Bus } from "../bus";
 import {
   FunctionPermissionArgs,
   FunctionArgs,
   FunctionArn,
   Function,
-} from "../function.js";
-import { Queue } from "../queue.js";
-import { SnsTopic } from "../sns-topic.js";
+} from "../function";
+import { Queue } from "../queue";
+import { SnsTopic } from "../sns-topic";
 import {
   StateArgs,
   JSONata,
@@ -20,7 +20,7 @@ import {
   RetryArgs,
   CatchArgs,
   isJSONata,
-} from "./state.js";
+} from "./state";
 
 interface TaskBaseArgs extends StateArgs {
   /**

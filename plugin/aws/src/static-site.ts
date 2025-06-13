@@ -1,8 +1,8 @@
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
-import { Cdn, CdnArgs } from "./cdn.js";
-import { Bucket, BucketArgs } from "./bucket.js";
+import { Cdn, CdnArgs } from "./cdn";
+import { Bucket, BucketArgs } from "./bucket";
 import { globSync } from "glob";
 import { cloudfront, getRegionOutput, s3 } from "@pulumi/aws";
 import { ComponentResourceOptions, all } from "@pulumi/pulumi";
@@ -10,18 +10,18 @@ import { Prettify } from "sst-plugin/internal/prettify";
 import * as sst from "sst-plugin";
 import { Transform, transform } from "sst-plugin/internal/transform";
 import { VisibleError } from "sst-plugin/error";
-import { AWSComponent } from "./component.js";
-import { BucketFile, BucketFiles } from "./providers/bucket-files.js";
-import { DistributionInvalidation } from "./providers/distribution-invalidation.js";
-import { KvKeys } from "./providers/kv-keys.js";
-import { KvRoutesUpdate } from "./providers/kv-routes-update.js";
-import { BaseSiteDev, getContentType } from "./base/base-site.js";
-import { buildApp } from "./base/base-static-site.js";
+import { AWSComponent } from "./component";
+import { BucketFile, BucketFiles } from "./providers/bucket-files";
+import { DistributionInvalidation } from "./providers/distribution-invalidation";
+import { KvKeys } from "./providers/kv-keys";
+import { KvRoutesUpdate } from "./providers/kv-routes-update";
+import { BaseSiteDev, getContentType } from "./base/base-site";
+import { buildApp } from "./base/base-static-site";
 import {
   BaseStaticSiteArgs,
   BaseStaticSiteAssets,
   prepare,
-} from "./base/base-static-site.js";
+} from "./base/base-static-site";
 import {
   RouterRouteArgsDeprecated,
   RouterRouteArgs,
@@ -29,9 +29,9 @@ import {
   KV_SITE_METADATA,
   CF_BLOCK_CLOUDFRONT_URL_INJECTION,
   CF_ROUTER_INJECTION,
-} from "./router.js";
-import { toPosix } from "./util/posix.js";
-import { URL_UNAVAILABLE } from "./util/url-unvailable.js";
+} from "./router";
+import { toPosix } from "./util/posix";
+import { URL_UNAVAILABLE } from "./util/url-unvailable";
 
 export interface StaticSiteArgs extends BaseStaticSiteArgs {
   /**

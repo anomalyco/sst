@@ -1,9 +1,9 @@
 import * as sst from "sst-plugin";
 import { transform } from "sst-plugin/internal/transform";
 import { lambda, sns } from "@pulumi/aws";
-import { FunctionArgs } from "./function.js";
-import { SnsTopicSubscriberArgs } from "./sns-topic.js";
-import { FunctionBuilder, functionBuilder } from "./util/function-builder.js";
+import { FunctionArgs } from "./function";
+import { SnsTopicSubscriberArgs } from "./sns-topic";
+import { FunctionBuilder, functionBuilder } from "./util/function-builder";
 
 export interface Args extends SnsTopicSubscriberArgs {
   /**

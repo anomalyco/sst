@@ -3,14 +3,14 @@ import * as sst from "sst-plugin";
 import { Dns } from "sst-plugin/internal/dns";
 import { VisibleError } from "sst-plugin/error";
 import { Transform, transform } from "sst-plugin/internal/transform";
-import { useProvider } from "./provider.js";
-import { AppSyncDataSource } from "./app-sync-data-source.js";
-import { AppSyncFunction } from "./app-sync-function.js";
-import { AppSyncResolver } from "./app-sync-resolver.js";
-import { DnsValidatedCertificate } from "./dns-validated-certificate.js";
-import { FunctionArgs, FunctionArn } from "./function.js";
+import { useProvider } from "./provider";
+import { AppSyncDataSource } from "./app-sync-data-source";
+import { AppSyncFunction } from "./app-sync-function";
+import { AppSyncResolver } from "./app-sync-resolver";
+import { DnsValidatedCertificate } from "./dns-validated-certificate";
+import { FunctionArgs, FunctionArn } from "./function";
 import fs from "fs/promises";
-import { dns as awsDns } from "./dns.js";
+import { dns as awsDns } from "./dns";
 
 export interface AppSyncArgs {
   /**

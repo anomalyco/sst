@@ -1,5 +1,5 @@
 import { CustomResourceOptions, Input, Output, dynamic } from "@pulumi/pulumi";
-import { cfFetch } from "../helpers/fetch.js";
+import { cfFetch } from "../helpers/fetch";
 
 interface Inputs {
   accountId: string;

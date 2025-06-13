@@ -3,11 +3,11 @@ import { Transform, transform } from "sst-plugin/internal/transform";
 import { VisibleError } from "sst-plugin/error";
 import { kinesis, lambda } from "@pulumi/aws";
 import { ComponentResourceOptions, all } from "@pulumi/pulumi";
-import { FunctionArgs, FunctionArn } from "./function.js";
-import { KinesisStreamLambdaSubscriber } from "./kinesis-stream-lambda-subscriber.js";
-import { isFunctionSubscriber } from "./util/subscriber.js";
-import { arn } from "./util/arn.js";
-import { permission } from "./permission.js";
+import { FunctionArgs, FunctionArn } from "./function";
+import { KinesisStreamLambdaSubscriber } from "./kinesis-stream-lambda-subscriber";
+import { isFunctionSubscriber } from "./util/subscriber";
+import { arn } from "./util/arn";
+import { permission } from "./permission";
 export interface KinesisStreamArgs {
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying

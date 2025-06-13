@@ -2,11 +2,11 @@ import * as sst from "sst-plugin";
 import { Transform, transform } from "sst-plugin/internal/transform";
 import { VisibleError } from "sst-plugin/error";
 import { lambda } from "@pulumi/aws";
-import { FunctionArgs } from "./function.js";
-import { KinesisStreamLambdaSubscriberArgs } from "./kinesis-stream.js";
-import { FunctionBuilder, functionBuilder } from "./util/function-builder.js";
-import { AWSComponent } from "./component.js";
-import { arn } from "./util/arn.js";
+import { FunctionArgs } from "./function";
+import { KinesisStreamLambdaSubscriberArgs } from "./kinesis-stream";
+import { FunctionBuilder, functionBuilder } from "./util/function-builder";
+import { AWSComponent } from "./component";
+import { arn } from "./util/arn";
 
 export interface Args extends KinesisStreamLambdaSubscriberArgs {
   /**

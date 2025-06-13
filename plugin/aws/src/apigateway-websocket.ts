@@ -3,16 +3,16 @@ import { Transform, transform } from "sst-plugin/internal/transform";
 import * as sst from "sst-plugin";
 import { VisibleError } from "sst-plugin/error";
 import { Prettify } from "sst-plugin/internal/prettify";
-import { outputId } from "./component.js";
-import { RETENTION } from "./logging.js";
-import { ApiGatewayWebSocketRoute } from "./apigateway-websocket-route.js";
-import { ApiGatewayV2Authorizer } from "./apigatewayv2-authorizer.js";
-import { DnsValidatedCertificate } from "./dns-validated-certificate.js";
-import { FunctionArgs, FunctionArn } from "./function.js";
-import { setupApiGatewayAccount } from "./util/apigateway-account.js";
-import { ApiGatewayV2DomainArgs } from "./util/apigatewayv2-domain.js";
-import { permission } from "./permission.js";
-import { dns as awsDns } from "./dns.js";
+import { outputId } from "./component";
+import { RETENTION } from "./logging";
+import { ApiGatewayWebSocketRoute } from "./apigateway-websocket-route";
+import { ApiGatewayV2Authorizer } from "./apigatewayv2-authorizer";
+import { DnsValidatedCertificate } from "./dns-validated-certificate";
+import { FunctionArgs, FunctionArn } from "./function";
+import { setupApiGatewayAccount } from "./util/apigateway-account";
+import { ApiGatewayV2DomainArgs } from "./util/apigatewayv2-domain";
+import { permission } from "./permission";
+import { dns as awsDns } from "./dns";
 
 export interface ApiGatewayWebSocketArgs {
   /**

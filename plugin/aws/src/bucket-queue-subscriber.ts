@@ -2,8 +2,8 @@ import { sqs, s3 } from "@pulumi/aws";
 import { ComponentResourceOptions } from "@pulumi/pulumi";
 import * as sst from "sst-plugin";
 import { transform, Transform } from "sst-plugin/internal/transform";
-import { BucketSubscriberArgs } from "./bucket.js";
-import { Queue } from "./queue.js";
+import { BucketSubscriberArgs } from "./bucket";
+import { Queue } from "./queue";
 
 export interface Args extends BucketSubscriberArgs {
   /**

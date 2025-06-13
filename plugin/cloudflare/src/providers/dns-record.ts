@@ -1,5 +1,5 @@
 import { CustomResourceOptions, Input, Output, dynamic } from "@pulumi/pulumi";
-import { rpc } from "../../rpc/rpc.js";
+import { rpc } from "../../rpc/rpc";
 import { DEFAULT_ACCOUNT_ID } from "../account-id";
 
 export interface DnsRecordInputs {

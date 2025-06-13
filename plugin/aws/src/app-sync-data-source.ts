@@ -3,9 +3,9 @@ import { transform } from "sst-plugin/internal/transform";
 
 import { appsync, iam } from "@pulumi/aws";
 import { VisibleError } from "sst-plugin/error";
-import { AppSyncDataSourceArgs } from "./app-sync.js";
-import { FunctionBuilder, functionBuilder } from "./util/function-builder.js";
-import { arn } from "./util/arn.js";
+import { AppSyncDataSourceArgs } from "./app-sync";
+import { FunctionBuilder, functionBuilder } from "./util/function-builder";
+import { arn } from "./util/arn";
 
 export interface DataSourceArgs extends AppSyncDataSourceArgs {
   /**

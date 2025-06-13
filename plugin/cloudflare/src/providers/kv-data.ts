@@ -1,6 +1,6 @@
 import fs from "fs";
 import { CustomResourceOptions, Input, dynamic } from "@pulumi/pulumi";
-import { cfFetch } from "../helpers/fetch.js";
+import { cfFetch } from "../helpers/fetch";
 
 interface KvDataEntry {
   source: string;

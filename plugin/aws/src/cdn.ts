@@ -4,11 +4,11 @@ import * as sst from "sst-plugin";
 import { Dns } from "sst-plugin/internal/dns";
 import { Prettify } from "sst-plugin/internal/prettify";
 import { transform, Transform } from "sst-plugin/internal/transform";
-import { useProvider } from "./provider.js";
-import { DistributionDeploymentWaiter } from "./providers/distribution-deployment-waiter.js";
-import { DnsValidatedCertificate } from "./dns-validated-certificate.js";
-import { HttpsRedirect } from "./https-redirect.js";
-import { dns as awsDns } from "./dns.js";
+import { useProvider } from "./provider";
+import { DistributionDeploymentWaiter } from "./providers/distribution-deployment-waiter";
+import { DnsValidatedCertificate } from "./dns-validated-certificate";
+import { HttpsRedirect } from "./https-redirect";
+import { dns as awsDns } from "./dns";
 
 export interface CdnDomainArgs {
   /**

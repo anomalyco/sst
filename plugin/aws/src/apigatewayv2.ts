@@ -3,18 +3,18 @@ import * as sst from "sst-plugin";
 import { VisibleError } from "sst-plugin/error";
 import { Prettify } from "sst-plugin/internal/prettify";
 import { Transform, transform } from "sst-plugin/internal/transform";
-import { outputId } from "./component.js";
-import { Duration, DurationHours, toSeconds } from "./util/duration.js";
-import { RETENTION } from "./logging.js";
-import { ApiGatewayV2Authorizer } from "./apigatewayv2-authorizer.js";
-import { ApiGatewayV2LambdaRoute } from "./apigatewayv2-lambda-route.js";
-import { ApiGatewayV2PrivateRoute } from "./apigatewayv2-private-route.js";
-import { ApiGatewayV2UrlRoute } from "./apigatewayv2-url-route.js";
-import { DnsValidatedCertificate } from "./dns-validated-certificate.js";
-import { FunctionArgs, FunctionArn } from "./function.js";
-import { ApiGatewayV2DomainArgs } from "./util/apigatewayv2-domain.js";
-import { Vpc } from "./vpc.js";
-import { dns as awsDns } from "./dns.js";
+import { outputId } from "./component";
+import { Duration, DurationHours, toSeconds } from "./util/duration";
+import { RETENTION } from "./logging";
+import { ApiGatewayV2Authorizer } from "./apigatewayv2-authorizer";
+import { ApiGatewayV2LambdaRoute } from "./apigatewayv2-lambda-route";
+import { ApiGatewayV2PrivateRoute } from "./apigatewayv2-private-route";
+import { ApiGatewayV2UrlRoute } from "./apigatewayv2-url-route";
+import { DnsValidatedCertificate } from "./dns-validated-certificate";
+import { FunctionArgs, FunctionArn } from "./function";
+import { ApiGatewayV2DomainArgs } from "./util/apigatewayv2-domain";
+import { Vpc } from "./vpc";
+import { dns as awsDns } from "./dns";
 
 interface ApiGatewayV2CorsArgs {
   /**

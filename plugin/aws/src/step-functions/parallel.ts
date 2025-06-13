@@ -7,7 +7,7 @@ import {
   RetryArgs,
   State,
   StateArgs,
-} from "./state.js";
+} from "./state";
 
 export interface ParallelArgs extends StateArgs {
   /**

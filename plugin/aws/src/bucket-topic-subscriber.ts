@@ -2,7 +2,7 @@ import { sns, s3, iam } from "@pulumi/aws";
 import { ComponentResourceOptions } from "@pulumi/pulumi";
 import * as sst from "sst-plugin";
 import { transform, Transform } from "sst-plugin/internal/transform";
-import { BucketSubscriberArgs } from "./bucket.js";
+import { BucketSubscriberArgs } from "./bucket";
 
 export interface Args extends BucketSubscriberArgs {
   /**

@@ -1,13 +1,13 @@
 import * as sst from "sst-plugin";
 import { transform, Transform } from "sst-plugin/internal/transform";
-import { AWSComponent, outputId } from "./component.js";
-import { permission } from "./permission.js";
+import { AWSComponent, outputId } from "./component";
+import { permission } from "./permission";
 import { dynamodb, lambda } from "@pulumi/aws";
 import { ComponentResourceOptions, all } from "@pulumi/pulumi";
-import { DynamoLambdaSubscriber } from "./dynamo-lambda-subscriber.js";
-import { FunctionArgs, FunctionArn } from "./function.js";
-import { isFunctionSubscriber } from "./util/subscriber.js";
-import { arn } from "./util/arn.js";
+import { DynamoLambdaSubscriber } from "./dynamo-lambda-subscriber";
+import { FunctionArgs, FunctionArn } from "./function";
+import { isFunctionSubscriber } from "./util/subscriber";
+import { arn } from "./util/arn";
 
 export interface DynamoArgs {
   /**

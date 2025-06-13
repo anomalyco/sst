@@ -1,10 +1,10 @@
 import * as sst from "sst-plugin";
 import { Transform, transform } from "sst-plugin/internal/transform";
 import { VisibleError } from "sst-plugin/error";
-import { AWSComponent } from "./component.js";
+import { AWSComponent } from "./component";
 import { elasticache, secretsmanager } from "@pulumi/aws";
 import { RandomPassword } from "@pulumi/random";
-import { Vpc } from "./vpc.js";
+import { Vpc } from "./vpc";
 
 export interface RedisArgs {
   /**

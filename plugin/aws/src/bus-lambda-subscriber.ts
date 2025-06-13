@@ -2,9 +2,9 @@ import { lambda, cloudwatch } from "@pulumi/aws";
 import { ComponentResourceOptions } from "@pulumi/pulumi";
 import * as sst from "sst-plugin";
 import { transform, Transform } from "sst-plugin/internal/transform";
-import { BusBaseSubscriberArgs, createRule } from "./bus-base-subscriber.js";
-import { FunctionArgs } from "./function.js";
-import { FunctionBuilder, functionBuilder } from "./util/function-builder.js";
+import { BusBaseSubscriberArgs, createRule } from "./bus-base-subscriber";
+import { FunctionArgs } from "./function";
+import { FunctionBuilder, functionBuilder } from "./util/function-builder";
 
 export interface Args extends BusBaseSubscriberArgs {
   /**

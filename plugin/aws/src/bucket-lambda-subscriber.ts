@@ -1,9 +1,9 @@
 import { lambda, s3 } from "@pulumi/aws";
 import * as sst from "sst-plugin";
 import { transform, Transform } from "sst-plugin/internal/transform";
-import { BucketSubscriberArgs } from "./bucket.js";
-import { FunctionArgs } from "./function.js";
-import { FunctionBuilder, functionBuilder } from "./util/function-builder.js";
+import { BucketSubscriberArgs } from "./bucket";
+import { FunctionArgs } from "./function";
+import { FunctionBuilder, functionBuilder } from "./util/function-builder";
 
 export interface Args extends BucketSubscriberArgs {
   /**

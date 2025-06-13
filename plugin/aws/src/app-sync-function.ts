@@ -1,7 +1,7 @@
 import { appsync } from "@pulumi/aws";
 import * as sst from "sst-plugin";
 import { transform } from "sst-plugin/internal/transform";
-import { AppSyncFunctionArgs } from "./app-sync.js";
+import { AppSyncFunctionArgs } from "./app-sync";
 
 export interface FunctionArgs extends AppSyncFunctionArgs {
   /**

@@ -2,9 +2,9 @@ import { apigatewayv2, lambda } from "@pulumi/aws";
 import * as sst from "sst-plugin";
 import { Transform, transform } from "sst-plugin/internal/transform";
 import { VisibleError } from "sst-plugin/error";
-import { toSeconds } from "./util/duration.js";
-import { ApiGatewayV2AuthorizerArgs } from "./apigatewayv2.js";
-import { functionBuilder } from "./util/function-builder.js";
+import { toSeconds } from "./util/duration";
+import { ApiGatewayV2AuthorizerArgs } from "./apigatewayv2";
+import { functionBuilder } from "./util/function-builder";
 
 export interface AuthorizerArgs extends ApiGatewayV2AuthorizerArgs {
   /**

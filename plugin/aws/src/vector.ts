@@ -1,10 +1,10 @@
 import * as sst from "sst-plugin";
 import { Transform, transform } from "sst-plugin/internal/transform";
-import { AWSComponent } from "./component.js";
-import { VectorTable } from "./providers/vector-table.js";
-import { PostgresArgs, Postgres } from "./postgres-v1.js";
-import { Function } from "./function.js";
-import { permission } from "./permission.js";
+import { AWSComponent } from "./component";
+import { VectorTable } from "./providers/vector-table";
+import { PostgresArgs, Postgres } from "./postgres-v1";
+import { Function } from "./function";
+import { permission } from "./permission";
 
 export interface VectorArgs {
   /**

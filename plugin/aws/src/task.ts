@@ -1,8 +1,8 @@
 import * as sst from "sst-plugin";
-import { AWSComponent } from "./component.js";
+import { AWSComponent } from "./component";
 import { iam, ecs } from "@pulumi/aws";
 import { Prettify } from "sst-plugin/internal/prettify";
-import { Function } from "./function.js";
+import { Function } from "./function";
 import {
   FargateBaseArgs,
   FargateContainerArgs,
@@ -14,10 +14,10 @@ import {
   createTaskRole,
   createExecutionRole,
   createTaskDefinition,
-} from "./fargate.js";
-import { Vpc } from "./vpc.js";
-import { Cluster } from "./cluster.js";
-import { permission } from "./permission.js";
+} from "./fargate";
+import { Vpc } from "./vpc";
+import { Cluster } from "./cluster";
+import { permission } from "./permission";
 
 export interface TaskArgs extends FargateBaseArgs {
   /**

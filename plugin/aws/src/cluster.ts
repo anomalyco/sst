@@ -8,11 +8,11 @@ import {
   parseComponentVersion,
   ComponentVersion,
   AWSComponent,
-} from "./component.js";
-import { ServiceArgs, Service } from "./service.js";
-import { TaskArgs, Task } from "./task.js";
-import { Vpc } from "./vpc.js";
-import { Cluster as ClusterV1 } from "./cluster-v1.js";
+} from "./component";
+import { ServiceArgs, Service } from "./service";
+import { TaskArgs, Task } from "./task";
+import { Vpc } from "./vpc";
+import { Cluster as ClusterV1 } from "./cluster-v1";
 
 type ClusterVpcArgs = {
   /**

@@ -2,7 +2,7 @@ import { appsync } from "@pulumi/aws";
 import * as sst from "sst-plugin";
 import { transform } from "sst-plugin/internal/transform";
 import { VisibleError } from "sst-plugin/error";
-import { AppSyncResolverArgs } from "./app-sync.js";
+import { AppSyncResolverArgs } from "./app-sync";
 
 export interface ResolverArgs extends AppSyncResolverArgs {
   /**

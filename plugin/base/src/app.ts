@@ -1,4 +1,4 @@
-import { VisibleError } from "./error.js";
+import { VisibleError } from "./error";
 
 export interface App
   extends Readonly<{

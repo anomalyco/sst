@@ -1,15 +1,15 @@
 import * as sst from "sst-plugin";
-import { toSeconds } from "./util/duration.js";
-import { Bucket } from "./bucket.js";
+import { toSeconds } from "./util/duration";
+import { Bucket } from "./bucket";
 import {
   RouterBaseRouteArgs,
   parsePattern,
   buildKvNamespace,
   createKvRouteData,
   updateKvRoutes,
-} from "./router-base-route.js";
-import { RouterBucketRouteArgs } from "./router.js";
-import { AWSComponent } from "./component.js";
+} from "./router-base-route";
+import { RouterBucketRouteArgs } from "./router";
+import { AWSComponent } from "./component";
 
 export interface Args extends RouterBaseRouteArgs {
   /**

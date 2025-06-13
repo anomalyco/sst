@@ -4,8 +4,8 @@
  * @packageDocumentation
  */
 
-import { ComponentOptions } from "../component.js";
-import { Input, Output, Resource } from "../util.js";
+import { ComponentOptions } from "../component";
+import { Input, Output, Resource } from "../util";
 
 export interface Record {
   /**

@@ -11,15 +11,15 @@ import {
 import * as cf from "@pulumi/cloudflare";
 import type { Loader, BuildOptions } from "esbuild";
 import { Component, Transform, transform } from "../component";
-import { WorkerUrl } from "./providers/worker-url.js";
-import { Link } from "../link.js";
-import type { Input } from "../input.js";
-import { ZoneLookup } from "./providers/zone-lookup.js";
+import { WorkerUrl } from "./providers/worker-url";
+import { Link } from "../link";
+import type { Input } from "../input";
+import { ZoneLookup } from "./providers/zone-lookup";
 import { iam } from "@pulumi/aws";
-import { Permission } from "../aws/permission.js";
-import { Binding, binding } from "./binding.js";
-import { DEFAULT_ACCOUNT_ID } from "./account-id.js";
-import { rpc } from "../rpc/rpc.js";
+import { Permission } from "../aws/permission";
+import { Binding, binding } from "./binding";
+import { DEFAULT_ACCOUNT_ID } from "./account-id";
+import { rpc } from "../rpc/rpc";
 
 export interface WorkerArgs {
   /**

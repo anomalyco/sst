@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import * as sst from "sst-plugin";
-import { SsrSiteArgs, SsrSite, Plan } from "./ssr-site.js";
+import { SsrSiteArgs, SsrSite, Plan } from "./ssr-site";
 
 export interface SvelteKitArgs extends SsrSiteArgs {
   /**

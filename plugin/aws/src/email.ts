@@ -1,12 +1,12 @@
 import * as sst from "sst-plugin";
 import { transform, Transform } from "sst-plugin/internal/transform";
-import { AWSComponent } from "./component.js";
-import { permission } from "./permission.js";
+import { AWSComponent } from "./component";
+import { permission } from "./permission";
 import { sesv2, ses } from "@pulumi/aws";
 import { ComponentResourceOptions, all } from "@pulumi/pulumi";
 import { Dns } from "sst-plugin/internal/dns";
 import { Prettify } from "sst-plugin/internal/prettify";
-import { dns as awsDns } from "./dns.js";
+import { dns as awsDns } from "./dns";
 
 interface Events {
   /**

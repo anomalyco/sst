@@ -1,13 +1,13 @@
 import * as sst from "sst-plugin";
 import { Transform, transform } from "sst-plugin/internal/transform";
 import { VisibleError } from "sst-plugin/error";
-import { AWSComponent } from "./component.js";
-import { QueueSubscriberArgs } from "./queue.js";
+import { AWSComponent } from "./component";
+import { QueueSubscriberArgs } from "./queue";
 import { lambda } from "@pulumi/aws";
-import { toSeconds } from "./util/duration.js";
-import { FunctionArgs } from "./function.js";
-import { FunctionBuilder, functionBuilder } from "./util/function-builder.js";
-import { arn } from "./util/arn.js";
+import { toSeconds } from "./util/duration";
+import { FunctionArgs } from "./function";
+import { FunctionBuilder, functionBuilder } from "./util/function-builder";
+import { arn } from "./util/arn";
 
 export interface Args extends QueueSubscriberArgs {
   /**

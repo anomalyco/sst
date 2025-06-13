@@ -4,12 +4,12 @@ import { VisibleError } from "sst-plugin/error";
 import { dynamodb, getRegionOutput, lambda } from "@pulumi/aws";
 import { ComponentResourceOptions, all } from "@pulumi/pulumi";
 import path from "path";
-import { Size } from "./util/size.js";
-import { Bucket } from "./bucket.js";
-import { Queue } from "./queue.js";
-import { SsrSiteArgs, SsrSite, Plan } from "./ssr-site.js";
-import { isALteB } from "./util/compare-semver.js";
-import { Function } from "./function.js";
+import { Size } from "./util/size";
+import { Bucket } from "./bucket";
+import { Queue } from "./queue";
+import { SsrSiteArgs, SsrSite, Plan } from "./ssr-site";
+import { isALteB } from "./util/compare-semver";
+import { Function } from "./function";
 
 const DEFAULT_OPEN_NEXT_VERSION = "3.6.1";
 

@@ -1,10 +1,10 @@
 import * as sst from "sst-plugin";
 import { Transform, transform } from "sst-plugin/internal/transform";
-import { AWSComponent } from "./component.js";
+import { AWSComponent } from "./component";
 import { sfn, cloudwatch, iam } from "@pulumi/aws";
-import { RETENTION } from "./logging.js";
-import { functionBuilder } from "./util/function-builder.js";
-import { State } from "./step-functions/state.js";
+import { RETENTION } from "./logging";
+import { functionBuilder } from "./util/function-builder";
+import { State } from "./step-functions/state";
 import {
   EcsRunTaskArgs,
   EventBridgePutEventsArgs,
@@ -13,16 +13,16 @@ import {
   SqsSendMessageArgs,
   Task,
   TaskArgs,
-} from "./step-functions/task.js";
-import { Choice, ChoiceArgs } from "./step-functions/choice.js";
-import { FailArgs, Fail } from "./step-functions/fail.js";
-import { ParallelArgs, Parallel } from "./step-functions/parallel.js";
-import { PassArgs, Pass } from "./step-functions/pass.js";
-import { SucceedArgs, Succeed } from "./step-functions/succeed.js";
-import { WaitArgs, Wait } from "./step-functions/wait.js";
-import { Map, MapArgs } from "./step-functions/map.js";
-import { Function } from "./function.js";
-import { permission } from "./permission.js";
+} from "./step-functions/task";
+import { Choice, ChoiceArgs } from "./step-functions/choice";
+import { FailArgs, Fail } from "./step-functions/fail";
+import { ParallelArgs, Parallel } from "./step-functions/parallel";
+import { PassArgs, Pass } from "./step-functions/pass";
+import { SucceedArgs, Succeed } from "./step-functions/succeed";
+import { WaitArgs, Wait } from "./step-functions/wait";
+import { Map, MapArgs } from "./step-functions/map";
+import { Function } from "./function";
+import { permission } from "./permission";
 
 export interface StepFunctionsArgs {
   /**

@@ -2,10 +2,10 @@ import * as sst from "sst-plugin";
 import { s3, cloudfront } from "@pulumi/aws";
 import { ComponentResourceOptions, all } from "@pulumi/pulumi";
 import { Dns } from "sst-plugin/internal/dns";
-import { useProvider } from "./provider.js";
-import { Bucket } from "./bucket.js";
-import { DnsValidatedCertificate } from "./dns-validated-certificate.js";
-import { CF_BLOCK_CLOUDFRONT_URL_INJECTION } from "./router.js";
+import { useProvider } from "./provider";
+import { Bucket } from "./bucket";
+import { DnsValidatedCertificate } from "./dns-validated-certificate";
+import { CF_BLOCK_CLOUDFRONT_URL_INJECTION } from "./router";
 
 /**
  * Properties to configure an HTTPS Redirect

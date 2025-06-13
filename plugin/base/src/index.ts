@@ -1,11 +1,11 @@
-export { command, app, App, dev, path, version } from "./app.js";
-export { resource } from "./resource.js";
-export { ComponentOptions, Component } from "./component.js";
-export { asset } from "./asset.js";
-export { transform } from "./transform.js";
-export { naming } from "./naming.js";
-export { Linkable, Link, env } from "./linkable.js";
-export { Secret } from "./secret.js";
+export { command, app, App, dev, path, version } from "./app";
+export { resource } from "./resource";
+export { ComponentOptions, Component } from "./component";
+export { asset } from "./asset";
+export { transform } from "./transform";
+export { naming } from "./naming";
+export { Linkable, Link, env } from "./linkable";
+export { Secret } from "./secret";
 
-export * as x from "./experimental/index.js";
-export * from "./util.js";
+export * as x from "./experimental/index";
+export * from "./util";

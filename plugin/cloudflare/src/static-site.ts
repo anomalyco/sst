@@ -2,21 +2,21 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import { ComponentResourceOptions, all } from "@pulumi/pulumi";
-import { Kv, KvArgs } from "./kv.js";
-import { Component, Transform, transform } from "../component.js";
-import { Link } from "../link.js";
-import { Input } from "../input.js";
+import { Kv, KvArgs } from "./kv";
+import { Component, Transform, transform } from "../component";
+import { Link } from "../link";
+import { Input } from "../input";
 import { globSync } from "glob";
-import { KvData } from "./providers/kv-data.js";
-import { Worker } from "./worker.js";
-import { getContentType } from "../base/base-site.js";
+import { KvData } from "./providers/kv-data";
+import { Worker } from "./worker";
+import { getContentType } from "../base/base-site";
 import {
   BaseStaticSiteArgs,
   BaseStaticSiteAssets,
   buildApp,
   prepare,
-} from "../base/base-static-site.js";
-import { DEFAULT_ACCOUNT_ID } from "./account-id.js";
+} from "../base/base-static-site";
+import { DEFAULT_ACCOUNT_ID } from "./account-id";
 
 export interface StaticSiteArgs extends BaseStaticSiteArgs {
   /**

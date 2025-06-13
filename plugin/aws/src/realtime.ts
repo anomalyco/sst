@@ -1,11 +1,11 @@
 import * as sst from "sst-plugin";
 import { Transform, transform } from "sst-plugin/internal/transform";
 import { VisibleError } from "sst-plugin/error";
-import { AWSComponent } from "./component.js";
+import { AWSComponent } from "./component";
 import { iot, lambda } from "@pulumi/aws";
 import { ComponentResourceOptions, all } from "@pulumi/pulumi";
-import { FunctionArgs, FunctionArn, Function } from "./function.js";
-import { RealtimeLambdaSubscriber } from "./realtime-lambda-subscriber.js";
+import { FunctionArgs, FunctionArn, Function } from "./function";
+import { RealtimeLambdaSubscriber } from "./realtime-lambda-subscriber";
 
 export interface RealtimeArgs {
   /**

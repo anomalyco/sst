@@ -1,11 +1,11 @@
 import * as sst from "sst-plugin";
-import { CdnArgs } from "./cdn.js";
-import { Dynamo } from "./dynamo.js";
-import { FunctionArgs, Function } from "./function.js";
-import { Router } from "./router.js";
-import { functionBuilder } from "./util/function-builder.js";
-import { Auth as AuthV1 } from "./auth-v1.js";
-import { AWSComponent } from "./component.js";
+import { CdnArgs } from "./cdn";
+import { Dynamo } from "./dynamo";
+import { FunctionArgs, Function } from "./function";
+import { Router } from "./router";
+import { functionBuilder } from "./util/function-builder";
+import { Auth as AuthV1 } from "./auth-v1";
+import { AWSComponent } from "./component";
 
 export interface AuthArgs {
   /**

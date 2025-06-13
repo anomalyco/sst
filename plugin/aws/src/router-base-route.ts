@@ -1,10 +1,10 @@
 import * as sst from "sst-plugin";
 import { Transform, transform } from "sst-plugin/internal/transform";
 import { VisibleError } from "sst-plugin/error";
-import { AWSComponent } from "./component.js";
+import { AWSComponent } from "./component";
 import { jsonStringify } from "@pulumi/pulumi";
-import { KvKeys } from "./providers/kv-keys.js";
-import { KvRoutesUpdate } from "./providers/kv-routes-update.js";
+import { KvKeys } from "./providers/kv-keys";
+import { KvRoutesUpdate } from "./providers/kv-routes-update";
 import crypto from "crypto";
 
 export interface RouterBaseRouteArgs {

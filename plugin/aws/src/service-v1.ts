@@ -1,8 +1,8 @@
 import fs from "fs";
 import * as sst from "sst-plugin";
 import { Image, Platform } from "@pulumi/docker-build";
-import { AWSComponent } from "./component.js";
-import { Permission } from "./permission.js";
+import { AWSComponent } from "./component";
+import { Permission } from "./permission";
 import {
   ecs,
   iam,
@@ -16,21 +16,21 @@ import {
 } from "@pulumi/aws";
 import path from "path";
 import { VisibleError } from "sst-plugin/error";
-import { bootstrap } from "./util/bootstrap.js";
-import { RETENTION } from "./logging.js";
-import { toGBs, toMBs } from "./util/size.js";
+import { bootstrap } from "./util/bootstrap";
+import { RETENTION } from "./logging";
+import { toGBs, toMBs } from "./util/size";
 import {
   ClusterServiceArgs,
   ClusterArgs,
   supportedCpus,
   supportedMemories,
-} from "./cluster-v1.js";
-import { DnsValidatedCertificate } from "./dns-validated-certificate.js";
-import { URL_UNAVAILABLE } from "./util/url-unvailable.js";
-import { Vpc } from "./vpc.js";
-import { dns as awsDns } from "./dns.js";
+} from "./cluster-v1";
+import { DnsValidatedCertificate } from "./dns-validated-certificate";
+import { URL_UNAVAILABLE } from "./util/url-unvailable";
+import { Vpc } from "./vpc";
+import { dns as awsDns } from "./dns";
 import { link } from "sst-plugin/runtime/link";
-import { toNumber } from "./util/cpu.js";
+import { toNumber } from "./util/cpu";
 import { transform } from "sst-plugin/internal/transform";
 
 export interface ServiceArgs extends ClusterServiceArgs {

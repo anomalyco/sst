@@ -1,7 +1,7 @@
 import { cloudwatch } from "@pulumi/aws";
 import * as sst from "sst-plugin";
 import { transform, Transform } from "sst-plugin/internal/transform";
-import { BusSubscriberArgs } from "./bus.js";
+import { BusSubscriberArgs } from "./bus";
 
 export interface BusBaseSubscriberArgs extends BusSubscriberArgs {
   /**

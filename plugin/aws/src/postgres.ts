@@ -1,15 +1,15 @@
-import { Postgres as PostgresV1 } from "./postgres-v1.js";
+import { Postgres as PostgresV1 } from "./postgres-v1";
 import * as sst from "sst-plugin";
 import { Transform, transform } from "sst-plugin/internal/transform";
 import { VisibleError } from "sst-plugin/error";
 import { rds, secretsmanager, iam } from "@pulumi/aws";
 import { RandomPassword } from "@pulumi/random";
 import { $jsonParse } from "sst-plugin/runtime/shim";
-import { RdsRoleLookup } from "./providers/rds-role-lookup.js";
-import { SizeGbTb, toGBs } from "./util/size.js";
-import { Vpc } from "./vpc.js";
-import { AWSComponent } from "./component.js";
-import { Vpc as VpcV1 } from "./vpc-v1.js";
+import { RdsRoleLookup } from "./providers/rds-role-lookup";
+import { SizeGbTb, toGBs } from "./util/size";
+import { Vpc } from "./vpc";
+import { AWSComponent } from "./component";
+import { Vpc as VpcV1 } from "./vpc-v1";
 
 export interface PostgresArgs {
   /**

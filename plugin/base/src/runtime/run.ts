@@ -5,9 +5,9 @@ import {
   output,
 } from "@pulumi/pulumi";
 
-import { app, path } from "../app.js";
-import { VisibleError } from "../error.js";
-import { link } from "./link.js";
+import { app, path } from "../app";
+import { VisibleError } from "../error";
+import { link } from "./link";
 
 export async function run(program: automation.PulumiFn) {
   process.chdir(path.root);

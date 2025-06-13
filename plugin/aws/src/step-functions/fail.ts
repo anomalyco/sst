@@ -1,5 +1,5 @@
 import * as sst from "sst-plugin";
-import { State, StateArgs } from "./state.js";
+import { State, StateArgs } from "./state";
 
 export interface FailArgs extends StateArgs {
   /**

@@ -4,8 +4,8 @@ import { transform } from "sst-plugin/internal/transform";
 import {
   ApiGatewayV1BaseRouteArgs,
   createMethod,
-} from "./apigatewayv1-base-route.js";
-import { ApiGatewayV1IntegrationArgs } from "./apigatewayv1.js";
+} from "./apigatewayv1-base-route";
+import { ApiGatewayV1IntegrationArgs } from "./apigatewayv1";
 
 export interface Args extends ApiGatewayV1BaseRouteArgs {
   /**

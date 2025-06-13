@@ -1,8 +1,8 @@
 import { cognito } from "@pulumi/aws";
 import * as sst from "sst-plugin";
 import { transform, Transform } from "sst-plugin/internal/transform";
-import { AWSComponent } from "./component.js";
-import { CognitoUserPoolClientArgs } from "./cognito-user-pool.js";
+import { AWSComponent } from "./component";
+import { CognitoUserPoolClientArgs } from "./cognito-user-pool";
 
 export interface Args extends CognitoUserPoolClientArgs {
   /**

@@ -1,1 +1,1 @@
-export { DevCommand } from "./dev-command.js";
+export { DevCommand } from "./dev-command";

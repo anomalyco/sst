@@ -1,4 +1,4 @@
-import { dns as awsDns } from "./dns.js";
+import { dns as awsDns } from "./dns";
 import * as sst from "sst-plugin";
 import { Transform, transform } from "sst-plugin/internal/transform";
 import { VisibleError } from "sst-plugin/error";
@@ -13,8 +13,8 @@ import {
 } from "@pulumi/aws";
 import { Dns } from "sst-plugin/internal/dns";
 import { Prettify } from "sst-plugin/internal/prettify";
-import { DurationMinutes, toSeconds } from "./util/duration.js";
-import { DnsValidatedCertificate } from "./dns-validated-certificate.js";
+import { DurationMinutes, toSeconds } from "./util/duration";
+import { DnsValidatedCertificate } from "./dns-validated-certificate";
 import {
   FargateContainerArgs,
   FargateBaseArgs,
@@ -26,10 +26,10 @@ import {
   createTaskRole,
   createExecutionRole,
   createTaskDefinition,
-} from "./fargate.js";
-import { URL_UNAVAILABLE } from "./util/url-unvailable.js";
-import { Vpc } from "./vpc.js";
-import { AWSComponent } from "./component.js";
+} from "./fargate";
+import { URL_UNAVAILABLE } from "./util/url-unvailable";
+import { Vpc } from "./vpc";
+import { AWSComponent } from "./component";
 
 type Port = `${number}/${"http" | "https" | "tcp" | "udp" | "tcp_udp" | "tls"}`;
 

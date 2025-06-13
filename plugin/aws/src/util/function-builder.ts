@@ -1,8 +1,8 @@
 import * as sst from "sst-plugin";
 import { Transform, transform } from "sst-plugin/internal/transform";
-import { FunctionArgs, FunctionArn } from "../function.js";
+import { FunctionArgs, FunctionArn } from "../function";
 import { VisibleError } from "sst-plugin/error";
-import { Function } from "../function.js";
+import { Function } from "../function";
 
 export type FunctionBuilder = sst.Output<{
   getFunction: () => Function;

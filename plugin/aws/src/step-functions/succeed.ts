@@ -1,4 +1,4 @@
-import { State, StateArgs } from "./state.js";
+import { State, StateArgs } from "./state";
 
 export interface SucceedArgs extends StateArgs {}
 

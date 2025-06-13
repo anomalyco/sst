@@ -1,11 +1,11 @@
 import * as sst from "sst-plugin";
-import { ApiGatewayWebSocketRouteArgs } from "./apigateway-websocket.js";
-import { FunctionArgs, FunctionArn } from "./function.js";
+import { ApiGatewayWebSocketRouteArgs } from "./apigateway-websocket";
+import { FunctionArgs, FunctionArn } from "./function";
 import { transform, Transform } from "sst-plugin/internal/transform";
-import { AWSComponent } from "./component.js";
+import { AWSComponent } from "./component";
 import { lambda, apigatewayv2 } from "@pulumi/aws";
 import { ComponentResourceOptions, all } from "@pulumi/pulumi";
-import { FunctionBuilder, functionBuilder } from "./util/function-builder.js";
+import { FunctionBuilder, functionBuilder } from "./util/function-builder";
 
 export interface Args extends ApiGatewayWebSocketRouteArgs {
   /**

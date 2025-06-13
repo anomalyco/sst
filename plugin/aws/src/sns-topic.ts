@@ -1,7 +1,7 @@
 import { sns } from "@pulumi/aws";
 import { Transform, transform } from "sst-plugin/internal/transform";
 import * as sst from "sst-plugin";
-import { AWSComponent } from "./component.js";
+import { AWSComponent } from "./component";
 
 export interface SnsTopicArgs {
   /**

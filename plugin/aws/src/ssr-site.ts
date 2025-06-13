@@ -7,17 +7,17 @@ import * as sst from "sst-plugin";
 import { cloudfront, getRegionOutput, lambda, Region } from "@pulumi/aws";
 import { Transform, transform } from "sst-plugin/internal/transform";
 import { VisibleError } from "sst-plugin/error";
-import { Cdn, CdnArgs } from "./cdn.js";
-import { Function, FunctionArgs } from "./function.js";
-import { Bucket, BucketArgs } from "./bucket.js";
-import { BucketFile, BucketFiles } from "./providers/bucket-files.js";
-import { Cron } from "./cron.js";
+import { Cdn, CdnArgs } from "./cdn";
+import { Function, FunctionArgs } from "./function";
+import { Bucket, BucketArgs } from "./bucket";
+import { BucketFile, BucketFiles } from "./providers/bucket-files";
+import { Cron } from "./cron";
 
-import { BaseSiteFileOptions, getContentType } from "./base/base-site.js";
-import { BaseSsrSiteArgs, buildApp } from "./base/base-ssr-site.js";
-import { KvKeys } from "./providers/kv-keys.js";
+import { BaseSiteFileOptions, getContentType } from "./base/base-site";
+import { BaseSsrSiteArgs, buildApp } from "./base/base-ssr-site";
+import { KvKeys } from "./providers/kv-keys";
 
-import { URL_UNAVAILABLE } from "./util/url-unvailable.js";
+import { URL_UNAVAILABLE } from "./util/url-unvailable";
 import {
   CF_ROUTER_INJECTION,
   CF_BLOCK_CLOUDFRONT_URL_INJECTION,
@@ -25,17 +25,17 @@ import {
   RouterRouteArgsDeprecated,
   normalizeRouteArgs,
   RouterRouteArgs,
-} from "./router.js";
-import { DistributionInvalidation } from "./providers/distribution-invalidation.js";
-import { KvRoutesUpdate } from "./providers/kv-routes-update.js";
-import { toSeconds } from "./util/duration.js";
-import { CONSOLE_URL, getQuota } from "./util/quota.js";
+} from "./router";
+import { DistributionInvalidation } from "./providers/distribution-invalidation";
+import { KvRoutesUpdate } from "./providers/kv-routes-update";
+import { toSeconds } from "./util/duration";
+import { CONSOLE_URL, getQuota } from "./util/quota";
 import { Prettify } from "sst-plugin/internal/prettify";
-import { AWSComponent } from "./component.js";
+import { AWSComponent } from "./component";
 import { Resource } from "@pulumi/pulumi";
-import { useProvider } from "./provider.js";
+import { useProvider } from "./provider";
 import { link } from "sst-plugin/runtime/link";
-import { toPosix } from "./util/posix.js";
+import { toPosix } from "./util/posix";
 
 const supportedRegions = {
   "af-south-1": { lat: -33.9249, lon: 18.4241 }, // Cape Town, South Africa

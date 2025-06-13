@@ -1,7 +1,7 @@
 import * as sst from "sst-plugin";
 import { apigateway } from "@pulumi/aws";
-import { ApiGatewayV1ApiKeyArgs } from "./apigatewayv1.js";
-import { AWSComponent } from "./component.js";
+import { ApiGatewayV1ApiKeyArgs } from "./apigatewayv1";
+import { AWSComponent } from "./component";
 
 export interface ApiKeyArgs extends ApiGatewayV1ApiKeyArgs {
   /**

@@ -1,5 +1,5 @@
 import * as sst from "sst-plugin";
-import { Nextable, State, StateArgs } from "./state.js";
+import { Nextable, State, StateArgs } from "./state";
 
 export interface PassArgs extends StateArgs { }
 

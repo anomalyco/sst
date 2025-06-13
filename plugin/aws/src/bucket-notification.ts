@@ -2,10 +2,10 @@ import { s3, lambda, sns, iam } from "@pulumi/aws";
 import * as sst from "sst-plugin";
 import { VisibleError } from "sst-plugin/error";
 import { transform, Transform } from "sst-plugin/internal/transform";
-import { BucketNotificationsArgs } from "./bucket.js";
-import { Queue } from "./queue.js";
-import { SnsTopic } from "./sns-topic.js";
-import { FunctionBuilder, functionBuilder } from "./util/function-builder.js";
+import { BucketNotificationsArgs } from "./bucket";
+import { Queue } from "./queue";
+import { SnsTopic } from "./sns-topic";
+import { FunctionBuilder, functionBuilder } from "./util/function-builder";
 
 export interface Args extends BucketNotificationsArgs {
   /**

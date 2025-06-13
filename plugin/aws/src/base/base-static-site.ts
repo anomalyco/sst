@@ -2,10 +2,10 @@ import fs from "fs";
 import path from "path";
 import * as sst from "sst-plugin";
 import { Prettify } from "sst-plugin/internal/prettify";
-import { BaseSiteFileOptions } from "./base-site.js";
+import { BaseSiteFileOptions } from "./base-site";
 import { VisibleError } from "sst-plugin/error";
 import { Resource } from "@pulumi/pulumi";
-import { siteBuilder } from "../util/site-builder.js";
+import { siteBuilder } from "../util/site-builder";
 
 export type BaseStaticSiteAssets = {
   /**

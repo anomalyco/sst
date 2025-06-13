@@ -1,8 +1,8 @@
 import * as sst from "sst-plugin";
-import { ApiGatewayV1AuthorizerArgs } from "./apigatewayv1.js";
-import { AWSComponent } from "./component.js";
+import { ApiGatewayV1AuthorizerArgs } from "./apigatewayv1";
+import { AWSComponent } from "./component";
 import { apigateway, lambda } from "@pulumi/aws";
-import { functionBuilder, FunctionBuilder } from "./util/function-builder.js";
+import { functionBuilder, FunctionBuilder } from "./util/function-builder";
 import { VisibleError } from "sst-plugin/error";
 import { transform } from "sst-plugin/internal/transform";
 

@@ -1,15 +1,15 @@
 import * as sst from "sst-plugin";
 import { transform, Transform } from "sst-plugin/internal/transform";
-import { AWSComponent } from "./component.js";
+import { AWSComponent } from "./component";
 import { cognito, lambda } from "@pulumi/aws";
 import { ComponentResourceOptions, all } from "@pulumi/pulumi";
 import { VisibleError } from "sst-plugin/error";
 import { Prettify } from "sst-plugin/internal/prettify";
-import { CognitoIdentityProvider } from "./cognito-identity-provider.js";
-import { CognitoUserPoolClient } from "./cognito-user-pool-client.js";
-import { FunctionArgs, FunctionArn } from "./function.js";
-import { functionBuilder } from "./util/function-builder.js";
-import { permission } from "./permission.js";
+import { CognitoIdentityProvider } from "./cognito-identity-provider";
+import { CognitoUserPoolClient } from "./cognito-user-pool-client";
+import { FunctionArgs, FunctionArn } from "./function";
+import { functionBuilder } from "./util/function-builder";
+import { permission } from "./permission";
 
 interface Triggers {
   /**

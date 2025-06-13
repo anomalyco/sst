@@ -1,12 +1,12 @@
 import path from "path";
 import fs from "fs";
-import { BaseSiteDev, BaseSiteFileOptions } from "./base-site.js";
+import { BaseSiteDev, BaseSiteFileOptions } from "./base-site";
 import * as sst from "sst-plugin";
 import { Prettify } from "sst-plugin/internal/prettify";
 import { VisibleError } from "sst-plugin/error";
 import { link } from "sst-plugin/runtime/link";
 import { Resource } from "@pulumi/pulumi";
-import { siteBuilder } from "../util/site-builder.js";
+import { siteBuilder } from "../util/site-builder";
 
 export interface BaseSsrSiteArgs {
   dev?: false | Prettify<BaseSiteDev>;

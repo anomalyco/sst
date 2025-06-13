@@ -1,7 +1,7 @@
 import * as sst from "sst-plugin";
 import { RandomPassword } from "@pulumi/random";
-import { FunctionArgs, Function } from "./function.js";
-import { functionBuilder } from "./util/function-builder.js";
+import { FunctionArgs, Function } from "./function";
+import { functionBuilder } from "./util/function-builder";
 
 export interface OpenControlArgs {
   /**

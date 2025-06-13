@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { app } from "./app.js";
+import { app } from "./app";
 
 export namespace naming {
   const PRETTY_CHARS = "abcdefhkmnorstuvwxz";

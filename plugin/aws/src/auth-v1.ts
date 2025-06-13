@@ -1,7 +1,7 @@
 import { s3 } from "@pulumi/aws";
 import * as sst from "sst-plugin";
 import { Transform } from "sst-plugin/internal/transform";
-import { FunctionArgs, Function } from "./function.js";
+import { FunctionArgs, Function } from "./function";
 import { PrivateKey } from "@pulumi/tls";
 
 export interface AuthArgs {

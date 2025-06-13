@@ -4,9 +4,9 @@ import { Transform, transform } from "sst-plugin/internal/transform";
 import {
   ApiGatewayV1BaseRouteArgs,
   createMethod,
-} from "./apigatewayv1-base-route.js";
-import { FunctionArgs } from "./function.js";
-import { FunctionBuilder, functionBuilder } from "./util/function-builder.js";
+} from "./apigatewayv1-base-route";
+import { FunctionArgs } from "./function";
+import { FunctionBuilder, functionBuilder } from "./util/function-builder";
 
 export interface Args extends ApiGatewayV1BaseRouteArgs {
   /**

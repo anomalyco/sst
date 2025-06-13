@@ -1,18 +1,18 @@
 import { iam, s3 } from "@pulumi/aws";
 import { Transform, transform } from "sst-plugin/internal/transform";
 import * as sst from "sst-plugin";
-import { AWSComponent } from "./component.js";
-import { Duration, toSeconds } from "./util/duration.js";
-import { FunctionArgs, FunctionArn } from "./function.js";
-import { Queue } from "./queue.js";
-import { SnsTopic } from "./sns-topic.js";
-import { BucketNotification } from "./bucket-notification.js";
-import { BucketLambdaSubscriber } from "./bucket-lambda-subscriber.js";
-import { BucketQueueSubscriber } from "./bucket-queue-subscriber.js";
-import { BucketTopicSubscriber } from "./bucket-topic-subscriber.js";
-import { permission } from "./permission.js";
+import { AWSComponent } from "./component";
+import { Duration, toSeconds } from "./util/duration";
+import { FunctionArgs, FunctionArn } from "./function";
+import { Queue } from "./queue";
+import { SnsTopic } from "./sns-topic";
+import { BucketNotification } from "./bucket-notification";
+import { BucketLambdaSubscriber } from "./bucket-lambda-subscriber";
+import { BucketQueueSubscriber } from "./bucket-queue-subscriber";
+import { BucketTopicSubscriber } from "./bucket-topic-subscriber";
+import { permission } from "./permission";
 import { VisibleError } from "sst-plugin/error";
-import { arn } from "./util/arn.js";
+import { arn } from "./util/arn";
 
 interface BucketCorsArgs {
   /**

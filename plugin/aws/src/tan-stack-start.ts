@@ -2,9 +2,9 @@ import fs from "fs";
 import path from "path";
 import * as sst from "sst-plugin";
 import { VisibleError } from "sst-plugin/error";
-import { Plan, SsrSite, SsrSiteArgs } from "./ssr-site.js";
+import { Plan, SsrSite, SsrSiteArgs } from "./ssr-site";
 import { Prettify } from "sst-plugin/internal/prettify";
-import { RouterRouteArgs } from "./router.js";
+import { RouterRouteArgs } from "./router";
 
 export interface TanStackStartArgs extends SsrSiteArgs {
   /**

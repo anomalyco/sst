@@ -3,9 +3,9 @@ import path from "path";
 import * as sst from "sst-plugin";
 import { VisibleError } from "sst-plugin/error";
 import { transform } from "sst-plugin/internal/transform";
-import { SsrSiteArgs, SsrSite, Plan } from "./ssr-site.js";
+import { SsrSiteArgs, SsrSite, Plan } from "./ssr-site";
 import fs from "fs";
-import { isALtB } from "./util/compare-semver.js";
+import { isALtB } from "./util/compare-semver";
 
 export interface AstroArgs extends SsrSiteArgs {
   /**

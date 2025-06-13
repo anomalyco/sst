@@ -1,7 +1,7 @@
 import { output } from "@pulumi/pulumi";
 import * as sst from "sst-plugin";
-import { Duration, toSeconds } from "../util/duration.js";
-import { isJSONata, JSONata, Nextable, State, StateArgs } from "./state.js";
+import { Duration, toSeconds } from "../util/duration";
+import { isJSONata, JSONata, Nextable, State, StateArgs } from "./state";
 
 export interface WaitArgs extends StateArgs {
   /**

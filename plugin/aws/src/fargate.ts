@@ -13,18 +13,18 @@ import {
 import { ImageArgs, Platform } from "@pulumi/docker-build";
 import path from "path";
 import { $jsonStringify } from "sst-plugin/runtime/shim";
-import { bootstrap } from "./util/bootstrap.js";
-import { toNumber } from "./util/cpu.js";
-import { toSeconds } from "./util/duration.js";
-import { RETENTION } from "./logging.js";
-import { Permission } from "./permission.js";
-import { toGBs, toMBs } from "./util/size.js";
-import { Efs } from "./efs.js";
-import { FunctionArgs } from "./function.js";
-import { ServiceArgs } from "./service.js";
-import { imageBuilder } from "./util/container-builder.js";
+import { bootstrap } from "./util/bootstrap";
+import { toNumber } from "./util/cpu";
+import { toSeconds } from "./util/duration";
+import { RETENTION } from "./logging";
+import { Permission } from "./permission";
+import { toGBs, toMBs } from "./util/size";
+import { Efs } from "./efs";
+import { FunctionArgs } from "./function";
+import { ServiceArgs } from "./service";
+import { imageBuilder } from "./util/container-builder";
 import { link } from "sst-plugin/runtime/link";
-import { Cluster } from "./cluster.js";
+import { Cluster } from "./cluster";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 
 export const supportedCpus = {

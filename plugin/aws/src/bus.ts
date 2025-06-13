@@ -1,12 +1,12 @@
 import { cloudwatch } from "@pulumi/aws";
 import * as sst from "sst-plugin";
 import { transform, Transform } from "sst-plugin/internal/transform";
-import { BusLambdaSubscriber } from "./bus-lambda-subscriber.js";
-import { BusQueueSubscriber } from "./bus-queue-subscriber.js";
-import { FunctionArgs, FunctionArn } from "./function.js";
-import { Queue } from "./queue.js";
-import { arn } from "./util/arn.js";
-import { permission } from "./permission.js";
+import { BusLambdaSubscriber } from "./bus-lambda-subscriber";
+import { BusQueueSubscriber } from "./bus-queue-subscriber";
+import { FunctionArgs, FunctionArn } from "./function";
+import { Queue } from "./queue";
+import { arn } from "./util/arn";
+import { permission } from "./permission";
 
 export interface BusArgs {
   /**

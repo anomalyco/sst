@@ -7,15 +7,15 @@ import {
   createRouter,
   prepare,
   validatePlan,
-} from "./ssr-site.js";
-import { Component } from "../component.js";
-import { Hint } from "../hint.js";
-import { Link } from "../link.js";
-import { Kv } from "./kv.js";
-import { buildApp } from "../base/base-ssr-site.js";
-import { Worker } from "./worker.js";
+} from "./ssr-site";
+import { Component } from "../component";
+import { Hint } from "../hint";
+import { Link } from "../link";
+import { Kv } from "./kv";
+import { buildApp } from "../base/base-ssr-site";
+import { Worker } from "./worker";
 import { Plugin } from "esbuild";
-import { pathToRegexp } from "../../util/path-to-regex.js";
+import { pathToRegexp } from "../../util/path-to-regex";
 
 export interface RemixArgs extends SsrSiteArgs {
   /**
@@ -355,8 +355,8 @@ export class Remix extends Component implements Link.Linkable {
         // When using Vite config, the output build will be "server/index.js"
         // and when using Remix config it will be `server.js`.
         //isUsingVite
-        //  ? `import * as remixServerBuild from "./server/index.js";`
-        //  : `import * as remixServerBuild from "./index.js";`,
+        //  ? `import * as remixServerBuild from "./server/index";`
+        //  : `import * as remixServerBuild from "./index";`,
         //`import { createRequestHandler } from "@remix-run/cloudflare";`,
         //`import * as remixServerBuild from "./server";`,
         //`import { createRequestHandler } from "@remix-run/cloudflare";`,
@@ -367,7 +367,7 @@ export class Remix extends Component implements Link.Linkable {
         //`  },`,
         //`};`,
         `import { createRequestHandler } from "@remix-run/cloudflare";`,
-        `import * as build from "./server/index.js";`,
+        `import * as build from "./server/index";`,
         `export default {`,
         `  async fetch(request) {`,
         `    console.log("fetch");`,

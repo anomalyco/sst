@@ -4,7 +4,7 @@ import { transform } from "sst-plugin/internal/transform";
 import {
   ApiGatewayV2BaseRouteArgs,
   createApiRoute,
-} from "./apigatewayv2-base-route.js";
+} from "./apigatewayv2-base-route";
 
 export interface Args extends ApiGatewayV2BaseRouteArgs {
   /**

@@ -1,6 +1,6 @@
-import { Component, ComponentOptions } from "../component.js";
-import { link } from "../runtime/link.js";
-import { Input, output } from "../util.js";
+import { Component, ComponentOptions } from "../component";
+import { link } from "../runtime/link";
+import { Input, output } from "../util";
 
 export interface DevCommandArgs {
   dev?: {

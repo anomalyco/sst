@@ -1,5 +1,5 @@
-import { Component } from "./component.js";
-import { Input, Output, output } from "./util.js";
+import { Component } from "./component";
+import { Input, Output, output } from "./util";
 
 export interface Definition<
   Properties extends Record<string, any> = Record<string, any>,

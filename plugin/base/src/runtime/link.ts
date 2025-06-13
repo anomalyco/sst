@@ -1,8 +1,8 @@
 import { ComponentResource, runtime } from "@pulumi/pulumi";
-import { VisibleError } from "../error.js";
-import { Link, Linkable } from "../linkable.js";
-import { Output, resolve, Input, output } from "../util.js";
-import { app } from "../app.js";
+import { VisibleError } from "../error";
+import { Link, Linkable } from "../linkable";
+import { Output, resolve, Input, output } from "../util";
+import { app } from "../app";
 
 export namespace link {
   export class Ref extends ComponentResource {

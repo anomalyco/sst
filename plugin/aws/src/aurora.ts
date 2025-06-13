@@ -3,10 +3,10 @@ import * as sst from "sst-plugin";
 import { VisibleError } from "sst-plugin/error";
 import { Transform, transform } from "sst-plugin/internal/transform";
 import { $jsonParse } from "sst-plugin/runtime/shim";
-import { DurationHours, toSeconds } from "./util/duration.js";
-import { RdsRoleLookup } from "./providers/rds-role-lookup.js";
-import { Vpc } from "./vpc.js";
-import { permission } from "./permission.js";
+import { DurationHours, toSeconds } from "./util/duration";
+import { RdsRoleLookup } from "./providers/rds-role-lookup";
+import { Vpc } from "./vpc";
+import { permission } from "./permission";
 import { RandomPassword } from "@pulumi/random";
 
 type ACU = `${number} ACU`;

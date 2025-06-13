@@ -1,7 +1,7 @@
 import * as sst from "sst-plugin";
 import { transform, Transform } from "sst-plugin/internal/transform";
-import { AWSComponent } from "./component.js";
-import { permission } from "./permission.js";
+import { AWSComponent } from "./component";
+import { permission } from "./permission";
 import { acm } from "@pulumi/aws";
 import { ComponentResourceOptions, all } from "@pulumi/pulumi";
 import { Dns } from "sst-plugin/internal/dns";

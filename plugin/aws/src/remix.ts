@@ -3,9 +3,9 @@ import path from "path";
 import * as sst from "sst-plugin";
 import { Transform, transform } from "sst-plugin/internal/transform";
 import { VisibleError } from "sst-plugin/error";
-import { AWSComponent } from "./component.js";
+import { AWSComponent } from "./component";
 import { ComponentResourceOptions, all } from "@pulumi/pulumi";
-import { SsrSiteArgs, SsrSite, Plan } from "./ssr-site.js";
+import { SsrSiteArgs, SsrSite, Plan } from "./ssr-site";
 
 export interface RemixArgs extends SsrSiteArgs {
   /**
@@ -530,8 +530,8 @@ export class Remix extends SsrSite {
             // and when using Remix config it will be `server.js`.
             `// Import the server build that was produced by 'remix build'`,
             viteConfig
-              ? `import * as remixServerBuild from "./server/index.js";`
-              : `import * as remixServerBuild from "./index.js";`,
+              ? `import * as remixServerBuild from "./server/index";`
+              : `import * as remixServerBuild from "./index";`,
             ``,
             fs.readFileSync(
               new URL(

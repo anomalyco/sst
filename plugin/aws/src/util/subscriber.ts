@@ -1,6 +1,6 @@
 import * as sst from "sst-plugin";
-import { FunctionArgs, FunctionArn } from "../function.js";
-import { Queue } from "../queue.js";
+import { FunctionArgs, FunctionArn } from "../function";
+import { Queue } from "../queue";
 
 export function isFunctionSubscriber(
   subscriber?: sst.Input<string | FunctionArgs | FunctionArn>,

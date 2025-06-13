@@ -3,16 +3,16 @@ import fs from "fs";
 import { globSync } from "glob";
 import crypto from "crypto";
 import { Output, Unwrap, output, all, ComponentResource } from "@pulumi/pulumi";
-import { Input } from "../input.js";
-import { transform, type Transform } from "../component.js";
-import { VisibleError } from "../error.js";
-import { BaseSiteFileOptions, getContentType } from "../base/base-site.js";
-import { BaseSsrSiteArgs } from "../base/base-ssr-site.js";
-import { Kv, KvArgs } from "./kv.js";
-import { Worker, WorkerArgs } from "./worker.js";
-import { KvData } from "./providers/kv-data.js";
-import { DEFAULT_ACCOUNT_ID } from "./account-id.js";
-import { toPosix } from "../path.js";
+import { Input } from "../input";
+import { transform, type Transform } from "../component";
+import { VisibleError } from "../error";
+import { BaseSiteFileOptions, getContentType } from "../base/base-site";
+import { BaseSsrSiteArgs } from "../base/base-ssr-site";
+import { Kv, KvArgs } from "./kv";
+import { Worker, WorkerArgs } from "./worker";
+import { KvData } from "./providers/kv-data";
+import { DEFAULT_ACCOUNT_ID } from "./account-id";
+import { toPosix } from "../path";
 
 type Plan = ReturnType<typeof validatePlan>;
 export interface SsrSiteArgs extends BaseSsrSiteArgs {

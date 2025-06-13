@@ -1,12 +1,12 @@
 import * as sst from "sst-plugin";
 import { transform, Transform } from "sst-plugin/internal/transform";
-import { AWSComponent } from "./component.js";
-import { permission } from "./permission.js";
+import { AWSComponent } from "./component";
+import { permission } from "./permission";
 import { lambda } from "@pulumi/aws";
-import { DynamoSubscriberArgs } from "./dynamo.js";
-import { FunctionArgs } from "./function.js";
-import { FunctionBuilder, functionBuilder } from "./util/function-builder.js";
-import { arn } from "./util/arn.js";
+import { DynamoSubscriberArgs } from "./dynamo";
+import { FunctionArgs } from "./function";
+import { FunctionBuilder, functionBuilder } from "./util/function-builder";
+import { arn } from "./util/arn";
 
 export interface Args extends DynamoSubscriberArgs {
   /**

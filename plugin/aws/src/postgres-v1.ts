@@ -1,8 +1,8 @@
 import * as sst from "sst-plugin";
 import { Transform, transform } from "sst-plugin/internal/transform";
 import { rds, secretsmanager } from "@pulumi/aws";
-import { AWSComponent } from "./component.js";
-import { permission } from "./permission.js";
+import { AWSComponent } from "./component";
+import { permission } from "./permission";
 
 type ACU = `${number} ACU`;
 

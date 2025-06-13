@@ -3,9 +3,9 @@ import { ComponentResourceOptions } from "@pulumi/pulumi";
 import * as sst from "sst-plugin";
 import { Dns } from "sst-plugin/internal/dns";
 import { transform, Transform } from "sst-plugin/internal/transform";
-import { RETENTION } from "./logging.js";
-import { FunctionArgs } from "./function.js";
-import { Service as ServiceV1 } from "./service-v1.js";
+import { RETENTION } from "./logging";
+import { FunctionArgs } from "./function";
+import { Service as ServiceV1 } from "./service-v1";
 import { ImageArgs } from "@pulumi/docker-build";
 
 export const supportedCpus = {

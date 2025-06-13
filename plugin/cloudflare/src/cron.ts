@@ -3,8 +3,8 @@ import * as cf from "@pulumi/cloudflare";
 import * as cloudflare from "@pulumi/cloudflare";
 import { Component, Transform, transform } from "../component";
 import { Worker, WorkerArgs } from "./worker";
-import { DEFAULT_ACCOUNT_ID } from "./account-id.js";
-import { Input } from "../input.js";
+import { DEFAULT_ACCOUNT_ID } from "./account-id";
+import { Input } from "../input";
 import { WorkerBuilder, workerBuilder } from "./helpers/worker-builder";
 
 export interface CronArgs {

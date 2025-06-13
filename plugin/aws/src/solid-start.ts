@@ -2,9 +2,9 @@ import fs from "fs";
 import * as sst from "sst-plugin";
 import { Transform, transform } from "sst-plugin/internal/transform";
 import { VisibleError } from "sst-plugin/error";
-import { AWSComponent } from "./component.js";
+import { AWSComponent } from "./component";
 import path from "path";
-import { SsrSiteArgs, SsrSite, Plan } from "./ssr-site.js";
+import { SsrSiteArgs, SsrSite, Plan } from "./ssr-site";
 
 export interface SolidStartArgs extends SsrSiteArgs {
   /**

@@ -35,7 +35,7 @@ import { route53 } from "@pulumi/aws";
 import { Transform, transform } from "sst-plugin/internal/transform";
 import * as sst from "sst-plugin";
 import { VisibleError } from "sst-plugin/error";
-import { HostedZoneLookup } from "./providers/hosted-zone-lookup.js";
+import { HostedZoneLookup } from "./providers/hosted-zone-lookup";
 import { AliasRecord, Dns, Record } from "sst-plugin/internal/dns";
 
 export interface DnsArgs {

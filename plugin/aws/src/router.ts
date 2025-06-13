@@ -3,13 +3,13 @@ import * as sst from "sst-plugin";
 import { transform, Transform } from "sst-plugin/internal/transform";
 import { VisibleError } from "sst-plugin/error";
 import { cloudfront } from "@pulumi/aws";
-import { AWSComponent } from "./component.js";
-import { Cdn, CdnArgs } from "./cdn.js";
-import { Bucket } from "./bucket.js";
-import { OriginAccessControl } from "./providers/origin-access-control.js";
-import { RouterUrlRoute } from "./router-url-route.js";
-import { RouterBucketRoute } from "./router-bucket-route.js";
-import { DurationSeconds } from "./util/duration.js";
+import { AWSComponent } from "./component";
+import { Cdn, CdnArgs } from "./cdn";
+import { Bucket } from "./bucket";
+import { OriginAccessControl } from "./providers/origin-access-control";
+import { RouterUrlRoute } from "./router-url-route";
+import { RouterBucketRoute } from "./router-bucket-route";
+import { DurationSeconds } from "./util/duration";
 
 interface InlineUrlRouteArgs extends InlineBaseRouteArgs {
   /**

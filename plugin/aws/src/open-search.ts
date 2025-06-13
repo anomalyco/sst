@@ -5,8 +5,8 @@ import { opensearch, iam, secretsmanager } from "@pulumi/aws";
 import { ComponentResourceOptions, jsonStringify } from "@pulumi/pulumi";
 import { RandomPassword } from "@pulumi/random";
 import { $jsonParse } from "sst-plugin/runtime/shim";
-import { SizeGbTb, toGBs } from "./util/size.js";
-import { AWSComponent } from "./component.js";
+import { SizeGbTb, toGBs } from "./util/size";
+import { AWSComponent } from "./component";
 
 export interface OpenSearchArgs {
   /**

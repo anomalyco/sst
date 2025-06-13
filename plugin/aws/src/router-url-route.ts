@@ -1,16 +1,16 @@
 import * as sst from "sst-plugin";
 import { Transform, transform } from "sst-plugin/internal/transform";
 import { VisibleError } from "sst-plugin/error";
-import { AWSComponent } from "./component.js";
+import { AWSComponent } from "./component";
 import {
   buildKvNamespace,
   createKvRouteData,
   parsePattern,
   RouterBaseRouteArgs,
   updateKvRoutes,
-} from "./router-base-route.js";
-import { toSeconds } from "./util/duration.js";
-import { RouterUrlRouteArgs } from "./router.js";
+} from "./router-base-route";
+import { toSeconds } from "./util/duration";
+import { RouterUrlRouteArgs } from "./router";
 
 export interface Args extends RouterBaseRouteArgs {
   /**

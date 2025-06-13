@@ -3,18 +3,18 @@ import * as sst from "sst-plugin";
 import { Transform, transform } from "sst-plugin/internal/transform";
 import { VisibleError } from "sst-plugin/error";
 import { Prettify } from "sst-plugin/internal/prettify";
-import { outputId } from "./component.js";
-import { RETENTION } from "./logging.js";
-import { useProvider } from "./provider.js";
-import { ApiGatewayV1Authorizer } from "./apigatewayv1-authorizer.js";
-import { ApiGatewayV1IntegrationRoute } from "./apigatewayv1-integration-route.js";
-import { ApiGatewayV1LambdaRoute } from "./apigatewayv1-lambda-route.js";
-import { ApiGatewayV1UsagePlan } from "./apigatewayv1-usage-plan.js";
-import { DnsValidatedCertificate } from "./dns-validated-certificate.js";
-import { FunctionArgs, FunctionArn } from "./function.js";
-import { setupApiGatewayAccount } from "./util/apigateway-account.js";
+import { outputId } from "./component";
+import { RETENTION } from "./logging";
+import { useProvider } from "./provider";
+import { ApiGatewayV1Authorizer } from "./apigatewayv1-authorizer";
+import { ApiGatewayV1IntegrationRoute } from "./apigatewayv1-integration-route";
+import { ApiGatewayV1LambdaRoute } from "./apigatewayv1-lambda-route";
+import { ApiGatewayV1UsagePlan } from "./apigatewayv1-usage-plan";
+import { DnsValidatedCertificate } from "./dns-validated-certificate";
+import { FunctionArgs, FunctionArn } from "./function";
+import { setupApiGatewayAccount } from "./util/apigateway-account";
 import { Dns } from "sst-plugin/internal/dns";
-import { dns as awsDns } from "./dns.js";
+import { dns as awsDns } from "./dns";
 
 export interface ApiGatewayV1DomainArgs {
   /**

@@ -11,8 +11,8 @@ import {
   ssm,
 } from "@pulumi/aws";
 import { VisibleError } from "sst-plugin/error";
-import { Vpc as VpcV1 } from "./vpc-v1.js";
-import { AWSComponent } from "./component.js";
+import { Vpc as VpcV1 } from "./vpc-v1";
+import { AWSComponent } from "./component";
 
 export interface VpcArgs {
   /**

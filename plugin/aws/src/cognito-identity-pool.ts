@@ -2,10 +2,10 @@ import { cognito, iam, getRegionOutput } from "@pulumi/aws";
 import { ComponentResourceOptions } from "@pulumi/pulumi";
 import * as sst from "sst-plugin";
 import { transform, Transform } from "sst-plugin/internal/transform";
-import { FunctionArgs } from "./function.js";
-import { AWSComponent } from "./component.js";
-import { permission } from "./permission.js";
-import { arn } from "./util/arn.js";
+import { FunctionArgs } from "./function";
+import { AWSComponent } from "./component";
+import { permission } from "./permission";
+import { arn } from "./util/arn";
 
 export interface CognitoIdentityPoolArgs {
   /**

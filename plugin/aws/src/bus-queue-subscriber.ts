@@ -1,8 +1,8 @@
 import { sqs, cloudwatch } from "@pulumi/aws";
 import * as sst from "sst-plugin";
 import { transform, Transform } from "sst-plugin/internal/transform";
-import { BusBaseSubscriberArgs, createRule } from "./bus-base-subscriber.js";
-import { Queue } from "./queue.js";
+import { BusBaseSubscriberArgs, createRule } from "./bus-base-subscriber";
+import { Queue } from "./queue";
 
 export interface Args extends BusBaseSubscriberArgs {
   /**

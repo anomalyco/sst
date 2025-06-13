@@ -1,7 +1,7 @@
 import { apigateway } from "@pulumi/aws";
 import * as sst from "sst-plugin";
 import { transform } from "sst-plugin/internal/transform";
-import { ApiGatewayV1RouteArgs } from "./apigatewayv1.js";
+import { ApiGatewayV1RouteArgs } from "./apigatewayv1";
 
 export interface ApiGatewayV1BaseRouteArgs extends ApiGatewayV1RouteArgs {
   /**

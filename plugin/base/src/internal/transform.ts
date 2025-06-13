@@ -1,5 +1,5 @@
 import { CustomResourceOptions } from "@pulumi/pulumi";
-import { ComponentOptions } from "../component.js";
+import { ComponentOptions } from "../component";
 
 export type Transform<T> =
   | Partial<T>

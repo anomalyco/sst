@@ -1,11 +1,11 @@
 import { apigateway } from "@pulumi/aws";
 import * as sst from "sst-plugin";
 import { Transform, transform } from "sst-plugin/internal/transform";
-import { ApiGatewayV1ApiKey } from "./apigatewayv1-api-key.js";
+import { ApiGatewayV1ApiKey } from "./apigatewayv1-api-key";
 import {
   ApiGatewayV1UsagePlanArgs,
   ApiGatewayV1ApiKeyArgs,
-} from "./apigatewayv1.js";
+} from "./apigatewayv1";
 
 export interface UsagePlanArgs extends ApiGatewayV1UsagePlanArgs {
   /**

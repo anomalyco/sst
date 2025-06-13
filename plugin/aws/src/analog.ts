@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import * as sst from "sst-plugin";
 import { VisibleError } from "sst-plugin/error";
-import { Plan, SsrSite, SsrSiteArgs } from "./ssr-site.js";
+import { Plan, SsrSite, SsrSiteArgs } from "./ssr-site";
 
 export interface AnalogArgs extends SsrSiteArgs {
   /**

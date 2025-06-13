@@ -1,5 +1,5 @@
 import { runtime } from "@pulumi/pulumi";
-import { ComponentTransforms } from "./component.js";
+import { ComponentTransforms } from "./component";
 
 export function transform<T, Args, Options>(
   resource: { new (name: string, args: Args, opts?: Options): T },

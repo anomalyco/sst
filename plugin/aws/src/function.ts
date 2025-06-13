@@ -13,23 +13,23 @@ import { rpc } from "sst-plugin/internal/rpc";
 import { lazy } from "sst-plugin/internal/lazy";
 import { warn } from "sst-plugin/internal/warn";
 
-import { bootstrap } from "./util/bootstrap.js";
-import { Duration, DurationMinutes, toSeconds } from "./util/duration.js";
-import { Size, toMBs } from "./util/size.js";
-import { RETENTION } from "./logging.js";
-import { Permission, permission } from "./permission.js";
-import { arn } from "./util/arn.js";
+import { bootstrap } from "./util/bootstrap";
+import { Duration, DurationMinutes, toSeconds } from "./util/duration";
+import { Size, toMBs } from "./util/size";
+import { RETENTION } from "./logging";
+import { Permission, permission } from "./permission";
+import { arn } from "./util/arn";
 
-import { KvRoutesUpdate } from "./providers/kv-routes-update.js";
-import { KvKeys } from "./providers/kv-keys.js";
-import { FunctionEnvironmentUpdate } from "./providers/function-environment-update.js";
-import { Vpc } from "./vpc.js";
-import { Efs } from "./efs.js";
+import { KvRoutesUpdate } from "./providers/kv-routes-update";
+import { KvKeys } from "./providers/kv-keys";
+import { FunctionEnvironmentUpdate } from "./providers/function-environment-update";
+import { Vpc } from "./vpc";
+import { Efs } from "./efs";
 import {
   normalizeRouteArgs,
   RouterRouteArgs,
   RouterRouteArgsDeprecated,
-} from "./router.js";
+} from "./router";
 
 import { Image } from "@pulumi/docker-build";
 import { RandomBytes } from "@pulumi/random";
@@ -46,7 +46,7 @@ import {
 } from "@pulumi/aws";
 import { Prettify } from "sst-plugin/internal/prettify";
 import { link } from "sst-plugin/runtime/link";
-import { AWSComponent } from "./component.js";
+import { AWSComponent } from "./component";
 
 /**
  * Helper type to define function ARN type

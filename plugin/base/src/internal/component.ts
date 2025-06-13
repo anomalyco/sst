@@ -1,1 +1,1 @@
-import { ComponentOptions } from "../component.js";
+import { ComponentOptions } from "../component";

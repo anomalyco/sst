@@ -2,12 +2,12 @@ import * as sst from "sst-plugin";
 import { Transform, transform } from "sst-plugin/internal/transform";
 import { VisibleError } from "sst-plugin/error";
 import { sqs, lambda, iam } from "@pulumi/aws";
-import { DurationMinutes, DurationHours, toSeconds } from "./util/duration.js";
-import { FunctionArgs, FunctionArn } from "./function.js";
-import { QueueLambdaSubscriber } from "./queue-lambda-subscriber.js";
-import { AWSComponent } from "./component.js";
-import { arn } from "./util/arn.js";
-import { permission } from "./permission.js";
+import { DurationMinutes, DurationHours, toSeconds } from "./util/duration";
+import { FunctionArgs, FunctionArn } from "./function";
+import { QueueLambdaSubscriber } from "./queue-lambda-subscriber";
+import { AWSComponent } from "./component";
+import { arn } from "./util/arn";
+import { permission } from "./permission";
 
 export interface QueueArgs {
   /**
