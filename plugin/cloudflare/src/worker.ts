@@ -11,6 +11,9 @@ import {
 import * as cf from "@pulumi/cloudflare";
 import type { Loader, BuildOptions } from "esbuild";
 import * as sst from "sst-plugin";
+import { transform, Transform } from "sst-plugin/internal/transform";
+import { rpc } from "sst-plugin/internal/rpc";
+import { link } from "sst-plugin/runtime/link";
 import { CloudflareComponent } from "./component";
 import { WorkerUrl } from "./providers/worker-url";
 import { ZoneLookup } from "./providers/zone-lookup";
@@ -32,12 +35,12 @@ export interface WorkerArgs {
    * }
    * ```
    */
-  handler: Input<string>;
+  handler: sst.Input<string>;
   /**
    * Enable a dedicated endpoint for your Worker.
    * @default `false`
    */
-  url?: Input<boolean>;
+  url?: sst.Input<boolean>;
   /**
    * Set a custom domain for your Worker. Supports domains hosted on Cloudflare.
    *
@@ -54,13 +57,13 @@ export interface WorkerArgs {
    * }
    * ```
    */
-  domain?: Input<string>;
+  domain?: sst.Input<string>;
   /**
    * Configure how your function is bundled.
    *
    * SST bundles your worker code using [esbuild](https://esbuild.github.io/). This tree shakes your code to only include what's used.
    */
-  build?: Input<{
+  build?: sst.Input<{
     /**
      * Configure additional esbuild loaders for other file extensions. This is useful
      * when your code is importing non-JS files like `.png`, `.css`, etc.
@@ -76,7 +79,7 @@ export interface WorkerArgs {
      * }
      * ```
      */
-    loader?: Input<Record<string, Loader>>;
+    loader?: sst.Input<Record<string, Loader>>;
     /**
      * Use this to insert a string at the beginning of the generated JS file.
      *
@@ -89,7 +92,7 @@ export interface WorkerArgs {
      * }
      * ```
      */
-    banner?: Input<string>;
+    banner?: sst.Input<string>;
     /**
      * This allows you to customize esbuild config that is used.
      *
@@ -99,7 +102,7 @@ export interface WorkerArgs {
      * :::
      *
      */
-    esbuild?: Input<BuildOptions>;
+    esbuild?: sst.Input<BuildOptions>;
     /**
      * Disable if the worker code should be minified when bundled.
      *
@@ -114,7 +117,7 @@ export interface WorkerArgs {
      * }
      * ```
      */
-    minify?: Input<boolean>;
+    minify?: sst.Input<boolean>;
   }>;
   /**
    * [Link resources](/docs/linking/) to your worker. This will:
@@ -132,7 +135,7 @@ export interface WorkerArgs {
    * }
    * ```
    */
-  link?: Input<any[]>;
+  link?: sst.Input<any[]>;
   /**
    * Key-value pairs that are set as [Worker environment variables](https://developers.cloudflare.com/workers/configuration/environment-variables/).
    *
@@ -148,7 +151,7 @@ export interface WorkerArgs {
    * }
    * ```
    */
-  environment?: Input<Record<string, Input<string>>>;
+  environment?: sst.Input<Record<string, sst.Input<string>>>;
   /**
    * [Transform](/docs/components/#transform) how this component creates its underlying
    * resources.
@@ -299,7 +302,7 @@ export class Worker extends CloudflareComponent implements sst.Linkable {
     });
 
     function normalizeDev() {
-      return output(args.dev).apply((v) => $dev && v !== false);
+      return output(args.dev).apply((v) => sst.dev && v !== false);
     }
 
     function normalizeUrl() {
@@ -312,8 +315,8 @@ export class Worker extends CloudflareComponent implements sst.Linkable {
           {
             name: "SST_RESOURCE_App",
             text: jsonStringify({
-              name: $app.name,
-              stage: $app.stage,
+              name: sst.app.name,
+              stage: sst.app.stage,
             }),
           },
         ],
@@ -321,11 +324,11 @@ export class Worker extends CloudflareComponent implements sst.Linkable {
       if (!args.link) return result;
       return output(args.link).apply((links) => {
         for (let link of links) {
-          if (!Link.isLinkable(link)) continue;
+          if (!link.isLinkable(link)) continue;
           const name = output(link.urn).apply((uri) => uri.split("::").at(-1)!);
           const item = link.getSSTLink();
           const b = item.include?.find(
-            (i) => i.type === "cloudflare.binding",
+            (i: any) => i.type === "cloudflare.binding",
           ) as ReturnType<typeof binding>;
           if (b) {
             if (!result[b.binding]) result[b.binding] = [];
@@ -354,7 +357,7 @@ export class Worker extends CloudflareComponent implements sst.Linkable {
 
     function createAwsCredentials() {
       return output(
-        Link.getInclude<Permission>("aws.permission", args.link),
+        link.getInclude<any>("aws.permission", args.link),
       ).apply((permissions) => {
         if (permissions.length === 0) return;
 
@@ -369,7 +372,7 @@ export class Worker extends CloudflareComponent implements sst.Linkable {
           {
             user: user.name,
             policy: jsonStringify({
-              Statement: permissions.map((p) => ({
+              Statement: permissions.map((p: any) => ({
                 Effect: (() => {
                   const effect = p.effect ?? "allow";
                   return effect.charAt(0).toUpperCase() + effect.slice(1);
