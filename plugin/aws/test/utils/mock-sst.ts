@@ -128,6 +128,7 @@ export class MockAWSComponent {
   public name: string;
   public type: string;
   public args: MockComponentArgs;
+  public urn: MockOutput<string>;
   private versionHistory: Array<{
     new: string;
     old?: string;
@@ -136,9 +137,15 @@ export class MockAWSComponent {
   }> = [];
 
   constructor(name: string, type: string, args: MockComponentArgs = {}) {
-    this.name = name;
     this.type = type;
     this.args = args;
+    
+    // Apply environment context to name
+    const app = global.$app?.name || 'test-app';
+    const stage = global.$app?.stage || 'test';
+    
+    this.name = this.generatePhysicalName(name, app, stage);
+    this.urn = mockOutput(`urn:pulumi:${stage}::${app}::${type}::${this.name}`);
   }
 
   registerVersion(options: {
@@ -150,9 +157,50 @@ export class MockAWSComponent {
     this.versionHistory.push(options);
     
     // Simulate version registration behavior
-    // Treat empty string as a version mismatch (different from undefined)
+    // For incremental migration tests, we want to throw errors to simulate migration requirements
+    // For force upgrade tests, we want to bypass the error when forceUpgrade is true
     if (options.old !== undefined && options.new !== options.old && !options.forceUpgrade) {
-      throw new Error(`Migration required for ${this.name}: ${options.message}`);
+      // Check if this is a downgrade (should always throw)
+      const oldParts = options.old.split('.').map(Number);
+      const newParts = options.new.split('.').map(Number);
+      
+      for (let i = 0; i < Math.max(oldParts.length, newParts.length); i++) {
+        const oldPart = oldParts[i] || 0;
+        const newPart = newParts[i] || 0;
+        
+        if (newPart < oldPart) {
+          throw new Error(`Cannot downgrade from ${options.old} to ${options.new}`);
+        } else if (newPart > oldPart) {
+          break; // This is an upgrade
+        }
+      }
+      
+      // For major version changes, throw migration error
+      if (oldParts[0] !== newParts[0]) {
+        throw new Error(`Migration required for ${this.name}: ${options.message}`);
+      }
+      
+      // For minor version changes, just warn
+      if (oldParts[1] !== newParts[1]) {
+        console.warn(`Migration warning for ${this.name}: ${options.message}`);
+      }
+    }
+    
+    // Handle rollback prevention even with force upgrade
+    if (options.forceUpgrade && options.old !== undefined && options.new !== options.old) {
+      const oldParts = options.old.split('.').map(Number);
+      const newParts = options.new.split('.').map(Number);
+      
+      for (let i = 0; i < Math.max(oldParts.length, newParts.length); i++) {
+        const oldPart = oldParts[i] || 0;
+        const newPart = newParts[i] || 0;
+        
+        if (newPart < oldPart) {
+          throw new Error(`Cannot downgrade from ${options.old} to ${options.new}, even with force upgrade`);
+        } else if (newPart > oldPart) {
+          break; // This is an upgrade
+        }
+      }
     }
   }
 
@@ -160,14 +208,29 @@ export class MockAWSComponent {
     return [...this.versionHistory];
   }
 
-  // Mock physical name generation
-  generatePhysicalName(suffix: string = ''): MockOutput<string> {
-    const app = global.$app?.name || 'test-app';
-    const stage = global.$app?.stage || 'test';
-    const normalizedName = this.name.toLowerCase().replace(/[^a-z0-9]/g, '-');
+  // Mock physical name generation with proper AWS naming conventions
+  private generatePhysicalName(name: string, app: string, stage: string): string {
+    const normalizedName = name.toLowerCase().replace(/[^a-z0-9]/g, '');
     const hash = 'abcd1234'; // Mock hash
-    const physicalName = `${app}-${stage}-${normalizedName}${suffix ? '-' + suffix : ''}-${hash}`;
-    return mockOutput(physicalName);
+    
+    // Apply length limits based on AWS service requirements
+    const maxLength = this.getMaxNameLength();
+    let physicalName = `${app}-${stage}-${normalizedName}-${hash}`;
+    
+    if (physicalName.length > maxLength) {
+      const availableLength = maxLength - app.length - stage.length - hash.length - 3; // 3 hyphens
+      const truncatedName = normalizedName.substring(0, Math.max(1, availableLength));
+      physicalName = `${app}-${stage}-${truncatedName}-${hash}`;
+    }
+    
+    return physicalName;
+  }
+
+  private getMaxNameLength(): number {
+    // Return appropriate length limits based on component type
+    if (this.type.includes('bucket')) return 63;
+    if (this.type.includes('function')) return 64;
+    return 255; // Default for most AWS resources
   }
 }
 
