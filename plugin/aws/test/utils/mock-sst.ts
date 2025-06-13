@@ -150,7 +150,8 @@ export class MockAWSComponent {
     this.versionHistory.push(options);
     
     // Simulate version registration behavior
-    if (options.old && options.new !== options.old && !options.forceUpgrade) {
+    // Treat empty string as a version mismatch (different from undefined)
+    if (options.old !== undefined && options.new !== options.old && !options.forceUpgrade) {
       throw new Error(`Migration required for ${this.name}: ${options.message}`);
     }
   }
