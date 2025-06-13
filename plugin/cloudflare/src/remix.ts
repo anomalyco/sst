@@ -8,14 +8,13 @@ import {
   prepare,
   validatePlan,
 } from "./ssr-site";
-import { Component } from "../component";
-import { Hint } from "../hint";
-import { Link } from "../link";
+import { CloudflareComponent } from "./component";
+import * as sst from "sst-plugin";
 import { Kv } from "./kv";
-import { buildApp } from "../base/base-ssr-site";
+import { buildApp } from "./base/base-ssr-site";
 import { Worker } from "./worker";
 import { Plugin } from "esbuild";
-import { pathToRegexp } from "../../util/path-to-regex";
+import { pathToRegexp } from "./util/path-to-regex";
 
 export interface RemixArgs extends SsrSiteArgs {
   /**
@@ -202,7 +201,7 @@ export interface RemixArgs extends SsrSiteArgs {
  * console.log(Resource.MyBucket.name);
  * ```
  */
-export class Remix extends Component implements Link.Linkable {
+export class Remix extends CloudflareComponent implements sst.Link.Linkable {
   private assets: Kv;
   private router: Output<Worker>;
   private server: Output<Worker>;
@@ -233,9 +232,6 @@ export class Remix extends Component implements Link.Linkable {
     this.assets = storage;
     this.router = router;
     this.server = server;
-    if (!$dev) {
-      Hint.register(this.urn, this.url as Output<string>);
-    }
     this.registerOutputs({
       _metadata: {
         mode: $dev ? "placeholder" : "deployed",

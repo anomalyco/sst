@@ -3,20 +3,17 @@ import fs from "fs";
 import { globSync } from "glob";
 import crypto from "crypto";
 import { Output, Unwrap, output, all, ComponentResource } from "@pulumi/pulumi";
-import { Input } from "../input";
-import { transform, type Transform } from "../component";
-import { VisibleError } from "../error";
-import { BaseSiteFileOptions, getContentType } from "../base/base-site";
-import { BaseSsrSiteArgs } from "../base/base-ssr-site";
+import * as sst from "sst-plugin";
+import { BaseSiteFileOptions, getContentType, toPosix } from "./base/base-site";
+import { BaseSsrSiteArgs } from "./base/base-ssr-site";
 import { Kv, KvArgs } from "./kv";
 import { Worker, WorkerArgs } from "./worker";
 import { KvData } from "./providers/kv-data";
 import { DEFAULT_ACCOUNT_ID } from "./account-id";
-import { toPosix } from "../path";
 
 type Plan = ReturnType<typeof validatePlan>;
 export interface SsrSiteArgs extends BaseSsrSiteArgs {
-  domain?: Input<string>;
+  domain?: sst.Input<string>;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
@@ -25,7 +22,7 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
     /**
      * Transform the Kv resource used for uploading the assets.
      */
-    assets?: Transform<KvArgs>;
+    assets?: sst.Transform<KvArgs>;
   };
 }
 
@@ -41,7 +38,7 @@ export function prepare(args: SsrSiteArgs) {
       if (!sitePath) return ".";
 
       if (!fs.existsSync(sitePath)) {
-        throw new VisibleError(`No site found at "${path.resolve(sitePath)}"`);
+        throw new Error(`No site found at "${path.resolve(sitePath)}"`);
       }
       return sitePath;
     });
@@ -54,15 +51,12 @@ export function createKvStorage(
   args: SsrSiteArgs,
 ) {
   return new Kv(
-    ...transform(
-      args.transform?.assets,
-      `${name}Assets`,
-      {},
-      {
-        parent,
-        retainOnDelete: false,
-      },
-    ),
+    `${name}Assets`,
+    {},
+    {
+      parent,
+      retainOnDelete: false,
+    },
   );
 }
 
@@ -72,7 +66,7 @@ export function createRouter(
   args: SsrSiteArgs,
   outputPath: Output<string>,
   storage: Kv,
-  plan: Input<Plan>,
+  plan: sst.Input<Plan>,
 ) {
   return all([outputPath, plan]).apply(([outputPath, plan]) => {
     const assetManifest = generateAssetManifest();
