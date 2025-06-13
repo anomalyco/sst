@@ -1,6 +1,5 @@
 import { notFound } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
-import { logMiddleware } from "./loggingMiddleware";
 
 export type PostType = {
   id: string;
@@ -9,7 +8,6 @@ export type PostType = {
 };
 
 export const fetchPost = createServerFn()
-  .middleware([logMiddleware])
   .validator((d: string) => d)
   .handler(async ({ data }) => {
     console.info(`Fetching post with id ${data}...`);
