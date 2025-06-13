@@ -1,4 +1,4 @@
-# SST Ion Development Context
+# SST Development Context
 
 ## Build Commands
 - **Build platform**: `cd platform && bun run build`
