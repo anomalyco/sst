@@ -1,12 +1,13 @@
 import {
   ComponentResourceOptions,
-  Input,
   Output,
   output,
 } from "@pulumi/pulumi";
-import { transform, Transform } from "../../component";
+import { transform } from "sst-plugin/internal/transform";
+import { Transform } from "sst-plugin/internal/transform";
 import { Worker, WorkerArgs } from "../worker";
 import * as cloudflare from "@pulumi/cloudflare";
+import * as sst from "sst-plugin";
 
 export type WorkerBuilder = Output<{
   getWorker: () => Worker;
@@ -15,7 +16,7 @@ export type WorkerBuilder = Output<{
 
 export function workerBuilder(
   name: string,
-  definition: Input<string | WorkerArgs>,
+  definition: sst.Input<string | WorkerArgs>,
   argsTransform?: Transform<WorkerArgs>,
   opts?: ComponentResourceOptions,
 ): WorkerBuilder {
