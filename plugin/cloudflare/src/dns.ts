@@ -41,12 +41,13 @@
  */
 
 import * as cloudflare from "@pulumi/cloudflare";
-import { AliasRecord, Dns, Record } from "../dns";
-import { logicalName } from "../naming";
+import { AliasRecord, Dns, Record } from "sst-plugin/dns";
+import { logicalName } from "sst-plugin/naming";
 import { ZoneLookup } from "./providers/zone-lookup";
 import { ComponentResourceOptions, output } from "@pulumi/pulumi";
-import { Transform, transform } from "../component";
-import { Input } from "../input";
+import { Transform } from "sst-plugin/internal/transform";
+import { transform } from "sst-plugin/internal/transform";
+import * as sst from "sst-plugin";
 import { DEFAULT_ACCOUNT_ID } from "./account-id";
 import { DnsRecord as OverridableDnsRecord } from "./providers/dns-record";
 
@@ -61,7 +62,7 @@ export interface DnsArgs {
    * }
    * ```
    */
-  zone?: Input<string>;
+  zone?: sst.Input<string>;
   /**
    * Set to `true` to allow the creation of new DNS records that can replace existing ones.
    *
@@ -76,7 +77,7 @@ export interface DnsArgs {
    * }
    * ```
    */
-  override?: Input<boolean>;
+  override?: sst.Input<boolean>;
   /**
    * Configure ALIAS DNS records as [proxy records](https://developers.cloudflare.com/learning-paths/get-started-free/onboarding/proxy-dns-records/).
    *
@@ -93,7 +94,7 @@ export interface DnsArgs {
    * }
    * ```
    */
-  proxy?: Input<boolean>;
+  proxy?: sst.Input<boolean>;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
