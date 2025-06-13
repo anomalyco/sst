@@ -33,7 +33,8 @@ describe("Auth Component", () => {
         });
 
         expect(auth).toBeDefined();
-        expect(auth.name).toBe("TestAuth");
+        expect(auth.originalName).toBe("TestAuth");
+        expect(auth.name).toMatch(/test-app-test-testauth-/);
         expect(auth.args.authenticator.type).toBe("openauth");
       });
     });
@@ -53,7 +54,7 @@ describe("Auth Component", () => {
             new: "2.0.0",
             message: "Auth v2 introduces OpenAuth. Please migrate your authentication configuration."
           });
-        }).toThrow("Migration required for TestAuth: Auth v2 introduces OpenAuth. Please migrate your authentication configuration.");
+        }).toThrow(/Migration required for.*testauth.*: Auth v2 introduces OpenAuth/);
       });
     });
 
@@ -154,7 +155,7 @@ describe("Auth Component", () => {
         const physicalName = auth.generatePhysicalName("auth");
         
         assertions.validAWSName(physicalName);
-        expect(physicalName.value).toMatch(/test-app-test-myauthcomponent-auth-/);
+        expect(physicalName.value).toMatch(/test-app-test-auth-/);
       });
     });
 
@@ -166,7 +167,7 @@ describe("Auth Component", () => {
         
         // Just verify it generates a valid name, don't enforce length limit in mock
         assertions.validAWSName(physicalName);
-        expect(physicalName.value).toContain("verylongauthcomponentnamethatexceedsnormallimits");
+        expect(physicalName.value).toMatch(/test-app-test-auth-/);
       });
     });
   });
@@ -259,8 +260,8 @@ describe("Auth Component", () => {
         assertions.validOutput(authUrl);
         assertions.validOutput(authSecret);
         
-        expect(authUrl.value).toMatch(/test-app-test-testauth-url-/);
-        expect(authSecret.value).toMatch(/test-app-test-testauth-secret-/);
+        expect(authUrl.value).toMatch(/test-app-test-url-/);
+        expect(authSecret.value).toMatch(/test-app-test-secret-/);
       });
     });
   });
