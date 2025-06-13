@@ -1,10 +1,12 @@
 import { all, ComponentResourceOptions, Output, } from "@pulumi/pulumi";
 import * as cf from "@pulumi/cloudflare";
 import * as cloudflare from "@pulumi/cloudflare";
-import { Component, Transform, transform } from "../component";
+import { CloudflareComponent } from "./component";
+import { Transform } from "sst-plugin/internal/transform";
+import { transform } from "sst-plugin/internal/transform";
 import { Worker, WorkerArgs } from "./worker";
 import { DEFAULT_ACCOUNT_ID } from "./account-id";
-import { Input } from "../input";
+import * as sst from "sst-plugin";
 import { WorkerBuilder, workerBuilder } from "./helpers/worker-builder";
 
 export interface CronArgs {
@@ -30,7 +32,7 @@ export interface CronArgs {
    * }
    * ```
    */
-  job: Input<string | WorkerArgs>;
+  job: sst.Input<string | WorkerArgs>;
   /**
    * The schedule for the cron job.
    *
@@ -54,7 +56,7 @@ export interface CronArgs {
    * }
    * ```
    */
-  schedules: Input<string[]>;
+  schedules: sst.Input<string[]>;
   /**
    * [Transform](/docs/components/#transform) how this component creates its underlying
    * resources.
@@ -105,7 +107,7 @@ export interface CronArgs {
  * });
  * ```
  */
-export class Cron extends Component {
+export class Cron extends CloudflareComponent {
   private worker: WorkerBuilder;
   private trigger: Output<cf.WorkerCronTrigger>;
 
@@ -161,4 +163,4 @@ export class Cron extends Component {
 
 const __pulumiType = "sst:cloudflare:Cron";
 // @ts-expect-error
-Worker.__pulumiType = __pulumiType;
+Cron.__pulumiType = __pulumiType;
