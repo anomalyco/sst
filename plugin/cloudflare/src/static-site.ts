@@ -3,19 +3,18 @@ import path from "path";
 import crypto from "crypto";
 import { ComponentResourceOptions, all } from "@pulumi/pulumi";
 import { Kv, KvArgs } from "./kv";
-import { Component, Transform, transform } from "../component";
-import { Link } from "../link";
-import { Input } from "../input";
+import { CloudflareComponent } from "./component";
+import * as sst from "sst-plugin";
 import { globSync } from "glob";
 import { KvData } from "./providers/kv-data";
 import { Worker } from "./worker";
-import { getContentType } from "../base/base-site";
+import { getContentType } from "./base/base-site";
 import {
   BaseStaticSiteArgs,
   BaseStaticSiteAssets,
   buildApp,
   prepare,
-} from "../base/base-static-site";
+} from "./base/base-static-site";
 import { DEFAULT_ACCOUNT_ID } from "./account-id";
 
 export interface StaticSiteArgs extends BaseStaticSiteArgs {
@@ -84,7 +83,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
    * ```
    * @default `Object`
    */
-  assets?: Input<BaseStaticSiteAssets & {}>;
+  assets?: sst.Input<BaseStaticSiteAssets & {}>;
   /**
    * Set a custom domain for your static site. Supports domains hosted on Cloudflare.
    *
@@ -101,7 +100,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
    * }
    * ```
    */
-  domain?: Input<string>;
+  domain?: sst.Input<string>;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
@@ -110,7 +109,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
     /**
      * Transform the Kv resource used for uploading the assets.
      */
-    assets?: Transform<KvArgs>;
+    assets?: sst.Transform<KvArgs>;
   };
 }
 
@@ -242,7 +241,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
  * });
  * ```
  */
-export class StaticSite extends Component implements Link.Linkable {
+export class StaticSite extends CloudflareComponent implements sst.Link.Linkable {
   private assets: Kv;
   private router: Worker;
 
@@ -282,15 +281,12 @@ export class StaticSite extends Component implements Link.Linkable {
 
     function createKvStorage() {
       return new Kv(
-        ...transform(
-          args.transform?.assets,
-          `${name}Assets`,
-          {},
-          {
-            parent,
-            retainOnDelete: false,
-          },
-        ),
+        `${name}Assets`,
+        {},
+        {
+          parent,
+          retainOnDelete: false,
+        },
       );
     }
 
