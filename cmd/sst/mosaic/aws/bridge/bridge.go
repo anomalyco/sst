@@ -156,7 +156,7 @@ func NewClient(ctx context.Context, as *appsync.Connection, source string, prefi
 		out:     make(chan Message, 1000),
 	}
 	go func() {
-		for packet := range sorted(ctx, sub) {
+		sorted(ctx, sub)(func(packet Packet) bool {
 			pending, ok := result.pending[packet.ID]
 			if !ok {
 				pending = make(chan []byte, 100)
@@ -170,14 +170,15 @@ func NewClient(ctx context.Context, as *appsync.Connection, source string, prefi
 			}
 			bytes, err := base64.StdEncoding.DecodeString(packet.Data)
 			if err != nil {
-				continue
+				return true
 			}
 			pending <- bytes
 			if packet.Final {
 				close(pending)
 				delete(result.pending, packet.ID)
 			}
-		}
+			return true
+		})
 	}()
 
 	return result

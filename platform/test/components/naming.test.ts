@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "bun:test";
 import { physicalName } from "../../src/components/naming.js";
 
 // @ts-ignore
@@ -8,21 +8,21 @@ global.$app = {
 };
 
 describe("generateName", function () {
-  it(() => expect(physicalName(10, "foo")).toMatch(/^f-[a-z]{8}$/));
-  it(() => expect(physicalName(11, "foo")).toMatch(/^fo-[a-z]{8}$/));
-  it(() => expect(physicalName(12, "foo")).toMatch(/^foo-[a-z]{8}$/));
-  it(() => expect(physicalName(13, "foo")).toMatch(/^foo-[a-z]{8}$/));
-  it(() => expect(physicalName(14, "foo")).toMatch(/^t-foo-[a-z]{8}$/));
-  it(() => expect(physicalName(15, "foo")).toMatch(/^te-foo-[a-z]{8}$/));
-  it(() => expect(physicalName(16, "foo")).toMatch(/^tes-foo-[a-z]{8}$/));
-  it(() => expect(physicalName(17, "foo")).toMatch(/^test-foo-[a-z]{8}$/));
-  it(() => expect(physicalName(18, "foo")).toMatch(/^test-foo-[a-z]{8}$/));
-  it(() => expect(physicalName(19, "foo")).toMatch(/^a-test-foo-[a-z]{8}$/));
-  it(() => expect(physicalName(20, "foo")).toMatch(/^ap-test-foo-[a-z]{8}$/));
-  it(() => expect(physicalName(21, "foo")).toMatch(/^app-test-foo-[a-z]{8}$/));
-  it(() => expect(physicalName(22, "foo")).toMatch(/^app-test-foo-[a-z]{8}$/));
-  it(() => expect(physicalName(23, "foo")).toMatch(/^app-test-foo-[a-z]{8}$/));
-  it(() =>
+  it("should generate name with length 10", () => expect(physicalName(10, "foo")).toMatch(/^f-[a-z]{8}$/));
+  it("should generate name with length 11", () => expect(physicalName(11, "foo")).toMatch(/^fo-[a-z]{8}$/));
+  it("should generate name with length 12", () => expect(physicalName(12, "foo")).toMatch(/^foo-[a-z]{8}$/));
+  it("should generate name with length 13", () => expect(physicalName(13, "foo")).toMatch(/^foo-[a-z]{8}$/));
+  it("should generate name with length 14", () => expect(physicalName(14, "foo")).toMatch(/^t-foo-[a-z]{8}$/));
+  it("should generate name with length 15", () => expect(physicalName(15, "foo")).toMatch(/^te-foo-[a-z]{8}$/));
+  it("should generate name with length 16", () => expect(physicalName(16, "foo")).toMatch(/^tes-foo-[a-z]{8}$/));
+  it("should generate name with length 17", () => expect(physicalName(17, "foo")).toMatch(/^test-foo-[a-z]{8}$/));
+  it("should generate name with length 18", () => expect(physicalName(18, "foo")).toMatch(/^test-foo-[a-z]{8}$/));
+  it("should generate name with length 19", () => expect(physicalName(19, "foo")).toMatch(/^a-test-foo-[a-z]{8}$/));
+  it("should generate name with length 20", () => expect(physicalName(20, "foo")).toMatch(/^ap-test-foo-[a-z]{8}$/));
+  it("should generate name with length 21", () => expect(physicalName(21, "foo")).toMatch(/^app-test-foo-[a-z]{8}$/));
+  it("should generate name with length 22", () => expect(physicalName(22, "foo")).toMatch(/^app-test-foo-[a-z]{8}$/));
+  it("should generate name with length 23", () => expect(physicalName(23, "foo")).toMatch(/^app-test-foo-[a-z]{8}$/));
+  it("should generate name with suffix", () =>
     expect(physicalName(23, "foo", ".fifo")).toMatch(
       /^test-foo-[a-z]{8}\.fifo$/,
     ),

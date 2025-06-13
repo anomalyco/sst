@@ -4,7 +4,7 @@
   "type": "module",
   "prettier": {},
   "scripts": {
-    "test": "vitest run",
+    "test": "bun test",
     "dev": "tsc --watch --noEmit",
     "build": "bash ./scripts/build"
   },
@@ -34,7 +34,7 @@
     "@pulumiverse/vercel": "1.11.0",
     "@smithy/smithy-client": "2.1.18",
     "@tsconfig/node18": "18.2.2",
-    "@types/node": "^22.10.0",
+    "@types/node": "^24.0.1",
     "acorn": "8.11.3",
     "acorn-walk": "8.3.2",
     "archiver": "6.0.1",
@@ -51,7 +51,7 @@
     "@types/archiver": "6.0.2",
     "@types/aws-lambda": "8.10.133",
     "@types/bun": "1.2.1",
-    "vitest": "^1.2.2"
+    "vitest": "^1.6.1"
   },
   "overrides": {
     "string-width": "4.2.3"
