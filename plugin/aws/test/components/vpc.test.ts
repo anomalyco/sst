@@ -376,7 +376,7 @@ describe("VPC Component", () => {
         const physicalName = vpc.generatePhysicalName("vpc");
         
         assertions.validAWSName(physicalName);
-        expect(physicalName.value).toMatch(/test-app-test-vpc-/);
+        expect(physicalName.value).toMatch(/test-app-test-mytestvpc-vpc-/);
       });
     });
 

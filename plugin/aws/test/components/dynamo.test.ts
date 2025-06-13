@@ -452,7 +452,7 @@ describe("Dynamo Component", () => {
         const physicalName = table.generatePhysicalName("table");
         
         assertions.validAWSName(physicalName);
-        expect(physicalName.value).toMatch(/test-app-test-table-/);
+        expect(physicalName.value).toMatch(/test-app-test-mytesttable-table-/);
       });
     });
 

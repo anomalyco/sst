@@ -155,7 +155,7 @@ describe("Auth Component", () => {
         const physicalName = auth.generatePhysicalName("auth");
         
         assertions.validAWSName(physicalName);
-        expect(physicalName.value).toMatch(/test-app-test-auth-/);
+        expect(physicalName.value).toMatch(/test-app-test-myauthcomponent-auth-/);
       });
     });
 
@@ -167,7 +167,7 @@ describe("Auth Component", () => {
         
         // Just verify it generates a valid name, don't enforce length limit in mock
         assertions.validAWSName(physicalName);
-        expect(physicalName.value).toMatch(/test-app-test-auth-/);
+        expect(physicalName.value).toMatch(/test-app-test-verylongauthcomponentnamethatexceedsnormallimits-auth-/);
       });
     });
   });
@@ -260,8 +260,8 @@ describe("Auth Component", () => {
         assertions.validOutput(authUrl);
         assertions.validOutput(authSecret);
         
-        expect(authUrl.value).toMatch(/test-app-test-url-/);
-        expect(authSecret.value).toMatch(/test-app-test-secret-/);
+        expect(authUrl.value).toMatch(/test-app-test-testauth-url-/);
+        expect(authSecret.value).toMatch(/test-app-test-testauth-secret-/);
       });
     });
   });

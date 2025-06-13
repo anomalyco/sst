@@ -255,7 +255,7 @@ describe("Bucket Component", () => {
         const physicalName = bucket.generatePhysicalName("bucket");
         
         assertions.validAWSName(physicalName);
-        expect(physicalName.value).toMatch(/test-app-test-bucket-/);
+        expect(physicalName.value).toMatch(/test-app-test-mytestbucket-bucket-/);
       });
     });
 

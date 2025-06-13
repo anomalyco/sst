@@ -209,17 +209,23 @@ export class MockAWSComponent {
   public generatePhysicalName(name: string): MockOutput<string> {
     const app = global.$app?.name || 'test-app';
     const stage = global.$app?.stage || 'test';
-    const normalizedName = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const normalizedComponentName = this.originalName.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const normalizedResourceName = name.toLowerCase().replace(/[^a-z0-9]/g, '');
     const hash = 'abcd1234'; // Mock hash
     
     // Apply length limits based on AWS service requirements
     const maxLength = this.getMaxNameLength();
-    let physicalName = `${app}-${stage}-${normalizedName}-${hash}`;
+    let physicalName = `${app}-${stage}-${normalizedComponentName}-${normalizedResourceName}-${hash}`;
     
     if (physicalName.length > maxLength) {
-      const availableLength = maxLength - app.length - stage.length - hash.length - 3; // 3 hyphens
-      const truncatedName = normalizedName.substring(0, Math.max(1, availableLength));
-      physicalName = `${app}-${stage}-${truncatedName}-${hash}`;
+      const availableLength = maxLength - app.length - stage.length - hash.length - 4; // 4 hyphens
+      const totalNameLength = normalizedComponentName.length + normalizedResourceName.length + 1; // +1 for hyphen
+      const componentLength = Math.floor((availableLength * normalizedComponentName.length) / totalNameLength);
+      const resourceLength = availableLength - componentLength - 1;
+      
+      const truncatedComponent = normalizedComponentName.substring(0, Math.max(1, componentLength));
+      const truncatedResource = normalizedResourceName.substring(0, Math.max(1, resourceLength));
+      physicalName = `${app}-${stage}-${truncatedComponent}-${truncatedResource}-${hash}`;
     }
     
     return mockOutput(physicalName);

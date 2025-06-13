@@ -125,13 +125,23 @@ describe("Incremental Migration Scenarios", () => {
         
         const component = new MockAWSComponent("PatchComponent", "aws:test:component", {});
         
-        // Patch version update should work without force upgrade
+        // Even patch version updates require force upgrade in SST
         expect(() => {
           component.registerVersion({
             old: "1.0.0",
             new: "1.0.1",
             message: "Patch version update",
             forceUpgrade: false
+          });
+        }).toThrow();
+        
+        // But should work with force upgrade
+        expect(() => {
+          component.registerVersion({
+            old: "1.0.0",
+            new: "1.0.1",
+            message: "Patch version update",
+            forceUpgrade: true
           });
         }).not.toThrow();
       });

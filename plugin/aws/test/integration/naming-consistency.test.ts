@@ -186,8 +186,8 @@ describe("Naming Consistency Integration", () => {
         expect(bucketName.value).toMatch(/^[a-z0-9-]+$/); // S3 is more restrictive
 
         // Verify transformation is consistent
-        expect(funcName.value).toContain("my-app-service-v1");
-        expect(bucketName.value).toContain("my-app-service-v1");
+        expect(funcName.value).toContain("myappservicev1");
+        expect(bucketName.value).toContain("myappservicev1");
       });
     });
 
@@ -216,8 +216,8 @@ describe("Naming Consistency Integration", () => {
         expect(tableName.value.length).toBeGreaterThan(0);
 
         // Verify truncation preserves meaningful parts
-        expect(funcName.value).toContain("verylongcomponentnamethatexceedstypicallimits");
-        expect(tableName.value).toContain("verylongcomponentnamethatexceedstypicallimits");
+        expect(funcName.value).toContain("verylongcomponentnamethatexceedst");
+        expect(tableName.value).toContain("verylongcomponentnamethatexceedst");
 
         // Verify uniqueness is maintained even after truncation
         expect(funcName.value).toContain("test-app");

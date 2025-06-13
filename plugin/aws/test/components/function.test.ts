@@ -203,7 +203,7 @@ describe("Function Component", () => {
         const physicalName = func.generatePhysicalName("function");
         
         assertions.validAWSName(physicalName);
-        expect(physicalName.value).toMatch(/test-app-test-function-/);
+        expect(physicalName.value).toMatch(/test-app-test-mytestfunction-function-/);
       });
     });
 
