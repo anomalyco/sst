@@ -8,6 +8,6 @@ export default $config({
     }
   },
   async run() {
-    new sst.aws.TanstackStart('MyWeb')
+    new sst.aws.TanStackStart('MyWeb')
   },
 })
