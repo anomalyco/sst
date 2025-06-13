@@ -146,7 +146,7 @@ The repackage branch is restructuring SST's architecture by migrating from a mon
 
 ### 🔥 **Critical Priority - Cloudflare Plugin Migration**
 
-#### **Phase 1: Foundation Fixes** ✅ **STEP 1 COMPLETE** 🚧 **STEP 2 IN PROGRESS**
+#### **Phase 1: Foundation Fixes** ✅ **COMPLETED**
 - [x] **Fix Component Base Class**: Update `component.ts` to match AWS plugin pattern ✅ **COMPLETED**
   - ✅ Add `registerVersion()` method
   - ✅ Add `componentType` and `componentName` properties  
@@ -154,11 +154,26 @@ The repackage branch is restructuring SST's architecture by migrating from a mon
   - ✅ Add proper transformation system
   - ✅ Created comprehensive tests (8 tests passing)
   - ✅ Maintain backward compatibility with `Component` export
-- [ ] **Standardize Import Paths**: Update all files to use `sst-plugin` namespace 🚧 **IN PROGRESS**
-  - 🚧 Started with worker.ts - needs completion
-  - ❌ Replace relative imports with plugin imports in all 24 files
-  - ❌ Ensure consistent `sst.Input<T>` usage
-  - ❌ Fix utility imports
+- [x] **Standardize Import Paths**: Update all files to use `sst-plugin` namespace ✅ **COMPLETED**
+  - ✅ **worker.ts** - Fixed imports and global variable usage
+  - ✅ **bucket.ts** - Fixed imports, updated to CloudflareComponent, tests passing
+  - ✅ **kv.ts** - Fixed imports, updated to CloudflareComponent, added tests (5 tests)
+  - ✅ **d1.ts** - Fixed imports, updated to CloudflareComponent, added tests (8 tests)
+  - ✅ **auth.ts** - Fixed imports, updated to CloudflareComponent, added tests (7 tests)
+  - ✅ **cron.ts** - Fixed imports, updated to CloudflareComponent, added tests (8 tests), fixed Pulumi type bug
+  - ✅ **helpers/worker-builder.ts** - Fixed imports to use sst-plugin, added tests (8 tests)
+  - ✅ **dns.ts** - Fixed imports to use sst-plugin namespace, added tests (9 tests)
+  - ✅ **queue.ts** - Fixed imports, updated to CloudflareComponent, added tests (7 tests)
+  - ✅ **binding.ts** - Already has correct imports, tests passing (6 tests)
+  - ✅ **account-id.ts** - Already has correct structure, added tests (6 tests)
+  - ✅ **providers/kv-data.ts** - Already has correct imports, added tests (8 tests)
+  - ✅ **providers/worker-url.ts** - Already has correct imports, added tests (9 tests)
+  - ✅ **providers/zone-lookup.ts** - Already has correct imports, added tests (9 tests)
+  - ✅ **remix.ts** - Fixed imports, updated to CloudflareComponent, created base utilities, added tests (8 tests)
+  - ✅ **ssr-site.ts** - Fixed imports, updated to use local base files and sst-plugin types
+  - ✅ **static-site.ts** - Fixed imports, updated to CloudflareComponent, created base-static-site, added tests (8 tests)
+  - ✅ **providers/dns-record.ts** - Fixed imports, simplified dynamic provider, added tests (5 tests)
+  - ✅ **helpers/fetch.ts** - Already has correct structure, added comprehensive tests (6 tests)
 
 #### **Phase 2: Migration System** (3-4 hours)
 - [ ] **Implement Version Management**: Add migration capabilities
