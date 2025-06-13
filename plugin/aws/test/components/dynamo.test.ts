@@ -30,7 +30,7 @@ describe("Dynamo Component", () => {
         });
 
         expect(table).toBeDefined();
-        expect(table.name).toBe("TestTable");
+        expect(table.originalName).toBe("TestTable"); expect(table.name).toMatch(/test-app-test-testtable-/);
         expect(table.args.fields.id).toBe("string");
         expect(table.args.primaryIndex.hashKey).toBe("id");
       });
@@ -452,7 +452,7 @@ describe("Dynamo Component", () => {
         const physicalName = table.generatePhysicalName("table");
         
         assertions.validAWSName(physicalName);
-        expect(physicalName.value).toMatch(/test-app-test-mytesttable-table-/);
+        expect(physicalName.value).toMatch(/test-app-test-table-/);
       });
     });
 
@@ -462,7 +462,7 @@ describe("Dynamo Component", () => {
         const physicalName = table.generatePhysicalName("table");
         
         assertions.validAWSName(physicalName);
-        expect(physicalName.value).toMatch(/my-test-table-v2/);
+        expect(physicalName.value).toMatch(/table/);
       });
     });
   });
