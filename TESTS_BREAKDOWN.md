@@ -28,10 +28,13 @@
    - ✅ Test package manager detection (npm, bun, etc.)
    - ✅ Mock external command execution
 
-4. Create `pkg/project/run_test.go`
-   - Test command execution
-   - Test environment variable handling
-   - Test process spawning and monitoring
+4. ✅ **COMPLETED** Create `pkg/project/run_test.go`
+   - ✅ Test command execution entry point
+   - ✅ Test environment variable handling
+   - ✅ Test process spawning and monitoring
+   - ✅ Test protected stage validation
+   - ✅ Test command validation (deploy, remove, diff, refresh)
+   - ✅ Test StackInput structure validation
 
 **Test utilities needed:**
 - Mock filesystem (`afero` or similar)
