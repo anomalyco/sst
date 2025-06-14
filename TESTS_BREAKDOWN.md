@@ -213,8 +213,18 @@
      - ✅ Test successful execution when wait is disabled
      - ✅ Test struct field validation and type checking
      - ✅ Test embedded AwsResource structure validation
-   - `aws-distribution-invalidation_test.go` - **NEXT TO IMPLEMENT**
-   - `aws-distribution-invalidation_test.go`
+   - ✅ **COMPLETED** `aws-distribution-invalidation_test.go` - Comprehensive tests for CloudFront distribution invalidation
+     - ✅ Test Create method with no AWS provider error handling
+     - ✅ Test Update method with different invalidation scenarios
+     - ✅ Test input validation for DistributionInvalidationInputs structure
+     - ✅ Test path separation logic for file vs wildcard paths
+     - ✅ Test chunk calculation for large batches exceeding CloudFront limits
+     - ✅ Test constants validation (FILE_LIMIT=3000, WILDCARD_LIMIT=15)
+     - ✅ Test edge cases including empty paths, long IDs, and special characters
+     - ✅ Test large batch handling for files and wildcards
+     - ✅ Test struct field validation and type checking
+     - ✅ Test embedded AwsResource structure validation
+   - `aws-function-code-updater_test.go` - **NEXT TO IMPLEMENT**
    - `aws-function-code-updater_test.go`
    - `aws-function-environment-update_test.go`
    - `aws-hosted-zone-lookup_test.go`
