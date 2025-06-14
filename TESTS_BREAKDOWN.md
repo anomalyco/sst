@@ -560,16 +560,21 @@ SST uses Pulumi extensively for infrastructure provisioning. We need to implemen
    - ✅ Test environment-specific cost controls
    - ✅ Comprehensive test coverage with 8 test cases
 
-4. **NEXT STEP** Create `platform/test/policies/aws/compliance.test.ts`
-   - Enforce encryption at rest and in transit
-   - Validate backup and disaster recovery configurations
-   - Check logging and monitoring requirements
-   - Ensure compliance with organizational standards
+4. ✅ **COMPLETED** Create `platform/test/policies/aws/compliance.test.ts`
+   - ✅ Test encryption at rest and in transit requirements
+   - ✅ Validate backup and disaster recovery configurations
+   - ✅ Check logging and monitoring compliance
+   - ✅ Verify access control and identity management
+   - ✅ Test network security and isolation policies
+   - ✅ Validate data classification and handling procedures
+   - ✅ Check incident response and business continuity plans
+   - ✅ 8 comprehensive test cases covering all major compliance areas
 
-5. **Create `platform/test/policies/shared/naming-conventions.ts`**
+5. **NEXT STEP** Create `platform/test/policies/shared/naming-conventions.test.ts`
    - Validate resource naming follows SST conventions
    - Ensure consistent tagging across resources
    - Check resource prefixes and suffixes
+   - Test naming pattern validation for different resource types
 
 **Policy enforcement:**
 - Run policies during `sst deploy` and `sst dev`
