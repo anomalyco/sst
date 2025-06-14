@@ -98,6 +98,8 @@ github.com/aws/aws-sdk-go-v2/service/cloudfront v1.38.4 h1:I/sQ9uGOs72/483obb2SP
 github.com/aws/aws-sdk-go-v2/service/cloudfront v1.38.4/go.mod h1:P6ByphKl2oNQZlv4WsCaLSmRncKEcOnbitYLtJPfqZI=
 github.com/aws/aws-sdk-go-v2/service/cloudfrontkeyvaluestore v1.8.16 h1:VxfVyaJ/0XKzjRq79MA56vNfkcRVZ64AoqD7KiPS/yk=
 github.com/aws/aws-sdk-go-v2/service/cloudfrontkeyvaluestore v1.8.16/go.mod h1:HD1r3kr68+NEPZw+JbHzrfJ1QlhDCujDjlwI+hJrbWU=
+github.com/aws/aws-sdk-go-v2/service/costexplorer v1.51.1 h1:JbMktMCPMjlTwzmy0naf32foE8sRqhhF168INXesYcM=
+github.com/aws/aws-sdk-go-v2/service/costexplorer v1.51.1/go.mod h1:KHj6GnIt74Ke10Z4kRFDoEvldmSA6mkYJMy804s9E7E=
 github.com/aws/aws-sdk-go-v2/service/ecr v1.32.0 h1:lZoKOTEQUf5Oi9qVaZM/Hb0Z6SHIwwpDjbLFOVgB2t8=
 github.com/aws/aws-sdk-go-v2/service/ecr v1.32.0/go.mod h1:RhaP7Wil0+uuuhiE4FzOOEFZwkmFAk1ZflXzK+O3ptU=
 github.com/aws/aws-sdk-go-v2/service/ecs v1.53.1 h1:sAT2jzHkds1cv7VvNpzFfCw2w3zAkh306x3MTLPjuoA=
