@@ -311,6 +311,21 @@
      - ✅ Test dimension change handling requiring table recreation vs updates
      - ✅ Test struct field validation and embedded AwsResource structure
      - ✅ Test CreateResult and UpdateResult structure validation
+   - ✅ **COMPLETED** `cloudflare-dns-record_test.go` - Comprehensive tests for Cloudflare DNS record management
+     - ✅ Test Create and Update methods with error handling scenarios
+     - ✅ Test input validation for all required fields (ZoneId, Type, Name, ApiToken)
+     - ✅ Test struct validation for CloudflareDnsRecordInputs, CloudflareDnsRecordOutputs, and Data structures
+     - ✅ Test edge cases including unicode characters, IPv6 addresses, and complex TXT records
+     - ✅ Test all DNS record types (A, AAAA, CNAME, MX, TXT, NS, PTR, CAA, SRV, DNSKEY)
+     - ✅ Test payload structure differences between standard records (content field) and data records (data field)
+     - ✅ Test URL construction, authorization headers, and TTL defaults
+     - ✅ Test error handling including "already exists" detection and API error responses
+     - ✅ Test CloudflareResource embedded structure validation
+   - **NEXT** `cloudflare-worker-assets_test.go` - Tests for Cloudflare Worker assets management
+   - **NEXT** `cloudflare-worker-script_test.go` - Tests for Cloudflare Worker script deployment
+   - **NEXT** `vercel-dns-record_test.go` - Tests for Vercel DNS record management
+   - **NEXT** `resource_test.go` - Tests for core resource functionality
+   - **NEXT** `run_test.go` - Tests for resource execution and lifecycle management
 
 **Test utilities needed:**
 - AWS SDK mocks (`aws-sdk-go-v2/aws/testing`)
