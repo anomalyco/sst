@@ -6,7 +6,8 @@ import {
 } from "@pulumi/pulumi";
 import { CloudflareComponent } from "./component";
 import { Transform } from "sst-plugin/internal/transform";
-import { Link } from "sst-plugin/link";
+import * as sst from "sst-plugin";
+import { Linkable, Definition } from "sst-plugin/linkable";
 import { WorkerArgs, Worker } from "./worker";
 import { PrivateKey } from "@pulumi/tls";
 import { BucketPolicyArgs } from "@pulumi/aws/s3";
@@ -18,12 +19,18 @@ export interface AuthArgs {
   };
 }
 
-export class Auth extends CloudflareComponent implements Link.Linkable {
+export class Auth extends CloudflareComponent implements Linkable {
   private readonly _key: PrivateKey;
   private readonly _authenticator: Output<Worker>;
 
   constructor(name: string, args: AuthArgs, opts?: ComponentResourceOptions) {
     super(__pulumiType, name, args, opts);
+
+    // Register version for migration tracking
+    this.registerVersion({
+      new: 1,
+      old: sst.version[name],
+    });
 
     this._key = new PrivateKey(`${name}Keypair`, {
       algorithm: "RSA",
@@ -55,7 +62,7 @@ export class Auth extends CloudflareComponent implements Link.Linkable {
   }
 
   /** @internal */
-  public getSSTLink(): Link.Definition {
+  public getSSTLink(): Definition {
     return {
       properties: {
         url: this._authenticator.url,

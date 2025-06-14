@@ -239,6 +239,12 @@ export class Worker extends CloudflareComponent implements sst.Linkable {
 
     const parent = this;
 
+    // Register version for migration tracking
+    this.registerVersion({
+      new: 1,
+      old: sst.version[name],
+    });
+
     const dev = normalizeDev();
     const urlEnabled = normalizeUrl();
 

@@ -116,6 +116,12 @@ export class Cron extends CloudflareComponent {
 
     const parent = this;
 
+    // Register version for migration tracking
+    this.registerVersion({
+      new: 1,
+      old: sst.version[name],
+    });
+
     const worker = createWorker();
     const trigger = createTrigger();
 

@@ -5,6 +5,7 @@ import { ComponentResourceOptions, all } from "@pulumi/pulumi";
 import { Kv, KvArgs } from "./kv";
 import { CloudflareComponent } from "./component";
 import * as sst from "sst-plugin";
+import { Transform } from "sst-plugin/internal/transform";
 import { globSync } from "glob";
 import { KvData } from "./providers/kv-data";
 import { Worker } from "./worker";
@@ -109,7 +110,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
     /**
      * Transform the Kv resource used for uploading the assets.
      */
-    assets?: sst.Transform<KvArgs>;
+    assets?: Transform<KvArgs>;
   };
 }
 
@@ -241,7 +242,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
  * });
  * ```
  */
-export class StaticSite extends CloudflareComponent implements sst.Link.Linkable {
+export class StaticSite extends CloudflareComponent implements sst.Linkable {
   private assets: Kv;
   private router: Worker;
 
@@ -253,6 +254,12 @@ export class StaticSite extends CloudflareComponent implements sst.Link.Linkable
     super(__pulumiType, name, args, opts);
 
     const parent = this;
+
+    // Register version for migration tracking
+    this.registerVersion({
+      new: 1,
+      old: sst.version[name],
+    });
     const { sitePath, environment, indexPage } = prepare(args);
     const outputPath = $dev
       ? path.join($cli.paths.platform, "functions", "empty-site")

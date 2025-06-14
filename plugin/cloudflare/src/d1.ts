@@ -3,7 +3,7 @@ import * as cloudflare from "@pulumi/cloudflare";
 import * as sst from "sst-plugin";
 import { CloudflareComponent } from "./component";
 import { Transform, transform } from "sst-plugin/internal/transform";
-import { Link } from "sst-plugin/link";
+import { Linkable } from "sst-plugin/linkable";
 import { binding } from "./binding";
 import { DEFAULT_ACCOUNT_ID } from "./account-id";
 
@@ -54,13 +54,19 @@ export interface D1Args {
  * ).first();
  * ```
  */
-export class D1 extends CloudflareComponent implements Link.Linkable {
+export class D1 extends CloudflareComponent implements Linkable {
   private database: cloudflare.D1Database;
 
   constructor(name: string, args?: D1Args, opts?: ComponentResourceOptions) {
     super(__pulumiType, name, args, opts);
 
     const parent = this;
+
+    // Register version for migration tracking
+    this.registerVersion({
+      new: 1,
+      old: sst.version[name],
+    });
 
     const db = createDB();
 

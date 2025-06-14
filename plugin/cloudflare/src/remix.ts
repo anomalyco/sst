@@ -201,7 +201,7 @@ export interface RemixArgs extends SsrSiteArgs {
  * console.log(Resource.MyBucket.name);
  * ```
  */
-export class Remix extends CloudflareComponent implements sst.Link.Linkable {
+export class Remix extends CloudflareComponent implements sst.Linkable {
   private assets: Kv;
   private router: Output<Worker>;
   private server: Output<Worker>;
@@ -214,10 +214,16 @@ export class Remix extends CloudflareComponent implements sst.Link.Linkable {
     super(__pulumiType, name, args, opts);
 
     const parent = this;
+
+    // Register version for migration tracking
+    this.registerVersion({
+      new: 1,
+      old: sst.version[name],
+    });
     const { sitePath } = prepare(args);
     const isUsingVite = checkIsUsingVite();
     const storage = createKvStorage(parent, name, args);
-    const outputPath = $dev ? sitePath : buildApp(parent, name, args, sitePath);
+    const outputPath = sst.dev ? sitePath : buildApp(parent, name, args, sitePath);
     const { buildMeta } = loadBuildOutput();
     const plan = buildPlan();
     const { router, server } = createRouter(
@@ -234,7 +240,7 @@ export class Remix extends CloudflareComponent implements sst.Link.Linkable {
     this.server = server;
     this.registerOutputs({
       _metadata: {
-        mode: $dev ? "placeholder" : "deployed",
+        mode: sst.dev ? "placeholder" : "deployed",
         path: sitePath,
         url: this.url,
       },
@@ -250,7 +256,7 @@ export class Remix extends CloudflareComponent implements sst.Link.Linkable {
 
     function loadBuildOutput() {
       return {
-        buildMeta: $dev ? loadBuildMetadataPlaceholder() : loadBuildMetadata(),
+        buildMeta: sst.dev ? loadBuildMetadataPlaceholder() : loadBuildMetadata(),
       };
     }
 

@@ -3,7 +3,7 @@ import * as cloudflare from "@pulumi/cloudflare";
 import * as sst from "sst-plugin";
 import { CloudflareComponent } from "./component";
 import { Transform, transform } from "sst-plugin/internal/transform";
-import { Link } from "sst-plugin/link";
+import { Linkable } from "sst-plugin/linkable";
 import { binding } from "./binding";
 import { DEFAULT_ACCOUNT_ID } from "./account-id";
 
@@ -24,13 +24,19 @@ export interface QueueArgs {
  * The `Queue` component lets you add a [Cloudflare Queue](https://developers.cloudflare.com/queues/) to
  * your app.
  */
-export class Queue extends CloudflareComponent implements Link.Linkable {
+export class Queue extends CloudflareComponent implements Linkable {
   private queue: cloudflare.Queue;
 
   constructor(name: string, args?: QueueArgs, opts?: sst.ComponentOptions) {
     super(__pulumiType, name, args, opts);
 
     const parent = this;
+
+    // Register version for migration tracking
+    this.registerVersion({
+      new: 1,
+      old: sst.version[name],
+    });
 
     const queue = create();
 
