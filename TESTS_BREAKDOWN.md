@@ -1,9 +1,11 @@
 # SST Testing Strategy Breakdown
 
 ## Current Test Status
-- ✅ **4 packages** have tests (11 test files total)
-- ❌ **76+ packages** missing tests
-- 🎯 **Target**: Comprehensive test coverage for critical functionality
+- ✅ **4 packages** have unit tests (11 test files total)
+- ❌ **76+ packages** missing unit tests
+- ⚠️ **CRITICAL GAP**: **NO integration tests** exist for real AWS infrastructure
+- ⚠️ **NO CI/CD** pipeline exists
+- 🎯 **Target**: Comprehensive test coverage for critical functionality + real AWS testing
 
 ## Phase 1: Core Business Logic (High Priority)
 
@@ -199,20 +201,177 @@
    - Test dependency resolution
    - Test npm command execution
 
-## Phase 5: Integration Tests (Low Priority)
+## Phase 5: Integration Tests (HIGH PRIORITY - MISSING)
 
-### 5.1 End-to-End Workflows
+⚠️ **CRITICAL GAP**: No integration tests exist that verify SST works with real AWS infrastructure.
+
+### 5.1 AWS Infrastructure Integration Tests
 **Step-by-step:**
-1. Create `test/integration/` directory
-2. Create `deploy_workflow_test.go`
-   - Test full deployment cycle
-   - Test with real cloud resources (optional)
-   - Test rollback scenarios
+1. Create `test/integration/` directory structure:
+   ```
+   test/
+   ├── integration/
+   │   ├── aws/
+   │   │   ├── basic_deployment_test.go
+   │   │   ├── function_test.go
+   │   │   ├── bucket_test.go
+   │   │   ├── api_gateway_test.go
+   │   │   └── cleanup_test.go
+   │   ├── fixtures/
+   │   │   ├── simple-api/
+   │   │   ├── bucket-upload/
+   │   │   └── multi-service/
+   │   └── helpers/
+   │       ├── aws_setup.go
+   │       ├── test_project.go
+   │       └── cleanup.go
+   ```
 
-3. Create `project_lifecycle_test.go`
-   - Test project creation to deployment
-   - Test multiple environments
-   - Test cleanup
+2. **Create `test/integration/aws/basic_deployment_test.go`**
+   - Test deploying a simple SST project to real AWS
+   - Verify resources are created correctly
+   - Test resource cleanup
+   - Use dedicated test AWS account/region
+
+3. **Create `test/integration/aws/function_test.go`**
+   - Deploy Lambda function with SST
+   - Test function invocation
+   - Test environment variables and linking
+   - Test function updates and rollbacks
+
+4. **Create `test/integration/aws/bucket_test.go`**
+   - Deploy S3 bucket with SST
+   - Test file upload/download
+   - Test bucket policies and permissions
+   - Test bucket deletion
+
+5. **Create `test/integration/aws/api_gateway_test.go`**
+   - Deploy API Gateway with SST
+   - Test HTTP endpoints
+   - Test authentication/authorization
+   - Test custom domains (if configured)
+
+### 5.2 End-to-End Deployment Workflows
+**Step-by-step:**
+1. **Create `test/integration/e2e_deploy_test.go`**
+   - Test complete project lifecycle: init → deploy → test → remove
+   - Test with multiple stages (dev, staging)
+   - Test deployment rollbacks
+   - Test state management across deployments
+
+2. **Create `test/integration/e2e_multi_service_test.go`**
+   - Deploy complex multi-service application
+   - Test service-to-service communication
+   - Test shared resources (databases, queues)
+   - Test dependency ordering
+
+3. **Create `test/integration/e2e_secrets_test.go`**
+   - Test secret management and deployment
+   - Test environment-specific secrets
+   - Test secret rotation scenarios
+
+### 5.3 Real Infrastructure Validation
+**Step-by-step:**
+1. **Create `test/integration/validation/`**
+   - `resource_validation_test.go` - Verify deployed resources match configuration
+   - `performance_test.go` - Test deployment speed and resource limits
+   - `cost_validation_test.go` - Verify resource costs are within expected ranges
+
+2. **Create smoke tests for each example project:**
+   - `test/integration/examples/aws_api_test.go`
+   - `test/integration/examples/aws_nextjs_test.go`
+   - `test/integration/examples/aws_astro_test.go`
+   - etc.
+
+### 5.4 Integration Test Infrastructure
+**Required setup:**
+
+1. **AWS Test Environment:**
+   ```bash
+   # Environment variables needed
+   export SST_TEST_AWS_ACCOUNT_ID="123456789012"
+   export SST_TEST_AWS_REGION="us-east-1"
+   export SST_TEST_AWS_ACCESS_KEY_ID="..."
+   export SST_TEST_AWS_SECRET_ACCESS_KEY="..."
+   export SST_TEST_STAGE="integration-test"
+   ```
+
+2. **Test Configuration:**
+   ```go
+   // test/integration/config.go
+   type IntegrationTestConfig struct {
+       AWSAccountID string
+       AWSRegion    string
+       TestStage    string
+       CleanupAfter bool
+       Timeout      time.Duration
+   }
+   ```
+
+3. **Test Helpers:**
+   ```go
+   // test/integration/helpers/aws_setup.go
+   func SetupAWSTestEnvironment() (*aws.Config, error)
+   func CreateTestProject(template string) (string, error)
+   func DeployProject(projectPath, stage string) error
+   func CleanupProject(projectPath, stage string) error
+   func WaitForDeployment(stackName string) error
+   ```
+
+### 5.5 CI/CD Integration Tests
+**Step-by-step:**
+1. **Create `.github/workflows/integration-tests.yml`**
+   ```yaml
+   name: Integration Tests
+   on:
+     push:
+       branches: [main]
+     pull_request:
+       branches: [main]
+   
+   jobs:
+     integration:
+       runs-on: ubuntu-latest
+       steps:
+         - uses: actions/checkout@v4
+         - name: Setup Go
+           uses: actions/setup-go@v4
+         - name: Run Integration Tests
+           env:
+             AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+             AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+           run: go test -v ./test/integration/...
+   ```
+
+2. **Create nightly full integration test suite**
+   - Test all example projects
+   - Test against multiple AWS regions
+   - Generate deployment reports
+
+### 5.6 Integration Test Execution
+**Commands to add to CONTEXT.md:**
+```bash
+# Run all integration tests
+go test -v ./test/integration/...
+
+# Run specific integration test
+go test -v ./test/integration/aws/basic_deployment_test.go
+
+# Run integration tests with cleanup
+SST_TEST_CLEANUP=true go test -v ./test/integration/...
+
+# Run integration tests against specific region
+SST_TEST_AWS_REGION=us-west-2 go test -v ./test/integration/...
+```
+
+### 5.7 Integration Test Success Criteria
+- ✅ Deploy and cleanup resources successfully
+- ✅ Verify deployed resources match SST configuration
+- ✅ Test actual functionality (API calls, file uploads, etc.)
+- ✅ Handle deployment failures gracefully
+- ✅ Clean up all resources after tests
+- ✅ Run in under 15 minutes for basic suite
+- ✅ Generate deployment cost reports
 
 ## Testing Infrastructure Setup
 
@@ -242,19 +401,21 @@ Create `pkg/testutil/` with:
 
 ## Execution Timeline
 
-**Week 1-2**: Phase 1 (Core Business Logic)
-**Week 3-4**: Phase 2 (CLI Commands)  
-**Week 5-6**: Phase 3 (Server & Resources)
-**Week 7**: Phase 4 (Utilities)
-**Week 8**: Phase 5 (Integration Tests)
+**Week 1**: Phase 5 (Integration Tests) - **CRITICAL PRIORITY**
+**Week 2-3**: Phase 1 (Core Business Logic)
+**Week 4-5**: Phase 2 (CLI Commands)  
+**Week 6-7**: Phase 3 (Server & Resources)
+**Week 8**: Phase 4 (Utilities)
 
 ## Success Metrics
 
-- **Unit Test Coverage**: >80% for core packages
-- **Integration Test Coverage**: Key workflows covered
-- **CI/CD**: All tests pass on every PR
-- **Performance**: Test suite runs in <5 minutes
+- **Integration Test Coverage**: >90% of AWS resources tested with real deployments ⚠️ **MISSING**
+- **Unit Test Coverage**: >80% for core packages ✅ **IN PROGRESS**
+- **E2E Test Coverage**: All critical deployment workflows covered ⚠️ **MISSING**
+- **CI/CD**: All tests pass on every PR ⚠️ **NO CI/CD EXISTS**
+- **Performance**: Integration test suite runs in <15 minutes
 - **Reliability**: Tests are stable and not flaky
+- **Cost Control**: Integration tests cost <$10/day to run
 
 ## Getting Started
 
