@@ -777,7 +777,19 @@ These are mocking/environment setup issues that don't affect test functionality 
    - ✅ All tests follow SST integration test patterns with proper setup, validation, and cleanup
    - ✅ Tests skip appropriately when required environment variables (SST_TEST_CLOUDFLARE_API_TOKEN, SST_TEST_CLOUDFLARE_ZONE_ID) are not set
 
-8. **NEXT** Create `test/integration/pulumi/cloudflare/static-site_test.go`
+8. ✅ **COMPLETED** Create `test/integration/pulumi/cloudflare/static-site_test.go`
+   - ✅ Test basic Cloudflare static site deployment with HTML, CSS, and multiple pages
+   - ✅ Test static site with build process including robots.txt and sitemap.xml  
+   - ✅ Test static site with custom domain configuration and security headers
+   - ✅ Test static site with various asset types and caching configurations
+   - ✅ Test HTTP endpoint functionality and response validation across all scenarios
+   - ✅ Test environment variable and asset configuration for static sites
+   - ✅ Test cleanup and teardown procedures for all deployment types
+   - ✅ 4 comprehensive test suites covering all major Cloudflare static site functionality
+   - ✅ All tests follow SST integration test patterns with proper setup, validation, and cleanup
+   - ✅ Tests skip appropriately when required environment variables (SST_TEST_CLOUDFLARE_API_TOKEN, SST_TEST_CLOUDFLARE_ZONE_ID) are not set
+
+9. **NEXT** Create `test/integration/pulumi/examples/` directory and example project tests
 
 **Integration test infrastructure:**
 - Dedicated AWS test accounts with appropriate permissions
