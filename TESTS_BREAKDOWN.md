@@ -765,7 +765,19 @@ These are mocking/environment setup issues that don't affect test functionality 
    - ✅ Complete SST configurations with DynamoDB, S3, API Gateway, Lambda, and SQS
    - ✅ Application lifecycle testing (deploy -> update -> validate)
 
-7. **NEXT** Create `test/integration/pulumi/cloudflare/worker-deployment.test.go`
+7. ✅ **COMPLETED** Create `test/integration/pulumi/cloudflare/worker-deployment.test.go`
+   - ✅ Test basic Cloudflare Worker deployment with health check, echo endpoint, and default route
+   - ✅ Test worker with KV store integration including set/get operations and non-existent key handling
+   - ✅ Test worker deployment with custom domain configuration and validation
+   - ✅ Test worker deployment with static assets and API integration
+   - ✅ Test HTTP endpoint functionality and response validation across all scenarios
+   - ✅ Test environment variable and linking configuration for KV stores
+   - ✅ Test cleanup and teardown procedures for all deployment types
+   - ✅ 4 comprehensive test suites covering all major Cloudflare Worker functionality
+   - ✅ All tests follow SST integration test patterns with proper setup, validation, and cleanup
+   - ✅ Tests skip appropriately when required environment variables (SST_TEST_CLOUDFLARE_API_TOKEN, SST_TEST_CLOUDFLARE_ZONE_ID) are not set
+
+8. **NEXT** Create `test/integration/pulumi/cloudflare/static-site_test.go`
 
 **Integration test infrastructure:**
 - Dedicated AWS test accounts with appropriate permissions
