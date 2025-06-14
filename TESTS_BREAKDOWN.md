@@ -184,20 +184,30 @@
    - ✅ Test server discovery functionality
    - ✅ Test registry operations
 
-### 3.2 AWS Resources (`pkg/server/resource/`)
+### 3.2 AWS Resources (`pkg/server/resource/`) ✅ **PARTIALLY COMPLETED**
 **Files to test**: All AWS resource handlers
 
 **Step-by-step:**
-1. **NEXT STEP** Create `pkg/server/resource/aws_test.go`
-   - Test AWS client initialization
-   - Test credential handling
-   - Test region selection
+1. ✅ **COMPLETED** Create `pkg/server/resource/aws_test.go`
+   - ✅ Test AWS client initialization
+   - ✅ Test credential handling
+   - ✅ Test region selection
+   - ✅ Test error handling for missing provider
+   - ✅ Test AwsResource struct initialization and validation
 
-2. Create individual test files for each resource type:
-   - `aws-function_test.go`
-   - `aws-bucket_test.go`
-   - `aws-distribution_test.go`
-   - etc.
+2. **NEXT STEP** Create individual test files for each resource type:
+   - `aws-bucket-files_test.go` - **NEXT TO IMPLEMENT**
+   - `aws-distribution-deployment-waiter_test.go`
+   - `aws-distribution-invalidation_test.go`
+   - `aws-function-code-updater_test.go`
+   - `aws-function-environment-update_test.go`
+   - `aws-hosted-zone-lookup_test.go`
+   - `aws-kv-keys_test.go`
+   - `aws-kv-routes-update_test.go`
+   - `aws-origin-access-control_test.go`
+   - `aws-origin-identity-access_test.go`
+   - `aws-rds-role-lookup_test.go`
+   - `aws-vector-table_test.go`
 
 **Test utilities needed:**
 - AWS SDK mocks (`aws-sdk-go-v2/aws/testing`)
