@@ -289,8 +289,18 @@
      - ✅ Test caller reference and comment validation behavior
      - ✅ Test concurrent operations and struct field validation
      - ✅ Test embedded AwsResource structure validation
-   - `aws-rds-role-lookup_test.go` - **NEXT TO IMPLEMENT**
-   - `aws-vector-table_test.go`
+   - ✅ **COMPLETED** `aws-rds-role-lookup_test.go` - Comprehensive tests for RDS IAM role lookup
+     - ✅ Test Create method with no AWS provider error handling
+     - ✅ Test Update method with no AWS provider error handling
+     - ✅ Test input validation for RdsRoleLookupInputs structure
+     - ✅ Test output structure validation for RdsRoleLookupOutputs
+     - ✅ Test edge cases including special characters, long names, and unicode
+     - ✅ Test common RDS role names (monitoring, enhanced monitoring, proxy, backup, replication)
+     - ✅ Test integration scenarios (first-time users, existing users, custom roles, cross-account)
+     - ✅ Test error handling scenarios for invalid inputs and edge cases
+     - ✅ Test embedded AwsResource structure validation
+     - ✅ Test struct field validation and type checking
+   - `aws-vector-table_test.go` - **NEXT TO IMPLEMENT**
 
 **Test utilities needed:**
 - AWS SDK mocks (`aws-sdk-go-v2/aws/testing`)
