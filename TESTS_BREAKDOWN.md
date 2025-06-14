@@ -733,14 +733,17 @@ These are mocking/environment setup issues that don't affect test functionality 
    - ✅ Resource validators for buckets and functions
    - ✅ Environment variable configuration and test skipping
 
-4. **Create `test/integration/pulumi/aws/function-deployment.test.go`**
-   - Deploy various function configurations (Node.js, Python, Go)
-   - Test function invocation and response
-   - Validate environment variables and secrets
-   - Test function updates and rollbacks
-   - Verify logging and monitoring
+4. ✅ **COMPLETED** Create `test/integration/pulumi/aws/function-deployment.test.go`
+   - ✅ Deploy various function configurations (Node.js, Python, Go)
+   - ✅ Test function invocation and response
+   - ✅ Validate environment variables and secrets
+   - ✅ Test function updates and rollbacks
+   - ✅ Verify logging and monitoring
+   - ✅ Test runtime selection and build process
+   - ✅ Test timeout and memory settings
+   - ✅ Test configuration validation for all runtimes
 
-5. **Create `test/integration/pulumi/aws/api-deployment.test.go`**
+5. **NEXT** Create `test/integration/pulumi/aws/api-deployment.test.go`
    - Deploy API Gateway with multiple routes
    - Test HTTP endpoints and authentication
    - Validate CORS configuration
