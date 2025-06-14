@@ -490,12 +490,24 @@ SST uses Pulumi extensively for infrastructure provisioning. We need to implemen
    - ✅ Test edge cases and integration scenarios
    - ✅ 52 test cases covering all major API Gateway functionality
 
-6. **NEXT STEP** Create `platform/test/components/pulumi/aws/cluster.test.ts`
-   - Test ECS/Fargate cluster configuration
-   - Test service definitions and task configurations
-   - Test load balancer integration
-   - Test auto-scaling settings
-   - Test VPC and security group configuration
+6. ✅ **COMPLETED** Create `platform/test/components/pulumi/aws/cluster.test.ts`
+   - ✅ Test ECS/Fargate cluster configuration
+   - ✅ Test service definitions and task configurations
+   - ✅ Test load balancer integration
+   - ✅ Test auto-scaling settings
+   - ✅ Test VPC and security group configuration
+   - ✅ Test Cloud Map namespace integration
+   - ✅ Test edge cases and integration scenarios
+   - ✅ Test SST naming conventions and component linking
+   - ✅ Test version compatibility and upgrades
+   - ✅ 30 test cases covering all major cluster functionality
+
+7. **NEXT STEP** Create `platform/test/components/pulumi/aws/auth.test.ts`
+   - Test Auth component creation and configuration
+   - Test authentication providers (Cognito, OAuth, etc.)
+   - Test authorization rules and permissions
+   - Test user management and session handling
+   - Test integration with other SST components
 
 **Test utilities needed:**
 - Pulumi runtime mocks with realistic AWS responses
