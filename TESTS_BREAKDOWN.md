@@ -470,14 +470,17 @@ SST uses Pulumi extensively for infrastructure provisioning. We need to implemen
    - ✅ Test timeout and memory settings
    - ✅ Test edge cases and integration scenarios
 
-4. **NEXT STEP** Create `platform/test/components/pulumi/aws/bucket.test.ts`
-   - Extend existing bucket.test.ts with comprehensive tests
-   - Test bucket policies and CORS configuration
-   - Test public/private bucket settings
-   - Test bucket notifications and subscribers
-   - Test bucket versioning and lifecycle rules
+4. ✅ **COMPLETED** Create `platform/test/components/pulumi/aws/bucket.test.ts`
+   - ✅ Extend existing bucket.test.ts with comprehensive tests
+   - ✅ Test bucket policies and CORS configuration
+   - ✅ Test public/private bucket settings
+   - ✅ Test bucket notifications and subscribers
+   - ✅ Test bucket versioning and lifecycle rules
+   - ✅ Test edge cases, integration scenarios, and transform configurations
+   - ✅ Test SST naming conventions and component linking
+   - ✅ 25 test cases covering all major bucket functionality
 
-5. **Create `platform/test/components/pulumi/aws/apigateway.test.ts`**
+5. **NEXT STEP** Create `platform/test/components/pulumi/aws/apigateway.test.ts`
    - Test API Gateway v1 and v2 components
    - Test route configuration and integration
    - Test authorizers and authentication
