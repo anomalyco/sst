@@ -422,29 +422,29 @@
    - ✅ Test edge cases including nested directories, permission errors, and invalid paths
    - ✅ Test benchmark tests for performance validation
 
-## Phase 5: Pulumi Testing Strategy (HIGH PRIORITY - MISSING)
+## Phase 5: Pulumi Testing Strategy (HIGH PRIORITY) - **IN PROGRESS**
 
 ⚠️ **CRITICAL GAP**: No comprehensive testing exists for SST's Pulumi-based infrastructure components.
 
 SST uses Pulumi extensively for infrastructure provisioning. We need to implement all three types of Pulumi testing:
 
-### 5.1 Pulumi Unit Tests (TypeScript Platform Components)
+### 5.1 Pulumi Unit Tests (TypeScript Platform Components) - **IN PROGRESS**
 **Location**: `platform/test/components/pulumi/`
 **Purpose**: Test SST components in isolation using Pulumi mocks
 
 **Step-by-step:**
-1. **Create `platform/test/components/pulumi/` directory structure:**
+1. ✅ **COMPLETED** Create `platform/test/components/pulumi/` directory structure:
    ```
    platform/test/components/pulumi/
    ├── aws/
-   │   ├── function.test.ts
-   │   ├── bucket.test.ts
+   │   ├── function.test.ts ✅ COMPLETED
+   │   ├── bucket.test.ts (NEXT)
    │   ├── apigateway.test.ts
    │   ├── cluster.test.ts
    │   ├── auth.test.ts
    │   └── helpers/
-   │       ├── pulumi-mocks.ts
-   │       └── test-utils.ts
+   │       ├── pulumi-mocks.ts ✅ COMPLETED
+   │       └── test-utils.ts ✅ COMPLETED
    ├── cloudflare/
    │   ├── worker.test.ts
    │   ├── static-site.test.ts
@@ -455,21 +455,22 @@ SST uses Pulumi extensively for infrastructure provisioning. We need to implemen
        └── linkable.test.ts
    ```
 
-2. **Create `platform/test/components/pulumi/helpers/pulumi-mocks.ts`**
-   - Standardized Pulumi mocks for all SST components
-   - Mock AWS/Cloudflare provider responses
-   - Helper functions for testing component properties
-   - Resource validation utilities
+2. ✅ **COMPLETED** Create `platform/test/components/pulumi/helpers/pulumi-mocks.ts`
+   - ✅ Standardized Pulumi mocks for all SST components
+   - ✅ Mock AWS/Cloudflare provider responses
+   - ✅ Helper functions for testing component properties
+   - ✅ Resource validation utilities
 
-3. **Create `platform/test/components/pulumi/aws/function.test.ts`**
-   - Test AWS Function component creation and configuration
-   - Verify runtime selection and build process
-   - Test environment variables and linking
-   - Test IAM role and policy generation
-   - Test VPC configuration
-   - Test timeout and memory settings
+3. ✅ **COMPLETED** Create `platform/test/components/pulumi/aws/function.test.ts`
+   - ✅ Test AWS Function component creation and configuration (39 tests passing)
+   - ✅ Verify runtime selection and build process
+   - ✅ Test environment variables and linking
+   - ✅ Test IAM role and policy generation
+   - ✅ Test VPC configuration
+   - ✅ Test timeout and memory settings
+   - ✅ Test edge cases and integration scenarios
 
-4. **Create `platform/test/components/pulumi/aws/bucket.test.ts`** ✅ **PARTIALLY EXISTS**
+4. **NEXT STEP** Create `platform/test/components/pulumi/aws/bucket.test.ts`
    - Extend existing bucket.test.ts with comprehensive tests
    - Test bucket policies and CORS configuration
    - Test public/private bucket settings
