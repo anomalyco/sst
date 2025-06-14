@@ -9,6 +9,7 @@
 - **Test TypeScript**: `cd platform && bun run test` (uses vitest)
 - **Test single TS file**: `cd platform && bun run test path/to/test.test.ts`
 - **Type check**: `cd platform && bun run dev` (tsc --watch --noEmit)
+- **Lint**: No explicit linter configured, relies on TypeScript strict mode and Prettier
 
 ## Code Style Guidelines
 
@@ -20,18 +21,21 @@
 - Constants: ALL_CAPS or PascalCase for exported
 - Group imports: stdlib, external, internal
 - Tests alongside implementation files with `_test.go` suffix
+- Use table-driven tests with `map[string][]string` for test cases
 
 ### TypeScript
 - Use ESNext modules with Bundler moduleResolution
 - Strict typing, avoid `any`
 - camelCase for variables/functions, PascalCase for classes/types
-- ES modules with explicit imports/exports
+- ES modules with explicit imports/exports (.js extensions in imports)
 - Prefer async/await over Promises
-- Use Prettier for formatting
+- Use Prettier for formatting (configured in platform/package.json)
 - Group imports by source (stdlib, external, internal)
+- Use Vitest for testing with `describe`, `it`, `expect` pattern
 
 ### Project Structure
 - Monorepo with Go CLI (`cmd/`, `pkg/`) and TypeScript platform (`platform/`, `sdk/js/`)
 - Examples in `examples/` directory
 - Tests placed alongside implementation files
 - Uses Bun for TypeScript builds and package management
+- Go version: 1.23.1, TypeScript version: 5.7.2

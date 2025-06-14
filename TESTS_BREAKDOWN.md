@@ -233,11 +233,233 @@
    - Test dependency resolution
    - Test npm command execution
 
-## Phase 5: Integration Tests (HIGH PRIORITY - MISSING)
+## Phase 5: Pulumi Testing Strategy (HIGH PRIORITY - MISSING)
 
-⚠️ **CRITICAL GAP**: No integration tests exist that verify SST works with real AWS infrastructure.
+⚠️ **CRITICAL GAP**: No comprehensive testing exists for SST's Pulumi-based infrastructure components.
 
-### 5.1 AWS Infrastructure Integration Tests
+SST uses Pulumi extensively for infrastructure provisioning. We need to implement all three types of Pulumi testing:
+
+### 5.1 Pulumi Unit Tests (TypeScript Platform Components)
+**Location**: `platform/test/components/pulumi/`
+**Purpose**: Test SST components in isolation using Pulumi mocks
+
+**Step-by-step:**
+1. **Create `platform/test/components/pulumi/` directory structure:**
+   ```
+   platform/test/components/pulumi/
+   ├── aws/
+   │   ├── function.test.ts
+   │   ├── bucket.test.ts
+   │   ├── apigateway.test.ts
+   │   ├── cluster.test.ts
+   │   ├── auth.test.ts
+   │   └── helpers/
+   │       ├── pulumi-mocks.ts
+   │       └── test-utils.ts
+   ├── cloudflare/
+   │   ├── worker.test.ts
+   │   ├── static-site.test.ts
+   │   └── ssr-site.test.ts
+   └── shared/
+       ├── component.test.ts
+       ├── naming.test.ts
+       └── linkable.test.ts
+   ```
+
+2. **Create `platform/test/components/pulumi/helpers/pulumi-mocks.ts`**
+   - Standardized Pulumi mocks for all SST components
+   - Mock AWS/Cloudflare provider responses
+   - Helper functions for testing component properties
+   - Resource validation utilities
+
+3. **Create `platform/test/components/pulumi/aws/function.test.ts`**
+   - Test AWS Function component creation and configuration
+   - Verify runtime selection and build process
+   - Test environment variables and linking
+   - Test IAM role and policy generation
+   - Test VPC configuration
+   - Test timeout and memory settings
+
+4. **Create `platform/test/components/pulumi/aws/bucket.test.ts`** ✅ **PARTIALLY EXISTS**
+   - Extend existing bucket.test.ts with comprehensive tests
+   - Test bucket policies and CORS configuration
+   - Test public/private bucket settings
+   - Test bucket notifications and subscribers
+   - Test bucket versioning and lifecycle rules
+
+5. **Create `platform/test/components/pulumi/aws/apigateway.test.ts`**
+   - Test API Gateway v1 and v2 components
+   - Test route configuration and integration
+   - Test authorizers and authentication
+   - Test custom domains and certificates
+   - Test CORS and request/response transformations
+
+6. **Create `platform/test/components/pulumi/aws/cluster.test.ts`**
+   - Test ECS/Fargate cluster configuration
+   - Test service definitions and task configurations
+   - Test load balancer integration
+   - Test auto-scaling settings
+   - Test VPC and security group configuration
+
+**Test utilities needed:**
+- Pulumi runtime mocks with realistic AWS responses
+- Component property validation helpers
+- Resource dependency verification
+- Mock filesystem for asset handling
+
+### 5.2 Pulumi Property Tests (Infrastructure Validation)
+**Location**: `platform/test/policies/`
+**Purpose**: Define and enforce infrastructure compliance rules
+
+**Step-by-step:**
+1. **Create `platform/test/policies/` directory structure:**
+   ```
+   platform/test/policies/
+   ├── aws/
+   │   ├── security-policies.ts
+   │   ├── cost-optimization.ts
+   │   ├── compliance.ts
+   │   └── best-practices.ts
+   ├── cloudflare/
+   │   ├── security-policies.ts
+   │   └── performance.ts
+   └── shared/
+       ├── naming-conventions.ts
+       └── resource-limits.ts
+   ```
+
+2. **Create `platform/test/policies/aws/security-policies.ts`**
+   - Enforce S3 bucket encryption and public access restrictions
+   - Validate IAM roles follow least privilege principle
+   - Ensure Lambda functions are not publicly accessible
+   - Verify VPC security groups don't allow unrestricted access
+   - Check that RDS instances are not publicly accessible
+
+3. **Create `platform/test/policies/aws/cost-optimization.ts`**
+   - Enforce resource tagging for cost tracking
+   - Validate instance types are appropriate for workload
+   - Check for unused resources (orphaned EIPs, volumes)
+   - Ensure auto-scaling is configured appropriately
+
+4. **Create `platform/test/policies/aws/compliance.ts`**
+   - Enforce encryption at rest and in transit
+   - Validate backup and disaster recovery configurations
+   - Check logging and monitoring requirements
+   - Ensure compliance with organizational standards
+
+5. **Create `platform/test/policies/shared/naming-conventions.ts`**
+   - Validate resource naming follows SST conventions
+   - Ensure consistent tagging across resources
+   - Check resource prefixes and suffixes
+
+**Policy enforcement:**
+- Run policies during `sst deploy` and `sst dev`
+- Integrate with CI/CD pipelines
+- Provide clear violation messages and remediation guidance
+
+### 5.3 Pulumi Integration Tests (Real Infrastructure)
+**Location**: `test/integration/pulumi/`
+**Purpose**: Test actual infrastructure deployment and functionality
+
+**Step-by-step:**
+1. **Create `test/integration/pulumi/` directory structure:**
+   ```
+   test/integration/pulumi/
+   ├── aws/
+   │   ├── basic-deployment.test.go
+   │   ├── function-deployment.test.go
+   │   ├── api-deployment.test.go
+   │   ├── full-stack.test.go
+   │   └── fixtures/
+   │       ├── simple-function/
+   │       ├── api-with-auth/
+   │       └── full-app/
+   ├── cloudflare/
+   │   ├── worker-deployment.test.go
+   │   ├── static-site.test.go
+   │   └── fixtures/
+   │       ├── simple-worker/
+   │       └── static-site/
+   ├── helpers/
+   │   ├── pulumi-integration.go
+   │   ├── aws-setup.go
+   │   ├── cloudflare-setup.go
+   │   └── cleanup.go
+   └── examples/
+       ├── aws-api.test.go
+       ├── aws-nextjs.test.go
+       └── cloudflare-worker.test.go
+   ```
+
+2. **Create `test/integration/pulumi/helpers/pulumi-integration.go`**
+   - Pulumi integration test framework wrapper
+   - SST-specific test utilities and helpers
+   - Resource validation and runtime testing functions
+   - Cleanup and teardown automation
+
+3. **Create `test/integration/pulumi/aws/basic-deployment.test.go`**
+   ```go
+   func TestBasicAWSDeployment(t *testing.T) {
+       integration.ProgramTest(t, &integration.ProgramTestOptions{
+           Dir: path.Join("fixtures", "simple-function"),
+           Config: map[string]string{
+               "aws:region": "us-east-1",
+           },
+           ExtraRuntimeValidation: func(t *testing.T, stack integration.RuntimeValidationStackInfo) {
+               // Validate Lambda function exists and is invokable
+               // Test function environment variables
+               // Verify IAM roles and policies
+           },
+       })
+   }
+   ```
+
+4. **Create `test/integration/pulumi/aws/function-deployment.test.go`**
+   - Deploy various function configurations (Node.js, Python, Go)
+   - Test function invocation and response
+   - Validate environment variables and secrets
+   - Test function updates and rollbacks
+   - Verify logging and monitoring
+
+5. **Create `test/integration/pulumi/aws/api-deployment.test.go`**
+   - Deploy API Gateway with multiple routes
+   - Test HTTP endpoints and authentication
+   - Validate CORS configuration
+   - Test custom domains and certificates
+   - Verify request/response transformations
+
+6. **Create `test/integration/pulumi/aws/full-stack.test.go`**
+   - Deploy complete SST application (API + Frontend + Database)
+   - Test end-to-end functionality
+   - Validate service-to-service communication
+   - Test database connections and queries
+   - Verify CDN and static asset delivery
+
+**Integration test infrastructure:**
+- Dedicated AWS test accounts with appropriate permissions
+- Automated cleanup of test resources
+- Parallel test execution with resource isolation
+- Cost monitoring and budget alerts for test environments
+
+### 5.4 Example Project Testing
+**Purpose**: Validate all SST example projects work correctly
+
+**Step-by-step:**
+1. **Create automated tests for each example in `examples/`:**
+   - `test/integration/examples/aws-api.test.go`
+   - `test/integration/examples/aws-nextjs.test.go`
+   - `test/integration/examples/aws-astro.test.go`
+   - `test/integration/examples/cloudflare-worker.test.go`
+   - etc.
+
+2. **Each example test should:**
+   - Deploy the example project to a test environment
+   - Validate all resources are created correctly
+   - Test the deployed application functionality
+   - Verify cleanup works properly
+   - Check for any security or compliance issues
+
+### 5.5 Integration Tests (Real Infrastructure)
 **Step-by-step:**
 1. Create `test/integration/` directory structure:
    ```
@@ -283,7 +505,112 @@
    - Test authentication/authorization
    - Test custom domains (if configured)
 
-### 5.2 End-to-End Deployment Workflows
+### 5.6 Pulumi Testing Commands and Infrastructure
+
+**Required setup for Pulumi testing:**
+
+1. **Environment variables for integration tests:**
+   ```bash
+   # AWS Integration Tests
+   export SST_TEST_AWS_ACCOUNT_ID="123456789012"
+   export SST_TEST_AWS_REGION="us-east-1"
+   export SST_TEST_AWS_ACCESS_KEY_ID="..."
+   export SST_TEST_AWS_SECRET_ACCESS_KEY="..."
+   export SST_TEST_STAGE="pulumi-integration-test"
+   
+   # Cloudflare Integration Tests
+   export SST_TEST_CLOUDFLARE_API_TOKEN="..."
+   export SST_TEST_CLOUDFLARE_ACCOUNT_ID="..."
+   export SST_TEST_CLOUDFLARE_ZONE_ID="..."
+   ```
+
+2. **Test configuration:**
+   ```go
+   // test/integration/pulumi/config.go
+   type PulumiIntegrationTestConfig struct {
+       AWSAccountID     string
+       AWSRegion        string
+       CloudflareToken  string
+       TestStage        string
+       CleanupAfter     bool
+       Timeout          time.Duration
+       PolicyPackPath   string
+   }
+   ```
+
+3. **Test helpers:**
+   ```go
+   // test/integration/pulumi/helpers/pulumi-integration.go
+   func SetupPulumiTestEnvironment() (*pulumi.Context, error)
+   func CreateTestSST Project(template string) (string, error)
+   func DeployWithPolicies(projectPath, stage, policyPack string) error
+   func ValidateDeployment(stackName string, validators []ResourceValidator) error
+   func CleanupPulumiStack(projectPath, stage string) error
+   ```
+
+**Commands to add to CONTEXT.md:**
+```bash
+# Pulumi Unit Tests (TypeScript)
+cd platform && bun run test test/components/pulumi/
+
+# Pulumi Property Tests (Policy validation)
+cd platform && pulumi policy test test/policies/
+
+# Pulumi Integration Tests (Real infrastructure)
+go test -v ./test/integration/pulumi/...
+
+# Run specific Pulumi integration test
+go test -v ./test/integration/pulumi/aws/function-deployment.test.go
+
+# Run Pulumi tests with cleanup
+SST_TEST_CLEANUP=true go test -v ./test/integration/pulumi/...
+
+# Run example project tests
+go test -v ./test/integration/examples/...
+
+# Validate policies against existing stack
+pulumi policy validate --policy-pack platform/test/policies/aws/ my-stack
+
+# Run property tests during deployment
+sst deploy --policy-pack platform/test/policies/
+```
+
+### 5.7 Pulumi Testing Success Criteria
+
+- ✅ **Unit Test Coverage**: >90% of SST Pulumi components tested with mocks
+- ✅ **Property Test Coverage**: All critical security and compliance rules enforced
+- ✅ **Integration Test Coverage**: All major SST component types tested with real infrastructure
+- ✅ **Example Validation**: All example projects deploy and function correctly
+- ✅ **Policy Enforcement**: Property tests run automatically during deployment
+- ✅ **Performance**: Unit tests run in <30 seconds, integration tests in <15 minutes
+- ✅ **Reliability**: Tests are stable and not flaky
+- ✅ **Cost Control**: Integration tests cost <$20/day to run
+- ✅ **Documentation**: Clear testing guidelines and examples for contributors
+
+### 5.8 Pulumi Testing Implementation Priority
+
+**Week 1-2: Pulumi Unit Tests (HIGH PRIORITY)**
+- Set up Pulumi mocking infrastructure
+- Create comprehensive tests for core AWS components (Function, Bucket, API Gateway)
+- Extend existing bucket.test.ts with full coverage
+- Add tests for Cloudflare components
+
+**Week 3: Pulumi Property Tests (HIGH PRIORITY)**
+- Create security and compliance policy packs
+- Implement naming convention and resource limit policies
+- Integrate policy validation into SST CLI commands
+
+**Week 4-5: Pulumi Integration Tests (CRITICAL PRIORITY)**
+- Set up integration test infrastructure with real AWS/Cloudflare accounts
+- Create basic deployment tests for core components
+- Add runtime validation and functionality testing
+
+**Week 6: Example Project Validation (MEDIUM PRIORITY)**
+- Automate testing of all example projects
+- Create CI/CD pipeline for example validation
+- Add performance and cost monitoring
+
+## Phase 6: End-to-End Deployment Workflows
 **Step-by-step:**
 1. **Create `test/integration/e2e_deploy_test.go`**
    - Test complete project lifecycle: init → deploy → test → remove
@@ -433,21 +760,37 @@ Create `pkg/testutil/` with:
 
 ## Execution Timeline
 
-**Week 1**: Phase 5 (Integration Tests) - **CRITICAL PRIORITY**
-**Week 2-3**: Phase 1 (Core Business Logic)
-**Week 4-5**: Phase 2 (CLI Commands)  
-**Week 6-7**: Phase 3 (Server & Resources)
-**Week 8**: Phase 4 (Utilities)
+**Week 1-2**: Phase 5 (Pulumi Testing) - **CRITICAL PRIORITY**
+- Pulumi Unit Tests for core components
+- Pulumi Property Tests for security/compliance
+- Set up Pulumi integration test infrastructure
+
+**Week 3-4**: Phase 5 (Pulumi Integration) - **CRITICAL PRIORITY**  
+- Real infrastructure integration tests
+- Example project validation
+- CI/CD pipeline integration
+
+**Week 5-6**: Phase 6 (End-to-End Workflows) - **HIGH PRIORITY**
+- Complete deployment lifecycle testing
+- Multi-service application testing
+- Performance and reliability testing
+
+**Week 7-8**: Phase 3-4 (Server & Utilities) - **MEDIUM PRIORITY**
+- Server core and AWS resources testing
+- Utilities and infrastructure testing
 
 ## Success Metrics
 
-- **Integration Test Coverage**: >90% of AWS resources tested with real deployments ⚠️ **MISSING**
+- **Pulumi Unit Test Coverage**: >90% of SST components tested with mocks ⚠️ **MISSING**
+- **Pulumi Property Test Coverage**: All security/compliance rules enforced ⚠️ **MISSING**
+- **Pulumi Integration Test Coverage**: >90% of AWS/Cloudflare resources tested with real deployments ⚠️ **MISSING**
 - **Unit Test Coverage**: >80% for core packages ✅ **IN PROGRESS**
 - **E2E Test Coverage**: All critical deployment workflows covered ⚠️ **MISSING**
+- **Example Project Validation**: All examples deploy and function correctly ⚠️ **MISSING**
 - **CI/CD**: All tests pass on every PR ⚠️ **NO CI/CD EXISTS**
 - **Performance**: Integration test suite runs in <15 minutes
 - **Reliability**: Tests are stable and not flaky
-- **Cost Control**: Integration tests cost <$10/day to run
+- **Cost Control**: Integration tests cost <$20/day to run
 
 ## Getting Started
 
