@@ -7,7 +7,7 @@
 - ⚠️ **NO CI/CD** pipeline exists
 - 🎯 **Target**: Comprehensive test coverage for critical functionality + real AWS testing
 
-## Phase 1: Core Business Logic (High Priority)
+## Phase 1: Core Business Logic (High Priority) ✅ COMPLETED
 
 ### 1.1 Project Management (`pkg/project/`) ✅ COMPLETED
 **Files to test**: `project.go`, `create.go`, `install.go`, `run.go`, `add.go`, `env.go`
@@ -90,23 +90,23 @@
    - ✅ Test state loading and saving via checkpoint modifications
    - ✅ Test state validation with mutation types and dependency cleanup
 
-2. **NEXT STEP** Create `pkg/state/decrypt_test.go`
-   - Test encryption/decryption
-   - Test key management
-   - Test error handling for corrupted data
+2. ✅ **COMPLETED** Create `pkg/state/decrypt_test.go`
+   - ✅ Test encryption/decryption
+   - ✅ Test key management
+   - ✅ Test error handling for corrupted data
 
 **Test utilities needed:**
 - Mock encryption keys
 - Temporary state files
 - Mock AWS/cloud credentials
 
-## Phase 2: CLI Commands (High Priority)
+## Phase 2: CLI Commands (High Priority) - **NEXT PHASE**
 
-### 2.1 Main CLI (`cmd/sst/`)
+### 2.1 Main CLI (`cmd/sst/`) - **NEXT STEP**
 **Files to test**: `main.go`, `deploy.go`, `init.go`, `remove.go`, `upgrade.go`
 
 **Step-by-step:**
-1. Create `cmd/sst/main_test.go`
+1. **NEXT STEP** Create `cmd/sst/main_test.go`
    - Test command parsing
    - Test flag handling
    - Test help output
