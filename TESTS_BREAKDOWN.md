@@ -143,16 +143,19 @@
 - Mock cloud providers
 - Capture stdout/stderr
 
-### 2.2 CLI Utilities (`cmd/sst/cli/`)
+### 2.2 CLI Utilities (`cmd/sst/cli/`) ✅ IN PROGRESS
 **Files to test**: `cli.go`, `project.go`
 
 **Step-by-step:**
-1. **NEXT STEP** Create `cmd/sst/cli/cli_test.go`
-   - Test CLI initialization
-   - Test configuration loading
-   - Test error formatting
+1. ✅ **COMPLETED** Create `cmd/sst/cli/cli_test.go`
+   - ✅ Test CLI initialization and configuration
+   - ✅ Test argument parsing and flag handling
+   - ✅ Test command path management
+   - ✅ Test ArgumentList string formatting
+   - ✅ Test stage guessing logic
+   - ✅ Test command initialization
 
-2. Create `cmd/sst/cli/project_test.go`
+2. **NEXT STEP** Create `cmd/sst/cli/project_test.go`
    - Test project context detection
    - Test workspace handling
    - Test multi-project scenarios
