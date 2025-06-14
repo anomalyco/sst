@@ -278,8 +278,18 @@
      - ✅ Test randomness and uniqueness of generated names
      - ✅ Test struct field validation and embedded AwsResource structure
      - ✅ Test integration scenarios for different environments
-   - `aws-origin-identity-access_test.go` - **NEXT TO IMPLEMENT**
-   - `aws-rds-role-lookup_test.go`
+   - ✅ **COMPLETED** `aws-origin-identity-access_test.go` - Comprehensive tests for CloudFront Origin Access Identity
+     - ✅ Test Create method with no AWS provider error handling
+     - ✅ Test Delete method with no AWS provider error handling
+     - ✅ Test input validation for OriginAccessIdentityInputs structure
+     - ✅ Test output structure validation for OriginAccessIdentityOutputs
+     - ✅ Test edge cases including empty/long/special character IDs
+     - ✅ Test CloudFront integration scenarios (S3 protection, multi-distribution, migration)
+     - ✅ Test ETag handling for different ID formats
+     - ✅ Test caller reference and comment validation behavior
+     - ✅ Test concurrent operations and struct field validation
+     - ✅ Test embedded AwsResource structure validation
+   - `aws-rds-role-lookup_test.go` - **NEXT TO IMPLEMENT**
    - `aws-vector-table_test.go`
 
 **Test utilities needed:**
