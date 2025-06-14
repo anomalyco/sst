@@ -743,19 +743,23 @@ These are mocking/environment setup issues that don't affect test functionality 
    - ✅ Test timeout and memory settings
    - ✅ Test configuration validation for all runtimes
 
-5. **NEXT** Create `test/integration/pulumi/aws/api-deployment.test.go`
-   - Deploy API Gateway with multiple routes
-   - Test HTTP endpoints and authentication
-   - Validate CORS configuration
-   - Test custom domains and certificates
-   - Verify request/response transformations
+5. ✅ **COMPLETED** Create `test/integration/pulumi/aws/api-deployment_test.go`
+   - ✅ Deploy API Gateway v2 (HTTP API) with multiple CRUD routes
+   - ✅ Deploy API Gateway v1 (REST API) with health checks and webhooks
+   - ✅ Test HTTP endpoints and authentication (JWT with protected/public routes)
+   - ✅ Validate CORS configuration and headers
+   - ✅ Test route configuration and API structure validation
+   - ✅ Verify request/response transformations and error handling
+   - ✅ Test authentication scenarios (public, protected, invalid tokens)
+   - ✅ Comprehensive API Gateway deployment testing with 3 test suites
 
-6. **Create `test/integration/pulumi/aws/full-stack.test.go`**
+6. **NEXT** Create `test/integration/pulumi/aws/full-stack_test.go`
    - Deploy complete SST application (API + Frontend + Database)
-   - Test end-to-end functionality
+   - Test end-to-end functionality with real infrastructure
    - Validate service-to-service communication
    - Test database connections and queries
    - Verify CDN and static asset delivery
+   - Test complete application lifecycle and integration scenarios
 
 **Integration test infrastructure:**
 - Dedicated AWS test accounts with appropriate permissions
