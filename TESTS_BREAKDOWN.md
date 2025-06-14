@@ -340,8 +340,15 @@
      - ✅ Test error handling for missing files and HTTP request failures
      - ✅ Test embedded CloudflareResource structure validation
      - ✅ Test multipart form data creation and metadata building logic
-   - **NEXT** `vercel-dns-record_test.go` - Tests for Vercel DNS record management
-   - **NEXT** `vercel-dns-record_test.go` - Tests for Vercel DNS record management
+   - ✅ **COMPLETED** `vercel-dns-record_test.go` - Comprehensive tests for Vercel DNS record management
+     - ✅ Test Create and Update methods with various input scenarios
+     - ✅ Test input validation for all required fields (Domain, Type, Name, Value, ApiToken)
+     - ✅ Test edge cases including unicode characters, IPv6 addresses, and complex TXT records
+     - ✅ Test URL construction logic with and without team ID parameter
+     - ✅ Test payload structure and TTL defaults
+     - ✅ Test error handling for existing records and API failures
+     - ✅ Test all DNS record types (A, AAAA, CNAME, MX, TXT, NS, SRV, PTR, CAA)
+     - ✅ Test struct field validation and embedded VercelResource structure
    - **NEXT** `resource_test.go` - Tests for core resource functionality
    - **NEXT** `run_test.go` - Tests for resource execution and lifecycle management
 
