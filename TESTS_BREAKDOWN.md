@@ -161,7 +161,7 @@
    - ✅ Test log configuration and initialization
    - ✅ Test error scenarios for project initialization
 
-## Phase 3: Server & Resources (Medium Priority) - **NEXT PHASE**
+## Phase 3: Server & Resources (Medium Priority) - ✅ **COMPLETED**
 
 ### 3.1 Server Core (`pkg/server/`) ✅ COMPLETED
 **Files to test**: `server.go`, `client.go`
@@ -349,15 +349,30 @@
      - ✅ Test error handling for existing records and API failures
      - ✅ Test all DNS record types (A, AAAA, CNAME, MX, TXT, NS, SRV, PTR, CAA)
      - ✅ Test struct field validation and embedded VercelResource structure
-   - **NEXT** `resource_test.go` - Tests for core resource functionality
-   - **NEXT** `run_test.go` - Tests for resource execution and lifecycle management
+   - ✅ **COMPLETED** `resource_test.go` - Comprehensive tests for core resource functionality
+     - ✅ Test all generic resource types (ReadInput, ReadResult, DiffInput, DiffResult, etc.)
+     - ✅ Test CreateResult, UpdateInput, UpdateResult, DeleteInput structures
+     - ✅ Test AwsResource structure and initialization
+     - ✅ Test Register function for all AWS, Cloudflare, and Vercel resources
+     - ✅ Test generic type system with complex types and edge cases
+     - ✅ Test JSON tag validation and struct field validation
+     - ✅ Test error handling and structure validation scenarios
+   - ✅ **COMPLETED** `run_test.go` - Comprehensive tests for resource execution and lifecycle management
+     - ✅ Test NewRun function with different concurrency configurations
+     - ✅ Test Run struct Create and Update methods with command execution
+     - ✅ Test executeCommand with various scenarios (success, failure, env vars)
+     - ✅ Test semaphore-based concurrency control and weight parsing
+     - ✅ Test environment variable handling and preservation
+     - ✅ Test edge cases (empty commands, special characters, long commands)
+     - ✅ Test RunInputs and RunOutputs structure validation
+     - ✅ Test error handling for invalid commands and directories
 
 **Test utilities needed:**
 - AWS SDK mocks (`aws-sdk-go-v2/aws/testing`)
 - Mock AWS responses
 - Test AWS credentials
 
-## Phase 4: Utilities & Infrastructure (Medium Priority) - **IN PROGRESS**
+## Phase 4: Utilities & Infrastructure (Medium Priority) - **NEXT PHASE**
 
 ### 4.1 Process Management (`pkg/process/`) ✅ COMPLETED
 **Step-by-step:**
@@ -373,9 +388,9 @@
    - ✅ Test killWait configuration and global state management
    - ✅ Test cross-platform behavior with Windows signal handling skips
 
-### 4.2 Tunneling (`pkg/tunnel/`)
+### 4.2 Tunneling (`pkg/tunnel/`) - **NEXT STEP**
 **Step-by-step:**
-1. Create `pkg/tunnel/tunnel_test.go`
+1. **NEXT** Create `pkg/tunnel/tunnel_test.go`
    - Test tunnel creation
    - Test proxy functionality
    - Test connection handling
