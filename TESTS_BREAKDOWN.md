@@ -195,9 +195,16 @@
    - ✅ Test error handling for missing provider
    - ✅ Test AwsResource struct initialization and validation
 
-2. **NEXT STEP** Create individual test files for each resource type:
-   - `aws-bucket-files_test.go` - **NEXT TO IMPLEMENT**
-   - `aws-distribution-deployment-waiter_test.go`
+2. **IN PROGRESS** Create individual test files for each resource type:
+   - ✅ **COMPLETED** `aws-bucket-files_test.go` - Comprehensive tests for S3 bucket file operations
+     - ✅ Test Create method with no AWS provider error handling
+     - ✅ Test Update method with different bucket scenarios and purging
+     - ✅ Test Delete method with empty bucket/files and backward compatibility
+     - ✅ Test input validation for BucketFilesInputs structure
+     - ✅ Test struct field validation for BucketFile and BucketFilesOutputs
+     - ✅ Test upload logic for file comparison (hash, content type, cache control)
+     - ✅ Test purge logic for file selection and removal
+   - `aws-distribution-deployment-waiter_test.go` - **NEXT TO IMPLEMENT**
    - `aws-distribution-invalidation_test.go`
    - `aws-function-code-updater_test.go`
    - `aws-function-environment-update_test.go`
