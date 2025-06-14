@@ -3,6 +3,7 @@ package state
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 
 	"github.com/pulumi/pulumi/pkg/v3/resource/stack"
@@ -12,6 +13,12 @@ import (
 )
 
 func Decrypt(ctx context.Context, passphrase string, checkpoint *apitype.CheckpointV3) (*apitype.CheckpointV3, error) {
+	if checkpoint == nil {
+		return nil, fmt.Errorf("checkpoint cannot be nil")
+	}
+	if checkpoint.Latest == nil {
+		return nil, fmt.Errorf("checkpoint.Latest cannot be nil")
+	}
 	os.Setenv("PULUMI_CONFIG_PASSPHRASE", passphrase)
 	sp := &defaultSecretsProvider{
 		passphrase: passphrase,
