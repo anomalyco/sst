@@ -300,7 +300,17 @@
      - ✅ Test error handling scenarios for invalid inputs and edge cases
      - ✅ Test embedded AwsResource structure validation
      - ✅ Test struct field validation and type checking
-   - `aws-vector-table_test.go` - **NEXT TO IMPLEMENT**
+   - ✅ **COMPLETED** `aws-vector-table_test.go` - Comprehensive tests for PostgreSQL Vector Table with pgvector extension
+     - ✅ Test Create method with no AWS provider error handling
+     - ✅ Test Update method with dimension change scenarios and table recreation logic
+     - ✅ Test input validation for VectorTableInputs structure (cluster ARN, secret ARN, database name, table name, dimension)
+     - ✅ Test output structure validation for VectorTableOutputs
+     - ✅ Test edge cases including empty fields, zero/negative dimensions, and invalid inputs
+     - ✅ Test common embedding model dimensions (OpenAI, BERT, Cohere, custom models)
+     - ✅ Test PostgreSQL integration scenarios with pgvector extension
+     - ✅ Test dimension change handling requiring table recreation vs updates
+     - ✅ Test struct field validation and embedded AwsResource structure
+     - ✅ Test CreateResult and UpdateResult structure validation
 
 **Test utilities needed:**
 - AWS SDK mocks (`aws-sdk-go-v2/aws/testing`)
