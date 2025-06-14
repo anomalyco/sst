@@ -269,9 +269,16 @@
      - ✅ Test route pattern validation (wildcards, parameters, queries, exact paths)
      - ✅ Test struct field validation and type checking
      - ✅ Test embedded AwsResource structure validation
-   - `aws-origin-access-control_test.go` - **NEXT TO IMPLEMENT**
-   - `aws-origin-access-control_test.go`
-   - `aws-origin-identity-access_test.go`
+   - ✅ **COMPLETED** `aws-origin-access-control_test.go` - Comprehensive tests for CloudFront Origin Access Control
+     - ✅ Test Create, Read, Delete methods with no AWS provider error handling
+     - ✅ Test input validation for OriginAccessControlInputs structure
+     - ✅ Test output structure validation for OriginAccessControlOutputs
+     - ✅ Test generateName function with various scenarios including truncation logic
+     - ✅ Test edge cases including empty names, long names, special characters, and unicode
+     - ✅ Test randomness and uniqueness of generated names
+     - ✅ Test struct field validation and embedded AwsResource structure
+     - ✅ Test integration scenarios for different environments
+   - `aws-origin-identity-access_test.go` - **NEXT TO IMPLEMENT**
    - `aws-rds-role-lookup_test.go`
    - `aws-vector-table_test.go`
 
