@@ -502,12 +502,17 @@ SST uses Pulumi extensively for infrastructure provisioning. We need to implemen
    - ✅ Test version compatibility and upgrades
    - ✅ 30 test cases covering all major cluster functionality
 
-7. **NEXT STEP** Create `platform/test/components/pulumi/aws/auth.test.ts`
-   - Test Auth component creation and configuration
-   - Test authentication providers (Cognito, OAuth, etc.)
-   - Test authorization rules and permissions
-   - Test user management and session handling
-   - Test integration with other SST components
+7. ✅ **COMPLETED** Create `platform/test/components/pulumi/aws/auth.test.ts`
+   - ✅ Test Auth component creation and configuration (30 tests passing)
+   - ✅ Test authentication providers (OAuth, email/password, custom)
+   - ✅ Test authorization rules and permissions
+   - ✅ Test user management and session handling
+   - ✅ Test integration with other SST components
+   - ✅ Test custom domain support with Route53 and Cloudflare DNS
+   - ✅ Test security configuration and session management
+   - ✅ Test performance optimizations and multi-environment support
+   - ✅ Test SST naming conventions and component validation
+   - ✅ Test edge cases and integration scenarios
 
 **Test utilities needed:**
 - Pulumi runtime mocks with realistic AWS responses
@@ -515,12 +520,12 @@ SST uses Pulumi extensively for infrastructure provisioning. We need to implemen
 - Resource dependency verification
 - Mock filesystem for asset handling
 
-### 5.2 Pulumi Property Tests (Infrastructure Validation)
+### 5.2 Pulumi Property Tests (Infrastructure Validation) - **NEXT STEP**
 **Location**: `platform/test/policies/`
 **Purpose**: Define and enforce infrastructure compliance rules
 
 **Step-by-step:**
-1. **Create `platform/test/policies/` directory structure:**
+1. **NEXT STEP** Create `platform/test/policies/` directory structure:
    ```
    platform/test/policies/
    ├── aws/
