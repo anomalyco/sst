@@ -549,14 +549,18 @@ SST uses Pulumi extensively for infrastructure provisioning. We need to implemen
    - ✅ Comprehensive test coverage with 5 test cases
    - ✅ Follows existing SST test patterns using Vitest framework
 
-3. **NEXT STEP** Create `platform/test/policies/aws/cost-optimization.test.ts`
-   - Test resource tagging for cost tracking
-   - Validate instance types are appropriate for workload
-   - Test resource limits and quotas
-   - Validate auto-scaling configurations
-   - Test cost-effective resource selection
+3. ✅ **COMPLETED** Create `platform/test/policies/aws/cost-optimization.test.ts`
+   - ✅ Test resource tagging for cost tracking
+   - ✅ Validate instance types are appropriate for workload
+   - ✅ Test resource limits and quotas
+   - ✅ Validate auto-scaling configurations
+   - ✅ Test cost-effective resource selection
+   - ✅ Test cost monitoring and alerting setup
+   - ✅ Test lifecycle policies for automated savings
+   - ✅ Test environment-specific cost controls
+   - ✅ Comprehensive test coverage with 8 test cases
 
-4. **Create `platform/test/policies/aws/compliance.ts`**
+4. **NEXT STEP** Create `platform/test/policies/aws/compliance.test.ts`
    - Enforce encryption at rest and in transit
    - Validate backup and disaster recovery configurations
    - Check logging and monitoring requirements
