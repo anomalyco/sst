@@ -1036,7 +1036,7 @@ sst deploy --policy-pack platform/test/policies/
 - Create CI/CD pipeline for example validation
 - Add performance and cost monitoring
 
-## Phase 6: End-to-End Deployment Workflows - **IN PROGRESS**
+## Phase 6: End-to-End Deployment Workflows - ✅ **COMPLETED**
 **Step-by-step:**
 1. ✅ **COMPLETED** Create `test/integration/e2e_deploy_test.go`
    - ✅ Test complete project lifecycle: init → deploy → test → remove
@@ -1059,15 +1059,49 @@ sst deploy --policy-pack platform/test/policies/
    - ✅ Test database and queue failure recovery
    - ✅ 3 comprehensive test suites covering all major multi-service functionality
 
-3. **NEXT** Create `test/integration/e2e_secrets_test.go`
-   - Test secret management and deployment
-   - Test environment-specific secrets
-   - Test secret rotation scenarios
-   - Test secret access from different services
-   - Test secret encryption and decryption
-   - Test secret validation and error handling
+3. ✅ **COMPLETED** Create `test/integration/e2e_secrets_test.go`
+   - ✅ Test secret management and deployment
+   - ✅ Test environment-specific secrets
+   - ✅ Test secret rotation scenarios
+   - ✅ Test secret access from different services
+   - ✅ Test secret encryption and decryption
+   - ✅ Test secret validation and error handling
+   - ✅ Test secret corruption recovery
+   - ✅ Test deployment failure scenarios with secrets
+   - ✅ Test multi-service secret access control
+   - ✅ 3 comprehensive test suites covering all major secrets functionality
 
-### 5.3 Real Infrastructure Validation
+## Phase 7: Real Infrastructure Validation - **NEXT PHASE**
+
+### 7.1 Resource Validation Tests - **NEXT STEP**
+**Step-by-step:**
+1. **NEXT** Create `test/integration/validation/resource_validation_test.go`
+   - Test that deployed resources match SST configuration
+   - Verify resource properties (names, tags, policies, etc.)
+   - Test resource dependencies and relationships
+   - Validate resource state consistency
+   - Test resource updates and modifications
+   - Test resource deletion and cleanup
+   - Test cross-region resource validation
+   - Test resource compliance with AWS best practices
+
+2. **Create `test/integration/validation/performance_test.go`**
+   - Test deployment speed and resource limits
+   - Benchmark deployment times for different project sizes
+   - Test concurrent deployment scenarios
+   - Validate resource provisioning performance
+   - Test scaling and auto-scaling performance
+   - Monitor resource utilization during tests
+   - Test performance regression detection
+
+3. **Create `test/integration/validation/cost_validation_test.go`**
+   - Verify resource costs are within expected ranges
+   - Test cost optimization strategies
+   - Validate resource tagging for cost tracking
+   - Test cost alerts and monitoring
+   - Compare costs across different deployment strategies
+   - Test cost estimation accuracy
+   - Validate cost-effective resource selection
 **Step-by-step:**
 1. **Create `test/integration/validation/`**
    - `resource_validation_test.go` - Verify deployed resources match configuration
