@@ -582,12 +582,27 @@ SST uses Pulumi extensively for infrastructure provisioning. We need to implemen
    - ✅ 33 comprehensive test cases covering all major naming functionality
    - ✅ Validates SST naming conventions follow AWS resource naming requirements
 
-6. **NEXT STEP** Create `platform/test/policies/shared/resource-limits.test.ts`
-   - Test resource count limits and quotas
-   - Validate resource size constraints
-   - Check resource timeout limits
-   - Test concurrent resource limits
-   - Validate memory and CPU constraints
+6. ✅ **COMPLETED** Create `platform/test/policies/shared/resource-limits.test.ts`
+   - ✅ Test resource count limits and quotas per environment (dev, staging, production)
+   - ✅ Validate resource size constraints (Lambda, S3, RDS, DynamoDB)
+   - ✅ Test timeout limits for Lambda, API Gateway, Step Functions
+   - ✅ Validate concurrent resource limits and rate limiting
+   - ✅ Test memory and CPU constraints for Lambda and Fargate
+   - ✅ Validate storage and database constraints
+   - ✅ Test network and security constraints (VPC, CloudFront)
+   - ✅ 7 comprehensive test cases covering all major resource limits
+
+7. ✅ **COMPLETED** Create `platform/test/policies/cloudflare/security-policies.test.ts`
+   - ✅ Test Worker security configurations (CSP, CORS, rate limiting, compatibility)
+   - ✅ Validate DNS security settings (DNSSEC, proxy, SSL modes)
+   - ✅ Test KV namespace security (encryption, access control, audit trails)
+   - ✅ Validate D1 database security (encryption, backups, connection limits)
+   - ✅ Test Queue security configurations (encryption, DLQ, retry policies)
+   - ✅ Validate Durable Object security (isolation, data residency, limits)
+   - ✅ Test SSL/TLS and certificate security (HSTS, TLS versions, cipher suites)
+   - ✅ 7 comprehensive test cases covering all major Cloudflare security features
+
+8. **NEXT STEP** Create `platform/test/policies/cloudflare/performance.test.ts`
 
 **Policy enforcement:**
 - Run policies during `sst deploy` and `sst dev`
