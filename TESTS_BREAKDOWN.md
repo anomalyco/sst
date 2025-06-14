@@ -570,11 +570,24 @@ SST uses Pulumi extensively for infrastructure provisioning. We need to implemen
    - ✅ Check incident response and business continuity plans
    - ✅ 8 comprehensive test cases covering all major compliance areas
 
-5. **NEXT STEP** Create `platform/test/policies/shared/naming-conventions.test.ts`
-   - Validate resource naming follows SST conventions
-   - Ensure consistent tagging across resources
-   - Check resource prefixes and suffixes
-   - Test naming pattern validation for different resource types
+5. ✅ **COMPLETED** Create `platform/test/policies/shared/naming-conventions.test.ts`
+   - ✅ Test logicalName function for PascalCase conversion and character sanitization
+   - ✅ Test physicalName function for length constraints and random suffix generation  
+   - ✅ Test prefixName function for app/stage/name strategy selection
+   - ✅ Test hashStringToPrettyString for consistent hash generation
+   - ✅ Test PRETTY_CHARS constant for safe character validation
+   - ✅ Test resource naming patterns for AWS services (Lambda, S3, DynamoDB, etc.)
+   - ✅ Test naming consistency across different environments and stages
+   - ✅ Test edge cases including unicode, special characters, and extreme length constraints
+   - ✅ 33 comprehensive test cases covering all major naming functionality
+   - ✅ Validates SST naming conventions follow AWS resource naming requirements
+
+6. **NEXT STEP** Create `platform/test/policies/shared/resource-limits.test.ts`
+   - Test resource count limits and quotas
+   - Validate resource size constraints
+   - Check resource timeout limits
+   - Test concurrent resource limits
+   - Validate memory and CPU constraints
 
 **Policy enforcement:**
 - Run policies during `sst deploy` and `sst dev`
