@@ -43,21 +43,25 @@
 - Mock command execution
 - Temporary directory helpers
 
-### 1.2 Runtime Management (`pkg/runtime/`)
+### 1.2 Runtime Management (`pkg/runtime/`) ✅ COMPLETED
 **Files to test**: `runtime.go`, `node/`, `python/`, `rust/`, `golang/`, `worker/`
 
 **Step-by-step:**
-1. Create `pkg/runtime/runtime_test.go`
-   - Test runtime detection
-   - Test runtime version parsing
-   - Test runtime compatibility checks
+1. ✅ **COMPLETED** Create `pkg/runtime/runtime_test.go`
+   - ✅ Test runtime detection
+   - ✅ Test runtime version parsing
+   - ✅ Test runtime compatibility checks
 
-2. Create `pkg/runtime/node/node_test.go`
-   - Test Node.js version detection
-   - Test package.json parsing
-   - Test build process
+2. ✅ **COMPLETED** Create `pkg/runtime/node/node_test.go`
+   - ✅ Test Node.js version detection and matching
+   - ✅ Test build process with JS and TypeScript handlers
+   - ✅ Test file extension resolution (.js, .ts, .jsx, .tsx, .mjs, .cjs, .mts, .cts)
+   - ✅ Test properties JSON unmarshaling and configuration
+   - ✅ Test worker creation and management
+   - ✅ Test error handling for missing handlers
+   - ✅ Test concurrency configuration
 
-3. Create `pkg/runtime/python/python_test.go`
+3. **NEXT STEP** Create `pkg/runtime/python/python_test.go`
    - Test Python version detection
    - Test requirements.txt parsing
    - Test virtual environment handling
