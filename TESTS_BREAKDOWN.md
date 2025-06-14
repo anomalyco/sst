@@ -789,7 +789,18 @@ These are mocking/environment setup issues that don't affect test functionality 
    - ✅ All tests follow SST integration test patterns with proper setup, validation, and cleanup
    - ✅ Tests skip appropriately when required environment variables (SST_TEST_CLOUDFLARE_API_TOKEN, SST_TEST_CLOUDFLARE_ZONE_ID) are not set
 
-9. **NEXT** Create `test/integration/pulumi/examples/` directory and example project tests
+9. ✅ **COMPLETED** Create `test/integration/pulumi/examples/aws-api.test.go`
+   - ✅ Test aws-api example project deployment and functionality validation
+   - ✅ Test deployment updates and code changes with TestAWSAPIExampleUpdate
+   - ✅ Test rollback functionality after breaking changes with TestAWSAPIExampleRollback
+   - ✅ Test API Gateway v2, S3 bucket integration, and Lambda functions
+   - ✅ Test complete project lifecycle (deploy -> update -> validate -> rollback)
+   - ✅ Test environment variable configuration and cleanup procedures
+   - ✅ 3 comprehensive test suites covering all major example functionality
+   - ✅ Tests skip appropriately when AWS credentials not configured
+   - ✅ Follows SST integration test patterns with proper setup, validation, and cleanup
+
+10. **NEXT** Create `test/integration/pulumi/examples/aws-nextjs.test.go`
 
 **Integration test infrastructure:**
 - Dedicated AWS test accounts with appropriate permissions
