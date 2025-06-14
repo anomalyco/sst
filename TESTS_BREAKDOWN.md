@@ -520,39 +520,41 @@ SST uses Pulumi extensively for infrastructure provisioning. We need to implemen
 - Resource dependency verification
 - Mock filesystem for asset handling
 
-### 5.2 Pulumi Property Tests (Infrastructure Validation) - **NEXT STEP**
+### 5.2 Pulumi Property Tests (Infrastructure Validation) - **IN PROGRESS**
 **Location**: `platform/test/policies/`
 **Purpose**: Define and enforce infrastructure compliance rules
 
 **Step-by-step:**
-1. **NEXT STEP** Create `platform/test/policies/` directory structure:
+1. ✅ **COMPLETED** Create `platform/test/policies/` directory structure:
    ```
    platform/test/policies/
    ├── aws/
-   │   ├── security-policies.ts
-   │   ├── cost-optimization.ts
-   │   ├── compliance.ts
-   │   └── best-practices.ts
+   │   ├── security-policies.test.ts ✅ COMPLETED
+   │   ├── cost-optimization.test.ts (NEXT)
+   │   ├── compliance.test.ts
+   │   └── best-practices.test.ts
    ├── cloudflare/
-   │   ├── security-policies.ts
-   │   └── performance.ts
+   │   ├── security-policies.test.ts
+   │   └── performance.test.ts
    └── shared/
-       ├── naming-conventions.ts
-       └── resource-limits.ts
+       ├── naming-conventions.test.ts
+       └── resource-limits.test.ts
    ```
 
-2. **Create `platform/test/policies/aws/security-policies.ts`**
-   - Enforce S3 bucket encryption and public access restrictions
-   - Validate IAM roles follow least privilege principle
-   - Ensure Lambda functions are not publicly accessible
-   - Verify VPC security groups don't allow unrestricted access
-   - Check that RDS instances are not publicly accessible
+2. ✅ **COMPLETED** Create `platform/test/policies/aws/security-policies.test.ts`
+   - ✅ Test runtime version validation (supported vs deprecated)
+   - ✅ Test security best practices (encryption, public access, HTTPS, least privilege)
+   - ✅ Test IAM policy structure validation and overpermissive policy detection
+   - ✅ Test network security configurations and security group validation
+   - ✅ Comprehensive test coverage with 5 test cases
+   - ✅ Follows existing SST test patterns using Vitest framework
 
-3. **Create `platform/test/policies/aws/cost-optimization.ts`**
-   - Enforce resource tagging for cost tracking
+3. **NEXT STEP** Create `platform/test/policies/aws/cost-optimization.test.ts`
+   - Test resource tagging for cost tracking
    - Validate instance types are appropriate for workload
-   - Check for unused resources (orphaned EIPs, volumes)
-   - Ensure auto-scaling is configured appropriately
+   - Test resource limits and quotas
+   - Validate auto-scaling configurations
+   - Test cost-effective resource selection
 
 4. **Create `platform/test/policies/aws/compliance.ts`**
    - Enforce encryption at rest and in transit
