@@ -125,12 +125,14 @@
    - ✅ Test concurrency environment variable documentation
    - ✅ Test error handling patterns
 
-3. **NEXT STEP** Create `cmd/sst/init_test.go`
-   - Test project initialization
-   - Test template selection
-   - Test file generation
+3. ✅ **COMPLETED** Create `cmd/sst/init_test.go`
+   - ✅ Test project initialization and template detection
+   - ✅ Test framework detection (Next.js, React Router, Astro, Angular, etc.)
+   - ✅ Test fileContains helper function with various scenarios
+   - ✅ Test template detection priority order and logic
+   - ✅ Test error handling for existing projects and edge cases
 
-4. Create `cmd/sst/remove_test.go`
+4. **NEXT STEP** Create `cmd/sst/remove_test.go`
    - Test resource cleanup
    - Test confirmation prompts
    - Test rollback scenarios
