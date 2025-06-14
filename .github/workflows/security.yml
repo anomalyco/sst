@@ -1,0 +1,385 @@
+name: Security Scans
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+  schedule:
+    # Run weekly security scans on Sundays at 3 AM UTC
+    - cron: '0 3 * * 0'
+  workflow_dispatch:
+    inputs:
+      scan_type:
+        description: 'Type of security scan to run'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - code
+          - dependencies
+          - infrastructure
+          - secrets
+
+env:
+  GO_VERSION: "1.23"
+  NODE_VERSION: "20"
+  BUN_VERSION: "1.1.0"
+
+jobs:
+  # Code security scanning
+  code-security:
+    name: Code Security Scan
+    runs-on: ubuntu-latest
+    if: github.event.inputs.scan_type == 'code' || github.event.inputs.scan_type == 'all' || github.event.inputs.scan_type == '' || github.event_name != 'workflow_dispatch'
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Run Gosec Security Scanner
+        uses: securecodewarrior/github-action-gosec@master
+        with:
+          args: '-fmt sarif -out gosec.sarif -exclude-dir=test ./...'
+
+      - name: Upload Gosec SARIF file
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: gosec.sarif
+          category: gosec
+
+      - name: Run CodeQL Analysis
+        uses: github/codeql-action/init@v3
+        with:
+          languages: go, javascript
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: codeql
+
+      - name: Run Semgrep
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: >-
+            p/security-audit
+            p/secrets
+            p/owasp-top-ten
+            p/golang
+            p/typescript
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+
+  # Dependency vulnerability scanning
+  dependency-security:
+    name: Dependency Security Scan
+    runs-on: ubuntu-latest
+    if: github.event.inputs.scan_type == 'dependencies' || github.event.inputs.scan_type == 'all' || github.event.inputs.scan_type == '' || github.event_name != 'workflow_dispatch'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Run Go vulnerability check
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+      - name: Run Nancy (Go dependency scanner)
+        run: |
+          go install github.com/sonatypecommunity/nancy@latest
+          go list -json -deps ./... | nancy sleuth
+
+      - name: Install TypeScript dependencies
+        run: cd platform && bun install --frozen-lockfile
+
+      - name: Run npm audit for platform
+        run: cd platform && bun audit
+
+      - name: Install SDK dependencies
+        run: cd sdk/js && bun install --frozen-lockfile
+
+      - name: Run npm audit for SDK
+        run: cd sdk/js && bun audit
+
+      - name: Run Snyk security scan
+        uses: snyk/actions/golang@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high
+
+      - name: Upload Snyk results to GitHub Code Scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: snyk.sarif
+          category: snyk
+
+  # Infrastructure security scanning
+  infrastructure-security:
+    name: Infrastructure Security Scan
+    runs-on: ubuntu-latest
+    if: github.event.inputs.scan_type == 'infrastructure' || github.event.inputs.scan_type == 'all' || github.event.inputs.scan_type == '' || github.event_name != 'workflow_dispatch'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Checkov (Infrastructure as Code scanner)
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: .
+          framework: terraform,cloudformation,kubernetes,dockerfile,github_actions
+          output_format: sarif
+          output_file_path: checkov.sarif
+          skip_check: CKV_GHA_7  # Skip pinning action versions for flexibility
+
+      - name: Upload Checkov SARIF file
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: checkov.sarif
+          category: checkov
+
+      - name: Run Trivy filesystem scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-fs.sarif'
+
+      - name: Upload Trivy SARIF file
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-fs.sarif
+          category: trivy-fs
+
+      - name: Run TruffleHog OSS
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: main
+          head: HEAD
+          extra_args: --debug --only-verified
+
+  # Secret scanning
+  secret-scanning:
+    name: Secret Scanning
+    runs-on: ubuntu-latest
+    if: github.event.inputs.scan_type == 'secrets' || github.event.inputs.scan_type == 'all' || github.event.inputs.scan_type == '' || github.event_name != 'workflow_dispatch'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for secret scanning
+
+      - name: Run GitLeaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+      - name: Run detect-secrets
+        run: |
+          pip install detect-secrets
+          detect-secrets scan --all-files --baseline .secrets.baseline
+          detect-secrets audit .secrets.baseline
+
+      - name: Check for AWS credentials in code
+        run: |
+          # Check for hardcoded AWS credentials
+          if grep -r "AKIA[0-9A-Z]{16}" . --exclude-dir=.git --exclude-dir=node_modules; then
+            echo "::error::Found potential AWS Access Key ID in code"
+            exit 1
+          fi
+          
+          if grep -r "aws_secret_access_key" . --exclude-dir=.git --exclude-dir=node_modules --exclude="*.md"; then
+            echo "::error::Found potential AWS secret reference in code"
+            exit 1
+          fi
+
+      - name: Check for other sensitive patterns
+        run: |
+          # Check for other sensitive patterns
+          PATTERNS=(
+            "password\s*=\s*['\"][^'\"]{8,}['\"]"
+            "api_key\s*=\s*['\"][^'\"]{16,}['\"]"
+            "private_key\s*=\s*['\"]-----BEGIN"
+            "token\s*=\s*['\"][^'\"]{20,}['\"]"
+          )
+          
+          for pattern in "${PATTERNS[@]}"; do
+            if grep -rE "$pattern" . --exclude-dir=.git --exclude-dir=node_modules --exclude="*.md"; then
+              echo "::warning::Found potential sensitive data pattern: $pattern"
+            fi
+          done
+
+  # Container security scanning
+  container-security:
+    name: Container Security Scan
+    runs-on: ubuntu-latest
+    if: github.event.inputs.scan_type == 'all' || github.event_name == 'schedule'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image for scanning
+        run: |
+          # Create a minimal Dockerfile for scanning
+          cat > Dockerfile.scan << EOF
+          FROM golang:1.23-alpine AS builder
+          WORKDIR /app
+          COPY go.mod go.sum ./
+          RUN go mod download
+          COPY . .
+          RUN go build -o sst ./cmd/sst
+          
+          FROM alpine:latest
+          RUN apk --no-cache add ca-certificates
+          WORKDIR /root/
+          COPY --from=builder /app/sst .
+          CMD ["./sst"]
+          EOF
+          
+          docker build -f Dockerfile.scan -t sst:scan .
+
+      - name: Run Trivy container scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'sst:scan'
+          format: 'sarif'
+          output: 'trivy-container.sarif'
+
+      - name: Upload Trivy container SARIF file
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-container.sarif
+          category: trivy-container
+
+      - name: Run Grype container scan
+        uses: anchore/scan-action@v3
+        with:
+          image: 'sst:scan'
+          fail-build: false
+          severity-cutoff: high
+
+  # License compliance scanning
+  license-compliance:
+    name: License Compliance Scan
+    runs-on: ubuntu-latest
+    if: github.event.inputs.scan_type == 'all' || github.event_name == 'schedule'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install go-licenses
+        run: go install github.com/google/go-licenses@latest
+
+      - name: Check Go license compliance
+        run: |
+          go-licenses check ./...
+          go-licenses report ./... > go-licenses-report.txt
+
+      - name: Install license-checker for Node.js
+        run: npm install -g license-checker
+
+      - name: Check platform license compliance
+        run: |
+          cd platform
+          bun install --frozen-lockfile
+          license-checker --summary > ../platform-licenses-report.txt
+
+      - name: Check SDK license compliance
+        run: |
+          cd sdk/js
+          bun install --frozen-lockfile
+          license-checker --summary > ../../sdk-licenses-report.txt
+
+      - name: Upload license reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: license-reports
+          path: |
+            go-licenses-report.txt
+            platform-licenses-report.txt
+            sdk-licenses-report.txt
+          retention-days: 30
+
+  # Security summary and reporting
+  security-summary:
+    name: Security Summary
+    runs-on: ubuntu-latest
+    needs: [code-security, dependency-security, infrastructure-security, secret-scanning, container-security, license-compliance]
+    if: always()
+    steps:
+      - name: Security Scan Results Summary
+        run: |
+          echo "## Security Scan Results Summary" >> $GITHUB_STEP_SUMMARY
+          echo "| Scan Type | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Code Security | ${{ needs.code-security.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Dependency Security | ${{ needs.dependency-security.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Infrastructure Security | ${{ needs.infrastructure-security.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Secret Scanning | ${{ needs.secret-scanning.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Container Security | ${{ needs.container-security.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| License Compliance | ${{ needs.license-compliance.result }} |" >> $GITHUB_STEP_SUMMARY
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Security Recommendations" >> $GITHUB_STEP_SUMMARY
+          echo "- Review all security findings in the Security tab" >> $GITHUB_STEP_SUMMARY
+          echo "- Update dependencies with known vulnerabilities" >> $GITHUB_STEP_SUMMARY
+          echo "- Address any infrastructure misconfigurations" >> $GITHUB_STEP_SUMMARY
+          echo "- Ensure no secrets are committed to the repository" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check if any security scans failed
+        if: contains(needs.*.result, 'failure')
+        run: |
+          echo "Some security scans failed"
+          exit 1
+
+      - name: Create security issue on failure
+        if: failure() && github.event_name == 'schedule'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: 'Weekly Security Scan Failed',
+              body: `The weekly security scan failed. Please check the [workflow run](${context.payload.repository.html_url}/actions/runs/${context.runId}) for details and address any security issues.`,
+              labels: ['security', 'bug', 'ci/cd']
+            });
