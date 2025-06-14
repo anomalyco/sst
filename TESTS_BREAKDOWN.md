@@ -331,8 +331,16 @@
      - ✅ Test struct field validation for all input/output types
      - ✅ Test embedded CloudflareResource structure validation
      - ✅ Test asset upload workflow and JWT handling
-   - **NEXT** `cloudflare-worker-script_test.go` - Tests for Cloudflare Worker script deployment
-   - **NEXT** `cloudflare-worker-script_test.go` - Tests for Cloudflare Worker script deployment
+   - ✅ **COMPLETED** `cloudflare-worker-script_test.go` - Comprehensive tests for Cloudflare Worker script deployment
+     - ✅ Test Create, Update, Delete methods with various input scenarios
+     - ✅ Test buildMetadata function with complex configurations (assets, bindings, migrations, observability, placement, tail consumers)
+     - ✅ Test input validation for all required fields (AccountId, ApiToken, ScriptName, Content)
+     - ✅ Test edge cases including unicode characters, large number of bindings, complex migration steps, empty nested structures
+     - ✅ Test struct field validation and JSON marshaling/unmarshaling
+     - ✅ Test error handling for missing files and HTTP request failures
+     - ✅ Test embedded CloudflareResource structure validation
+     - ✅ Test multipart form data creation and metadata building logic
+   - **NEXT** `vercel-dns-record_test.go` - Tests for Vercel DNS record management
    - **NEXT** `vercel-dns-record_test.go` - Tests for Vercel DNS record management
    - **NEXT** `resource_test.go` - Tests for core resource functionality
    - **NEXT** `run_test.go` - Tests for resource execution and lifecycle management
