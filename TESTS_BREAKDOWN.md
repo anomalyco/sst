@@ -204,7 +204,16 @@
      - ✅ Test struct field validation for BucketFile and BucketFilesOutputs
      - ✅ Test upload logic for file comparison (hash, content type, cache control)
      - ✅ Test purge logic for file selection and removal
-   - `aws-distribution-deployment-waiter_test.go` - **NEXT TO IMPLEMENT**
+   - ✅ **COMPLETED** `aws-distribution-deployment-waiter_test.go` - Comprehensive tests for CloudFront distribution deployment waiter
+     - ✅ Test Create method with and without AWS provider
+     - ✅ Test Update method with wait enabled/disabled scenarios  
+     - ✅ Test input validation for DistributionDeploymentWaiterInputs structure
+     - ✅ Test output structure validation for DistributionDeploymentWaiterOutputs
+     - ✅ Test error handling when no AWS provider is configured
+     - ✅ Test successful execution when wait is disabled
+     - ✅ Test struct field validation and type checking
+     - ✅ Test embedded AwsResource structure validation
+   - `aws-distribution-invalidation_test.go` - **NEXT TO IMPLEMENT**
    - `aws-distribution-invalidation_test.go`
    - `aws-function-code-updater_test.go`
    - `aws-function-environment-update_test.go`
