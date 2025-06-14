@@ -388,16 +388,22 @@
    - ✅ Test killWait configuration and global state management
    - ✅ Test cross-platform behavior with Windows signal handling skips
 
-### 4.2 Tunneling (`pkg/tunnel/`) - **NEXT STEP**
+### 4.2 Tunneling (`pkg/tunnel/`) ✅ COMPLETED
 **Step-by-step:**
-1. **NEXT** Create `pkg/tunnel/tunnel_test.go`
-   - Test tunnel creation
-   - Test proxy functionality
-   - Test connection handling
+1. ✅ **COMPLETED** Create `pkg/tunnel/tunnel_test.go`
+   - ✅ Test tunnel creation and installation functionality
+   - ✅ Test SSH proxy functionality with SOCKS5 integration
+   - ✅ Test platform-specific Darwin implementation
+   - ✅ Test connection handling and network scenarios
+   - ✅ Test edge cases including invalid inputs and error handling
+   - ✅ Test concurrency scenarios and special characters
+   - ✅ Mock external dependencies for reliable testing
+   - ✅ Cover all major functions: NeedsInstall, Install, Start, Stop, StartProxy
+   - ✅ Test command execution and network connectivity scenarios
 
-### 4.3 JavaScript/NPM Utilities (`pkg/js/`, `pkg/npm/`)
+### 4.3 JavaScript/NPM Utilities (`pkg/js/`, `pkg/npm/`) - **NEXT STEP**
 **Step-by-step:**
-1. Create `pkg/js/js_test.go`
+1. **NEXT** Create `pkg/js/js_test.go`
    - Test JavaScript parsing
    - Test module resolution
    - Test bundling
