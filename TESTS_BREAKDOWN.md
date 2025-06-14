@@ -1071,21 +1071,26 @@ sst deploy --policy-pack platform/test/policies/
    - ✅ Test multi-service secret access control
    - ✅ 3 comprehensive test suites covering all major secrets functionality
 
-## Phase 7: Real Infrastructure Validation - **NEXT PHASE**
+## Phase 7: Real Infrastructure Validation - **IN PROGRESS**
 
-### 7.1 Resource Validation Tests - **NEXT STEP**
+### 7.1 Resource Validation Tests - ✅ **COMPLETED**
 **Step-by-step:**
-1. **NEXT** Create `test/integration/validation/resource_validation_test.go`
-   - Test that deployed resources match SST configuration
-   - Verify resource properties (names, tags, policies, etc.)
-   - Test resource dependencies and relationships
-   - Validate resource state consistency
-   - Test resource updates and modifications
-   - Test resource deletion and cleanup
-   - Test cross-region resource validation
-   - Test resource compliance with AWS best practices
+1. ✅ **COMPLETED** Create `test/integration/validation/resource_validation_test.go`
+   - ✅ Test that deployed resources match SST configuration
+   - ✅ Verify resource properties (names, tags, policies, etc.)
+   - ✅ Test resource dependencies and relationships
+   - ✅ Validate resource state consistency
+   - ✅ Test resource updates and modifications
+   - ✅ Test resource deletion and cleanup
+   - ✅ Test cross-region resource validation
+   - ✅ Test resource compliance with AWS best practices
+   - ✅ Test Lambda function validation (runtime, memory, timeout, env vars, tags)
+   - ✅ Test S3 bucket validation (encryption, public access, tags, versioning, lifecycle)
+   - ✅ Test resource dependencies and IAM permissions
+   - ✅ Test custom resource configurations and properties
+   - ✅ 3 comprehensive test suites covering all major validation scenarios
 
-2. **Create `test/integration/validation/performance_test.go`**
+2. **NEXT** Create `test/integration/validation/performance_test.go`
    - Test deployment speed and resource limits
    - Benchmark deployment times for different project sizes
    - Test concurrent deployment scenarios
