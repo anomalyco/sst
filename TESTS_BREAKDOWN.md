@@ -544,25 +544,7 @@ SST uses Pulumi extensively for infrastructure provisioning. We need to implemen
 - Parallel test execution with resource isolation
 - Cost monitoring and budget alerts for test environments
 
-### 5.4 Example Project Testing
-**Purpose**: Validate all SST example projects work correctly
-
-**Step-by-step:**
-1. **Create automated tests for each example in `examples/`:**
-   - `test/integration/examples/aws-api.test.go`
-   - `test/integration/examples/aws-nextjs.test.go`
-   - `test/integration/examples/aws-astro.test.go`
-   - `test/integration/examples/cloudflare-worker.test.go`
-   - etc.
-
-2. **Each example test should:**
-   - Deploy the example project to a test environment
-   - Validate all resources are created correctly
-   - Test the deployed application functionality
-   - Verify cleanup works properly
-   - Check for any security or compliance issues
-
-### 5.5 Integration Tests (Real Infrastructure)
+### 5.4 Integration Tests (Real Infrastructure)
 **Step-by-step:**
 1. Create `test/integration/` directory structure:
    ```
@@ -608,7 +590,7 @@ SST uses Pulumi extensively for infrastructure provisioning. We need to implemen
    - Test authentication/authorization
    - Test custom domains (if configured)
 
-### 5.6 Pulumi Testing Commands and Infrastructure
+### 5.5 Pulumi Testing Commands and Infrastructure
 
 **Required setup for Pulumi testing:**
 
@@ -678,7 +660,7 @@ pulumi policy validate --policy-pack platform/test/policies/aws/ my-stack
 sst deploy --policy-pack platform/test/policies/
 ```
 
-### 5.7 Pulumi Testing Success Criteria
+### 5.6 Pulumi Testing Success Criteria
 
 - ✅ **Unit Test Coverage**: >90% of SST Pulumi components tested with mocks
 - ✅ **Property Test Coverage**: All critical security and compliance rules enforced
@@ -689,6 +671,25 @@ sst deploy --policy-pack platform/test/policies/
 - ✅ **Reliability**: Tests are stable and not flaky
 - ✅ **Cost Control**: Integration tests cost <$20/day to run
 - ✅ **Documentation**: Clear testing guidelines and examples for contributors
+
+### 5.7 Example Project Testing
+**Purpose**: Validate all SST example projects work correctly
+
+**Step-by-step:**
+1. **Create automated tests for each example in `examples/`:**
+   - `test/integration/examples/aws-api.test.go`
+   - `test/integration/examples/aws-nextjs.test.go`
+   - `test/integration/examples/aws-astro.test.go`
+   - `test/integration/examples/cloudflare-worker.test.go`
+   - etc.
+
+2. **Each example test should:**
+   - Deploy the example project to a test environment
+   - Validate all resources are created correctly
+   - Test the deployed application functionality
+   - Verify cleanup works properly
+   - Check for any security or compliance issues
+
 
 ### 5.8 Pulumi Testing Implementation Priority
 
