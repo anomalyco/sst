@@ -622,11 +622,11 @@ SST uses Pulumi extensively for infrastructure provisioning. We need to implemen
 **Purpose**: Test actual infrastructure deployment and functionality
 
 **Step-by-step:**
-1. **Create `test/integration/pulumi/` directory structure:**
+1. ✅ **COMPLETED** Create `test/integration/pulumi/` directory structure:
    ```
    test/integration/pulumi/
    ├── aws/
-   │   ├── basic-deployment.test.go
+   │   ├── basic_deployment_test.go ✅ COMPLETED
    │   ├── function-deployment.test.go
    │   ├── api-deployment.test.go
    │   ├── full-stack.test.go
@@ -641,7 +641,7 @@ SST uses Pulumi extensively for infrastructure provisioning. We need to implemen
    │       ├── simple-worker/
    │       └── static-site/
    ├── helpers/
-   │   ├── pulumi-integration.go
+   │   ├── pulumi-integration.go ✅ COMPLETED
    │   ├── aws-setup.go
    │   ├── cloudflare-setup.go
    │   └── cleanup.go
@@ -651,28 +651,19 @@ SST uses Pulumi extensively for infrastructure provisioning. We need to implemen
        └── cloudflare-worker.test.go
    ```
 
-2. **Create `test/integration/pulumi/helpers/pulumi-integration.go`**
-   - Pulumi integration test framework wrapper
-   - SST-specific test utilities and helpers
-   - Resource validation and runtime testing functions
-   - Cleanup and teardown automation
+2. ✅ **COMPLETED** Create `test/integration/pulumi/helpers/pulumi-integration.go`
+   - ✅ Pulumi integration test framework wrapper
+   - ✅ SST-specific test utilities and helpers
+   - ✅ Resource validation and runtime testing functions
+   - ✅ Cleanup and teardown automation
 
-3. **Create `test/integration/pulumi/aws/basic-deployment.test.go`**
-   ```go
-   func TestBasicAWSDeployment(t *testing.T) {
-       integration.ProgramTest(t, &integration.ProgramTestOptions{
-           Dir: path.Join("fixtures", "simple-function"),
-           Config: map[string]string{
-               "aws:region": "us-east-1",
-           },
-           ExtraRuntimeValidation: func(t *testing.T, stack integration.RuntimeValidationStackInfo) {
-               // Validate Lambda function exists and is invokable
-               // Test function environment variables
-               // Verify IAM roles and policies
-           },
-       })
-   }
-   ```
+3. ✅ **COMPLETED** Create `test/integration/pulumi/aws/basic_deployment_test.go`
+   - ✅ TestBasicAWSDeployment - basic bucket deployment test
+   - ✅ TestFunctionDeployment - Lambda function deployment test
+   - ✅ TestBucketDeployment - S3 bucket with CORS configuration test
+   - ✅ Integration test framework with setup, validation, and cleanup
+   - ✅ Resource validators for buckets and functions
+   - ✅ Environment variable configuration and test skipping
 
 4. **Create `test/integration/pulumi/aws/function-deployment.test.go`**
    - Deploy various function configurations (Node.js, Python, Go)
