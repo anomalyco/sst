@@ -280,6 +280,22 @@ export function setupSSTTestEnvironment(
     url: "http://localhost:13557",
   };
 
+  // Set up $cli global for CLI context
+  // @ts-ignore
+  global.$cli = {
+    command: "test",
+    rpc: "http://localhost:13557",
+    paths: {
+      home: "/tmp/sst-test",
+      root: "/tmp/sst-test",
+      work: "/tmp/sst-test/.sst",
+      platform: "/tmp/sst-test/.sst/platform",
+    },
+    state: {
+      version: {},
+    },
+  };
+
   // Set up Pulumi mocks
   pulumi.runtime.setMocks(
     createSSTPulumiMocks(resourceOptions, callOptions),
