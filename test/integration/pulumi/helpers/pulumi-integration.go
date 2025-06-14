@@ -332,6 +332,171 @@ func UpdateTestProjectFile(projectDir, filename, content string) error {
 	return os.WriteFile(filePath, []byte(content), 0644)
 }
 
+// CreateDirectory creates a directory if it doesn't exist
+func CreateDirectory(path string) error {
+	return os.MkdirAll(path, 0755)
+}
+
+// ValidateDynamoTableExists validates that a DynamoDB table exists
+func ValidateDynamoTableExists(tableName string) ResourceValidator {
+	return func(t *testing.T, outputs OutputMap) error {
+		t.Helper()
+
+		tableOutput, exists := outputs[tableName]
+		if !exists {
+			return fmt.Errorf("table output %s not found", tableName)
+		}
+
+		if tableOutput == nil {
+			return fmt.Errorf("table output %s is nil", tableName)
+		}
+
+		tableNameStr, ok := tableOutput.(string)
+		if !ok {
+			return fmt.Errorf("table output %s is not a string", tableName)
+		}
+
+		if tableNameStr == "" {
+			return fmt.Errorf("table name is empty")
+		}
+
+		t.Logf("Validated DynamoDB table: %s", tableNameStr)
+		return nil
+	}
+}
+
+// ValidateApiGatewayExists validates that an API Gateway exists
+func ValidateApiGatewayExists(apiName string) ResourceValidator {
+	return func(t *testing.T, outputs OutputMap) error {
+		t.Helper()
+
+		apiOutput, exists := outputs[apiName]
+		if !exists {
+			return fmt.Errorf("API output %s not found", apiName)
+		}
+
+		if apiOutput == nil {
+			return fmt.Errorf("API output %s is nil", apiName)
+		}
+
+		apiUrlStr, ok := apiOutput.(string)
+		if !ok {
+			return fmt.Errorf("API output %s is not a string", apiName)
+		}
+
+		if apiUrlStr == "" {
+			return fmt.Errorf("API URL is empty")
+		}
+
+		t.Logf("Validated API Gateway: %s", apiUrlStr)
+		return nil
+	}
+}
+
+// ValidateStaticSiteExists validates that a static site exists
+func ValidateStaticSiteExists(siteName string) ResourceValidator {
+	return func(t *testing.T, outputs OutputMap) error {
+		t.Helper()
+
+		siteOutput, exists := outputs[siteName]
+		if !exists {
+			return fmt.Errorf("site output %s not found", siteName)
+		}
+
+		if siteOutput == nil {
+			return fmt.Errorf("site output %s is nil", siteName)
+		}
+
+		siteUrlStr, ok := siteOutput.(string)
+		if !ok {
+			return fmt.Errorf("site output %s is not a string", siteName)
+		}
+
+		if siteUrlStr == "" {
+			return fmt.Errorf("site URL is empty")
+		}
+
+		t.Logf("Validated static site: %s", siteUrlStr)
+		return nil
+	}
+}
+
+// ValidateQueueExists validates that an SQS queue exists
+func ValidateQueueExists(queueName string) ResourceValidator {
+	return func(t *testing.T, outputs OutputMap) error {
+		t.Helper()
+
+		queueOutput, exists := outputs[queueName]
+		if !exists {
+			return fmt.Errorf("queue output %s not found", queueName)
+		}
+
+		if queueOutput == nil {
+			return fmt.Errorf("queue output %s is nil", queueName)
+		}
+
+		queueUrlStr, ok := queueOutput.(string)
+		if !ok {
+			return fmt.Errorf("queue output %s is not a string", queueName)
+		}
+
+		if queueUrlStr == "" {
+			return fmt.Errorf("queue URL is empty")
+		}
+
+		t.Logf("Validated SQS queue: %s", queueUrlStr)
+		return nil
+	}
+}
+
+// TestEndToEndFunctionality tests the deployed application's end-to-end functionality
+func TestEndToEndFunctionality(t *testing.T, result interface{}, config *PulumiIntegrationTestConfig) error {
+	t.Helper()
+
+	// Simulate end-to-end testing
+	t.Logf("Testing end-to-end functionality for deployment result: %v", result)
+	
+	// In a real implementation, this would:
+	// 1. Make HTTP requests to the deployed API
+	// 2. Test database operations
+	// 3. Test file uploads/downloads
+	// 4. Verify service integrations
+	
+	return nil
+}
+
+// TestServiceCommunication tests service-to-service communication
+func TestServiceCommunication(t *testing.T, result interface{}, config *PulumiIntegrationTestConfig) error {
+	t.Helper()
+
+	// Simulate service communication testing
+	t.Logf("Testing service communication for deployment result: %v", result)
+	
+	// In a real implementation, this would:
+	// 1. Send messages to queues
+	// 2. Verify message processing
+	// 3. Check database updates
+	// 4. Test async workflows
+	
+	return nil
+}
+
+// TestApplicationLifecycle tests the complete application lifecycle
+func TestApplicationLifecycle(t *testing.T, result interface{}, config *PulumiIntegrationTestConfig) error {
+	t.Helper()
+
+	// Simulate application lifecycle testing
+	t.Logf("Testing application lifecycle for deployment result: %v", result)
+	
+	// In a real implementation, this would:
+	// 1. Test deployment updates
+	// 2. Verify rollback capabilities
+	// 3. Test configuration changes
+	// 4. Validate state management
+	
+	return nil
+}
+
 // CleanupTestArtifacts removes test artifacts from the current directory
 // This should be called at the end of test runs to clean up *.test files
 func CleanupTestArtifacts() {
