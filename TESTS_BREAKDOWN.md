@@ -321,7 +321,17 @@
      - ✅ Test URL construction, authorization headers, and TTL defaults
      - ✅ Test error handling including "already exists" detection and API error responses
      - ✅ Test CloudflareResource embedded structure validation
-   - **NEXT** `cloudflare-worker-assets_test.go` - Tests for Cloudflare Worker assets management
+   - ✅ **COMPLETED** `cloudflare-worker-assets_test.go` - Comprehensive tests for Cloudflare Worker assets management
+     - ✅ Test Create and Update methods with various input scenarios
+     - ✅ Test input validation for all required fields (AccountId, ScriptName, ApiToken, Directory)
+     - ✅ Test asset manifest structure and validation
+     - ✅ Test file handling edge cases (JS, TS, CSS, HTML, JSON, binary, unicode, large files)
+     - ✅ Test concurrent upload scenarios with multiple buckets
+     - ✅ Test error handling for missing credentials and invalid inputs
+     - ✅ Test struct field validation for all input/output types
+     - ✅ Test embedded CloudflareResource structure validation
+     - ✅ Test asset upload workflow and JWT handling
+   - **NEXT** `cloudflare-worker-script_test.go` - Tests for Cloudflare Worker script deployment
    - **NEXT** `cloudflare-worker-script_test.go` - Tests for Cloudflare Worker script deployment
    - **NEXT** `vercel-dns-record_test.go` - Tests for Vercel DNS record management
    - **NEXT** `resource_test.go` - Tests for core resource functionality
