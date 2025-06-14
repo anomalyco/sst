@@ -143,7 +143,7 @@
 - Mock cloud providers
 - Capture stdout/stderr
 
-### 2.2 CLI Utilities (`cmd/sst/cli/`) ✅ IN PROGRESS
+### 2.2 CLI Utilities (`cmd/sst/cli/`) ✅ COMPLETED
 **Files to test**: `cli.go`, `project.go`
 
 **Step-by-step:**
@@ -155,18 +155,19 @@
    - ✅ Test stage guessing logic
    - ✅ Test command initialization
 
-2. **NEXT STEP** Create `cmd/sst/cli/project_test.go`
-   - Test project context detection
-   - Test workspace handling
-   - Test multi-project scenarios
+2. ✅ **COMPLETED** Create `cmd/sst/cli/project_test.go`
+   - ✅ Test project context detection and discovery
+   - ✅ Test workspace handling and configuration loading
+   - ✅ Test log configuration and initialization
+   - ✅ Test error scenarios for project initialization
 
-## Phase 3: Server & Resources (Medium Priority)
+## Phase 3: Server & Resources (Medium Priority) - **NEXT PHASE**
 
-### 3.1 Server Core (`pkg/server/`)
+### 3.1 Server Core (`pkg/server/`) - **NEXT STEP**
 **Files to test**: `server.go`, `client.go`
 
 **Step-by-step:**
-1. Create `pkg/server/server_test.go`
+1. **NEXT STEP** Create `pkg/server/server_test.go`
    - Test server startup/shutdown
    - Test request handling
    - Test middleware
