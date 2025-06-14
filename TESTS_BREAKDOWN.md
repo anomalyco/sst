@@ -602,7 +602,15 @@ SST uses Pulumi extensively for infrastructure provisioning. We need to implemen
    - ✅ Test SSL/TLS and certificate security (HSTS, TLS versions, cipher suites)
    - ✅ 7 comprehensive test cases covering all major Cloudflare security features
 
-8. **NEXT STEP** Create `platform/test/policies/cloudflare/performance.test.ts`
+8. ✅ **COMPLETED** Create `platform/test/policies/cloudflare/performance.test.ts`
+   - ✅ Test Worker performance configurations (CPU, memory, startup time, execution time)
+   - ✅ Test CDN and caching performance (edge locations, TTL, compression, optimization)
+   - ✅ Test KV namespace performance (read/write latency, throughput, compression, caching)
+   - ✅ Test D1 database performance (query latency, connection pooling, read replicas, indexing)
+   - ✅ Test Queue performance (message latency, throughput, batching, compression)
+   - ✅ Test Durable Object performance (startup time, state management, memory efficiency)
+   - ✅ Test DNS performance and optimization (query latency, anycast, load balancing, caching)
+   - ✅ 7 comprehensive test cases covering all major Cloudflare performance features
 
 **Policy enforcement:**
 - Run policies during `sst deploy` and `sst dev`
