@@ -353,7 +353,7 @@ export class TanStackStart extends SsrSite {
     super(__pulumiType, name, args, opts);
   }
 
-  protected normalizeBuildCommand() {}
+  protected normalizeBuildCommand() { }
 
   protected buildPlan(outputPath: Output<string>): Output<Plan> {
     return outputPath.apply((outputPath) => {
