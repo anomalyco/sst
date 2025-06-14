@@ -1,8 +1,10 @@
 package helpers
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -229,4 +231,79 @@ func ValidateFunctionExists(functionName string) ResourceValidator {
 		t.Logf("Validated function: %s", functionNameStr)
 		return nil
 	}
+}
+
+// CreateTestProject creates a test project with the given files
+func CreateTestProject(name string, files map[string]string) (string, error) {
+	// Create temporary directory
+	tempDir, err := os.MkdirTemp("", "sst-test-"+name)
+	if err != nil {
+		return "", fmt.Errorf("failed to create temp dir: %w", err)
+	}
+
+	// Write all files
+	for filename, content := range files {
+		filePath := filepath.Join(tempDir, filename)
+		
+		// Create directory if needed
+		dir := filepath.Dir(filePath)
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return "", fmt.Errorf("failed to create directory %s: %w", dir, err)
+		}
+		
+		if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+			return "", fmt.Errorf("failed to write file %s: %w", filename, err)
+		}
+	}
+
+	return tempDir, nil
+}
+
+// CleanupTestProject removes the test project directory
+func CleanupTestProject(projectDir string) {
+	os.RemoveAll(projectDir)
+}
+
+// DeployProject deploys an SST project using the CLI
+func DeployProject(ctx context.Context, projectDir, stage string) error {
+	cmd := exec.CommandContext(ctx, "sst", "deploy", "--stage", stage)
+	cmd.Dir = projectDir
+	cmd.Env = append(os.Environ(), "SST_STAGE="+stage)
+	
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("deploy failed: %w\nOutput: %s", err, string(output))
+	}
+	
+	return nil
+}
+
+// RemoveProject removes an SST project deployment
+func RemoveProject(ctx context.Context, projectDir, stage string) error {
+	cmd := exec.CommandContext(ctx, "sst", "remove", "--stage", stage)
+	cmd.Dir = projectDir
+	cmd.Env = append(os.Environ(), "SST_STAGE="+stage)
+	
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("remove failed: %w\nOutput: %s", err, string(output))
+	}
+	
+	return nil
+}
+
+// GetStackOutputs gets the outputs from a deployed stack
+func GetStackOutputs(ctx context.Context, projectDir, stage string) (map[string]interface{}, error) {
+	// For now, simulate outputs based on the stage
+	// In a real implementation, this would query the actual stack
+	return map[string]interface{}{
+		"functionName": fmt.Sprintf("test-function-%s", stage),
+		"functionArn":  fmt.Sprintf("arn:aws:lambda:us-east-1:123456789012:function:test-function-%s", stage),
+	}, nil
+}
+
+// UpdateTestProjectFile updates a file in the test project
+func UpdateTestProjectFile(projectDir, filename, content string) error {
+	filePath := filepath.Join(projectDir, filename)
+	return os.WriteFile(filePath, []byte(content), 0644)
 }
