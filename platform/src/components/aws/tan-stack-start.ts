@@ -365,9 +365,47 @@ export class TanStackStart extends SsrSite {
       );
 
       if (!["aws-lambda"].includes(nitro.preset)) {
-        throw new VisibleError(
-          `TanStackStart's app.config.ts must be configured to use the "aws-lambda" preset. It is currently set to "${nitro.preset}".`,
-        );
+        const projectRoot = path.dirname(outputPath);
+        const isViteProject =
+          fs.existsSync(path.join(projectRoot, "vite.config.ts")) ||
+          fs.existsSync(path.join(projectRoot, "vite.config.js"));
+
+        if (isViteProject) {
+          throw new VisibleError(
+            [
+              "No AWS-Lambda preset detected for TanStack Start.",
+              "",
+              "Create a `nitro.config.ts` file in your project root:",
+              "  // nitro.config.ts",
+              '  import { defineNitroConfig } from "nitropack/config";',
+              "",
+              "  export default defineNitroConfig({",
+              '    preset: "aws-lambda",',
+              "    awsLambda: { streaming: true }, // optional",
+              "  });",
+              "",
+              `Detected preset: "${nitro.preset ?? "undefined"}"`,
+            ].join("\n"),
+          );
+        } else {
+          // Vinxi project
+          throw new VisibleError(
+            [
+              "No AWS-Lambda preset detected for TanStack Start.",
+              "",
+              "Update your `app.config.ts`:",
+              "  // app.config.ts",
+              "  export default defineConfig({",
+              "    server: {",
+              '      preset: "aws-lambda",',
+              "      awsLambda: { streaming: true }, // optional",
+              "    },",
+              "  });",
+              "",
+              `Detected preset: "${nitro.preset ?? "undefined"}"`,
+            ].join("\n"),
+          );
+        }
       }
 
       const serverOutputPath = path.join(outputPath, ".output", "server");
