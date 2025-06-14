@@ -177,18 +177,18 @@
    - ✅ Test server file path resolution
    - ✅ Test integration with project configuration
 
-2. **NEXT STEP** Create `pkg/server/client_test.go`
-   - Test client connections
-   - Test request/response cycles
-   - Test error handling
-   - Test server discovery functionality
-   - Test registry operations
+2. ✅ **COMPLETED** Create `pkg/server/client_test.go`
+   - ✅ Test client connections
+   - ✅ Test request/response cycles
+   - ✅ Test error handling
+   - ✅ Test server discovery functionality
+   - ✅ Test registry operations
 
 ### 3.2 AWS Resources (`pkg/server/resource/`)
 **Files to test**: All AWS resource handlers
 
 **Step-by-step:**
-1. Create `pkg/server/resource/aws_test.go`
+1. **NEXT STEP** Create `pkg/server/resource/aws_test.go`
    - Test AWS client initialization
    - Test credential handling
    - Test region selection
