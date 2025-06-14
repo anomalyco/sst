@@ -16,7 +16,7 @@
  * @packageDocumentation
  */
 
-import { Input } from "sst-plugin/input";
+import { Input } from "sst-plugin/util";
 
 export interface KvBinding {
   type: "kvNamespaceBindings";

@@ -41,8 +41,8 @@
  */
 
 import * as cloudflare from "@pulumi/cloudflare";
-import { AliasRecord, Dns, Record } from "sst-plugin/dns";
-import { logicalName } from "sst-plugin/naming";
+import { AliasRecord, Dns, Record } from "sst-plugin/util";
+import { naming } from "sst-plugin/naming";
 import { ZoneLookup } from "./providers/zone-lookup";
 import { ComponentResourceOptions, output } from "@pulumi/pulumi";
 import { Transform } from "sst-plugin/internal/transform";

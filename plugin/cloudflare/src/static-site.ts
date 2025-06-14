@@ -261,8 +261,8 @@ export class StaticSite extends CloudflareComponent implements sst.Linkable {
       old: sst.version[name],
     });
     const { sitePath, environment, indexPage } = prepare(args);
-    const outputPath = $dev
-      ? path.join($cli.paths.platform, "functions", "empty-site")
+    const outputPath = sst.dev
+      ? path.join(sst.path.working, "functions", "empty-site")
       : buildApp(parent, name, args.build, sitePath, environment);
     const storage = createKvStorage();
     const assetManifest = generateAssetManifest();
@@ -372,7 +372,7 @@ export class StaticSite extends CloudflareComponent implements sst.Linkable {
             })),
           ),
         },
-        { parent, ignoreChanges: $dev ? ["*"] : undefined },
+        { parent, ignoreChanges: sst.dev ? ["*"] : undefined },
       );
     }
 
@@ -381,7 +381,7 @@ export class StaticSite extends CloudflareComponent implements sst.Linkable {
         `${name}Router`,
         {
           handler: path.join(
-            $cli.paths.platform,
+            sst.path.working,
             "functions",
             "cf-static-site-router-worker",
           ),
