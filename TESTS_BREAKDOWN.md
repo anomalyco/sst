@@ -317,15 +317,21 @@
 - Mock AWS responses
 - Test AWS credentials
 
-## Phase 4: Utilities & Infrastructure (Medium Priority)
+## Phase 4: Utilities & Infrastructure (Medium Priority) - **IN PROGRESS**
 
-### 4.1 Process Management (`pkg/process/`)
+### 4.1 Process Management (`pkg/process/`) ✅ COMPLETED
 **Step-by-step:**
-1. Create `pkg/process/process_test.go`
-   - Test process spawning
-   - Test process monitoring
-   - Test signal handling
-   - Test cross-platform behavior
+1. ✅ **COMPLETED** Create `pkg/process/process_test.go`
+   - ✅ Test Command function with command creation and tracking
+   - ✅ Test CommandContext with context cancellation and timeout scenarios
+   - ✅ Test process tracking and global state management (reset, track functions)
+   - ✅ Test Kill function with nil processes, running processes, and SIGTERM/SIGKILL fallback
+   - ✅ Test Cleanup function with multiple processes, finished processes, and timeout scenarios
+   - ✅ Test concurrent access to global command tracking
+   - ✅ Test complete process lifecycle (create -> start -> kill -> cleanup)
+   - ✅ Test edge cases including empty args, special characters, and multiple resets
+   - ✅ Test killWait configuration and global state management
+   - ✅ Test cross-platform behavior with Windows signal handling skips
 
 ### 4.2 Tunneling (`pkg/tunnel/`)
 **Step-by-step:**
