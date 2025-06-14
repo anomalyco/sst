@@ -372,7 +372,7 @@
 - Mock AWS responses
 - Test AWS credentials
 
-## Phase 4: Utilities & Infrastructure (Medium Priority) - **NEXT PHASE**
+## Phase 4: Utilities & Infrastructure (Medium Priority) - ✅ **COMPLETED**
 
 ### 4.1 Process Management (`pkg/process/`) ✅ COMPLETED
 **Step-by-step:**
@@ -401,7 +401,7 @@
    - ✅ Cover all major functions: NeedsInstall, Install, Start, Stop, StartProxy
    - ✅ Test command execution and network connectivity scenarios
 
-### 4.3 JavaScript/NPM Utilities (`pkg/js/`, `pkg/npm/`) - ✅ **PARTIALLY COMPLETED**
+### 4.3 JavaScript/NPM Utilities (`pkg/js/`, `pkg/npm/`) - ✅ **COMPLETED**
 **Step-by-step:**
 1. ✅ **COMPLETED** Create `pkg/js/js_test.go`
    - ✅ Test EvalOptions, PackageJson, and Metafile struct validation
@@ -414,10 +414,13 @@
    - ✅ Test integration scenarios with complete build and cleanup cycles
    - ✅ Test comprehensive error handling and validation
 
-2. **NEXT STEP** Create `pkg/npm/npm_test.go`
-   - Test package.json operations
-   - Test dependency resolution
-   - Test npm command execution
+2. ✅ **COMPLETED** Create `pkg/npm/npm_test.go`
+   - ✅ Test Package struct validation and JSON unmarshaling
+   - ✅ Test Get function with various scenarios (success, HTTP errors, network errors, invalid JSON)
+   - ✅ Test DetectPackageManager with all supported package managers (npm, yarn, pnpm, bun)
+   - ✅ Test priority order for package manager detection
+   - ✅ Test edge cases including nested directories, permission errors, and invalid paths
+   - ✅ Test benchmark tests for performance validation
 
 ## Phase 5: Pulumi Testing Strategy (HIGH PRIORITY - MISSING)
 
