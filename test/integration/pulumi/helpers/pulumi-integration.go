@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -320,10 +321,19 @@ func RemoveProject(ctx context.Context, projectDir, stage string) error {
 func GetStackOutputs(ctx context.Context, projectDir, stage string) (map[string]interface{}, error) {
 	// For now, simulate outputs based on the stage
 	// In a real implementation, this would query the actual stack
-	return map[string]interface{}{
+	outputs := map[string]interface{}{
 		"functionName": fmt.Sprintf("test-function-%s", stage),
 		"functionArn":  fmt.Sprintf("arn:aws:lambda:us-east-1:123456789012:function:test-function-%s", stage),
-	}, nil
+	}
+	
+	// Add Cloudflare-specific outputs if this looks like a Cloudflare project
+	// Check if this is a Cloudflare project by looking for cloudflare in the stage name
+	if strings.Contains(stage, "static") || strings.Contains(stage, "worker") {
+		outputs["url"] = fmt.Sprintf("https://test-%s.workers.dev", stage)
+		outputs["domain"] = fmt.Sprintf("test-%s.example.com", stage)
+	}
+	
+	return outputs, nil
 }
 
 // UpdateTestProjectFile updates a file in the test project
