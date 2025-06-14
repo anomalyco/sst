@@ -401,14 +401,20 @@
    - ✅ Cover all major functions: NeedsInstall, Install, Start, Stop, StartProxy
    - ✅ Test command execution and network connectivity scenarios
 
-### 4.3 JavaScript/NPM Utilities (`pkg/js/`, `pkg/npm/`) - **NEXT STEP**
+### 4.3 JavaScript/NPM Utilities (`pkg/js/`, `pkg/npm/`) - ✅ **PARTIALLY COMPLETED**
 **Step-by-step:**
-1. **NEXT** Create `pkg/js/js_test.go`
-   - Test JavaScript parsing
-   - Test module resolution
-   - Test bundling
+1. ✅ **COMPLETED** Create `pkg/js/js_test.go`
+   - ✅ Test EvalOptions, PackageJson, and Metafile struct validation
+   - ✅ Test Build function with various scenarios (TypeScript, JavaScript, banners, defines, globals)
+   - ✅ Test FormatError function for esbuild error formatting
+   - ✅ Test Cleanup function for file cleanup operations
+   - ✅ Test outfile generation (default timestamp-based and custom paths)
+   - ✅ Test edge cases (empty code, unicode, special characters, invalid directories)
+   - ✅ Test concurrent builds and timestamp generation
+   - ✅ Test integration scenarios with complete build and cleanup cycles
+   - ✅ Test comprehensive error handling and validation
 
-2. Create `pkg/npm/npm_test.go`
+2. **NEXT STEP** Create `pkg/npm/npm_test.go`
    - Test package.json operations
    - Test dependency resolution
    - Test npm command execution
