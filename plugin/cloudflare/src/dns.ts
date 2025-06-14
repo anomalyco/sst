@@ -41,7 +41,7 @@
  */
 
 import * as cloudflare from "@pulumi/cloudflare";
-import { AliasRecord, Dns, Record } from "sst-plugin/util";
+import { AliasRecord, Dns, Record } from "sst-plugin/internal/dns";
 import { naming } from "sst-plugin/naming";
 import { ZoneLookup } from "./providers/zone-lookup";
 import { ComponentResourceOptions, output } from "@pulumi/pulumi";
@@ -228,7 +228,7 @@ export function dns(args: DnsArgs = {}) {
       const proxy = output(args.proxy).apply(
         (proxy) => (proxy && record.isAlias) ?? false,
       );
-      const nameSuffix = logicalName(record.name);
+      const nameSuffix = naming.logical(record.name);
       const type = record.type.toUpperCase();
       return new cloudflare.Record(
         ...transform(
