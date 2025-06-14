@@ -27,6 +27,9 @@ func TestFunctionDeploymentNodeJS(t *testing.T) {
 		t.Skip("Skipping AWS integration test - SST_TEST_AWS_ACCOUNT_ID not set")
 	}
 
+	// Clean up test artifacts at the end
+	defer helpers.CleanupTestArtifacts()
+
 	ctx := context.Background()
 	testStage := fmt.Sprintf("func-nodejs-%d", time.Now().Unix())
 	
@@ -184,6 +187,9 @@ func TestFunctionDeploymentPython(t *testing.T) {
 		t.Skip("Skipping AWS integration test - SST_TEST_AWS_ACCOUNT_ID not set")
 	}
 
+	// Clean up test artifacts at the end
+	defer helpers.CleanupTestArtifacts()
+
 	ctx := context.Background()
 	testStage := fmt.Sprintf("func-python-%d", time.Now().Unix())
 	
@@ -339,6 +345,9 @@ func TestFunctionDeploymentGo(t *testing.T) {
 	if os.Getenv("SST_TEST_AWS_ACCOUNT_ID") == "" {
 		t.Skip("Skipping AWS integration test - SST_TEST_AWS_ACCOUNT_ID not set")
 	}
+
+	// Clean up test artifacts at the end
+	defer helpers.CleanupTestArtifacts()
 
 	ctx := context.Background()
 	testStage := fmt.Sprintf("func-go-%d", time.Now().Unix())
@@ -537,6 +546,9 @@ func TestFunctionUpdate(t *testing.T) {
 	if os.Getenv("SST_TEST_AWS_ACCOUNT_ID") == "" {
 		t.Skip("Skipping AWS integration test - SST_TEST_AWS_ACCOUNT_ID not set")
 	}
+
+	// Clean up test artifacts at the end
+	defer helpers.CleanupTestArtifacts()
 
 	ctx := context.Background()
 	testStage := fmt.Sprintf("func-update-%d", time.Now().Unix())

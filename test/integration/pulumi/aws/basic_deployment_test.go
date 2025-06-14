@@ -14,6 +14,9 @@ func TestBasicAWSDeployment(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
+	// Clean up test artifacts at the end
+	defer helpers.CleanupTestArtifacts()
+
 	helpers.RunIntegrationTest(t, "basic-aws", func(t *testing.T, config *helpers.PulumiIntegrationTestConfig, projectDir string) {
 		// Deploy the project
 		result, err := helpers.DeployWithPolicies(t, projectDir, config.TestStage, config.PolicyPackPath)
@@ -37,6 +40,9 @@ func TestFunctionDeployment(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
+
+	// Clean up test artifacts at the end
+	defer helpers.CleanupTestArtifacts()
 
 	helpers.RunIntegrationTest(t, "function", func(t *testing.T, config *helpers.PulumiIntegrationTestConfig, projectDir string) {
 		// Create a more complex SST config with a function
@@ -96,6 +102,9 @@ func TestBucketDeployment(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
+
+	// Clean up test artifacts at the end
+	defer helpers.CleanupTestArtifacts()
 
 	helpers.RunIntegrationTest(t, "bucket", func(t *testing.T, config *helpers.PulumiIntegrationTestConfig, projectDir string) {
 		// Create SST config with bucket configuration

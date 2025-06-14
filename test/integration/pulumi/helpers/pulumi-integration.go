@@ -259,9 +259,33 @@ func CreateTestProject(name string, files map[string]string) (string, error) {
 	return tempDir, nil
 }
 
-// CleanupTestProject removes the test project directory
+// CleanupTestProject removes the test project directory and any test artifacts
 func CleanupTestProject(projectDir string) {
 	os.RemoveAll(projectDir)
+	
+	// Clean up any test binary files (*.test) in the current directory
+	cleanupTestBinaries()
+}
+
+// cleanupTestBinaries removes any *.test files created during test compilation
+func cleanupTestBinaries() {
+	// Get current working directory
+	wd, err := os.Getwd()
+	if err != nil {
+		return
+	}
+	
+	// Find and remove *.test files
+	entries, err := os.ReadDir(wd)
+	if err != nil {
+		return
+	}
+	
+	for _, entry := range entries {
+		if !entry.IsDir() && filepath.Ext(entry.Name()) == ".test" {
+			os.Remove(filepath.Join(wd, entry.Name()))
+		}
+	}
 }
 
 // DeployProject deploys an SST project using the CLI
@@ -306,4 +330,17 @@ func GetStackOutputs(ctx context.Context, projectDir, stage string) (map[string]
 func UpdateTestProjectFile(projectDir, filename, content string) error {
 	filePath := filepath.Join(projectDir, filename)
 	return os.WriteFile(filePath, []byte(content), 0644)
+}
+
+// CleanupTestArtifacts removes test artifacts from the current directory
+// This should be called at the end of test runs to clean up *.test files
+func CleanupTestArtifacts() {
+	cleanupTestBinaries()
+}
+
+// init function to automatically clean up test artifacts when the package is imported
+func init() {
+	// Register cleanup function to run when tests complete
+	// This ensures test artifacts are cleaned up even if tests panic or exit unexpectedly
+	cleanupTestBinaries()
 }

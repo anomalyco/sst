@@ -1057,6 +1057,16 @@ SST_TEST_AWS_REGION=us-west-2 go test -v ./test/integration/...
 
 ## Testing Infrastructure Setup
 
+### Test Artifact Cleanup
+**IMPORTANT**: All integration tests automatically clean up test artifacts (*.test files) to prevent repository pollution.
+
+- **Automatic Cleanup**: The helpers package includes `init()` function that cleans up test binaries on import
+- **Manual Cleanup**: Each test function calls `defer helpers.CleanupTestArtifacts()` for explicit cleanup
+- **Function**: `cleanupTestBinaries()` removes all *.test files from the current working directory
+- **Coverage**: Applies to all integration tests in `test/integration/pulumi/` and subdirectories
+
+This ensures that test compilation artifacts (like `aws.test`, `function.test`, etc.) are automatically removed after test runs, keeping the repository clean even if tests panic or exit unexpectedly.
+
 ### Required Dependencies
 Add to `go.mod`:
 ```go
