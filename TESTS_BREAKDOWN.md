@@ -117,12 +117,15 @@
    - ✅ Test hidden commands and telemetry configuration
    - ✅ Test context handling and version management
 
-2. **NEXT STEP** Create `cmd/sst/deploy_test.go`
-   - Test deployment workflow
-   - Test error handling
-   - Mock cloud provider interactions
+2. ✅ **COMPLETED** Create `cmd/sst/deploy_test.go`
+   - ✅ Test deployment workflow structure and configuration
+   - ✅ Test flag handling (target, continue, dev)
+   - ✅ Test target parsing logic for comma-separated components
+   - ✅ Test command integration and documentation
+   - ✅ Test concurrency environment variable documentation
+   - ✅ Test error handling patterns
 
-3. Create `cmd/sst/init_test.go`
+3. **NEXT STEP** Create `cmd/sst/init_test.go`
    - Test project initialization
    - Test template selection
    - Test file generation
