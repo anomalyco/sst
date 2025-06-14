@@ -1,0 +1,263 @@
+name: Tests
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+env:
+  GO_VERSION: "1.23"
+  NODE_VERSION: "20"
+  BUN_VERSION: "1.1.0"
+
+jobs:
+  # Go unit tests
+  go-tests:
+    name: Go Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Download Go dependencies
+        run: go mod download
+
+      - name: Run Go tests
+        run: go test -v -race -coverprofile=coverage.out ./...
+
+      - name: Generate Go coverage report
+        run: go tool cover -html=coverage.out -o coverage.html
+
+      - name: Upload Go coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.out
+          flags: go
+          name: go-coverage
+
+      - name: Upload Go coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage
+          path: coverage.html
+
+  # TypeScript/Platform tests
+  typescript-tests:
+    name: TypeScript Unit Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: platform
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run TypeScript type checking
+        run: bun run dev --noEmit
+
+      - name: Run TypeScript tests
+        run: bun run test --coverage
+
+      - name: Upload TypeScript coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./platform/coverage/lcov.info
+          flags: typescript
+          name: typescript-coverage
+
+  # SDK tests
+  sdk-tests:
+    name: SDK Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sdk/js
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build SDK
+        run: bun run build
+
+      - name: Run SDK tests
+        run: bun run test
+
+  # Lint and format checks
+  lint:
+    name: Lint and Format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Check Go formatting
+        run: |
+          if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+            echo "Go code is not formatted. Please run 'gofmt -s -w .'"
+            gofmt -s -l .
+            exit 1
+          fi
+
+      - name: Run Go vet
+        run: go vet ./...
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v4
+        with:
+          version: latest
+          args: --timeout=5m
+
+      - name: Install TypeScript dependencies
+        run: cd platform && bun install --frozen-lockfile
+
+      - name: Check TypeScript formatting
+        run: cd platform && bun run format:check
+
+      - name: Run TypeScript linting
+        run: cd platform && bun run lint
+
+  # Build verification
+  build:
+    name: Build Verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Build Go CLI
+        run: go build -o bin/sst ./cmd/sst
+
+      - name: Build platform
+        run: cd platform && bun run build
+
+      - name: Build SDK
+        run: cd sdk/js && bun run build
+
+      - name: Verify CLI works
+        run: ./bin/sst --help
+
+      - name: Upload CLI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sst-cli
+          path: bin/sst
+
+  # Cross-platform build test
+  cross-platform:
+    name: Cross-Platform Build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        go-version: ["1.23"]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+
+      - name: Build CLI
+        run: go build -o bin/sst${{ matrix.os == 'windows-latest' && '.exe' || '' }} ./cmd/sst
+
+      - name: Test CLI
+        run: ./bin/sst${{ matrix.os == 'windows-latest' && '.exe' || '' }} --help
+
+  # Dependency security scan
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Run Gosec Security Scanner
+        uses: securecodewarrior/github-action-gosec@master
+        with:
+          args: '-fmt sarif -out gosec.sarif ./...'
+
+      - name: Upload SARIF file
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: gosec.sarif
+
+      - name: Run Go vulnerability check
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+  # Test summary
+  test-summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [go-tests, typescript-tests, sdk-tests, lint, build, cross-platform, security]
+    if: always()
+    steps:
+      - name: Test Results Summary
+        run: |
+          echo "## Test Results Summary" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Go Tests | ${{ needs.go-tests.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| TypeScript Tests | ${{ needs.typescript-tests.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| SDK Tests | ${{ needs.sdk-tests.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Lint | ${{ needs.lint.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build | ${{ needs.build.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Cross-Platform | ${{ needs.cross-platform.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security | ${{ needs.security.result }} |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check if all tests passed
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: |
+          echo "Some tests failed or were cancelled"
+          exit 1
