@@ -800,7 +800,18 @@ These are mocking/environment setup issues that don't affect test functionality 
    - ✅ Tests skip appropriately when AWS credentials not configured
    - ✅ Follows SST integration test patterns with proper setup, validation, and cleanup
 
-10. **NEXT** Create `test/integration/pulumi/examples/aws-nextjs.test.go`
+10. ✅ **COMPLETED** Create `test/integration/pulumi/examples/aws-nextjs_test.go`
+   - ✅ Test aws-nextjs example project deployment and functionality validation
+   - ✅ Test deployment updates and code changes with TestAWSNextjsExampleUpdate  
+   - ✅ Test rollback functionality after breaking changes with TestAWSNextjsExampleRollback
+   - ✅ Test Next.js SSR with S3 bucket integration and file upload functionality
+   - ✅ Test complete project lifecycle (deploy -> update -> validate -> rollback)
+   - ✅ Test environment variable configuration and cleanup procedures
+   - ✅ 3 comprehensive test suites covering all major Next.js example functionality
+   - ✅ Tests skip appropriately when AWS credentials not configured
+   - ✅ Follows SST integration test patterns with proper setup, validation, and cleanup
+
+11. **NEXT** Create `test/integration/pulumi/examples/aws-astro_test.go`
 
 **Integration test infrastructure:**
 - Dedicated AWS test accounts with appropriate permissions
