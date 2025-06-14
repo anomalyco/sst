@@ -132,10 +132,11 @@
    - ✅ Test template detection priority order and logic
    - ✅ Test error handling for existing projects and edge cases
 
-4. **NEXT STEP** Create `cmd/sst/remove_test.go`
-   - Test resource cleanup
-   - Test confirmation prompts
-   - Test rollback scenarios
+4. ✅ **COMPLETED** Create `cmd/sst/remove_test.go`
+   - ✅ Test resource cleanup command structure
+   - ✅ Test confirmation prompts and flag handling
+   - ✅ Test target parsing and validation
+   - ✅ Test command documentation and examples
 
 **Test utilities needed:**
 - CLI testing framework (cobra testing)
@@ -146,7 +147,7 @@
 **Files to test**: `cli.go`, `project.go`
 
 **Step-by-step:**
-1. Create `cmd/sst/cli/cli_test.go`
+1. **NEXT STEP** Create `cmd/sst/cli/cli_test.go`
    - Test CLI initialization
    - Test configuration loading
    - Test error formatting
