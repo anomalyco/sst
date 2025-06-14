@@ -811,7 +811,18 @@ These are mocking/environment setup issues that don't affect test functionality 
    - ✅ Tests skip appropriately when AWS credentials not configured
    - ✅ Follows SST integration test patterns with proper setup, validation, and cleanup
 
-11. **NEXT** Create `test/integration/pulumi/examples/aws-astro_test.go`
+11. ✅ **COMPLETED** Create `test/integration/pulumi/examples/aws-astro_test.go`
+   - ✅ Test aws-astro example project deployment and functionality validation
+   - ✅ Test deployment updates and code changes with TestAWSAstroExampleUpdate
+   - ✅ Test rollback functionality after breaking changes with TestAWSAstroExampleRollback
+   - ✅ Test Astro SSR with S3 bucket integration and file upload functionality
+   - ✅ Test complete project lifecycle (deploy -> update -> validate -> rollback)
+   - ✅ Test environment variable configuration and cleanup procedures
+   - ✅ 3 comprehensive test suites covering all major Astro example functionality
+   - ✅ Tests skip appropriately when AWS credentials not configured
+   - ✅ Follows SST integration test patterns with proper setup, validation, and cleanup
+
+12. **NEXT** Create `test/integration/pulumi/examples/cloudflare-worker_test.go`
 
 **Integration test infrastructure:**
 - Dedicated AWS test accounts with appropriate permissions
