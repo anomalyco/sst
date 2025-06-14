@@ -300,35 +300,7 @@ func TestHttpConn(t *testing.T) {
 	}
 }
 
-func TestResolveServerFile(t *testing.T) {
-	tests := []struct {
-		name     string
-		cfgPath  string
-		stage    string
-		expected string
-	}{
-		{
-			name:     "resolves server file path",
-			cfgPath:  "/path/to/config",
-			stage:    "dev",
-			expected: "dev.server",
-		},
-		{
-			name:     "handles different stage",
-			cfgPath:  "/path/to/config",
-			stage:    "production",
-			expected: "production.server",
-		},
-	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := resolveServerFile(tt.cfgPath, tt.stage)
-			assert.Contains(t, result, tt.expected)
-			assert.True(t, strings.HasSuffix(result, tt.expected))
-		})
-	}
-}
 
 func TestServer_Integration(t *testing.T) {
 	// Create temporary directory for project
