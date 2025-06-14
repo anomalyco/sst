@@ -1,0 +1,393 @@
+name: Integration Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Run nightly at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      test_scope:
+        description: 'Test scope to run'
+        required: false
+        default: 'basic'
+        type: choice
+        options:
+          - basic
+          - full
+          - examples
+      cleanup_resources:
+        description: 'Clean up test resources after run'
+        required: false
+        default: true
+        type: boolean
+
+env:
+  GO_VERSION: "1.23"
+  SST_TEST_STAGE: "ci-integration-test"
+  SST_TEST_CLEANUP: ${{ github.event.inputs.cleanup_resources || 'true' }}
+  SST_TEST_TIMEOUT: "15m"
+
+jobs:
+  # Basic integration tests (fast, essential)
+  basic-integration:
+    name: Basic Integration Tests
+    runs-on: ubuntu-latest
+    if: github.event.inputs.test_scope != 'examples' || github.event.inputs.test_scope == '' || github.event_name != 'workflow_dispatch'
+    timeout-minutes: 20
+    environment: integration-testing
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_TEST_REGION || 'us-east-1' }}
+
+      - name: Build SST CLI
+        run: go build -o bin/sst ./cmd/sst
+
+      - name: Run basic deployment tests
+        run: |
+          export SST_TEST_AWS_ACCOUNT_ID="${{ vars.AWS_TEST_ACCOUNT_ID }}"
+          export SST_TEST_AWS_REGION="${{ vars.AWS_TEST_REGION || 'us-east-1' }}"
+          go test -v -timeout=${{ env.SST_TEST_TIMEOUT }} ./test/integration/pulumi/aws/basic_deployment_test.go
+
+      - name: Run function deployment tests
+        run: |
+          export SST_TEST_AWS_ACCOUNT_ID="${{ vars.AWS_TEST_ACCOUNT_ID }}"
+          export SST_TEST_AWS_REGION="${{ vars.AWS_TEST_REGION || 'us-east-1' }}"
+          go test -v -timeout=${{ env.SST_TEST_TIMEOUT }} ./test/integration/pulumi/aws/function-deployment.test.go
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: basic-integration-logs
+          path: |
+            test/integration/logs/
+            .sst/
+          retention-days: 7
+
+  # Pulumi integration tests
+  pulumi-integration:
+    name: Pulumi Integration Tests
+    runs-on: ubuntu-latest
+    if: github.event.inputs.test_scope == 'full' || github.event_name == 'schedule' || (github.event_name != 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    timeout-minutes: 30
+    environment: integration-testing
+    strategy:
+      matrix:
+        test_suite:
+          - aws/api-deployment
+          - aws/full-stack
+          - cloudflare/worker-deployment
+          - cloudflare/static-site
+      fail-fast: false
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Configure AWS credentials
+        if: startsWith(matrix.test_suite, 'aws/')
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_TEST_REGION || 'us-east-1' }}
+
+      - name: Build SST CLI
+        run: go build -o bin/sst ./cmd/sst
+
+      - name: Run AWS integration tests
+        if: startsWith(matrix.test_suite, 'aws/')
+        run: |
+          export SST_TEST_AWS_ACCOUNT_ID="${{ vars.AWS_TEST_ACCOUNT_ID }}"
+          export SST_TEST_AWS_REGION="${{ vars.AWS_TEST_REGION || 'us-east-1' }}"
+          go test -v -timeout=${{ env.SST_TEST_TIMEOUT }} ./test/integration/pulumi/${{ matrix.test_suite }}_test.go
+
+      - name: Run Cloudflare integration tests
+        if: startsWith(matrix.test_suite, 'cloudflare/')
+        run: |
+          export SST_TEST_CLOUDFLARE_API_TOKEN="${{ secrets.CLOUDFLARE_API_TOKEN }}"
+          export SST_TEST_CLOUDFLARE_ACCOUNT_ID="${{ vars.CLOUDFLARE_TEST_ACCOUNT_ID }}"
+          export SST_TEST_CLOUDFLARE_ZONE_ID="${{ vars.CLOUDFLARE_TEST_ZONE_ID }}"
+          go test -v -timeout=${{ env.SST_TEST_TIMEOUT }} ./test/integration/pulumi/${{ matrix.test_suite }}_test.go
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pulumi-integration-logs-${{ matrix.test_suite }}
+          path: |
+            test/integration/logs/
+            .sst/
+          retention-days: 7
+
+  # Example project tests
+  example-tests:
+    name: Example Project Tests
+    runs-on: ubuntu-latest
+    if: github.event.inputs.test_scope == 'examples' || github.event.inputs.test_scope == 'full' || github.event_name == 'schedule'
+    timeout-minutes: 45
+    environment: integration-testing
+    strategy:
+      matrix:
+        example:
+          - aws-api
+          - aws-nextjs
+          - aws-astro
+          - cloudflare-worker
+      fail-fast: false
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Configure AWS credentials
+        if: startsWith(matrix.example, 'aws-')
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_TEST_REGION || 'us-east-1' }}
+
+      - name: Build SST CLI
+        run: go build -o bin/sst ./cmd/sst
+
+      - name: Run AWS example tests
+        if: startsWith(matrix.example, 'aws-')
+        run: |
+          export SST_TEST_AWS_ACCOUNT_ID="${{ vars.AWS_TEST_ACCOUNT_ID }}"
+          export SST_TEST_AWS_REGION="${{ vars.AWS_TEST_REGION || 'us-east-1' }}"
+          go test -v -timeout=${{ env.SST_TEST_TIMEOUT }} ./test/integration/pulumi/examples/${{ matrix.example }}_test.go
+
+      - name: Run Cloudflare example tests
+        if: startsWith(matrix.example, 'cloudflare-')
+        run: |
+          export SST_TEST_CLOUDFLARE_API_TOKEN="${{ secrets.CLOUDFLARE_API_TOKEN }}"
+          export SST_TEST_CLOUDFLARE_ACCOUNT_ID="${{ vars.CLOUDFLARE_TEST_ACCOUNT_ID }}"
+          go test -v -timeout=${{ env.SST_TEST_TIMEOUT }} ./test/integration/pulumi/examples/${{ matrix.example }}_test.go
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: example-test-logs-${{ matrix.example }}
+          path: |
+            test/integration/logs/
+            .sst/
+            examples/${{ matrix.example }}/.sst/
+          retention-days: 7
+
+  # End-to-end workflow tests
+  e2e-tests:
+    name: End-to-End Workflow Tests
+    runs-on: ubuntu-latest
+    if: github.event.inputs.test_scope == 'full' || github.event_name == 'schedule'
+    timeout-minutes: 30
+    environment: integration-testing
+    strategy:
+      matrix:
+        workflow:
+          - e2e_deploy
+          - e2e_multi_service
+          - e2e_secrets
+      fail-fast: false
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_TEST_REGION || 'us-east-1' }}
+
+      - name: Build SST CLI
+        run: go build -o bin/sst ./cmd/sst
+
+      - name: Run E2E workflow tests
+        run: |
+          export SST_TEST_AWS_ACCOUNT_ID="${{ vars.AWS_TEST_ACCOUNT_ID }}"
+          export SST_TEST_AWS_REGION="${{ vars.AWS_TEST_REGION || 'us-east-1' }}"
+          go test -v -timeout=${{ env.SST_TEST_TIMEOUT }} ./test/integration/${{ matrix.workflow }}_test.go
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-test-logs-${{ matrix.workflow }}
+          path: |
+            test/integration/logs/
+            .sst/
+          retention-days: 7
+
+  # Resource validation tests
+  validation-tests:
+    name: Resource Validation Tests
+    runs-on: ubuntu-latest
+    if: github.event.inputs.test_scope == 'full' || github.event_name == 'schedule'
+    timeout-minutes: 25
+    environment: integration-testing
+    strategy:
+      matrix:
+        validation_type:
+          - resource_validation
+          - performance
+          - cost_validation
+      fail-fast: false
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_TEST_REGION || 'us-east-1' }}
+
+      - name: Build SST CLI
+        run: go build -o bin/sst ./cmd/sst
+
+      - name: Run validation tests
+        run: |
+          export SST_TEST_AWS_ACCOUNT_ID="${{ vars.AWS_TEST_ACCOUNT_ID }}"
+          export SST_TEST_AWS_REGION="${{ vars.AWS_TEST_REGION || 'us-east-1' }}"
+          go test -v -timeout=${{ env.SST_TEST_TIMEOUT }} ./test/integration/validation/${{ matrix.validation_type }}_test.go
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-test-logs-${{ matrix.validation_type }}
+          path: |
+            test/integration/logs/
+            .sst/
+          retention-days: 7
+
+  # Cost monitoring and reporting
+  cost-monitoring:
+    name: Cost Monitoring
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event.inputs.test_scope == 'full'
+    needs: [basic-integration, pulumi-integration, example-tests, e2e-tests, validation-tests]
+    timeout-minutes: 10
+    environment: integration-testing
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_TEST_REGION || 'us-east-1' }}
+
+      - name: Generate cost report
+        run: |
+          # Generate cost report for integration test resources
+          aws ce get-cost-and-usage \
+            --time-period Start=$(date -d '1 day ago' +%Y-%m-%d),End=$(date +%Y-%m-%d) \
+            --granularity DAILY \
+            --metrics BlendedCost \
+            --group-by Type=DIMENSION,Key=SERVICE \
+            --filter file://test/integration/cost-filter.json \
+            > integration-test-costs.json
+
+      - name: Upload cost report
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-cost-report
+          path: integration-test-costs.json
+          retention-days: 30
+
+      - name: Check cost thresholds
+        run: |
+          # Alert if daily costs exceed $20
+          DAILY_COST=$(jq -r '.ResultsByTime[0].Total.BlendedCost.Amount' integration-test-costs.json)
+          if (( $(echo "$DAILY_COST > 20" | bc -l) )); then
+            echo "::warning::Integration test costs exceeded $20/day: $DAILY_COST"
+          fi
+
+  # Test summary and cleanup
+  integration-summary:
+    name: Integration Test Summary
+    runs-on: ubuntu-latest
+    needs: [basic-integration, pulumi-integration, example-tests, e2e-tests, validation-tests]
+    if: always()
+    steps:
+      - name: Integration Test Results Summary
+        run: |
+          echo "## Integration Test Results Summary" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Suite | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Basic Integration | ${{ needs.basic-integration.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Pulumi Integration | ${{ needs.pulumi-integration.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Example Tests | ${{ needs.example-tests.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| E2E Tests | ${{ needs.e2e-tests.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Validation Tests | ${{ needs.validation-tests.result }} |" >> $GITHUB_STEP_SUMMARY
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Test Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "- **Test Stage**: ${{ env.SST_TEST_STAGE }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **AWS Region**: ${{ vars.AWS_TEST_REGION || 'us-east-1' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Cleanup Enabled**: ${{ env.SST_TEST_CLEANUP }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Test Scope**: ${{ github.event.inputs.test_scope || 'auto' }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check if any tests failed
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: |
+          echo "Some integration tests failed or were cancelled"
+          exit 1
+
+      - name: Notify on failure
+        if: failure() && github.event_name == 'schedule'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: 'Nightly Integration Tests Failed',
+              body: `The nightly integration test run failed. Please check the [workflow run](${context.payload.repository.html_url}/actions/runs/${context.runId}) for details.`,
+              labels: ['bug', 'ci/cd', 'integration-tests']
+            });
