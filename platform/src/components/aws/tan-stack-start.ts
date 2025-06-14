@@ -353,7 +353,7 @@ export class TanStackStart extends SsrSite {
     super(__pulumiType, name, args, opts);
   }
 
-  protected normalizeBuildCommand() { }
+  protected normalizeBuildCommand() {}
 
   protected buildPlan(outputPath: Output<string>): Output<Plan> {
     return outputPath.apply((outputPath) => {
@@ -387,25 +387,25 @@ export class TanStackStart extends SsrSite {
               `Detected preset: "${nitro.preset ?? "undefined"}"`,
             ].join("\n"),
           );
-        } else {
-          // Vinxi project
-          throw new VisibleError(
-            [
-              "No AWS-Lambda preset detected for TanStack Start.",
-              "",
-              "Update your `app.config.ts`:",
-              "  // app.config.ts",
-              "  export default defineConfig({",
-              "    server: {",
-              '      preset: "aws-lambda",',
-              "      awsLambda: { streaming: true }, // optional",
-              "    },",
-              "  });",
-              "",
-              `Detected preset: "${nitro.preset ?? "undefined"}"`,
-            ].join("\n"),
-          );
         }
+
+        // Vinxi project
+        throw new VisibleError(
+          [
+            "No AWS-Lambda preset detected for TanStack Start.",
+            "",
+            "Update your `app.config.ts`:",
+            "  // app.config.ts",
+            "  export default defineConfig({",
+            "    server: {",
+            '      preset: "aws-lambda",',
+            "      awsLambda: { streaming: true }, // optional",
+            "    },",
+            "  });",
+            "",
+            `Detected preset: "${nitro.preset ?? "undefined"}"`,
+          ].join("\n"),
+        );
       }
 
       const serverOutputPath = path.join(outputPath, ".output", "server");
