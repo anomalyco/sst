@@ -224,9 +224,17 @@
      - ✅ Test large batch handling for files and wildcards
      - ✅ Test struct field validation and type checking
      - ✅ Test embedded AwsResource structure validation
-   - `aws-function-code-updater_test.go` - **NEXT TO IMPLEMENT**
-   - `aws-function-code-updater_test.go`
-   - `aws-function-environment-update_test.go`
+   - ✅ **COMPLETED** `aws-function-code-updater_test.go` - Comprehensive tests for Lambda function code updater
+     - ✅ Test Create method with no AWS provider error handling
+     - ✅ Test Update method with different function code scenarios
+     - ✅ Test input validation for FunctionCodeUpdaterInputs structure
+     - ✅ Test S3 deployment vs container image deployment logic
+     - ✅ Test struct field validation and type checking
+     - ✅ Test deployment scenarios (S3 ZIP, container, cross-region, large functions)
+     - ✅ Test edge cases including long names, special characters, ECR images
+     - ✅ Test CreateResult and UpdateResult structure validation
+     - ✅ Test embedded AwsResource structure validation
+   - `aws-function-environment-update_test.go` - **NEXT TO IMPLEMENT**
    - `aws-hosted-zone-lookup_test.go`
    - `aws-kv-keys_test.go`
    - `aws-kv-routes-update_test.go`
