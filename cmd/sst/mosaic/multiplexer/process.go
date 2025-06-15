@@ -2,6 +2,9 @@ package multiplexer
 
 import (
 	"os/exec"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/gdamore/tcell/v2"
 	tcellterm "github.com/sst/sst/v3/cmd/sst/mosaic/multiplexer/tcell-term"
@@ -56,6 +59,24 @@ func (p *pane) start() error {
 	p.cmd.Env = p.env
 	if p.dir != "" {
 		p.cmd.Dir = p.dir
+	}
+
+	// If SST_LOG is provided in the environment variables, use it to create a
+	// log file and attach it to the VT so that all output is persisted.
+	var logPath string
+	for _, e := range p.env {
+		if strings.HasPrefix(e, "SST_LOG=") {
+			logPath = strings.TrimPrefix(e, "SST_LOG=")
+			break
+		}
+	}
+	if logPath != "" {
+		// Ensure directory exists
+		os.MkdirAll(filepath.Dir(logPath), 0o755)
+		file, err := os.Create(logPath)
+		if err == nil {
+			p.vt.SetLog(file)
+		}
 	}
 	p.vt.Clear()
 	err := p.vt.Start(p.cmd)
