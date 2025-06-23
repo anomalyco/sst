@@ -803,6 +803,9 @@ function renderType(
     if (type.type === "reflection" && type.declaration.children?.length) {
       return renderObjectType(type);
     }
+    if (type.type === "intersection") {
+      return renderIntersectionType(type);
+    }
 
     // @ts-expect-error
     delete type._project;
@@ -1179,6 +1182,9 @@ function renderType(
     )}</code>`;
   }
   function renderObjectType(type: TypeDoc.ReflectionType) {
+    return `<code class="primitive">Object</code>`;
+  }
+  function renderIntersectionType(type: TypeDoc.IntersectionType) {
     return `<code class="primitive">Object</code>`;
   }
 }
@@ -2023,6 +2029,9 @@ function useNestedTypes(
             )
           : []),
       ]);
+  }
+  if (type.type === "intersection") {
+    return type.types.flatMap((t) => useNestedTypes(t, prefix, depth));
   }
 
   return [];
