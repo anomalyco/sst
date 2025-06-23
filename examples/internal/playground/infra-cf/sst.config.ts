@@ -42,7 +42,8 @@ export default $config({
     }
 
     function createStatic() {
-      new sst.cloudflare.StaticSite("MyAstroStatic", {
+      new sst.cloudflare.x.StaticSite("MyAstroStatic", {
+        errorPage: "404.html",
         path: "../sites/astro5-static",
         build: {
           command: "npm run build:cf",
