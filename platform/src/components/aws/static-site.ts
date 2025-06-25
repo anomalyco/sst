@@ -1012,14 +1012,32 @@ export class StaticSite extends Component implements Link.Linkable {
       ]).apply(async ([outputPath, assets, bucketDomain, errorPage, route]) => {
         const kvEntries: Record<string, string> = {};
         const dirs: string[] = [];
+        // Router append .html and index.html suffixes to requests to s3 routes:
+        // - `.well-known` contain files without suffix, hence will be appended .html
+        // - in the future, it might make sense for each dir to have props that controls
+        //   the suffixes ie. "handleTrailingSlashse"
+        const expandDirs = [".well-known"];
 
-        fs.readdirSync(outputPath, { withFileTypes: true }).forEach((item) => {
-          if (item.isDirectory()) {
-            dirs.push(toPosix(path.join("/", item.name)));
-            return;
-          }
-          kvEntries[toPosix(path.join("/", item.name))] = "s3";
-        });
+        const processDir = (childPath = "", level = 0) => {
+          const currentPath = path.join(outputPath, childPath);
+          fs.readdirSync(currentPath, { withFileTypes: true }).forEach(
+            (item) => {
+              // File: add to kvEntries
+              if (item.isFile()) {
+                kvEntries[toPosix(path.join("/", childPath, item.name))] = "s3";
+                return;
+              }
+              // Directory + expand: recursively process it
+              if (level === 0 && expandDirs.includes(item.name)) {
+                processDir(path.join(childPath, item.name), level + 1);
+                return;
+              }
+              // Directory + NOT expand: add to route
+              dirs.push(toPosix(path.join("/", childPath, item.name)));
+            },
+          );
+        };
+        processDir();
 
         kvEntries["metadata"] = JSON.stringify({
           base: route?.pathPrefix === "/" ? undefined : route?.pathPrefix,

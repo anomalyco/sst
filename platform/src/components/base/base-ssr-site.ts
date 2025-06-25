@@ -5,111 +5,11 @@ import { Prettify } from "../component";
 import { Input } from "../input";
 import { Link } from "../link.js";
 import { VisibleError } from "../error.js";
-import { BaseSiteDev, BaseSiteFileOptions } from "./base-site";
+import { BaseSiteDev } from "./base-site";
 import { siteBuilder } from "../aws/helpers/site-builder";
 
 export interface BaseSsrSiteArgs {
   dev?: false | Prettify<BaseSiteDev>;
-  assets?: Input<{
-    /**
-     * Character encoding for text based assets, like HTML, CSS, JS. This is
-     * used to set the `Content-Type` header when these files are served out.
-     *
-     * If set to `"none"`, then no charset will be returned in header.
-     * @default `"utf-8"`
-     * @example
-     * ```js
-     * {
-     *   assets: {
-     *     textEncoding: "iso-8859-1"
-     *   }
-     * }
-     * ```
-     */
-    textEncoding?: Input<
-      "utf-8" | "iso-8859-1" | "windows-1252" | "ascii" | "none"
-    >;
-    /**
-     * The `Cache-Control` header used for versioned files, like `main-1234.css`. This is
-     * used by both CloudFront and the browser cache.
-     *
-     * The default `max-age` is set to 1 year.
-     * @default `"public,max-age=31536000,immutable"`
-     * @example
-     * ```js
-     * {
-     *   assets: {
-     *     versionedFilesCacheHeader: "public,max-age=31536000,immutable"
-     *   }
-     * }
-     * ```
-     */
-    versionedFilesCacheHeader?: Input<string>;
-    /**
-     * The `Cache-Control` header used for non-versioned files, like `index.html`. This is used by both CloudFront and the browser cache.
-     *
-     * The default is set to not cache on browsers, and cache for 1 day on CloudFront.
-     * @default `"public,max-age=0,s-maxage=86400,stale-while-revalidate=8640"`
-     * @example
-     * ```js
-     * {
-     *   assets: {
-     *     nonVersionedFilesCacheHeader: "public,max-age=0,no-cache"
-     *   }
-     * }
-     * ```
-     */
-    nonVersionedFilesCacheHeader?: Input<string>;
-    /**
-     * Specify the `Content-Type` and `Cache-Control` headers for specific files. This allows
-     * you to override the default behavior for specific files using glob patterns.
-     *
-     * @example
-     * Apply `Cache-Control` and `Content-Type` to all zip files.
-     * ```js
-     * {
-     *   assets: {
-     *     fileOptions: [
-     *       {
-     *         files: "**\/*.zip",
-     *         contentType: "application/zip",
-     *         cacheControl: "private,no-cache,no-store,must-revalidate"
-     *       }
-     *     ]
-     *   }
-     * }
-     * ```
-     * Apply `Cache-Control` to all CSS and JS files except for CSS files with `index-`
-     * prefix in the `main/` directory.
-     * ```js
-     * {
-     *   assets: {
-     *     fileOptions: [
-     *       {
-     *         files: ["**\/*.css", "**\/*.js"],
-     *         ignore: "main\/index-*.css",
-     *         cacheControl: "private,no-cache,no-store,must-revalidate"
-     *       }
-     *     ]
-     *   }
-     * }
-     * ```
-     */
-    fileOptions?: Input<Prettify<BaseSiteFileOptions>[]>;
-    /**
-     * Configure if files from previous deployments should be purged from the bucket.
-     * @default `true`
-     * @example
-     * ```js
-     * {
-     *   assets: {
-     *     purge: false
-     *   }
-     * }
-     * ```
-     */
-    purge?: Input<boolean>;
-  }>;
   buildCommand?: Input<string>;
   environment?: Input<Record<string, Input<string>>>;
   link?: Input<any[]>;

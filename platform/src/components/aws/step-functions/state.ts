@@ -77,7 +77,7 @@ export interface RetryArgs {
    * @default `2`
    */
   backoffRate?: number;
-};
+}
 
 export interface CatchArgs {
   /**
@@ -86,7 +86,7 @@ export interface CatchArgs {
    * @default `["States.ALL"]`
    */
   errors?: string[];
-};
+}
 
 export interface StateArgs {
   /**
@@ -180,7 +180,7 @@ export abstract class State {
   protected _retries?: RetryArgs[];
   protected _catches?: { next: State; props: CatchArgs }[];
 
-  constructor(protected args: StateArgs) { }
+  constructor(protected args: StateArgs) {}
 
   protected addChildGraph<T extends State>(state: T): T {
     if (state._parentGraphState)
@@ -219,7 +219,7 @@ export abstract class State {
   protected addCatch(state: State, args: CatchArgs = {}) {
     this._catches = this._catches || [];
     this._catches.push({
-      next: state,
+      next: state.getHead(),
       props: {
         errors: args.errors ?? ["States.ALL"],
       },

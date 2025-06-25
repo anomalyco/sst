@@ -500,10 +500,12 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# If static pages need linked resources
-# ARG SST_RESOURCE_MyResource
-
+# If static pages do not need linked resources
 RUN npm run build
+
+# If static pages need linked resources
+# RUN --mount=type=secret,id=SST_RESOURCE_MyResource,env=SST_RESOURCE_MyResource \
+#   npm run build
 
 # Stage 3: Production server
 FROM base AS runner
@@ -525,7 +527,7 @@ You need to be running [Docker Desktop](https://www.docker.com/products/docker-d
 If your Next.js app is building static pages that need linked resources, you can need to declare them in your `Dockerfile`. For example, if we need the linked `MyBucket` component from above.
 
 ```dockerfile
-ARG SST_RESOURCE_MyBucket
+RUN --mount=type=secret,id=SST_RESOURCE_MyBucket,env=SST_RESOURCE_MyBucket npm run build
 ```
 
 You'll need to do this for each linked resource.

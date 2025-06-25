@@ -1,9 +1,9 @@
 import fs from "fs/promises";
 import path from "path";
+import crypto from "crypto";
 import {
   ComponentResourceOptions,
   output,
-  Output,
   all,
   jsonStringify,
   interpolate,
@@ -17,9 +17,16 @@ import type { Input } from "../input.js";
 import { ZoneLookup } from "./providers/zone-lookup.js";
 import { iam } from "@pulumi/aws";
 import { Permission } from "../aws/permission.js";
-import { Binding, binding } from "./binding.js";
+import { binding } from "./binding.js";
 import { DEFAULT_ACCOUNT_ID } from "./account-id.js";
 import { rpc } from "../rpc/rpc.js";
+import { WorkerAssets } from "./providers/worker-assets";
+import { WorkerScript, WorkerScriptInputs } from "./providers/worker-script";
+import { globSync } from "glob";
+import { VisibleError } from "../error";
+import { getContentType } from "../base/base-site";
+import { physicalName } from "../naming";
+import { existsAsync } from "../../util/fs";
 
 export interface WorkerArgs {
   /**
@@ -153,6 +160,28 @@ export interface WorkerArgs {
    */
   environment?: Input<Record<string, Input<string>>>;
   /**
+   * Upload [static assets](https://developers.cloudflare.com/workers/static-assets/) as
+   * part of the worker.
+   *
+   * You can directly fetch and serve assets within your Worker code via the [assets
+   * binding](https://developers.cloudflare.com/workers/static-assets/binding/#binding).
+   *
+   * @example
+   * ```js
+   * {
+   *   assets: {
+   *     directory: "./dist"
+   *   }
+   * }
+   * ```
+   */
+  assets?: Input<{
+    /**
+     * The directory containing the assets.
+     */
+    directory: Input<string>;
+  }>;
+  /**
    * [Transform](/docs/components/#transform) how this component creates its underlying
    * resources.
    */
@@ -160,13 +189,17 @@ export interface WorkerArgs {
     /**
      * Transform the Worker resource.
      */
-    worker?: Transform<cf.WorkerScriptArgs>;
+    worker?: Transform<cf.WorkersScriptArgs>;
   };
   /**
    * @internal
    * Placehodler for future feature.
    */
   dev?: boolean;
+  /**
+   * @internal
+   */
+  largePayload?: boolean;
 }
 
 /**
@@ -230,7 +263,7 @@ export interface WorkerArgs {
  * ```
  */
 export class Worker extends Component implements Link.Linkable {
-  private script: Output<cf.WorkerScript>;
+  private script: cf.WorkersScript;
   private workerUrl: WorkerUrl;
   private workerDomain?: cf.WorkerDomain;
 
@@ -259,7 +292,8 @@ export class Worker extends Component implements Link.Linkable {
       },
     );
     const build = buildHandler();
-    const script = createScript();
+    const assets = uploadAssets();
+    const script = args.largePayload ? createCustomScript() : createScript();
     const workerUrl = createWorkersUrl();
     const workerDomain = createWorkersDomain();
 
@@ -410,51 +444,198 @@ export class Worker extends Component implements Link.Linkable {
       return buildResult;
     }
 
-    function createScript() {
-      return all([build, args.environment, iamCredentials, bindings]).apply(
-        async ([build, environment, iamCredentials, bindings]) =>
-          new cf.WorkersScript(
-            ...transform(
-              args.transform?.worker,
-              `${name}Script`,
-              {
-                scriptName: "",
-                // this can be anything b/c worker code is passed in as a string
-                // through `content`, but this is required to imply esm
-                mainModule: "placeholder",
-                accountId: DEFAULT_ACCOUNT_ID,
-                content: (
-                  await fs.readFile(path.join(build.out, build.handler))
-                ).toString(),
-                compatibilityDate: "2025-05-05",
-                compatibilityFlags: ["nodejs_compat"],
-                bindings: [
-                  ...bindings,
-                  ...(iamCredentials
-                    ? [
-                        {
-                          type: "plain_text",
-                          name: "AWS_ACCESS_KEY_ID",
-                          text: iamCredentials.id,
-                        },
-                        {
-                          type: "secret_text",
-                          name: "AWS_SECRET_ACCESS_KEY",
-                          text: iamCredentials.secret,
-                        },
-                      ]
-                    : []),
-                  ...Object.entries(environment ?? {}).map(([key, value]) => ({
-                    type: "plain_text",
-                    name: key,
-                    text: value,
-                  })),
-                ],
-              },
-              { parent },
-            ),
-          ),
+    function generateScriptName() {
+      return physicalName(64, `${name}Script`).toLowerCase();
+    }
+
+    function uploadAssets() {
+      if (!args.assets) return;
+
+      // Build asset manifest
+      const MAX_ASSET_COUNT = 20_000;
+      const MAX_ASSET_MB_SIZE = 25;
+      const MAX_ASSET_BYTE_SIZE = MAX_ASSET_MB_SIZE * 1024 * 1024;
+
+      const directory = output(args.assets).directory.apply((v) =>
+        path.resolve($cli.paths.root, v),
       );
+
+      return new WorkerAssets(
+        `${name}Assets`,
+        {
+          scriptName: generateScriptName(),
+          directory,
+          manifest: directory.apply(async (dir) => {
+            // Parse .assetsignore file
+            const ignorePatterns = [".assetsignore"];
+            const ignorePath = path.join(dir, ".assetsignore");
+            if (await existsAsync(ignorePath)) {
+              const content = await fs.readFile(ignorePath, "utf-8");
+              const lines = content
+                .split("\n")
+                .filter((line) => line.trim() !== "");
+              ignorePatterns.push(...lines);
+            }
+
+            const files = globSync("**", {
+              cwd: dir,
+              nodir: true,
+              dot: true,
+              ignore: ignorePatterns,
+            });
+
+            if (files.length >= MAX_ASSET_COUNT) {
+              throw new VisibleError(
+                `Maximum number of assets exceeded.\n` +
+                  `Cloudflare Workers supports up to ${MAX_ASSET_COUNT} assets. We found ${files.length} files in the assets directory "${dir}".`,
+              );
+            }
+
+            const manifest: Record<
+              string,
+              { hash: string; size: number; contentType: string }
+            > = {};
+
+            await Promise.all(
+              files.map(async (file) => {
+                const source = path.resolve(dir, file);
+                const [stat, content] = await Promise.all([
+                  fs.stat(source),
+                  fs.readFile(source, "utf-8"),
+                ]);
+
+                if (stat.size > MAX_ASSET_BYTE_SIZE) {
+                  throw new VisibleError(
+                    `Asset too large.\n` +
+                      `Cloudflare Workers supports assets with sizes of up to ${MAX_ASSET_MB_SIZE}mb (${MAX_ASSET_BYTE_SIZE} bytes). We found a file "${source}" with a size of ${stat.size} bytes.`,
+                  );
+                }
+                manifest["/" + file.split(path.sep).join("/")] = {
+                  hash: crypto.createHash("md5").update(content).digest("hex"),
+                  size: stat.size,
+                  contentType: getContentType(source, "UTF-8"),
+                };
+              }),
+            );
+            return manifest;
+          }),
+        },
+        { parent, ignoreChanges: ["scriptName"] },
+      );
+    }
+
+    function createScript() {
+      return new cf.WorkersScript(
+        ...transform(
+          args.transform?.worker as Transform<cf.WorkersScriptArgs>,
+          `${name}Script`,
+          {
+            scriptName: assets?.scriptName ?? generateScriptName(),
+            mainModule: "placeholder",
+            accountId: DEFAULT_ACCOUNT_ID,
+            content: build.apply(async (build) =>
+              (
+                await fs.readFile(path.join(build.out, build.handler))
+              ).toString(),
+            ),
+            compatibilityDate: "2025-05-05",
+            compatibilityFlags: ["nodejs_compat"],
+            assets: assets ? { jwt: assets.jwt } : undefined,
+            bindings: all([args.environment, iamCredentials, bindings]).apply(
+              ([environment, iamCredentials, bindings]) => [
+                ...bindings,
+                ...(iamCredentials
+                  ? [
+                      {
+                        type: "plain_text",
+                        name: "AWS_ACCESS_KEY_ID",
+                        text: iamCredentials.id,
+                      },
+                      {
+                        type: "secret_text",
+                        name: "AWS_SECRET_ACCESS_KEY",
+                        text: iamCredentials.secret,
+                      },
+                    ]
+                  : []),
+                ...(args.assets
+                  ? [
+                      {
+                        type: "assets",
+                        name: "ASSETS",
+                      },
+                    ]
+                  : []),
+                ...Object.entries(environment ?? {}).map(([key, value]) => ({
+                  type: "plain_text",
+                  name: key,
+                  text: value,
+                })),
+              ],
+            ),
+          },
+          { parent, ignoreChanges: ["scriptName"] },
+        ),
+      );
+    }
+
+    function createCustomScript() {
+      const script = new WorkerScript(
+        ...transform(
+          args.transform?.worker as Transform<WorkerScriptInputs>,
+          `${name}CustomScript`,
+          {
+            scriptName: assets?.scriptName ?? generateScriptName(),
+            mainModule: "placeholder",
+            accountId: DEFAULT_ACCOUNT_ID,
+            content: build.apply(async (build) => {
+              const filename = path.join(build.out, build.handler);
+              const content = await fs.readFile(filename, "utf-8");
+              return {
+                filename,
+                hash: crypto.createHash("md5").update(content).digest("hex"),
+              };
+            }),
+            compatibilityDate: "2025-05-05",
+            compatibilityFlags: ["nodejs_compat"],
+            assets: assets ? { jwt: assets.jwt } : undefined,
+            bindings: all([args.environment, iamCredentials, bindings]).apply(
+              ([environment, iamCredentials, bindings]) => [
+                ...bindings,
+                ...(iamCredentials
+                  ? [
+                      {
+                        type: "plain_text",
+                        name: "AWS_ACCESS_KEY_ID",
+                        text: iamCredentials.id,
+                      },
+                      {
+                        type: "secret_text",
+                        name: "AWS_SECRET_ACCESS_KEY",
+                        text: iamCredentials.secret,
+                      },
+                    ]
+                  : []),
+                ...(args.assets
+                  ? [
+                      {
+                        type: "assets",
+                        name: "ASSETS",
+                      },
+                    ]
+                  : []),
+                ...Object.entries(environment ?? {}).map(([key, value]) => ({
+                  type: "plain_text",
+                  name: key,
+                  text: value,
+                })),
+              ],
+            ),
+          },
+          { parent, ignoreChanges: ["scriptName"] },
+        ),
+      );
+      return script as cf.WorkersScript;
     }
 
     function createWorkersUrl() {

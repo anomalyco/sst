@@ -16,23 +16,51 @@ type FunctionEnvironmentUpdateInputs struct {
 	Region       string            `json:"region"`
 }
 
-func (r *FunctionEnvironmentUpdate) Create(input *FunctionEnvironmentUpdateInputs, output *CreateResult[struct{}]) error {
+type FunctionEnvironmentUpdateOutputs struct {
+	Updated bool `json:"updated"`
+}
+
+func (r *FunctionEnvironmentUpdate) Create(input *FunctionEnvironmentUpdateInputs, output *CreateResult[FunctionEnvironmentUpdateOutputs]) error {
 	if err := r.updateEnvironment(input); err != nil {
 		return err
 	}
 
-	*output = CreateResult[struct{}]{
+	*output = CreateResult[FunctionEnvironmentUpdateOutputs]{
 		ID: input.FunctionName,
+		Outs: FunctionEnvironmentUpdateOutputs{
+			Updated: true,
+		},
 	}
 	return nil
 }
 
-func (r *FunctionEnvironmentUpdate) Update(input *UpdateInput[FunctionEnvironmentUpdateInputs, struct{}], output *UpdateResult[struct{}]) error {
+func (r *FunctionEnvironmentUpdate) Update(input *UpdateInput[FunctionEnvironmentUpdateInputs, FunctionEnvironmentUpdateOutputs], output *UpdateResult[FunctionEnvironmentUpdateOutputs]) error {
 	if err := r.updateEnvironment(&input.News); err != nil {
 		return err
 	}
 
-	*output = UpdateResult[struct{}]{}
+	*output = UpdateResult[FunctionEnvironmentUpdateOutputs]{
+		Outs: FunctionEnvironmentUpdateOutputs{
+			Updated: true,
+		},
+	}
+	return nil
+}
+
+func (r *FunctionEnvironmentUpdate) Read(input *ReadInput[FunctionEnvironmentUpdateInputs], output *ReadResult[FunctionEnvironmentUpdateOutputs]) error {
+	*output = ReadResult[FunctionEnvironmentUpdateOutputs]{
+		ID: input.ID,
+		Outs: FunctionEnvironmentUpdateOutputs{
+			Updated: false,
+		},
+	}
+	return nil
+}
+
+func (r *FunctionEnvironmentUpdate) Diff(input *DiffInput[FunctionEnvironmentUpdateInputs, FunctionEnvironmentUpdateOutputs], output *DiffResult) error {
+	*output = DiffResult{
+		Changes: input.Olds.Updated != true,
+	}
 	return nil
 }
 

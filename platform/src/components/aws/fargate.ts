@@ -213,6 +213,11 @@ export interface FargateContainerArgs {
    */
   environment?: FunctionArgs["environment"];
   /**
+   * A list of Amazon S3 file paths of environment files to load environment variables
+   * from. Same as the top-level [`environmentFiles`](#environmentFiles).
+   */
+  environmentFiles?: Input<Input<string>[]>;
+  /**
    * Configure the logs in CloudWatch. Same as the top-level [`logging`](#logging).
    */
   logging?: Input<{
@@ -517,6 +522,33 @@ export interface FargateBaseArgs {
    */
   environment?: FunctionArgs["environment"];
   /**
+   * A list of Amazon S3 object ARNs pointing to [environment files](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/use-environment-file.html)
+   * used to load environment variables into the container.
+   *
+   * Each file must be a plain text file in `.env` format.
+   *
+   * @example
+   * Create an S3 bucket and upload an environment file.
+   *
+   * ```ts title="sst.config.ts"
+   * const bucket = new sst.aws.Bucket("EnvBucket");
+   * const file = new aws.s3.BucketObjectv2("EnvFile", {
+   *   bucket: bucket.name,
+   *   key: "test.env",
+   *   content: ["FOO=hello", "BAR=world"].join("\n"),
+   * });
+   * ```
+   *
+   * And pass in the ARN of the environment file.
+   *
+   * ```js title="sst.config.ts"
+   * {
+   *   environmentFiles: [file.arn]
+   * }
+   * ```
+   */
+  environmentFiles?: Input<Input<string>[]>;
+  /**
    * Key-value pairs of AWS Systems Manager Parameter Store parameter ARNs or AWS Secrets
    * Manager secret ARNs. The values will be loaded into the container as environment
    * variables.
@@ -738,14 +770,15 @@ export function normalizeContainers(
     (args.image ||
       args.logging ||
       args.environment ||
+      args.environmentFiles ||
       args.volumes ||
       args.health ||
       args.ssm)
   ) {
     throw new VisibleError(
       type === "service"
-        ? `You cannot provide both "containers" and "image", "logging", "environment", "volumes", "health" or "ssm".`
-        : `You cannot provide both "containers" and "image", "logging", "environment", "volumes" or "ssm".`,
+        ? `You cannot provide both "containers" and "image", "logging", "environment", "environmentFiles", "volumes", "health" or "ssm".`
+        : `You cannot provide both "containers" and "image", "logging", "environment", "environmentFiles", "volumes" or "ssm".`,
     );
   }
 
@@ -758,6 +791,7 @@ export function normalizeContainers(
       image: args.image,
       logging: args.logging,
       environment: args.environment,
+      environmentFiles: args.environmentFiles,
       ssm: args.ssm,
       volumes: args.volumes,
       command: args.command,
@@ -837,15 +871,15 @@ export function createTaskRole(
     return iam.Role.get(`${name}TaskRole`, args.taskRole, {}, { parent });
 
   const policy = all([
-    args.permissions || [],
+    args.permissions ?? [],
     Link.getInclude<Permission>("aws.permission", args.link),
-    additionalPermissions,
+    additionalPermissions ?? [],
   ]).apply(([argsPermissions, linkPermissions, additionalPermissions]) =>
     iam.getPolicyDocumentOutput({
       statements: [
         ...argsPermissions,
         ...linkPermissions,
-        ...(additionalPermissions ?? []),
+        ...additionalPermissions,
         {
           actions: [
             "ssmmessages:CreateControlChannel",
@@ -926,6 +960,15 @@ export function createExecutionRole(
                   ],
                   resources: ["*"],
                 },
+                ...(args.environmentFiles
+                  ? [
+                      {
+                        sid: "ReadEnvironmentFiles",
+                        actions: ["s3:GetObject"],
+                        resources: args.environmentFiles,
+                      },
+                    ]
+                  : []),
               ],
             }).json,
           },
@@ -988,10 +1031,8 @@ export function createTaskDefinition(
             {
               context: { location: contextPath },
               dockerfile: { location: dockerfilePath },
-              buildArgs: linkEnvs.apply((linkEnvs) => ({
-                ...containerImage.args,
-                ...linkEnvs,
-              })),
+              buildArgs: containerImage.args,
+              secrets: linkEnvs,
               target: container.image.target,
               platforms: [container.image.platform],
               tags: [container.name, ...(container.image.tags ?? [])].map(
@@ -1075,6 +1116,10 @@ export function createTaskDefinition(
           ...linkEnvs,
         }).map(([name, value]) => ({ name, value })),
       ),
+      environmentFiles: container.environmentFiles?.map((file) => ({
+        type: "s3",
+        value: file,
+      })),
       linuxParameters: {
         initProcessEnabled: true,
       },

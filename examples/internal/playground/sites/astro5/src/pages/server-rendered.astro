@@ -1,4 +1,24 @@
 ---
+import { Resource } from "sst";
+
+const { env } = Astro.locals.runtime;
+const localsRuntime = {
+  FOO: env.FOO,
+  files: JSON.stringify(await env.MyBucket.list(), null, 2),
+};
+
+const importMeta = {
+  FOO: import.meta.env.FOO,
+};
+
+//const files2 = JSON.stringify(await Resource.MyBucket.list(), null, 2);
 ---
 
 <p>This page is server rendered</p>
+
+<h3>Accessed via Astro.locals.runtime.dev</h3>
+<pre>FOO: {localsRuntime.FOO}</pre>
+<pre>files: {localsRuntime.files}</pre>
+
+<h3>Accessed via import.meta.env</h3>
+<pre>FOO: {importMeta.FOO}</pre>
