@@ -264,7 +264,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
    *     textEncoding: "utf-8",
    *     fileOptions: [
    *       {
-   *         files: ["**\/*.css", "**\/*.js"],
+   *         files: "**",
    *         cacheControl: "max-age=31536000,public,immutable"
    *       },
    *       {
