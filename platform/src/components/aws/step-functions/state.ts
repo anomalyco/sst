@@ -77,6 +77,28 @@ export interface RetryArgs {
    * @default `2`
    */
   backoffRate?: number;
+  /**
+   * The jitter strategy to use for retry intervals. 
+   * Jitter randomizes the wait time before each retry to reduce simultaneous retries.
+   *
+   * For example, with interval set to "2 seconds", backoffRate to 2, 
+   * and maxAttempts to 3: if jitterStrategy is "FULL", 
+   * the first retry waits between 0–2 seconds, 
+   * the second between 0–4 seconds, and the third between 0–8 seconds.
+   *
+   * @default `"NONE"`
+   */
+  jitterStrategy?: "FULL" | "NONE";
+  /**
+   * The maximum value, in seconds, up to which a retry interval can increase.
+   * Limits the exponential wait times resulting from the backoff rate multiplier.
+   *
+   * For example, if backoffRate increases the interval above this value, the wait time is capped at maxDelaySeconds.
+   * You must specify a value greater than 0 and less than 31,622,401.
+   *
+   * If not specified, Step Functions doesn't limit the wait times between retry attempts.
+   */
+  maxDelaySeconds?: number;
 }
 
 export interface CatchArgs {
@@ -330,6 +352,8 @@ export abstract class State {
         IntervalSeconds: toSeconds(r.interval!),
         MaxAttempts: r.maxAttempts,
         BackoffRate: r.backoffRate,
+        JitterStrategy: r.jitterStrategy,
+        MaxDelaySeconds: r.maxDelaySeconds,
       })),
       Catch: this._catches?.map((c) => ({
         ErrorEquals: c.props.errors,
