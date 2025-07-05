@@ -1182,6 +1182,7 @@ async function handler(event) {
                   runtime: "nodejs20.x",
                   handler: "index.handler",
                   timeout: "900 seconds",
+                  architecture: "x86_64",
                   memory: "128 MB",
                   dev: false,
                   environment: {
