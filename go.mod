@@ -29,7 +29,7 @@ require (
 	github.com/charmbracelet/huh v0.3.0
 	github.com/charmbracelet/lipgloss v0.9.1
 	github.com/charmbracelet/x/ansi v0.4.3
-	github.com/cloudflare/cloudflare-go v0.89.0
+	github.com/cloudflare/cloudflare-go v0.115.0
 	github.com/creack/pty v1.1.21
 	github.com/eclipse/paho.mqtt.golang v1.4.3
 	github.com/evanw/esbuild v0.21.5
@@ -53,10 +53,10 @@ require (
 	github.com/xjasonlyu/tun2socks/v2 v2.5.3-0.20241012195127-b65d23180cc5
 	github.com/yalp/jsonpath v0.0.0-20180802001716-5cc68e5049a0
 	github.com/zeebo/xxh3 v1.0.2
-	golang.org/x/crypto v0.31.0
+	golang.org/x/crypto v0.39.0
 	golang.org/x/exp v0.0.0-20241217172543-b2144cdd0a67
-	golang.org/x/sync v0.10.0
-	golang.org/x/term v0.27.0
+	golang.org/x/sync v0.15.0
+	golang.org/x/term v0.32.0
 	google.golang.org/protobuf v1.36.0
 )
 
@@ -138,7 +138,7 @@ require (
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
-	github.com/goccy/go-json v0.10.2 // indirect
+	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/gofrs/uuid v4.2.0+incompatible // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
@@ -299,13 +299,13 @@ require (
 	go.uber.org/zap v1.27.0 // indirect
 	gocloud.dev v0.37.0 // indirect
 	gocloud.dev/secrets/hashivault v0.37.0 // indirect
-	golang.org/x/mod v0.22.0 // indirect
-	golang.org/x/net v0.33.0 // indirect
+	golang.org/x/mod v0.25.0 // indirect
+	golang.org/x/net v0.41.0 // indirect
 	golang.org/x/oauth2 v0.24.0 // indirect
-	golang.org/x/sys v0.28.0 // indirect
-	golang.org/x/text v0.21.0 // indirect
-	golang.org/x/time v0.6.0 // indirect
-	golang.org/x/tools v0.28.0 // indirect
+	golang.org/x/sys v0.33.0 // indirect
+	golang.org/x/text v0.26.0 // indirect
+	golang.org/x/time v0.12.0 // indirect
+	golang.org/x/tools v0.33.0 // indirect
 	golang.org/x/xerrors v0.0.0-20231012003039-104605ab7028 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
 	golang.zx2c4.com/wireguard v0.0.0-20231211153847-12269c276173 // indirect

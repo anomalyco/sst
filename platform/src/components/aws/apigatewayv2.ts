@@ -1032,13 +1032,14 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
    * The `{proxy+}` is a greedy segment, it matches all its child paths.
    * :::
    *
-   * The `$default` is a reserved keyword for the default route. It'll be matched if no other route matches.
+   * The `$default` is a reserved keyword for the default route. It'll be matched
+   * if no other route matches. When a request comes in, the API Gateway will look
+   * for the most specific match. If no route matches, the `$default` route will
+   * be invoked.
    *
    * :::note
    * You cannot have duplicate routes.
    * :::
-   *
-   * When a request comes in, the API Gateway will look for the most specific match. If no route matches, the `$default` route will be invoked.
    *
    * @param rawRoute The path for the route.
    * @param handler The function that'll be invoked.
@@ -1057,10 +1058,12 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
    * api.route("ANY /", "src/route.handler");
    * ```
    *
-   * Add a default route.
+   * Add a default or fallback route. Here for every request other than `GET /`,
+   * the `$default` route will be invoked.
    *
    * ```js title="sst.config.ts"
-   * api.route("GET /", "src/get.handler")
+   * api.route("GET /", "src/get.handler");
+   *
    * api.route("$default", "src/default.handler");
    * ```
    *

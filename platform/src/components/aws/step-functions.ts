@@ -685,9 +685,13 @@ export class StepFunctions extends Component implements Link.Linkable {
         TaskDefinition: args.task.taskDefinition,
         LaunchType: "FARGATE",
         NetworkConfiguration: {
-          Subnets: args.task.subnets,
-          SecurityGroups: args.task.securityGroups,
-          AssignPublicIp: args.task.assignPublicIp,
+          AwsvpcConfiguration: {
+            Subnets: args.task.subnets,
+            SecurityGroups: args.task.securityGroups,
+            AssignPublicIp: args.task.assignPublicIp.apply((v) =>
+              v ? "ENABLED" : "DISABLED",
+            ),
+          },
         },
         Overrides:
           args.environment &&
@@ -705,7 +709,14 @@ export class StepFunctions extends Component implements Link.Linkable {
       permissions: [
         {
           actions: ["ecs:RunTask"],
-          resources: [args.task.cluster],
+          resources: [args.task.nodes.taskDefinition.arn],
+        },
+        {
+          actions: ["iam:PassRole"],
+          resources: [
+            args.task.nodes.executionRole.arn,
+            args.task.nodes.taskRole.arn,
+          ],
         },
       ],
     });

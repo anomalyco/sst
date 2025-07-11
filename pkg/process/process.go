@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"runtime"
 	"sync"
 	"syscall"
 	"time"
@@ -97,9 +98,20 @@ func Kill(process *os.Process) error {
 	}
 	slog.Info("killing process", "pid", process.Pid)
 
-	if err := process.Signal(syscall.SIGTERM); err != nil {
-		slog.Error("failed to send sigterm", "pid", process.Pid)
-		return err
+	switch runtime.GOOS {
+
+	case "windows":
+		if err := process.Kill(); err != nil {
+			slog.Error("failed to kill", "pid", process.Pid)
+			return err
+		}
+		break
+
+	default:
+		if err := process.Signal(syscall.SIGTERM); err != nil {
+			slog.Error("failed to send sigterm", "pid", process.Pid)
+			return err
+		}
 	}
 
 	done := make(chan struct{})

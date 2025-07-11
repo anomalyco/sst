@@ -37,6 +37,7 @@ export default $config({
     //const bus = addBus();
     //const dynamo = addDynamo();
     //addOpenSearch();
+    //addStepFunction();
 
     return ret;
 
@@ -605,6 +606,20 @@ export default $config({
       ret.osUsername = os.username;
       ret.osPassword = os.password;
       return os;
+    }
+
+    function addStepFunction() {
+      const runTask = sst.aws.StepFunctions.ecsRunTask({
+        name: "MyTask",
+        task,
+        environment: {
+          FOO: "hello",
+        },
+      });
+      const stepFunction = new sst.aws.StepFunctions("MyStepFunction", {
+        definition: runTask,
+      });
+      return stepFunction;
     }
   },
 });

@@ -64,7 +64,9 @@ func (w *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 
 	slog.Info("loader info", "loader", build.Loader)
 
-	loader := map[string]esbuild.Loader{}
+	loader := map[string]esbuild.Loader{
+		".wasm": api.LoaderBinary,
+	}
 	loaderMap := map[string]api.Loader{
 		"js":      api.LoaderJS,
 		"jsx":     api.LoaderJSX,
