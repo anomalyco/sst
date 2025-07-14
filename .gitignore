@@ -13,3 +13,12 @@ Pulumi.yaml
 tmp
 .termai
 .opencode
+
+# SST Env files from examples
+examples/*/sst-env.d.ts
+
+# mise local setup
+mise.local.toml
+
+# build outputs
+/sst

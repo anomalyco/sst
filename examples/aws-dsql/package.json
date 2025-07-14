@@ -1,0 +1,20 @@
+{
+  "name": "aws-dsql-example",
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "sst dev",
+    "deploy": "sst deploy",
+    "remove": "sst remove"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dsql": "^3.700.0",
+    "@aws-sdk/dsql-signer": "^3.844.0",
+    "pg": "^8.16.3",
+    "sst": "^3.0.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.133",
+    "@types/pg": "^8.10.9"
+  }
+}

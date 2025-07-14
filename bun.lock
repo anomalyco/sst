@@ -17,7 +17,7 @@
         "@aws-sdk/client-ssm": "3.478.0",
         "@aws-sdk/client-sts": "3.478.0",
         "@aws-sdk/middleware-retry": "3.374.0",
-        "@pulumi/aws": "6.66.2",
+        "@pulumi/aws": "6.83.0",
         "@pulumi/cloudflare": "6.2.0",
         "@pulumi/command": "1.0.1",
         "@pulumi/docker-build": "0.0.8",
@@ -474,7 +474,7 @@
 
     "@protobufjs/utf8": ["@protobufjs/utf8@1.1.0", "", {}, "sha512-Vvn3zZrhQZkkBE8LSuW3em98c0FwgO4nxzv6OdSxPKJIEKY2bGbHn+mhGIPerzI4twdxaP8/0+06HBpwf345Lw=="],
 
-    "@pulumi/aws": ["@pulumi/aws@6.66.2", "", { "dependencies": { "@pulumi/pulumi": "^3.142.0", "mime": "^2.0.0" } }, "sha512-jO5L4JcjYriqXBGYH9LVb+GjawHUJvkWvLtb5nXxIKpkykEO1LyWVZdR4ngFcT7Hlw99Tg1ms4ut7LdETPCuUw=="],
+    "@pulumi/aws": ["@pulumi/aws@6.83.0", "", { "dependencies": { "@pulumi/pulumi": "^3.142.0", "mime": "^2.0.0" } }, "sha512-uYpYSA5aaDERFuxy3D+FDWiwH7YYNHSwGLpHVuARAzBfQ/SQDkS/tfJI5NNo7/+KCmje3rloKE2enUK/Q9bVBg=="],
 
     "@pulumi/cloudflare": ["@pulumi/cloudflare@6.2.0", "", { "dependencies": { "@pulumi/pulumi": "^3.142.0" } }, "sha512-PXTYyf1oUoaiGsHUzFtKwlNySkA6IzS37TpYo3gvpem6R+x4Ot3t3sGQCuPi24a5TweeAmPPSY33+EGjqlAIhw=="],
 
