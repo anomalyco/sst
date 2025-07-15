@@ -1,8 +1,8 @@
-import { ComponentResourceOptions, Output, all, output } from "@pulumi/pulumi";
+import { ComponentResourceOptions, Output } from "@pulumi/pulumi";
 import { Component, Transform } from "../component";
 import { Link } from "../link";
 import type { Input } from "../input";
-import { Region, Provider, dsql } from "@pulumi/aws";
+import { dsql } from "@pulumi/aws";
 import { permission } from "./permission";
 
 export interface DsqlArgs {
@@ -35,66 +35,20 @@ export interface DsqlArgs {
   kmsEncryptionKey?: Input<string>;
 
   /**
-   * Multi-region properties for the DSQL Cluster.
+   * Witness region for multi-region cluster preparation.
    *
-   * Setting this creates a multi-region cluster with active-active replication.
-   * Multi-region clusters provide 99.999% availability and allow concurrent
-   * reads/writes from multiple regions with strong consistency.
+   * When specified, creates a cluster ready for multi-region peering.
+   * Must be in the same region set as the cluster region.
+   * See https://docs.aws.amazon.com/aurora-dsql/latest/userguide/what-is-aurora-dsql.html#region-availability
    *
    * @example
    * ```js
    * {
-   *   multiRegion: {
-   *     witnessRegion: "us-west-2"
-   *   }
+   *   witnessRegion: "us-west-2"
    * }
    * ```
    */
-  multiRegion?: Input<{
-    /**
-     * Witness region for multi-region clusters.
-     *
-     * Must be in the same region set as the primary and peer region.
-     * See https://docs.aws.amazon.com/aurora-dsql/latest/userguide/what-is-aurora-dsql.html#region-availability
-     * The witness region is used for consensus in the distributed system.
-     *
-     * @example
-     * ```js
-     * {
-     *   witnessRegion: "us-west-2"
-     * }
-     * ```
-     */
-    witnessRegion: Input<string>;
-
-    /**
-     * Peer cluster region to for multi-region clusters.
-     * Must be in the same Region group as the primary and witness region.
-     * See https://docs.aws.amazon.com/aurora-dsql/latest/userguide/what-is-aurora-dsql.html#region-availability
-     *
-     * @example
-     * ```js
-     * {
-     *   region: "us-east-2"
-     * }
-     * ```
-     */
-    peerRegion: Input<Region>;
-
-    /**
-     * The ARN of the AWS KMS key for encryption on the peer cluster.
-     * Must be in the same region as the peer cluster.
-     *
-     * @default `"AWS_OWNED_KMS_KEY"`
-     * @example
-     * ```js
-     * {
-     *   kmsEncryptionKey: "arn:aws:kms:us-east-2:123456789012:key/12345678-1234-1234-1234-123456789012"
-     * }
-     * ```
-     */
-    peerKmsEncryptionKey?: Input<string>;
-  }>;
+  witnessRegion?: Input<string>;
 
   /**
    * Tags to associate with the cluster.
@@ -128,7 +82,7 @@ export interface DsqlArgs {
   /**
    * @internal
    */
-  clusters?: Input<dsql.Cluster[]>;
+  cluster?: dsql.Cluster;
 }
 
 /**
@@ -145,16 +99,28 @@ export interface DsqlArgs {
  * const cluster = new sst.aws.Dsql("MyCluster");
  * ```
  *
- * #### Create a multi-region cluster
+ * #### Create clusters in multiple regions
  *
- * Assuming default region is `us-east-1`
+ * For multi-region setup, create separate clusters and use DsqlPeering:
  *
  * ```ts title="sst.config.ts"
- * const cluster = new sst.aws.Dsql("MyCluster", {
- *   multiRegion: {
- *     witnessRegion: "us-west-2"
- *     peerRegion: "us-east-2"
- *   }
+ * const witnessRegion = "us-west-2";
+ *
+ * const primary = new sst.aws.Dsql("Primary", {
+ *   deletionProtection: false, // Required for deletion
+ *   witnessRegion: witnessRegion // Required for multi-region
+ * });
+ *
+ * const peerProvider = new aws.Provider("PeerRegion", { region: "us-east-2" });
+ * const peer = new sst.aws.Dsql("Peer", {
+ *   deletionProtection: false, // Required for deletion
+ *   witnessRegion: witnessRegion // Required for multi-region
+ * }, { provider: peerProvider });
+ *
+ * const peering = new sst.aws.DsqlPeering("Peering", {
+ *   primaryCluster: primary,
+ *   peerCluster: peer,
+ *   witnessRegion: witnessRegion
  * });
  * ```
  *
@@ -195,7 +161,7 @@ export interface DsqlArgs {
  */
 
 export class Dsql extends Component implements Link.Linkable {
-  private clusters: Output<Array<dsql.Cluster>>;
+  private cluster: dsql.Cluster;
 
   constructor(
     name: string,
@@ -204,95 +170,31 @@ export class Dsql extends Component implements Link.Linkable {
   ) {
     super(__pulumiType, name, args, opts);
 
-    if (args.ref && args.clusters) {
-      this.clusters = output(args.clusters);
+    if (args.ref && args.cluster) {
+      this.cluster = args.cluster;
       return;
     }
 
-    const clusters = createClusters();
-    this.clusters = clusters;
-
-    function createClusters() {
-      return all([
-        args.deletionProtection,
-        args.kmsEncryptionKey,
-        args.multiRegion,
-        args.tags,
-      ]).apply(([deletionProtection, kmsEncryptionKey, multiRegion, tags]) => {
-        let clusters = new Array<dsql.Cluster>();
-
-        clusters.push(
-          new dsql.Cluster(`${name}Cluster`, {
-            deletionProtectionEnabled: deletionProtection ?? false,
-            kmsEncryptionKey: kmsEncryptionKey ?? "AWS_OWNED_KMS_KEY",
-            multiRegionProperties: multiRegion
-              ? {
-                  witnessRegion: multiRegion.witnessRegion,
-                }
-              : undefined,
-            tags: {
-              Name: `${$app.name}-${$app.stage}-${name}`,
-              ...(tags ?? {}),
-            },
-          }),
-        );
-
-        if (multiRegion) {
-          const peerRegion = new Provider("peerRegion", {
-            region: multiRegion.peerRegion,
-          });
-
-          clusters.push(
-            new dsql.Cluster(
-              `${name}PeerCluster`,
-              {
-                deletionProtectionEnabled: deletionProtection ?? false,
-                kmsEncryptionKey:
-                  multiRegion.peerKmsEncryptionKey ?? "AWS_OWNED_KMS_KEY",
-                multiRegionProperties: {
-                  witnessRegion: multiRegion.witnessRegion,
-                },
-
-                tags: {
-                  Name: `${$app.name}-${$app.stage}-${name}`,
-                  ...(tags ?? {}),
-                },
-              },
-              { provider: peerRegion },
-            ),
-          );
-
-          const cluster1Peering = new dsql.ClusterPeering(
-            `${name}PeeringSide1`,
-            {
-              identifier: clusters[0].identifier,
-              clusters: [clusters[1].arn],
-              witnessRegion: multiRegion.witnessRegion,
-            },
-          );
-
-          const cluster2Peering = new dsql.ClusterPeering(
-            `${name}PeeringSide2`,
-            {
-              identifier: clusters[1].identifier,
-              clusters: [clusters[0].arn],
-              witnessRegion: multiRegion.witnessRegion,
-            },
-            { provider: peerRegion },
-          );
-        }
-
-        return clusters;
-      });
-    }
-  }
-
-  private static identifierFromArn(clusterArn: Output<string>) {
-    return clusterArn.apply((arn) => {
-      const parts = arn.split(":");
-      const clusterId = parts[5].split("/")[1];
-      return clusterId;
-    });
+    this.cluster = new dsql.Cluster(
+      `${name}Cluster`,
+      {
+        deletionProtectionEnabled: args.deletionProtection ?? false,
+        kmsEncryptionKey: args.kmsEncryptionKey ?? "AWS_OWNED_KMS_KEY",
+        multiRegionProperties: args.witnessRegion
+          ? {
+              witnessRegion: args.witnessRegion,
+            }
+          : undefined,
+        tags: {
+          Name: `${$app.name}-${$app.stage}-${name}`,
+          ...(args.tags ?? {}),
+        },
+        ...(args.transform?.cluster || {}),
+      },
+      {
+        parent: this,
+      },
+    );
   }
 
   private static publicEndpointFromArn(clusterArn: Output<string>) {
@@ -316,36 +218,14 @@ export class Dsql extends Component implements Link.Linkable {
    * The ARN of the DSQL Cluster.
    */
   public get arn() {
-    return this.clusters[0].arn;
-  }
-
-  /**
-   * The ARN of the peer DSQL Cluster.
-   */
-  public get peerArn() {
-    return this.clusters.apply((c) => {
-      if (c.length > 1) {
-        return c[1].arn;
-      }
-    });
+    return this.cluster.arn;
   }
 
   /**
    * The identifier of the DSQL Cluster.
    */
   public get identifier() {
-    return this.clusters[0].identifier;
-  }
-
-  /**
-   * The identifier of the peer DSQL Cluster.
-   */
-  public get peerIdentifier() {
-    return this.clusters.apply((c) => {
-      if (c.length > 1) {
-        return c[1].identifier;
-      }
-    });
+    return this.cluster.identifier;
   }
 
   /**
@@ -357,41 +237,14 @@ export class Dsql extends Component implements Link.Linkable {
    * Use this endpoint for direct PostgreSQL connections from your applications.
    */
   public get publicEndpoint() {
-    return this.clusters[0].apply((c) => Dsql.publicEndpointFromArn(c.arn));
-  }
-
-  /**
-   * The public endpoint of the peer DSQL Cluster for PostgreSQL connections.
-   *
-   * This returns the full cluster endpoint in the format:
-   * {identifier}.dsql.{region}.on.aws
-   *
-   * Use this endpoint for direct PostgreSQL connections from your applications.
-   */
-  public get peerPublicEndpoint() {
-    return this.clusters.apply((c) => {
-      if (c.length > 1) {
-        return Dsql.publicEndpointFromArn(c[1].arn);
-      }
-    });
+    return Dsql.publicEndpointFromArn(this.cluster.arn);
   }
 
   /**
    * The region of the DSQL Cluster.
    */
   public get region() {
-    return this.clusters[0].apply((c) => Dsql.regionFromArn(c.arn));
-  }
-
-  /**
-   * The region of the peer DSQL Cluster.
-   */
-  public get peerRegion() {
-    return this.clusters.apply((c) => {
-      if (c.length > 1) {
-        return Dsql.regionFromArn(c[1].arn);
-      }
-    });
+    return Dsql.regionFromArn(this.cluster.arn);
   }
 
   /**
@@ -402,22 +255,7 @@ export class Dsql extends Component implements Link.Linkable {
    * instead of over the public internet.
    */
   public get vpcEndpointServiceName() {
-    return this.clusters[0].apply((c) => c.vpcEndpointServiceName);
-  }
-
-  /**
-   * The VPC endpoint service name for the peer DSQL Cluster.
-   *
-   * This is used for creating VPC endpoints for private connectivity.
-   * Use this when you want to connect to DSQL through a VPC endpoint
-   * instead of over the public internet.
-   */
-  public get peerVpcEndpointServiceName() {
-    return this.clusters.apply((c) => {
-      if (c.length > 1) {
-        return c[1].vpcEndpointServiceName;
-      }
-    });
+    return this.cluster.vpcEndpointServiceName;
   }
 
   /**
@@ -426,10 +264,9 @@ export class Dsql extends Component implements Link.Linkable {
   public get nodes() {
     return {
       /**
-       * The Amazon Aurora DSQL Cluster(s).
+       * The Amazon Aurora DSQL Cluster.
        */
-      cluster: this.clusters[0],
-      peerCluster: this.clusters[1] || null,
+      cluster: this.cluster,
     };
   }
 
@@ -470,40 +307,18 @@ export class Dsql extends Component implements Link.Linkable {
     identifier: Input<string>,
     opts?: ComponentResourceOptions,
   ) {
-    const cluster1 = dsql.Cluster.get(
+    const cluster = dsql.Cluster.get(
       `${name}Cluster`,
       identifier,
       undefined,
       opts,
     );
 
-    const clusters = all([cluster1.multiRegionProperties, cluster1.arn]).apply(
-      ([multiRegionProps, cluster1Arn]) => {
-        const result: dsql.Cluster[] = [cluster1];
-        if ((multiRegionProps?.clusters?.length ?? 0) > 0 && multiRegionProps) {
-          const peerArn = multiRegionProps.clusters.find(
-            (arn) => arn !== cluster1Arn,
-          );
-          if (peerArn) {
-            const peerIdentifier = Dsql.identifierFromArn(output(peerArn));
-            const cluster2 = dsql.Cluster.get(
-              `${name}PeerCluster`,
-              peerIdentifier,
-              undefined,
-              opts,
-            );
-            result.push(cluster2);
-          }
-        }
-        return result;
-      },
-    );
-
     return new Dsql(
       name,
       {
         ref: true,
-        clusters: clusters,
+        cluster: cluster,
       },
       opts,
     );
@@ -514,22 +329,15 @@ export class Dsql extends Component implements Link.Linkable {
     return {
       properties: {
         arn: this.arn,
-        peerArn: this.peerArn,
         identifier: this.identifier,
-        peerIdentifier: this.peerIdentifier,
         publicEndpoint: this.publicEndpoint,
-        peerPublicEndpoint: this.peerPublicEndpoint,
         vpcEndpointServiceName: this.vpcEndpointServiceName,
-        peerVpcEndpointServiceName: this.peerVpcEndpointServiceName,
         region: this.region,
-        peerRegion: this.peerRegion,
       },
       include: [
         permission({
           actions: ["dsql:DbConnect", "dsql:DbConnectAdmin", "dsql:GetCluster"],
-          resources: all([this.peerArn, this.arn]).apply(([peerArn, arn]) =>
-            peerArn ? [arn, peerArn] : [arn],
-          ),
+          resources: [this.arn],
         }),
       ],
     };

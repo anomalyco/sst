@@ -16,6 +16,7 @@
   "dependencies": {
     "@aws-sdk/client-cloudfront": "3.478.0",
     "@aws-sdk/client-cloudwatch-logs": "3.478.0",
+    "@aws-sdk/client-dsql": "^3.844.0",
     "@aws-sdk/client-ecr": "3.478.0",
     "@aws-sdk/client-lambda": "3.478.0",
     "@aws-sdk/client-rds-data": "3.478.0",
