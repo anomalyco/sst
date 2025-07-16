@@ -13,7 +13,7 @@ import { VisibleError } from "../error";
 import { hashStringToPrettyString, logicalName } from "../naming";
 import { parseQueueArn } from "./helpers/arn";
 import { QueueLambdaSubscriber } from "./queue-lambda-subscriber";
-import { iam, lambda, sqs } from "@pulumi/aws";
+import { iam, lambda, sqs, getCallerIdentity } from "@pulumi/aws";
 import { DurationHours, DurationMinutes, toSeconds } from "../duration";
 import { permission } from "./permission.js";
 
@@ -670,8 +670,10 @@ export class Queue extends Component implements Link.Linkable {
   static createPolicy(
     name: string,
     arn: Output<string>,
-    opts?: ComponentResourceOptions,
+    opts?: ComponentResourceOptions & { sourceArns?: Output<string>[]},
   ) {
+    const accountId = getCallerIdentity().then(identity => identity.accountId);
+
     return new sqs.QueuePolicy(
       name,
       {
@@ -691,6 +693,18 @@ export class Queue extends Component implements Link.Linkable {
                   ],
                 },
               ],
+              conditions:  opts?.sourceArns && [
+                {
+                  test: "StringEquals",
+                  variable: "aws:SourceAccount",
+                  values: [accountId],
+                },
+                {
+                  test: "ArnEquals",
+                  variable: "aws:SourceArn",
+                  values: opts!.sourceArns,
+                },
+              ]                
             },
           ],
         }).json,

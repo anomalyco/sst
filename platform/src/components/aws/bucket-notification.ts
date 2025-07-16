@@ -159,7 +159,7 @@ export class BucketNotification extends Component {
             const policy = Queue.createPolicy(
               `${name}Notification${n.name}Policy`,
               arn,
-              { parent: self },
+              { parent: self, sourceArns: [bucket.arn] },
             );
             return { args: n, queueArn: arn, dependsOn: policy };
           }
