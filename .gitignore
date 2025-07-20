@@ -13,3 +13,5 @@ Pulumi.yaml
 tmp
 .termai
 .opencode
+.idea
+.kiro

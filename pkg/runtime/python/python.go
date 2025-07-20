@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/BurntSushi/toml"
 	"github.com/sst/sst/v3/pkg/process"
@@ -70,12 +71,93 @@ func (w *Worker) Logs() io.ReadCloser {
 
 type PythonRuntime struct {
 	lastBuiltHandler map[string]string
+
+	// Build cache and change detection components
+	buildCache     *BuildCache
+	changeDetector *ChangeDetector
+	layoutDetector *LayoutDetector
+
+	// Mutex for thread-safe access
+	mutex sync.RWMutex
 }
 
 func New() *PythonRuntime {
 	return &PythonRuntime{
 		lastBuiltHandler: map[string]string{},
 	}
+}
+
+// NewWithCache creates a new Python runtime with caching enabled
+func NewWithCache(cacheDir string) (*PythonRuntime, error) {
+	runtime := &PythonRuntime{
+		lastBuiltHandler: map[string]string{},
+	}
+
+	// Initialize cache and detection systems
+	if err := runtime.initializeCacheSystem(cacheDir); err != nil {
+		return nil, fmt.Errorf("failed to initialize cache system: %w", err)
+	}
+
+	return runtime, nil
+}
+
+// initializeCacheSystem sets up the build cache and change detection
+func (r *PythonRuntime) initializeCacheSystem(cacheDir string) error {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	// Create layout detector
+	r.layoutDetector = NewLayoutDetector(LayoutDetectorConfig{
+		ProjectRoot:  cacheDir, // This will be updated per build
+		CacheTimeout: 5 * time.Minute,
+	})
+
+	// Create build cache
+	buildCache, err := NewBuildCache(BuildCacheConfig{
+		CacheDir:          cacheDir,
+		MaxAge:            24 * time.Hour,
+		MaxSize:           1000,
+		EnablePersistence: true,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create build cache: %w", err)
+	}
+	r.buildCache = buildCache
+
+	// Create change detector
+	changeDetector, err := NewChangeDetector(ChangeDetectorConfig{
+		LayoutDetector: r.layoutDetector,
+		BuildCache:     r.buildCache,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create change detector: %w", err)
+	}
+	r.changeDetector = changeDetector
+
+	return nil
+}
+
+// EnableCaching enables caching for an existing runtime
+func (r *PythonRuntime) EnableCaching(cacheDir string) error {
+	return r.initializeCacheSystem(cacheDir)
+}
+
+// DisableCaching disables caching and cleans up resources
+func (r *PythonRuntime) DisableCaching() error {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	if r.buildCache != nil {
+		if err := r.buildCache.Clear(); err != nil {
+			return fmt.Errorf("failed to clear build cache: %w", err)
+		}
+	}
+
+	r.buildCache = nil
+	r.changeDetector = nil
+	r.layoutDetector = nil
+
+	return nil
 }
 
 func (r *PythonRuntime) Build(ctx context.Context, input *runtime.BuildInput) (*runtime.BuildOutput, error) {
@@ -176,11 +258,83 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 }
 
 func (r *PythonRuntime) ShouldRebuild(functionID string, file string) bool {
-	// Assume that the build is always stale. We could do a better job here but bc of how the build
-	// process actually works its not a slowdown as the real slow part is starting the python interpreter
-	// This is neglible for now and will get faster when we can move to uv's native build system.
-	// We could also pre-warm the runtime - custom watcher paths would be useful here.
-	return true
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	// If caching is not enabled, always rebuild
+	if r.changeDetector == nil {
+		slog.Debug("caching not enabled, rebuilding", "functionID", functionID)
+		return true
+	}
+
+	// Use change detection to determine if rebuild is needed
+	result, err := r.changeDetector.DetectChanges(functionID, file)
+	if err != nil {
+		slog.Warn("failed to detect changes, rebuilding", "functionID", functionID, "error", err)
+		return true
+	}
+
+	if result.HasChanges {
+		slog.Info("changes detected, rebuilding",
+			"functionID", functionID,
+			"reason", result.Reason,
+			"changeTypes", result.ChangeTypes,
+			"changedFiles", len(result.ChangedFiles))
+	} else {
+		slog.Debug("no changes detected, using cached build", "functionID", functionID)
+	}
+
+	return result.HasChanges
+}
+
+// GetCacheStats returns statistics about the build cache
+func (r *PythonRuntime) GetCacheStats() *CacheStats {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	if r.buildCache == nil {
+		return nil
+	}
+
+	stats := r.buildCache.GetStats()
+	return &stats
+}
+
+// ClearCache clears the build cache
+func (r *PythonRuntime) ClearCache() error {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	if r.buildCache == nil {
+		return fmt.Errorf("caching not enabled")
+	}
+
+	return r.buildCache.Clear()
+}
+
+// InvalidateCacheEntry removes a specific cache entry
+func (r *PythonRuntime) InvalidateCacheEntry(functionID string) error {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	if r.buildCache == nil {
+		return fmt.Errorf("caching not enabled")
+	}
+
+	return r.buildCache.Delete(functionID)
+}
+
+// ForceRebuild forces a rebuild for a specific function
+func (r *PythonRuntime) ForceRebuild(functionID string, reason string) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	if r.buildCache != nil {
+		// Remove from cache to force rebuild
+		r.buildCache.Delete(functionID)
+	}
+
+	slog.Info("forced rebuild requested", "functionID", functionID, "reason", reason)
 }
 
 func (r *PythonRuntime) CreateBuildAsset(ctx context.Context, input *runtime.BuildInput) (*runtime.BuildOutput, error) {
@@ -205,6 +359,52 @@ func (r *PythonRuntime) CreateBuildAsset(ctx context.Context, input *runtime.Bui
 		return nil, fmt.Errorf("invalid architecture %q - must be x86_64 or arm64 - %v", arch, string(input.Properties))
 	}
 	workingDir := path.ResolveRootDir(input.CfgPath)
+
+	// Check if we should use incremental building
+	if r.shouldUseIncrementalBuild() {
+		return r.createBuildAssetIncremental(ctx, input, arch, workingDir)
+	}
+
+	// Fallback to original build process
+	return r.createBuildAssetLegacy(ctx, input, arch, workingDir)
+}
+
+// shouldUseIncrementalBuild determines if incremental building should be used
+func (r *PythonRuntime) shouldUseIncrementalBuild() bool {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	// Use incremental build if caching is enabled
+	return r.buildCache != nil && r.changeDetector != nil && r.layoutDetector != nil
+}
+
+// createBuildAssetIncremental creates build assets using incremental building
+func (r *PythonRuntime) createBuildAssetIncremental(ctx context.Context, input *runtime.BuildInput, arch string, workingDir string) (*runtime.BuildOutput, error) {
+	slog.Info("using incremental build system", "functionID", input.FunctionID)
+
+	// Create incremental builder
+	incrementalBuilder, err := NewIncrementalBuilder(IncrementalBuilderConfig{
+		CacheDir:                filepath.Join(workingDir, ".sst", "cache"),
+		ArtifactDir:             input.Out(),
+		MaxCacheAge:             24 * time.Hour,
+		MaxCacheSize:            1024 * 1024 * 1024, // 1GB
+		EnableParallelBuilds:    true,
+		MaxParallelBuilds:       4,
+		EnableProgressReporting: true,
+		EnableBuildOptimization: true,
+	})
+	if err != nil {
+		slog.Warn("failed to create incremental builder, falling back to legacy build", "error", err)
+		return r.createBuildAssetLegacy(ctx, input, arch, workingDir)
+	}
+
+	// Use incremental builder
+	return incrementalBuilder.Build(ctx, input)
+}
+
+// createBuildAssetLegacy creates build assets using the original build process
+func (r *PythonRuntime) createBuildAssetLegacy(ctx context.Context, input *runtime.BuildInput, arch string, workingDir string) (*runtime.BuildOutput, error) {
+	slog.Info("using legacy build system", "functionID", input.FunctionID)
 
 	// 1. Generate non-local package index
 	syncCmd := process.CommandContext(ctx, "uv", "sync", "--all-packages")
@@ -329,11 +529,16 @@ func (r *PythonRuntime) CreateBuildAsset(ctx context.Context, input *runtime.Bui
 		errors := []string{}
 		sourcemaps := []string{}
 
-		return &runtime.BuildOutput{
+		buildOutput := &runtime.BuildOutput{
 			Handler:    adjustedHandler,
 			Errors:     errors,
 			Sourcemaps: sourcemaps,
-		}, nil
+		}
+
+		// Update cache after successful build
+		r.updateCacheAfterBuild(input, buildOutput)
+
+		return buildOutput, nil
 	} else {
 		// 5. Check if there is a Dockerfile in the handler directory
 		// 	If not then copy over the default one from the platform directory
@@ -374,11 +579,16 @@ func (r *PythonRuntime) CreateBuildAsset(ctx context.Context, input *runtime.Bui
 		errors := []string{}
 		sourcemaps := []string{}
 
-		return &runtime.BuildOutput{
+		buildOutput := &runtime.BuildOutput{
 			Handler:    adjustedHandler,
 			Errors:     errors,
 			Sourcemaps: sourcemaps,
-		}, nil
+		}
+
+		// Update cache after successful build
+		r.updateCacheAfterBuild(input, buildOutput)
+
+		return buildOutput, nil
 	}
 }
 
@@ -511,4 +721,51 @@ func (r *PythonRuntime) adjustHandlerPath(input *runtime.BuildInput) (string, er
 		}
 	}
 	return adjustedHandler, nil
+}
+
+// updateCacheAfterBuild updates the build cache after a successful build
+func (r *PythonRuntime) updateCacheAfterBuild(input *runtime.BuildInput, buildOutput *runtime.BuildOutput) {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	// Skip if caching is not enabled
+	if r.changeDetector == nil || r.layoutDetector == nil {
+		return
+	}
+
+	// Update layout detector project root
+	workingDir := path.ResolveRootDir(input.CfgPath)
+	r.layoutDetector.projectRoot = workingDir
+
+	// Detect layout for this build
+	layout, err := r.layoutDetector.DetectLayout(input.Handler)
+	if err != nil {
+		slog.Warn("failed to detect layout for cache update",
+			"functionID", input.FunctionID,
+			"handler", input.Handler,
+			"error", err)
+		return
+	}
+
+	// Create cached build output
+	cachedBuildOutput := &CachedBuildOutput{
+		Handler:       buildOutput.Handler,
+		OutputDir:     input.Out(),
+		Errors:        buildOutput.Errors,
+		Sourcemaps:    buildOutput.Sourcemaps,
+		ArtifactPaths: []string{}, // TODO: collect actual artifact paths
+		BuildDuration: 0,          // TODO: track build duration
+	}
+
+	// Update cache
+	err = r.changeDetector.UpdateCacheAfterBuild(input.FunctionID, input.Handler, layout, cachedBuildOutput)
+	if err != nil {
+		slog.Warn("failed to update cache after build",
+			"functionID", input.FunctionID,
+			"error", err)
+	} else {
+		slog.Debug("updated build cache",
+			"functionID", input.FunctionID,
+			"handler", input.Handler)
+	}
 }
