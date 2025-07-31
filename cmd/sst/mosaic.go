@@ -247,12 +247,44 @@ func CmdMosaic(c *cli.Cli) error {
 		defer func() {
 			multi.Exit()
 		}()
+
+		processCompleteEventForMultiplexer := func(evt *project.CompleteEvent, addProcess func(key string, args []string, icon string, title string, cwd string, killable bool, autostart bool, env ...string)) {
+			for _, d := range evt.Devs {
+				if d.Command == "" {
+					continue
+				}
+				dir := filepath.Join(cwd, d.Directory)
+				title := d.Title
+				if title == "" {
+					title = d.Name
+				}
+				addProcess(d.Name, append([]string{currentExecutable, "dev"}), "→", title, dir, true, d.Autostart, append([]string{"SST_CHILD=" + d.Name}, multiEnv...)...)
+			}
+
+			for name := range evt.Tunnels {
+				addProcess("tunnel", []string{currentExecutable, "tunnel", "--stage", p.App().Stage}, "⇌", "Tunnel", "", true, true, append(
+					multiEnv,
+					"SST_LOG="+p.PathLog("tunnel_"+name),
+				)...)
+			}
+
+			if len(evt.Tasks) > 0 {
+				addProcess("task", []string{currentExecutable, "ui", "--filter=task"}, "⧉", "Tasks", "", false, true, append(multiEnv, "SST_LOG="+p.PathLog("ui-task"))...)
+			}
+		}
+
 		go func() {
 			multi.Start()
 		}()
 		wg.Go(func() error {
-			evts := bus.Subscribe(&project.CompleteEvent{})
 			defer c.Cancel()
+
+			completed, err := p.GetCompleted(c.Context)
+			if err == nil && completed != nil && len(completed.Devs) > 0 {
+				processCompleteEventForMultiplexer(completed, multi.InitProcess)
+			}
+
+			evts := bus.Subscribe(&project.CompleteEvent{})
 			for {
 				select {
 				case <-c.Context.Done():
@@ -260,36 +292,7 @@ func CmdMosaic(c *cli.Cli) error {
 				case unknown := <-evts:
 					switch evt := unknown.(type) {
 					case *project.CompleteEvent:
-						for _, d := range evt.Devs {
-							if d.Command == "" {
-								continue
-							}
-							dir := filepath.Join(cwd, d.Directory)
-							title := d.Title
-							if title == "" {
-								title = d.Name
-							}
-							multi.AddProcess(
-								d.Name,
-								append([]string{currentExecutable, "dev"}),
-								"→",
-								title,
-								dir,
-								true,
-								d.Autostart,
-								append([]string{"SST_CHILD=" + d.Name}, multiEnv...)...,
-							)
-						}
-						for name := range evt.Tunnels {
-							multi.AddProcess("tunnel", []string{currentExecutable, "tunnel", "--stage", p.App().Stage}, "⇌", "Tunnel", "", true, true, append(
-								multiEnv,
-								"SST_LOG="+p.PathLog("tunnel_"+name),
-							)...)
-						}
-						if len(evt.Tasks) > 0 {
-							multi.AddProcess("task", []string{currentExecutable, "ui", "--filter=task"}, "⧉", "Tasks", "", false, true, append(multiEnv, "SST_LOG="+p.PathLog("ui-task"))...)
-						}
-						break
+						processCompleteEventForMultiplexer(evt, multi.AddProcess)
 					}
 				}
 			}
@@ -312,9 +315,39 @@ func CmdMosaic(c *cli.Cli) error {
 			return mono.Start(c.Context)
 		})
 
+		// Common function to process dev commands for monoplexer (simpler, no autostart/icons)
+		processCompleteEventForMonoplexer := func(evt *project.CompleteEvent) {
+			for _, d := range evt.Devs {
+				if d.Command == "" {
+					continue
+				}
+				dir := filepath.Join(cwd, d.Directory)
+				words, _ := shellquote.Split(d.Command)
+				title := d.Title
+				if title == "" {
+					title = d.Name
+				}
+				mono.AddProcess(
+					d.Name,
+					append([]string{currentExecutable, "dev", "--"}, words...),
+					dir,
+					title,
+				)
+			}
+			for range evt.Tunnels {
+				mono.AddProcess("tunnel", []string{currentExecutable, "tunnel", "--stage", p.App().Stage}, "", "Tunnel")
+			}
+		}
+
 		wg.Go(func() error {
-			evts := bus.Subscribe(&project.CompleteEvent{})
 			defer c.Cancel()
+
+			completed, err := p.GetCompleted(c.Context)
+			if err == nil && completed != nil && len(completed.Devs) > 0 {
+				processCompleteEventForMonoplexer(completed)
+			}
+
+			evts := bus.Subscribe(&project.CompleteEvent{})
 			for {
 				select {
 				case <-c.Context.Done():
@@ -322,26 +355,7 @@ func CmdMosaic(c *cli.Cli) error {
 				case unknown := <-evts:
 					switch evt := unknown.(type) {
 					case *project.CompleteEvent:
-						for _, d := range evt.Devs {
-							if d.Command == "" {
-								continue
-							}
-							dir := filepath.Join(cwd, d.Directory)
-							words, _ := shellquote.Split(d.Command)
-							title := d.Title
-							if title == "" {
-								title = d.Name
-							}
-							mono.AddProcess(
-								d.Name,
-								append([]string{currentExecutable, "dev", "--"}, words...),
-								dir,
-								title,
-							)
-						}
-						for range evt.Tunnels {
-							mono.AddProcess("tunnel", []string{currentExecutable, "tunnel", "--stage", p.App().Stage}, "", "Tunnel")
-						}
+						processCompleteEventForMonoplexer(evt)
 						break
 					}
 				}
