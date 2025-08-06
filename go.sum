@@ -562,6 +562,8 @@ github.com/multiformats/go-varint v0.0.7 h1:sWSGR+f/eu5ABZA2ZpYKBILXTTs9JWpdEM/n
 github.com/multiformats/go-varint v0.0.7/go.mod h1:r8PUYw/fD/SjBCiKOoDlGF6QawOELpZAu9eioSos/OU=
 github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 h1:C3w9PqII01/Oq1c1nUAm88MOHcQC9l5mIlSMApZMrHA=
 github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822/go.mod h1:+n7T8mK8HuQTcFwEeznm/DIxMOiR9yIdICNftLE1DvQ=
+github.com/mxschmitt/golang-combinations v1.0.0 h1:NFoO7CSP8MUcFlHpe1YdewKwMa15dgDbaqkVLC5DUPI=
+github.com/mxschmitt/golang-combinations v1.0.0/go.mod h1:RbMhWvfCelHR6WROvT2bVfxJvZHoEvBj71SKe+H0MYU=
 github.com/natefinch/atomic v1.0.1 h1:ZPYKxkqQOx3KZ+RsbnP/YsgvxWQPGxjC0oBt2AhwV0A=
 github.com/natefinch/atomic v1.0.1/go.mod h1:N/D/ELrljoqDyT3rZrsUmtsuzvHkeB/wWjHV22AZRbM=
 github.com/neelance/astrewrite v0.0.0-20160511093645-99348263ae86/go.mod h1:kHJEU3ofeGjhHklVoIGuVj85JJwZ6kWPaJwCIxgnFmo=
@@ -659,10 +661,10 @@ github.com/pulumi/appdash v0.0.0-20231130102222-75f619a67231 h1:vkHw5I/plNdTr435
 github.com/pulumi/appdash v0.0.0-20231130102222-75f619a67231/go.mod h1:murToZ2N9hNJzewjHBgfFdXhZKjY3z5cYC1VXk+lbFE=
 github.com/pulumi/esc v0.14.3 h1:Zli+9LiSDT/W+Fsfr8tITxCo+5wn969tLrE4KLv44G8=
 github.com/pulumi/esc v0.14.3/go.mod h1:XnSxlt5NkmuAj304l/gK4pRErFbtqq6XpfX1tYT9Jbc=
-github.com/pulumi/pulumi/pkg/v3 v3.178.0 h1:A0IG0OEextrLhVbW9ZpuZU0uILvupJSxWsGjXzeJoeg=
-github.com/pulumi/pulumi/pkg/v3 v3.178.0/go.mod h1:RkrGrl/kMr1JYsJlfrKCtCViwhMcwFfrYNTRQw4RamM=
-github.com/pulumi/pulumi/sdk/v3 v3.178.0 h1:24jNMvy6cMshwmW88Jm3k8ON2M4d0U2ocemQRcQElXQ=
-github.com/pulumi/pulumi/sdk/v3 v3.178.0/go.mod h1:XA+4kQ4ja6b5miOG/l5zp3xdqoA4NoPpmp2SZ37JK40=
+github.com/pulumi/pulumi/pkg/v3 v3.187.0 h1:VTbireKCxG/wKPX3slHNb3Zk3xKMr5CvcvjH8194H2I=
+github.com/pulumi/pulumi/pkg/v3 v3.187.0/go.mod h1:3y5nyMg62dd+DBzYW/P4d+Ye9pJ/zhJd+aGzMzfUL1g=
+github.com/pulumi/pulumi/sdk/v3 v3.187.0 h1:BflBBeD/qaoKN4Tov11g4aHzJ7pTXBSb8otgmteRer0=
+github.com/pulumi/pulumi/sdk/v3 v3.187.0/go.mod h1:BnpKxUc6QlxqoCqobHNZsUuIuY27H6ZFUk0Cp+0JN5U=
 github.com/quic-go/qpack v0.5.1 h1:giqksBPnT/HDtZ6VhtFKgoLOWmlyo9Ei6u9PqzIMbhI=
 github.com/quic-go/qpack v0.5.1/go.mod h1:+PC4XFrEskIVkcLzpEkbLqq1uCoxPhQuvK5rH1ZgaEg=
 github.com/quic-go/quic-go v0.48.2 h1:wsKXZPeGWpMpCGSWqOcqpW2wZYic/8T3aqiOID0/KWE=
@@ -901,8 +903,8 @@ golang.org/x/oauth2 v0.0.0-20180821212333-d2e6202438be/go.mod h1:N/0e6XlmueqKjAG
 golang.org/x/oauth2 v0.0.0-20181017192945-9dcd33a902f4/go.mod h1:N/0e6XlmueqKjAGxoOufVs8QHGRruUQn6yWY3a++T0U=
 golang.org/x/oauth2 v0.0.0-20181203162652-d668ce993890/go.mod h1:N/0e6XlmueqKjAGxoOufVs8QHGRruUQn6yWY3a++T0U=
 golang.org/x/oauth2 v0.0.0-20190226205417-e64efc72b421/go.mod h1:gOpvHmFTYa4IltrdGE7lF6nIHvwfUNPOp7c8zoXwtLw=
-golang.org/x/oauth2 v0.27.0 h1:da9Vo7/tDv5RH/7nZDz1eMGS/q1Vv1N/7FCrBhI9I3M=
-golang.org/x/oauth2 v0.27.0/go.mod h1:onh5ek6nERTohokkhCD/y2cV4Do3fxFHFuAejCkRWT8=
+golang.org/x/oauth2 v0.30.0 h1:dnDm7JmhM45NNpd8FDDeLhK6FwqbOf4MLCM9zb1BOHI=
+golang.org/x/oauth2 v0.30.0/go.mod h1:B++QgG3ZKulg6sRPGD/mqlHQs5rB3Ml9erfeDY7xKlU=
 golang.org/x/perf v0.0.0-20180704124530-6e6d33e29852/go.mod h1:JLpeXjPJfIyPr5TlbXLkXWLhP8nz10XfvxElABhCtcw=
 golang.org/x/sync v0.0.0-20180314180146-1d60e4601c6f/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
 golang.org/x/sync v0.0.0-20181108010431-42b317875d0f/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=

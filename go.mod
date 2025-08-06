@@ -1,6 +1,6 @@
 module github.com/sst/sst/v3
 
-go 1.23.1
+go 1.23.11
 
 require (
 	github.com/BurntSushi/toml v1.2.1
@@ -44,8 +44,8 @@ require (
 	github.com/manifoldco/promptui v0.9.0
 	github.com/mattn/go-runewidth v0.0.15
 	github.com/posthog/posthog-go v0.0.0-20240221135834-4944045455b4
-	github.com/pulumi/pulumi/pkg/v3 v3.178.0
-	github.com/pulumi/pulumi/sdk/v3 v3.178.0
+	github.com/pulumi/pulumi/pkg/v3 v3.187.0
+	github.com/pulumi/pulumi/sdk/v3 v3.187.0
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.10.0
 	github.com/tailscale/hujson v0.0.0-20241010212012-29efb4a0184b
@@ -299,7 +299,7 @@ require (
 	gocloud.dev/secrets/hashivault v0.37.0 // indirect
 	golang.org/x/mod v0.25.0 // indirect
 	golang.org/x/net v0.41.0 // indirect
-	golang.org/x/oauth2 v0.27.0 // indirect
+	golang.org/x/oauth2 v0.30.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/text v0.26.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
