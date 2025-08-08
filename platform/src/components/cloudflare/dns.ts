@@ -110,7 +110,7 @@ export function dns(args: DnsArgs = {}) {
         zoneId: args.zone,
       });
       return {
-        id: zone.id,
+        id: zone.zoneId,
         name: zone.name,
       };
     }
