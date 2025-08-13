@@ -55,9 +55,6 @@ func (a *AwsProvider) Env() (map[string]string, error) {
 	env["SST_AWS_SECRET_ACCESS_KEY"] = creds.SecretAccessKey
 	env["SST_AWS_SESSION_TOKEN"] = creds.SessionToken
 	env["SST_AWS_REGION"] = a.config.Region
-	if a.profile != "" {
-		env["AWS_PROFILE"] = a.profile
-	}
 	return env, nil
 }
 
