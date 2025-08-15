@@ -1,9 +1,9 @@
 /// <reference path="./.sst/platform/config.d.ts" />
 
 /**
- * ## AWS Load Balancer WAF
+ * ## AWS Load Balancer Web Application Firewall (WAF)
  *
- * Enable AWS Web Application Firewall (WAF) for an AWS Load Balancer.
+ * Enable WAF for an AWS Load Balancer.
  *
  * The WAF is configured to enable a rate limit and enables AWS managed rules.
  *
