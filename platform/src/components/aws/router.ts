@@ -210,7 +210,7 @@ interface InlineBaseRouteArgs {
        *       url: "https://example.com"
        *       edge: {
        *         viewerRequest: {
-       *           injection: `event.request.headers["x-foo"] = "bar";`
+       *           injection: `event.request.headers["x-foo"] = { value: "bar" };`
        *         }
        *       }
        *     }
@@ -263,7 +263,7 @@ interface InlineBaseRouteArgs {
      *       url: "https://example.com"
      *       edge: {
      *         viewerResponse: {
-     *           injection: `event.response.headers["x-foo"] = "bar";`
+     *           injection: `event.response.headers["x-foo"] = { value: "bar" };`
      *         }
      *       }
      *     }
@@ -296,7 +296,7 @@ interface InlineBaseRouteArgs {
        *       url: "https://example.com"
        *       edge: {
        *         viewerResponse: {
-       *           injection: `event.response.headers["x-foo"] = "bar";`
+       *           injection: `event.response.headers["x-foo"] = { value: "bar" };`
        *         }
        *       }
        *     }
@@ -590,7 +590,7 @@ export interface RouterArgs {
    *       url: "https://example.com",
    *       edge: {
    *         viewerRequest: {
-   *           injection: `event.request.headers["x-foo"] = "bar";`
+   *           injection: `event.request.headers["x-foo"] = { value: "bar" };`
    *         }
    *       }
    *     }
@@ -659,7 +659,7 @@ export interface RouterArgs {
        * {
        *   edge: {
        *     viewerRequest: {
-       *       injection: `event.request.headers["x-foo"] = "bar";`
+       *       injection: `event.request.headers["x-foo"] = { value: "bar" };`
        *     }
        *   }
        * }
@@ -711,7 +711,7 @@ export interface RouterArgs {
        * {
        *   edge: {
        *     viewerResponse: {
-       *       injection: `event.response.headers["x-foo"] = "bar";`
+       *       injection: `event.response.headers["x-foo"] = { value: "bar" };`
        *     }
        *   }
        * }

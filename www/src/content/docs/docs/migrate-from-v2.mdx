@@ -1137,7 +1137,7 @@ In your function you'd access this using.
 <Tabs>
   <TabItem label="v3">
   ```ts title="sst.config.ts"
-  const bus = new sst.aws.EventBus("Bus");
+  const bus = new sst.aws.Bus("Bus");
 
   bus.subscribe("MySubscriber1", "src/function1.handler", {
     pattern: {

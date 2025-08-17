@@ -115,7 +115,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
      * {
      *   edge: {
      *     viewerRequest: {
-     *       injection: `event.request.headers["x-foo"] = "bar";`
+     *       injection: `event.request.headers["x-foo"] = { value: "bar" };`
      *     }
      *   }
      * }
@@ -134,7 +134,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
        * {
        *   edge: {
        *     viewerRequest: {
-       *       injection: `event.request.headers["x-foo"] = "bar";`
+       *       injection: `event.request.headers["x-foo"] = { value: "bar" };`
        *     }
        *   }
        * }
@@ -190,7 +190,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
      * {
      *   edge: {
      *     viewerResponse: {
-     *       injection: `event.request.headers["x-foo"] = {value: "bar"};`
+     *       injection: `event.response.headers["x-foo"] = { value: "bar" };`
      *     }
      *   }
      * }
@@ -207,7 +207,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
        * {
        *   edge: {
        *     viewerResponse: {
-       *       injection: `event.response.headers["x-foo"] = "bar";`
+       *       injection: `event.response.headers["x-foo"] = { value: "bar" };`
        *     }
        *   }
        * }
