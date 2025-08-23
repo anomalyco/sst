@@ -2,6 +2,7 @@ package python
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -51,8 +52,23 @@ type LayoutInfo struct {
 	// HasSrcDirectory indicates if the layout uses a src/ directory
 	HasSrcDirectory bool `json:"hasSrcDirectory"`
 
+	// WorkspacePackagesWithSrc tracks which workspace packages use src/{package_name} layout
+	WorkspacePackagesWithSrc map[string]bool `json:"workspacePackagesWithSrc,omitempty"`
+
 	// DetectedAt is when this layout was detected (for cache invalidation)
 	DetectedAt time.Time `json:"detectedAt"`
+
+	// PyprojectPath is the path to pyproject.toml file
+	PyprojectPath string `json:"pyprojectPath"`
+
+	// RequirementsPath is the path to requirements.txt file
+	RequirementsPath string `json:"requirementsPath"`
+
+	// SetupPyPath is the path to setup.py file
+	SetupPyPath string `json:"setupPyPath"`
+
+	// HandlerPath is the path to the handler file
+	HandlerPath string `json:"handlerPath"`
 }
 
 // LayoutDetector provides flexible Python project layout detection
@@ -622,6 +638,24 @@ func (ld *LayoutDetector) extractPackageInfo(layout *LayoutInfo) error {
 
 // determineLayoutType analyzes the directory structure to determine the layout type
 func (ld *LayoutDetector) determineLayoutType(layout *LayoutInfo) error {
+	// First check if this is a UV workspace by parsing pyproject.toml
+	pyprojectPath := filepath.Join(layout.WorkspaceDir, "pyproject.toml")
+	if pyproject, err := ld.parsePyprojectToml(pyprojectPath); err == nil {
+		// Check for UV workspace members
+		if len(pyproject.Tool.UV.Workspace.Members) > 0 {
+			layout.Type = LayoutTypeWorkspace
+			layout.HasSrcDirectory = false
+			layout.SourceRoot = layout.WorkspaceDir
+
+			// Check for src layouts within workspace packages
+			if err := ld.detectWorkspacePackageSrcLayouts(layout, pyproject); err != nil {
+				return fmt.Errorf("failed to detect workspace package src layouts: %w", err)
+			}
+
+			return nil
+		}
+	}
+
 	// Check if there's a src/ directory structure
 	srcDir := filepath.Join(layout.WorkspaceDir, "src")
 	if _, err := os.Stat(srcDir); err == nil {
@@ -640,10 +674,103 @@ func (ld *LayoutDetector) determineLayoutType(layout *LayoutInfo) error {
 		layout.SourceRoot = layout.WorkspaceDir
 
 		// Check if it's a flat structure or nested without src/
-		if layout.WorkspaceDir == ld.projectRoot {
-			layout.Type = LayoutTypeFlat
-		} else {
+		// Look at the actual structure to determine layout type
+		if ld.hasNestedPythonStructure(layout.WorkspaceDir) {
 			layout.Type = LayoutTypeNested
+		} else {
+			layout.Type = LayoutTypeFlat
+		}
+	}
+
+	return nil
+}
+
+// hasNestedPythonStructure checks if the directory has a nested Python structure
+func (ld *LayoutDetector) hasNestedPythonStructure(workspaceDir string) bool {
+	entries, err := os.ReadDir(workspaceDir)
+	if err != nil {
+		return false
+	}
+
+	// Count Python files at root level vs in subdirectories
+	rootPythonFiles := 0
+	nestedPythonFiles := 0
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			// Check for Python files at root level
+			if strings.HasSuffix(entry.Name(), ".py") &&
+				entry.Name() != "__init__.py" && // __init__.py doesn't count as a main file
+				!strings.HasPrefix(entry.Name(), "test_") { // ignore test files
+				rootPythonFiles++
+			}
+		} else {
+			// Check for Python files in subdirectories
+			subDir := filepath.Join(workspaceDir, entry.Name())
+			if ld.containsPythonFiles(subDir) {
+				nestedPythonFiles++
+			}
+		}
+	}
+
+	// If we have more nested Python directories than root Python files,
+	// and we have at least one nested directory, it's likely a nested layout
+	return nestedPythonFiles > 0 && nestedPythonFiles >= rootPythonFiles
+}
+
+// containsPythonFiles checks if a directory contains Python files (recursively)
+func (ld *LayoutDetector) containsPythonFiles(dirPath string) bool {
+	entries, err := os.ReadDir(dirPath)
+	if err != nil {
+		return false
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			if strings.HasSuffix(entry.Name(), ".py") {
+				return true
+			}
+		} else {
+			// Recursively check subdirectories
+			subPath := filepath.Join(dirPath, entry.Name())
+			if ld.containsPythonFiles(subPath) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// detectWorkspacePackageSrcLayouts checks for src/{package_name} layouts within workspace packages
+func (ld *LayoutDetector) detectWorkspacePackageSrcLayouts(layout *LayoutInfo, pyproject *PyprojectToml) error {
+	layout.WorkspacePackagesWithSrc = make(map[string]bool)
+
+	// Check each workspace member for src layout
+	for _, member := range pyproject.Tool.UV.Workspace.Members {
+		memberPath := filepath.Join(layout.WorkspaceDir, member)
+
+		// Read the member's pyproject.toml to get package name
+		memberPyprojectPath := filepath.Join(memberPath, "pyproject.toml")
+		memberPyproject, err := ld.parsePyprojectToml(memberPyprojectPath)
+		if err != nil {
+			continue // Skip if we can't read the member's pyproject.toml
+		}
+
+		packageName := memberPyproject.Project.Name
+		if packageName == "" {
+			continue // Skip if no package name
+		}
+
+		// Check if this member has src/{package_name} structure
+		srcPackageDir := filepath.Join(memberPath, "src", packageName)
+		if _, err := os.Stat(srcPackageDir); err == nil {
+			layout.WorkspacePackagesWithSrc[packageName] = true
+			layout.HasSrcDirectory = true // Mark that workspace has src layouts
+
+			slog.Info("detected src layout in workspace package",
+				"package", packageName,
+				"member", member,
+				"srcDir", srcPackageDir)
 		}
 	}
 
@@ -721,8 +848,36 @@ type PyprojectToml struct {
 
 	Tool struct {
 		UV struct {
-			Sources map[string]UVSource `toml:"sources"`
+			Sources   map[string]UVSource `toml:"sources"`
+			Workspace struct {
+				Members []string `toml:"members"`
+			} `toml:"workspace"`
 		} `toml:"uv"`
+
+		Hatch struct {
+			Build struct {
+				Targets struct {
+					Wheel struct {
+						Packages []string `toml:"packages"`
+					} `toml:"wheel"`
+				} `toml:"targets"`
+			} `toml:"build"`
+		} `toml:"hatch"`
+
+		Setuptools struct {
+			Packages struct {
+				Find struct {
+					Where []string `toml:"where"`
+				} `toml:"find"`
+			} `toml:"packages"`
+		} `toml:"setuptools"`
+
+		Poetry struct {
+			Packages []struct {
+				Include string `toml:"include"`
+				From    string `toml:"from"`
+			} `toml:"packages"`
+		} `toml:"poetry"`
 	} `toml:"tool"`
 
 	BuildSystem struct {

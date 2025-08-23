@@ -14,6 +14,9 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/sst/sst/v3/cmd/sst/mosaic/ui/common"
+	"github.com/sst/sst/v3/pkg/bus"
+	"github.com/sst/sst/v3/pkg/events"
 	"github.com/sst/sst/v3/pkg/process"
 	"github.com/sst/sst/v3/pkg/project/path"
 	"github.com/sst/sst/v3/pkg/runtime"
@@ -79,6 +82,14 @@ type PythonRuntime struct {
 
 	// Mutex for thread-safe access
 	mutex sync.RWMutex
+}
+
+// FunctionLogEvent represents a function log event (matches the AWS function log event)
+type FunctionLogEvent struct {
+	FunctionID string `json:"functionID"`
+	WorkerID   string `json:"workerID"`
+	RequestID  string `json:"requestID"`
+	Line       string `json:"line"`
 }
 
 func New() *PythonRuntime {
@@ -216,11 +227,28 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 	// without having to manually isolate the runtime, So if it is not present then we need to copy it from
 	// the platform directory into the artifact directory
 
-	// Check if the lambda bridge is present
+	// Check if the lambda bridge needs to be copied or updated
 	lambdaBridgePath := filepath.Join(input.Build.Out, "lambdaric_python_bridge.py")
+	sourceBridgePath := filepath.Join(path.ResolvePlatformDir(input.CfgPath), "/dist/python-runtime/index.py")
+
+	shouldCopy := false
 	if _, err := os.Stat(lambdaBridgePath); os.IsNotExist(err) {
+		// Bridge file doesn't exist, need to copy
+		shouldCopy = true
+	} else {
+		// Bridge file exists, check if source is newer
+		if srcInfo, err := os.Stat(sourceBridgePath); err == nil {
+			if dstInfo, err := os.Stat(lambdaBridgePath); err == nil {
+				if srcInfo.ModTime().After(dstInfo.ModTime()) {
+					shouldCopy = true
+				}
+			}
+		}
+	}
+
+	if shouldCopy {
 		// Copy the lambda bridge from the platform directory into the artifact directory
-		err := copyFile(filepath.Join(path.ResolvePlatformDir(input.CfgPath), "/dist/python-runtime/index.py"), lambdaBridgePath)
+		err := copyFile(sourceBridgePath, lambdaBridgePath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to copy lambda bridge: %v", err)
 		}
@@ -360,29 +388,34 @@ func (r *PythonRuntime) CreateBuildAsset(ctx context.Context, input *runtime.Bui
 	}
 	workingDir := path.ResolveRootDir(input.CfgPath)
 
-	// Check if we should use incremental building
-	if r.shouldUseIncrementalBuild() {
-		return r.createBuildAssetIncremental(ctx, input, arch, workingDir)
+	// Always use incremental build system
+	slog.Info("using incremental build system", "functionID", input.FunctionID)
+	result, err := r.createBuildAssetIncremental(ctx, input, arch, workingDir)
+	if err != nil {
+		slog.Error("incremental build failed",
+			"functionID", input.FunctionID,
+			"error", err)
+		return nil, fmt.Errorf("incremental build failed: %w", err)
 	}
-
-	// Fallback to original build process
-	return r.createBuildAssetLegacy(ctx, input, arch, workingDir)
-}
-
-// shouldUseIncrementalBuild determines if incremental building should be used
-func (r *PythonRuntime) shouldUseIncrementalBuild() bool {
-	r.mutex.RLock()
-	defer r.mutex.RUnlock()
-
-	// Use incremental build if caching is enabled
-	return r.buildCache != nil && r.changeDetector != nil && r.layoutDetector != nil
+	return result, nil
 }
 
 // createBuildAssetIncremental creates build assets using incremental building
 func (r *PythonRuntime) createBuildAssetIncremental(ctx context.Context, input *runtime.BuildInput, arch string, workingDir string) (*runtime.BuildOutput, error) {
+	// Add nil checks to prevent segfaults
+	if r == nil {
+		return nil, fmt.Errorf("python runtime is nil")
+	}
+	if input == nil {
+		return nil, fmt.Errorf("build input is nil")
+	}
+	if ctx == nil {
+		return nil, fmt.Errorf("context is nil")
+	}
+
 	slog.Info("using incremental build system", "functionID", input.FunctionID)
 
-	// Create incremental builder
+	// Create incremental builder with additional safety checks
 	incrementalBuilder, err := NewIncrementalBuilder(IncrementalBuilderConfig{
 		CacheDir:                filepath.Join(workingDir, ".sst", "cache"),
 		ArtifactDir:             input.Out(),
@@ -392,204 +425,37 @@ func (r *PythonRuntime) createBuildAssetIncremental(ctx context.Context, input *
 		MaxParallelBuilds:       4,
 		EnableProgressReporting: true,
 		EnableBuildOptimization: true,
+		FunctionID:              input.FunctionID,
+		ProgressCallback: func(event ProgressEvent) {
+			// Emit FunctionBuildProgressEvent if FunctionID is available
+			if input.FunctionID != "" {
+				bus.Publish(&events.FunctionBuildProgressEvent{
+					FunctionID: input.FunctionID,
+					Stage:      event.Stage,
+					Message:    event.Message,
+				})
+			} else {
+				// Fallback to StdoutEvent if FunctionID is not available
+				slog.Warn("FunctionID not available, falling back to StdoutEvent for progress")
+				bus.Publish(&common.StdoutEvent{
+					Line: fmt.Sprintf("🔨 Build %s: %s", event.Stage, event.Message),
+				})
+			}
+
+			// Also log for debugging purposes
+			slog.Info("build progress",
+				"functionID", input.FunctionID,
+				"stage", event.Stage,
+				"message", event.Message)
+		},
 	})
 	if err != nil {
-		slog.Warn("failed to create incremental builder, falling back to legacy build", "error", err)
-		return r.createBuildAssetLegacy(ctx, input, arch, workingDir)
+		slog.Error("failed to create incremental builder", "error", err)
+		return nil, fmt.Errorf("failed to create incremental builder: %w", err)
 	}
 
 	// Use incremental builder
 	return incrementalBuilder.Build(ctx, input)
-}
-
-// createBuildAssetLegacy creates build assets using the original build process
-func (r *PythonRuntime) createBuildAssetLegacy(ctx context.Context, input *runtime.BuildInput, arch string, workingDir string) (*runtime.BuildOutput, error) {
-	slog.Info("using legacy build system", "functionID", input.FunctionID)
-
-	// 1. Generate non-local package index
-	syncCmd := process.CommandContext(ctx, "uv", "sync", "--all-packages")
-	syncCmd.Dir = workingDir
-	slog.Info("running uv sync in dir", "dir", syncCmd.Dir)
-
-	// capture the output of the sync command
-	syncOutput, err := syncCmd.CombinedOutput()
-	if err != nil {
-		slog.Error("failed to run uv sync", "error", err, "output", string(syncOutput))
-		return nil, fmt.Errorf("failed to run uv sync: %v\n%s", err, string(syncOutput))
-	}
-	slog.Error("uv sync output", "output", string(syncOutput))
-
-	outputRequirementsFile := filepath.Join(input.Out(), "requirements.txt")
-	packageName, err := r.getPackageName(input)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get package name: %v", err)
-	}
-	exportCmd := process.CommandContext(ctx, "uv", "export", "--package="+packageName, "--output-file="+outputRequirementsFile, "--no-emit-workspace", "--no-dev")
-	exportCmd.Dir = workingDir
-	err = exportCmd.Run()
-	if err != nil {
-		return nil, fmt.Errorf("failed to run uv export: %v", err)
-	}
-
-	// 2. Build the entire workspace - this should cache and be fast thank you astral
-	buildCmd := process.CommandContext(ctx, "uv", "build", "--all", "--sdist", "--out-dir="+input.Out())
-	buildCmd.Dir = workingDir
-	buildOutput, err := buildCmd.CombinedOutput()
-	if err != nil {
-		return nil, fmt.Errorf("failed to run uv build: %v\n%s", err, string(buildOutput))
-	}
-	slog.Error("uv build output", "output", string(buildOutput))
-
-	// 3. Decode each tar.gz file in the dist directory and remove the trailing "-{version}"
-	files, err := filepath.Glob(filepath.Join(input.Out(), "*.tar.gz"))
-	if err != nil {
-		return nil, fmt.Errorf("failed to glob tar.gz files: %v", err)
-	}
-
-	for _, file := range files {
-		// Extract the tar.gz file
-		cmd := process.CommandContext(ctx, "tar", "-xzf", file, "-C", input.Out())
-		cmd.Dir = input.Out()
-		err = cmd.Run()
-		if err != nil {
-			return nil, fmt.Errorf("failed to extract tar.gz file: %v", err)
-		}
-
-		// Get the directory name without version number
-		dirName := strings.TrimSuffix(filepath.Base(file), ".tar.gz")
-		lastHyphen := strings.LastIndex(dirName, "-")
-		baseName := dirName[:lastHyphen]
-
-		extractedDir := filepath.Join(input.Out(), dirName)
-		targetDir := filepath.Join(input.Out(), baseName)
-
-		// Check if the package has a src/{package_name} structure
-		srcPath := filepath.Join(extractedDir, "src", baseName)
-		if _, err := os.Stat(srcPath); err == nil {
-			// Remove old directory if it exists
-			if err := os.RemoveAll(targetDir); err != nil {
-				return nil, fmt.Errorf("failed to remove old directory: %v", err)
-			}
-			// Move the contents from src/{package_name} directly to the target
-			if err := os.Rename(srcPath, targetDir); err != nil {
-				return nil, fmt.Errorf("failed to move src directory contents: %v", err)
-			}
-			// Clean up the original extracted directory
-			if err := os.RemoveAll(extractedDir); err != nil {
-				return nil, fmt.Errorf("failed to clean up extracted directory: %v", err)
-			}
-		} else {
-			// Handle the regular case (no src directory)
-			if err := os.RemoveAll(targetDir); err != nil {
-				return nil, fmt.Errorf("failed to remove old directory: %v", err)
-			}
-			if err := os.Rename(extractedDir, targetDir); err != nil {
-				return nil, fmt.Errorf("failed to rename directory: %v", err)
-			}
-		}
-	}
-
-	// 4. Remove the tar.gz files (non-recursive)
-	for _, file := range files {
-		err = os.Remove(file)
-		if err != nil {
-			return nil, fmt.Errorf("failed to remove tar.gz file: %v", err)
-		}
-	}
-
-	// If making a zip build or a local build then we need to install the dependencies and adjust the handler path
-	if !input.IsContainer || input.Dev {
-
-		// 5. Install the dependencies as a target
-		args := []string{"pip", "install", "-r", outputRequirementsFile, "--target", input.Out()}
-		if !input.Dev {
-			// If we are not in dev mode then we need to install the dependencies for the target platform
-			// which is amazon linux for the correct architecture
-			pythonPlatform := "x86_64-unknown-linux-gnu"
-			if arch == "arm64" {
-				pythonPlatform = "aarch64-unknown-linux-gnu"
-			}
-			args = append(args, "--python-platform", pythonPlatform)
-		}
-		installCmd := process.CommandContext(ctx, "uv", args...)
-		installCmd.Dir = input.Out()
-		installOutput, err := installCmd.CombinedOutput()
-		if err != nil {
-			return nil, fmt.Errorf("failed to run uv pip install: %v\n%s", err, string(installOutput))
-		}
-		slog.Error("uv pip install output", "output", string(installOutput), "error", err)
-
-		// Adjust handler path if it contains the pattern {package_name}/src/{package_name}
-		adjustedHandler, err := r.adjustHandlerPath(input)
-		if err != nil {
-			return nil, fmt.Errorf("failed to adjust handler path: %v", err)
-		}
-		slog.Info("built python function", "handler", adjustedHandler, "out", input.Out())
-
-		errors := []string{}
-		sourcemaps := []string{}
-
-		buildOutput := &runtime.BuildOutput{
-			Handler:    adjustedHandler,
-			Errors:     errors,
-			Sourcemaps: sourcemaps,
-		}
-
-		// Update cache after successful build
-		r.updateCacheAfterBuild(input, buildOutput)
-
-		return buildOutput, nil
-	} else {
-		// 5. Check if there is a Dockerfile in the handler directory
-		// 	If not then copy over the default one from the platform directory
-		workspaceDir, err := r.getWorkspaceDirectory(input)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get workspace directory: %v", err)
-		}
-
-		slog.Info("checking for Dockerfile in workspace directory", "dir", workspaceDir)
-		_, err = os.Stat(filepath.Join(workspaceDir, "Dockerfile"))
-		if err != nil {
-			slog.Error("workspace directory does not contain Dockerfile", "dir", workspaceDir)
-			// Check if the Dockerfile exists in the platform directory
-			defaultDockerfilePath := filepath.Join(path.ResolvePlatformDir(input.CfgPath), "/dist/dockerfiles/python.Dockerfile")
-			_, err = os.Stat(defaultDockerfilePath)
-			if err != nil {
-				slog.Error("failed to check for Dockerfile in platform directory", "error", err)
-				return nil, fmt.Errorf("failed to check for Dockerfile in platform directory: %v", err)
-			} else {
-				slog.Info("dockerfile exists in platform directory", "dir", path.ResolvePlatformDir(input.CfgPath))
-			}
-
-			slog.Info("copying default Dockerfile from platform directory to output directory", "dir", path.ResolvePlatformDir(input.CfgPath))
-
-			// Copy over the default Dockerfile from the platform directory
-			copyFile(defaultDockerfilePath, filepath.Join(input.Out(), "Dockerfile"))
-			slog.Info("copied default Dockerfile to output directory", "dir", input.Out())
-		} else {
-			slog.Info("Dockerfile already exists in workspace directory", "dir", workspaceDir)
-			copyFile(filepath.Join(workspaceDir, "Dockerfile"), filepath.Join(input.Out(), "Dockerfile"))
-		}
-
-		adjustedHandler, err := r.adjustHandlerPath(input)
-		if err != nil {
-			return nil, fmt.Errorf("failed to adjust handler path: %v", err)
-		}
-
-		errors := []string{}
-		sourcemaps := []string{}
-
-		buildOutput := &runtime.BuildOutput{
-			Handler:    adjustedHandler,
-			Errors:     errors,
-			Sourcemaps: sourcemaps,
-		}
-
-		// Update cache after successful build
-		r.updateCacheAfterBuild(input, buildOutput)
-
-		return buildOutput, nil
-	}
 }
 
 func (r *PythonRuntime) getFile(input *runtime.BuildInput) (string, error) {
@@ -630,6 +496,317 @@ func copyFile(src, dst string) error {
 	}
 
 	return nil
+}
+
+// fileExists checks if a file exists
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// copyDirectory recursively copies a directory from src to dst
+func copyDirectory(src, dst string) error {
+	srcInfo, err := os.Stat(src)
+	if err != nil {
+		return fmt.Errorf("failed to stat source directory: %w", err)
+	}
+
+	if !srcInfo.IsDir() {
+		return fmt.Errorf("source is not a directory: %s", src)
+	}
+
+	// Create destination directory
+	if err := os.MkdirAll(dst, srcInfo.Mode()); err != nil {
+		return fmt.Errorf("failed to create destination directory: %w", err)
+	}
+
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return fmt.Errorf("failed to read source directory: %w", err)
+	}
+
+	for _, entry := range entries {
+		srcPath := filepath.Join(src, entry.Name())
+		dstPath := filepath.Join(dst, entry.Name())
+
+		if entry.IsDir() {
+			// Recursively copy subdirectory
+			if err := copyDirectory(srcPath, dstPath); err != nil {
+				return fmt.Errorf("failed to copy subdirectory %s: %w", entry.Name(), err)
+			}
+		} else {
+			// Copy file
+			if err := copyFile(srcPath, dstPath); err != nil {
+				return fmt.Errorf("failed to copy file %s: %w", entry.Name(), err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// detectFlatLayout detects if this is a flat-layout project based on the artifact contents
+func (r *PythonRuntime) detectFlatLayout(artifactDir string) bool {
+	entries, err := os.ReadDir(artifactDir)
+	if err != nil {
+		slog.Warn("failed to read artifact directory for layout detection", "error", err)
+		return false
+	}
+
+	var hasSST, hasPyProjectToml, hasDirectPyFiles bool
+	var moduleCount int
+
+	for _, entry := range entries {
+		name := entry.Name()
+
+		// Check for SST directory (indicates entire project was included)
+		if name == ".sst" && entry.IsDir() {
+			hasSST = true
+		}
+
+		// Check for project configuration files
+		if name == "pyproject.toml" || name == "setup.py" {
+			hasPyProjectToml = true
+		}
+
+		// Check for direct Python files in root
+		if !entry.IsDir() && strings.HasSuffix(name, ".py") {
+			hasDirectPyFiles = true
+		}
+
+		// Count module directories
+		if entry.IsDir() {
+			modulePath := filepath.Join(artifactDir, name)
+			if initFile := filepath.Join(modulePath, "__init__.py"); fileExists(initFile) {
+				moduleCount++
+			}
+		}
+	}
+
+	// Check if modules contain project-level files that indicate flat layout
+	var hasProjectFilesInModules bool
+	for _, entry := range entries {
+		if entry.IsDir() {
+			modulePath := filepath.Join(artifactDir, entry.Name())
+			// Check if module contains project-level files
+			if moduleEntries, err := os.ReadDir(modulePath); err == nil {
+				for _, moduleEntry := range moduleEntries {
+					if moduleEntry.Name() == "pyproject.toml" ||
+						moduleEntry.Name() == "uv.lock" ||
+						moduleEntry.Name() == "setup.py" {
+						hasProjectFilesInModules = true
+						break
+					}
+				}
+			}
+			if hasProjectFilesInModules {
+				break
+			}
+		}
+	}
+
+	// Flat layout indicators:
+	// 1. Has .sst directory (entire project included)
+	// 2. Has pyproject.toml (project config included)
+	// 3. Has direct Python files in root
+	// 4. Low module count (typically just one package) with project files in modules
+	// 5. Modules contain project-level files like pyproject.toml or uv.lock
+	isFlat := hasSST || (hasPyProjectToml && (hasDirectPyFiles || moduleCount <= 1)) ||
+		(moduleCount <= 2 && hasProjectFilesInModules)
+
+	slog.Info("flat layout detection results",
+		"artifactDir", artifactDir,
+		"hasSST", hasSST,
+		"hasPyProjectToml", hasPyProjectToml,
+		"hasDirectPyFiles", hasDirectPyFiles,
+		"moduleCount", moduleCount,
+		"isFlat", isFlat)
+
+	return isFlat
+}
+
+// applyMinimalFiltering applies minimal content filtering for workspace layouts
+func (r *PythonRuntime) applyMinimalFiltering(artifactDir string, filter *ContentFilter) error {
+	slog.Info("applying minimal content filtering", "artifactDir", artifactDir)
+
+	entries, err := os.ReadDir(artifactDir)
+	if err != nil {
+		return fmt.Errorf("failed to read artifact directory: %w", err)
+	}
+
+	var removedItems []string
+
+	for _, entry := range entries {
+		// Only remove obvious build artifacts and cache directories
+		if filter.ShouldExclude(entry.Name()) {
+			itemPath := filepath.Join(artifactDir, entry.Name())
+
+			// Only remove specific items that are safe to remove
+			if entry.Name() == "__pycache__" ||
+				strings.HasSuffix(entry.Name(), ".pyc") ||
+				strings.HasSuffix(entry.Name(), ".pyo") ||
+				entry.Name() == ".pytest_cache" ||
+				entry.Name() == ".sst" ||
+				strings.HasPrefix(entry.Name(), ".sst-") {
+
+				if err := os.RemoveAll(itemPath); err != nil {
+					slog.Warn("failed to remove item during minimal filtering",
+						"item", entry.Name(),
+						"path", itemPath,
+						"error", err)
+				} else {
+					removedItems = append(removedItems, entry.Name())
+					slog.Debug("removed item during minimal filtering",
+						"item", entry.Name())
+				}
+			}
+		}
+	}
+
+	slog.Info("minimal content filtering completed",
+		"artifactDir", artifactDir,
+		"removedItems", removedItems,
+		"count", len(removedItems))
+
+	return nil
+}
+
+// ensureInitPyFiles ensures that __init__.py files are created in all necessary directories
+func (r *PythonRuntime) ensureInitPyFiles(targetDir, moduleName string) error {
+	slog.Info("ensuring __init__.py files", "targetDir", targetDir, "moduleName", moduleName)
+
+	// Create __init__.py in the main module directory
+	mainInitFile := filepath.Join(targetDir, "__init__.py")
+	if err := r.createInitPyFile(mainInitFile); err != nil {
+		return fmt.Errorf("failed to create main __init__.py: %w", err)
+	}
+
+	// Recursively ensure __init__.py files in subdirectories that contain Python files
+	return r.ensureInitPyFilesRecursive(targetDir)
+}
+
+// createInitPyFile creates an __init__.py file if it doesn't exist
+func (r *PythonRuntime) createInitPyFile(initPath string) error {
+	if _, err := os.Stat(initPath); os.IsNotExist(err) {
+		slog.Info("creating __init__.py file", "path", initPath)
+
+		// Create a basic __init__.py file with a docstring
+		content := fmt.Sprintf(`"""
+%s module.
+
+This file makes Python treat the directory as a package.
+"""
+`, filepath.Base(filepath.Dir(initPath)))
+
+		if err := os.WriteFile(initPath, []byte(content), 0644); err != nil {
+			slog.Error("failed to create __init__.py", "path", initPath, "error", err)
+			return fmt.Errorf("failed to create __init__.py at %s: %w", initPath, err)
+		}
+
+		slog.Info("successfully created __init__.py", "path", initPath)
+	} else if err != nil {
+		return fmt.Errorf("failed to stat __init__.py at %s: %w", initPath, err)
+	} else {
+		slog.Debug("__init__.py already exists", "path", initPath)
+
+		// Verify the existing file is readable
+		if content, err := os.ReadFile(initPath); err != nil {
+			slog.Warn("existing __init__.py file is not readable", "path", initPath, "error", err)
+		} else {
+			slog.Debug("existing __init__.py file validated",
+				"path", initPath,
+				"size", len(content))
+		}
+	}
+
+	return nil
+}
+
+// ensureInitPyFilesRecursive recursively ensures __init__.py files in subdirectories
+func (r *PythonRuntime) ensureInitPyFilesRecursive(dir string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return fmt.Errorf("failed to read directory %s: %w", dir, err)
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		// Skip common non-package directories
+		if r.shouldSkipDirectory(entry.Name()) {
+			continue
+		}
+
+		subDir := filepath.Join(dir, entry.Name())
+
+		// Check if this directory contains Python files
+		if r.containsPythonFiles(subDir) {
+			initFile := filepath.Join(subDir, "__init__.py")
+			if err := r.createInitPyFile(initFile); err != nil {
+				slog.Warn("failed to create __init__.py in subdirectory",
+					"subDir", subDir,
+					"error", err)
+				// Don't fail the entire process for subdirectory __init__.py issues
+			}
+
+			// Recursively process subdirectories
+			if err := r.ensureInitPyFilesRecursive(subDir); err != nil {
+				slog.Warn("failed to ensure __init__.py files in subdirectory",
+					"subDir", subDir,
+					"error", err)
+				// Don't fail the entire process for subdirectory issues
+			}
+		}
+	}
+
+	return nil
+}
+
+// shouldSkipDirectory checks if a directory should be skipped for __init__.py creation
+func (r *PythonRuntime) shouldSkipDirectory(dirName string) bool {
+	skipDirs := []string{
+		"__pycache__",
+		".pytest_cache",
+		".git",
+		".sst",
+		"node_modules",
+		".venv",
+		"venv",
+		"env",
+		".env",
+		"tests",
+		"test",
+	}
+
+	for _, skipDir := range skipDirs {
+		if dirName == skipDir {
+			return true
+		}
+	}
+
+	// Skip .dist-info and .egg-info directories
+	if strings.HasSuffix(dirName, ".dist-info") || strings.HasSuffix(dirName, ".egg-info") {
+		return true
+	}
+
+	return false
+}
+
+// containsPythonFiles checks if a directory contains Python files
+func (r *PythonRuntime) containsPythonFiles(dirPath string) bool {
+	entries, err := os.ReadDir(dirPath)
+	if err != nil {
+		return false
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".py") {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *PythonRuntime) getWorkspaceDirectory(input *runtime.BuildInput) (string, error) {
@@ -691,36 +868,277 @@ func (r *PythonRuntime) getPackageName(input *runtime.BuildInput) (string, error
 }
 
 func (r *PythonRuntime) adjustHandlerPath(input *runtime.BuildInput) (string, error) {
-	handlerParts := strings.Split(input.Handler, "/")
-	adjustedHandler := input.Handler
-	if len(handlerParts) >= 3 {
-		// Start from the back, using a sliding window of 3
-		for i := len(handlerParts) - 3; i >= 0; i-- {
-			// Check if we have enough parts left to match the pattern
-			if i+2 >= len(handlerParts) {
+	originalHandler := input.Handler
+
+	// Check if handler path contains the pattern {package_name}/src/{package_name}
+	// If so, we need to adjust it because the build process flattens this structure
+	if strings.Contains(originalHandler, "/src/") {
+		// Pattern: functions/src/functions/api.handler -> functions/api.handler
+		parts := strings.Split(originalHandler, "/")
+		var adjustedParts []string
+
+		skipNext := false
+		for i, part := range parts {
+			if skipNext {
+				skipNext = false
 				continue
 			}
 
-			pkgName := handlerParts[i]
-			if handlerParts[i+1] == "src" && handlerParts[i+2] == pkgName {
-				// Found the pattern, now remove the middle two parts (src/{package_name})
-				newParts := append(
-					handlerParts[:i+1],
-					handlerParts[i+3:]...,
-				)
-				adjustedHandler = strings.Join(newParts, "/")
-				slog.Info("adjusted handler path", "original", input.Handler, "adjusted", adjustedHandler)
-				break
+			if part == "src" && i > 0 && i < len(parts)-1 {
+				// Check if the next part matches the previous part (package name)
+				if i+1 < len(parts) && parts[i+1] == parts[i-1] {
+					// Skip both "src" and the duplicate package name
+					skipNext = true
+					continue
+				}
+			}
+			adjustedParts = append(adjustedParts, part)
+		}
+
+		adjustedHandler := strings.Join(adjustedParts, "/")
+		slog.Info("handler path adjustment",
+			"original", originalHandler,
+			"adjusted", adjustedHandler,
+			"reason", "flattened src structure")
+		return adjustedHandler, nil
+	}
+
+	slog.Info("handler path adjustment", "original", originalHandler, "adjusted", "no change needed")
+	return originalHandler, nil
+}
+
+// validateDeploymentReadiness performs final validation to ensure the artifact is ready for deployment
+func (r *PythonRuntime) validateDeploymentReadiness(artifactDir, handlerPath string, validationResult *ArtifactValidationResult, progressReporter *BuildProgressReporter) error {
+	slog.Info("validating deployment readiness",
+		"artifactDir", artifactDir,
+		"handlerPath", handlerPath)
+
+	// 1. Ensure artifact directory exists and is not empty
+	entries, err := os.ReadDir(artifactDir)
+	if err != nil {
+		return fmt.Errorf("failed to read artifact directory: %w", err)
+	}
+
+	if len(entries) == 0 {
+		return fmt.Errorf("artifact directory is empty: %s", artifactDir)
+	}
+
+	// 2. Validate that critical validation checks passed
+	if validationResult != nil {
+		if !validationResult.Success {
+			return fmt.Errorf("artifact validation failed with %d errors", len(validationResult.ErrorMessages))
+		}
+
+		if !validationResult.HandlerCompatible {
+			return fmt.Errorf("handler path '%s' is not compatible with deployed modules", handlerPath)
+		}
+
+		if len(validationResult.PythonModules) == 0 {
+			return fmt.Errorf("no Python modules found in artifact")
+		}
+
+		if len(validationResult.MissingModules) > 0 {
+			return fmt.Errorf("missing required modules: %s", strings.Join(validationResult.MissingModules, ", "))
+		}
+	}
+
+	// 3. Validate essential files exist
+	essentialChecks := []struct {
+		name        string
+		path        string
+		required    bool
+		description string
+	}{
+		{
+			name:        "requirements.txt",
+			path:        filepath.Join(artifactDir, "requirements.txt"),
+			required:    false, // Not always required (e.g., no external deps)
+			description: "Python dependencies file",
+		},
+	}
+
+	for _, check := range essentialChecks {
+		exists := fileExists(check.path)
+		if check.required && !exists {
+			return fmt.Errorf("required file missing: %s (%s)", check.name, check.description)
+		}
+
+		slog.Debug("essential file check",
+			"file", check.name,
+			"path", check.path,
+			"exists", exists,
+			"required", check.required)
+	}
+
+	// 4. Validate handler module structure
+	if handlerPath != "" {
+		var expectedModule string
+		var handlerParts []string
+
+		if strings.Contains(handlerPath, "/") {
+			// Workspace layout: functions/handler.lambda_handler
+			handlerParts = strings.Split(handlerPath, "/")
+			if len(handlerParts) > 0 {
+				expectedModule = handlerParts[0]
+			}
+		} else {
+			// Flat layout: handler.lambda_handler or module.handler.lambda_handler
+			// For flat layouts, we need to check if the handler path contains a module prefix
+			dotParts := strings.Split(handlerPath, ".")
+			if len(dotParts) >= 3 {
+				// Format: module.handler.lambda_handler
+				expectedModule = dotParts[0]
+				handlerParts = []string{expectedModule, strings.Join(dotParts[1:len(dotParts)-1], ".")}
+			} else if len(dotParts) == 2 {
+				// Format: handler.lambda_handler (no module prefix)
+				// In this case, we need to find which module contains the handler file
+				handlerFile := dotParts[0] + ".py"
+				if validationResult != nil {
+					for _, module := range validationResult.PythonModules {
+						handlerFilePath := filepath.Join(artifactDir, module, handlerFile)
+						if fileExists(handlerFilePath) {
+							expectedModule = module
+							handlerParts = []string{module, dotParts[0]}
+							break
+						}
+					}
+				}
+				if expectedModule == "" {
+					// If no module contains the handler file, this might be an error
+					// but we'll let the later validation catch it
+					expectedModule = dotParts[0] // This will likely fail validation
+					handlerParts = []string{expectedModule}
+				}
+			} else {
+				return fmt.Errorf("invalid handler path format: %s", handlerPath)
+			}
+		}
+
+		if expectedModule != "" {
+			modulePath := filepath.Join(artifactDir, expectedModule)
+
+			if !fileExists(modulePath) {
+				return fmt.Errorf("handler module directory not found: %s", modulePath)
 			}
 
-			// Stop if we would go beyond the project root
-			absPath := filepath.Join(path.ResolveRootDir(input.CfgPath), strings.Join(handlerParts[:i], "/"))
-			if !strings.HasPrefix(absPath, path.ResolveRootDir(input.CfgPath)) {
-				break
+			// Check if it's a proper Python module
+			initPyPath := filepath.Join(modulePath, "__init__.py")
+			if !fileExists(initPyPath) {
+				slog.Warn("handler module missing __init__.py file",
+					"module", expectedModule,
+					"path", initPyPath)
+
+				// Report warning about missing __init__.py
+				progressReporter.ReportWarning("validate",
+					fmt.Sprintf("Module '%s' missing __init__.py file", expectedModule),
+					map[string]interface{}{
+						"module": expectedModule,
+						"path":   initPyPath,
+					})
+			}
+
+			// If handler specifies a file, check if it exists
+			if len(handlerParts) > 1 {
+				// Parse handler path: module/file.function -> module, file.py, function
+				// For example: functions/handler.lambda_handler -> functions, handler.py, lambda_handler
+				handlerFileAndFunc := strings.Join(handlerParts[1:], "/")
+
+				// Split on the last dot to separate file from function
+				lastDotIndex := strings.LastIndex(handlerFileAndFunc, ".")
+				var handlerFile string
+				if lastDotIndex != -1 {
+					// Extract just the file part (before the last dot)
+					handlerFile = handlerFileAndFunc[:lastDotIndex] + ".py"
+				} else {
+					// No function specified, treat entire thing as file
+					handlerFile = handlerFileAndFunc + ".py"
+				}
+
+				handlerFilePath := filepath.Join(modulePath, handlerFile)
+
+				if !fileExists(handlerFilePath) {
+					return fmt.Errorf("handler file not found: %s", handlerFilePath)
+				}
+
+				slog.Debug("handler file validation successful",
+					"handlerPath", handlerPath,
+					"handlerFile", handlerFilePath)
 			}
 		}
 	}
-	return adjustedHandler, nil
+
+	// 5. Calculate and log final artifact statistics
+	var totalSize int64
+	var fileCount int
+	var pythonFileCount int
+
+	err = filepath.Walk(artifactDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil // Continue despite errors
+		}
+
+		if !info.IsDir() {
+			fileCount++
+			totalSize += info.Size()
+
+			if strings.HasSuffix(info.Name(), ".py") {
+				pythonFileCount++
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		slog.Warn("failed to calculate artifact statistics", "error", err)
+	}
+
+	slog.Info("deployment readiness validation successful",
+		"artifactDir", artifactDir,
+		"handlerPath", handlerPath,
+		"totalSize", totalSize,
+		"fileCount", fileCount,
+		"pythonFileCount", pythonFileCount,
+		"ready", true)
+
+	return nil
+}
+
+// calculateArtifactSummary calculates summary information about the deployment artifact
+func (r *PythonRuntime) calculateArtifactSummary(artifactDir string) ArtifactSummary {
+	summary := ArtifactSummary{}
+
+	err := filepath.Walk(artifactDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil // Continue despite errors
+		}
+
+		if !info.IsDir() {
+			summary.FileCount++
+			summary.TotalSize += info.Size()
+
+			if strings.HasSuffix(info.Name(), ".py") {
+				summary.PythonFileCount++
+			}
+		} else {
+			// Count directories that look like Python modules
+			if strings.Contains(path, artifactDir) && path != artifactDir {
+				relPath, _ := filepath.Rel(artifactDir, path)
+				// Count top-level directories as potential modules
+				if !strings.Contains(relPath, string(filepath.Separator)) {
+					summary.ModuleCount++
+				}
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		slog.Warn("failed to calculate artifact summary", "error", err, "artifactDir", artifactDir)
+	}
+
+	return summary
 }
 
 // updateCacheAfterBuild updates the build cache after a successful build
@@ -768,4 +1186,272 @@ func (r *PythonRuntime) updateCacheAfterBuild(input *runtime.BuildInput, buildOu
 			"functionID", input.FunctionID,
 			"handler", input.Handler)
 	}
+}
+
+// cleanupModuleBuildArtifacts removes build artifacts from extracted modules
+func (r *PythonRuntime) cleanupModuleBuildArtifacts(moduleDir string) error {
+	slog.Info("cleaning up build artifacts from module", "moduleDir", moduleDir)
+
+	// List of directories and files to remove from modules
+	artifactsToRemove := []string{
+		".sst",
+		"__pycache__",
+		".pytest_cache",
+		".coverage",
+		"htmlcov",
+		".git",
+		".gitignore",
+		".gitattributes",
+		"node_modules",
+		".vscode",
+		".idea",
+		"Dockerfile",
+		"docker-compose.yml",
+		"docker-compose.yaml",
+		"Makefile",
+		"README.md",
+		"README.rst",
+		"README.txt",
+		"CHANGELOG.md",
+		"CHANGELOG.rst",
+		"CHANGELOG.txt",
+		"LICENSE",
+		"LICENSE.txt",
+		"MANIFEST.in",
+		"setup.cfg",
+		"tox.ini",
+		".pre-commit-config.yaml",
+	}
+
+	var removedItems []string
+
+	for _, artifact := range artifactsToRemove {
+		artifactPath := filepath.Join(moduleDir, artifact)
+		if _, err := os.Stat(artifactPath); err == nil {
+			if err := os.RemoveAll(artifactPath); err != nil {
+				slog.Warn("failed to remove build artifact",
+					"artifact", artifact,
+					"path", artifactPath,
+					"error", err)
+			} else {
+				removedItems = append(removedItems, artifact)
+				slog.Debug("removed build artifact",
+					"artifact", artifact,
+					"path", artifactPath)
+			}
+		}
+	}
+
+	// Also remove any .pyc files
+	err := filepath.Walk(moduleDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil // Continue walking despite errors
+		}
+
+		if !info.IsDir() && (strings.HasSuffix(info.Name(), ".pyc") || strings.HasSuffix(info.Name(), ".pyo")) {
+			if err := os.Remove(path); err != nil {
+				slog.Warn("failed to remove compiled Python file",
+					"path", path,
+					"error", err)
+			} else {
+				slog.Debug("removed compiled Python file", "path", path)
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		slog.Warn("error walking module directory for cleanup",
+			"moduleDir", moduleDir,
+			"error", err)
+	}
+
+	slog.Info("module build artifact cleanup completed",
+		"moduleDir", moduleDir,
+		"removedItems", removedItems,
+		"count", len(removedItems))
+
+	return nil
+}
+
+// cleanupAbsolutePaths removes any directories with absolute paths from the artifact directory
+func (r *PythonRuntime) cleanupAbsolutePaths(artifactDir string) error {
+	slog.Info("cleaning up absolute paths from artifact directory", "artifactDir", artifactDir)
+
+	entries, err := os.ReadDir(artifactDir)
+	if err != nil {
+		return fmt.Errorf("failed to read artifact directory: %w", err)
+	}
+
+	var removedItems []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			// Check if directory name contains absolute path indicators
+			name := entry.Name()
+			if strings.Contains(name, ":") && (strings.Contains(name, "/Users/") || strings.Contains(name, "/home/") || strings.Contains(name, "C:\\")) {
+				itemPath := filepath.Join(artifactDir, name)
+				slog.Info("removing absolute path directory", "path", itemPath)
+
+				if err := os.RemoveAll(itemPath); err != nil {
+					slog.Warn("failed to remove absolute path directory", "path", itemPath, "error", err)
+				} else {
+					removedItems = append(removedItems, name)
+				}
+			}
+		}
+	}
+
+	if len(removedItems) > 0 {
+		slog.Info("cleaned up absolute path directories",
+			"artifactDir", artifactDir,
+			"removedItems", removedItems,
+			"count", len(removedItems))
+	}
+
+	return nil
+}
+
+// addSSTModule adds the SST Python runtime module to the deployment package
+func (r *PythonRuntime) addSSTModule(artifactDir string) error {
+	slog.Info("adding SST runtime module to deployment package", "artifactDir", artifactDir)
+
+	// Get the path to the SST module file
+	// The module is embedded in the Go binary at compile time
+	sstModuleContent := `"""
+SST Python Runtime Module
+
+This module provides access to SST resources in Python Lambda functions.
+It reads encrypted resource data from resource.enc and provides a Resource API.
+"""
+
+import os
+import json
+import base64
+from typing import Any, Dict
+
+
+class ResourceProxy:
+    """Proxy object that provides attribute access to resource properties."""
+    
+    def __init__(self, data: Dict[str, Any]):
+        self._data = data
+    
+    def __getattr__(self, name: str) -> Any:
+        if name in self._data:
+            value = self._data[name]
+            if isinstance(value, dict):
+                return ResourceProxy(value)
+            return value
+        raise AttributeError(f"Resource has no attribute '{name}'")
+
+
+class ResourceManager:
+    """Manages SST resources by decrypting and parsing resource.enc file."""
+    
+    def __init__(self):
+        self._resources = None
+        self._load_resources()
+    
+    def _load_resources(self):
+        """Load and decrypt resources from resource.enc file."""
+        try:
+            # Get encryption key from environment
+            key_b64 = os.environ.get('SST_KEY')
+            if not key_b64:
+                # In development mode, resources might be provided directly via env vars
+                self._load_dev_resources()
+                return
+            
+            # Try to import cryptography for decryption
+            try:
+                from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+                from cryptography.hazmat.backends import default_backend
+            except ImportError:
+                print("Warning: cryptography package not available, falling back to development mode")
+                self._load_dev_resources()
+                return
+            
+            # Decode the base64 key
+            key = base64.b64decode(key_b64)
+            
+            # Read the encrypted resource file
+            resource_file = os.environ.get('SST_KEY_FILE', 'resource.enc')
+            if not os.path.exists(resource_file):
+                print(f"Warning: Resource file {resource_file} not found, falling back to development mode")
+                self._load_dev_resources()
+                return
+            
+            with open(resource_file, 'rb') as f:
+                ciphertext = f.read()
+            
+            # Decrypt using AES-GCM (matching Go implementation)
+            # Go uses 12-byte nonce (all zeros) and no additional data
+            nonce = b'\x00' * 12
+            cipher = Cipher(algorithms.AES(key), modes.GCM(nonce), backend=default_backend())
+            decryptor = cipher.decryptor()
+            
+            # The ciphertext includes the auth tag at the end (16 bytes for GCM)
+            if len(ciphertext) < 16:
+                raise ValueError("Invalid ciphertext: too short")
+            
+            # Split ciphertext and auth tag
+            actual_ciphertext = ciphertext[:-16]
+            auth_tag = ciphertext[-16:]
+            
+            # Set the auth tag and decrypt
+            decryptor.authenticate_additional_data(b'')
+            plaintext = decryptor.update(actual_ciphertext)
+            decryptor.finalize_with_tag(auth_tag)
+            
+            # Parse JSON
+            self._resources = json.loads(plaintext.decode('utf-8'))
+            
+        except Exception as e:
+            # Fallback to development mode if decryption fails
+            print(f"Warning: Failed to decrypt resources ({e}), falling back to development mode")
+            self._load_dev_resources()
+    
+    def _load_dev_resources(self):
+        """Load resources from environment variables (development mode)."""
+        self._resources = {}
+        
+        # Look for SST_RESOURCE_* environment variables
+        for key, value in os.environ.items():
+            if key.startswith('SST_RESOURCE_') and key != 'SST_RESOURCE_App':
+                resource_name = key[13:]  # Remove 'SST_RESOURCE_' prefix
+                try:
+                    self._resources[resource_name] = json.loads(value)
+                except json.JSONDecodeError:
+                    self._resources[resource_name] = value
+    
+    def __getattr__(self, name: str) -> Any:
+        if self._resources is None:
+            raise RuntimeError("Resources not loaded")
+        
+        if name in self._resources:
+            value = self._resources[name]
+            if isinstance(value, dict):
+                return ResourceProxy(value)
+            return value
+        
+        raise AttributeError(f"Resource '{name}' not found")
+
+
+# Global resource manager instance
+Resource = ResourceManager()
+`
+
+	// Create the sst.py file in the artifact directory
+	sstModulePath := filepath.Join(artifactDir, "sst.py")
+	err := os.WriteFile(sstModulePath, []byte(sstModuleContent), 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write SST module: %w", err)
+	}
+
+	slog.Info("SST runtime module added successfully",
+		"path", sstModulePath,
+		"size", len(sstModuleContent))
+
+	return nil
 }

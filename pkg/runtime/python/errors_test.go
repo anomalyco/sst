@@ -8,14 +8,14 @@ import (
 )
 
 func TestNewPythonRuntimeError(t *testing.T) {
-	err := NewPythonRuntimeError(ErrorTypeLayoutDetection, SeverityError, "test error")
+	err := NewPythonRuntimeError(ErrorTypeLayoutDetection, ErrorSeverityError, "test error")
 
 	if err.Type != ErrorTypeLayoutDetection {
 		t.Errorf("Expected type %s, got %s", ErrorTypeLayoutDetection, err.Type)
 	}
 
-	if err.Severity != SeverityError {
-		t.Errorf("Expected severity %s, got %s", SeverityError, err.Severity)
+	if err.Severity != ErrorSeverityError {
+		t.Errorf("Expected severity %s, got %s", ErrorSeverityError, err.Severity)
 	}
 
 	if err.Message != "test error" {
@@ -34,7 +34,7 @@ func TestNewPythonRuntimeError(t *testing.T) {
 func TestPythonRuntimeError_WithMethods(t *testing.T) {
 	originalErr := errors.New("original error")
 
-	err := NewPythonRuntimeError(ErrorTypeBuildFailed, SeverityError, "build failed").
+	err := NewPythonRuntimeError(ErrorTypeBuildFailed, ErrorSeverityError, "build failed").
 		WithCause(originalErr).
 		WithContext("package", "test-package").
 		WithSuggestion("Check your code").
@@ -62,7 +62,7 @@ func TestPythonRuntimeError_WithMethods(t *testing.T) {
 }
 
 func TestPythonRuntimeError_Error(t *testing.T) {
-	err := NewPythonRuntimeError(ErrorTypeBuildFailed, SeverityError, "build failed").
+	err := NewPythonRuntimeError(ErrorTypeBuildFailed, ErrorSeverityError, "build failed").
 		WithContext("package", "test-package").
 		WithSuggestion("Check your code")
 
@@ -87,7 +87,7 @@ func TestPythonRuntimeError_Error(t *testing.T) {
 
 func TestPythonRuntimeError_Unwrap(t *testing.T) {
 	originalErr := errors.New("original error")
-	err := NewPythonRuntimeError(ErrorTypeBuildFailed, SeverityError, "build failed").
+	err := NewPythonRuntimeError(ErrorTypeBuildFailed, ErrorSeverityError, "build failed").
 		WithCause(originalErr)
 
 	if err.Unwrap() != originalErr {
@@ -140,7 +140,7 @@ func TestNewCacheCorruptedError(t *testing.T) {
 		t.Error("Expected cache corrupted error type")
 	}
 
-	if err.Severity != SeverityWarning {
+	if err.Severity != ErrorSeverityWarning {
 		t.Error("Expected warning severity for cache corruption")
 	}
 
@@ -245,7 +245,7 @@ func TestErrorRecoveryManager_RetryWithBackoff_NonRetryable(t *testing.T) {
 
 	// Test non-retryable error
 	attempts := 0
-	nonRetryableErr := NewPythonRuntimeError(ErrorTypeHandlerNotFound, SeverityError, "not found")
+	nonRetryableErr := NewPythonRuntimeError(ErrorTypeHandlerNotFound, ErrorSeverityError, "not found")
 
 	err := erm.RetryWithBackoff(func() error {
 		attempts++
@@ -266,7 +266,7 @@ func TestErrorRecoveryManager_RetryWithBackoff_MaxRetries(t *testing.T) {
 
 	// Test max retries exceeded
 	attempts := 0
-	retryableErr := NewPythonRuntimeError(ErrorTypeNetwork, SeverityWarning, "network error").
+	retryableErr := NewPythonRuntimeError(ErrorTypeNetwork, ErrorSeverityWarning, "network error").
 		WithRetry(1 * time.Millisecond)
 
 	err := erm.RetryWithBackoff(func() error {
@@ -404,7 +404,7 @@ func TestWrapError(t *testing.T) {
 }
 
 func TestWrapError_AlreadyPythonRuntimeError(t *testing.T) {
-	originalErr := NewPythonRuntimeError(ErrorTypeBuildFailed, SeverityError, "build failed")
+	originalErr := NewPythonRuntimeError(ErrorTypeBuildFailed, ErrorSeverityError, "build failed")
 	result := WrapError(originalErr, "test")
 
 	if result != originalErr {

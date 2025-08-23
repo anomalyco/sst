@@ -288,17 +288,3 @@ func TestBuildResult_Creation(t *testing.T) {
 		t.Errorf("Expected 1 warning, got %d", len(buildResult.Warnings))
 	}
 }
-
-// containsAny checks if a string contains any of the given substrings
-func containsAny(s string, substrings []string) bool {
-	for _, substr := range substrings {
-		if len(substr) > 0 && len(s) >= len(substr) {
-			for i := 0; i <= len(s)-len(substr); i++ {
-				if s[i:i+len(substr)] == substr {
-					return true
-				}
-			}
-		}
-	}
-	return false
-}

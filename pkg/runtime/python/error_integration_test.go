@@ -67,8 +67,8 @@ func TestIncrementalBuilder_ErrorHandling(t *testing.T) {
 		t.Errorf("Expected error type %s, got %s", ErrorTypeLayoutDetection, pythonErr.Type)
 	}
 
-	if pythonErr.Severity != SeverityError {
-		t.Errorf("Expected severity %s, got %s", SeverityError, pythonErr.Severity)
+	if pythonErr.Severity != ErrorSeverityError {
+		t.Errorf("Expected severity %s, got %s", ErrorSeverityError, pythonErr.Severity)
 	}
 
 	// Verify context is present
@@ -268,7 +268,7 @@ func TestErrorRecoveryManager(t *testing.T) {
 	err := manager.RetryWithBackoff(func() error {
 		attempts++
 		if attempts < 2 {
-			return NewPythonRuntimeError(ErrorTypeNetwork, SeverityWarning, "network error").
+			return NewPythonRuntimeError(ErrorTypeNetwork, ErrorSeverityWarning, "network error").
 				WithRetry(10 * time.Millisecond)
 		}
 		return nil
@@ -284,7 +284,7 @@ func TestErrorRecoveryManager(t *testing.T) {
 
 	// Test non-retryable error
 	attempts = 0
-	nonRetryableErr := NewPythonRuntimeError(ErrorTypeHandlerNotFound, SeverityError, "not found")
+	nonRetryableErr := NewPythonRuntimeError(ErrorTypeHandlerNotFound, ErrorSeverityError, "not found")
 	err = manager.RetryWithBackoff(func() error {
 		attempts++
 		return nonRetryableErr

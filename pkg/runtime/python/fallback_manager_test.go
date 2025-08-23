@@ -73,28 +73,28 @@ func TestFallbackManager_ShouldFallback(t *testing.T) {
 		},
 		{
 			name:             "layout detection error",
-			err:              NewPythonRuntimeError(ErrorTypeLayoutDetection, "layout not supported", nil),
+			err:              NewPythonRuntimeError(ErrorTypeLayoutDetection, ErrorSeverityError, "layout not supported"),
 			expectedFallback: true,
 			expectedReason:   FallbackReasonLayoutUnsupported,
 			expectedStrategy: StrategySimpleLayout,
 		},
 		{
 			name:             "cache corruption error",
-			err:              NewPythonRuntimeError(ErrorTypeCacheCorruption, "cache corrupted", nil),
+			err:              NewPythonRuntimeError(ErrorTypeCacheCorrupted, ErrorSeverityError, "cache corrupted"),
 			expectedFallback: true,
 			expectedReason:   FallbackReasonCacheCorrupted,
 			expectedStrategy: StrategyFullRebuild,
 		},
 		{
 			name:             "build failure with legacy fallback",
-			err:              NewPythonRuntimeError(ErrorTypeBuildFailure, "build failed", nil),
+			err:              NewPythonRuntimeError(ErrorTypeBuildFailed, ErrorSeverityError, "build failed"),
 			expectedFallback: true,
 			expectedReason:   FallbackReasonBuildError,
 			expectedStrategy: StrategyLegacyBuilder,
 		},
 		{
 			name:             "dependency error",
-			err:              NewPythonRuntimeError(ErrorTypeDependencyResolution, "dependency error", nil),
+			err:              NewPythonRuntimeError(ErrorTypeDependencyFailed, ErrorSeverityError, "dependency error"),
 			expectedFallback: true,
 			expectedReason:   FallbackReasonDependencyError,
 			expectedStrategy: StrategyNoOptimization,
@@ -157,7 +157,7 @@ func TestFallbackManager_ShouldFallback_NoLegacyFallback(t *testing.T) {
 
 	// Test that build failures fall back to full rebuild when legacy fallback is disabled
 	shouldFallback, reason, strategy := fm.ShouldFallback(
-		NewPythonRuntimeError(ErrorTypeBuildFailure, "build failed", nil))
+		NewPythonRuntimeError(ErrorTypeBuildFailed, ErrorSeverityError, "build failed"))
 
 	if !shouldFallback {
 		t.Error("Expected fallback to be triggered")

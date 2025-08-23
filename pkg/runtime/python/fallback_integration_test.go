@@ -154,9 +154,10 @@ func TestIncrementalBuilder_DeprecationWarnings(t *testing.T) {
 
 	// Test deprecation checking
 	layout := &LayoutInfo{
-		Type:         LayoutTypeWorkspace,
-		WorkspaceDir: "/test/src/mypackage",
-		PackageName:  "mypackage",
+		Type:          LayoutTypeWorkspace,
+		WorkspaceDir:  "/test/src/mypackage",
+		PackageName:   "mypackage",
+		PyprojectPath: "/test/pyproject.toml", // Add pyproject to avoid missing_pyproject warning
 	}
 
 	builder.deprecationChecker.CheckLayout(layout)
@@ -296,11 +297,14 @@ func TestDeprecationChecker_PackageWarnings(t *testing.T) {
 	checker.CheckDependencies(dependencies)
 
 	// Give callbacks time to execute
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 
 	// Check that warnings were issued
 	if len(warnings) < 2 {
 		t.Errorf("Expected at least 2 deprecation warnings, got %d", len(warnings))
+		for i, w := range warnings {
+			t.Logf("Warning %d: %s - %s (context: %v)", i+1, w.Pattern, w.Message, w.Context)
+		}
 	}
 
 	// Check for flask warning

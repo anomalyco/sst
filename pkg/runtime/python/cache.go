@@ -573,6 +573,9 @@ func (brc *BuildResultCache) RestoreBuildResult(functionID string, targetDir str
 		return nil, fmt.Errorf("failed to create target directory: %w", err)
 	}
 
+	// Check if this is a package cache (starts with pkg_)
+	isPackageCache := strings.HasPrefix(functionID, "pkg_")
+
 	// Copy cached artifacts to target directory
 	var restoredPaths []string
 	err := filepath.Walk(functionArtifactDir, func(path string, info os.FileInfo, err error) error {
@@ -590,8 +593,24 @@ func (brc *BuildResultCache) RestoreBuildResult(functionID string, targetDir str
 			return fmt.Errorf("failed to get relative path: %w", err)
 		}
 
-		// Determine destination path
-		destPath := filepath.Join(targetDir, relativePath)
+		// For package caches, we need to be careful about path adjustments
+		// The issue is that pkg_ directories shouldn't appear in the final output
+		var destPath string
+		if isPackageCache {
+			// Check if the relative path contains the cache key (pkg_packagename)
+			// If so, we need to remove the pkg_ prefix from directory names
+			pathParts := strings.Split(relativePath, string(filepath.Separator))
+			for i, part := range pathParts {
+				if strings.HasPrefix(part, "pkg_") {
+					// Remove the pkg_ prefix from this path component
+					pathParts[i] = strings.TrimPrefix(part, "pkg_")
+				}
+			}
+			adjustedPath := strings.Join(pathParts, string(filepath.Separator))
+			destPath = filepath.Join(targetDir, adjustedPath)
+		} else {
+			destPath = filepath.Join(targetDir, relativePath)
+		}
 
 		// Ensure destination directory exists
 		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {

@@ -94,6 +94,9 @@ type UvBuildCommand struct {
 	// PackageDir is the directory containing the package
 	PackageDir string
 
+	// WorkspaceDir is the workspace directory for multi-package builds
+	WorkspaceDir string
+
 	// OutputDir is the directory where build artifacts should be placed
 	OutputDir string
 
@@ -108,6 +111,9 @@ type UvBuildCommand struct {
 
 	// Architecture specifies the target architecture
 	Architecture string
+
+	// AllPackages builds all packages in the workspace
+	AllPackages bool
 
 	// ExtraArgs contains additional arguments for the build command
 	ExtraArgs []string
@@ -148,6 +154,9 @@ type UvExportCommand struct {
 	// NoDev excludes development dependencies
 	NoDev bool
 
+	// AllPackages exports dependencies for all packages in the workspace
+	AllPackages bool
+
 	// ExtraArgs contains additional arguments for the export command
 	ExtraArgs []string
 }
@@ -176,7 +185,7 @@ type UvInstallCommand struct {
 // NewUvCommandRunner creates a new UV command runner
 func NewUvCommandRunner(config UvCommandRunnerConfig) *UvCommandRunner {
 	if config.CommandTimeout == 0 {
-		config.CommandTimeout = 5 * time.Minute
+		config.CommandTimeout = 1 * time.Minute // Reduced for faster development builds
 	}
 	if config.MaxRetries == 0 {
 		config.MaxRetries = 3
@@ -195,6 +204,14 @@ func NewUvCommandRunner(config UvCommandRunnerConfig) *UvCommandRunner {
 
 // ExecuteBuildCommand executes a UV build command for a single package
 func (ur *UvCommandRunner) ExecuteBuildCommand(ctx context.Context, cmd *UvBuildCommand) error {
+	// Add nil checks to prevent segfaults
+	if ur == nil {
+		return fmt.Errorf("UV command runner is nil")
+	}
+	if cmd == nil {
+		return fmt.Errorf("UV build command is nil")
+	}
+
 	// Check if we can use cached results
 	if ur.config.EnableCaching {
 		cacheKey := ur.generateBuildCacheKey(cmd)
@@ -210,7 +227,9 @@ func (ur *UvCommandRunner) ExecuteBuildCommand(ctx context.Context, cmd *UvBuild
 	args := []string{"build"}
 
 	// Add package specification
-	if cmd.PackageName != "" {
+	if cmd.AllPackages {
+		args = append(args, "--all")
+	} else if cmd.PackageName != "" {
 		args = append(args, "--package="+cmd.PackageName)
 	}
 
@@ -233,22 +252,44 @@ func (ur *UvCommandRunner) ExecuteBuildCommand(ctx context.Context, cmd *UvBuild
 		args = append(args, "--out-dir="+cmd.OutputDir)
 	}
 
+	// Add performance optimization flags for faster builds
+	// Note: --no-build-isolation removed as it prevents build dependencies from being installed
+	args = append(args, "--no-sources") // Don't include source files in wheel (faster)
+
 	// Add extra arguments
 	args = append(args, cmd.ExtraArgs...)
 
-	// Determine working directory - use package directory if specified, otherwise current dir
+	// Determine working directory - use workspace directory for all packages, package directory for single package
 	workingDir := cmd.PackageDir
-	if workingDir == "" {
+	if cmd.AllPackages && cmd.WorkspaceDir != "" {
+		workingDir = cmd.WorkspaceDir
+	} else if workingDir == "" {
 		workingDir = "."
 	}
+
+	// Log the exact command being executed for debugging
+	slog.Info("about to execute UV build command",
+		"package", cmd.PackageName,
+		"command", "uv "+strings.Join(args, " "),
+		"workingDir", workingDir,
+		"buildType", cmd.BuildType)
 
 	// Execute command with enhanced error handling
 	result, err := ur.executeCommand(ctx, "uv", args, workingDir)
 	if err != nil {
+		slog.Error("UV build command failed",
+			"package", cmd.PackageName,
+			"command", "uv "+strings.Join(args, " "),
+			"workingDir", workingDir,
+			"error", err)
 		return NewUVCommandFailedError("uv", args, -1, err.Error()).
 			WithContext("package", cmd.PackageName).
 			WithContext("workingDir", workingDir)
 	}
+
+	slog.Info("UV build command completed successfully",
+		"package", cmd.PackageName,
+		"duration", result.Duration)
 
 	if !result.Success {
 		return NewUVCommandFailedError("uv", args, result.ExitCode, result.Stderr).
@@ -415,7 +456,9 @@ func (ur *UvCommandRunner) ExecuteExportCommand(ctx context.Context, cmd *UvExpo
 	args := []string{"export"}
 
 	// Add package specification
-	if cmd.PackageName != "" {
+	if cmd.AllPackages {
+		args = append(args, "--all-packages")
+	} else if cmd.PackageName != "" {
 		args = append(args, "--package="+cmd.PackageName)
 	}
 
@@ -801,6 +844,14 @@ func (ur *UvCommandRunner) executeCommand(ctx context.Context, command string, a
 
 // executeCommandOnce executes a command once without retries
 func (ur *UvCommandRunner) executeCommandOnce(ctx context.Context, command string, args []string, workingDir string) (*CommandResult, error) {
+	// Add nil checks to prevent segfaults
+	if ur == nil {
+		return nil, fmt.Errorf("UV command runner is nil")
+	}
+	if ctx == nil {
+		return nil, fmt.Errorf("context is nil")
+	}
+
 	startTime := time.Now()
 
 	// Create command with timeout
@@ -818,11 +869,61 @@ func (ur *UvCommandRunner) executeCommandOnce(ctx context.Context, command strin
 	slog.Info("executing UV command",
 		"command", command,
 		"args", strings.Join(args, " "),
-		"workingDir", workingDir)
+		"workingDir", workingDir,
+		"timeout", ur.config.CommandTimeout)
 
-	// Execute command
+	// Add detailed debugging for the exact command being run
+	slog.Info("UV command details",
+		"fullCommand", fmt.Sprintf("%s %s", command, strings.Join(args, " ")),
+		"workingDir", workingDir,
+		"env", fmt.Sprintf("PATH=%s", os.Getenv("PATH")))
+
+	// Check if working directory exists and is accessible
+	if workingDir != "" {
+		if stat, err := os.Stat(workingDir); err != nil {
+			slog.Error("working directory issue", "workingDir", workingDir, "error", err)
+		} else {
+			slog.Info("working directory info", "workingDir", workingDir, "isDir", stat.IsDir())
+		}
+	}
+
+	// Execute command with progress reporting
+	if ur.config.EnableProgressReport && strings.Contains(strings.Join(args, " "), "build") {
+		// Report that UV build is starting
+		slog.Info("UV build command starting", "command", command, "args", strings.Join(args, " "))
+	}
+
+	// Add a goroutine to log progress every 30 seconds to detect hangs
+	done := make(chan bool)
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				slog.Info("UV command still running",
+					"command", command,
+					"elapsed", time.Since(startTime),
+					"workingDir", workingDir)
+			}
+		}
+	}()
+
+	slog.Info("about to call cmd.CombinedOutput()")
 	output, err := cmd.CombinedOutput()
 	duration := time.Since(startTime)
+
+	// Signal the progress goroutine to stop
+	close(done)
+
+	slog.Info("cmd.CombinedOutput() returned", "duration", duration, "success", err == nil)
+
+	if ur.config.EnableProgressReport && strings.Contains(strings.Join(args, " "), "build") {
+		// Report build completion with timing
+		slog.Info("UV build command finished", "duration", duration, "success", err == nil)
+	}
 
 	result := &CommandResult{
 		Command:    command,
@@ -848,6 +949,10 @@ func (ur *UvCommandRunner) executeCommandOnce(ctx context.Context, command strin
 	}
 
 	slog.Info("UV command completed",
+		"command", command,
+		"args", strings.Join(args, " "),
+		"duration", duration,
+		"success", result.Success,
 		"command", command,
 		"duration", duration,
 		"success", result.Success,

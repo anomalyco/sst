@@ -310,7 +310,7 @@ build-backend = "hatchling.build"`
 	// Simulate adding to cache
 	entry := &CacheEntry{
 		FunctionID:   input.FunctionID,
-		LastBuild:    time.Now(),
+		BuildTime:    time.Now(),
 		FileHashes:   map[string]string{handlerPath: "hash123"},
 		Dependencies: []string{"requests"},
 	}
@@ -372,7 +372,7 @@ func TestIncrementalBuilder_ErrorHandlingAndRecovery(t *testing.T) {
 		// Add corrupted entry to cache
 		corruptedEntry := &CacheEntry{
 			FunctionID:   "corrupted-function",
-			LastBuild:    time.Time{}, // Invalid time
+			BuildTime:    time.Time{}, // Invalid time
 			FileHashes:   nil,         // Nil map
 			Dependencies: nil,         // Nil slice
 		}
@@ -603,7 +603,7 @@ source = { registry = "https://pypi.org/simple" }`
 	// Test dependency change detection
 	entry := &CacheEntry{
 		FunctionID: input.FunctionID,
-		LastBuild:  time.Now(),
+		BuildTime:  time.Now(),
 		FileHashes: map[string]string{
 			handlerPath:   "handler-hash",
 			pyprojectPath: "pyproject-hash",
@@ -691,8 +691,8 @@ func TestIncrementalBuilder_ConcurrentBuilds(t *testing.T) {
 	}
 }
 
-// TestIncrementalBuilder_ProgressReporting tests progress reporting integration
-func TestIncrementalBuilder_ProgressReporting(t *testing.T) {
+// TestIncrementalBuilder_ProgressReportingComprehensive tests progress reporting integration (comprehensive)
+func TestIncrementalBuilder_ProgressReportingComprehensive(t *testing.T) {
 	tempDir := t.TempDir()
 
 	// Track progress events
@@ -723,7 +723,7 @@ func TestIncrementalBuilder_ProgressReporting(t *testing.T) {
 
 	// Test progress reporting
 	builder.progressReporter.StartStage(StageInit, "Testing progress")
-	builder.progressReporter.UpdateProgress(50, "Halfway done", nil)
+	builder.progressReporter.UpdateProgress(StageInit, "Halfway done")
 	builder.progressReporter.CompleteStage(StageInit, "Done")
 
 	// Give callbacks time to execute
@@ -748,8 +748,8 @@ func TestIncrementalBuilder_ProgressReporting(t *testing.T) {
 	}
 }
 
-// TestIncrementalBuilder_FallbackIntegration tests fallback integration
-func TestIncrementalBuilder_FallbackIntegration(t *testing.T) {
+// TestIncrementalBuilder_FallbackIntegrationComprehensive tests fallback integration (comprehensive)
+func TestIncrementalBuilder_FallbackIntegrationComprehensive(t *testing.T) {
 	tempDir := t.TempDir()
 
 	// Track fallback events

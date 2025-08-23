@@ -3,6 +3,7 @@ package python
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -103,19 +104,29 @@ func (bp *BuildPlanner) CreateBuildPlan(ctx context.Context, input *runtime.Buil
 // createPackageBuildInfo converts dependency analysis to package build info
 func (bp *BuildPlanner) createPackageBuildInfo(dependencies *DependencyAnalysis, plan *BuildPlan) error {
 	for _, localPkg := range dependencies.LocalPackages {
-		buildInfo := &PackageBuildInfo{
-			PackageName:        localPkg.Name,
-			PackageDir:         localPkg.Path,
-			Dependencies:       localPkg.Dependencies,
-			SourceFiles:        localPkg.SourceFiles,
-			RequiresRebuild:    localPkg.BuildRequired,
-			RebuildReason:      localPkg.ChangeReason,
-			EstimatedBuildTime: localPkg.EstimatedBuildTime,
-			CanUseCache:        !localPkg.HasChanges,
-			CacheKey:           bp.generateCacheKey(localPkg),
-		}
+		// Only include packages that should actually be built
+		// Source directories should be included in the function bundle but not built as packages
+		if localPkg.BuildRequired {
+			buildInfo := &PackageBuildInfo{
+				PackageName:        localPkg.Name,
+				PackageDir:         localPkg.Path,
+				Dependencies:       localPkg.Dependencies,
+				SourceFiles:        localPkg.SourceFiles,
+				RequiresRebuild:    localPkg.BuildRequired,
+				RebuildReason:      localPkg.ChangeReason,
+				EstimatedBuildTime: localPkg.EstimatedBuildTime,
+				CanUseCache:        !localPkg.HasChanges,
+				CacheKey:           bp.generateCacheKey(localPkg),
+			}
 
-		plan.Packages = append(plan.Packages, buildInfo)
+			plan.Packages = append(plan.Packages, buildInfo)
+		} else {
+			// Log that we're skipping non-buildable packages
+			slog.Info("skipping non-buildable package",
+				"package", localPkg.Name,
+				"path", localPkg.Path,
+				"sourceFiles", len(localPkg.SourceFiles))
+		}
 	}
 
 	return nil

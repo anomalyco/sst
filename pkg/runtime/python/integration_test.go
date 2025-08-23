@@ -171,7 +171,7 @@ func TestLiveSessionScenarios(t *testing.T) {
 
 	entry := &CacheEntry{
 		FunctionID: input.FunctionID,
-		LastBuild:  time.Now(),
+		BuildTime:  time.Now(),
 		FileHashes: map[string]string{
 			handlerPath:   "original-hash",
 			pyprojectPath: "pyproject-hash",
@@ -241,7 +241,7 @@ build-backend = "hatchling.build"`
 	// Add cache entry for second function
 	entry2 := &CacheEntry{
 		FunctionID: input2.FunctionID,
-		LastBuild:  time.Now(),
+		BuildTime:  time.Now(),
 		FileHashes: map[string]string{
 			handler2Path:  "handler2-hash",
 			pyprojectPath: "pyproject-hash-2",
@@ -329,7 +329,7 @@ func TestDeploymentOptimization(t *testing.T) {
 			// Simulate build completion
 			entry := &CacheEntry{
 				FunctionID:   input.FunctionID,
-				LastBuild:    time.Now(),
+				BuildTime:    time.Now(),
 				FileHashes:   map[string]string{"handler.py": "hash"},
 				Dependencies: fn.deps,
 			}
@@ -430,7 +430,7 @@ func TestPerformanceImprovements(t *testing.T) {
 	// Test cache performance
 	entry := &CacheEntry{
 		FunctionID:   input.FunctionID,
-		LastBuild:    time.Now(),
+		BuildTime:    time.Now(),
 		FileHashes:   map[string]string{"handler.py": "hash"},
 		Dependencies: []string{"requests"},
 	}
@@ -586,7 +586,7 @@ func TestConcurrentBuildScenarios(t *testing.T) {
 				// Add to cache
 				entry := &CacheEntry{
 					FunctionID:   functionID,
-					LastBuild:    time.Now(),
+					BuildTime:    time.Now(),
 					FileHashes:   map[string]string{"handler.py": "hash"},
 					Dependencies: []string{"requests"},
 				}

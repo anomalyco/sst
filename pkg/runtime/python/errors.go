@@ -2,6 +2,7 @@ package python
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -21,9 +22,15 @@ const (
 	ErrorTypeCacheInvalid    ErrorType = "cache_invalid"
 
 	// Build errors
-	ErrorTypeBuildFailed      ErrorType = "build_failed"
-	ErrorTypeDependencyFailed ErrorType = "dependency_failed"
-	ErrorTypeUVCommandFailed  ErrorType = "uv_command_failed"
+	ErrorTypeBuildFailed        ErrorType = "build_failed"
+	ErrorTypeDependencyFailed   ErrorType = "dependency_failed"
+	ErrorTypeUVCommandFailed    ErrorType = "uv_command_failed"
+	ErrorTypeBuildOutputMissing ErrorType = "build_output_missing"
+	ErrorTypeExtractionFailed   ErrorType = "extraction_failed"
+	ErrorTypeModuleMoveFailed   ErrorType = "module_move_failed"
+	ErrorTypeValidationFailed   ErrorType = "validation_failed"
+	ErrorTypeArtifactOversized  ErrorType = "artifact_oversized"
+	ErrorTypeModuleMissing      ErrorType = "module_missing"
 
 	// System errors
 	ErrorTypeFileSystem ErrorType = "filesystem"
@@ -35,10 +42,10 @@ const (
 type ErrorSeverity string
 
 const (
-	SeverityInfo     ErrorSeverity = "info"
-	SeverityWarning  ErrorSeverity = "warning"
-	SeverityError    ErrorSeverity = "error"
-	SeverityCritical ErrorSeverity = "critical"
+	ErrorSeverityInfo     ErrorSeverity = "info"
+	ErrorSeverityWarning  ErrorSeverity = "warning"
+	ErrorSeverityError    ErrorSeverity = "error"
+	ErrorSeverityCritical ErrorSeverity = "critical"
 )
 
 // PythonRuntimeError represents a structured error with context and recovery information
@@ -181,7 +188,7 @@ func (e *PythonRuntimeError) WithRetry(retryAfter time.Duration) *PythonRuntimeE
 
 // NewLayoutDetectionError creates an error for layout detection failures
 func NewLayoutDetectionError(message string, handler string) *PythonRuntimeError {
-	return NewPythonRuntimeError(ErrorTypeLayoutDetection, SeverityError, message).
+	return NewPythonRuntimeError(ErrorTypeLayoutDetection, ErrorSeverityError, message).
 		WithContext("handler", handler).
 		WithSuggestion("Check if the handler path is correct and the Python file exists").
 		WithSuggestion("Ensure your project has a valid pyproject.toml file").
@@ -194,7 +201,7 @@ func NewLayoutDetectionError(message string, handler string) *PythonRuntimeError
 
 // NewHandlerNotFoundError creates an error for missing handlers
 func NewHandlerNotFoundError(handler string, searchPaths []string) *PythonRuntimeError {
-	return NewPythonRuntimeError(ErrorTypeHandlerNotFound, SeverityError,
+	return NewPythonRuntimeError(ErrorTypeHandlerNotFound, ErrorSeverityError,
 		fmt.Sprintf("Handler '%s' not found", handler)).
 		WithContext("handler", handler).
 		WithContext("searchPaths", searchPaths).
@@ -209,7 +216,7 @@ func NewHandlerNotFoundError(handler string, searchPaths []string) *PythonRuntim
 
 // NewCacheCorruptedError creates an error for corrupted cache
 func NewCacheCorruptedError(cacheDir string, cause error) *PythonRuntimeError {
-	return NewPythonRuntimeError(ErrorTypeCacheCorrupted, SeverityWarning,
+	return NewPythonRuntimeError(ErrorTypeCacheCorrupted, ErrorSeverityWarning,
 		"Build cache is corrupted and will be cleared").
 		WithCause(cause).
 		WithContext("cacheDir", cacheDir).
@@ -224,7 +231,7 @@ func NewCacheCorruptedError(cacheDir string, cause error) *PythonRuntimeError {
 
 // NewBuildFailedError creates an error for build failures
 func NewBuildFailedError(packageName string, cause error) *PythonRuntimeError {
-	err := NewPythonRuntimeError(ErrorTypeBuildFailed, SeverityError,
+	err := NewPythonRuntimeError(ErrorTypeBuildFailed, ErrorSeverityError,
 		fmt.Sprintf("Failed to build package '%s'", packageName)).
 		WithCause(cause).
 		WithContext("package", packageName)
@@ -249,7 +256,7 @@ func NewBuildFailedError(packageName string, cause error) *PythonRuntimeError {
 
 // NewUVCommandFailedError creates an error for UV command failures
 func NewUVCommandFailedError(command string, args []string, exitCode int, stderr string) *PythonRuntimeError {
-	return NewPythonRuntimeError(ErrorTypeUVCommandFailed, SeverityError,
+	return NewPythonRuntimeError(ErrorTypeUVCommandFailed, ErrorSeverityError,
 		fmt.Sprintf("UV command failed: %s", command)).
 		WithContext("command", command).
 		WithContext("args", args).
@@ -267,13 +274,167 @@ func NewUVCommandFailedError(command string, args []string, exitCode int, stderr
 
 // NewDependencyFailedError creates an error for dependency failures
 func NewDependencyFailedError(dependency string, cause error) *PythonRuntimeError {
-	return NewPythonRuntimeError(ErrorTypeDependencyFailed, SeverityError,
+	return NewPythonRuntimeError(ErrorTypeDependencyFailed, ErrorSeverityError,
 		fmt.Sprintf("Failed to resolve dependency '%s'", dependency)).
 		WithCause(cause).
 		WithContext("dependency", dependency).
 		WithSuggestion("Check if the dependency name and version are correct").
 		WithSuggestion("Verify network connectivity to package repositories").
 		WithRetry(60 * time.Second)
+}
+
+// NewBuildOutputMissingError creates an error for missing build outputs
+func NewBuildOutputMissingError(outputDir string, expectedFiles []string, actualFiles []string) *PythonRuntimeError {
+	return NewPythonRuntimeError(ErrorTypeBuildOutputMissing, ErrorSeverityError,
+		"Build completed but expected output files are missing").
+		WithContext("outputDir", outputDir).
+		WithContext("expectedFiles", expectedFiles).
+		WithContext("actualFiles", actualFiles).
+		WithSuggestion("Check if the 'uv build' command completed successfully").
+		WithSuggestion("Verify your pyproject.toml configuration includes all necessary packages").
+		WithSuggestion("Ensure your project structure follows Python packaging conventions").
+		WithRecoveryAction(RecoveryAction{
+			Name:        "rebuild_clean",
+			Description: "Clean build directory and rebuild from scratch",
+			Automatic:   false,
+			Command:     "uv build --clean --all --sdist",
+		})
+}
+
+// NewExtractionFailedError creates an error for tar.gz extraction failures
+func NewExtractionFailedError(tarFile string, outputDir string, cause error) *PythonRuntimeError {
+	err := NewPythonRuntimeError(ErrorTypeExtractionFailed, ErrorSeverityError,
+		fmt.Sprintf("Failed to extract tar.gz file: %s", filepath.Base(tarFile))).
+		WithCause(cause).
+		WithContext("tarFile", tarFile).
+		WithContext("outputDir", outputDir)
+
+	// Add specific suggestions based on the cause
+	if cause != nil {
+		causeStr := strings.ToLower(cause.Error())
+		if strings.Contains(causeStr, "permission") {
+			err.WithSuggestion("Check write permissions in the output directory").
+				WithSuggestion("Ensure the build process has sufficient privileges")
+		} else if strings.Contains(causeStr, "space") {
+			err.WithSuggestion("Check available disk space in the output directory").
+				WithSuggestion("Clean up temporary files to free disk space")
+		} else if strings.Contains(causeStr, "corrupted") || strings.Contains(causeStr, "invalid") {
+			err.WithSuggestion("The tar.gz file may be corrupted - try rebuilding the package").
+				WithRecoveryAction(RecoveryAction{
+					Name:        "rebuild_package",
+					Description: "Rebuild the corrupted package",
+					Automatic:   false,
+				})
+		} else if strings.Contains(causeStr, "not found") {
+			err.WithSuggestion("Verify the tar.gz file exists and is accessible").
+				WithSuggestion("Check if the build process completed successfully")
+		}
+	}
+
+	return err.WithRecoveryAction(RecoveryAction{
+		Name:        "verify_tar",
+		Description: "Verify tar.gz file integrity",
+		Automatic:   false,
+		Command:     fmt.Sprintf("tar -tzf %s", tarFile),
+	})
+}
+
+// NewModuleMoveFailedError creates an error for module movement failures
+func NewModuleMoveFailedError(sourceDir string, targetDir string, moduleName string, cause error) *PythonRuntimeError {
+	err := NewPythonRuntimeError(ErrorTypeModuleMoveFailed, ErrorSeverityError,
+		fmt.Sprintf("Failed to move module '%s' to target location", moduleName)).
+		WithCause(cause).
+		WithContext("sourceDir", sourceDir).
+		WithContext("targetDir", targetDir).
+		WithContext("moduleName", moduleName)
+
+	// Add specific suggestions based on the cause
+	if cause != nil {
+		causeStr := strings.ToLower(cause.Error())
+		if strings.Contains(causeStr, "permission") {
+			err.WithSuggestion("Check write permissions in the target directory").
+				WithSuggestion("Ensure the build process has sufficient privileges")
+		} else if strings.Contains(causeStr, "cross-device") {
+			err.WithSuggestion("Cross-device move detected - this will be handled automatically").
+				WithContext("fallbackStrategy", "copy_and_remove")
+		} else if strings.Contains(causeStr, "directory not empty") {
+			err.WithSuggestion("Target directory exists and is not empty").
+				WithSuggestion("The existing directory will be removed and replaced")
+		} else if strings.Contains(causeStr, "space") {
+			err.WithSuggestion("Check available disk space in the target directory")
+		}
+	}
+
+	return err.WithRecoveryAction(RecoveryAction{
+		Name:        "verify_paths",
+		Description: "Verify source and target paths are accessible",
+		Automatic:   false,
+	})
+}
+
+// NewValidationFailedError creates an error for artifact validation failures
+func NewValidationFailedError(validationType string, artifactDir string, details map[string]interface{}) *PythonRuntimeError {
+	return NewPythonRuntimeError(ErrorTypeValidationFailed, ErrorSeverityError,
+		fmt.Sprintf("Artifact validation failed: %s", validationType)).
+		WithContext("validationType", validationType).
+		WithContext("artifactDir", artifactDir).
+		WithContext("details", details).
+		WithSuggestion("Check the build logs for more details about what went wrong").
+		WithSuggestion("Verify your project structure and dependencies are correct").
+		WithRecoveryAction(RecoveryAction{
+			Name:        "inspect_artifact",
+			Description: "Inspect the artifact directory contents",
+			Automatic:   false,
+			Command:     fmt.Sprintf("ls -la %s", artifactDir),
+		})
+}
+
+// NewArtifactOversizedError creates an error for oversized deployment artifacts
+func NewArtifactOversizedError(artifactDir string, actualSize int64, maxSize int64, excessiveContent []string) *PythonRuntimeError {
+	return NewPythonRuntimeError(ErrorTypeArtifactOversized, ErrorSeverityError,
+		fmt.Sprintf("Deployment artifact is too large: %d bytes (max: %d bytes)", actualSize, maxSize)).
+		WithContext("artifactDir", artifactDir).
+		WithContext("actualSize", actualSize).
+		WithContext("maxSize", maxSize).
+		WithContext("excessiveContent", excessiveContent).
+		WithSuggestion("Remove unnecessary files from your project (build cache, .git, etc.)").
+		WithSuggestion("Check if entire project directories are being included incorrectly").
+		WithSuggestion("Consider using .gitignore patterns to exclude non-essential files").
+		WithRecoveryAction(RecoveryAction{
+			Name:        "analyze_size",
+			Description: "Analyze artifact contents by size",
+			Automatic:   false,
+			Command:     fmt.Sprintf("du -sh %s/*", artifactDir),
+		}).
+		WithRecoveryAction(RecoveryAction{
+			Name:        "clean_artifact",
+			Description: "Remove common unnecessary files",
+			Automatic:   true,
+		})
+}
+
+// NewModuleMissingError creates an error for missing Python modules
+func NewModuleMissingError(moduleName string, handlerPath string, artifactDir string, expectedPaths []string) *PythonRuntimeError {
+	return NewPythonRuntimeError(ErrorTypeModuleMissing, ErrorSeverityError,
+		fmt.Sprintf("Required Python module '%s' is missing from deployment artifact", moduleName)).
+		WithContext("moduleName", moduleName).
+		WithContext("handlerPath", handlerPath).
+		WithContext("artifactDir", artifactDir).
+		WithContext("expectedPaths", expectedPaths).
+		WithSuggestion("Check if the module was properly built and extracted").
+		WithSuggestion("Verify your pyproject.toml includes the module in the build").
+		WithSuggestion("Ensure the handler path matches your project structure").
+		WithRecoveryAction(RecoveryAction{
+			Name:        "list_modules",
+			Description: "List all Python modules in the artifact",
+			Automatic:   false,
+			Command:     fmt.Sprintf("find %s -name '*.py' -type f", artifactDir),
+		}).
+		WithRecoveryAction(RecoveryAction{
+			Name:        "rebuild_modules",
+			Description: "Rebuild all modules from scratch",
+			Automatic:   false,
+		})
 }
 
 // ErrorRecoveryManager handles error recovery strategies
@@ -402,19 +563,33 @@ func WrapError(err error, context string) *PythonRuntimeError {
 
 	// Detect error type based on error message
 	var errorType ErrorType
-	var severity ErrorSeverity = SeverityError
+	var severity ErrorSeverity = ErrorSeverityError
 
 	switch {
 	case strings.Contains(errStr, "not found") || strings.Contains(errStr, "no such file"):
-		errorType = ErrorTypeHandlerNotFound
+		if strings.Contains(errStr, "tar.gz") || strings.Contains(errStr, "build output") {
+			errorType = ErrorTypeBuildOutputMissing
+		} else if strings.Contains(errStr, "module") {
+			errorType = ErrorTypeModuleMissing
+		} else {
+			errorType = ErrorTypeHandlerNotFound
+		}
 	case strings.Contains(errStr, "permission"):
 		errorType = ErrorTypeCachePermission
 	case strings.Contains(errStr, "network") || strings.Contains(errStr, "connection"):
 		errorType = ErrorTypeNetwork
-		severity = SeverityWarning
+		severity = ErrorSeverityWarning
 	case strings.Contains(errStr, "timeout"):
 		errorType = ErrorTypeTimeout
-		severity = SeverityWarning
+		severity = ErrorSeverityWarning
+	case strings.Contains(errStr, "extract") || strings.Contains(errStr, "tar"):
+		errorType = ErrorTypeExtractionFailed
+	case strings.Contains(errStr, "move") || strings.Contains(errStr, "rename"):
+		errorType = ErrorTypeModuleMoveFailed
+	case strings.Contains(errStr, "validation") || strings.Contains(errStr, "validate"):
+		errorType = ErrorTypeValidationFailed
+	case strings.Contains(errStr, "oversized") || strings.Contains(errStr, "too large"):
+		errorType = ErrorTypeArtifactOversized
 	case strings.Contains(errStr, "build") || strings.Contains(errStr, "compile"):
 		errorType = ErrorTypeBuildFailed
 	default:

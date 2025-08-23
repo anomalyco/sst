@@ -126,16 +126,25 @@ func New(input *ProjectConfig) (*Project, error) {
 		root:    rootPath,
 		config:  input.Config,
 		env:     map[string]string{},
-		Runtime: runtime.NewCollection(
-			input.Config,
-			node.New(input.Version),
-			worker.New(),
-			python.New(),
-			golang.New(),
-			rust.New(),
-		),
 	}
 	tmp := proj.PathWorkingDir()
+
+	// Create Python runtime with caching enabled
+	pythonCacheDir := filepath.Join(tmp, "python-cache")
+	pythonRuntime, pythonErr := python.NewWithCache(pythonCacheDir)
+	if pythonErr != nil {
+		// Fall back to non-cached runtime if cache creation fails
+		pythonRuntime = python.New()
+	}
+
+	proj.Runtime = runtime.NewCollection(
+		input.Config,
+		node.New(input.Version),
+		worker.New(),
+		pythonRuntime,
+		golang.New(),
+		rust.New(),
+	)
 
 	_, err := os.Stat(tmp)
 	if err != nil {

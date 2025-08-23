@@ -143,7 +143,7 @@ func (dc *DependencyCache) GetCachedDependencies(requirementsFile string, archit
 
 	// Check if cache entry exists
 	if _, err := os.Stat(cacheEntryPath); os.IsNotExist(err) {
-		return nil, NewPythonRuntimeError(ErrorTypeCacheInvalid, SeverityInfo, "cache entry not found").
+		return nil, NewPythonRuntimeError(ErrorTypeCacheInvalid, ErrorSeverityInfo, "cache entry not found").
 			WithContext("cacheKey", cacheKey).
 			WithContext("requirementsFile", requirementsFile)
 	}

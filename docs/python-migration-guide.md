@@ -468,16 +468,19 @@ sst deploy --stage migration-test
 
 **Problem**: `ModuleNotFoundError` after moving files
 
-**Solution**: Update import statements
+**Solution**: Update import statements and follow best practices
 ```python
-# Before (relative imports)
+# ❌ Avoid relative imports (can be unreliable in Lambda)
 from .utils import helper
 from ..shared import common
 
-# After (absolute imports)
+# ✅ Use absolute imports (recommended)
 from myproject.utils import helper
 from shared import common
+from app.functions.auth.handler import auth_main
 ```
+
+**Best Practice**: Always use absolute imports for Lambda functions. The deployment system preserves your directory structure and maintains proper Python package structure with `__init__.py` files.
 
 ### Path Issues
 
@@ -491,6 +494,38 @@ new Function("ApiFunction", {
   handler: "functions/api/handler.main"  // Correct path
 })
 ```
+
+### Static File Access Issues
+
+**Problem**: `FileNotFoundError` when trying to read config files, templates, or other static assets
+
+**Solution**: Use paths relative to your handler file
+```python
+import os
+import json
+from pathlib import Path
+
+# ✅ Recommended approaches for static file access
+def load_config():
+    # Method 1: Using pathlib (modern)
+    config_path = Path(__file__).parent / "../../data/config.json"
+    with open(config_path, 'r') as f:
+        return json.load(f)
+
+def load_template():
+    # Method 2: Using os.path
+    template_path = os.path.join(os.path.dirname(__file__), "../templates/email.html")
+    with open(template_path, 'r') as f:
+        return f.read()
+
+# ❌ Avoid working directory assumptions
+def bad_example():
+    # This may fail in Lambda environment
+    with open("data/config.json", 'r') as f:
+        return json.load(f)
+```
+
+**Best Practice**: The deployment system preserves your entire directory structure, including static files. Use paths relative to `__file__` for reliable file access in Lambda.
 
 ### Dependency Issues
 

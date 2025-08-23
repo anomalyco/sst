@@ -41,7 +41,7 @@ func TestBuildCache_ConcurrentAccess(t *testing.T) {
 				functionID := fmt.Sprintf("function-%d-%d", id, j)
 				entry := &CacheEntry{
 					FunctionID:   functionID,
-					LastBuild:    time.Now(),
+					BuildTime:    time.Now(),
 					FileHashes:   map[string]string{"file1.py": "hash123"},
 					Dependencies: []string{"dep1", "dep2"},
 				}
@@ -93,7 +93,7 @@ func TestBuildCache_CacheInvalidation(t *testing.T) {
 	functionID := "test-function"
 	entry := &CacheEntry{
 		FunctionID:   functionID,
-		LastBuild:    time.Now(),
+		BuildTime:    time.Now(),
 		FileHashes:   map[string]string{"file1.py": "hash123"},
 		Dependencies: []string{"dep1"},
 	}
@@ -102,7 +102,7 @@ func TestBuildCache_CacheInvalidation(t *testing.T) {
 	cache.Set(functionID, entry)
 
 	// Verify entry exists
-	if !cache.Has(functionID) {
+	if _, exists := cache.Get(functionID); !exists {
 		t.Error("Entry should exist after setting")
 	}
 
@@ -110,20 +110,22 @@ func TestBuildCache_CacheInvalidation(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	// Entry should be expired but still in cache until cleanup
-	if !cache.Has(functionID) {
+	if _, exists := cache.Get(functionID); !exists {
 		t.Error("Entry should still exist before cleanup")
 	}
 
 	// Check if entry is valid (should be false due to expiry)
-	if cache.IsValid(functionID, []string{"file1.py"}) {
-		t.Error("Entry should be invalid due to expiry")
+	if retrievedEntry, exists := cache.Get(functionID); exists {
+		if valid, _ := cache.IsValid(retrievedEntry); valid {
+			t.Error("Entry should be invalid due to expiry")
+		}
 	}
 
 	// Force cleanup
 	cache.Cleanup()
 
 	// Entry should be removed after cleanup
-	if cache.Has(functionID) {
+	if _, exists := cache.Get(functionID); exists {
 		t.Error("Entry should be removed after cleanup")
 	}
 }
@@ -171,7 +173,7 @@ func TestBuildCache_FileHashValidation(t *testing.T) {
 
 	entry := &CacheEntry{
 		FunctionID: functionID,
-		LastBuild:  time.Now(),
+		BuildTime:  time.Now(),
 		FileHashes: map[string]string{
 			file1: hash1,
 			file2: hash2,
@@ -182,8 +184,10 @@ func TestBuildCache_FileHashValidation(t *testing.T) {
 	cache.Set(functionID, entry)
 
 	// Validation should pass with unchanged files
-	if !cache.IsValid(functionID, []string{file1, file2}) {
-		t.Error("Cache should be valid with unchanged files")
+	if retrievedEntry, exists := cache.Get(functionID); exists {
+		if valid, _ := cache.IsValid(retrievedEntry); !valid {
+			t.Error("Cache should be valid with unchanged files")
+		}
 	}
 
 	// Modify file1
@@ -192,18 +196,18 @@ func TestBuildCache_FileHashValidation(t *testing.T) {
 	}
 
 	// Validation should fail with modified file
-	if cache.IsValid(functionID, []string{file1, file2}) {
-		t.Error("Cache should be invalid with modified file")
+	if retrievedEntry, exists := cache.Get(functionID); exists {
+		if valid, _ := cache.IsValid(retrievedEntry); valid {
+			t.Error("Cache should be invalid with modified file")
+		}
 	}
 
-	// Validation should still pass if we only check file2
-	if !cache.IsValid(functionID, []string{file2}) {
-		t.Error("Cache should be valid when checking only unchanged file")
-	}
+	// Note: We can't easily test partial file validation with the current API
+	// The IsValid method checks all files in the entry, not a subset
 }
 
-// TestBuildCache_Persistence tests cache persistence to disk
-func TestBuildCache_Persistence(t *testing.T) {
+// TestBuildCache_PersistenceComprehensive tests cache persistence to disk (comprehensive)
+func TestBuildCache_PersistenceComprehensive(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "persistence_test")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
@@ -224,7 +228,7 @@ func TestBuildCache_Persistence(t *testing.T) {
 	functionID := "persistent-function"
 	entry := &CacheEntry{
 		FunctionID:   functionID,
-		LastBuild:    time.Now(),
+		BuildTime:    time.Now(),
 		FileHashes:   map[string]string{"file1.py": "hash123"},
 		Dependencies: []string{"dep1", "dep2"},
 	}
@@ -233,14 +237,11 @@ func TestBuildCache_Persistence(t *testing.T) {
 	cache1.Set(functionID, entry)
 
 	// Verify entry exists
-	if !cache1.Has(functionID) {
+	if _, exists := cache1.Get(functionID); !exists {
 		t.Error("Entry should exist in first cache")
 	}
 
-	// Save to disk
-	if err := cache1.SaveToDisk(); err != nil {
-		t.Fatalf("Failed to save cache to disk: %v", err)
-	}
+	// Cache is automatically persisted when entries are set
 
 	// Create second cache instance (should load from disk)
 	cache2, err := NewBuildCache(BuildCacheConfig{
@@ -254,7 +255,7 @@ func TestBuildCache_Persistence(t *testing.T) {
 	}
 
 	// Entry should exist in second cache (loaded from disk)
-	if !cache2.Has(functionID) {
+	if _, exists := cache2.Get(functionID); !exists {
 		t.Error("Entry should exist in second cache (loaded from disk)")
 	}
 
@@ -296,7 +297,7 @@ func TestBuildCache_EvictionPolicies(t *testing.T) {
 	for i, functionID := range entries {
 		entry := &CacheEntry{
 			FunctionID:   functionID,
-			LastBuild:    time.Now().Add(time.Duration(i) * time.Second), // Different timestamps
+			BuildTime:    time.Now().Add(time.Duration(i) * time.Second), // Different timestamps
 			FileHashes:   map[string]string{"file.py": fmt.Sprintf("hash%d", i)},
 			Dependencies: []string{},
 		}
@@ -306,7 +307,7 @@ func TestBuildCache_EvictionPolicies(t *testing.T) {
 
 	// All entries should exist
 	for _, functionID := range entries {
-		if !cache.Has(functionID) {
+		if _, exists := cache.Get(functionID); !exists {
 			t.Errorf("Entry %s should exist", functionID)
 		}
 	}
@@ -314,7 +315,7 @@ func TestBuildCache_EvictionPolicies(t *testing.T) {
 	// Add one more entry to trigger eviction
 	newEntry := &CacheEntry{
 		FunctionID:   "func4",
-		LastBuild:    time.Now(),
+		BuildTime:    time.Now(),
 		FileHashes:   map[string]string{"file.py": "hash4"},
 		Dependencies: []string{},
 	}
@@ -323,7 +324,7 @@ func TestBuildCache_EvictionPolicies(t *testing.T) {
 	// One of the old entries should be evicted
 	existingCount := 0
 	for _, functionID := range entries {
-		if cache.Has(functionID) {
+		if _, exists := cache.Get(functionID); exists {
 			existingCount++
 		}
 	}
@@ -333,7 +334,7 @@ func TestBuildCache_EvictionPolicies(t *testing.T) {
 	}
 
 	// New entry should exist
-	if !cache.Has("func4") {
+	if _, exists := cache.Get("func4"); !exists {
 		t.Error("New entry should exist after eviction")
 	}
 }
@@ -361,7 +362,7 @@ func TestBuildCache_CleanupAndMaintenance(t *testing.T) {
 	for _, functionID := range functionIDs {
 		entry := &CacheEntry{
 			FunctionID:   functionID,
-			LastBuild:    time.Now(),
+			BuildTime:    time.Now(),
 			FileHashes:   map[string]string{"file.py": "hash"},
 			Dependencies: []string{},
 		}
@@ -386,8 +387,8 @@ func TestBuildCache_CleanupAndMaintenance(t *testing.T) {
 		t.Errorf("Expected 0 entries after cleanup, got %d", finalStats.TotalEntries)
 	}
 
-	// Test maintenance operations
-	cache.PerformMaintenance()
+	// Test cleanup operations
+	cache.Cleanup()
 
 	// Should not crash or cause issues
 	maintenanceStats := cache.GetStats()
@@ -430,13 +431,13 @@ func TestBuildCache_CorruptedCacheRecovery(t *testing.T) {
 	// Should be able to add new entries
 	entry := &CacheEntry{
 		FunctionID:   "test-function",
-		LastBuild:    time.Now(),
+		BuildTime:    time.Now(),
 		FileHashes:   map[string]string{"file.py": "hash"},
 		Dependencies: []string{},
 	}
 	cache.Set("test-function", entry)
 
-	if !cache.Has("test-function") {
+	if _, exists := cache.Get("test-function"); !exists {
 		t.Error("Should be able to add entries after corruption recovery")
 	}
 }
@@ -473,7 +474,7 @@ func TestBuildCache_LargeEntries(t *testing.T) {
 
 	largeEntry := &CacheEntry{
 		FunctionID:   "large-function",
-		LastBuild:    time.Now(),
+		BuildTime:    time.Now(),
 		FileHashes:   largeFileHashes,
 		Dependencies: largeDependencies,
 	}
@@ -481,7 +482,7 @@ func TestBuildCache_LargeEntries(t *testing.T) {
 	// Should handle large entries
 	cache.Set("large-function", largeEntry)
 
-	if !cache.Has("large-function") {
+	if _, exists := cache.Get("large-function"); !exists {
 		t.Error("Should handle large cache entries")
 	}
 
@@ -523,7 +524,7 @@ func TestBuildCache_MemoryUsage(t *testing.T) {
 	for i := 0; i < numEntries; i++ {
 		entry := &CacheEntry{
 			FunctionID:   fmt.Sprintf("function-%d", i),
-			LastBuild:    time.Now(),
+			BuildTime:    time.Now(),
 			FileHashes:   map[string]string{fmt.Sprintf("file%d.py", i): fmt.Sprintf("hash%d", i)},
 			Dependencies: []string{fmt.Sprintf("dep%d", i)},
 		}
@@ -536,9 +537,9 @@ func TestBuildCache_MemoryUsage(t *testing.T) {
 		t.Errorf("Expected %d entries, got %d", numEntries, stats.TotalEntries)
 	}
 
-	// Memory usage should be reasonable (this is a basic check)
-	if stats.MemoryUsage < 0 {
-		t.Error("Memory usage should not be negative")
+	// Disk usage should be reasonable (this is a basic check)
+	if stats.DiskSize < 0 {
+		t.Error("Disk size should not be negative")
 	}
 
 	// Clear cache and check memory is freed
@@ -584,7 +585,7 @@ func TestBuildCache_ThreadSafety(t *testing.T) {
 				// Set operation
 				entry := &CacheEntry{
 					FunctionID:   functionID,
-					LastBuild:    time.Now(),
+					BuildTime:    time.Now(),
 					FileHashes:   map[string]string{"file.py": "hash"},
 					Dependencies: []string{"dep"},
 				}
@@ -593,11 +594,13 @@ func TestBuildCache_ThreadSafety(t *testing.T) {
 				// Get operation
 				cache.Get(functionID)
 
-				// Has operation
-				cache.Has(functionID)
+				// Get operation
+				_, _ = cache.Get(functionID)
 
 				// Validation operation
-				cache.IsValid(functionID, []string{"file.py"})
+				if entry, exists := cache.Get(functionID); exists {
+					_, _ = cache.IsValid(entry)
+				}
 
 				// Occasionally delete
 				if j%10 == 0 {

@@ -3,6 +3,7 @@ package python
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -92,6 +93,12 @@ type LocalPackageInfo struct {
 
 	// EstimatedBuildTime is the estimated time to build this package
 	EstimatedBuildTime time.Duration
+}
+
+// DependencyInfo contains dependency information for deprecation checking
+type DependencyInfo struct {
+	PythonVersion string            `json:"pythonVersion"`
+	Dependencies  map[string]string `json:"dependencies"`
 }
 
 // ExternalDependencyInfo contains information about external dependencies
@@ -245,7 +252,9 @@ func (da *DependencyAnalyzer) analyzeLocalPackages(ctx context.Context, layout *
 		}
 		pkg.HasChanges = hasChanges
 		pkg.ChangeReason = reason
-		pkg.BuildRequired = hasChanges
+		// Only require build if package has changes AND is actually buildable
+		isBuildable := pkg.BuildRequired // Save the buildable status from createLocalPackageInfo
+		pkg.BuildRequired = hasChanges && isBuildable
 
 		// Estimate build time
 		pkg.EstimatedBuildTime = da.estimatePackageBuildTime(pkg)
@@ -260,13 +269,17 @@ func (da *DependencyAnalyzer) analyzeLocalPackages(ctx context.Context, layout *
 func (da *DependencyAnalyzer) discoverLocalPackages(workspaceDir string) ([]*LocalPackageInfo, error) {
 	var packages []*LocalPackageInfo
 
-	// Check if there's a pyproject.toml with workspace configuration
+	// First try to find packages from pyproject.toml
 	pyprojectPath := filepath.Join(workspaceDir, "pyproject.toml")
 	if _, err := os.Stat(pyprojectPath); err == nil {
-		// Parse pyproject.toml to find workspace packages
-		workspacePackages, err := da.parseWorkspacePackages(pyprojectPath)
-		if err == nil && len(workspacePackages) > 0 {
-			for _, pkgPath := range workspacePackages {
+		packagePaths, err := da.parseWorkspacePackages(pyprojectPath)
+		if err == nil && len(packagePaths) > 0 {
+			// Found packages in pyproject.toml, use those
+			slog.Info("using explicit package configuration",
+				"workspace", workspaceDir,
+				"packages", len(packagePaths),
+				"method", "explicit")
+			for _, pkgPath := range packagePaths {
 				absPath := filepath.Join(workspaceDir, pkgPath)
 				if pkg, err := da.createLocalPackageInfo(absPath); err == nil {
 					packages = append(packages, pkg)
@@ -276,13 +289,39 @@ func (da *DependencyAnalyzer) discoverLocalPackages(workspaceDir string) ([]*Loc
 		}
 	}
 
-	// Fallback: look for packages in common locations
-	commonPackageDirs := []string{
-		".",
-		"src",
-		"packages",
-		"libs",
+	// If we couldn't find packages in pyproject.toml, fall back to selective directory scanning
+	// but be very selective about what we consider a package
+	slog.Info("falling back to selective package discovery",
+		"workspace", workspaceDir,
+		"method", "fallback")
+	candidatePackages := da.findCandidatePackages(workspaceDir)
+
+	for _, candidatePath := range candidatePackages {
+		if da.isPackageDirectory(candidatePath) {
+			if pkg, err := da.createLocalPackageInfo(candidatePath); err == nil {
+				packages = append(packages, pkg)
+			}
+		}
 	}
+
+	slog.Info("package discovery completed",
+		"workspace", workspaceDir,
+		"packagesFound", len(packages),
+		"method", "fallback")
+	return packages, nil
+}
+
+// findCandidatePackages finds potential package directories without recursive walking
+func (da *DependencyAnalyzer) findCandidatePackages(workspaceDir string) []string {
+	var candidates []string
+
+	// Check the workspace root itself
+	if da.hasPackageIndicators(workspaceDir) {
+		candidates = append(candidates, workspaceDir)
+	}
+
+	// Check common package locations (only one level deep)
+	commonPackageDirs := []string{"src", "packages", "libs"}
 
 	for _, dir := range commonPackageDirs {
 		searchDir := filepath.Join(workspaceDir, dir)
@@ -290,27 +329,189 @@ func (da *DependencyAnalyzer) discoverLocalPackages(workspaceDir string) ([]*Loc
 			continue
 		}
 
-		err := filepath.Walk(searchDir, func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return nil // Skip inaccessible paths
-			}
-
-			// Look for directories with Python packages
-			if info.IsDir() && da.isPackageDirectory(path) {
-				if pkg, err := da.createLocalPackageInfo(path); err == nil {
-					packages = append(packages, pkg)
-				}
-			}
-
-			return nil
-		})
-
+		// Only scan one level deep in these directories
+		entries, err := os.ReadDir(searchDir)
 		if err != nil {
-			return nil, fmt.Errorf("failed to walk directory %s: %w", searchDir, err)
+			continue
+		}
+
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+
+			// Skip obviously non-package directories
+			name := entry.Name()
+			if da.shouldSkipDirectory(name) {
+				continue
+			}
+
+			candidatePath := filepath.Join(searchDir, name)
+			if da.hasPackageIndicators(candidatePath) {
+				candidates = append(candidates, candidatePath)
+			}
 		}
 	}
 
-	return packages, nil
+	// Also check immediate subdirectories of workspace root for packages
+	entries, err := os.ReadDir(workspaceDir)
+	if err == nil {
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+
+			name := entry.Name()
+			if da.shouldSkipDirectory(name) {
+				continue
+			}
+
+			candidatePath := filepath.Join(workspaceDir, name)
+			if da.hasPackageIndicators(candidatePath) {
+				candidates = append(candidates, candidatePath)
+			}
+		}
+	}
+
+	return candidates
+}
+
+// shouldSkipDirectory determines if a directory should be skipped during package discovery
+func (da *DependencyAnalyzer) shouldSkipDirectory(name string) bool {
+	skipDirs := []string{
+		".git", ".venv", "venv", "__pycache__", ".pytest_cache", ".mypy_cache",
+		".sst", "node_modules", "dist", "build", ".egg-info", "site-packages",
+		".tox", ".coverage", ".idea", ".vscode", "bin", "lib", "include",
+		"Scripts", "pyvenv.cfg", // Additional virtual environment directories
+	}
+
+	for _, skipDir := range skipDirs {
+		if name == skipDir {
+			return true
+		}
+	}
+
+	// Skip any directory starting with a dot (except current directory)
+	if strings.HasPrefix(name, ".") && name != "." {
+		return true
+	}
+
+	return false
+}
+
+// hasPackageIndicators checks if a directory has indicators that it's a Python package
+func (da *DependencyAnalyzer) hasPackageIndicators(path string) bool {
+	// Check if this directory should be skipped entirely
+	dirName := filepath.Base(path)
+	if da.shouldSkipDirectory(dirName) {
+		return false
+	}
+
+	// For SST Python functions, we should only treat directories as "packages"
+	// if they are meant to be built, not just included as source code.
+	//
+	// Strong indicators of a BUILDABLE Python package:
+	buildableIndicators := []string{
+		"pyproject.toml", // Has its own build configuration
+		"setup.py",       // Has setuptools configuration
+		"setup.cfg",      // Has setuptools configuration
+	}
+
+	for _, indicator := range buildableIndicators {
+		indicatorPath := filepath.Join(path, indicator)
+		if _, err := os.Stat(indicatorPath); err == nil {
+			// Additional check: make sure it's actually a buildable package
+			// and not just a workspace configuration
+			if indicator == "pyproject.toml" {
+				if da.hasBuildConfiguration(indicatorPath) {
+					return true
+				}
+			} else {
+				return true
+			}
+		}
+	}
+
+	// For SST, directories with just __init__.py or Python files
+	// should be treated as source directories, not buildable packages
+	return false
+}
+
+// hasBuildConfiguration checks if a pyproject.toml file has build configuration
+func (da *DependencyAnalyzer) hasBuildConfiguration(pyprojectPath string) bool {
+	content, err := os.ReadFile(pyprojectPath)
+	if err != nil {
+		return false
+	}
+
+	contentStr := string(content)
+
+	// Look for build system configuration
+	if strings.Contains(contentStr, "[build-system]") {
+		return true
+	}
+
+	// Look for tool-specific build configuration
+	buildTools := []string{
+		"[tool.setuptools]",
+		"[tool.poetry]",
+		"[tool.hatch]",
+		"[tool.flit]",
+		"[tool.pdm]",
+	}
+
+	for _, tool := range buildTools {
+		if strings.Contains(contentStr, tool) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isInTypicalPackageLocation checks if a path is in a location where packages are typically found
+func (da *DependencyAnalyzer) isInTypicalPackageLocation(path string) bool {
+	// Get relative path components
+	pathParts := strings.Split(path, string(filepath.Separator))
+
+	// Look for typical package directory patterns
+	for _, part := range pathParts {
+		if part == "src" || part == "lib" || part == "packages" || part == "libs" {
+			return true
+		}
+	}
+
+	// If it's a direct subdirectory of the workspace root, it could be a package
+	// but we need to be careful not to include build/cache directories
+	return len(pathParts) <= 2 // Workspace root or one level deep
+}
+
+// followsPackageNamingConventions checks if a directory name follows Python package naming conventions
+func (da *DependencyAnalyzer) followsPackageNamingConventions(name string) bool {
+	// Python package names should be lowercase and use underscores or hyphens
+	// Avoid names that look like system directories
+	systemLikeNames := []string{
+		"bin", "lib", "include", "share", "etc", "var", "tmp", "temp",
+		"cache", "log", "logs", "test", "tests", "doc", "docs",
+	}
+
+	for _, systemName := range systemLikeNames {
+		if name == systemName {
+			return false
+		}
+	}
+
+	// Should not contain uppercase letters or special characters (except _ and -)
+	for _, char := range name {
+		if char >= 'A' && char <= 'Z' {
+			return false
+		}
+		if char != '_' && char != '-' && !((char >= 'a' && char <= 'z') || (char >= '0' && char <= '9')) {
+			return false
+		}
+	}
+
+	return len(name) > 0
 }
 
 // parseWorkspacePackages extracts workspace package paths from pyproject.toml
@@ -323,14 +524,108 @@ func (da *DependencyAnalyzer) parseWorkspacePackages(pyprojectPath string) ([]st
 
 	var packages []string
 
-	// Check for UV workspace sources
+	// Check for UV workspace members (primary method for UV workspaces)
+	if len(pyproject.Tool.UV.Workspace.Members) > 0 {
+		packages = append(packages, pyproject.Tool.UV.Workspace.Members...)
+		slog.Debug("found UV workspace members", "members", pyproject.Tool.UV.Workspace.Members)
+	}
+
+	// Check for UV workspace sources (alternative method)
 	for _, source := range pyproject.Tool.UV.Sources {
 		if source.Path != "" {
 			packages = append(packages, source.Path)
 		}
 	}
 
-	return packages, nil
+	// Check for Poetry packages (tool.poetry.packages)
+	if poetryPackages, ok := da.getPoetryPackages(pyproject); ok {
+		packages = append(packages, poetryPackages...)
+	}
+
+	// Check for PEP 621 packages (project.packages)
+	if pep621Packages, ok := da.getPEP621Packages(pyproject); ok {
+		packages = append(packages, pep621Packages...)
+	}
+
+	// Check for setuptools packages (tool.setuptools.packages.find)
+	if setuptoolsPackages, ok := da.getSetuptoolsPackages(pyproject); ok {
+		packages = append(packages, setuptoolsPackages...)
+	}
+
+	// Check for Hatch packages (tool.hatch.build.targets.wheel.packages)
+	if hatchPackages, ok := da.getHatchPackages(pyproject); ok {
+		packages = append(packages, hatchPackages...)
+	}
+
+	// If we found any packages, return them
+	if len(packages) > 0 {
+		return packages, nil
+	}
+
+	// If no packages were found, use intelligent fallback logic
+	workspaceDir := filepath.Dir(pyprojectPath)
+	var fallbackPackages []string
+
+	// Check if root directory has Python files
+	if da.hasPackageIndicators(workspaceDir) {
+		fallbackPackages = append(fallbackPackages, ".")
+	}
+
+	// Check if src directory exists and has Python files
+	srcDir := filepath.Join(workspaceDir, "src")
+	if _, err := os.Stat(srcDir); err == nil && da.hasPackageIndicators(srcDir) {
+		fallbackPackages = append(fallbackPackages, "src")
+	}
+
+	// If we found any packages, return them
+	if len(fallbackPackages) > 0 {
+		return fallbackPackages, nil
+	}
+
+	// Final fallback to root directory
+	return []string{"."}, nil
+}
+
+// getPoetryPackages extracts packages from Poetry configuration
+func (da *DependencyAnalyzer) getPoetryPackages(pyproject *PyprojectToml) ([]string, bool) {
+	var packages []string
+
+	for _, pkg := range pyproject.Tool.Poetry.Packages {
+		if pkg.Include != "" {
+			if pkg.From != "" {
+				packages = append(packages, filepath.Join(pkg.From, pkg.Include))
+			} else {
+				packages = append(packages, pkg.Include)
+			}
+		}
+	}
+
+	return packages, len(packages) > 0
+}
+
+// getPEP621Packages extracts packages from PEP 621 configuration
+func (da *DependencyAnalyzer) getPEP621Packages(pyproject *PyprojectToml) ([]string, bool) {
+	// PEP 621 doesn't typically define workspace packages, it defines dependencies
+	// For workspace packages, we'd need to look at other tools like setuptools or hatch
+	return nil, false
+}
+
+// getSetuptoolsPackages extracts packages from setuptools configuration
+func (da *DependencyAnalyzer) getSetuptoolsPackages(pyproject *PyprojectToml) ([]string, bool) {
+	var packages []string
+
+	// Check setuptools packages.find.where configuration
+	for _, where := range pyproject.Tool.Setuptools.Packages.Find.Where {
+		packages = append(packages, where)
+	}
+
+	return packages, len(packages) > 0
+}
+
+// getHatchPackages extracts packages from Hatch configuration
+func (da *DependencyAnalyzer) getHatchPackages(pyproject *PyprojectToml) ([]string, bool) {
+	packages := pyproject.Tool.Hatch.Build.Targets.Wheel.Packages
+	return packages, len(packages) > 0
 }
 
 // isPackageDirectory checks if a directory contains a Python package
@@ -380,12 +675,54 @@ func (da *DependencyAnalyzer) createLocalPackageInfo(packagePath string) (*Local
 		}
 	}
 
+	// Check if this package should be built (vs just included as source)
+	buildRequired := da.isPackageBuildable(packagePath)
+
 	return &LocalPackageInfo{
-		Name:         packageName,
-		Path:         packagePath,
-		Dependencies: []string{},
-		SourceFiles:  []string{},
+		Name:          packageName,
+		Path:          packagePath,
+		Dependencies:  []string{},
+		SourceFiles:   []string{},
+		BuildRequired: buildRequired,
 	}, nil
+}
+
+// isPackageBuildable checks if a package should be built (vs just included)
+func (da *DependencyAnalyzer) isPackageBuildable(packagePath string) bool {
+	// For SST Python functions, we should only build packages that have
+	// explicit build configuration, not just source directories.
+
+	// Strong indicators of a BUILDABLE Python package:
+	buildableIndicators := []string{
+		"pyproject.toml", // Has its own build configuration
+		"setup.py",       // Has setuptools configuration
+		"setup.cfg",      // Has setuptools configuration
+	}
+
+	for _, indicator := range buildableIndicators {
+		indicatorPath := filepath.Join(packagePath, indicator)
+
+		if _, err := os.Stat(indicatorPath); err == nil {
+			// Additional check: make sure it's actually a buildable package
+			// and not just a workspace configuration
+			if indicator == "pyproject.toml" {
+				if da.hasBuildConfiguration(indicatorPath) {
+					slog.Debug("package marked as buildable", "path", packagePath, "reason", "has build configuration")
+					return true
+				}
+				// Has pyproject.toml but no build config - this is normal for simple Python projects
+			} else {
+				slog.Debug("package marked as buildable", "path", packagePath, "reason", fmt.Sprintf("has %s", indicator))
+				return true
+			}
+		}
+	}
+
+	// For SST, directories with just __init__.py or Python files
+	// should be treated as source directories, not buildable packages
+	// This is NORMAL and CORRECT behavior for simple Python functions
+	slog.Debug("package will be copied as source", "path", packagePath, "reason", "no build configuration found")
+	return false
 }
 
 // findPackageSourceFiles finds all Python source files in a package
@@ -418,22 +755,105 @@ func (da *DependencyAnalyzer) findPackageSourceFiles(packagePath string) ([]stri
 	return sourceFiles, nil
 }
 
+// walkPackageDirectory walks a package directory more selectively than filepath.Walk
+func (da *DependencyAnalyzer) walkPackageDirectory(packagePath string, fn func(string, os.FileInfo) error) error {
+	return da.walkPackageDirectoryRecursive(packagePath, fn, 0, 10) // Max depth of 10
+}
+
+// walkPackageDirectoryRecursive recursively walks a package directory with depth control
+func (da *DependencyAnalyzer) walkPackageDirectoryRecursive(dir string, fn func(string, os.FileInfo) error, depth, maxDepth int) error {
+	if depth > maxDepth {
+		return nil // Stop recursion if too deep
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil // Skip directories we can't read
+	}
+
+	for _, entry := range entries {
+		path := filepath.Join(dir, entry.Name())
+
+		// Skip obviously non-source directories early (be more permissive than package discovery)
+		if entry.IsDir() && da.shouldSkipSourceDirectory(entry.Name()) {
+			continue
+		}
+
+		info, err := entry.Info()
+		if err != nil {
+			continue // Skip entries we can't stat
+		}
+
+		// Call the function for this entry
+		if err := fn(path, info); err != nil {
+			return err
+		}
+
+		// Recurse into subdirectories
+		if entry.IsDir() {
+			if err := da.walkPackageDirectoryRecursive(path, fn, depth+1, maxDepth); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
 // shouldSkipSourceFile determines if a source file should be skipped
 func (da *DependencyAnalyzer) shouldSkipSourceFile(filePath string) bool {
-	skipPatterns := []string{
+	// Skip files in specific directories (check path components)
+	pathComponents := strings.Split(filePath, string(filepath.Separator))
+	skipDirs := []string{
 		"__pycache__",
 		".pytest_cache",
 		".mypy_cache",
-		"test_",
-		"_test.py",
-		"tests/",
-		"build/",
-		"dist/",
-		".egg-info/",
+		".sst",
+		".venv",
+		"venv",
+		"node_modules",
+		"site-packages",
+		"tests",
+		"build",
+		"dist",
+		".git",
+		".tox",
+		".coverage",
 	}
 
-	for _, pattern := range skipPatterns {
-		if strings.Contains(filePath, pattern) {
+	for _, component := range pathComponents {
+		for _, skipDir := range skipDirs {
+			if component == skipDir {
+				return true
+			}
+		}
+	}
+
+	// Skip test files by filename patterns
+	filename := filepath.Base(filePath)
+	if strings.HasPrefix(filename, "test_") || strings.HasSuffix(filename, "_test.py") {
+		return true
+	}
+
+	// Skip files in .egg-info directories
+	if strings.Contains(filePath, ".egg-info") {
+		return true
+	}
+
+	return false
+}
+
+// shouldSkipSourceDirectory determines if a directory should be skipped during source file discovery
+// This is more permissive than shouldSkipDirectory since we want to find source files in legitimate subdirectories
+func (da *DependencyAnalyzer) shouldSkipSourceDirectory(name string) bool {
+	skipDirs := []string{
+		".git", ".venv", "venv", "__pycache__", ".pytest_cache", ".mypy_cache",
+		".sst", "node_modules", "site-packages", "dist-info",
+		".tox", ".coverage", ".idea", ".vscode",
+	}
+
+	for _, skipDir := range skipDirs {
+		if name == skipDir || (strings.HasPrefix(name, ".") && name != "." && name != "..") {
 			return true
 		}
 	}
@@ -512,8 +932,9 @@ func (da *DependencyAnalyzer) extractDependenciesFromRequirements(requirementsPa
 func (da *DependencyAnalyzer) checkPackageChanges(pkg *LocalPackageInfo) (bool, string, error) {
 	// Check if we have cached build information for this package
 	if da.buildCache != nil {
-		// Generate a package-specific function ID
-		packageFunctionID := fmt.Sprintf("package:%s:%s", pkg.Name, pkg.Path)
+		// Generate a package-specific function ID using only the package name
+		// to avoid absolute paths in cache keys
+		packageFunctionID := fmt.Sprintf("package:%s", pkg.Name)
 
 		if cacheEntry, exists := da.buildCache.Get(packageFunctionID); exists {
 			// Check if any source files have changed

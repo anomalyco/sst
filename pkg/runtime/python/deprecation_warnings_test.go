@@ -43,13 +43,24 @@ func TestDeprecationChecker_CheckLayout_WorkspacePatterns(t *testing.T) {
 		t.Error("Expected deprecation warning for old workspace structure")
 	}
 
-	if len(warnings) > 0 {
-		warning := warnings[0]
-		if warning.Pattern != "old_workspace_structure" {
-			t.Errorf("Expected pattern 'old_workspace_structure', got %s", warning.Pattern)
+	// Find the old_workspace_structure warning
+	var foundWarning *DeprecationWarning
+	for _, warning := range warnings {
+		if warning.Pattern == "old_workspace_structure" {
+			foundWarning = &warning
+			break
 		}
-		if warning.Severity != SeverityWarning {
-			t.Errorf("Expected severity 'warning', got %s", warning.Severity)
+	}
+
+	if foundWarning == nil {
+		patterns := make([]string, len(warnings))
+		for i, w := range warnings {
+			patterns[i] = w.Pattern
+		}
+		t.Errorf("Expected pattern 'old_workspace_structure', got patterns: %v", patterns)
+	} else {
+		if foundWarning.Severity != SeverityWarning {
+			t.Errorf("Expected severity 'warning', got %s", foundWarning.Severity)
 		}
 	}
 }
@@ -357,12 +368,13 @@ func TestDeprecationChecker_WarningDeduplication(t *testing.T) {
 	})
 
 	layout := &LayoutInfo{
-		Type:         LayoutTypeWorkspace,
-		WorkspaceDir: "/project/src/mypackage",
-		PackageName:  "mypackage",
+		Type:          LayoutTypeWorkspace,
+		WorkspaceDir:  "/project/src/mypackage",
+		PackageName:   "mypackage",
+		PyprojectPath: "/project/pyproject.toml", // Add pyproject to avoid missing_pyproject warning
 	}
 
-	// Check layout multiple times
+	// Check layout multiple times - should only get old_workspace_structure warning once
 	checker.CheckLayout(layout)
 	checker.CheckLayout(layout)
 	checker.CheckLayout(layout)
@@ -370,9 +382,12 @@ func TestDeprecationChecker_WarningDeduplication(t *testing.T) {
 	// Give callbacks time to execute
 	time.Sleep(100 * time.Millisecond)
 
-	// Should only get one warning due to deduplication
+	// Should only get one warning due to deduplication (old_workspace_structure)
 	if len(warnings) != 1 {
 		t.Errorf("Expected 1 warning due to deduplication, got %d", len(warnings))
+		for i, w := range warnings {
+			t.Logf("Warning %d: %s - %s", i+1, w.Pattern, w.Message)
+		}
 	}
 }
 
