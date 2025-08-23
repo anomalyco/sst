@@ -1,0 +1,149 @@
+---
+title: Python
+description: Deploy python applications using sst
+---
+SST uses [uv](https://github.com/astral-sh/uv) to manage your python runtime. If you do not have uv installed, you can
+install it [here](https://docs.astral.sh/uv/getting-started/installation/). Any sst workspace package can be built and
+deployed to aws lambda using sst. In this example we deploy an API handler to lambda from the `functions` directory. The
+handler depends on shared code from the `shared` directory using uv's workspaces feature. (Note: builds currently do not
+tree shake so lots of workspaces can make larger builds than necessary.)
+
+Python functions can be deployed just like other SST functions, the only difference is that the functions themselves
+must be configured within a uv workspace, there is no drop-in-mode.
+
+```typescript title="sst.config.ts"
+const python = new sst.aws.Function("MyPythonFunction", {
+  handler: "functions/src/functions/api.handler",
+  runtime: "python3.13",
+  url: true
+});
+```
+
+
+If you are using live lambdas for your python functions, it is recommended to specify your python version to match your
+Lambda runtime otherwise you may encounter issues with dependencies.
+
+```toml title="src/pyproject.toml"
+[project]
+name = "aws-python"
+version = "0.1.0"
+description = "A SST app"
+authors = [
+    {name = "<your_name_here>", email = "<your_email_here>" },
+]
+requires-python = "==3.11.*"
+```
+
+Live lambda will locally run your python code by building the workspace and running the specified handler. You can have
+multiple handlers in the same workspace and have multiple workspaces in the same project.
+
+The workspace-src-workspace directory structure below is required for uv to pick up your workspaces properly.
+
+```markdown
+.
+├── workspace_a
+│   ├── pyproject.toml
+│   └── src
+│       └── workspace_a
+│           ├── __init__.py
+│           ├── api_a.py
+│           └── api_b.py
+└── workspace_b
+    ├── pyproject.toml
+    └── src
+        └── workspace_b
+            ├── __init__.py
+            └── index.py
+```
+
+Keep in mind that AWS Lambda zip archives have limits and python does use native extensions for certain packages, if you
+are using large dependencies such as numpy, pandas, and others found in the SciPy stack, you may want to use the
+container mode to deploy your python code.
+
+## Module Imports and File Handling
+
+When deploying Python functions to Lambda, there are important considerations for module imports and static file access.
+
+### Module Imports
+
+**✅ Recommended: Use Absolute Imports**
+
+Always use absolute imports for the most reliable behavior:
+
+```python
+# ✅ Recommended - absolute imports
+from shared.utils import helper_function
+from app.functions.auth.handler import auth_main
+from mypackage.submodule import MyClass
+```
+
+**⚠️ Avoid: Relative Imports**
+
+Relative imports can be unreliable in Lambda environments:
+
+```python
+# ❌ Not recommended - relative imports
+from .utils import helper_function
+from ..shared import common_function
+```
+
+### Static File Access
+
+When your Lambda function needs to read static files (config files, templates, data files), use paths relative to your handler file:
+
+**✅ Recommended Approaches:**
+
+```python
+import os
+import json
+from pathlib import Path
+
+# Method 1: Using pathlib (modern approach)
+def load_config():
+    config_path = Path(__file__).parent / "../../data/config.json"
+    with open(config_path, 'r') as f:
+        return json.load(f)
+
+# Method 2: Using os.path
+def load_template():
+    template_path = os.path.join(os.path.dirname(__file__), "../templates/email.html")
+    with open(template_path, 'r') as f:
+        return f.read()
+```
+
+**❌ Avoid: Working Directory Assumptions**
+
+Don't rely on the current working directory, as it may not be what you expect in Lambda:
+
+```python
+# ❌ Not recommended - assumes working directory
+with open("data/config.json", 'r') as f:  # May fail
+    config = json.load(f)
+
+# ❌ Not recommended - hardcoded absolute paths
+with open("/home/user/project/data/config.json", 'r') as f:  # Will fail in Lambda
+    config = json.load(f)
+```
+
+### File Structure Requirements
+
+Ensure your project maintains proper Python package structure with `__init__.py` files:
+
+```markdown
+.
+├── shared/
+│   ├── __init__.py          # Required for package imports
+│   └── utils.py
+├── app/
+│   ├── __init__.py          # Required for package imports
+│   ├── data/
+│   │   └── config.json      # Static files are preserved
+│   └── functions/
+│       ├── __init__.py      # Required for package imports
+│       └── api/
+│           ├── __init__.py  # Required for package imports
+│           └── handler.py
+└── pyproject.toml
+```
+
+SST automatically preserves your directory structure and includes static files, so both module imports and file access work as expected in the deployed Lambda environment.

@@ -326,6 +326,7 @@ export interface FunctionArgs {
     | "python3.10"
     | "python3.11"
     | "python3.12"
+    | "python3.13"
   >;
   /**
    * Path to the source code directory for the function. By default, the handler is
@@ -1467,7 +1468,7 @@ export interface FunctionArgs {
  *
  *   ```ts title="sst.config.ts"
  *   new sst.aws.Function("MyFunction", {
- *     runtime: "python3.11",
+ *     runtime: "python3.13",
  *     handler: "functions/src/functions/api.handler"
  *   });
  *   ```
