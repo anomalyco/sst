@@ -2149,6 +2149,14 @@ function setUrlOrigin(urlHost, override) {
   if (override.timeouts) {
     origin.timeouts = override.timeouts;
   }
+  if (override.oac) {
+    origin.originAccessControlConfig = {
+      enabled: true,
+      signingBehavior: "always",
+      signingProtocol: "sigv4",
+      originType: override.oac,
+    }
+  }
   cf.updateRequestOrigin(origin);
 }
 

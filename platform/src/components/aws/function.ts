@@ -2527,6 +2527,7 @@ export class Function extends Component implements Link.Linkable {
             entries: fnUrl.functionUrl.apply((fnUrl) => ({
               metadata: JSON.stringify({
                 host: new URL(fnUrl).host,
+                oac: "lambda",
               }),
             })),
             purge: false,
