@@ -11,7 +11,7 @@ import (
 )
 
 type ReadInput[T any] struct {
-	ID   string `json:"id"`
+	ID string `json:"id"`
 }
 
 type ReadResult[T any] struct {
@@ -68,7 +68,8 @@ func Register(ctx context.Context, p *project.Project, r *rpc.Server) error {
 	cloudflareResource := &CloudflareResource{ctx, p}
 	vercelResource := &VercelResource{ctx, p}
 	r.RegisterName("Resource.Run", NewRun())
-	
+	r.RegisterName("Resource.Custom", &Custom{p})
+
 	// AWS Resources
 	r.RegisterName("Resource.Aws.BucketFiles", &BucketFiles{awsResource})
 	r.RegisterName("Resource.Aws.DistributionDeploymentWaiter", &DistributionDeploymentWaiter{awsResource})

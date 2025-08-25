@@ -299,7 +299,6 @@ func (u *UI) Event(unknown interface{}) {
 				duration,
 				evt.Metadata.URN,
 			)
-			return
 		}
 		if evt.Metadata.Op == apitype.OpImport {
 			u.printProgress(

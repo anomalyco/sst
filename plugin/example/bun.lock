@@ -1,0 +1,22 @@
+{
+  "lockfileVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "sst-plugin-example",
+      "dependencies": {
+        "example": "^0.0.0",
+      },
+      "devDependencies": {
+        "@tsconfig/node22": "22.0.1",
+        "typescript": "5.8.3",
+      },
+    },
+  },
+  "packages": {
+    "@tsconfig/node22": ["@tsconfig/node22@22.0.1", "", {}, "sha512-VkgOa3n6jvs1p+r3DiwBqeEwGAwEvnVCg/hIjiANl5IEcqP3G0u5m8cBJspe1t9qjZRlZ7WFgqq5bJrGdgAKMg=="],
+
+    "example": ["example@0.0.0", "", {}, "sha512-11vRu9mdKaV2+ju4HUr5qcNs+zvMfo4jnFr34DAT5uZWew5f+ahh5MCiES2Z4gLxjNcfby1d3gxTPDtFzmVr+A=="],
+
+    "typescript": ["typescript@5.8.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-p1diW6TqL9L07nNxvRMM7hMMw4c5XOo/1ibL4aAIGmSAt9slTE1Xgw5KWuof2uTOvCg9BY7ZRi+GaF+7sfgPeQ=="],
+  }
+}

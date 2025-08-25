@@ -1,0 +1,23 @@
+{
+  "name": "sst-plugin-example",
+  "version": "0.0.10",
+  "type": "module",
+  "scripts": {
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "@tsconfig/node22": "22.0.1",
+    "@types/node": "22.15.17",
+    "typescript": "5.8.3"
+  },
+  "exports": {
+    ".": "./dist/index.js",
+    "./*": "./dist/*.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "sst": {
+    "name": "sst.example"
+  }
+}

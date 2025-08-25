@@ -1,8 +1,19 @@
 {
+  "$schema": "https://json.schemastore.org/package.json",
   "name": "sst",
-  "workspaces": [
-    "www",
-    "platform",
-    "sdk/js"
-  ]
+  "packageManager": "bun@1.2.14",
+  "workspaces": {
+    "packages": [
+      "www",
+      "plugin/*",
+      "sdk/js"
+    ],
+    "catalog": {
+      "typescript": "5.8.3",
+      "@tsconfig/node22": "22.0.1",
+      "@types/node": "22.15.17",
+      "@pulumi/pulumi": "3.169.0"
+    }
+  },
+  "private": true
 }

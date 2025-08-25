@@ -26,10 +26,10 @@
     "release": "./scripts/release.ts"
   },
   "devDependencies": {
-    "@tsconfig/node20": "20.1.4",
-    "@types/node": "22.10.0",
+    "@tsconfig/node22": "catalog:",
+    "@types/node": "catalog:",
     "hono": "4.3.9",
-    "typescript": "5.7.2",
+    "typescript": "catalog:",
     "valibot": "^1.0.0-rc.3",
     "zod": "^3.24.2"
   },
@@ -40,7 +40,6 @@
   "bin": {
     "sst": "./bin/sst.mjs"
   },
-  "optionalDependencies": {},
   "dependencies": {
     "aws-sdk": "2.1692.0",
     "aws4fetch": "1.0.18",

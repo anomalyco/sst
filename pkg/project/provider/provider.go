@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
+	"path/filepath"
 	"time"
 
 	"github.com/sst/sst/v3/internal/util"
@@ -20,6 +22,8 @@ import (
 
 type Home interface {
 	Bootstrap() error
+	put(key string, contentType string, data io.Reader) error
+	get(key string) (io.Reader, error)
 	getData(key, app, stage string) (io.Reader, error)
 	putData(key, app, stage string, data io.Reader) error
 	removeData(key, app, stage string) error
@@ -212,7 +216,27 @@ func PushEventLog(backend Home, updateID, app, stage string, reader io.Reader) e
 	return backend.putData("eventlog", app, stage+"/"+updateID, reader)
 }
 
+func PutResource(backend Home, p string) error {
+	name := filepath.Base(p)
+	file, err := os.Open(p)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	return backend.put(path.Join("resource", name), "application/javascript", file)
+}
+
+func GetResource(backend Home, hash string) (io.Reader, error) {
+	key := path.Join("resource", hash+".mjs")
+	reader, err := backend.get(key)
+	if err != nil {
+		return nil, ErrResourceNotFound
+	}
+	return reader, nil
+}
+
 var ErrStateNotFound = fmt.Errorf("state not found")
+var ErrResourceNotFound = fmt.Errorf("ErrResourceNotFound")
 
 func PullState(backend Home, app, stage string, out string) error {
 	slog.Info("pulling state", "app", app, "stage", stage, "out", out)

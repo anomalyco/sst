@@ -39,11 +39,23 @@ func (l *LocalHome) getData(key, app, stage string) (io.Reader, error) {
 	return result, nil
 }
 
-func (l *LocalHome) putData(key, app, stage string, data io.Reader) error {
+func (l *LocalHome) get(key string) (io.Reader, error) {
+	p := filepath.Join(global.ConfigDir(), "state", key)
+	result, err := os.Open(p)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return result, nil
+}
+
+func (l *LocalHome) put(key string, contentType string, data io.Reader) error {
 	if key == "summary" {
 		return nil
 	}
-	p := l.pathForData(key, app, stage)
+	p := filepath.Join(global.ConfigDir(), "state", key)
 	err := os.MkdirAll(filepath.Dir(p), 0755)
 	if err != nil {
 		return err
@@ -58,6 +70,10 @@ func (l *LocalHome) putData(key, app, stage string, data io.Reader) error {
 		return err
 	}
 	return nil
+}
+
+func (l *LocalHome) putData(key, app, stage string, data io.Reader) error {
+	return l.put(filepath.Join(key, app, stage+".json"), "application/json", data)
 }
 
 func (l *LocalHome) removeData(key, app, stage string) error {

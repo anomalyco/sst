@@ -1,0 +1,27 @@
+{
+  "name": "sst-plugin",
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "@tsconfig/node22": "catalog:",
+    "@types/bun": "^1.2.14",
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
+  },
+  "exports": {
+    ".": "./dist/index.js",
+    "./*": "./dist/*.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@pulumi/pulumi": "catalog:"
+  },
+  "sst": {
+    "name": "sst"
+  }
+}

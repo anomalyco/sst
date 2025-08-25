@@ -8,7 +8,7 @@ import (
 	"github.com/sst/sst/v3/pkg/flag"
 )
 
-var PULUMI_VERSION = "v" + sdk.Version.String()
+var PULUMI_VERSION = sdk.Version.String()
 var BUN_VERSION = func() string {
 	if flag.SST_BUN_VERSION != "" {
 		return flag.SST_BUN_VERSION

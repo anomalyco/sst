@@ -192,8 +192,8 @@ func CmdMosaic(c *cli.Cli) error {
 	})
 
 	os.Setenv("SST_SERVER", fmt.Sprintf("http://localhost:%v", server.Port))
-	for name, a := range p.App().Providers {
-		args := a
+	for name, plugin := range p.Plugins() {
+		cfg := plugin.Config
 		switch name {
 		case "aws":
 			if flag.SST_SKIP_APPSYNC {
@@ -201,12 +201,12 @@ func CmdMosaic(c *cli.Cli) error {
 			}
 			wg.Go(func() error {
 				defer c.Cancel()
-				return aws.Start(c.Context, p, server, args.(map[string]interface{}))
+				return aws.Start(c.Context, p, server, cfg)
 			})
 		case "cloudflare":
 			wg.Go(func() error {
 				defer c.Cancel()
-				return cloudflare.Start(c.Context, p, args.(map[string]interface{}))
+				return cloudflare.Start(c.Context, p, cfg)
 			})
 		}
 	}

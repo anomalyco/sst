@@ -31,7 +31,7 @@ func NeedsPulumi() bool {
 		return true
 	}
 	version := strings.TrimSpace(string(output))
-	return version != PULUMI_VERSION
+	return version != "v"+PULUMI_VERSION
 }
 
 func InstallPulumi(ctx context.Context) error {
@@ -64,7 +64,7 @@ func InstallPulumi(ctx context.Context) error {
 	}
 
 	_, err := task.Run(ctx, func() (any, error) {
-		url := fmt.Sprintf("https://github.com/pulumi/pulumi/releases/download/%v/pulumi-%s-%s%s", PULUMI_VERSION, PULUMI_VERSION, osArch, fileExtension)
+		url := fmt.Sprintf("https://github.com/pulumi/pulumi/releases/download/v%v/pulumi-v%s-%s%s", PULUMI_VERSION, PULUMI_VERSION, osArch, fileExtension)
 		slog.Info("pulumi downloading", "url", url)
 
 		resp, err := http.Get(url)

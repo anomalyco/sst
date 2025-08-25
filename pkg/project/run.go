@@ -10,7 +10,6 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
-	"path"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -24,6 +23,7 @@ import (
 	"github.com/sst/sst/v3/pkg/id"
 	"github.com/sst/sst/v3/pkg/js"
 	"github.com/sst/sst/v3/pkg/process"
+	"github.com/sst/sst/v3/pkg/project/path"
 	"github.com/sst/sst/v3/pkg/project/provider"
 	"github.com/sst/sst/v3/pkg/telemetry"
 	"github.com/sst/sst/v3/pkg/types"
@@ -143,7 +143,7 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 			"home":     global.ConfigDir(),
 			"root":     p.PathRoot(),
 			"work":     p.PathWorkingDir(),
-			"platform": p.PathPlatformDir(),
+			"platform": p.PathPlatformSST(),
 		},
 		"state": map[string]interface{}{
 			"version": completed.Versions,
@@ -158,29 +158,34 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 		return err
 	}
 
-	providerShim := []string{}
-	for _, entry := range p.lock {
-		providerShim = append(providerShim, fmt.Sprintf("import * as %s from \"%s\";", entry.Alias, entry.Package))
+	file, err := os.OpenFile(filepath.Join(p.PathPlatformDir(), "shim.js"), os.O_RDWR|os.O_CREATE, 0644)
+	external := []string{}
+	for _, plugin := range p.plugins {
+		alias := strings.ReplaceAll(plugin.Alias, ".", "_")
+		file.WriteString(`import * as _` + alias + ` from "` + plugin.Package + `";` + "\n")
+		file.WriteString(`export { _` + alias + ` as "` + plugin.Alias + `" };` + "\n")
+		external = append(external, plugin.Package)
 	}
-	providerShim = append(providerShim, fmt.Sprintf("import * as sst from \"%s\";", path.Join(filepath.ToSlash(p.PathPlatformDir()), "src/components")))
-
+	file.Close()
+	external = append(external, "sst-plugin")
+	external = append(external, "@pulumi/pulumi")
 	buildResult, err := js.Build(js.EvalOptions{
-		Dir:     p.PathRoot(),
-		Outfile: outfile,
+		ResourceDir: workdir.path,
+		Dir:         p.PathRoot(),
+		Outfile:     outfile,
+		External:    external,
 		Define: map[string]string{
 			"$app": string(appBytes),
 			"$cli": string(cliBytes),
 			"$dev": fmt.Sprintf("%v", input.Dev),
 		},
-		Inject:  []string{filepath.ToSlash(filepath.Join(p.PathWorkingDir(), "platform/src/shim/run.js"))},
-		Globals: strings.Join(providerShim, "\n"),
+		Inject: []string{"sst-plugin/runtime/shim", filepath.Join(p.PathPlatformDir(), "shim.js")},
 		Code: fmt.Sprintf(`
-      import { run } from "%v";
+      import { run } from "sst-plugin/runtime/run";
 			import mod from '%s';
       const result = await run(mod.run);
       export default result;
     `,
-			filepath.ToSlash(path.Join(p.PathWorkingDir(), "platform/src/auto/run.ts")),
 			filepath.ToSlash(p.PathConfig()),
 		),
 	})
@@ -195,6 +200,20 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	if !flag.SST_NO_CLEANUP {
 		defer js.Cleanup(buildResult)
 	}
+
+	err = filepath.Walk(path.ResolveResourceDir(p.PathConfig()), func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		err = provider.PutResource(p.home, path)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
 
 	// disable for now until we hash env too
 	if input.SkipHash != "" && buildResult.OutputFiles[0].Hash == input.SkipHash && false {
@@ -257,6 +276,20 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	for key, value := range secrets {
 		env = append(env, fmt.Sprintf("SST_SECRET_%v=%v", key, value))
 	}
+	sstEnvironment, err := json.Marshal(map[string]any{
+		"app": p.app,
+		"dev": input.Dev,
+		"path": map[string]any{
+			"root":      p.PathRoot(),
+			"artifacts": filepath.Join(p.PathWorkingDir(), "artifacts"),
+			"working":   p.PathWorkingDir(),
+		},
+		"command": input.Command,
+		"version": completed.Versions,
+	})
+	if err != nil {
+		return err
+	}
 	env = append(env,
 		"PULUMI_CONFIG_PASSPHRASE="+passphrase,
 		"PULUMI_SKIP_UPDATE_CHECK=true",
@@ -265,6 +298,8 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 		// "PULUMI_DISABLE_AUTOMATIC_PLUGIN_ACQUISITION=true",
 		"NODE_OPTIONS=--enable-source-maps --no-deprecation",
 		"PULUMI_HOME="+global.ConfigDir(),
+		"SST_BUN_PATH="+global.BunPath(),
+		"SST_ENVIRONMENT="+string(sstEnvironment),
 	)
 	if input.ServerPort != 0 {
 		env = append(env, "SST_SERVER=http://127.0.0.1:"+fmt.Sprint(input.ServerPort))
@@ -288,23 +323,23 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	}
 
 	if input.Command == "deploy" || input.Command == "diff" {
-		for provider, opts := range p.app.Providers {
-			for key, value := range opts.(map[string]interface{}) {
+		for name, plugin := range p.plugins {
+			for key, value := range plugin.Config {
 				switch v := value.(type) {
 				case map[string]interface{}:
 					bytes, err := json.Marshal(v)
 					if err != nil {
 						return err
 					}
-					args = append(args, "--config", fmt.Sprintf("%v:%v=%v", provider, key, string(bytes)))
+					args = append(args, "--config", fmt.Sprintf("%v:%v=%v", name, key, string(bytes)))
 				case []interface{}:
 					bytes, err := json.Marshal(v)
 					if err != nil {
 						return err
 					}
-					args = append(args, "--config", fmt.Sprintf("%v:%v=%v", provider, key, string(bytes)))
+					args = append(args, "--config", fmt.Sprintf("%v:%v=%v", name, key, string(bytes)))
 				case string:
-					args = append(args, "--config", fmt.Sprintf("%v:%v=%v", provider, key, v))
+					args = append(args, "--config", fmt.Sprintf("%v:%v=%v", name, key, v))
 				}
 			}
 		}

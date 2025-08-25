@@ -5,30 +5,37 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
 	esbuild "github.com/evanw/esbuild/pkg/api"
+	"github.com/zeebo/xxh3"
 )
 
 var ErrTopLevelImport = fmt.Errorf("ErrTopLevelImport")
 
 type EvalOptions struct {
-	Dir     string
-	Outfile string
-	Code    string
-	Env     []string
-	Globals string
-	Banner  string
-	Inject  []string
-	Define  map[string]string
+	External    []string
+	Dir         string
+	ResourceDir string
+	Outfile     string
+	Code        string
+	Env         []string
+	Banner      string
+	Inject      []string
+	Define      map[string]string
 }
 
 type PackageJson struct {
-	Version         string                 `json:"version"`
-	Dependencies    map[string]string      `json:"dependencies"`
-	DevDependencies map[string]string      `json:"devDependencies"`
-	Other           map[string]interface{} `json:"-"`
+	Name            string                 `json:"name,omitempty"`
+	Version         string                 `json:"version,omitempty"`
+	Type            string                 `json:"type,omitempty"`
+	Dependencies    map[string]string      `json:"dependencies,omitempty"`
+	DevDependencies map[string]string      `json:"devDependencies,omitempty"`
+	Overrides       map[string]string      `json:"overrides,omitempty"`
+	Exports         map[string]interface{} `json:"exports,omitempty"`
+	Other           map[string]any         `json:"-"`
 }
 
 type Metafile struct {
@@ -73,6 +80,7 @@ const __dirname = topLevelFileUrlToPath(new topLevelURL(".", import.meta.url))
 		MainFields: []string{"module", "main"},
 		Format:     esbuild.FormatESModule,
 		Platform:   esbuild.PlatformNode,
+		Target:     esbuild.ES2023,
 		Sourcemap:  esbuild.SourceMapLinked,
 		Stdin: &esbuild.StdinOptions{
 			Contents:   input.Code,
@@ -88,7 +96,7 @@ const __dirname = topLevelFileUrlToPath(new topLevelURL(".", import.meta.url))
 				Name: "DisallowImports",
 				Setup: func(build esbuild.PluginBuild) {
 					build.OnResolve(esbuild.OnResolveOptions{Filter: ".*"}, func(args esbuild.OnResolveArgs) (esbuild.OnResolveResult, error) {
-						if input.Globals == "" && filepath.Base(args.Importer) == "sst.config.ts" && args.Kind == esbuild.ResolveJSImportStatement {
+						if filepath.Base(args.Importer) == "sst.config.ts" && args.Kind == esbuild.ResolveJSImportStatement {
 							err = ErrTopLevelImport
 							return esbuild.OnResolveResult{}, ErrTopLevelImport
 						}
@@ -97,40 +105,73 @@ const __dirname = topLevelFileUrlToPath(new topLevelURL(".", import.meta.url))
 				},
 			},
 			{
-				Name: "InjectGlobals",
+				Name: "ExtractResources",
 				Setup: func(build esbuild.PluginBuild) {
-					build.OnLoad(esbuild.OnLoadOptions{Filter: `\.(js|ts|jsx|tsx)$`},
+					pattern := regexp.MustCompile(`(export\s+const\s+)([a-zA-Z0-9_]+)(\s*=\s*sst\.resource\s*\()(\s*\{)`)
+					dir := filepath.Join(filepath.Dir(outfile), "resource")
+					os.RemoveAll(dir)
+					os.MkdirAll(dir, 0755)
+
+					build.OnLoad(esbuild.OnLoadOptions{Filter: `\.([jt]sx?|mjs|cjs)$`},
 						func(args esbuild.OnLoadArgs) (esbuild.OnLoadResult, error) {
-							if filepath.HasPrefix(args.Path, filepath.Join(input.Dir, ".sst")) {
-								return esbuild.OnLoadResult{}, nil
-							}
-							contents, err := os.ReadFile(args.Path)
+							content, err := os.ReadFile(args.Path)
 							if err != nil {
-								return esbuild.OnLoadResult{}, err
+								return esbuild.OnLoadResult{}, fmt.Errorf("failed to read file: %v", err)
 							}
-							newContents := string(contents)
-							if !strings.Contains(args.Path, ".sst") {
-								newContents = input.Globals + "\n" + newContents
+
+							hash := fmt.Sprint(xxh3.Hash(content))
+							fileContent := string(content)
+							found := false
+							processedContent := pattern.ReplaceAllStringFunc(fileContent, func(match string) string {
+								found = true
+								submatch := pattern.FindStringSubmatch(match)
+								if len(submatch) < 5 {
+									return match
+								}
+
+								constPart := submatch[1]
+								resourceName := submatch[2]
+
+								return fmt.Sprintf(`%s%s = resource({"type": "%s", "__source": { type: "dynamic", hash: "%s", export: "%s" }, `,
+									constPart, resourceName, resourceName, hash, resourceName)
+							})
+							if found {
+								shimmed := `function resource(input) { return input }` + "\n" + processedContent
+								result := esbuild.Build(esbuild.BuildOptions{
+									AbsWorkingDir: filepath.Dir(args.Path),
+									External:      []string{"sst-plugin", "@pulumi/pulumi"},
+									MainFields:    []string{"module", "main"},
+									Define: map[string]string{
+										"__SST__": "true",
+									},
+									Stdin: &esbuild.StdinOptions{
+										Sourcefile: args.Path,
+										ResolveDir: filepath.Dir(args.Path),
+										Contents:   shimmed,
+										Loader:     esbuild.LoaderTS,
+									},
+									Outfile: filepath.Join(dir, hash+".mjs"),
+									Bundle:  true,
+									Write:   true,
+									Format:  esbuild.FormatESModule,
+									Target:  esbuild.ES2023,
+								})
+								if len(result.Errors) > 0 {
+									return esbuild.OnLoadResult{}, fmt.Errorf("failed to build resource: %v", result.Errors)
+								}
+
+								processedContent = "import { resource } from \"sst-plugin\";\n" + processedContent
 							}
+
 							return esbuild.OnLoadResult{
-								Contents: &newContents,
-								Loader:   esbuild.LoaderDefault,
+								Contents: &processedContent,
+								Loader:   esbuild.LoaderTS,
 							}, nil
 						})
 				},
 			},
 		},
-		External: []string{
-			"@pulumi/*",
-			"undici",
-			"@pulumiverse/*",
-			"@sst-provider/*",
-			"@aws-sdk/*",
-			"esbuild",
-			"archiver",
-			"glob",
-			"vite", // The remix component uses vite to resolve the user's vite config file. We don't want to bundle it.
-		},
+		External: input.External,
 		Define:   input.Define,
 		Inject:   input.Inject,
 		Outfile:  outfile,

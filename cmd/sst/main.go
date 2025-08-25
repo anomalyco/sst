@@ -23,6 +23,7 @@ import (
 	"github.com/sst/sst/v3/pkg/global"
 	"github.com/sst/sst/v3/pkg/process"
 	"github.com/sst/sst/v3/pkg/project"
+	"github.com/sst/sst/v3/pkg/project/path"
 	"github.com/sst/sst/v3/pkg/telemetry"
 )
 
@@ -575,17 +576,11 @@ var root = &cli.Command{
 				if err != nil {
 					return err
 				}
-				if !p.CheckPlatform(version) {
-					err := p.CopyPlatform(version)
-					if err != nil {
-						return err
-					}
-				}
-				entry, err := project.FindProvider(pkg, "latest")
+				name, version, err := project.FindPlugin(pkg, "latest")
 				if err != nil {
-					return util.NewReadableError(err, "Could not find provider "+pkg)
+					return err
 				}
-				err = p.Add(entry.Name, entry.Version)
+				err = p.Add(name, version)
 				if err != nil {
 					return err
 				}
@@ -598,32 +593,29 @@ var root = &cli.Command{
 				if err != nil {
 					return err
 				}
-				err = p.Install()
-				if err != nil {
-					return err
-				}
 				spin.Stop()
-				ui.Success(fmt.Sprintf("Added provider \"%s\". You can create resources with `new %s.SomeResource()`.", entry.Alias, entry.Alias))
+				plugin := p.Plugins()[name]
+				ui.Success(fmt.Sprintf("Added provider \"%s\". You can create resources with `new %s.SomeResource()`.", plugin.Name, plugin.Alias))
 				return nil
 			},
 		},
 		{
 			Name: "install",
 			Description: cli.Description{
-				Short: "Install all the providers",
+				Short: "Install all the plugins",
 				Long: strings.Join([]string{
-					"Installs the providers in your `sst.config.ts`. You'll need this command when:",
+					"Installs the plugins in your `sst.config.ts`. You'll need this command when:",
 					"",
-					"1. You add a new provider to the `providers` or `home` in your config.",
-					"2. Or, when you want to install new providers after you `git pull` some changes.",
+					"1. You add a new plugin to the `plugins` or `home` in your config.",
+					"2. Or, when you want to install new plugins after you `git pull` some changes.",
 					"",
 					":::tip",
 					"The `sst install` command is similar to `npm install`.",
 					":::",
 					"",
-					"Behind the scenes, it installs the packages for your providers and adds the providers to your globals.",
+					"Behind the scenes, it installs the packages for your plugins and adds the pluginsto your globals.",
 					"",
-					"If you don't have a version specified for your providers in your `sst.config.ts`, it'll install their latest versions.",
+					"If you don't have a version specified for your plugins in your `sst.config.ts`, it'll install their latest versions.",
 				}, "\n"),
 			},
 			Run: func(cli *cli.Cli) error {
@@ -637,7 +629,12 @@ var root = &cli.Command{
 					return err
 				}
 
-				p, err := project.New(&project.ProjectConfig{
+				err = os.RemoveAll(path.ResolvePlatformDir(cfgPath))
+				if err != nil {
+					return err
+				}
+
+				_, err = project.New(&project.ProjectConfig{
 					Version: version,
 					Config:  cfgPath,
 					Stage:   stage,
@@ -648,19 +645,8 @@ var root = &cli.Command{
 
 				spin := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
 				defer spin.Stop()
-				spin.Suffix = "  Installing providers..."
+				spin.Suffix = "  Installing plugins..."
 				spin.Start()
-				if !p.CheckPlatform(version) {
-					err := p.CopyPlatform(version)
-					if err != nil {
-						return err
-					}
-				}
-
-				err = p.Install()
-				if err != nil {
-					return err
-				}
 				spin.Stop()
 				ui.Success("Installed providers")
 				return nil

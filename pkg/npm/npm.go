@@ -3,23 +3,16 @@ package npm
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
 
 	"github.com/sst/sst/v3/internal/fs"
+	"github.com/sst/sst/v3/pkg/js"
 )
 
-type Package struct {
-	Name    string `json:"name"`
-	Version string `json:"version"`
-	Pulumi  *struct {
-		Name    string `json:"name"`
-		Version string `json:"version"`
-	}
-}
-
-func Get(name string, version string) (*Package, error) {
+func Get(name string, version string) (*js.PackageJson, error) {
 	slog.Info("getting package", "name", name, "version", version)
 	baseUrl := os.Getenv("NPM_REGISTRY")
 	if baseUrl == "" {
@@ -34,8 +27,16 @@ func Get(name string, version string) (*Package, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("failed to fetch package: %s", resp.Status)
 	}
-	var data Package
-	err = json.NewDecoder(resp.Body).Decode(&data)
+	buffer, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	var data js.PackageJson
+	err = json.Unmarshal(buffer, &data)
+	if err != nil {
+		return nil, err
+	}
+	err = json.Unmarshal(buffer, &data.Other)
 	if err != nil {
 		return nil, err
 	}

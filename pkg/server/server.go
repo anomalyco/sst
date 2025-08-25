@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -13,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/sst/sst/v3/pkg/global"
 	"github.com/sst/sst/v3/pkg/project"
@@ -30,7 +32,8 @@ type Server struct {
 
 func New() (*Server, error) {
 	port, err := port()
-	slog.Info("server port assigned", "port", port)
+	log := slog.Default().With("service", "server")
+	log.Info("port assigned", "port", port)
 	if err != nil {
 		return nil, err
 	}
@@ -39,14 +42,93 @@ func New() (*Server, error) {
 		Mux:  http.NewServeMux(),
 		Rpc:  rpc.NewServer(),
 	}
+
 	result.Mux.HandleFunc("/rpc", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
-		slog.Info("rpc request", "method", r.Method, "url", r.URL.String())
+		log.Info("rpc request", "method", r.Method, "url", r.URL.String())
 		result.Rpc.ServeCodec(jsonrpc.NewServerCodec(&HttpConn{Reader: r.Body, Writer: w}))
 	})
+
+	type JSONRPCRequest struct {
+		Method  string          `json:"method"`
+		Params  json.RawMessage `json:"params"`
+		ID      string          `json:"id"`
+		JSONRPC string          `json:"jsonrpc"`
+	}
+
+	type JSONRPCResponse struct {
+		ID      string          `json:"id"`
+		Result  json.RawMessage `json:"result"`
+		Error   json.RawMessage `json:"error"`
+		JSONRPC string          `json:"jsonrpc"`
+	}
+
+	tunnel := make(chan JSONRPCRequest)
+	pending := sync.Map{}
+
+	result.Mux.HandleFunc("/rpc/request", func(w http.ResponseWriter, r *http.Request) {
+		log.Info("rpc request received")
+		var req JSONRPCRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			log.Error("failed to decode request", "err", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if req.ID == "" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		response := make(chan JSONRPCResponse, 0)
+		pending.Store(req.ID, response)
+		log.Info("rpc tunnel sending", "id", req.ID)
+		tunnel <- req
+		log.Info("rpc tunnel waiting", "id", req.ID)
+		resp := <-response
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(resp)
+	})
+
+	result.Mux.HandleFunc("/rpc/response", func(w http.ResponseWriter, r *http.Request) {
+		log.Info("rpc response received")
+		var resp JSONRPCResponse
+		if err := json.NewDecoder(r.Body).Decode(&resp); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if ch, ok := pending.LoadAndDelete(resp.ID); ok {
+			ch.(chan JSONRPCResponse) <- resp
+			close(ch.(chan JSONRPCResponse))
+		}
+		w.WriteHeader(http.StatusOK)
+		return
+	})
+
+	result.Mux.HandleFunc("/rpc/tunnel", func(w http.ResponseWriter, r *http.Request) {
+		log.Info("rpc tunnel connected")
+		defer log.Info("rpc tunnel disconnected")
+		flusher := w.(http.Flusher)
+		ctx := r.Context()
+		w.WriteHeader(http.StatusOK)
+		flusher.Flush()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case req := <-tunnel:
+				err := json.NewEncoder(w).Encode(req)
+				if err != nil {
+					log.Error("failed to encode rpc request", "err", err)
+					w.WriteHeader(http.StatusInternalServerError)
+					return
+				}
+				flusher.Flush()
+			}
+		}
+	})
+
 	return result, nil
 }
 
