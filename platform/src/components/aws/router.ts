@@ -2135,7 +2135,12 @@ function setUrlOrigin(urlHost, override) {
       protocol: "https",
       sslProtocols: ["TLSv1.2"],
     },
-    originAccessControlConfig: {
+    originAccessControlConfig: override.type === "lambda" ? {
+      enabled: true,
+      signingBehavior: "no-override",
+      signingProtocol: "sigv4",
+      originType: "lambda",
+    } : {
       enabled: false,
     }
   };
@@ -2148,14 +2153,6 @@ function setUrlOrigin(urlHost, override) {
   }
   if (override.timeouts) {
     origin.timeouts = override.timeouts;
-  }
-  if (override.oac) {
-    origin.originAccessControlConfig = {
-      enabled: true,
-      signingBehavior: "always",
-      signingProtocol: "sigv4",
-      originType: override.oac,
-    }
   }
   cf.updateRequestOrigin(origin);
 }

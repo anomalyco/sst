@@ -878,16 +878,8 @@ export interface FunctionArgs {
        *   }
        * }
        * ```
-       * Only allow CloudFront to access the function URL.
-       * ```js
-       * {
-       *   url: {
-       *     authorization: "cloudfront"
-       *   }
-       * }
-       * ```
        */
-      authorization?: Input<"none" | "iam" | "cloudfront">;
+      authorization?: Input<"none" | "iam">;
       /**
        * Customize the CORS (Cross-origin resource sharing) settings for the function URL.
        * @default `true`
@@ -2511,7 +2503,7 @@ export class Function extends Component implements Link.Linkable {
           `${name}Url`,
           {
             functionName: fn.name,
-            authorizationType: url.authorization === "iam" || url.authorization === "cloudfront" ? "AWS_IAM" : "NONE",
+            authorizationType: url.authorization === "iam" ? "AWS_IAM" : "NONE",
             invokeMode: streaming.apply((streaming) =>
               streaming ? "RESPONSE_STREAM" : "BUFFERED",
             ),
@@ -2535,7 +2527,7 @@ export class Function extends Component implements Link.Linkable {
             entries: fnUrl.functionUrl.apply((fnUrl) => ({
               metadata: JSON.stringify({
                 host: new URL(fnUrl).host,
-                oac: url.authorization === "cloudfront" ? "lambda" : undefined,
+                type: "lambda",
               }),
             })),
             purge: false,
