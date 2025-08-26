@@ -35,6 +35,7 @@ type App struct {
 	Home      string                 `json:"home"`
 	Version   string                 `json:"version"`
 	Protect   bool                   `json:"protect"`
+	Ignore    []string               `json:"ignore"`
 	// Deprecated: Backend is now Home
 	Backend string `json:"backend"`
 	// Deprecated: RemovalPolicy is now Removal
@@ -202,6 +203,10 @@ console.log("~j" + JSON.stringify(await mod.app({
 
 			if proj.app.Providers == nil {
 				proj.app.Providers = map[string]interface{}{}
+			}
+
+			if proj.app.Ignore == nil {
+				proj.app.Ignore = []string{}
 			}
 
 			for name, args := range proj.app.Providers {

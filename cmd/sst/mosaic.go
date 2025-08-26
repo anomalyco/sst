@@ -158,7 +158,7 @@ func CmdMosaic(c *cli.Cli) error {
 
 	wg.Go(func() error {
 		defer c.Cancel()
-		return watcher.Start(c.Context, p.PathRoot())
+		return watcher.Start(c.Context, p.PathRoot(), p.App().Ignore)
 	})
 
 	server, err := server.New()

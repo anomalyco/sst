@@ -258,6 +258,7 @@ func function(ctx context.Context, input input) {
 		return true
 	}
 
+skipIgnoredFiles:
 	for {
 		select {
 		case <-ctx.Done():
@@ -368,6 +369,18 @@ func function(ctx context.Context, input input) {
 			case *runtime.BuildInput:
 				targets[evt.FunctionID] = evt
 			case *watcher.FileChangedEvent:
+				// Check if file should be ignored based on ignore patterns
+				shouldIgnore := false
+				for _, pattern := range input.project.App().Ignore {
+					if strings.Contains(evt.Path, pattern) {
+						shouldIgnore = true
+						break
+					}
+				}
+				if shouldIgnore {
+					continue skipIgnoredFiles
+				}
+				
 				log.Info("checking if code needs to be rebuilt", "file", evt.Path)
 				toBuild := map[string]bool{}
 

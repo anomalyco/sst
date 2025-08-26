@@ -60,6 +60,24 @@ Learn more about some of the key concepts:
 - [Console](https://sst.dev/docs/console)
 - [Components](https://sst.dev/docs/components)
 
+## Configuration
+
+Your SST app is configured through the `sst.config.ts` file. You can specify app settings like ignore patterns for the file watcher:
+
+```typescript
+export default $config({
+  app(input) {
+    return {
+      name: "my-app",
+      home: "aws",
+      ignore: [".egg-info", "functions-"] // Ignore Python build artifacts
+    };
+  }
+});
+```
+
+See the [configuration reference](https://sst.dev/docs/reference/config) for all available options.
+
 ## Contributing
 
 Here's how you can contribute:

@@ -16,7 +16,7 @@ type FileChangedEvent struct {
 	Path string
 }
 
-func Start(ctx context.Context, root string) error {
+func Start(ctx context.Context, root string, ignorePatterns []string) error {
 	log := slog.Default().With("service", "watcher")
 	defer log.Info("done")
 	log.Info("starting watcher", "root", root)
@@ -28,7 +28,7 @@ func Start(ctx context.Context, root string) error {
 	if err != nil {
 		return err
 	}
-	ignoreSubstrings := []string{"node_modules"}
+	ignoreSubstrings := append([]string{"node_modules"}, ignorePatterns...)
 
 	err = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {

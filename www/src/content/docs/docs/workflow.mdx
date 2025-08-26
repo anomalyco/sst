@@ -276,6 +276,33 @@ Similar to the app and stage, if you want to switch regions; you'll need to remo
 
 ---
 
+### Ignore patterns
+
+By default, SST's file watcher ignores `node_modules` directories to prevent unnecessary rebuilds. However, when working with Python, Go, or other build systems, additional build artifacts can trigger infinite rebuild loops during `sst dev`.
+
+You can configure additional ignore patterns in your app configuration:
+
+```ts title="sst.config.ts" {6}
+export default $config({
+  app(input) {
+    return {
+      name: "my-sst-app",
+      home: "aws",
+      ignore: [".egg-info", "functions-"]
+    };
+  }
+});
+```
+
+**Common ignore patterns:**
+
+- **Python**: `[".egg-info", "functions-"]`
+- **Build artifacts**: `["dist/", "build/", ".tmp/"]`
+
+Pattern matching uses substring matching, so `".egg-info"` will ignore any path containing `.egg-info`, and `"functions-"` will ignore build artifacts like `functions-0.1.0.tar.gz`.
+
+---
+
 ## Commands
 
 Now with the above background let's look at the workflow of building an SST app.
