@@ -34,7 +34,7 @@
     "@pulumiverse/vercel": "1.11.0",
     "@smithy/smithy-client": "2.1.18",
     "@tsconfig/node18": "18.2.2",
-    "@types/node": "^22.10.0",
+    "@types/node": "^22.18.0",
     "acorn": "8.11.3",
     "acorn-walk": "8.3.2",
     "archiver": "6.0.1",
@@ -42,15 +42,15 @@
     "esbuild": "0.20.2",
     "glob": "10.3.10",
     "prettier": "3.1.1",
-    "typescript": "5.7.2",
+    "typescript": "5.9.2",
     "undici": "^6.19.5",
     "unenv-sst": "npm:unenv-nightly@2.0.0-20241024-111401-d4156ac"
   },
   "devDependencies": {
     "@aws-sdk/client-iot": "3.876.0",
-    "@types/archiver": "6.0.2",
+    "@types/archiver": "6.0.3",
     "@types/aws-lambda": "8.10.152",
-    "@types/bun": "1.2.1",
+    "@types/bun": "1.2.21",
     "vitest": "^1.2.2"
   },
   "overrides": {
