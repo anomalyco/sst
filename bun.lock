@@ -18,7 +18,7 @@
         "@aws-sdk/client-sts": "3.478.0",
         "@aws-sdk/middleware-retry": "3.374.0",
         "@pulumi/aws": "6.66.2",
-        "@pulumi/cloudflare": "6.2.0",
+        "@pulumi/cloudflare": "6.6.0",
         "@pulumi/command": "1.0.1",
         "@pulumi/docker-build": "0.0.8",
         "@pulumi/pulumi": "3.145.0",
@@ -476,7 +476,7 @@
 
     "@pulumi/aws": ["@pulumi/aws@6.66.2", "", { "dependencies": { "@pulumi/pulumi": "^3.142.0", "mime": "^2.0.0" } }, "sha512-jO5L4JcjYriqXBGYH9LVb+GjawHUJvkWvLtb5nXxIKpkykEO1LyWVZdR4ngFcT7Hlw99Tg1ms4ut7LdETPCuUw=="],
 
-    "@pulumi/cloudflare": ["@pulumi/cloudflare@6.2.0", "", { "dependencies": { "@pulumi/pulumi": "^3.142.0" } }, "sha512-PXTYyf1oUoaiGsHUzFtKwlNySkA6IzS37TpYo3gvpem6R+x4Ot3t3sGQCuPi24a5TweeAmPPSY33+EGjqlAIhw=="],
+    "@pulumi/cloudflare": ["@pulumi/cloudflare@6.6.0", "", { "dependencies": { "@pulumi/pulumi": "^3.142.0" } }, "sha512-vrkIKV4stU7qiAmIaTAiwLglbnWs6YUAxtxBeFipa4pWqtYq289OExxT6sxirPeTpLupTKiHZF0Ss0dsgF3vyg=="],
 
     "@pulumi/command": ["@pulumi/command@1.0.1", "", { "dependencies": { "@pulumi/pulumi": "^3.0.0" } }, "sha512-PqqcMp80Y9dc7Lt0epXqvqha76S4XF08NB8lpMA0zJ9zWvkkssQ8lq8XdHuZOrAGHXj7gKBs6JBrhhltoovUTQ=="],
 

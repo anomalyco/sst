@@ -104,7 +104,6 @@ export abstract class SsrSite extends Component implements Link.Linkable {
                 ([outputPath, assets]) => path.join(outputPath, assets),
               ),
             },
-            largePayload: true,
           },
           { parent: self },
         ),

@@ -21,7 +21,6 @@ import { binding } from "./binding.js";
 import { DEFAULT_ACCOUNT_ID } from "./account-id.js";
 import { rpc } from "../rpc/rpc.js";
 import { WorkerAssets } from "./providers/worker-assets";
-import { WorkerScript, WorkerScriptInputs } from "./providers/worker-script";
 import { globSync } from "glob";
 import { VisibleError } from "../error";
 import { getContentType } from "../base/base-site";
@@ -196,10 +195,6 @@ export interface WorkerArgs {
    * Placehodler for future feature.
    */
   dev?: boolean;
-  /**
-   * @internal
-   */
-  largePayload?: boolean;
 }
 
 /**
@@ -293,7 +288,7 @@ export class Worker extends Component implements Link.Linkable {
     );
     const build = buildHandler();
     const assets = uploadAssets();
-    const script = args.largePayload ? createCustomScript() : createScript();
+    const script = createScript();
     const workerUrl = createWorkersUrl();
     const workerDomain = createWorkersDomain();
 
@@ -525,6 +520,9 @@ export class Worker extends Component implements Link.Linkable {
     }
 
     function createScript() {
+      const contentFilePath = build.apply((build) =>
+        path.join(build.out, build.handler),
+      );
       return new cf.WorkersScript(
         ...transform(
           args.transform?.worker as Transform<cf.WorkersScriptArgs>,
@@ -533,10 +531,12 @@ export class Worker extends Component implements Link.Linkable {
             scriptName: assets?.scriptName ?? generateScriptName(),
             mainModule: "placeholder",
             accountId: DEFAULT_ACCOUNT_ID,
-            content: build.apply(async (build) =>
-              (
-                await fs.readFile(path.join(build.out, build.handler))
-              ).toString(),
+            contentFile: contentFilePath,
+            contentSha256: contentFilePath.apply(async (p) =>
+              crypto
+                .createHash("sha256")
+                .update(await fs.readFile(p, "utf-8"))
+                .digest("hex"),
             ),
             compatibilityDate: "2025-05-05",
             compatibilityFlags: ["nodejs_compat"],
@@ -577,65 +577,6 @@ export class Worker extends Component implements Link.Linkable {
           { parent, ignoreChanges: ["scriptName"] },
         ),
       );
-    }
-
-    function createCustomScript() {
-      const script = new WorkerScript(
-        ...transform(
-          args.transform?.worker as Transform<WorkerScriptInputs>,
-          `${name}CustomScript`,
-          {
-            scriptName: assets?.scriptName ?? generateScriptName(),
-            mainModule: "placeholder",
-            accountId: DEFAULT_ACCOUNT_ID,
-            content: build.apply(async (build) => {
-              const filename = path.join(build.out, build.handler);
-              const content = await fs.readFile(filename, "utf-8");
-              return {
-                filename,
-                hash: crypto.createHash("md5").update(content).digest("hex"),
-              };
-            }),
-            compatibilityDate: "2025-05-05",
-            compatibilityFlags: ["nodejs_compat"],
-            assets: assets ? { jwt: assets.jwt } : undefined,
-            bindings: all([args.environment, iamCredentials, bindings]).apply(
-              ([environment, iamCredentials, bindings]) => [
-                ...bindings,
-                ...(iamCredentials
-                  ? [
-                      {
-                        type: "plain_text",
-                        name: "AWS_ACCESS_KEY_ID",
-                        text: iamCredentials.id,
-                      },
-                      {
-                        type: "secret_text",
-                        name: "AWS_SECRET_ACCESS_KEY",
-                        text: iamCredentials.secret,
-                      },
-                    ]
-                  : []),
-                ...(args.assets
-                  ? [
-                      {
-                        type: "assets",
-                        name: "ASSETS",
-                      },
-                    ]
-                  : []),
-                ...Object.entries(environment ?? {}).map(([key, value]) => ({
-                  type: "plain_text",
-                  name: key,
-                  text: value,
-                })),
-              ],
-            ),
-          },
-          { parent, ignoreChanges: ["scriptName"] },
-        ),
-      );
-      return script as cf.WorkersScript;
     }
 
     function createWorkersUrl() {
