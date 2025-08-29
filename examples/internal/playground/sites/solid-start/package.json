@@ -2,8 +2,11 @@
   "name": "example-basic",
   "type": "module",
   "scripts": {
-    "build": "sed -i '' 's/baseURL: .*/baseURL: undefined,/' app.config.ts && vinxi build",
-    "build-base": "sed -i '' 's/baseURL: .*/baseURL: \"\\/solid\",/' app.config.ts && vinxi build",
+    "use:base": "sed -i '' 's/baseURL: .*/baseURL: \"\\/solid\",/' app.config.ts",
+    "use:no-base": "sed -i '' 's/baseURL: .*/baseURL: undefined,/' app.config.ts",
+    "build": "vinxi build",
+    "build:base": "npm run use:base && npm run build",
+    "build:no-base": "npm run use:no-base && npm run build",
     "dev": "vinxi dev",
     "start": "vinxi start",
     "version": "vinxi version"
