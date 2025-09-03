@@ -505,7 +505,7 @@ loop:
 			}
 		}
 
-		if event.ResOutputsEvent != nil || event.CancelEvent != nil || event.SummaryEvent != nil {
+		if input.Command != "diff" && (event.ResOutputsEvent != nil || event.CancelEvent != nil || event.SummaryEvent != nil) {
 			partial <- 1
 		}
 
