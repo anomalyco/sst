@@ -1018,10 +1018,14 @@ export class Vpc extends Component implements Link.Linkable {
               ),
             );
 
-            new ec2.EipAssociation(`${name}NatInstanceEipAssociation${i + 1}`, {
-              instanceId: instance.id,
-              allocationId: elasticIps[i]?.id ?? nat.ip![i],
-            });
+            new ec2.EipAssociation(
+              `${name}NatInstanceEipAssociation${i + 1}`,
+              {
+                instanceId: instance.id,
+                allocationId: elasticIps[i]?.id ?? nat.ip![i],
+              },
+              { parent: self },
+            );
 
             return instance;
           }),

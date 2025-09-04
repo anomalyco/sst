@@ -133,6 +133,7 @@ export class Component extends ComponentResource {
               "aws:appsync/function:Function",
               "aws:appsync/resolver:Resolver",
               "aws:ec2/routeTableAssociation:RouteTableAssociation",
+              "aws:ec2/eipAssociation:EipAssociation",
               "aws:ecs/clusterCapacityProviders:ClusterCapacityProviders",
               "aws:efs/fileSystem:FileSystem",
               "aws:efs/mountTarget:MountTarget",
