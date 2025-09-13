@@ -5,13 +5,13 @@
  *
  * An example on how to enable streaming for Lambda functions using Hono.
  *
+ * While `sst dev` doesn't support streaming, we can conditionally enable it on deploy.
+ *
  * ```ts title="sst.config.ts"
  * {
- *   streaming: true
+ *   streaming: $dev ? false : true
  * }
  * ```
- *
- * While `sst dev` doesn't support streaming, we can conditionally enable it on deploy.
  *
  * ```ts title="index.ts"
  * export const handler = process.env.SST_LIVE ? handle(app) : streamHandle(app);
@@ -43,7 +43,7 @@ export default $config({
   async run() {
     const hono = new sst.aws.Function("Hono", {
       url: true,
-      streaming: true,
+      streaming: $dev ? false : true,
       timeout: "15 minutes",
       handler: "index.handler",
     });
