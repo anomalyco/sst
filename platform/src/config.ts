@@ -245,6 +245,31 @@ export interface App {
   home: "aws" | "cloudflare" | "local";
 
   /**
+   * Default tags to apply to all AWS resources created by SST.
+   * 
+   * These tags will be automatically applied to every resource created in your app
+   * using default tag configuration for the AWS provider.
+   * 
+   * :::tip
+   * This is useful for applying organization-wide tags like cost center, environment, or team.
+   * :::
+   * 
+   * @example
+   * 
+   * ```ts
+   * {
+   *  tags: {
+   *    "Environment": "production",
+   *    "Team": "platform",
+   *    "CostCenter": "engineering"
+   *  }
+   * }
+   * 
+   * The tags will be merged with SST's build-in tags like `sst:app` and `sst:stage`.
+   */
+  tags?: Record<string, string>;
+
+  /**
    * If set to `true`, the `sst remove` CLI will not run and will error out.
    *
    * This is useful for preventing cases where you run `sst remove --stage <stage>` for the

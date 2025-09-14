@@ -35,6 +35,7 @@ type App struct {
 	Home      string                 `json:"home"`
 	Version   string                 `json:"version"`
 	Protect   bool                   `json:"protect"`
+	Tags      map[string]string      `json:"tags"`
 	// Deprecated: Backend is now Home
 	Backend string `json:"backend"`
 	// Deprecated: RemovalPolicy is now Removal
@@ -304,7 +305,24 @@ func (proj *Project) LoadHome() error {
 		if match == nil {
 			continue
 		}
-		err := match.Init(proj.app.Name, proj.app.Stage, args.(map[string]interface{}))
+
+		providerArgs := args.(map[string]interface{})
+		if key == "aws" && len(proj.app.Tags) > 0 {
+			defaultTags, ok := providerArgs["defaultTags"].(map[string]interface{})
+			if !ok {
+				defaultTags = map[string]interface{}{}
+				providerArgs["defaultTags"] = defaultTags
+			}
+			tags, ok := defaultTags["tags"].(map[string]interface{})
+			if !ok {
+				tags = map[string]interface{}{}
+				defaultTags["tags"] = tags
+			}
+			for tagKey, tagValue := range proj.app.Tags {
+				tags[tagKey] = tagValue
+			}
+		}
+		err := match.Init(proj.app.Name, proj.app.Stage, providerArgs)
 		if err != nil {
 			return util.NewReadableError(err, key+": "+err.Error())
 		}
