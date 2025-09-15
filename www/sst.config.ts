@@ -245,19 +245,13 @@ return {
     }
 
     // Redirect telemetry.ion.sst.dev to us.i.posthog.com
-    new sst.aws.Router(
-      "TelemetryRouter",
-      {
-        domain: {
-          name: "telemetry.ion." + domain,
-        },
-        routes: {
-          "/*": "https://us.i.posthog.com",
-        },
+    new sst.aws.Router("TelemetryRouter", {
+      domain: {
+        name: "telemetry.ion." + domain,
       },
-      {
-        replaceOnChanges: ["*"],
+      routes: {
+        "/*": "https://us.i.posthog.com",
       },
-    );
+    });
   },
 });
