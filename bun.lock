@@ -40,8 +40,19 @@
       },
     },
     "plugin/cloudflare": {
-      "name": "cloudflare",
+      "name": "sst-plugin-cloudflare",
       "version": "0.0.0",
+      "dependencies": {
+        "@pulumi/cloudflare": "5.37.1",
+        "@pulumi/pulumi": "catalog:",
+        "sst-plugin": "workspace:*",
+      },
+      "devDependencies": {
+        "@tsconfig/node22": "catalog:",
+        "@types/archiver": "^6.0.3",
+        "@types/node": "catalog:",
+        "typescript": "catalog:",
+      },
     },
     "plugin/example": {
       "name": "sst-plugin-example",
@@ -442,6 +453,8 @@
 
     "@pulumi/aws": ["@pulumi/aws@6.66.2", "", { "dependencies": { "@pulumi/pulumi": "^3.142.0", "mime": "^2.0.0" } }, "sha512-jO5L4JcjYriqXBGYH9LVb+GjawHUJvkWvLtb5nXxIKpkykEO1LyWVZdR4ngFcT7Hlw99Tg1ms4ut7LdETPCuUw=="],
 
+    "@pulumi/cloudflare": ["@pulumi/cloudflare@5.37.1", "", { "dependencies": { "@pulumi/pulumi": "^3.0.0" } }, "sha512-4s0lcIOM56rEMeZYEhrHi4tOHz78XrN+jDMj79afnToXzHFIYonBsK9BNEhEsQlyjQ0rlwB35QvpAY/MqSBcaw=="],
+
     "@pulumi/command": ["@pulumi/command@1.0.5", "", { "dependencies": { "@pulumi/pulumi": "^3.142.0" } }, "sha512-tOsdyFGOPe9UdfkMJlw2OIz1d1bshzG19L07DWJzej6D3G6HeusoYdnrnfHKXQN29juRXkqY1519N1LzPORRlg=="],
 
     "@pulumi/docker-build": ["@pulumi/docker-build@0.0.8", "", { "dependencies": { "@pulumi/pulumi": "^3.136.0" } }, "sha512-tS6UUgmDjQ+LVekMXGC/6ND7riY75h3oO9fLiVOrvNafCBumxK+Cjm6ZZ9tUChLYvw6H+rZRExZEhfC8F/SQgQ=="],
@@ -833,8 +846,6 @@
     "clone": ["clone@2.1.2", "", {}, "sha512-3Pe/CF1Nn94hyhIYpjtiLhdCoEoz0DqQ+988E9gmeEdQZlojxnOb74wctFyuwWQHzqyf9X7C7MG8juUpqBJT8w=="],
 
     "clone-response": ["clone-response@1.0.3", "", { "dependencies": { "mimic-response": "^1.0.0" } }, "sha512-ROoL94jJH2dUVML2Y/5PEDNaSHgeOdSDicUyS7izcF63G6sTc/FTjLub4b8Il9S8S0beOfYt0TaA5qvFK+w0wA=="],
-
-    "cloudflare": ["cloudflare@workspace:plugin/cloudflare"],
 
     "clsx": ["clsx@2.1.1", "", {}, "sha512-eYm0QWBtUrBWZWG0d386OGAw16Z995PiOVo2B7bjWSbHedGl5e0ZWaq65kOGgUSNesEIDkB9ISbTg/JK9dhCZA=="],
 
@@ -1799,6 +1810,8 @@
     "sst-plugin": ["sst-plugin@workspace:plugin/base"],
 
     "sst-plugin-aws": ["sst-plugin-aws@workspace:plugin/aws"],
+
+    "sst-plugin-cloudflare": ["sst-plugin-cloudflare@workspace:plugin/cloudflare"],
 
     "sst-plugin-example": ["sst-plugin-example@workspace:plugin/example"],
 

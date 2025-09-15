@@ -1,7 +1,7 @@
 import * as sst from "sst-plugin";
 import { VisibleError } from "sst-plugin/error";
 import { Component as BaseComponent } from "sst-plugin/component";
-import { ComponentResource, ComponentResourceOptions } from "@pulumi/pulumi";
+import { VersionComponent } from "sst-plugin/internal/version";
 
 // Previously, `this.api.id` was used as the ID. `this.api.id` was of type Output<string>
 // the value evaluates to the mistake id.
@@ -345,20 +345,9 @@ export class AWSComponent extends BaseComponent {
 
     // Set version
     if (newVersion > 1) {
-      new Version(this.componentName, newVersion, { parent: this });
+      new VersionComponent(this.componentName, newVersion, {
+        parent: this,
+      });
     }
   }
-}
-
-export class Version extends ComponentResource {
-  constructor(target: string, version: number, opts: ComponentResourceOptions) {
-    super("sst:sst:Version", target + "Version", {}, opts);
-    this.registerOutputs({ target, version });
-  }
-}
-
-export type ComponentVersion = { major: number; minor: number };
-export function parseComponentVersion(version: string): ComponentVersion {
-  const [major, minor] = version.split(".");
-  return { major: parseInt(major), minor: parseInt(minor) };
 }

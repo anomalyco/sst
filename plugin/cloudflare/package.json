@@ -1,6 +1,29 @@
 {
-  "name": "cloudflare",
+  "name": "sst-plugin-cloudflare",
   "version": "0.0.0",
-  "private": true
+  "type": "module",
+  "scripts": {
+    "build": "./script/build.ts"
+  },
+  "devDependencies": {
+    "@tsconfig/node22": "catalog:",
+    "@types/archiver": "^6.0.3",
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
+  },
+  "exports": {
+    ".": "./dist/index.js",
+    "./*": "./dist/*.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@pulumi/pulumi": "catalog:",
+    "@pulumi/cloudflare": "5.37.1",
+    "sst-plugin": "workspace:*"
+  },
+  "sst": {
+    "name": "sst.cloudflare"
+  }
 }
-

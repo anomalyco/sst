@@ -15,13 +15,16 @@ import { BucketFile, BucketFiles } from "./providers/bucket-files.js";
 import { DistributionInvalidation } from "./providers/distribution-invalidation.js";
 import { KvKeys } from "./providers/kv-keys.js";
 import { KvRoutesUpdate } from "./providers/kv-routes-update.js";
-import { BaseSiteDev, getContentType } from "./base/base-site.js";
-import { buildApp } from "./base/base-static-site.js";
+import {
+  BaseSiteDev,
+  getContentType,
+} from "sst-plugin/internal/site/base-site";
+import { buildApp } from "sst-plugin/internal/site/base-static-site";
 import {
   BaseStaticSiteArgs,
   BaseStaticSiteAssets,
   prepare,
-} from "./base/base-static-site.js";
+} from "sst-plugin/internal/site/base-static-site";
 import {
   RouterRouteArgsDeprecated,
   RouterRouteArgs,

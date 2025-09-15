@@ -4,15 +4,15 @@ import * as sst from "sst-plugin";
 import { VisibleError } from "sst-plugin/error";
 import { Prettify } from "sst-plugin/internal/prettify";
 import { transform, Transform } from "sst-plugin/internal/transform";
-import {
-  parseComponentVersion,
-  ComponentVersion,
-  AWSComponent,
-} from "./component.js";
+import { AWSComponent } from "./component.js";
 import { ServiceArgs, Service } from "./service.js";
 import { TaskArgs, Task } from "./task.js";
 import { Vpc } from "./vpc.js";
 import { Cluster as ClusterV1 } from "./cluster-v1.js";
+import {
+  ComponentVersion,
+  VersionComponent,
+} from "sst-plugin/internal/version";
 
 type ClusterVpcArgs = {
   /**
@@ -183,7 +183,7 @@ export class Cluster extends AWSComponent {
       });
       const clusterValidated = cluster.tags.apply((tags) => {
         const refVersion = tags?.["sst:ref:version"]
-          ? parseComponentVersion(tags["sst:ref:version"])
+          ? VersionComponent.parse(tags["sst:ref:version"])
           : undefined;
 
         if (refVersion?.minor !== _version.minor) {

@@ -1,5 +1,5 @@
+import { Input } from "@pulumi/pulumi";
 import path from "path";
-import * as sst from "sst-plugin";
 
 export interface BaseSiteDev {
   /**
@@ -10,27 +10,27 @@ export interface BaseSiteDev {
    * have a placeholder URL. It avoids having to handle it being `undefined`.
    * @default `"http://url-unavailable-in-dev.mode"`
    */
-  url?: sst.Input<string>;
+  url?: Input<string>;
   /**
    * The command that `sst dev` runs to start this in dev mode.
    * @default `"npm run dev"`
    */
-  command?: sst.Input<string>;
+  command?: Input<string>;
   /**
    * Configure if you want to automatically start this when `sst dev` starts. You can still
    * start it manually later.
    * @default `true`
    */
-  autostart?: sst.Input<boolean>;
+  autostart?: Input<boolean>;
   /**
    * Change the directory from where the `command` is run.
    * @default Uses the `path`
    */
-  directory?: sst.Input<string>;
+  directory?: Input<string>;
   /**
    * The title of the tab in the multiplexer.
    */
-  title?: sst.Input<string>;
+  title?: Input<string>;
 }
 
 export interface BaseSiteFileOptions {

@@ -1,11 +1,12 @@
 import fs from "fs";
 import path from "path";
-import * as sst from "sst-plugin";
-import { Prettify } from "sst-plugin/internal/prettify";
 import { BaseSiteFileOptions } from "./base-site.js";
-import { VisibleError } from "sst-plugin/error";
-import { Resource } from "@pulumi/pulumi";
-import { siteBuilder } from "../util/site-builder.js";
+import { Input, output, Resource } from "@pulumi/pulumi";
+import { Prettify } from "../prettify.js";
+import { VisibleError } from "../../error.js";
+import { resolve } from "../../util.js";
+import { siteBuilder } from "./site-builder.js";
+import * as sst from "../../app.js";
 
 export type BaseStaticSiteAssets = {
   /**
@@ -23,7 +24,7 @@ export type BaseStaticSiteAssets = {
    * }
    * ```
    */
-  textEncoding?: sst.Input<
+  textEncoding?: Input<
     "utf-8" | "iso-8859-1" | "windows-1252" | "ascii" | "none"
   >;
   /**
@@ -81,11 +82,11 @@ export type BaseStaticSiteAssets = {
    * }
    * ```
    */
-  fileOptions?: sst.Input<Prettify<BaseSiteFileOptions>[]>;
+  fileOptions?: Input<Prettify<BaseSiteFileOptions>[]>;
 };
 
 export interface BaseStaticSiteArgs {
-  path?: sst.Input<string>;
+  path?: Input<string>;
   /**
    * The name of the index page of the site. This is a path relative to the root of your site, or the `path`.
    *
@@ -114,7 +115,7 @@ export interface BaseStaticSiteArgs {
    * }
    * ```
    */
-  errorPage?: sst.Input<string>;
+  errorPage?: Input<string>;
   /**
    * Set environment variables for your static site. These are made available:
    *
@@ -145,8 +146,8 @@ export interface BaseStaticSiteArgs {
    * }
    * ```
    */
-  environment?: sst.Input<Record<string, sst.Input<string>>>;
-  build?: sst.Input<{
+  environment?: Input<Record<string, Input<string>>>;
+  build?: Input<{
     /**
      * The command that builds the static site. It's run before your site is deployed. This is run at the root of your site, `path`.
      * @example
@@ -158,7 +159,7 @@ export interface BaseStaticSiteArgs {
      * }
      * ```
      */
-    command: sst.Input<string>;
+    command: Input<string>;
     /**
      * The directory where the build output of your static site is generated. This will be uploaded.
      *
@@ -172,7 +173,7 @@ export interface BaseStaticSiteArgs {
      * }
      * ```
      */
-    output: sst.Input<string>;
+    output: Input<string>;
   }>;
   /**
    * Configure [Vite](https://vitejs.dev) related options.
@@ -181,7 +182,7 @@ export interface BaseStaticSiteArgs {
    * If a `vite.config.ts` or `vite.config.js` file is detected in the `path`, then these options will be used during the build and deploy process.
    * :::
    */
-  vite?: sst.Input<{
+  vite?: Input<{
     /**
      * The path where the type definition for the `environment` variables are generated. This is relative to the `path`. [Read more](https://vitejs.dev/guide/env-and-mode#intellisense-for-typescript).
      *
@@ -212,7 +213,7 @@ export function prepare(args: BaseStaticSiteArgs) {
   };
 
   function normalizeSitePath() {
-    return sst.output(args.path).apply((sitePath) => {
+    return output(args.path).apply((sitePath) => {
       if (!sitePath) return ".";
 
       if (!fs.existsSync(sitePath)) {
@@ -223,21 +224,18 @@ export function prepare(args: BaseStaticSiteArgs) {
   }
 
   function normalizeEnvironment() {
-    return sst
-      .output(args.environment)
-      .apply((environment) => environment ?? {});
+    return output(args.environment).apply((environment) => environment ?? {});
   }
 
   function normalizeIndexPage() {
-    return sst
-      .output(args.indexPage)
-      .apply((indexPage) => indexPage ?? "index.html");
+    return output(args.indexPage).apply(
+      (indexPage) => indexPage ?? "index.html",
+    );
   }
 
   function generateViteTypes() {
-    return sst
-      .resolve([sitePath, args.vite, environment])
-      .apply(([sitePath, vite, environment]) => {
+    return resolve([sitePath, args.vite, environment]).apply(
+      ([sitePath, vite, environment]) => {
         // Build the path
         let typesPath = vite?.types;
         if (!typesPath) {
@@ -270,7 +268,8 @@ interface ImportMeta {
         const fileDir = path.dirname(filePath);
         fs.mkdirSync(fileDir, { recursive: true });
         fs.writeFileSync(filePath, content);
-      });
+      },
+    );
   }
 }
 
@@ -286,11 +285,11 @@ export function buildApp(
   const result = siteBuilder(
     `${name}Builder`,
     {
-      create: sst.output(build).command,
-      update: sst.output(build).command,
-      dir: sst
-        .output(sitePath)
-        .apply((sitePath) => path.join(sst.path.root, sitePath)),
+      create: output(build).command,
+      update: output(build).command,
+      dir: output(sitePath).apply((sitePath) =>
+        path.join(sst.path.root, sitePath),
+      ),
       environment,
       triggers: [Date.now().toString()],
     },
@@ -301,16 +300,14 @@ export function buildApp(
   );
 
   // Validate build output
-  return sst
-    .resolve([sitePath, build, result.id])
-    .apply(([sitePath, build, _]) => {
-      const outputPath = path.join(sitePath, build.output);
-      if (!fs.existsSync(outputPath)) {
-        throw new VisibleError(
-          `No build output found at "${path.resolve(outputPath)}".`,
-        );
-      }
+  return resolve([sitePath, build, result.id]).apply(([sitePath, build, _]) => {
+    const outputPath = path.join(sitePath, build.output);
+    if (!fs.existsSync(outputPath)) {
+      throw new VisibleError(
+        `No build output found at "${path.resolve(outputPath)}".`,
+      );
+    }
 
-      return outputPath;
-    });
+    return outputPath;
+  });
 }

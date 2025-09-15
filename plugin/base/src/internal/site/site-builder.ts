@@ -1,6 +1,8 @@
-import * as sst from "sst-plugin";
-import { Semaphore } from "sst-plugin/internal/semaphore";
 import { local } from "@pulumi/command";
+import { Semaphore } from "../semaphore.js";
+import { ComponentOptions } from "../../component.js";
+import * as sst from "../../app.js";
+import { resolve } from "../../util.js";
 
 const limiter = new Semaphore(
   parseInt(process.env.SST_BUILD_CONCURRENCY_SITE || "1"),
@@ -9,10 +11,10 @@ const limiter = new Semaphore(
 export function siteBuilder(
   name: string,
   args: local.CommandArgs,
-  opts?: sst.ComponentOptions,
+  opts?: ComponentOptions,
 ) {
   // Wait for the all args values to be resolved before acquiring the semaphore
-  return sst.resolve([args]).apply(async ([args]) => {
+  return resolve([args]).apply(async ([args]) => {
     await limiter.acquire(name);
 
     let waitOn;

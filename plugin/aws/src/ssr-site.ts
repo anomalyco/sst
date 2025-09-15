@@ -13,8 +13,14 @@ import { Bucket, BucketArgs } from "./bucket.js";
 import { BucketFile, BucketFiles } from "./providers/bucket-files.js";
 import { Cron } from "./cron.js";
 
-import { BaseSiteFileOptions, getContentType } from "./base/base-site.js";
-import { BaseSsrSiteArgs, buildApp } from "./base/base-ssr-site.js";
+import {
+  BaseSiteFileOptions,
+  getContentType,
+} from "sst-plugin/internal/site/base-site";
+import {
+  BaseSsrSiteArgs,
+  buildApp,
+} from "sst-plugin/internal/site/base-ssr-site";
 import { KvKeys } from "./providers/kv-keys.js";
 
 import { URL_UNAVAILABLE } from "./util/url-unvailable.js";
