@@ -202,7 +202,7 @@ export default $config({
             },
           ]);
           args.orderedCacheBehaviors = $output(
-            args.orderedCacheBehaviors
+            args.orderedCacheBehaviors,
           ).apply((cacheBehaviors) => [
             ...(cacheBehaviors || []),
             { pathPattern: "/blog/*.html", ...stripHtmlBehavior },
@@ -245,11 +245,20 @@ return {
     }
 
     // Redirect telemetry.ion.sst.dev to us.i.posthog.com
-    new sst.aws.Router("TelemetryRouter", {
-      domain: "telemetry.ion." + domain,
-      routes: {
-        "/*": "https://us.i.posthog.com",
+    new sst.aws.Router(
+      "TelemetryRouter",
+      {
+        domain: {
+          name: "telemetry.ion." + domain,
+          aliases: ["telemetry2.ion.sst.dev"],
+        },
+        routes: {
+          "/*": "https://us.i.posthog.com",
+        },
       },
-    });
+      {
+        replaceOnChanges: ["*"],
+      },
+    );
   },
 });
