@@ -47,14 +47,14 @@ export interface QueueArgs {
   fifo?: Input<
     | boolean
     | {
-        /**
-         * Content-based deduplication automatically generates a deduplication ID by hashing
-         * the message body to prevent duplicate message delivery.
-         *
-         * @default `false`
-         */
-        contentBasedDeduplication?: Input<boolean>;
-      }
+      /**
+       * Content-based deduplication automatically generates a deduplication ID by hashing
+       * the message body to prevent duplicate message delivery.
+       *
+       * @default `false`
+       */
+      contentBasedDeduplication?: Input<boolean>;
+    }
   >;
   /**
    * The period of time which the delivery of all messages in the queue is delayed.
@@ -121,16 +121,16 @@ export interface QueueArgs {
   dlq?: Input<
     | string
     | {
-        /**
-         * The ARN of the dead-letter queue.
-         */
-        queue: Input<string>;
-        /**
-         * The number of times the main queue will retry the message before sending it to the dead-letter queue.
-         * @default `3`
-         */
-        retry: Input<number>;
-      }
+      /**
+       * The ARN of the dead-letter queue.
+       */
+      queue: Input<string>;
+      /**
+       * The number of times the main queue will retry the message before sending it to the dead-letter queue.
+       * @default `3`
+       */
+      retry: Input<number>;
+    }
   >;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
@@ -504,7 +504,11 @@ export class Queue extends Component implements Link.Linkable {
    */
   public subscribe(
     subscriber: Input<string | FunctionArgs | FunctionArn>,
-    args?: QueueSubscriberArgs,
+    args?: QueueSubscriberArgs & {
+      transform?: QueueSubscriberArgs["transform"] & {
+        function?: Transform<FunctionArgs>;
+      };
+    },
     opts?: ComponentResourceOptions,
   ) {
     if (this.isSubscribed)
@@ -569,7 +573,11 @@ export class Queue extends Component implements Link.Linkable {
   public static subscribe(
     queueArn: Input<string>,
     subscriber: Input<string | FunctionArgs | FunctionArn>,
-    args?: QueueSubscriberArgs,
+    args?: QueueSubscriberArgs & {
+      transform?: QueueSubscriberArgs["transform"] & {
+        function?: Transform<FunctionArgs>;
+      };
+    },
     opts?: ComponentResourceOptions,
   ) {
     return output(queueArn).apply((queueArn) =>
@@ -587,7 +595,11 @@ export class Queue extends Component implements Link.Linkable {
     name: string,
     queueArn: Input<string>,
     subscriber: Input<string | FunctionArgs | FunctionArn>,
-    args: QueueSubscriberArgs = {},
+    args: QueueSubscriberArgs & {
+      transform?: QueueSubscriberArgs["transform"] & {
+        function?: Transform<FunctionArgs>;
+      };
+    } = {},
     opts?: ComponentResourceOptions,
   ) {
     return output(queueArn).apply((queueArn) => {

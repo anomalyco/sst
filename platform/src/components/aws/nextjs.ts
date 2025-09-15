@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import { ComponentResourceOptions, Output, all, output } from "@pulumi/pulumi";
 import { Size } from "../size.js";
-import { Function } from "./function.js";
+import { Function, FunctionArgs } from "./function.js";
 import { VisibleError } from "../error.js";
 import type { Input } from "../input.js";
 import { Queue } from "./queue.js";
@@ -10,6 +10,7 @@ import { dynamodb, getRegionOutput, lambda } from "@pulumi/aws";
 import { isALteB } from "../../util/compare-semver.js";
 import { Plan, SsrSite, SsrSiteArgs } from "./ssr-site.js";
 import { Bucket } from "./bucket.js";
+import { transform, Transform } from "../component.js";
 
 const DEFAULT_OPEN_NEXT_VERSION = "3.9.8";
 
@@ -474,6 +475,20 @@ export interface NextjsArgs extends SsrSiteArgs {
    * ```
    */
   cachePolicy?: SsrSiteArgs["cachePolicy"];
+  /**
+   * [Transform](/docs/components#transform) how this component creates its underlying
+   * resources.
+   */
+  transform?: SsrSiteArgs["transform"] & {
+    /**
+     * Transform the revalidation seeder Function resource used for ISR.
+     */
+    revalidationSeeder?: Transform<FunctionArgs>;
+    /**
+     * Transform the revalidation events subscriber Function resource used for ISR.
+     */
+    revalidationEventsSubscriber?: Transform<FunctionArgs>;
+  };
 }
 
 /**
@@ -650,36 +665,36 @@ export class Nextjs extends SsrSite {
                 },
                 ...(queueArn
                   ? [
-                      {
-                        actions: [
-                          "sqs:SendMessage",
-                          "sqs:GetQueueAttributes",
-                          "sqs:GetQueueUrl",
-                        ],
-                        resources: [queueArn],
-                      },
-                    ]
+                    {
+                      actions: [
+                        "sqs:SendMessage",
+                        "sqs:GetQueueAttributes",
+                        "sqs:GetQueueUrl",
+                      ],
+                      resources: [queueArn],
+                    },
+                  ]
                   : []),
                 ...(tableArn
                   ? [
-                      {
-                        actions: [
-                          "dynamodb:BatchGetItem",
-                          "dynamodb:GetRecords",
-                          "dynamodb:GetShardIterator",
-                          "dynamodb:Query",
-                          "dynamodb:GetItem",
-                          "dynamodb:Scan",
-                          "dynamodb:ConditionCheckItem",
-                          "dynamodb:BatchWriteItem",
-                          "dynamodb:PutItem",
-                          "dynamodb:UpdateItem",
-                          "dynamodb:DeleteItem",
-                          "dynamodb:DescribeTable",
-                        ],
-                        resources: [tableArn, `${tableArn}/*`],
-                      },
-                    ]
+                    {
+                      actions: [
+                        "dynamodb:BatchGetItem",
+                        "dynamodb:GetRecords",
+                        "dynamodb:GetShardIterator",
+                        "dynamodb:Query",
+                        "dynamodb:GetItem",
+                        "dynamodb:Scan",
+                        "dynamodb:ConditionCheckItem",
+                        "dynamodb:BatchWriteItem",
+                        "dynamodb:PutItem",
+                        "dynamodb:UpdateItem",
+                        "dynamodb:DeleteItem",
+                        "dynamodb:DescribeTable",
+                      ],
+                      resources: [tableArn, `${tableArn}/*`],
+                    },
+                  ]
                   : []),
               ],
               injections: [
@@ -867,6 +882,7 @@ export class Nextjs extends SsrSite {
                 eventSourceMapping: (args) => {
                   args.batchSize = 5;
                 },
+                function: args.transform?.revalidationEventsSubscriber,
               },
             },
             { parent },
@@ -918,39 +934,42 @@ export class Nextjs extends SsrSite {
             prerenderManifest?.routes ?? {},
           ).length;
           const seedFn = new Function(
-            `${name}RevalidationSeeder`,
-            {
-              description: `${name} ISR revalidation data seeder`,
-              handler:
-                openNextOutput.additionalProps.initializationFunction.handler,
-              bundle: path.join(
-                outputPath,
-                openNextOutput.additionalProps.initializationFunction.bundle,
-              ),
-              runtime: "nodejs20.x",
-              timeout: "900 seconds",
-              memory: `${Math.min(
-                10240,
-                Math.max(128, Math.ceil(prerenderedRouteCount / 4000) * 128),
-              )} MB`,
-              permissions: [
-                {
-                  actions: [
-                    "dynamodb:BatchWriteItem",
-                    "dynamodb:PutItem",
-                    "dynamodb:DescribeTable",
-                  ],
-                  resources: [revalidationTable!.arn],
+            ...transform(
+              args.transform?.revalidationSeeder,
+              `${name}RevalidationSeeder`,
+              {
+                description: `${name} ISR revalidation data seeder`,
+                handler:
+                  openNextOutput.additionalProps.initializationFunction.handler,
+                bundle: path.join(
+                  outputPath,
+                  openNextOutput.additionalProps.initializationFunction.bundle,
+                ),
+                runtime: "nodejs20.x",
+                timeout: "900 seconds",
+                memory: `${Math.min(
+                  10240,
+                  Math.max(128, Math.ceil(prerenderedRouteCount / 4000) * 128),
+                )} MB`,
+                permissions: [
+                  {
+                    actions: [
+                      "dynamodb:BatchWriteItem",
+                      "dynamodb:PutItem",
+                      "dynamodb:DescribeTable",
+                    ],
+                    resources: [revalidationTable!.arn],
+                  },
+                ],
+                environment: {
+                  CACHE_DYNAMO_TABLE: revalidationTable!.name,
                 },
-              ],
-              environment: {
-                CACHE_DYNAMO_TABLE: revalidationTable!.name,
+                dev: false,
+                _skipMetadata: true,
+                _skipHint: true,
               },
-              dev: false,
-              _skipMetadata: true,
-              _skipHint: true,
-            },
-            { parent },
+              { parent },
+            ),
           );
           new lambda.Invocation(
             `${name}RevalidationSeed`,

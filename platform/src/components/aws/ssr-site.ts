@@ -225,50 +225,50 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
   invalidation?: Input<
     | false
     | {
-        /**
-         * Configure if `sst deploy` should wait for the CloudFront cache invalidation to finish.
-         *
-         * :::tip
-         * For non-prod environments it might make sense to pass in `false`.
-         * :::
-         *
-         * Waiting for this process to finish ensures that new content will be available after the deploy finishes. However, this process can sometimes take more than 5 mins.
-         * @default `false`
-         * @example
-         * ```js
-         * {
-         *   invalidation: {
-         *     wait: true
-         *   }
-         * }
-         * ```
-         */
-        wait?: Input<boolean>;
-        /**
-         * The paths to invalidate.
-         *
-         * You can either pass in an array of glob patterns to invalidate specific files. Or you can use one of these built-in options:
-         * - `all`: All files will be invalidated when any file changes
-         * - `versioned`: Only versioned files will be invalidated when versioned files change
-         *
-         * :::note
-         * Each glob pattern counts as a single invalidation. Whereas, invalidating
-         * `/*` counts as a single invalidation.
-         * :::
-         * @default `"all"`
-         * @example
-         * Invalidate the `index.html` and all files under the `products/` route.
-         * ```js
-         * {
-         *   invalidation: {
-         *     paths: ["/index.html", "/products/*"]
-         *   }
-         * }
-         * ```
-         * This counts as two invalidations.
-         */
-        paths?: Input<"all" | "versioned" | string[]>;
-      }
+      /**
+       * Configure if `sst deploy` should wait for the CloudFront cache invalidation to finish.
+       *
+       * :::tip
+       * For non-prod environments it might make sense to pass in `false`.
+       * :::
+       *
+       * Waiting for this process to finish ensures that new content will be available after the deploy finishes. However, this process can sometimes take more than 5 mins.
+       * @default `false`
+       * @example
+       * ```js
+       * {
+       *   invalidation: {
+       *     wait: true
+       *   }
+       * }
+       * ```
+       */
+      wait?: Input<boolean>;
+      /**
+       * The paths to invalidate.
+       *
+       * You can either pass in an array of glob patterns to invalidate specific files. Or you can use one of these built-in options:
+       * - `all`: All files will be invalidated when any file changes
+       * - `versioned`: Only versioned files will be invalidated when versioned files change
+       *
+       * :::note
+       * Each glob pattern counts as a single invalidation. Whereas, invalidating
+       * `/*` counts as a single invalidation.
+       * :::
+       * @default `"all"`
+       * @example
+       * Invalidate the `index.html` and all files under the `products/` route.
+       * ```js
+       * {
+       *   invalidation: {
+       *     paths: ["/index.html", "/products/*"]
+       *   }
+       * }
+       * ```
+       * This counts as two invalidations.
+       */
+      paths?: Input<"all" | "versioned" | string[]>;
+    }
   >;
   /**
    * Regions that the server function will be deployed to.
@@ -729,6 +729,10 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
      * Transform the server Function resource.
      */
     server?: Transform<FunctionArgs>;
+    /**
+     * Transform the image optimizer Function resource.
+     */
+    imageOptimizer?: Transform<FunctionArgs>;
     /**
      * Transform the CloudFront CDN resource.
      */
@@ -1541,31 +1545,34 @@ async function handler(event) {
       return output(plan.imageOptimizer).apply((imageOptimizer) => {
         if (!imageOptimizer) return;
         return new Function(
-          `${name}ImageOptimizer`,
-          {
-            timeout: "25 seconds",
-            logging: {
-              retention: "3 days",
-            },
-            permissions: [
-              {
-                actions: ["s3:GetObject"],
-                resources: [interpolate`${bucket.arn}/*`],
+          ...transform(
+            args.transform?.imageOptimizer,
+            `${name}ImageOptimizer`,
+            {
+              timeout: "25 seconds",
+              logging: {
+                retention: "3 days",
               },
-            ],
-            ...imageOptimizer.function,
-            url: {
-              authorization: protection.apply((p) =>
-                p.mode === "oac" || p.mode === "oac-with-edge-signing"
-                  ? "iam"
-                  : "none",
-              ),
+              permissions: [
+                {
+                  actions: ["s3:GetObject"],
+                  resources: [interpolate`${bucket.arn}/*`],
+                },
+              ],
+              ...imageOptimizer.function,
+              url: {
+                authorization: protection.apply((p) =>
+                  p.mode === "oac" || p.mode === "oac-with-edge-signing"
+                    ? "iam"
+                    : "none",
+                ),
+              },
+              dev: false,
+              _skipMetadata: true,
+              _skipHint: true,
             },
-            dev: false,
-            _skipMetadata: true,
-            _skipHint: true,
-          },
-          { parent: self },
+            { parent: self },
+          ),
         );
       });
     }
@@ -1580,11 +1587,11 @@ async function handler(event) {
         `  });`,
         ...(streaming
           ? [
-              `  const response = await p;`,
-              `  responseStream.write(JSON.stringify(response));`,
-              `  responseStream.end();`,
-              `  return;`,
-            ]
+            `  const response = await p;`,
+            `  responseStream.write(JSON.stringify(response));`,
+            `  responseStream.end();`,
+            `  return;`,
+          ]
           : [`  return p;`]),
         `}`,
       ].join("\n");
@@ -1621,13 +1628,13 @@ async function handler(event) {
               // versioned files
               ...(copy.versionedSubDir
                 ? [
-                    {
-                      files: toPosix(path.join(copy.versionedSubDir, "**")),
-                      cacheControl:
-                        assets?.versionedFilesCacheHeader ??
-                        `public,max-age=${versionedFilesTTL},immutable`,
-                    },
-                  ]
+                  {
+                    files: toPosix(path.join(copy.versionedSubDir, "**")),
+                    cacheControl:
+                      assets?.versionedFilesCacheHeader ??
+                      `public,max-age=${versionedFilesTTL},immutable`,
+                  },
+                ]
                 : []),
               ...(assets?.fileOptions ?? []),
             ];
