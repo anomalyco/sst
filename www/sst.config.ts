@@ -250,7 +250,6 @@ return {
       {
         domain: {
           name: "telemetry.ion." + domain,
-          aliases: ["telemetry2.ion.sst.dev"],
         },
         routes: {
           "/*": "https://us.i.posthog.com",
