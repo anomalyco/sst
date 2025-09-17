@@ -937,7 +937,28 @@ export class StaticSite extends Component implements Link.Linkable {
 
           // Upload files based on fileOptions
           const filesProcessed: string[] = [];
-          for (const fileOption of fileOptions.reverse()) {
+          const reversedFileOptions = [...fileOptions].reverse();
+          const htmlFileOptions: typeof reversedFileOptions = [];
+          const nonHtmlFileOptions: typeof reversedFileOptions = [];
+
+          for (const option of reversedFileOptions) {
+            const patterns = Array.isArray(option.files)
+              ? option.files
+              : [option.files];
+            const targetsHtml = patterns.some((pattern) =>
+              pattern.includes(".html"),
+            );
+
+            if (targetsHtml) {
+              htmlFileOptions.push(option);
+            } else {
+              nonHtmlFileOptions.push(option);
+            }
+          }
+
+          const uploadOrder = [...nonHtmlFileOptions, ...htmlFileOptions];
+
+          for (const fileOption of uploadOrder) {
             const files = globSync(fileOption.files, {
               cwd: path.resolve(outputPath),
               nodir: true,
