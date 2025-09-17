@@ -204,8 +204,13 @@ func (r *PythonRuntime) CreateBuildAsset(ctx context.Context, input *runtime.Bui
 	if arch != "x86_64" && arch != "arm64" {
 		return nil, fmt.Errorf("invalid architecture %q - must be x86_64 or arm64 - %v", arch, string(input.Properties))
 	}
-	workingDir := path.ResolveRootDir(input.CfgPath)
 
+
+	// Get the workspace directory (where pyproject.toml is located)
+	workingDir, err := r.getWorkspaceDirectory(input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get workspace directory: %v", err)
+	}
 	// 1. Generate non-local package index
 	syncCmd := process.CommandContext(ctx, "uv", "sync", "--all-packages")
 	syncCmd.Dir = workingDir
