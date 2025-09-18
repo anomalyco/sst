@@ -2,7 +2,10 @@ package python
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -84,6 +87,9 @@ type CommandResult struct {
 
 	// Cached indicates if this result was retrieved from cache
 	Cached bool
+
+	// InputFileHashes contains hashes of files that affect this command's output
+	InputFileHashes map[string]string
 }
 
 // UvBuildCommand represents a UV build command
@@ -215,7 +221,7 @@ func (ur *UvCommandRunner) ExecuteBuildCommand(ctx context.Context, cmd *UvBuild
 	// Check if we can use cached results
 	if ur.config.EnableCaching {
 		cacheKey := ur.generateBuildCacheKey(cmd)
-		if cached := ur.getCachedResult(cacheKey); cached != nil && cached.Success {
+		if cached := ur.getCachedResult(cacheKey, cmd.WorkspaceDir); cached != nil && cached.Success {
 			slog.Info("using cached UV build result",
 				"package", cmd.PackageName,
 				"cached", true)
@@ -563,7 +569,7 @@ func (ur *UvCommandRunner) updateExportState(cmd *UvExportCommand) {
 		Success:    true,
 	}
 
-	ur.cacheResult(exportStateKey, result)
+	ur.cacheResult(exportStateKey, result, cmd.WorkspaceDir)
 }
 
 // generateExportStateKey generates a key for tracking export state
@@ -729,7 +735,7 @@ func (ur *UvCommandRunner) updateInstallState(cmd *UvInstallCommand) {
 		Success:    true,
 	}
 
-	ur.cacheResult(installStateKey, result)
+	ur.cacheResult(installStateKey, result, cmd.WorkingDir)
 }
 
 // generateInstallStateKey generates a key for tracking install state
@@ -786,7 +792,7 @@ func (ur *UvCommandRunner) executeCommand(ctx context.Context, command string, a
 
 	// Check cache if enabled
 	if ur.config.EnableCaching {
-		if cached := ur.getCachedResult(cacheKey); cached != nil {
+		if cached := ur.getCachedResult(cacheKey, workingDir); cached != nil {
 			slog.Debug("using cached command result",
 				"command", command,
 				"args", strings.Join(args, " "))
@@ -836,7 +842,7 @@ func (ur *UvCommandRunner) executeCommand(ctx context.Context, command string, a
 
 	// Cache successful results
 	if ur.config.EnableCaching && result.Success {
-		ur.cacheResult(cacheKey, result)
+		ur.cacheResult(cacheKey, result, workingDir)
 	}
 
 	return result, nil
@@ -986,31 +992,40 @@ func (ur *UvCommandRunner) generateBuildCacheKey(cmd *UvBuildCommand) string {
 }
 
 // getCachedResult retrieves a cached command result
-func (ur *UvCommandRunner) getCachedResult(cacheKey string) *CommandResult {
+func (ur *UvCommandRunner) getCachedResult(cacheKey string, workingDir string) *CommandResult {
 	ur.mutex.RLock()
 	defer ur.mutex.RUnlock()
 
 	if cached, exists := ur.commandCache[cacheKey]; exists {
-		if time.Since(cached.ExecutedAt) < ur.cacheTimeout {
+		// Validate cache using content hashes instead of time
+		if ur.isCacheValid(cached, workingDir) {
 			// Create a copy with cached flag set
 			result := *cached
 			result.Cached = true
 			return &result
 		}
-		// Cache expired, remove it
+		// Cache invalid, remove it
 		delete(ur.commandCache, cacheKey)
 	}
 
 	return nil
 }
 
-// cacheResult caches a command result
-func (ur *UvCommandRunner) cacheResult(cacheKey string, result *CommandResult) {
+// cacheResult caches a command result with content hashes
+func (ur *UvCommandRunner) cacheResult(cacheKey string, result *CommandResult, workingDir string) {
 	ur.mutex.Lock()
 	defer ur.mutex.Unlock()
 
-	// Create a copy to cache
+	// Calculate hashes of relevant input files
+	inputHashes, err := ur.calculateInputFileHashes(workingDir)
+	if err != nil {
+		slog.Warn("failed to calculate input file hashes for cache", "error", err)
+		inputHashes = make(map[string]string)
+	}
+
+	// Create a copy to cache with input hashes
 	cached := *result
+	cached.InputFileHashes = inputHashes
 	ur.commandCache[cacheKey] = &cached
 
 	// Cleanup old entries if cache is getting too large
@@ -1019,9 +1034,84 @@ func (ur *UvCommandRunner) cacheResult(cacheKey string, result *CommandResult) {
 	}
 }
 
+// isCacheValid validates cache entry using content hashes instead of time
+func (ur *UvCommandRunner) isCacheValid(cached *CommandResult, workingDir string) bool {
+	if cached.InputFileHashes == nil {
+		return false
+	}
+
+	// Calculate current hashes of input files
+	currentHashes, err := ur.calculateInputFileHashes(workingDir)
+	if err != nil {
+		return false
+	}
+
+	// Compare cached hashes with current hashes
+	for filePath, cachedHash := range cached.InputFileHashes {
+		if currentHash, exists := currentHashes[filePath]; !exists || currentHash != cachedHash {
+			return false
+		}
+	}
+
+	// Check if any new relevant files have been added
+	for filePath := range currentHashes {
+		if _, exists := cached.InputFileHashes[filePath]; !exists {
+			return false
+		}
+	}
+
+	return true
+}
+
+// calculateInputFileHashes calculates hashes of files that affect UV command output
+func (ur *UvCommandRunner) calculateInputFileHashes(workingDir string) (map[string]string, error) {
+	hashes := make(map[string]string)
+
+	// Files that typically affect UV command output
+	relevantFiles := []string{
+		"pyproject.toml",
+		"uv.lock",
+		"requirements.txt",
+		"requirements-dev.txt",
+		"dev-requirements.txt",
+		"poetry.lock",
+		"Pipfile.lock",
+	}
+
+	for _, fileName := range relevantFiles {
+		filePath := filepath.Join(workingDir, fileName)
+		if _, err := os.Stat(filePath); err == nil {
+			hash, err := ur.calculateFileHash(filePath)
+			if err != nil {
+				slog.Warn("failed to hash file", "file", filePath, "error", err)
+				continue
+			}
+			hashes[fileName] = hash
+		}
+	}
+
+	return hashes, nil
+}
+
+// calculateFileHash calculates SHA256 hash of a file
+func (ur *UvCommandRunner) calculateFileHash(filePath string) (string, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	hasher := sha256.New()
+	if _, err := io.Copy(hasher, file); err != nil {
+		return "", err
+	}
+
+	return hex.EncodeToString(hasher.Sum(nil)), nil
+}
+
 // cleanupCache removes old entries from the command cache
 func (ur *UvCommandRunner) cleanupCache() {
-	// Remove entries older than cache timeout
+	// Remove entries older than cache timeout (keep some time-based cleanup for memory management)
 	cutoff := time.Now().Add(-ur.cacheTimeout)
 
 	for key, result := range ur.commandCache {
@@ -1295,7 +1385,7 @@ func (ur *UvCommandRunner) updateSyncState(cmd *UvSyncCommand) {
 		Success:    true,
 	}
 
-	ur.cacheResult(syncStateKey, result)
+	ur.cacheResult(syncStateKey, result, cmd.WorkspaceDir)
 }
 
 // hasFileChangedSince checks if a file has changed since the given time

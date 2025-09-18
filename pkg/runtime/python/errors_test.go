@@ -8,10 +8,10 @@ import (
 )
 
 func TestNewPythonRuntimeError(t *testing.T) {
-	err := NewPythonRuntimeError(ErrorTypeLayoutDetection, ErrorSeverityError, "test error")
+	err := NewPythonRuntimeError(ErrorTypeHandlerNotFound, ErrorSeverityError, "test error")
 
-	if err.Type != ErrorTypeLayoutDetection {
-		t.Errorf("Expected type %s, got %s", ErrorTypeLayoutDetection, err.Type)
+	if err.Type != ErrorTypeHandlerNotFound {
+		t.Errorf("Expected type %s, got %s", ErrorTypeHandlerNotFound, err.Type)
 	}
 
 	if err.Severity != ErrorSeverityError {
@@ -95,15 +95,15 @@ func TestPythonRuntimeError_Unwrap(t *testing.T) {
 	}
 }
 
-func TestNewLayoutDetectionError(t *testing.T) {
-	err := NewLayoutDetectionError("layout detection failed", "handler.py")
+func TestNewConfigurationErrorLegacy(t *testing.T) {
+	err := NewConfigurationError("configuration failed", "pyproject.toml", "missing name", "add project name")
 
-	if err.Type != ErrorTypeLayoutDetection {
-		t.Error("Expected layout detection error type")
+	if err.Type != ErrorTypeConfigurationError {
+		t.Error("Expected configuration error type")
 	}
 
-	if err.Context["handler"] != "handler.py" {
-		t.Error("Expected handler context to be set")
+	if err.Context["configFile"] != "pyproject.toml" {
+		t.Error("Expected configFile context to be set")
 	}
 
 	if len(err.Suggestions) == 0 {
@@ -115,9 +115,10 @@ func TestNewLayoutDetectionError(t *testing.T) {
 	}
 }
 
-func TestNewHandlerNotFoundError(t *testing.T) {
+func TestNewHandlerNotFoundErrorLegacy(t *testing.T) {
 	searchPaths := []string{"/path1", "/path2"}
-	err := NewHandlerNotFoundError("handler.py", searchPaths)
+	suggestions := []string{"Create the handler file"}
+	err := NewHandlerNotFoundError("handler.py", searchPaths, suggestions)
 
 	if err.Type != ErrorTypeHandlerNotFound {
 		t.Error("Expected handler not found error type")
@@ -327,7 +328,7 @@ func TestIsTransientError(t *testing.T) {
 	}
 }
 
-func TestWrapError(t *testing.T) {
+func TestWrapErrorLegacy(t *testing.T) {
 	tests := []struct {
 		name          string
 		err           error

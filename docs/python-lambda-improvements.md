@@ -1,25 +1,25 @@
 # Python Lambda Improvements
 
-This document describes the major improvements made to SST's Python Lambda support, including flexible project layouts, intelligent caching, and performance optimizations.
+This document describes the major improvements made to SST's Python Lambda support, including flexible project structures, intelligent caching, and performance optimizations.
 
 ## Overview
 
 The Python Lambda improvements introduce several key enhancements:
 
-1. **Flexible Project Layouts** - Support for various Python project structures
+1. **Flexible Project Structures** - Support for any Python project organization
 2. **Intelligent Build Caching** - Smart change detection and incremental builds
 3. **Performance Optimizations** - Faster builds and deployments
 4. **Enhanced Error Handling** - Better error messages and fallback mechanisms
 5. **Progress Reporting** - Real-time build progress and feedback
 
-## Flexible Project Layouts
+## Flexible Project Structures
 
-### Supported Layout Types
+### Supported Project Organizations
 
-SST now supports multiple Python project layouts without requiring specific directory structures:
+SST now supports any Python project structure without requiring specific directory layouts:
 
-#### 1. Workspace Layout (Recommended)
-Modern Python projects using `pyproject.toml` with proper package structure:
+#### 1. Modern Python Project (Recommended)
+Projects using `pyproject.toml` with proper package structure:
 
 ```
 my-project/
@@ -40,8 +40,8 @@ new Function("MyFunction", {
 })
 ```
 
-#### 2. Flat Layout
-Simple projects with handlers at the root level:
+#### 2. Simple Structure
+Projects with handlers at the root level:
 
 ```
 my-function/
@@ -58,8 +58,8 @@ new Function("MyFunction", {
 })
 ```
 
-#### 3. Nested Layout
-Complex projects with deeply nested handler structures:
+#### 3. Complex Application
+Projects with deeply nested handler structures:
 
 ```
 my-app/
@@ -80,7 +80,7 @@ new Function("ApiFunction", {
 })
 ```
 
-#### 4. Monorepo Layout
+#### 4. Monorepo Structure
 Multiple services in a single repository:
 
 ```
@@ -108,13 +108,9 @@ new Function("AuthFunction", {
 })
 ```
 
-### Migration from Restrictive Layouts
+### Backward Compatibility
 
-If you're using the old restrictive layout (`src/{package}/handler.py`), you can now:
-
-1. **Keep your existing structure** - It will continue to work
-2. **Flatten your structure** - Move handlers to more convenient locations
-3. **Use modern Python packaging** - Adopt `pyproject.toml` and UV
+All existing project structures continue to work without any changes. The system automatically detects your project configuration and builds accordingly.
 
 ## Intelligent Build Caching
 

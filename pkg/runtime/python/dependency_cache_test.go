@@ -16,7 +16,6 @@ func TestNewDependencyCache(t *testing.T) {
 
 	buildCache, err := NewBuildCache(BuildCacheConfig{
 		CacheDir:          filepath.Join(tempDir, "build"),
-		MaxAge:            time.Hour,
 		MaxSize:           100,
 		EnablePersistence: false,
 	})
@@ -80,7 +79,6 @@ func TestDependencyCache_CacheDependencies(t *testing.T) {
 	// Create build cache
 	buildCache, err := NewBuildCache(BuildCacheConfig{
 		CacheDir:          filepath.Join(tempDir, "build"),
-		MaxAge:            time.Hour,
 		MaxSize:           100,
 		EnablePersistence: false,
 	})
@@ -165,7 +163,6 @@ func TestDependencyCache_GetCachedDependencies(t *testing.T) {
 	// Create build cache
 	buildCache, err := NewBuildCache(BuildCacheConfig{
 		CacheDir:          filepath.Join(tempDir, "build"),
-		MaxAge:            time.Hour,
 		MaxSize:           100,
 		EnablePersistence: false,
 	})
@@ -257,7 +254,6 @@ func TestDependencyCache_GetCachedDependencies_NotFound(t *testing.T) {
 	// Create build cache
 	buildCache, err := NewBuildCache(BuildCacheConfig{
 		CacheDir:          filepath.Join(tempDir, "build"),
-		MaxAge:            time.Hour,
 		MaxSize:           100,
 		EnablePersistence: false,
 	})
@@ -301,7 +297,6 @@ func TestDependencyCache_ClearCache(t *testing.T) {
 	// Create build cache
 	buildCache, err := NewBuildCache(BuildCacheConfig{
 		CacheDir:          filepath.Join(tempDir, "build"),
-		MaxAge:            time.Hour,
 		MaxSize:           100,
 		EnablePersistence: false,
 	})
@@ -374,7 +369,6 @@ func TestDependencyCache_GetStats(t *testing.T) {
 	// Create build cache
 	buildCache, err := NewBuildCache(BuildCacheConfig{
 		CacheDir:          filepath.Join(tempDir, "build"),
-		MaxAge:            time.Hour,
 		MaxSize:           100,
 		EnablePersistence: false,
 	})

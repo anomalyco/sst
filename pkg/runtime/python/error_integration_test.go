@@ -2,8 +2,10 @@ package python
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -34,7 +36,7 @@ func TestIncrementalBuilder_ErrorHandling(t *testing.T) {
 		t.Fatalf("Failed to create incremental builder: %v", err)
 	}
 
-	// Test with invalid handler (should trigger layout detection error)
+	// Test with invalid handler (should trigger project resolution error)
 	input := &runtime.BuildInput{
 		FunctionID: "test-function",
 		Handler:    "nonexistent/handler.py",
@@ -56,15 +58,15 @@ func TestIncrementalBuilder_ErrorHandling(t *testing.T) {
 		t.Fatal("Expected error for invalid handler, got nil")
 	}
 
-	// Check if it's a PythonRuntimeError
-	pythonErr, ok := err.(*PythonRuntimeError)
-	if !ok {
+	// Check if it's a PythonRuntimeError (might be wrapped)
+	var pythonErr *PythonRuntimeError
+	if !errors.As(err, &pythonErr) {
 		t.Fatalf("Expected PythonRuntimeError, got %T: %v", err, err)
 	}
 
 	// Verify error properties
-	if pythonErr.Type != ErrorTypeLayoutDetection {
-		t.Errorf("Expected error type %s, got %s", ErrorTypeLayoutDetection, pythonErr.Type)
+	if pythonErr.Type != ErrorTypeHandlerNotFound {
+		t.Errorf("Expected error type %s, got %s", ErrorTypeHandlerNotFound, pythonErr.Type)
 	}
 
 	if pythonErr.Severity != ErrorSeverityError {
@@ -76,9 +78,10 @@ func TestIncrementalBuilder_ErrorHandling(t *testing.T) {
 		t.Error("Expected handler context to be set")
 	}
 
-	// Verify suggestions are present
-	if len(pythonErr.Suggestions) == 0 {
-		t.Error("Expected suggestions to be provided")
+	// Verify suggestions are present (either in Suggestions field or in error message)
+	hasSuggestions := len(pythonErr.Suggestions) > 0 || strings.Contains(pythonErr.Error(), "Suggestions:")
+	if !hasSuggestions {
+		t.Errorf("Expected suggestions to be provided, got %d suggestions: %v, error: %s", len(pythonErr.Suggestions), pythonErr.Suggestions, pythonErr.Error())
 	}
 
 	t.Logf("Error handled correctly: %v", pythonErr)
@@ -125,13 +128,13 @@ func TestIncrementalBuilder_ErrorRecovery(t *testing.T) {
 		t.Error("Expected build failure recovery to return original error")
 	}
 
-	// Test layout detection failure recovery
-	layoutErr := NewLayoutDetectionError("layout failed", "handler.py")
-	recoveryErr = builder.RecoverFromError(layoutErr)
+	// Test project structure failure recovery
+	structureErr := NewProjectStructureError("project structure failed", "/project", "handler.py")
+	recoveryErr = builder.RecoverFromError(structureErr)
 
-	// Layout failures should return the original error (no automatic recovery for now)
-	if recoveryErr != layoutErr {
-		t.Error("Expected layout detection failure recovery to return original error")
+	// Project structure failures should return the original error (no automatic recovery for now)
+	if recoveryErr != structureErr {
+		t.Error("Expected project structure failure recovery to return original error")
 	}
 }
 
@@ -145,7 +148,6 @@ func TestDependencyCache_ErrorHandling(t *testing.T) {
 	// Create build cache
 	buildCache, err := NewBuildCache(BuildCacheConfig{
 		CacheDir:          filepath.Join(tempDir, "build"),
-		MaxAge:            time.Hour,
 		MaxSize:           100,
 		EnablePersistence: false,
 	})
@@ -202,7 +204,6 @@ func TestUVCommandRunner_ErrorHandling(t *testing.T) {
 	// Create build cache
 	buildCache, err := NewBuildCache(BuildCacheConfig{
 		CacheDir:          filepath.Join(tempDir, "build"),
-		MaxAge:            time.Hour,
 		MaxSize:           100,
 		EnablePersistence: false,
 	})

@@ -11,10 +11,10 @@ import (
 type ErrorType string
 
 const (
-	// Layout detection errors
-	ErrorTypeLayoutDetection  ErrorType = "layout_detection"
-	ErrorTypeHandlerNotFound  ErrorType = "handler_not_found"
-	ErrorTypeWorkspaceInvalid ErrorType = "workspace_invalid"
+	// File resolution errors
+	ErrorTypeHandlerNotFound    ErrorType = "handler_not_found"
+	ErrorTypeConfigurationError ErrorType = "configuration_error"
+	ErrorTypeProjectStructure   ErrorType = "project_structure"
 
 	// Cache errors
 	ErrorTypeCacheCorrupted  ErrorType = "cache_corrupted"
@@ -186,31 +186,101 @@ func (e *PythonRuntimeError) WithRetry(retryAfter time.Duration) *PythonRuntimeE
 
 // Common error constructors
 
-// NewLayoutDetectionError creates an error for layout detection failures
-func NewLayoutDetectionError(message string, handler string) *PythonRuntimeError {
-	return NewPythonRuntimeError(ErrorTypeLayoutDetection, ErrorSeverityError, message).
-		WithContext("handler", handler).
-		WithSuggestion("Check if the handler path is correct and the Python file exists").
-		WithSuggestion("Ensure your project has a valid pyproject.toml file").
-		WithRecoveryAction(RecoveryAction{
-			Name:        "check_file",
-			Description: "Verify the handler file exists and is accessible",
-			Automatic:   false,
-		})
+// NewConfigurationError creates an error for pyproject.toml and configuration issues
+func NewConfigurationError(message string, configFile string, issue string, fix string) *PythonRuntimeError {
+	err := NewPythonRuntimeError(ErrorTypeConfigurationError, ErrorSeverityError, message).
+		WithContext("configFile", configFile).
+		WithContext("issue", issue).
+		WithContext("fix", fix)
+
+	// Add specific suggestions based on the issue type
+	switch {
+	case strings.Contains(strings.ToLower(issue), "missing"):
+		err.WithSuggestion("Create a pyproject.toml file in your project root").
+			WithSuggestion("Use 'uv init' to create a basic project structure").
+			WithRecoveryAction(RecoveryAction{
+				Name:        "create_pyproject",
+				Description: "Create a basic pyproject.toml file",
+				Automatic:   false,
+				Command:     "uv init",
+			})
+	case strings.Contains(strings.ToLower(issue), "invalid") || strings.Contains(strings.ToLower(issue), "parse"):
+		err.WithSuggestion("Check the TOML syntax in your pyproject.toml file").
+			WithSuggestion("Validate your pyproject.toml using an online TOML validator").
+			WithRecoveryAction(RecoveryAction{
+				Name:        "validate_toml",
+				Description: "Validate TOML syntax",
+				Automatic:   false,
+			})
+	case strings.Contains(strings.ToLower(issue), "name"):
+		err.WithSuggestion("Add a project name to your pyproject.toml: [project] name = \"your-project-name\"").
+			WithSuggestion("Ensure the project name follows Python package naming conventions")
+	case strings.Contains(strings.ToLower(issue), "dependencies"):
+		err.WithSuggestion("Check the dependencies section in your pyproject.toml").
+			WithSuggestion("Use 'uv add <package>' to add dependencies correctly")
+	}
+
+	return err
 }
 
-// NewHandlerNotFoundError creates an error for missing handlers
-func NewHandlerNotFoundError(handler string, searchPaths []string) *PythonRuntimeError {
-	return NewPythonRuntimeError(ErrorTypeHandlerNotFound, ErrorSeverityError,
-		fmt.Sprintf("Handler '%s' not found", handler)).
+// NewHandlerNotFoundError creates an error for missing handlers with comprehensive guidance
+func NewHandlerNotFoundError(handler string, searchPaths []string, suggestions []string) *PythonRuntimeError {
+	message := fmt.Sprintf("Python handler '%s' not found", handler)
+
+	err := NewPythonRuntimeError(ErrorTypeHandlerNotFound, ErrorSeverityError, message).
 		WithContext("handler", handler).
-		WithContext("searchPaths", searchPaths).
-		WithSuggestion("Check if the handler file exists in the expected location").
-		WithSuggestion("Verify the handler path is relative to your project root").
+		WithContext("searchPaths", searchPaths)
+
+	// Add search paths to the error message for clarity
+	if len(searchPaths) > 0 {
+		err.WithContext("searchedLocations", fmt.Sprintf("Searched in: %s", strings.Join(searchPaths, ", ")))
+	}
+
+	// Add specific suggestions based on common patterns
+	if len(suggestions) > 0 {
+		for _, suggestion := range suggestions {
+			err.WithSuggestion(suggestion)
+		}
+	} else {
+		// Improved default suggestions with more actionable guidance
+		err.WithSuggestion(fmt.Sprintf("Create the handler file: %s", handler)).
+			WithSuggestion("Ensure the handler path matches your SST configuration").
+			WithSuggestion("Verify the file has a .py extension and contains the expected function").
+			WithSuggestion("Check that the file is in your project root or a subdirectory")
+	}
+
+	// Add recovery actions with better descriptions
+	err.WithRecoveryAction(RecoveryAction{
+		Name:        "create_handler",
+		Description: fmt.Sprintf("Create the missing handler file: %s", handler),
+		Automatic:   false,
+	}).WithRecoveryAction(RecoveryAction{
+		Name:        "list_python_files",
+		Description: "List all Python files in the project to find existing handlers",
+		Automatic:   false,
+		Command:     "find . -name '*.py' -type f | head -20",
+	}).WithRecoveryAction(RecoveryAction{
+		Name:        "check_sst_config",
+		Description: "Verify your SST configuration matches your file structure",
+		Automatic:   false,
+	})
+
+	return err
+}
+
+// NewProjectStructureError creates an error for project structure issues
+func NewProjectStructureError(message string, projectRoot string, handlerPath string) *PythonRuntimeError {
+	return NewPythonRuntimeError(ErrorTypeProjectStructure, ErrorSeverityError, message).
+		WithContext("projectRoot", projectRoot).
+		WithContext("handlerPath", handlerPath).
+		WithSuggestion("Ensure your Python files are organized in a standard project structure").
+		WithSuggestion("Consider using a src/ directory for your Python modules").
+		WithSuggestion("Make sure your handler file is accessible from the project root").
 		WithRecoveryAction(RecoveryAction{
-			Name:        "create_handler",
-			Description: "Create the missing handler file",
+			Name:        "analyze_structure",
+			Description: "Analyze current project structure",
 			Automatic:   false,
+			Command:     "find . -name '*.py' -type f | head -10",
 		})
 }
 
@@ -246,7 +316,7 @@ func NewBuildFailedError(packageName string, cause error) *PythonRuntimeError {
 			err.WithSuggestion("Check available disk space")
 		}
 		if strings.Contains(causeStr, "network") {
-			err.WithRetry(30 * time.Second).
+			err.WithRetry(NetworkRetryDelay).
 				WithSuggestion("Check network connectivity and try again")
 		}
 	}
@@ -280,7 +350,7 @@ func NewDependencyFailedError(dependency string, cause error) *PythonRuntimeErro
 		WithContext("dependency", dependency).
 		WithSuggestion("Check if the dependency name and version are correct").
 		WithSuggestion("Verify network connectivity to package repositories").
-		WithRetry(60 * time.Second)
+		WithRetry(DependencyRetryDelay)
 }
 
 // NewBuildOutputMissingError creates an error for missing build outputs
@@ -452,9 +522,9 @@ type ErrorRecoveryManager struct {
 // NewErrorRecoveryManager creates a new error recovery manager
 func NewErrorRecoveryManager() *ErrorRecoveryManager {
 	return &ErrorRecoveryManager{
-		maxRetries: 3,
-		baseDelay:  1 * time.Second,
-		maxDelay:   30 * time.Second,
+		maxRetries: DefaultMaxRetries,
+		baseDelay:  DefaultRetryDelay,
+		maxDelay:   DefaultMaxRetryDelay,
 	}
 }
 
@@ -571,9 +641,15 @@ func WrapError(err error, context string) *PythonRuntimeError {
 			errorType = ErrorTypeBuildOutputMissing
 		} else if strings.Contains(errStr, "module") {
 			errorType = ErrorTypeModuleMissing
+		} else if strings.Contains(errStr, "handler") || strings.Contains(errStr, ".py") {
+			errorType = ErrorTypeHandlerNotFound
 		} else {
 			errorType = ErrorTypeHandlerNotFound
 		}
+	case strings.Contains(errStr, "pyproject.toml") || strings.Contains(errStr, "configuration") || strings.Contains(errStr, "toml"):
+		errorType = ErrorTypeConfigurationError
+	case strings.Contains(errStr, "project structure") || strings.Contains(errStr, "workspace"):
+		errorType = ErrorTypeProjectStructure
 	case strings.Contains(errStr, "permission"):
 		errorType = ErrorTypeCachePermission
 	case strings.Contains(errStr, "network") || strings.Contains(errStr, "connection"):
@@ -602,8 +678,145 @@ func WrapError(err error, context string) *PythonRuntimeError {
 
 	// Add retry capability for transient errors
 	if IsTransientError(err) {
-		pythonErr.WithRetry(5 * time.Second)
+		pythonErr.WithRetry(TransientErrorRetryDelay)
 	}
 
 	return pythonErr
+}
+
+// GenerateHandlerSuggestions creates helpful suggestions for handler not found errors
+func GenerateHandlerSuggestions(handler string, projectRoot string, searchPaths []string) []string {
+	var suggestions []string
+
+	// Extract handler components
+	handlerDir := filepath.Dir(handler)
+	handlerBase := strings.TrimSuffix(filepath.Base(handler), filepath.Ext(handler))
+
+	// Primary suggestion: create the exact file specified
+	suggestions = append(suggestions, fmt.Sprintf("Create the handler file: %s", handler))
+
+	// If handler doesn't have .py extension, suggest adding it
+	if !strings.HasSuffix(handler, ".py") {
+		suggestions = append(suggestions, fmt.Sprintf("Add .py extension: %s.py", handler))
+	}
+
+	// Suggest checking common Python project directories
+	commonDirs := []string{"src", "app", "functions", "lambda", "handlers"}
+	for _, dir := range commonDirs {
+		suggestedPath := filepath.Join(dir, handler)
+		if !strings.HasSuffix(suggestedPath, ".py") {
+			suggestedPath += ".py"
+		}
+		suggestions = append(suggestions, fmt.Sprintf("Check if file exists in %s/: %s", dir, suggestedPath))
+	}
+
+	// If handler has directory structure, suggest alternatives
+	if handlerDir != "." && handlerDir != "" {
+		flatHandler := handlerBase + ".py"
+		suggestions = append(suggestions, fmt.Sprintf("Try without subdirectory: %s", flatHandler))
+
+		// Suggest creating the directory structure
+		suggestions = append(suggestions, fmt.Sprintf("Create directory structure: mkdir -p %s", handlerDir))
+	}
+
+	// Add general guidance
+	suggestions = append(suggestions, "Ensure your handler path in sst.config.ts matches your actual file location")
+	suggestions = append(suggestions, "Verify the Python file contains the expected function (e.g., 'def handler(event, context):')")
+
+	return suggestions
+}
+
+// GenerateConfigurationSuggestions creates helpful suggestions for configuration errors
+func GenerateConfigurationSuggestions(configFile string, issue string) []string {
+	var suggestions []string
+
+	issueType := strings.ToLower(issue)
+
+	switch {
+	case strings.Contains(issueType, "dependencies"):
+		suggestions = append(suggestions, "Fix dependencies format: dependencies = [\"package>=1.0.0\"]")
+		suggestions = append(suggestions, "Use 'uv add package-name' to add dependencies correctly")
+		suggestions = append(suggestions, "Check for typos in package names and version specifiers")
+
+	case strings.Contains(issueType, "name"):
+		suggestions = append(suggestions, "Add project name: [project] name = \"your-project-name\"")
+		suggestions = append(suggestions, "Use lowercase with hyphens for project names (e.g., 'my-project')")
+		suggestions = append(suggestions, "Avoid spaces and special characters in project names")
+
+	case strings.Contains(issueType, "missing") || strings.Contains(issueType, "not found"):
+		suggestions = append(suggestions, "Create a pyproject.toml file in your project root directory")
+		suggestions = append(suggestions, "Run 'uv init' to create a basic Python project structure")
+		suggestions = append(suggestions, "Copy pyproject.toml from an SST Python example: https://sst.dev/examples")
+
+	case strings.Contains(issueType, "invalid") || strings.Contains(issueType, "parse"):
+		suggestions = append(suggestions, "Check TOML syntax - ensure proper quotes and brackets")
+		suggestions = append(suggestions, "Validate your TOML at https://www.toml-lint.com/")
+		suggestions = append(suggestions, "Look for missing quotes around string values")
+		suggestions = append(suggestions, "Check for trailing commas and proper indentation")
+
+	default:
+		suggestions = append(suggestions, "Review the pyproject.toml specification: https://peps.python.org/pep-0621/")
+		suggestions = append(suggestions, "Compare with working SST Python examples")
+		suggestions = append(suggestions, "Ensure all required sections are present: [project] and [build-system]")
+	}
+
+	return suggestions
+}
+
+// IsLegacyError checks if an error is from the old layout detection system (deprecated)
+func IsLegacyError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	errStr := strings.ToLower(err.Error())
+	legacyPatterns := []string{
+		"workspace invalid",
+		"project resolution failed",
+		"handler not found",
+	}
+
+	for _, pattern := range legacyPatterns {
+		if strings.Contains(errStr, pattern) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// ConvertLegacyErrorToModernError converts old layout-specific errors to modern error types
+func ConvertLegacyErrorToModernError(err error, handler string, projectRoot string) *PythonRuntimeError {
+	if err == nil {
+		return nil
+	}
+
+	errStr := strings.ToLower(err.Error())
+
+	switch {
+	case strings.Contains(errStr, "handler") && strings.Contains(errStr, "not found"):
+		searchPaths := []string{projectRoot, filepath.Join(projectRoot, "src"), filepath.Join(projectRoot, "app")}
+		suggestions := GenerateHandlerSuggestions(handler, projectRoot, searchPaths)
+		return NewHandlerNotFoundError(handler, searchPaths, suggestions)
+
+	case strings.Contains(errStr, "pyproject.toml") || strings.Contains(errStr, "configuration"):
+		configFile := filepath.Join(projectRoot, "pyproject.toml")
+		issue := "invalid configuration"
+		if strings.Contains(errStr, "invalid") {
+			issue = "invalid configuration"
+		} else if strings.Contains(errStr, "missing") {
+			issue = "missing configuration"
+		} else if strings.Contains(errStr, "parse") {
+			issue = "parse error"
+		}
+		fix := "Check and fix your pyproject.toml file"
+		return NewConfigurationError(err.Error(), configFile, issue, fix)
+
+	case strings.Contains(errStr, "workspace") || strings.Contains(errStr, "project structure"):
+		return NewProjectStructureError(err.Error(), projectRoot, handler)
+
+	default:
+		// Wrap as a generic error with better context
+		return WrapError(err, "project resolution")
+	}
 }

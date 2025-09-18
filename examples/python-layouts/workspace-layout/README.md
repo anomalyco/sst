@@ -1,4 +1,4 @@
-# Workspace Layout Example
+# Modern Structure Example
 
 This example demonstrates the **recommended** Python project structure using modern Python packaging with `pyproject.toml` and UV.
 
@@ -102,7 +102,7 @@ export default $config({
     };
   },
   async run() {
-    // API function with workspace layout
+    // API function with modern structure
     const api = new sst.aws.Function("ApiFunction", {
       handler: "src/mypackage/handler.api_handler",
       runtime: "python3.11",
@@ -130,7 +130,7 @@ export default $config({
 
 ```python
 """
-Lambda handlers for the workspace layout example.
+Lambda handlers for the modern structure example.
 """
 import json
 import logging
@@ -291,7 +291,7 @@ def process_order_created(message: Dict[str, Any]) -> Dict[str, Any]:
 
 ```python
 """
-Shared utilities for the workspace example.
+Shared utilities for the modern structure example.
 """
 import json
 from datetime import datetime
@@ -383,7 +383,7 @@ def safe_get(data: Dict[str, Any], key: str, default: Any = None) -> Any:
 
 ```python
 """
-Workspace layout example package.
+Modern structure example package.
 """
 
 __version__ = "0.1.0"
@@ -408,7 +408,7 @@ __all__ = [
 
 ```python
 """
-Tests for the workspace layout example handlers.
+Tests for the modern structure example handlers.
 """
 import json
 import pytest
@@ -611,7 +611,7 @@ sst deploy --stage production
 
 ## Performance
 
-This workspace layout provides optimal performance:
+This modern structure provides optimal performance:
 
 - **First build**: ~45 seconds
 - **Cached build**: ~2 seconds  
@@ -629,9 +629,9 @@ This workspace layout provides optimal performance:
 
 ## Migration
 
-To migrate from other layouts to workspace layout:
+To migrate from other structures to modern structure:
 
-### From Flat Layout
+### From Simple Structure
 
 ```bash
 # 1. Create package structure
@@ -684,6 +684,6 @@ uv run python -c "from src.mypackage import handler; print('OK')"
 
 ## Next Steps
 
-- Explore [nested layout](../nested-layout/) for complex applications
-- Check [monorepo layout](../monorepo-layout/) for microservices
+- Explore [complex structure](../nested-layout/) for large applications
+- Check [multi-service structure](../monorepo-layout/) for microservices
 - See [migration example](../migration-example/) for upgrade paths

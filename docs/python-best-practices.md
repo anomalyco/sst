@@ -1,6 +1,6 @@
 # Python Lambda Best Practices
 
-This document outlines best practices for developing Python Lambda functions with SST, based on comprehensive testing of the deployment system.
+This document outlines best practices for developing Python Lambda functions with SST. The simplified runtime system works with any project structure while providing intelligent caching and performance optimizations.
 
 ## Module Imports
 
@@ -104,11 +104,11 @@ def bad_load_template():
         return f.read()
 ```
 
-## Project Structure Requirements
+## Project Structure Best Practices
 
 ### Package Structure
 
-Ensure your project maintains proper Python package structure with `__init__.py` files:
+SST works with any project structure, but maintaining proper Python package structure with `__init__.py` files ensures reliable imports:
 
 ```
 project/
@@ -134,19 +134,182 @@ project/
 └── sst.config.ts
 ```
 
-### File Inclusion
+### File Inclusion and Exclusion
 
-SST automatically includes:
-- ✅ All Python files (`.py`)
-- ✅ All directories containing Python files
-- ✅ Common asset directories (`data`, `config`, `templates`, `static`, `assets`)
-- ✅ Package structure files (`__init__.py`)
+SST uses a smart two-layer system to determine which files are included in your Lambda deployment package:
 
-SST automatically excludes:
-- ❌ Build artifacts (`.pyc`, `__pycache__`, `.pytest_cache`)
-- ❌ Version control (`.git`, `.gitignore`)
-- ❌ Development tools (`.vscode`, `.idea`)
-- ❌ Virtual environments (`.venv`, `venv`)
+### Layer 1: Custom Configuration (pyproject.toml)
+
+You can explicitly control file inclusion/exclusion by adding a `[tool.sst]` section to your `pyproject.toml`:
+
+```toml
+[tool.sst]
+# Files to explicitly include (overrides standard exclusions)
+include = [
+    "config/*.json",           # Include all JSON config files
+    "templates/*.html",        # Include HTML templates
+    "static/critical.css",     # Include specific critical CSS
+    ".env.production",         # Include production environment file
+    "data/**/*.csv"            # Include all CSV files in data subdirectories
+]
+
+# Files to explicitly exclude (in addition to standard exclusions)
+exclude = [
+    "tests/**",               # Exclude all test files
+    "docs/**",                # Exclude documentation
+    "*.log",                  # Exclude log files
+    "temp/**",                # Exclude temporary files
+    "scripts/dev-*",          # Exclude development scripts
+    "*.backup",               # Exclude backup files
+    "large-datasets/**"       # Exclude large data files
+]
+```
+
+**Important**: Include patterns take precedence over exclude patterns. If a file matches both, it will be included.
+
+### Layer 2: Standard Python Conventions (Automatic)
+
+When no custom configuration is found, SST applies sensible defaults:
+
+**✅ Automatically Included:**
+- All Python files (`.py`)
+- All directories containing Python files
+- Package structure files (`__init__.py`)
+- Static files and assets in common directories (`data/`, `config/`, `templates/`, `static/`, `assets/`)
+- Essential configuration files (`requirements.txt`)
+
+**❌ Automatically Excluded:**
+- **Build artifacts**: `__pycache__/`, `*.pyc`, `*.pyo`, `*.pyd`, `*.egg-info/`
+- **Version control**: `.git/`, `.gitignore`, `.gitattributes`
+- **Virtual environments**: `.venv/`, `venv/`, `env/`
+- **IDE files**: `.vscode/`, `.idea/`, `*.swp`, `.DS_Store`
+- **Test artifacts**: `.pytest_cache/`, `.coverage`, `htmlcov/`
+- **Documentation**: `README.md`, `CHANGELOG.md`, `LICENSE`
+- **Development config**: `pyproject.toml`, `setup.py`, `tox.ini`, `Makefile`
+- **Development dependencies**: `requirements-dev.txt`, `.pre-commit-config.yaml`
+- **Node.js artifacts**: `node_modules/`, `package-lock.json` (for mixed projects)
+- **Temporary files**: `*.log`, `*.tmp`, `tmp/`, `temp/`
+- **SST cache**: `.sst/`
+
+### Pattern Matching
+
+The system supports glob-style patterns:
+
+- `*` matches any characters within a single path segment
+- `**` matches any characters across multiple path segments (recursive)
+- `?` matches any single character
+- `[abc]` matches any character in the brackets
+- Directory patterns ending with `/` match directories and their contents
+
+**Pattern Examples:**
+
+```toml
+[tool.sst]
+include = [
+    "*.py",                   # All Python files in root
+    "config/**/*.json",       # All JSON files in config subdirectories
+    "static/css/main.css",    # Specific file
+    "templates/",             # Entire templates directory
+    "data/[0-9]*.csv",       # CSV files starting with digits
+    "assets/**/*.{png,jpg}"   # Image files in assets (requires shell expansion)
+]
+
+exclude = [
+    "test_*.py",              # Test files starting with test_
+    "**/*_test.py",           # Test files ending with _test.py anywhere
+    "temp/**",                # Everything in temp directory
+    "*.log",                  # All log files
+    "cache/[0-9][0-9][0-9][0-9]/**"  # Cache directories with 4-digit names
+]
+```
+
+### Common Use Cases
+
+**Including Configuration Files:**
+```toml
+[tool.sst]
+include = [
+    "config/production.json",
+    "config/staging.json",
+    ".env.production",
+    "data/lookup-tables/*.csv"
+]
+```
+
+**Excluding Large Development Files:**
+```toml
+[tool.sst]
+exclude = [
+    "datasets/**",            # Large training datasets
+    "notebooks/**",           # Jupyter notebooks
+    "experiments/**",         # ML experiment files
+    "*.pkl",                  # Pickle files (often large)
+    "*.model"                 # Model files
+]
+```
+
+**Mixed Project (Python + Frontend):**
+```toml
+[tool.sst]
+include = [
+    "static/dist/**",         # Built frontend assets
+    "templates/**"            # Server-side templates
+]
+exclude = [
+    "frontend/src/**",        # Frontend source (not needed at runtime)
+    "frontend/node_modules/**", # Frontend dependencies
+    "*.scss",                 # Sass source files
+    "webpack.config.js"       # Build configuration
+]
+```
+
+### Troubleshooting File Inclusion
+
+**Check what files are being included:**
+```bash
+# Enable debug logging to see file filtering
+export SST_DEBUG=python:filter
+sst deploy
+```
+
+**Common issues:**
+
+1. **Required file is excluded:**
+   ```toml
+   [tool.sst]
+   include = ["path/to/required/file.json"]
+   ```
+
+2. **Package too large:**
+   ```toml
+   [tool.sst]
+   exclude = [
+       "large-data/**",
+       "*.pkl",
+       "datasets/**"
+   ]
+   ```
+
+3. **Missing static assets:**
+   ```toml
+   [tool.sst]
+   include = [
+       "static/**",
+       "templates/**",
+       "assets/**"
+   ]
+   ```
+
+### Migration from Previous Versions
+
+If you're upgrading from an older version of SST, your projects will continue to work without changes. The new system:
+
+- ✅ Maintains backward compatibility
+- ✅ Uses the same sensible defaults
+- ✅ Provides better control when needed
+- ✅ Eliminates brittle layout detection logic
+
+You only need to add `[tool.sst]` configuration if you want to customize the default behavior.
 
 ## Real-World Examples
 

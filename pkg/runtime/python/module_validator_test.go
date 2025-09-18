@@ -47,7 +47,7 @@ func TestModuleValidator_ValidateModulePlacement(t *testing.T) {
 				return "", targetDir, moduleName, nil
 			},
 			expectError: true,
-			errorType:   "target directory does not exist",
+			errorType:   "directory not found",
 		},
 		{
 			name: "target path is file not directory",
@@ -63,7 +63,7 @@ func TestModuleValidator_ValidateModulePlacement(t *testing.T) {
 				return "", targetDir, moduleName, nil
 			},
 			expectError: true,
-			errorType:   "target path is not a directory",
+			errorType:   "to be a directory",
 		},
 		{
 			name: "empty target directory",
@@ -79,7 +79,7 @@ func TestModuleValidator_ValidateModulePlacement(t *testing.T) {
 				return "", targetDir, moduleName, nil
 			},
 			expectError: true,
-			errorType:   "target directory is empty",
+			errorType:   "empty directory",
 		},
 		{
 			name: "missing __init__.py file",
@@ -104,7 +104,7 @@ func TestModuleValidator_ValidateModulePlacement(t *testing.T) {
 				return "", targetDir, moduleName, nil
 			},
 			expectError: true,
-			errorType:   "__init__.py file is missing",
+			errorType:   "missing __init__.py",
 		},
 		{
 			name: "complex module structure with subdirectories",

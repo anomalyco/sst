@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -37,8 +38,8 @@ func TestNewIncrementalBuilder(t *testing.T) {
 		t.Error("Build cache is nil")
 	}
 
-	if builder.layoutDetector == nil {
-		t.Error("Layout detector is nil")
+	if builder.projectResolver == nil {
+		t.Error("Project resolver is nil")
 	}
 
 	if builder.changeDetector == nil {
@@ -124,8 +125,8 @@ build-backend = "setuptools.build_meta"
 		t.Fatalf("Failed to create incremental builder: %v", err)
 	}
 
-	// Update layout detector project root
-	builder.layoutDetector.projectRoot = projectDir
+	// Update project resolver project root
+	builder.projectResolver.projectRoot = projectDir
 
 	ctx := context.Background()
 	input := &runtime.BuildInput{
@@ -141,8 +142,8 @@ build-backend = "setuptools.build_meta"
 
 	// The build might succeed if UV is available, or fail if it's not
 	if err != nil {
-		// If there's an error, it should be related to UV execution or layout detection
-		if !containsAny(err.Error(), []string{"failed to detect project layout", "UV", "uv", "command not found", "executable file not found", "failed to execute build plan"}) {
+		// If there's an error, it should be related to UV execution or project resolution
+		if !containsAnyString(err.Error(), []string{"failed to resolve handler", "UV", "uv", "command not found", "executable file not found", "failed to execute build plan"}) {
 			t.Errorf("Unexpected error type: %v", err)
 		}
 	} else {
@@ -287,4 +288,14 @@ func TestBuildResult_Creation(t *testing.T) {
 	if len(buildResult.Warnings) != 1 {
 		t.Errorf("Expected 1 warning, got %d", len(buildResult.Warnings))
 	}
+}
+
+// containsAnyString checks if a string contains any of the given substrings
+func containsAnyString(s string, substrings []string) bool {
+	for _, substring := range substrings {
+		if strings.Contains(s, substring) {
+			return true
+		}
+	}
+	return false
 }

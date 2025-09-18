@@ -75,8 +75,15 @@ func TestBuildOutputValidator_ValidateBuildOutputs(t *testing.T) {
 			if tt.expectError {
 				if err == nil {
 					t.Errorf("Expected error but got none")
-				} else if tt.errorType != "" && !strings.Contains(err.Error(), tt.errorType) {
-					t.Errorf("Expected error type %s, but got: %v", tt.errorType, err)
+				} else if tt.errorType != "" {
+					// Check if the error is of the expected type
+					if tt.errorType == "BuildValidationError" {
+						if _, ok := err.(*BuildValidationError); !ok {
+							t.Errorf("Expected error type %s, but got: %T", tt.errorType, err)
+						}
+					} else if !strings.Contains(err.Error(), tt.errorType) {
+						t.Errorf("Expected error type %s, but got: %v", tt.errorType, err)
+					}
 				}
 			} else {
 				if err != nil {
@@ -310,8 +317,15 @@ func TestBuildOutputValidator_ValidateExtractionResults(t *testing.T) {
 			if tt.expectError {
 				if err == nil {
 					t.Errorf("Expected error but got none")
-				} else if tt.errorType != "" && !strings.Contains(err.Error(), tt.errorType) {
-					t.Errorf("Expected error type %s, but got: %v", tt.errorType, err)
+				} else if tt.errorType != "" {
+					// Check if the error is of the expected type
+					if tt.errorType == "BuildValidationError" {
+						if _, ok := err.(*BuildValidationError); !ok {
+							t.Errorf("Expected error type %s, but got: %T", tt.errorType, err)
+						}
+					} else if !strings.Contains(err.Error(), tt.errorType) {
+						t.Errorf("Expected error type %s, but got: %v", tt.errorType, err)
+					}
 				}
 			} else {
 				if err != nil {

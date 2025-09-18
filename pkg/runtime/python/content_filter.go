@@ -6,12 +6,16 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/BurntSushi/toml"
 )
 
 // ContentFilter filters out unnecessary files and directories from deployment artifacts
 type ContentFilter struct {
 	excludePatterns []string
 	logger          *slog.Logger
+	projectRoot     string
+	pyprojectCache  *PyprojectConfig // Cache for parsed pyproject.toml
 }
 
 // NewContentFilter creates a new content filter with default exclude patterns
@@ -19,6 +23,15 @@ func NewContentFilter() *ContentFilter {
 	return &ContentFilter{
 		excludePatterns: getDefaultExcludePatterns(),
 		logger:          slog.Default(),
+	}
+}
+
+// NewContentFilterForProject creates a content filter for a specific project
+func NewContentFilterForProject(projectRoot string) *ContentFilter {
+	return &ContentFilter{
+		excludePatterns: getDefaultExcludePatterns(),
+		logger:          slog.Default(),
+		projectRoot:     projectRoot,
 	}
 }
 
@@ -127,59 +140,132 @@ func getDefaultExcludePatterns() []string {
 	}
 }
 
-// ShouldExclude checks if a file or directory should be excluded based on patterns
+// ShouldExclude checks if a file or directory should be excluded using a two-layer approach:
+// 1. Check pyproject.toml [tool.sst] configuration first (explicit control)
+// 2. Apply standard Python conventions (sensible defaults)
 func (cf *ContentFilter) ShouldExclude(path string) bool {
 	// Normalize path separators
 	normalizedPath := filepath.ToSlash(path)
+
+	// 1. Check pyproject.toml [tool.sst] configuration first
+	if shouldSkip, found := cf.checkPyprojectConfig(normalizedPath); found {
+		if shouldSkip {
+			cf.logger.Debug("excluding file by pyproject.toml configuration",
+				"path", path,
+				"source", "pyproject.toml")
+		} else {
+			cf.logger.Debug("including file by pyproject.toml configuration",
+				"path", path,
+				"source", "pyproject.toml")
+		}
+		return shouldSkip
+	}
+
+	// 2. Apply standard Python conventions (baseline)
+	for _, pattern := range cf.excludePatterns {
+		if cf.matchesPattern(normalizedPath, pattern) {
+			cf.logger.Debug("excluding file by standard pattern",
+				"path", path,
+				"pattern", pattern,
+				"source", "standard")
+			return true
+		}
+	}
+
+	return false
+}
+
+// matchesPattern checks if a path matches a glob pattern with support for ** and directory patterns
+func (cf *ContentFilter) matchesPattern(path, pattern string) bool {
+	// Handle directory patterns ending with /
+	if strings.HasSuffix(pattern, "/") {
+		dirPattern := strings.TrimSuffix(pattern, "/")
+		// Check if path is under this directory
+		return strings.HasPrefix(path, dirPattern+"/") || path == dirPattern
+	}
+
+	// Handle ** patterns for recursive matching
+	if strings.Contains(pattern, "**") {
+		return cf.matchesGlobPattern(path, pattern)
+	}
+
+	// Simple pattern matching
 	baseName := filepath.Base(path)
 
-	for _, pattern := range cf.excludePatterns {
-		// Direct name match
-		if baseName == pattern {
-			cf.logger.Debug("excluding file by basename match",
-				"path", path,
-				"pattern", pattern)
+	// Direct name match
+	if baseName == pattern {
+		return true
+	}
+
+	// Pattern match with wildcards on basename
+	if matched, err := filepath.Match(pattern, baseName); err == nil && matched {
+		return true
+	}
+
+	// Full path pattern match
+	if matched, err := filepath.Match(pattern, path); err == nil && matched {
+		return true
+	}
+
+	// Check if any directory in the path matches the pattern (for directory exclusions)
+	pathParts := strings.Split(path, "/")
+	for _, part := range pathParts {
+		if part == pattern {
 			return true
 		}
-
-		// Pattern match with wildcards
-		if matched, err := filepath.Match(pattern, baseName); err == nil && matched {
-			cf.logger.Debug("excluding file by pattern match",
-				"path", path,
-				"pattern", pattern)
+		// Also check pattern matching on directory names
+		if matched, err := filepath.Match(pattern, part); err == nil && matched {
 			return true
 		}
+	}
 
-		// Full path pattern match
-		if matched, err := filepath.Match(pattern, normalizedPath); err == nil && matched {
-			cf.logger.Debug("excluding file by full path pattern match",
-				"path", path,
-				"pattern", pattern)
+	return false
+}
+
+// matchesGlobPattern handles ** patterns for recursive directory matching
+func (cf *ContentFilter) matchesGlobPattern(path, pattern string) bool {
+	// Split pattern by **
+	parts := strings.Split(pattern, "**")
+	if len(parts) != 2 {
+		// Invalid pattern, fallback to simple match
+		if matched, err := filepath.Match(pattern, path); err == nil {
+			return matched
+		}
+		return false
+	}
+
+	prefix := parts[0]
+	suffix := parts[1]
+
+	// Remove leading/trailing slashes from suffix
+	suffix = strings.Trim(suffix, "/")
+
+	// Check if path starts with prefix (if any)
+	if prefix != "" {
+		prefix = strings.TrimSuffix(prefix, "/")
+		if !strings.HasPrefix(path, prefix) {
+			return false
+		}
+		// Remove the prefix from path for suffix matching
+		path = strings.TrimPrefix(path, prefix)
+		path = strings.TrimPrefix(path, "/")
+	}
+
+	// If no suffix, any path under prefix matches
+	if suffix == "" {
+		return true
+	}
+
+	// Check if any part of the remaining path matches the suffix
+	pathParts := strings.Split(path, "/")
+	for i := 0; i < len(pathParts); i++ {
+		remainingPath := strings.Join(pathParts[i:], "/")
+		if matched, err := filepath.Match(suffix, remainingPath); err == nil && matched {
 			return true
 		}
-
-		// Directory prefix match (for patterns ending with /**)
-		if strings.HasSuffix(pattern, "/**") {
-			dirPattern := strings.TrimSuffix(pattern, "/**")
-			if strings.HasPrefix(normalizedPath, dirPattern+"/") || normalizedPath == dirPattern {
-				cf.logger.Debug("excluding file by directory pattern match",
-					"path", path,
-					"pattern", pattern)
-				return true
-			}
-		}
-
-		// Check if any parent directory matches the pattern
-		dir := filepath.Dir(normalizedPath)
-		for dir != "." && dir != "/" {
-			if filepath.Base(dir) == pattern {
-				cf.logger.Debug("excluding file by parent directory match",
-					"path", path,
-					"parentDir", dir,
-					"pattern", pattern)
-				return true
-			}
-			dir = filepath.Dir(dir)
+		// Also check individual path components
+		if matched, err := filepath.Match(suffix, pathParts[i]); err == nil && matched {
+			return true
 		}
 	}
 
@@ -386,4 +472,71 @@ func (cf *ContentFilter) ValidateFilteredContent(targetDir string, maxSizeBytes 
 	}
 
 	return nil
+}
+
+// checkPyprojectConfig checks if a file should be included/excluded based on pyproject.toml [tool.sst] configuration
+// Returns (shouldExclude, found) where found indicates if explicit configuration was found
+func (cf *ContentFilter) checkPyprojectConfig(path string) (bool, bool) {
+	if cf.projectRoot == "" {
+		return false, false
+	}
+
+	// Load pyproject.toml if not cached
+	if cf.pyprojectCache == nil {
+		cf.loadPyprojectConfig()
+	}
+
+	// If no pyproject.toml or no [tool.sst] section, return not found
+	if cf.pyprojectCache == nil {
+		return false, false
+	}
+
+	// Check explicit include patterns first
+	for _, pattern := range cf.pyprojectCache.Tool.SST.Include {
+		if cf.matchesPattern(path, pattern) {
+			return false, true // Explicitly include
+		}
+	}
+
+	// Check explicit exclude patterns
+	for _, pattern := range cf.pyprojectCache.Tool.SST.Exclude {
+		if cf.matchesPattern(path, pattern) {
+			return true, true // Explicitly exclude
+		}
+	}
+
+	// No explicit configuration found
+	return false, false
+}
+
+// loadPyprojectConfig loads and parses the pyproject.toml file
+func (cf *ContentFilter) loadPyprojectConfig() {
+	pyprojectPath := filepath.Join(cf.projectRoot, "pyproject.toml")
+
+	// Check if file exists
+	if _, err := os.Stat(pyprojectPath); os.IsNotExist(err) {
+		cf.logger.Debug("no pyproject.toml found", "path", pyprojectPath)
+		return
+	}
+
+	// Read and parse the file
+	var config PyprojectConfig
+	if _, err := toml.DecodeFile(pyprojectPath, &config); err != nil {
+		cf.logger.Warn("failed to parse pyproject.toml",
+			"path", pyprojectPath,
+			"error", err)
+		return
+	}
+
+	// Only cache if there's actually SST configuration
+	if len(config.Tool.SST.Include) > 0 || len(config.Tool.SST.Exclude) > 0 {
+		cf.pyprojectCache = &config
+		cf.logger.Debug("loaded pyproject.toml SST configuration",
+			"path", pyprojectPath,
+			"includePatterns", len(config.Tool.SST.Include),
+			"excludePatterns", len(config.Tool.SST.Exclude))
+	} else {
+		cf.logger.Debug("no [tool.sst] configuration found in pyproject.toml",
+			"path", pyprojectPath)
+	}
 }

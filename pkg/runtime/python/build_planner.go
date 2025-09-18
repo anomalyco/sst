@@ -53,7 +53,7 @@ func NewBuildPlanner(config BuildPlannerConfig) *BuildPlanner {
 }
 
 // CreateBuildPlan creates an optimized build plan for the given input
-func (bp *BuildPlanner) CreateBuildPlan(ctx context.Context, input *runtime.BuildInput, layout *LayoutInfo, dependencies *DependencyAnalysis) (*BuildPlan, error) {
+func (bp *BuildPlanner) CreateBuildPlan(ctx context.Context, input *runtime.BuildInput, projectInfo *ProjectInfo, dependencies *DependencyAnalysis) (*BuildPlan, error) {
 	bp.mutex.Lock()
 	defer bp.mutex.Unlock()
 

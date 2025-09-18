@@ -1,18 +1,15 @@
-# Python Lambda Layout Examples
+# Python Lambda Project Examples
 
-This directory contains examples of different Python project layouts supported by SST v3.
+This directory contains examples of different Python project structures supported by SST. The system automatically detects your project configuration and builds accordingly - no specific "layout types" required.
 
 ## Examples Overview
 
-| Example | Layout Type | Description | Best For |
-|---------|-------------|-------------|----------|
-| [workspace-layout](./workspace-layout/) | Workspace | Modern Python project with pyproject.toml | New projects, teams |
-| [flat-layout](./flat-layout/) | Flat | Simple handler at root level | Simple functions, prototypes |
-| [nested-layout](./nested-layout/) | Nested | Complex nested directory structure | Large applications |
-| [monorepo-layout](./monorepo-layout/) | Monorepo | Multiple services in one repository | Microservices, teams |
-| [django-integration](./django-integration/) | Flat | Django project with Lambda handlers | Django applications |
-| [poetry-project](./poetry-project/) | Workspace | Poetry-based project structure | Poetry users |
-| [migration-example](./migration-example/) | Mixed | Before/after migration example | Migration reference |
+| Example | Structure | Description | Best For |
+|---------|-----------|-------------|----------|
+| [workspace-layout](./workspace-layout/) | Modern | Python project with pyproject.toml | New projects, teams |
+| [flat-layout](./flat-layout/) | Simple | Handler at root level | Simple functions, prototypes |
+| [nested-layout](./nested-layout/) | Complex | Nested directory structure | Large applications |
+| [monorepo-layout](./monorepo-layout/) | Multi-service | Multiple services in one repository | Microservices, teams |
 
 ## Quick Start
 
@@ -47,9 +44,9 @@ pip install -r requirements.txt
 sst deploy
 ```
 
-## Layout Comparison
+## Structure Comparison
 
-### File Structure Comparison
+### File Structure Examples
 
 ```
 workspace-layout/           flat-layout/              nested-layout/
@@ -62,55 +59,55 @@ workspace-layout/           flat-layout/              nested-layout/
 └── sst.config.ts                                        └── utils.py
 ```
 
-### Handler Configuration Comparison
+### Handler Configuration Examples
 
 ```typescript
-// Workspace Layout
-new Function("WorkspaceFunction", {
+// Modern structure
+new Function("ModernFunction", {
   handler: "src/mypackage/handler.main"
 })
 
-// Flat Layout  
-new Function("FlatFunction", {
+// Simple structure  
+new Function("SimpleFunction", {
   handler: "handler.main"
 })
 
-// Nested Layout
-new Function("NestedFunction", {
+// Complex structure
+new Function("ComplexFunction", {
   handler: "app/functions/api/handler.main"
 })
 ```
 
 ## Performance Comparison
 
-| Layout | First Build | Cached Build | Incremental |
-|--------|-------------|--------------|-------------|
-| Workspace | 45s | 2s | 12s |
-| Flat | 30s | 1s | 8s |
-| Nested | 50s | 2s | 15s |
-| Monorepo | 60s | 3s | 20s |
+| Structure | First Build | Cached Build | Incremental |
+|-----------|-------------|--------------|-------------|
+| Modern | 45s | 2s | 12s |
+| Simple | 30s | 1s | 8s |
+| Complex | 50s | 2s | 15s |
+| Multi-service | 60s | 3s | 20s |
 
-## Best Practices by Layout
+## Best Practices by Structure
 
-### Workspace Layout
+### Modern Structure (Recommended)
 - ✅ Use for new projects
 - ✅ Best caching performance
 - ✅ Modern Python packaging
 - ✅ Team collaboration friendly
 
-### Flat Layout
+### Simple Structure
 - ✅ Use for simple functions
 - ✅ Fastest builds
 - ✅ Easy to understand
 - ⚠️ Limited scalability
 
-### Nested Layout
-- ✅ Use for complex applications
+### Complex Structure
+- ✅ Use for large applications
 - ✅ Good organization
-- ⚠️ Slower builds
+- ⚠️ Slightly slower builds
 - ⚠️ More complex setup
 
-### Monorepo Layout
+### Multi-service Structure
 - ✅ Use for microservices
 - ✅ Shared dependencies
 - ✅ Consistent tooling
@@ -118,7 +115,7 @@ new Function("NestedFunction", {
 
 ## Migration Paths
 
-### From Flat to Workspace
+### From Simple to Modern Structure
 ```bash
 # 1. Create pyproject.toml
 uv init
@@ -158,10 +155,10 @@ rm poetry.lock
 
 ### Common Issues
 
-#### Layout Not Detected
+#### Handler Not Found
 ```bash
 # Enable debug logging
-export SST_DEBUG=python:layout
+export SST_DEBUG=python:*
 sst deploy
 ```
 

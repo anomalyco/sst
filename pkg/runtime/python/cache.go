@@ -14,6 +14,22 @@ import (
 	"time"
 )
 
+// CacheInterface defines the contract for build caching
+// This allows for different cache implementations and easier testing
+type CacheInterface interface {
+	Get(functionID string) (*CacheEntry, bool)
+	Set(functionID string, entry *CacheEntry) error
+	Delete(functionID string) error
+	Clear() error
+	IsValid(entry *CacheEntry) (bool, error)
+	UpdateFileHashes(entry *CacheEntry, filePaths []string) error
+	GetStats() CacheStats
+	Cleanup() error
+	ResetMetrics()
+	GetHitRate() float64
+	GetPerformanceReport() map[string]any
+}
+
 // BuildCache manages build state and change detection for Python functions
 type BuildCache struct {
 	// cacheDir is the directory where cache files are stored
@@ -25,11 +41,11 @@ type BuildCache struct {
 	// mutex protects concurrent access to the cache
 	mutex sync.RWMutex
 
-	// maxAge is the maximum age for cache entries before they're considered stale
-	maxAge time.Duration
-
 	// maxSize is the maximum number of cache entries to keep in memory
 	maxSize int
+
+	// Performance monitoring fields
+	metrics *CacheMetrics
 }
 
 // CacheEntry stores build metadata and file hashes for a specific function
@@ -56,10 +72,10 @@ type CacheEntry struct {
 	BuildOutput *CachedBuildOutput `json:"buildOutput,omitempty"`
 
 	// Properties contains the build properties used for this build
-	Properties map[string]interface{} `json:"properties"`
+	Properties map[string]any `json:"properties"`
 
-	// LayoutInfo contains the detected layout information
-	LayoutInfo *LayoutInfo `json:"layoutInfo,omitempty"`
+	// ProjectInfo contains the resolved project information (replaces LayoutInfo)
+	ProjectInfo *ProjectInfo `json:"projectInfo,omitempty"`
 }
 
 // CachedBuildOutput stores information about a successful build
@@ -88,9 +104,6 @@ type BuildCacheConfig struct {
 	// CacheDir is the directory to store cache files
 	CacheDir string
 
-	// MaxAge is the maximum age for cache entries
-	MaxAge time.Duration
-
 	// MaxSize is the maximum number of entries to keep in memory
 	MaxSize int
 
@@ -102,10 +115,6 @@ type BuildCacheConfig struct {
 func NewBuildCache(config BuildCacheConfig) (*BuildCache, error) {
 	if config.CacheDir == "" {
 		return nil, fmt.Errorf("cache directory is required")
-	}
-
-	if config.MaxAge == 0 {
-		config.MaxAge = 24 * time.Hour // Default to 24 hours
 	}
 
 	if config.MaxSize == 0 {
@@ -120,8 +129,8 @@ func NewBuildCache(config BuildCacheConfig) (*BuildCache, error) {
 	cache := &BuildCache{
 		cacheDir: config.CacheDir,
 		entries:  make(map[string]*CacheEntry),
-		maxAge:   config.MaxAge,
 		maxSize:  config.MaxSize,
+		metrics:  NewCacheMetrics(),
 	}
 
 	// Load existing cache entries if persistence is enabled
@@ -135,29 +144,74 @@ func NewBuildCache(config BuildCacheConfig) (*BuildCache, error) {
 	return cache, nil
 }
 
+// NewCacheMetrics creates a new cache metrics instance
+func NewCacheMetrics() *CacheMetrics {
+	return &CacheMetrics{
+		LastReset: time.Now(),
+	}
+}
+
+// NewDefaultBuildCache creates a build cache with sensible defaults
+// Compile-time check that BuildCache implements CacheInterface
+var _ CacheInterface = (*BuildCache)(nil)
+
+// NewDefaultBuildCache creates a build cache with sensible defaults.
+// This decouples high-level components from cache implementation details.
+//
+// Design Benefits:
+// - High-level components (python.go, build_pipeline.go) don't need to know cache config details
+// - Cache implementation can change without affecting callers
+// - Sensible defaults are centralized in one place
+// - Easier to test and mock in the future
+func NewDefaultBuildCache(cacheDir string) (*BuildCache, error) {
+	return NewBuildCache(BuildCacheConfig{
+		CacheDir:          cacheDir,
+		MaxSize:           1000, // Reasonable default for most use cases
+		EnablePersistence: true, // Enable persistence by default for better performance
+	})
+}
+
 // Get retrieves a cache entry for the given function ID
 func (bc *BuildCache) Get(functionID string) (*CacheEntry, bool) {
+	startTime := time.Now()
+	defer func() {
+		bc.metrics.recordGetTime(time.Since(startTime))
+	}()
+
 	bc.mutex.RLock()
-	defer bc.mutex.RUnlock()
-
 	entry, exists := bc.entries[functionID]
+	bc.mutex.RUnlock()
+
 	if !exists {
+		// Try to load from disk if not in memory
+		if loadedEntry := bc.loadEntryFromDisk(functionID); loadedEntry != nil {
+			bc.mutex.Lock()
+			bc.entries[functionID] = loadedEntry
+			bc.mutex.Unlock()
+
+			loadedEntry.LastAccessed = time.Now()
+			bc.metrics.recordHit()
+			return loadedEntry, true
+		}
+
+		bc.metrics.recordMiss()
 		return nil, false
 	}
 
-	// Check if entry is expired
-	if time.Since(entry.BuildTime) > bc.maxAge {
-		return nil, false
-	}
-
-	// Update last accessed time
+	// Update last accessed time for LRU eviction
 	entry.LastAccessed = time.Now()
+	bc.metrics.recordHit()
 
 	return entry, true
 }
 
 // Set stores a cache entry for the given function ID
 func (bc *BuildCache) Set(functionID string, entry *CacheEntry) error {
+	startTime := time.Now()
+	defer func() {
+		bc.metrics.recordSetTime(time.Since(startTime))
+	}()
+
 	bc.mutex.Lock()
 	defer bc.mutex.Unlock()
 
@@ -176,6 +230,7 @@ func (bc *BuildCache) Set(functionID string, entry *CacheEntry) error {
 
 	// Persist to disk with error handling
 	if err := bc.persistEntry(functionID, entry); err != nil {
+		bc.metrics.recordPersistError()
 		// If persistence fails, still keep in memory but return wrapped error
 		return WrapError(err, "cache persistence").
 			WithContext("functionID", functionID).
@@ -230,10 +285,12 @@ func (bc *BuildCache) IsValid(entry *CacheEntry) (bool, error) {
 		currentHash, err := bc.calculateFileHash(filePath)
 		if err != nil {
 			// File might have been deleted or is inaccessible
+			bc.metrics.recordInvalidation()
 			return false, nil
 		}
 
 		if currentHash != expectedHash {
+			bc.metrics.recordInvalidation()
 			return false, nil
 		}
 	}
@@ -242,6 +299,7 @@ func (bc *BuildCache) IsValid(entry *CacheEntry) (bool, error) {
 	if entry.BuildOutput != nil {
 		for _, artifactPath := range entry.BuildOutput.ArtifactPaths {
 			if _, err := os.Stat(artifactPath); err != nil {
+				bc.metrics.recordInvalidation()
 				return false, nil
 			}
 		}
@@ -269,14 +327,21 @@ func (bc *BuildCache) UpdateFileHashes(entry *CacheEntry, filePaths []string) er
 
 // calculateFileHash calculates the SHA256 hash of a file
 func (bc *BuildCache) calculateFileHash(filePath string) (string, error) {
+	startTime := time.Now()
+	defer func() {
+		bc.metrics.recordHashTime(time.Since(startTime))
+	}()
+
 	file, err := os.Open(filePath)
 	if err != nil {
+		bc.metrics.recordHashError()
 		return "", fmt.Errorf("failed to open file: %w", err)
 	}
 	defer file.Close()
 
 	hasher := sha256.New()
 	if _, err := io.Copy(hasher, file); err != nil {
+		bc.metrics.recordHashError()
 		return "", fmt.Errorf("failed to read file: %w", err)
 	}
 
@@ -303,6 +368,7 @@ func (bc *BuildCache) persistEntry(functionID string, entry *CacheEntry) error {
 func (bc *BuildCache) loadFromDisk() error {
 	files, err := filepath.Glob(filepath.Join(bc.cacheDir, "*.json"))
 	if err != nil {
+		bc.metrics.recordLoadError()
 		return WrapError(err, "cache loading").
 			WithContext("cacheDir", bc.cacheDir).
 			WithSuggestion("Check if cache directory exists and is accessible")
@@ -316,21 +382,21 @@ func (bc *BuildCache) loadFromDisk() error {
 
 		data, err := os.ReadFile(file)
 		if err != nil {
+			bc.metrics.recordLoadError()
 			corruptedFiles = append(corruptedFiles, file)
 			continue
 		}
 
 		var entry CacheEntry
 		if err := json.Unmarshal(data, &entry); err != nil {
+			bc.metrics.recordLoadError()
 			corruptedFiles = append(corruptedFiles, file)
 			continue
 		}
 
-		// Only load entries that aren't expired
-		if time.Since(entry.BuildTime) <= bc.maxAge {
-			bc.entries[functionID] = &entry
-			loadedCount++
-		}
+		// Load all valid entries (no time-based expiration for content-based cache)
+		bc.entries[functionID] = &entry
+		loadedCount++
 	}
 
 	// Clean up corrupted files automatically
@@ -402,8 +468,8 @@ func (bc *BuildCache) GetStats() CacheStats {
 	stats := CacheStats{
 		TotalEntries: len(bc.entries),
 		MaxSize:      bc.maxSize,
-		MaxAge:       bc.maxAge,
 		CacheDir:     bc.cacheDir,
+		Metrics:      bc.metrics.getSnapshot(),
 	}
 
 	// Calculate cache size on disk
@@ -425,32 +491,75 @@ func (bc *BuildCache) GetStats() CacheStats {
 
 // CacheStats contains statistics about the build cache
 type CacheStats struct {
-	TotalEntries int           `json:"totalEntries"`
-	MaxSize      int           `json:"maxSize"`
-	MaxAge       time.Duration `json:"maxAge"`
-	CacheDir     string        `json:"cacheDir"`
-	DiskFiles    int           `json:"diskFiles"`
-	DiskSize     int64         `json:"diskSize"`
+	TotalEntries int    `json:"totalEntries"`
+	MaxSize      int    `json:"maxSize"`
+	CacheDir     string `json:"cacheDir"`
+	DiskFiles    int    `json:"diskFiles"`
+	DiskSize     int64  `json:"diskSize"`
+
+	// Performance metrics
+	Metrics *CacheMetrics `json:"metrics,omitempty"`
 }
 
-// Cleanup removes expired entries and performs maintenance
+// CacheMetrics tracks cache performance metrics
+type CacheMetrics struct {
+	// Hit/miss statistics
+	Hits   int64 `json:"hits"`
+	Misses int64 `json:"misses"`
+
+	// Timing statistics
+	AverageGetTime  time.Duration `json:"averageGetTime"`
+	AverageSetTime  time.Duration `json:"averageSetTime"`
+	AverageHashTime time.Duration `json:"averageHashTime"`
+
+	// File operation statistics
+	FileHashOperations int64         `json:"fileHashOperations"`
+	TotalHashTime      time.Duration `json:"totalHashTime"`
+
+	// Cache invalidation statistics
+	InvalidationCount int64 `json:"invalidationCount"`
+
+	// Error statistics
+	HashErrors    int64 `json:"hashErrors"`
+	PersistErrors int64 `json:"persistErrors"`
+	LoadErrors    int64 `json:"loadErrors"`
+
+	// Last reset time
+	LastReset time.Time `json:"lastReset"`
+
+	// Mutex for thread-safe updates
+	mutex sync.RWMutex
+}
+
+// Cleanup removes orphaned entries and performs maintenance
 func (bc *BuildCache) Cleanup() error {
 	bc.mutex.Lock()
 	defer bc.mutex.Unlock()
 
-	now := time.Now()
 	var toDelete []string
 
-	// Find expired entries
+	// Find entries with missing files (orphaned entries)
 	for functionID, entry := range bc.entries {
-		if now.Sub(entry.BuildTime) > bc.maxAge {
+		hasValidFiles := false
+
+		// Check if any of the tracked files still exist
+		for filePath := range entry.FileHashes {
+			if _, err := os.Stat(filePath); err == nil {
+				hasValidFiles = true
+				break
+			}
+		}
+
+		// If no tracked files exist, this entry is orphaned
+		if !hasValidFiles && len(entry.FileHashes) > 0 {
 			toDelete = append(toDelete, functionID)
 		}
 	}
 
-	// Remove expired entries
+	// Remove orphaned entries
 	for _, functionID := range toDelete {
 		delete(bc.entries, functionID)
+		bc.metrics.recordInvalidation()
 
 		// Remove from disk
 		cacheFile := filepath.Join(bc.cacheDir, functionID+".json")
@@ -458,6 +567,63 @@ func (bc *BuildCache) Cleanup() error {
 	}
 
 	return nil
+}
+
+// ResetMetrics resets all performance metrics
+func (bc *BuildCache) ResetMetrics() {
+	bc.metrics.reset()
+}
+
+// GetHitRate returns the cache hit rate as a percentage
+func (bc *BuildCache) GetHitRate() float64 {
+	return bc.metrics.getHitRate()
+}
+
+// GetCacheDir returns the cache directory
+func (bc *BuildCache) GetCacheDir() string {
+	return bc.cacheDir
+}
+
+// loadEntryFromDisk loads a specific cache entry from disk
+func (bc *BuildCache) loadEntryFromDisk(functionID string) *CacheEntry {
+	filePath := filepath.Join(bc.cacheDir, functionID+".json")
+
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		// File doesn't exist or can't be read
+		return nil
+	}
+
+	var entry CacheEntry
+	if err := json.Unmarshal(data, &entry); err != nil {
+		// Corrupted file, ignore
+		return nil
+	}
+
+	return &entry
+}
+
+// GetPerformanceReport returns a detailed performance report
+func (bc *BuildCache) GetPerformanceReport() map[string]any {
+	metrics := bc.metrics.getSnapshot()
+
+	return map[string]any{
+		"hitRate":            metrics.getHitRate(),
+		"totalOperations":    metrics.Hits + metrics.Misses,
+		"hits":               metrics.Hits,
+		"misses":             metrics.Misses,
+		"averageGetTime":     metrics.AverageGetTime.String(),
+		"averageSetTime":     metrics.AverageSetTime.String(),
+		"averageHashTime":    metrics.AverageHashTime.String(),
+		"fileHashOperations": metrics.FileHashOperations,
+		"totalHashTime":      metrics.TotalHashTime.String(),
+		"invalidationCount":  metrics.InvalidationCount,
+		"hashErrors":         metrics.HashErrors,
+		"persistErrors":      metrics.PersistErrors,
+		"loadErrors":         metrics.LoadErrors,
+		"lastReset":          metrics.LastReset.Format(time.RFC3339),
+		"uptime":             time.Since(metrics.LastReset).String(),
+	}
 }
 
 // BuildResultCache manages caching of build results and artifacts
@@ -922,4 +1088,139 @@ func (brc *BuildResultCache) GetStats() (*BuildResultCacheStats, error) {
 		TotalSize:      totalSize,
 		ArtifactDir:    brc.artifactDir,
 	}, nil
+}
+
+// CacheMetrics methods for performance tracking
+
+// recordHit records a cache hit
+func (cm *CacheMetrics) recordHit() {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
+	cm.Hits++
+}
+
+// recordMiss records a cache miss
+func (cm *CacheMetrics) recordMiss() {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
+	cm.Misses++
+}
+
+// recordGetTime records the time taken for a Get operation
+func (cm *CacheMetrics) recordGetTime(duration time.Duration) {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
+
+	// Calculate running average
+	totalOps := cm.Hits + cm.Misses
+	if totalOps > 0 {
+		cm.AverageGetTime = (cm.AverageGetTime*time.Duration(totalOps-1) + duration) / time.Duration(totalOps)
+	} else {
+		cm.AverageGetTime = duration
+	}
+}
+
+// recordSetTime records the time taken for a Set operation
+func (cm *CacheMetrics) recordSetTime(duration time.Duration) {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
+
+	// Simple running average - could be improved with more sophisticated tracking
+	if cm.AverageSetTime == 0 {
+		cm.AverageSetTime = duration
+	} else {
+		cm.AverageSetTime = (cm.AverageSetTime + duration) / 2
+	}
+}
+
+// recordHashTime records the time taken for file hashing
+func (cm *CacheMetrics) recordHashTime(duration time.Duration) {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
+
+	cm.FileHashOperations++
+	cm.TotalHashTime += duration
+	cm.AverageHashTime = cm.TotalHashTime / time.Duration(cm.FileHashOperations)
+}
+
+// recordHashError records a file hashing error
+func (cm *CacheMetrics) recordHashError() {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
+	cm.HashErrors++
+}
+
+// recordPersistError records a cache persistence error
+func (cm *CacheMetrics) recordPersistError() {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
+	cm.PersistErrors++
+}
+
+// recordLoadError records a cache loading error
+func (cm *CacheMetrics) recordLoadError() {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
+	cm.LoadErrors++
+}
+
+// recordInvalidation records a cache invalidation
+func (cm *CacheMetrics) recordInvalidation() {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
+	cm.InvalidationCount++
+}
+
+// getSnapshot returns a snapshot of current metrics
+func (cm *CacheMetrics) getSnapshot() *CacheMetrics {
+	cm.mutex.RLock()
+	defer cm.mutex.RUnlock()
+
+	// Return a copy to avoid race conditions
+	return &CacheMetrics{
+		Hits:               cm.Hits,
+		Misses:             cm.Misses,
+		AverageGetTime:     cm.AverageGetTime,
+		AverageSetTime:     cm.AverageSetTime,
+		AverageHashTime:    cm.AverageHashTime,
+		FileHashOperations: cm.FileHashOperations,
+		TotalHashTime:      cm.TotalHashTime,
+		InvalidationCount:  cm.InvalidationCount,
+		HashErrors:         cm.HashErrors,
+		PersistErrors:      cm.PersistErrors,
+		LoadErrors:         cm.LoadErrors,
+		LastReset:          cm.LastReset,
+	}
+}
+
+// reset resets all metrics
+func (cm *CacheMetrics) reset() {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
+
+	cm.Hits = 0
+	cm.Misses = 0
+	cm.AverageGetTime = 0
+	cm.AverageSetTime = 0
+	cm.AverageHashTime = 0
+	cm.FileHashOperations = 0
+	cm.TotalHashTime = 0
+	cm.InvalidationCount = 0
+	cm.HashErrors = 0
+	cm.PersistErrors = 0
+	cm.LoadErrors = 0
+	cm.LastReset = time.Now()
+}
+
+// getHitRate returns the cache hit rate as a percentage
+func (cm *CacheMetrics) getHitRate() float64 {
+	cm.mutex.RLock()
+	defer cm.mutex.RUnlock()
+
+	total := cm.Hits + cm.Misses
+	if total == 0 {
+		return 0.0
+	}
+
+	return float64(cm.Hits) / float64(total) * 100.0
 }

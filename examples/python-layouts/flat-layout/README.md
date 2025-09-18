@@ -1,6 +1,6 @@
-# Flat Layout Example
+# Simple Structure Example
 
-This example demonstrates a simple Python Lambda project with a flat structure - handlers at the root level.
+This example demonstrates a simple Python Lambda project with handlers at the root level.
 
 ## Project Structure
 
@@ -17,7 +17,7 @@ flat-layout/
 
 ## Features
 
-- ✅ Simple flat structure (no nested directories)
+- ✅ Simple structure (no nested directories)
 - ✅ Fast builds and deployments
 - ✅ Easy to understand and maintain
 - ✅ Perfect for simple functions and prototypes
@@ -49,7 +49,7 @@ sst deploy
 
 ## Performance
 
-This flat layout provides the fastest build times:
+This simple structure provides the fastest build times:
 
 - **First build**: ~30 seconds
 - **Cached build**: ~1.5 seconds  
@@ -73,7 +73,7 @@ This flat layout provides the fastest build times:
 
 ## Migration
 
-To migrate from flat to workspace layout:
+To migrate from simple to modern structure:
 
 ```bash
 # 1. Create package structure

@@ -19,7 +19,6 @@ func TestBuildCache_ConcurrentAccess(t *testing.T) {
 
 	cache, err := NewBuildCache(BuildCacheConfig{
 		CacheDir:          tempDir,
-		MaxAge:            1 * time.Hour,
 		MaxSize:           100,
 		EnablePersistence: true,
 	})
@@ -82,7 +81,6 @@ func TestBuildCache_CacheInvalidation(t *testing.T) {
 
 	cache, err := NewBuildCache(BuildCacheConfig{
 		CacheDir:          tempDir,
-		MaxAge:            100 * time.Millisecond, // Short expiry for testing
 		MaxSize:           10,
 		EnablePersistence: true,
 	})
@@ -90,12 +88,18 @@ func TestBuildCache_CacheInvalidation(t *testing.T) {
 		t.Fatalf("Failed to create cache: %v", err)
 	}
 
+	// Create a test file
+	testFile := filepath.Join(tempDir, "file1.py")
+	if err := os.WriteFile(testFile, []byte("print('test')"), 0644); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
 	functionID := "test-function"
 	entry := &CacheEntry{
 		FunctionID:   functionID,
 		BuildTime:    time.Now(),
-		FileHashes:   map[string]string{"file1.py": "hash123"},
-		Dependencies: []string{"dep1"},
+		FileHashes:   map[string]string{testFile: "hash123"},
+		Dependencies: []string{testFile},
 	}
 
 	// Set entry
@@ -106,27 +110,18 @@ func TestBuildCache_CacheInvalidation(t *testing.T) {
 		t.Error("Entry should exist after setting")
 	}
 
-	// Wait for expiry
-	time.Sleep(200 * time.Millisecond)
-
-	// Entry should be expired but still in cache until cleanup
+	// With content-based caching, entries remain valid until files change
+	// Entry should still exist and be accessible
 	if _, exists := cache.Get(functionID); !exists {
-		t.Error("Entry should still exist before cleanup")
-	}
-
-	// Check if entry is valid (should be false due to expiry)
-	if retrievedEntry, exists := cache.Get(functionID); exists {
-		if valid, _ := cache.IsValid(retrievedEntry); valid {
-			t.Error("Entry should be invalid due to expiry")
-		}
+		t.Error("Entry should still exist with content-based caching")
 	}
 
 	// Force cleanup
 	cache.Cleanup()
 
-	// Entry should be removed after cleanup
-	if _, exists := cache.Get(functionID); exists {
-		t.Error("Entry should be removed after cleanup")
+	// Entry should still exist after cleanup since no files were orphaned
+	if _, exists := cache.Get(functionID); !exists {
+		t.Error("Entry should still exist after cleanup with content-based caching")
 	}
 }
 
@@ -140,7 +135,6 @@ func TestBuildCache_FileHashValidation(t *testing.T) {
 
 	cache, err := NewBuildCache(BuildCacheConfig{
 		CacheDir:          tempDir,
-		MaxAge:            1 * time.Hour,
 		MaxSize:           10,
 		EnablePersistence: true,
 	})
@@ -217,7 +211,6 @@ func TestBuildCache_PersistenceComprehensive(t *testing.T) {
 	// Create first cache instance
 	cache1, err := NewBuildCache(BuildCacheConfig{
 		CacheDir:          tempDir,
-		MaxAge:            1 * time.Hour,
 		MaxSize:           10,
 		EnablePersistence: true,
 	})
@@ -246,7 +239,6 @@ func TestBuildCache_PersistenceComprehensive(t *testing.T) {
 	// Create second cache instance (should load from disk)
 	cache2, err := NewBuildCache(BuildCacheConfig{
 		CacheDir:          tempDir,
-		MaxAge:            1 * time.Hour,
 		MaxSize:           10,
 		EnablePersistence: true,
 	})
@@ -284,7 +276,6 @@ func TestBuildCache_EvictionPolicies(t *testing.T) {
 
 	cache, err := NewBuildCache(BuildCacheConfig{
 		CacheDir:          tempDir,
-		MaxAge:            1 * time.Hour,
 		MaxSize:           3, // Small size to trigger eviction
 		EnablePersistence: true,
 	})
@@ -349,7 +340,6 @@ func TestBuildCache_CleanupAndMaintenance(t *testing.T) {
 
 	cache, err := NewBuildCache(BuildCacheConfig{
 		CacheDir:          tempDir,
-		MaxAge:            50 * time.Millisecond, // Very short for testing
 		MaxSize:           10,
 		EnablePersistence: true,
 	})
@@ -414,7 +404,6 @@ func TestBuildCache_CorruptedCacheRecovery(t *testing.T) {
 	// Cache should handle corrupted file gracefully
 	cache, err := NewBuildCache(BuildCacheConfig{
 		CacheDir:          tempDir,
-		MaxAge:            1 * time.Hour,
 		MaxSize:           10,
 		EnablePersistence: true,
 	})
@@ -452,7 +441,6 @@ func TestBuildCache_LargeEntries(t *testing.T) {
 
 	cache, err := NewBuildCache(BuildCacheConfig{
 		CacheDir:          tempDir,
-		MaxAge:            1 * time.Hour,
 		MaxSize:           10,
 		EnablePersistence: true,
 	})
@@ -511,7 +499,6 @@ func TestBuildCache_MemoryUsage(t *testing.T) {
 
 	cache, err := NewBuildCache(BuildCacheConfig{
 		CacheDir:          tempDir,
-		MaxAge:            1 * time.Hour,
 		MaxSize:           1000, // Large size
 		EnablePersistence: true,
 	})
@@ -561,7 +548,6 @@ func TestBuildCache_ThreadSafety(t *testing.T) {
 
 	cache, err := NewBuildCache(BuildCacheConfig{
 		CacheDir:          tempDir,
-		MaxAge:            1 * time.Hour,
 		MaxSize:           100,
 		EnablePersistence: true,
 	})

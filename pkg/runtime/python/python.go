@@ -76,9 +76,16 @@ type PythonRuntime struct {
 	lastBuiltHandler map[string]string
 
 	// Build cache and change detection components
-	buildCache     *BuildCache
-	changeDetector *ChangeDetector
-	layoutDetector *LayoutDetector
+	buildCache      *BuildCache
+	changeDetector  *ChangeDetector
+	projectResolver *ProjectResolver
+
+	// Cache directory for sharing with incremental builder
+	cacheDir string
+
+	// Rate limiting for rebuild checks
+	lastRebuildCheck map[string]time.Time
+	rebuildCooldown  time.Duration
 
 	// Mutex for thread-safe access
 	mutex sync.RWMutex
@@ -95,6 +102,8 @@ type FunctionLogEvent struct {
 func New() *PythonRuntime {
 	return &PythonRuntime{
 		lastBuiltHandler: map[string]string{},
+		lastRebuildCheck: map[string]time.Time{},
+		rebuildCooldown:  5 * time.Second, // Prevent rebuilds more than once every 5 seconds
 	}
 }
 
@@ -102,13 +111,18 @@ func New() *PythonRuntime {
 func NewWithCache(cacheDir string) (*PythonRuntime, error) {
 	runtime := &PythonRuntime{
 		lastBuiltHandler: map[string]string{},
+		lastRebuildCheck: map[string]time.Time{},
+		rebuildCooldown:  5 * time.Second, // Prevent rebuilds more than once every 5 seconds
 	}
 
 	// Initialize cache and detection systems
 	if err := runtime.initializeCacheSystem(cacheDir); err != nil {
-		return nil, fmt.Errorf("failed to initialize cache system: %w", err)
+		slog.Warn("failed to initialize cache system, falling back to non-cached runtime", "error", err)
+		// Don't fail completely, just continue without caching
+		return runtime, nil
 	}
 
+	slog.Info("Python runtime initialized with caching", "cacheDir", cacheDir)
 	return runtime, nil
 }
 
@@ -117,33 +131,53 @@ func (r *PythonRuntime) initializeCacheSystem(cacheDir string) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	// Create layout detector
-	r.layoutDetector = NewLayoutDetector(LayoutDetectorConfig{
-		ProjectRoot:  cacheDir, // This will be updated per build
-		CacheTimeout: 5 * time.Minute,
-	})
-
-	// Create build cache
-	buildCache, err := NewBuildCache(BuildCacheConfig{
-		CacheDir:          cacheDir,
-		MaxAge:            24 * time.Hour,
-		MaxSize:           1000,
-		EnablePersistence: true,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to create build cache: %w", err)
+	// Validate cache directory
+	if cacheDir == "" {
+		return fmt.Errorf("cache directory cannot be empty")
 	}
+
+	// Ensure cache directory exists and is writable
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		return fmt.Errorf("failed to create cache directory %s: %w", cacheDir, err)
+	}
+
+	// Test write permissions
+	testFile := filepath.Join(cacheDir, ".test_write")
+	if err := os.WriteFile(testFile, []byte("test"), 0644); err != nil {
+		return fmt.Errorf("cache directory %s is not writable: %w", cacheDir, err)
+	}
+	os.Remove(testFile) // Clean up test file
+
+	// Store cache directory for sharing with incremental builder
+	r.cacheDir = cacheDir
+
+	// Use factory to create cache system with sensible defaults
+	factory := NewRuntimeFactory()
+	buildCache, changeDetector, projectResolver, err := factory.CreateCacheSystem(cacheDir)
+	if err != nil {
+		return fmt.Errorf("failed to create cache system: %w", err)
+	}
+
+	// Validate that all components were created successfully
+	if buildCache == nil {
+		return fmt.Errorf("build cache was not created")
+	}
+	if changeDetector == nil {
+		return fmt.Errorf("change detector was not created")
+	}
+	if projectResolver == nil {
+		return fmt.Errorf("project resolver was not created")
+	}
+
 	r.buildCache = buildCache
-
-	// Create change detector
-	changeDetector, err := NewChangeDetector(ChangeDetectorConfig{
-		LayoutDetector: r.layoutDetector,
-		BuildCache:     r.buildCache,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to create change detector: %w", err)
-	}
 	r.changeDetector = changeDetector
+	r.projectResolver = projectResolver
+
+	slog.Info("cache system initialized successfully",
+		"cacheDir", cacheDir,
+		"hasBuildCache", r.buildCache != nil,
+		"hasChangeDetector", r.changeDetector != nil,
+		"hasProjectResolver", r.projectResolver != nil)
 
 	return nil
 }
@@ -166,7 +200,7 @@ func (r *PythonRuntime) DisableCaching() error {
 
 	r.buildCache = nil
 	r.changeDetector = nil
-	r.layoutDetector = nil
+	r.projectResolver = nil
 
 	return nil
 }
@@ -286,33 +320,96 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 }
 
 func (r *PythonRuntime) ShouldRebuild(functionID string, file string) bool {
-	r.mutex.RLock()
-	defer r.mutex.RUnlock()
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	// Add detailed debugging to understand why rebuilds are happening
+	slog.Debug("ShouldRebuild called",
+		"functionID", functionID,
+		"file", file,
+		"hasChangeDetector", r.changeDetector != nil,
+		"hasBuildCache", r.buildCache != nil,
+		"cacheDir", r.cacheDir)
+
+	// Check if the file is relevant for this function
+	// Only check Python files and configuration files
+	if !r.isRelevantFile(file) {
+		slog.Debug("file not relevant for Python function, skipping rebuild check",
+			"functionID", functionID,
+			"file", file)
+		return false
+	}
+
+	// Rate limiting: prevent excessive rebuild checks
+	now := time.Now()
+	if lastCheck, exists := r.lastRebuildCheck[functionID]; exists {
+		if now.Sub(lastCheck) < r.rebuildCooldown {
+			slog.Debug("rebuild check rate limited",
+				"functionID", functionID,
+				"file", file,
+				"timeSinceLastCheck", now.Sub(lastCheck),
+				"cooldown", r.rebuildCooldown)
+			return false
+		}
+	}
+	r.lastRebuildCheck[functionID] = now
 
 	// If caching is not enabled, always rebuild
 	if r.changeDetector == nil {
-		slog.Debug("caching not enabled, rebuilding", "functionID", functionID)
+		slog.Warn("caching not enabled, rebuilding",
+			"functionID", functionID,
+			"reason", "changeDetector is nil")
 		return true
 	}
 
 	// Use change detection to determine if rebuild is needed
 	result, err := r.changeDetector.DetectChanges(functionID, file)
 	if err != nil {
-		slog.Warn("failed to detect changes, rebuilding", "functionID", functionID, "error", err)
+		slog.Warn("failed to detect changes, rebuilding",
+			"functionID", functionID,
+			"file", file,
+			"error", err)
 		return true
 	}
 
 	if result.HasChanges {
 		slog.Info("changes detected, rebuilding",
 			"functionID", functionID,
+			"file", file,
 			"reason", result.Reason,
 			"changeTypes", result.ChangeTypes,
 			"changedFiles", len(result.ChangedFiles))
 	} else {
-		slog.Debug("no changes detected, using cached build", "functionID", functionID)
+		slog.Debug("no changes detected, using cached build",
+			"functionID", functionID,
+			"file", file)
 	}
 
 	return result.HasChanges
+}
+
+// isRelevantFile checks if a file change is relevant for Python functions
+func (r *PythonRuntime) isRelevantFile(file string) bool {
+	// Only rebuild for Python-related files
+	relevantExtensions := []string{".py", ".toml", ".txt", ".lock", ".cfg"}
+	relevantFiles := []string{"pyproject.toml", "requirements.txt", "uv.lock", "poetry.lock", "Pipfile.lock", "setup.py", "setup.cfg"}
+
+	// Check file extension
+	for _, ext := range relevantExtensions {
+		if strings.HasSuffix(file, ext) {
+			return true
+		}
+	}
+
+	// Check specific filenames
+	basename := filepath.Base(file)
+	for _, relevantFile := range relevantFiles {
+		if basename == relevantFile {
+			return true
+		}
+	}
+
+	return false
 }
 
 // GetCacheStats returns statistics about the build cache
@@ -415,40 +512,39 @@ func (r *PythonRuntime) createBuildAssetIncremental(ctx context.Context, input *
 
 	slog.Info("using incremental build system", "functionID", input.FunctionID)
 
-	// Create incremental builder with additional safety checks
-	incrementalBuilder, err := NewIncrementalBuilder(IncrementalBuilderConfig{
-		CacheDir:                filepath.Join(workingDir, ".sst", "cache"),
-		ArtifactDir:             input.Out(),
-		MaxCacheAge:             24 * time.Hour,
-		MaxCacheSize:            1024 * 1024 * 1024, // 1GB
-		EnableParallelBuilds:    true,
-		MaxParallelBuilds:       4,
-		EnableProgressReporting: true,
-		EnableBuildOptimization: true,
-		FunctionID:              input.FunctionID,
-		ProgressCallback: func(event ProgressEvent) {
-			// Emit FunctionBuildProgressEvent if FunctionID is available
-			if input.FunctionID != "" {
-				bus.Publish(&events.FunctionBuildProgressEvent{
-					FunctionID: input.FunctionID,
-					Stage:      event.Stage,
-					Message:    event.Message,
-				})
-			} else {
-				// Fallback to StdoutEvent if FunctionID is not available
-				slog.Warn("FunctionID not available, falling back to StdoutEvent for progress")
-				bus.Publish(&common.StdoutEvent{
-					Line: fmt.Sprintf("🔨 Build %s: %s", event.Stage, event.Message),
-				})
-			}
+	// Create incremental builder with sensible defaults
+	factory := NewRuntimeFactory()
+	progressCallback := func(event ProgressEvent) {
+		// Emit FunctionBuildProgressEvent if FunctionID is available
+		if input.FunctionID != "" {
+			bus.Publish(&events.FunctionBuildProgressEvent{
+				FunctionID: input.FunctionID,
+				Stage:      event.Stage,
+				Message:    event.Message,
+			})
+		} else {
+			// Fallback to StdoutEvent if FunctionID is not available
+			slog.Warn("FunctionID not available, falling back to StdoutEvent for progress")
+			bus.Publish(&common.StdoutEvent{
+				Line: fmt.Sprintf("🔨 Build %s: %s", event.Stage, event.Message),
+			})
+		}
 
-			// Also log for debugging purposes
-			slog.Info("build progress",
-				"functionID", input.FunctionID,
-				"stage", event.Stage,
-				"message", event.Message)
-		},
-	})
+		// Also log for debugging purposes
+		slog.Info("build progress",
+			"functionID", input.FunctionID,
+			"stage", event.Stage,
+			"message", event.Message)
+	}
+
+	// Use the runtime's cache directory if available, otherwise use default
+	var incrementalBuilder *IncrementalBuilder
+	var err error
+	if r.cacheDir != "" {
+		incrementalBuilder, err = factory.CreateIncrementalBuilderWithCacheDir(workingDir, input, progressCallback, r.cacheDir)
+	} else {
+		incrementalBuilder, err = factory.CreateIncrementalBuilder(workingDir, input, progressCallback)
+	}
 	if err != nil {
 		slog.Error("failed to create incremental builder", "error", err)
 		return nil, fmt.Errorf("failed to create incremental builder: %w", err)
@@ -526,23 +622,122 @@ func copyDirectory(src, dst string) error {
 	}
 
 	for _, entry := range entries {
-		srcPath := filepath.Join(src, entry.Name())
-		dstPath := filepath.Join(dst, entry.Name())
+		name := entry.Name()
+
+		// Skip unwanted files and directories
+		if shouldSkipFile(name, entry.IsDir()) {
+			continue
+		}
+
+		srcPath := filepath.Join(src, name)
+		dstPath := filepath.Join(dst, name)
 
 		if entry.IsDir() {
 			// Recursively copy subdirectory
 			if err := copyDirectory(srcPath, dstPath); err != nil {
-				return fmt.Errorf("failed to copy subdirectory %s: %w", entry.Name(), err)
+				return fmt.Errorf("failed to copy subdirectory %s: %w", name, err)
 			}
 		} else {
 			// Copy file
 			if err := copyFile(srcPath, dstPath); err != nil {
-				return fmt.Errorf("failed to copy file %s: %w", entry.Name(), err)
+				return fmt.Errorf("failed to copy file %s: %w", name, err)
 			}
 		}
 	}
 
 	return nil
+}
+
+// shouldSkipFile determines if a file or directory should be skipped during copying
+func shouldSkipFile(name string, isDir bool) bool {
+	// Skip hidden files and directories
+	if strings.HasPrefix(name, ".") {
+		return true
+	}
+
+	if isDir {
+		// Skip common development and cache directories
+		skipDirs := []string{
+			"__pycache__",
+			".pytest_cache",
+			".mypy_cache",
+			".ruff_cache",
+			".coverage",
+			"venv",
+			".venv",
+			"env",
+			".env",
+			"node_modules",
+			".git",
+			".svn",
+			".hg",
+			"tests",
+			"test",
+			".tox",
+			"htmlcov",
+			".nyc_output",
+			"coverage",
+			"dist",
+			"build",
+			"*.egg-info",
+		}
+
+		for _, skipDir := range skipDirs {
+			if name == skipDir || strings.HasSuffix(name, ".egg-info") {
+				return true
+			}
+		}
+	} else {
+		// Skip common development files
+		skipFiles := []string{
+			"coverage.json",
+			"coverage.xml",
+			".coverage",
+			"pytest.ini",
+			"pyproject.toml", // This is handled separately if needed
+			"setup.py",       // This is handled separately if needed
+			"setup.cfg",
+			"tox.ini",
+			".gitignore",
+			".gitattributes",
+			"README.md",
+			"README.rst",
+			"LICENSE",
+			"MANIFEST.in",
+			"requirements-dev.txt",
+			"requirements-test.txt",
+		}
+
+		for _, skipFile := range skipFiles {
+			if name == skipFile {
+				return true
+			}
+		}
+
+		// Skip files with certain extensions
+		skipExtensions := []string{
+			".pyc",
+			".pyo",
+			".pyd",
+			".so",
+			".dylib",
+			".dll",
+			".log",
+			".tmp",
+			".temp",
+			".bak",
+			".swp",
+			".DS_Store",
+		}
+
+		for _, ext := range skipExtensions {
+			if strings.HasSuffix(name, ext) {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 // detectFlatLayout detects if this is a flat-layout project based on the artifact contents
@@ -1147,18 +1342,18 @@ func (r *PythonRuntime) updateCacheAfterBuild(input *runtime.BuildInput, buildOu
 	defer r.mutex.RUnlock()
 
 	// Skip if caching is not enabled
-	if r.changeDetector == nil || r.layoutDetector == nil {
+	if r.changeDetector == nil || r.projectResolver == nil {
 		return
 	}
 
-	// Update layout detector project root
+	// Update project resolver project root
 	workingDir := path.ResolveRootDir(input.CfgPath)
-	r.layoutDetector.projectRoot = workingDir
+	r.projectResolver.projectRoot = workingDir
 
-	// Detect layout for this build
-	layout, err := r.layoutDetector.DetectLayout(input.Handler)
+	// Resolve project structure for this build
+	projectInfo, err := r.projectResolver.ResolveHandler(input.Handler)
 	if err != nil {
-		slog.Warn("failed to detect layout for cache update",
+		slog.Warn("failed to resolve project structure for cache update",
 			"functionID", input.FunctionID,
 			"handler", input.Handler,
 			"error", err)
@@ -1176,7 +1371,7 @@ func (r *PythonRuntime) updateCacheAfterBuild(input *runtime.BuildInput, buildOu
 	}
 
 	// Update cache
-	err = r.changeDetector.UpdateCacheAfterBuild(input.FunctionID, input.Handler, layout, cachedBuildOutput)
+	err = r.changeDetector.UpdateCacheAfterBuild(input.FunctionID, input.Handler, projectInfo, cachedBuildOutput)
 	if err != nil {
 		slog.Warn("failed to update cache after build",
 			"functionID", input.FunctionID,

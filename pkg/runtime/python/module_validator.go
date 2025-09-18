@@ -114,6 +114,18 @@ func (mv *ModuleValidator) ValidateModulePlacement(extractedDir, targetDir, modu
 		}
 	}
 
+	// Validate that __init__.py exists for Python packages
+	if len(pythonFiles) > 1 && !hasInitPy {
+		return &BuildValidationError{
+			Stage:      "move",
+			Command:    fmt.Sprintf("move %s to %s", extractedDir, targetDir),
+			Files:      []string{extractedDir},
+			Expected:   []string{"__init__.py file"},
+			Actual:     []string{"missing __init__.py"},
+			Suggestion: fmt.Sprintf("Python package in %s is missing __init__.py file. This file is required for Python packages.", targetDir),
+		}
+	}
+
 	return nil
 }
 
@@ -121,7 +133,9 @@ func (mv *ModuleValidator) ValidateModulePlacement(extractedDir, targetDir, modu
 func (mv *ModuleValidator) ValidateInitPyFiles(targetDir, moduleName string) error {
 	mv.logger.Info("validating __init__.py files", "targetDir", targetDir, "moduleName", moduleName)
 
-	initPyPath := filepath.Join(targetDir, "__init__.py")
+	// The __init__.py should be in the module directory, not the parent directory
+	moduleDir := filepath.Join(targetDir, moduleName)
+	initPyPath := filepath.Join(moduleDir, "__init__.py")
 
 	// Check if __init__.py exists
 	if !fileExists(initPyPath) {
@@ -129,10 +143,10 @@ func (mv *ModuleValidator) ValidateInitPyFiles(targetDir, moduleName string) err
 		return &BuildValidationError{
 			Stage:      "validate",
 			Command:    "create __init__.py",
-			Files:      []string{targetDir},
+			Files:      []string{moduleDir},
 			Expected:   []string{initPyPath},
 			Actual:     []string{"file not found"},
-			Suggestion: fmt.Sprintf("__init__.py file is missing in %s. This file is required for proper Python package structure.", targetDir),
+			Suggestion: fmt.Sprintf("__init__.py file is missing in %s. This file is required for proper Python package structure.", moduleDir),
 		}
 	}
 
@@ -148,14 +162,14 @@ func (mv *ModuleValidator) ValidateInitPyFiles(targetDir, moduleName string) err
 		"mode", info.Mode())
 
 	// Check for subdirectories that might also need __init__.py files
-	entries, err := os.ReadDir(targetDir)
+	entries, err := os.ReadDir(moduleDir)
 	if err != nil {
-		return fmt.Errorf("failed to read target directory %s: %w", targetDir, err)
+		return fmt.Errorf("failed to read module directory %s: %w", moduleDir, err)
 	}
 
 	for _, entry := range entries {
 		if entry.IsDir() {
-			subDirPath := filepath.Join(targetDir, entry.Name())
+			subDirPath := filepath.Join(moduleDir, entry.Name())
 			subInitPyPath := filepath.Join(subDirPath, "__init__.py")
 
 			// Check if this subdirectory contains Python files
@@ -163,7 +177,14 @@ func (mv *ModuleValidator) ValidateInitPyFiles(targetDir, moduleName string) err
 				mv.logger.Warn("subdirectory missing __init__.py",
 					"subDir", subDirPath,
 					"expectedFile", subInitPyPath)
-				// This is a warning, not an error, as some subdirectories might not need __init__.py
+				return &BuildValidationError{
+					Stage:      "validate",
+					Command:    "create __init__.py",
+					Files:      []string{subDirPath},
+					Expected:   []string{subInitPyPath},
+					Actual:     []string{"file not found"},
+					Suggestion: fmt.Sprintf("subpackage missing __init__.py in %s. Python subpackages require __init__.py files.", subDirPath),
+				}
 			}
 		}
 	}
@@ -291,7 +312,47 @@ func (mv *ModuleValidator) ValidatePackageStructure(packageDir string) error {
 
 // EnsureInitPyFiles ensures that __init__.py files are created where needed
 func (mv *ModuleValidator) EnsureInitPyFiles(moduleDir string) error {
-	return mv.ValidateInitPyFiles(filepath.Dir(moduleDir), filepath.Base(moduleDir))
+	return mv.createInitPyFiles(filepath.Dir(moduleDir), filepath.Base(moduleDir))
+}
+
+// createInitPyFiles creates missing __init__.py files in the module and its subpackages
+func (mv *ModuleValidator) createInitPyFiles(targetDir, moduleName string) error {
+	mv.logger.Info("ensuring __init__.py files", "targetDir", targetDir, "moduleName", moduleName)
+
+	// The __init__.py should be in the module directory
+	moduleDir := filepath.Join(targetDir, moduleName)
+	initPyPath := filepath.Join(moduleDir, "__init__.py")
+
+	// Create __init__.py if it doesn't exist
+	if !fileExists(initPyPath) {
+		mv.logger.Info("creating missing __init__.py", "path", initPyPath)
+		if err := os.WriteFile(initPyPath, []byte("# Auto-generated __init__.py\n"), 0644); err != nil {
+			return fmt.Errorf("failed to create __init__.py file %s: %w", initPyPath, err)
+		}
+	}
+
+	// Check for subdirectories that might also need __init__.py files
+	entries, err := os.ReadDir(moduleDir)
+	if err != nil {
+		return fmt.Errorf("failed to read module directory %s: %w", moduleDir, err)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			subDirPath := filepath.Join(moduleDir, entry.Name())
+			subInitPyPath := filepath.Join(subDirPath, "__init__.py")
+
+			// Check if this subdirectory contains Python files
+			if mv.containsPythonFiles(subDirPath) && !fileExists(subInitPyPath) {
+				mv.logger.Info("creating missing __init__.py in subpackage", "path", subInitPyPath)
+				if err := os.WriteFile(subInitPyPath, []byte("# Auto-generated __init__.py\n"), 0644); err != nil {
+					return fmt.Errorf("failed to create __init__.py file %s: %w", subInitPyPath, err)
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 // isNonModuleDirectory checks if a directory name represents a non-module directory

@@ -1,4 +1,4 @@
-# Nested Layout Example
+# Complex Structure Example
 
 This example demonstrates a complex nested directory structure for organizing Lambda functions.
 
@@ -44,7 +44,7 @@ sst deploy
 
 ## Usage
 
-This layout is perfect for:
+This structure is perfect for:
 - Large applications with many functions
 - Team projects with clear organization
 - Microservices architectures

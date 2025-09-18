@@ -18,12 +18,12 @@ import (
 
 // Build stage constants
 const (
-	StageInit          = "init"
-	StageLayoutDetect  = "layout_detect"
-	StageDependencies  = "dependencies"
-	StageBuildPackages = "build_packages"
-	StageBuildPlan     = "build_plan"
-	StagePostProcess   = "post_process"
+	StageInit           = "init"
+	StageProjectResolve = "project_resolve"
+	StageDependencies   = "dependencies"
+	StageBuildPackages  = "build_packages"
+	StageBuildPlan      = "build_plan"
+	StagePostProcess    = "post_process"
 )
 
 // ProgressEvent represents a build progress event
@@ -38,12 +38,16 @@ type ProgressCallback func(ProgressEvent)
 // ProgressReporter tracks and reports build progress
 type ProgressReporter struct {
 	callbacks []ProgressCallback
+	progress  int
+	status    string
 }
 
 // NewProgressReporter creates a new progress reporter
 func NewProgressReporter() *ProgressReporter {
 	return &ProgressReporter{
 		callbacks: make([]ProgressCallback, 0),
+		progress:  0,
+		status:    "not_started",
 	}
 }
 
@@ -85,8 +89,15 @@ func (pr *ProgressReporter) MarkCached(stage, message string) {
 
 // GetProgressSummary returns a summary of progress
 func (pr *ProgressReporter) GetProgressSummary() map[string]interface{} {
+	if pr == nil {
+		return map[string]interface{}{
+			"status":   "not_started",
+			"progress": 0,
+		}
+	}
 	return map[string]interface{}{
-		"status": "in_progress",
+		"status":   pr.status,
+		"progress": pr.progress,
 	}
 }
 
@@ -102,11 +113,18 @@ func (pr *ProgressReporter) FailStage(stage, message string, err error) {
 
 // Complete marks the entire build as complete
 func (pr *ProgressReporter) Complete(message string, metadata map[string]interface{}) {
+	if pr != nil {
+		pr.progress = 100
+		pr.status = "complete"
+	}
 	pr.Report("complete", message)
 }
 
 // Fail marks the entire build as failed
 func (pr *ProgressReporter) Fail(message string, err error) {
+	if pr != nil {
+		pr.status = "failed"
+	}
 	pr.Report("failed", message)
 }
 
@@ -115,8 +133,8 @@ type IncrementalBuilder struct {
 	// buildCache manages build state and change detection
 	buildCache *BuildCache
 
-	// layoutDetector provides flexible project layout detection
-	layoutDetector *LayoutDetector
+	// projectResolver provides simplified project resolution without layout classification
+	projectResolver *ProjectResolver
 
 	// changeDetector monitors file modifications
 	changeDetector *ChangeDetector
@@ -139,11 +157,10 @@ type IncrementalBuilder struct {
 	// progressReporter tracks and reports build progress
 	progressReporter *ProgressReporter
 
-	// fallbackManager handles fallback strategies
-	fallbackManager *FallbackManager
+	// contentFilter handles file exclusion using hybrid approach
+	contentFilter *ContentFilter
 
-	// deprecationChecker checks for deprecated patterns
-	deprecationChecker *DeprecationChecker
+	// Removed fallback manager - using direct error handling instead
 
 	// mutex protects concurrent access
 	mutex sync.RWMutex
@@ -163,7 +180,7 @@ type IncrementalBuilderConfig struct {
 	// MaxCacheSize is the maximum size of the cache in bytes
 	MaxCacheSize int64
 
-	// MaxCacheAge is the maximum age for cache entries
+	// MaxCacheAge is the maximum age for dependency cache entries (not build cache)
 	MaxCacheAge time.Duration
 
 	// EnableParallelBuilds enables parallel building of independent packages
@@ -181,26 +198,16 @@ type IncrementalBuilderConfig struct {
 	// ProgressCallback is a function to receive progress updates
 	ProgressCallback ProgressCallback
 
+	// ProjectRoot is the root directory of the project for ContentFilter
+	ProjectRoot string
+
 	// FunctionID is the ID of the function being built (for progress events)
 	FunctionID string
 
-	// EnableFallbacks enables fallback mechanisms
-	EnableFallbacks bool
-
-	// EnableLegacyFallback enables falling back to legacy builder
-	EnableLegacyFallback bool
-
-	// LegacyBuilder is the legacy Python builder for fallback
-	LegacyBuilder LegacyPythonBuilder
-
-	// FallbackCallback is called when fallbacks occur
-	FallbackCallback FallbackCallback
+	// Fallback mechanisms removed - using direct error handling instead
 
 	// EnableDeprecationWarnings enables deprecation warnings
 	EnableDeprecationWarnings bool
-
-	// DeprecationCallback is called when deprecation warnings are issued
-	DeprecationCallback DeprecationCallback
 }
 
 // BuildPlan represents a plan for building packages
@@ -318,27 +325,19 @@ func NewIncrementalBuilder(config IncrementalBuilderConfig) (*IncrementalBuilder
 		return nil, fmt.Errorf("failed to create artifact directory: %w", err)
 	}
 
-	// Initialize layout detector
-	layoutDetector := NewLayoutDetector(LayoutDetectorConfig{
-		ProjectRoot:  config.CacheDir, // Will be updated per build
-		CacheTimeout: 5 * time.Minute,
-	})
+	// Initialize project resolver
+	projectResolver := NewProjectResolver(config.CacheDir) // Will be updated per build
 
-	// Initialize build cache
-	buildCache, err := NewBuildCache(BuildCacheConfig{
-		CacheDir:          config.CacheDir,
-		MaxAge:            config.MaxCacheAge,
-		MaxSize:           1000,
-		EnablePersistence: true,
-	})
+	// Initialize build cache with sensible defaults
+	buildCache, err := NewDefaultBuildCache(config.CacheDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create build cache: %w", err)
 	}
 
 	// Initialize change detector
 	changeDetector, err := NewChangeDetector(ChangeDetectorConfig{
-		LayoutDetector: layoutDetector,
-		BuildCache:     buildCache,
+		ProjectResolver: projectResolver,
+		BuildCache:      buildCache,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create change detector: %w", err)
@@ -355,8 +354,8 @@ func NewIncrementalBuilder(config IncrementalBuilderConfig) (*IncrementalBuilder
 
 	// Initialize dependency analyzer
 	dependencyAnalyzer := NewDependencyAnalyzer(DependencyAnalyzerConfig{
-		LayoutDetector: layoutDetector,
-		BuildCache:     buildCache,
+		ProjectResolver: projectResolver,
+		BuildCache:      buildCache,
 	})
 
 	// Initialize build planner
@@ -394,32 +393,14 @@ func NewIncrementalBuilder(config IncrementalBuilderConfig) (*IncrementalBuilder
 		progressReporter.RegisterCallback(config.ProgressCallback)
 	}
 
-	// Create fallback manager
-	var fallbackManager *FallbackManager
-	if config.EnableFallbacks {
-		fallbackConfig := FallbackManagerConfig{
-			EnableLegacyFallback: config.EnableLegacyFallback,
-			EnableCacheCleanup:   true,
-			MaxFallbackAttempts:  3,
-			LegacyBuilder:        config.LegacyBuilder,
-		}
-		fallbackManager = NewFallbackManager(fallbackConfig)
+	// Fallback manager removed - using direct error handling instead
 
-		// Register fallback callback if provided
-		if config.FallbackCallback != nil {
-			fallbackManager.RegisterCallback(config.FallbackCallback)
-		}
-	}
-
-	// Create deprecation checker
-	deprecationChecker := NewDeprecationChecker(config.EnableDeprecationWarnings)
-	if config.DeprecationCallback != nil {
-		deprecationChecker.RegisterCallback(config.DeprecationCallback)
-	}
+	// Create content filter for the project
+	contentFilter := NewContentFilterForProject(config.ProjectRoot)
 
 	return &IncrementalBuilder{
 		buildCache:         buildCache,
-		layoutDetector:     layoutDetector,
+		projectResolver:    projectResolver,
 		changeDetector:     changeDetector,
 		buildResultCache:   buildResultCache,
 		dependencyAnalyzer: dependencyAnalyzer,
@@ -427,52 +408,38 @@ func NewIncrementalBuilder(config IncrementalBuilderConfig) (*IncrementalBuilder
 		uvRunner:           uvRunner,
 		dependencyCache:    dependencyCache,
 		progressReporter:   progressReporter,
-		fallbackManager:    fallbackManager,
-		deprecationChecker: deprecationChecker,
-		config:             config,
+		contentFilter:      contentFilter,
+		// fallbackManager removed
+		config: config,
 	}, nil
 }
 
 // Build performs an incremental build using selective package building and caching
 func (ib *IncrementalBuilder) Build(ctx context.Context, input *runtime.BuildInput) (*runtime.BuildOutput, error) {
-	// Try the main build process first
-	result, err := ib.buildWithFallback(ctx, input)
+	// Try the main build process with improved error handling
+	result, err := ib.buildWithErrorHandling(ctx, input)
 	return result, err
 }
 
-// buildWithFallback performs the build with fallback handling
-func (ib *IncrementalBuilder) buildWithFallback(ctx context.Context, input *runtime.BuildInput) (*runtime.BuildOutput, error) {
+// buildWithErrorHandling performs the build with improved error handling
+func (ib *IncrementalBuilder) buildWithErrorHandling(ctx context.Context, input *runtime.BuildInput) (*runtime.BuildOutput, error) {
 	// Try the main build process
 	result, err := ib.buildInternal(ctx, input)
 
-	// If build succeeded or fallbacks are disabled, return the result
-	if err == nil || ib.fallbackManager == nil {
-		return result, err
+	// Return the result directly - no fallback strategies needed
+	// With simplified architecture, errors should be clear and actionable
+	if err != nil {
+		// Convert to structured error if needed
+		if pythonErr, ok := err.(*PythonRuntimeError); ok {
+			return result, pythonErr
+		}
+
+		// Wrap generic errors with better context
+		wrappedErr := WrapError(err, fmt.Sprintf("building function %s", input.FunctionID))
+		return result, wrappedErr
 	}
 
-	// Check if we should fallback
-	shouldFallback, reason, strategy := ib.fallbackManager.ShouldFallback(err)
-	if !shouldFallback {
-		return result, err
-	}
-
-	slog.Warn("build failed, attempting fallback",
-		"reason", string(reason),
-		"strategy", string(strategy),
-		"originalError", err.Error())
-
-	// Execute fallback strategy
-	fallbackResult, fallbackErr := ib.fallbackManager.ExecuteFallback(ctx, input, reason, strategy, err)
-	if fallbackErr != nil {
-		// Fallback also failed, return original error with context
-		return nil, fmt.Errorf("build failed and fallback also failed: original error: %w, fallback error: %v", err, fallbackErr)
-	}
-
-	slog.Info("fallback succeeded",
-		"reason", string(reason),
-		"strategy", string(strategy))
-
-	return fallbackResult, nil
+	return result, nil
 }
 
 // buildInternal performs the actual incremental build logic
@@ -489,12 +456,12 @@ func (ib *IncrementalBuilder) buildInternal(ctx context.Context, input *runtime.
 		"functionID", input.FunctionID,
 		"handler", input.Handler)
 
-	// Update layout detector with current project root
+	// Update project resolver with current project root
 	workingDir := filepath.Dir(input.CfgPath)
 	if workingDir == "" {
 		workingDir = "."
 	}
-	ib.layoutDetector.projectRoot = workingDir
+	ib.projectResolver.projectRoot = workingDir
 
 	// Check if we can use cached results
 	if ib.config.EnableBuildOptimization {
@@ -505,7 +472,7 @@ func (ib *IncrementalBuilder) buildInternal(ctx context.Context, input *runtime.
 				"functionID", input.FunctionID)
 
 			// Mark all stages as cached and complete the build
-			ib.progressReporter.MarkCached(StageLayoutDetect, "Using cached layout detection")
+			ib.progressReporter.MarkCached(StageProjectResolve, "Using cached project resolution")
 			ib.progressReporter.MarkCached(StageDependencies, "Using cached dependencies")
 			ib.progressReporter.MarkCached(StageBuildPlan, "Using cached build plan")
 			ib.progressReporter.MarkCached(StageBuildPackages, "Using cached build artifacts")
@@ -520,68 +487,57 @@ func (ib *IncrementalBuilder) buildInternal(ctx context.Context, input *runtime.
 		}
 	}
 
-	// Detect project layout with error recovery
-	ib.progressReporter.StartStage(StageLayoutDetect, "Detecting project layout")
+	// Resolve project structure with error recovery
+	ib.progressReporter.StartStage(StageProjectResolve, "Resolving project structure")
 
-	layout, err := ib.layoutDetector.DetectLayout(input.Handler)
+	projectInfo, err := ib.projectResolver.ResolveHandler(input.Handler)
 	if err != nil {
-		// Try to recover from layout detection errors
+		// Try to recover from project structure errors
 		if pythonErr, ok := err.(*PythonRuntimeError); ok {
-			if pythonErr.Type == ErrorTypeLayoutDetection {
-				// Attempt recovery by using fallback layout detection
-				slog.Warn("layout detection failed, attempting fallback", "error", err)
+			if pythonErr.Type == ErrorTypeProjectStructure {
+				// Attempt recovery by using fallback project resolution
+				slog.Warn("project structure resolution failed, attempting fallback", "error", err)
 				// For now, return the error - fallback could be implemented later
 			}
 		}
 
 		// Report failure in progress
-		ib.progressReporter.FailStage(StageLayoutDetect, "Failed to detect project layout", err)
-		ib.progressReporter.Fail("Build failed during layout detection", err)
+		ib.progressReporter.FailStage(StageProjectResolve, "Failed to resolve project structure", err)
+		ib.progressReporter.Fail("Build failed during project resolution", err)
 
-		return nil, WrapError(err, "layout detection").
+		return nil, WrapError(err, "project resolution").
 			WithContext("handler", input.Handler).
 			WithContext("workingDir", workingDir)
 	}
 
-	ib.progressReporter.CompleteStage(StageLayoutDetect, "Project layout detected successfully")
+	ib.progressReporter.CompleteStage(StageProjectResolve, "Project structure resolved successfully")
 
-	// Check for deprecated layout patterns
-	if ib.deprecationChecker != nil {
-		ib.deprecationChecker.CheckLayout(layout)
-	}
-
-	slog.Debug("detected project layout",
-		"type", layout.Type,
-		"workspaceDir", layout.WorkspaceDir,
-		"packageName", layout.PackageName)
+	slog.Debug("resolved project structure",
+		"handlerFile", projectInfo.HandlerFile,
+		"sourceRoot", projectInfo.SourceRoot,
+		"modulePath", projectInfo.ModulePath)
 
 	// Analyze dependencies with error recovery
 	ib.progressReporter.StartStage(StageDependencies, "Analyzing project dependencies")
 
-	dependencies, err := ib.dependencyAnalyzer.AnalyzeDependencies(ctx, layout)
+	dependencies, err := ib.dependencyAnalyzer.AnalyzeDependencies(ctx, projectInfo)
 	if err != nil {
 		// Report failure in progress
 		ib.progressReporter.FailStage(StageDependencies, "Failed to analyze dependencies", err)
 		ib.progressReporter.Fail("Build failed during dependency analysis", err)
 
 		return nil, WrapError(err, "dependency analysis").
-			WithContext("layout", layout.Type).
-			WithContext("workspaceDir", layout.WorkspaceDir).
+			WithContext("sourceRoot", projectInfo.SourceRoot).
+			WithContext("pyprojectPath", projectInfo.PyprojectPath).
 			WithSuggestion("Check if pyproject.toml and uv.lock files are valid")
 	}
 
 	ib.progressReporter.CompleteStage(StageDependencies, "Dependencies analyzed successfully")
 
-	// Check for deprecated dependency patterns
-	// TODO: Convert DependencyAnalysis to DependencyInfo for deprecation checking
-	// if ib.deprecationChecker != nil {
-	//	ib.deprecationChecker.CheckDependencies(dependencies)
-	// }
-
 	// Create build plan with error recovery
 	ib.progressReporter.StartStage(StageBuildPlan, "Creating build plan")
 
-	buildPlan, err := ib.buildPlanner.CreateBuildPlan(ctx, input, layout, dependencies)
+	buildPlan, err := ib.buildPlanner.CreateBuildPlan(ctx, input, projectInfo, dependencies)
 	if err != nil {
 		// Report failure in progress
 		ib.progressReporter.FailStage(StageBuildPlan, "Failed to create build plan", err)
@@ -602,7 +558,7 @@ func (ib *IncrementalBuilder) buildInternal(ctx context.Context, input *runtime.
 	// Execute build plan with error recovery
 	ib.progressReporter.StartStage(StageBuildPackages, "Building packages")
 
-	buildResult, err := ib.executeBuildPlan(ctx, input, layout, buildPlan)
+	buildResult, err := ib.executeBuildPlan(ctx, input, projectInfo, buildPlan)
 	if err != nil {
 		// Try to recover from build failures
 		if pythonErr, ok := err.(*PythonRuntimeError); ok {
@@ -636,7 +592,7 @@ func (ib *IncrementalBuilder) buildInternal(ctx context.Context, input *runtime.
 	// Update cache with build results
 	ib.progressReporter.StartStage(StagePostProcess, "Post-processing build results")
 
-	if err := ib.updateCacheAfterBuild(input, layout, buildResult); err != nil {
+	if err := ib.updateCacheAfterBuild(input, projectInfo, buildResult); err != nil {
 		slog.Warn("failed to update cache after build", "error", err)
 	}
 
@@ -660,6 +616,16 @@ func (ib *IncrementalBuilder) buildInternal(ctx context.Context, input *runtime.
 		"packagesCached", len(buildResult.PackagesCached))
 
 	return buildResult.BuildOutput, nil
+}
+
+// SetProjectRoot updates the project root directory for project resolution
+func (ib *IncrementalBuilder) SetProjectRoot(projectRoot string) {
+	ib.mutex.Lock()
+	defer ib.mutex.Unlock()
+
+	if ib.projectResolver != nil {
+		ib.projectResolver.projectRoot = projectRoot
+	}
 }
 
 // ShouldRebuild determines if a function needs to be rebuilt
@@ -706,25 +672,7 @@ func (ib *IncrementalBuilder) GetBuildProgress() map[string]interface{} {
 	return ib.progressReporter.GetProgressSummary()
 }
 
-// GetFallbackManager returns the fallback manager for external access
-func (ib *IncrementalBuilder) GetFallbackManager() *FallbackManager {
-	return ib.fallbackManager
-}
-
-// GetFallbackHistory returns the recent fallback events
-func (ib *IncrementalBuilder) GetFallbackHistory() []FallbackEvent {
-	if ib.fallbackManager == nil {
-		return []FallbackEvent{}
-	}
-	return ib.fallbackManager.GetFallbackHistory()
-}
-
-// ClearFallbackHistory clears the fallback history
-func (ib *IncrementalBuilder) ClearFallbackHistory() {
-	if ib.fallbackManager != nil {
-		ib.fallbackManager.ClearFallbackHistory()
-	}
-}
+// Fallback manager methods removed - using direct error handling instead
 
 // tryUseCachedResult attempts to use a cached build result
 func (ib *IncrementalBuilder) tryUseCachedResult(ctx context.Context, input *runtime.BuildInput) (*runtime.BuildOutput, error) {
@@ -753,13 +701,13 @@ func (ib *IncrementalBuilder) tryUseCachedResult(ctx context.Context, input *run
 }
 
 // executeBuildPlan executes the build plan and builds the necessary packages
-func (ib *IncrementalBuilder) executeBuildPlan(ctx context.Context, input *runtime.BuildInput, layout *LayoutInfo, plan *BuildPlan) (*BuildResult, error) {
+func (ib *IncrementalBuilder) executeBuildPlan(ctx context.Context, input *runtime.BuildInput, projectInfo *ProjectInfo, plan *BuildPlan) (*BuildResult, error) {
 	// Add nil checks to prevent segfaults
 	if ib == nil {
 		return nil, fmt.Errorf("incremental builder is nil")
 	}
-	if layout == nil {
-		return nil, fmt.Errorf("layout is nil")
+	if projectInfo == nil {
+		return nil, fmt.Errorf("project info is nil")
 	}
 	if plan == nil {
 		return nil, fmt.Errorf("build plan is nil")
@@ -798,7 +746,7 @@ func (ib *IncrementalBuilder) executeBuildPlan(ctx context.Context, input *runti
 		if ib.config.EnableParallelBuilds && len(plan.ParallelGroups) > 1 {
 			slog.Info("executing parallel builds")
 			// Execute parallel builds
-			if err := ib.executeParallelBuilds(ctx, input, layout, plan, result); err != nil {
+			if err := ib.executeParallelBuilds(ctx, input, projectInfo, plan, result); err != nil {
 				result.Success = false
 				result.Errors = append(result.Errors, err.Error())
 				return result, err
@@ -806,7 +754,7 @@ func (ib *IncrementalBuilder) executeBuildPlan(ctx context.Context, input *runti
 		} else {
 			slog.Info("executing sequential builds")
 			// Execute sequential builds
-			if err := ib.executeSequentialBuilds(ctx, input, layout, plan, result); err != nil {
+			if err := ib.executeSequentialBuilds(ctx, input, projectInfo, plan, result); err != nil {
 				result.Success = false
 				result.Errors = append(result.Errors, err.Error())
 				return result, err
@@ -819,7 +767,7 @@ func (ib *IncrementalBuilder) executeBuildPlan(ctx context.Context, input *runti
 
 	// Install dependencies with caching if needed
 	if !input.IsContainer || input.Dev {
-		if err := ib.installDependenciesForBuild(ctx, input, layout, plan, result); err != nil {
+		if err := ib.installDependenciesForBuild(ctx, input, projectInfo, plan, result); err != nil {
 			result.Success = false
 			result.Errors = append(result.Errors, err.Error())
 			return result, err
@@ -827,7 +775,7 @@ func (ib *IncrementalBuilder) executeBuildPlan(ctx context.Context, input *runti
 	}
 
 	// Create final build output
-	buildOutput, err := ib.createFinalBuildOutput(ctx, input, layout, result)
+	buildOutput, err := ib.createFinalBuildOutput(ctx, input, projectInfo, result)
 	if err != nil {
 		result.Success = false
 		result.Errors = append(result.Errors, err.Error())
@@ -841,7 +789,7 @@ func (ib *IncrementalBuilder) executeBuildPlan(ctx context.Context, input *runti
 }
 
 // executeSequentialBuilds builds packages one by one in the specified order
-func (ib *IncrementalBuilder) executeSequentialBuilds(ctx context.Context, input *runtime.BuildInput, layout *LayoutInfo, plan *BuildPlan, result *BuildResult) error {
+func (ib *IncrementalBuilder) executeSequentialBuilds(ctx context.Context, input *runtime.BuildInput, projectInfo *ProjectInfo, plan *BuildPlan, result *BuildResult) error {
 	totalPackages := 0
 	for _, pkg := range plan.Packages {
 		if pkg.RequiresRebuild {
@@ -876,7 +824,7 @@ func (ib *IncrementalBuilder) executeSequentialBuilds(ctx context.Context, input
 			"reason", packageInfo.RebuildReason)
 
 		slog.Info("about to call buildPackage", "package", packageName)
-		if err := ib.buildPackage(ctx, input, layout, packageInfo); err != nil {
+		if err := ib.buildPackage(ctx, input, projectInfo, packageInfo); err != nil {
 			return fmt.Errorf("failed to build package %s: %w", packageName, err)
 		}
 		slog.Info("buildPackage completed successfully", "package", packageName)
@@ -889,7 +837,7 @@ func (ib *IncrementalBuilder) executeSequentialBuilds(ctx context.Context, input
 }
 
 // executeParallelBuilds builds packages in parallel where possible
-func (ib *IncrementalBuilder) executeParallelBuilds(ctx context.Context, input *runtime.BuildInput, layout *LayoutInfo, plan *BuildPlan, result *BuildResult) error {
+func (ib *IncrementalBuilder) executeParallelBuilds(ctx context.Context, input *runtime.BuildInput, projectInfo *ProjectInfo, plan *BuildPlan, result *BuildResult) error {
 	slog.Info("executeParallelBuilds starting", "totalGroups", len(plan.ParallelGroups))
 
 	for i, group := range plan.ParallelGroups {
@@ -897,7 +845,7 @@ func (ib *IncrementalBuilder) executeParallelBuilds(ctx context.Context, input *
 
 		// Build packages in this group in parallel
 		slog.Info("about to call buildPackageGroup", "groupIndex", i)
-		if err := ib.buildPackageGroup(ctx, input, layout, plan, group, result); err != nil {
+		if err := ib.buildPackageGroup(ctx, input, projectInfo, plan, group, result); err != nil {
 			slog.Error("buildPackageGroup failed", "groupIndex", i, "error", err)
 			return fmt.Errorf("failed to build package group: %w", err)
 		}
@@ -910,7 +858,7 @@ func (ib *IncrementalBuilder) executeParallelBuilds(ctx context.Context, input *
 }
 
 // buildPackageGroup builds a group of packages in parallel
-func (ib *IncrementalBuilder) buildPackageGroup(ctx context.Context, input *runtime.BuildInput, layout *LayoutInfo, plan *BuildPlan, group []string, result *BuildResult) error {
+func (ib *IncrementalBuilder) buildPackageGroup(ctx context.Context, input *runtime.BuildInput, projectInfo *ProjectInfo, plan *BuildPlan, group []string, result *BuildResult) error {
 	slog.Info("building package group", "packages", group, "groupSize", len(group))
 
 	// Create a channel for errors
@@ -957,7 +905,7 @@ func (ib *IncrementalBuilder) buildPackageGroup(ctx context.Context, input *runt
 				"package", pkgName,
 				"reason", pkgInfo.RebuildReason)
 
-			if err := ib.buildPackage(ctx, input, layout, pkgInfo); err != nil {
+			if err := ib.buildPackage(ctx, input, projectInfo, pkgInfo); err != nil {
 				slog.Error("buildPackage failed in goroutine", "package", pkgName, "error", err)
 				errChan <- fmt.Errorf("failed to build package %s: %w", pkgName, err)
 				return
@@ -992,7 +940,7 @@ func (ib *IncrementalBuilder) buildPackageGroup(ctx context.Context, input *runt
 }
 
 // buildPackage builds a single package with selective building logic
-func (ib *IncrementalBuilder) buildPackage(ctx context.Context, input *runtime.BuildInput, layout *LayoutInfo, packageInfo *PackageBuildInfo) error {
+func (ib *IncrementalBuilder) buildPackage(ctx context.Context, input *runtime.BuildInput, projectInfo *ProjectInfo, packageInfo *PackageBuildInfo) error {
 	slog.Info("ENTERED buildPackage method", "package", packageInfo.PackageName)
 
 	slog.Info("building package selectively",
@@ -1051,7 +999,7 @@ func (ib *IncrementalBuilder) buildPackage(ctx context.Context, input *runtime.B
 
 	// Post-process the built package with error recovery
 	slog.Info("about to start post-processing", "package", packageInfo.PackageName)
-	if err := ib.postProcessPackageBuild(ctx, input, layout, packageInfo); err != nil {
+	if err := ib.postProcessPackageBuild(ctx, input, projectInfo, packageInfo); err != nil {
 		slog.Error("post-processing failed", "package", packageInfo.PackageName, "error", err)
 		return WrapError(err, "package post-processing").
 			WithContext("package", packageInfo.PackageName).
@@ -1076,9 +1024,9 @@ func (ib *IncrementalBuilder) buildPackage(ctx context.Context, input *runtime.B
 }
 
 // createFinalBuildOutput creates the final build output from the build results
-func (ib *IncrementalBuilder) createFinalBuildOutput(ctx context.Context, input *runtime.BuildInput, layout *LayoutInfo, result *BuildResult) (*runtime.BuildOutput, error) {
+func (ib *IncrementalBuilder) createFinalBuildOutput(ctx context.Context, input *runtime.BuildInput, projectInfo *ProjectInfo, result *BuildResult) (*runtime.BuildOutput, error) {
 	// Copy source directories that weren't built as packages
-	if err := ib.copySourceDirectories(ctx, input, layout); err != nil {
+	if err := ib.copySourceDirectories(ctx, input, projectInfo); err != nil {
 		return nil, fmt.Errorf("failed to copy source directories: %w", err)
 	}
 
@@ -1087,8 +1035,8 @@ func (ib *IncrementalBuilder) createFinalBuildOutput(ctx context.Context, input 
 		slog.Warn("failed to clean up absolute paths", "error", err)
 	}
 
-	// Adjust handler path based on layout
-	adjustedHandler, err := ib.adjustHandlerPath(input, layout)
+	// Adjust handler path based on project structure
+	adjustedHandler, err := ib.adjustHandlerPath(input, projectInfo)
 	if err != nil {
 		return nil, fmt.Errorf("failed to adjust handler path: %w", err)
 	}
@@ -1114,13 +1062,13 @@ func (ib *IncrementalBuilder) createFinalBuildOutput(ctx context.Context, input 
 }
 
 // copySourceDirectories copies source directories that weren't built as packages
-func (ib *IncrementalBuilder) copySourceDirectories(ctx context.Context, input *runtime.BuildInput, layout *LayoutInfo) error {
+func (ib *IncrementalBuilder) copySourceDirectories(ctx context.Context, input *runtime.BuildInput, projectInfo *ProjectInfo) error {
 	// Get dependency analysis to find local packages
 	analyzer := NewDependencyAnalyzer(DependencyAnalyzerConfig{
-		LayoutDetector: ib.layoutDetector,
+		ProjectResolver: ib.projectResolver,
 	})
 
-	analysis, err := analyzer.AnalyzeDependencies(ctx, layout)
+	analysis, err := analyzer.AnalyzeDependencies(ctx, projectInfo)
 	if err != nil {
 		return fmt.Errorf("failed to analyze dependencies for source copying: %w", err)
 	}
@@ -1150,7 +1098,7 @@ func (ib *IncrementalBuilder) copySourceDirectories(ctx context.Context, input *
 				"sourceFiles", len(pkg.SourceFiles),
 				"reason", "no build configuration required")
 
-			if err := ib.copySourceDirectory(pkg.Path, input.Out(), layout.WorkspaceDir, layout); err != nil {
+			if err := ib.copySourceDirectory(pkg.Path, input.Out(), projectInfo.SourceRoot, projectInfo); err != nil {
 				return fmt.Errorf("failed to copy source directory %s: %w", pkg.Path, err)
 			}
 		}
@@ -1160,7 +1108,7 @@ func (ib *IncrementalBuilder) copySourceDirectories(ctx context.Context, input *
 }
 
 // copySourceDirectory copies a source directory to the artifacts directory
-func (ib *IncrementalBuilder) copySourceDirectory(srcPath, destDir, workspaceDir string, layout *LayoutInfo) error {
+func (ib *IncrementalBuilder) copySourceDirectory(srcPath, destDir, workspaceDir string, projectInfo *ProjectInfo) error {
 	// Calculate the relative path from workspace to source directory
 	relPath, err := filepath.Rel(workspaceDir, srcPath)
 	if err != nil {
@@ -1188,9 +1136,9 @@ func (ib *IncrementalBuilder) copySourceDirectory(srcPath, destDir, workspaceDir
 
 	destPath := filepath.Join(destDir, relPath)
 
-	// Check if this is a flat layout (source directory is the workspace root)
-	if layout != nil && srcPath == layout.WorkspaceDir {
-		// For flat layouts, copy the contents directly to the artifact directory
+	// Check if this is a simple structure (source directory is the project root)
+	if projectInfo != nil && srcPath == projectInfo.ProjectRoot {
+		// For simple structures, copy the contents directly to the artifact directory
 		// instead of creating a subdirectory
 		slog.Info("detected flat layout, copying contents directly to artifact root",
 			"srcPath", srcPath,
@@ -1199,15 +1147,13 @@ func (ib *IncrementalBuilder) copySourceDirectory(srcPath, destDir, workspaceDir
 	}
 
 	// Check if this source directory needs src layout flattening
-	if layout != nil && layout.WorkspacePackagesWithSrc != nil {
-		// Check if this is a workspace package with src layout that needs flattening
-		if flattenedPath, shouldFlatten := ib.checkForSrcLayoutFlattening(srcPath, destPath, workspaceDir, layout); shouldFlatten {
-			slog.Info("flattening src layout for workspace package",
-				"srcPath", srcPath,
-				"originalDestPath", destPath,
-				"flattenedDestPath", flattenedPath)
-			destPath = flattenedPath
-		}
+	// For simplified approach, we check if the source path contains src/ pattern
+	if flattenedPath, shouldFlatten := ib.checkForSrcLayoutFlattening(srcPath, destPath, workspaceDir, projectInfo); shouldFlatten {
+		slog.Info("flattening src layout for workspace package",
+			"srcPath", srcPath,
+			"originalDestPath", destPath,
+			"flattenedDestPath", flattenedPath)
+		destPath = flattenedPath
 	}
 
 	// Create destination directory
@@ -1232,26 +1178,10 @@ func (ib *IncrementalBuilder) copyFlatLayoutContents(srcPath, destDir string) er
 		srcFile := filepath.Join(srcPath, entry.Name())
 		destFile := filepath.Join(destDir, entry.Name())
 
-		// Skip certain directories and files that shouldn't be copied
-		if entry.IsDir() {
-			switch entry.Name() {
-			case ".sst", ".venv", "__pycache__", "node_modules", ".git", "dist", "build":
-				slog.Debug("skipping directory in flat layout", "dir", entry.Name())
-				continue
-			}
-		} else {
-			// Only copy Python files and essential files for flat layout
-			ext := filepath.Ext(entry.Name())
-			switch ext {
-			case ".py":
-				// Always copy Python files
-			case ".toml", ".txt", ".md", ".yml", ".yaml", ".json":
-				// Copy configuration and documentation files
-			default:
-				// Skip other file types
-				slog.Debug("skipping file in flat layout", "file", entry.Name())
-				continue
-			}
+		// Use ContentFilter to determine if file should be excluded
+		if ib.contentFilter.ShouldExclude(entry.Name()) {
+			slog.Debug("skipping file/directory by content filter", "name", entry.Name())
+			continue
 		}
 
 		if entry.IsDir() {
@@ -1271,7 +1201,7 @@ func (ib *IncrementalBuilder) copyFlatLayoutContents(srcPath, destDir string) er
 }
 
 // checkForSrcLayoutFlattening determines if a source path needs src layout flattening
-func (ib *IncrementalBuilder) checkForSrcLayoutFlattening(srcPath, destPath, workspaceDir string, layout *LayoutInfo) (string, bool) {
+func (ib *IncrementalBuilder) checkForSrcLayoutFlattening(srcPath, destPath, workspaceDir string, projectInfo *ProjectInfo) (string, bool) {
 	// Parse the source path to see if it matches src/{package_name} pattern
 	relSrcPath, err := filepath.Rel(workspaceDir, srcPath)
 	if err != nil {
@@ -1293,8 +1223,9 @@ func (ib *IncrementalBuilder) checkForSrcLayoutFlattening(srcPath, destPath, wor
 		return destPath, false // Not a src directory
 	}
 
-	// Check if this package is marked as having src layout
-	if layout.WorkspacePackagesWithSrc[packageName] {
+	// Check if this follows the src/{package_name} pattern that needs flattening
+	// This is a simplified check based on the path structure
+	if strings.Contains(relSrcPath, "/src/") && strings.Contains(relSrcPath, packageName) {
 		// This is a src layout that should be flattened
 		// Change destination from package/src/package_name to package
 		relDestPath, err := filepath.Rel(workspaceDir, destPath)
@@ -1326,25 +1257,18 @@ func (ib *IncrementalBuilder) copyDirectoryRecursive(src, dest string) error {
 		}
 
 		// Skip directories that shouldn't be copied
-		if info.IsDir() {
-			dirName := filepath.Base(path)
-			skipDirs := []string{
-				".sst", ".venv", "__pycache__", ".git",
-				"node_modules", ".pytest_cache", ".mypy_cache",
-				"dist", "build", "*.egg-info",
-			}
-
-			for _, skipDir := range skipDirs {
-				if dirName == skipDir || strings.HasSuffix(dirName, ".egg-info") {
-					return filepath.SkipDir
-				}
-			}
-		}
-
 		// Calculate relative path
 		relPath, err := filepath.Rel(src, path)
 		if err != nil {
 			return err
+		}
+
+		if info.IsDir() {
+			// Use ContentFilter to determine if directory should be excluded
+			if ib.contentFilter.ShouldExclude(relPath) {
+				slog.Debug("skipping directory by content filter", "path", relPath)
+				return filepath.SkipDir
+			}
 		}
 
 		destPath := filepath.Join(dest, relPath)
@@ -1353,17 +1277,10 @@ func (ib *IncrementalBuilder) copyDirectoryRecursive(src, dest string) error {
 			// Create directory
 			return os.MkdirAll(destPath, info.Mode())
 		} else {
-			// Skip certain file types
-			fileName := filepath.Base(path)
-			skipFiles := []string{
-				".DS_Store", "Thumbs.db", "*.pyc", "*.pyo", "*.pyd",
-			}
-
-			for _, skipFile := range skipFiles {
-				if fileName == skipFile || strings.HasSuffix(fileName, ".pyc") ||
-					strings.HasSuffix(fileName, ".pyo") || strings.HasSuffix(fileName, ".pyd") {
-					return nil // Skip this file
-				}
+			// Use ContentFilter to determine if file should be excluded
+			if ib.contentFilter.ShouldExclude(relPath) {
+				slog.Debug("skipping file by content filter", "path", relPath)
+				return nil // Skip this file
 			}
 
 			// Copy file
@@ -1389,8 +1306,8 @@ func (ib *IncrementalBuilder) copyFile(src, dest string) error {
 	return os.WriteFile(dest, data, 0644)
 }
 
-// adjustHandlerPath adjusts the handler path based on the project layout
-func (ib *IncrementalBuilder) adjustHandlerPath(input *runtime.BuildInput, layout *LayoutInfo) (string, error) {
+// adjustHandlerPath adjusts the handler path based on the project structure
+func (ib *IncrementalBuilder) adjustHandlerPath(input *runtime.BuildInput, projectInfo *ProjectInfo) (string, error) {
 	originalHandler := input.Handler
 
 	// Check if handler path contains the pattern {package_name}/src/{package_name}
@@ -1431,7 +1348,7 @@ func (ib *IncrementalBuilder) adjustHandlerPath(input *runtime.BuildInput, layou
 }
 
 // updateCacheAfterBuild updates the cache with build results
-func (ib *IncrementalBuilder) updateCacheAfterBuild(input *runtime.BuildInput, layout *LayoutInfo, result *BuildResult) error {
+func (ib *IncrementalBuilder) updateCacheAfterBuild(input *runtime.BuildInput, projectInfo *ProjectInfo, result *BuildResult) error {
 	if result.CachedBuildOutput == nil {
 		return fmt.Errorf("no cached build output to store")
 	}
@@ -1440,7 +1357,7 @@ func (ib *IncrementalBuilder) updateCacheAfterBuild(input *runtime.BuildInput, l
 	return ib.changeDetector.UpdateCacheAfterBuild(
 		input.FunctionID,
 		input.Handler,
-		layout,
+		projectInfo,
 		result.CachedBuildOutput,
 	)
 }
@@ -1469,9 +1386,9 @@ func (ib *IncrementalBuilder) reuseCachedPackageBuild(ctx context.Context, input
 }
 
 // postProcessPackageBuild performs post-processing on a built package
-func (ib *IncrementalBuilder) postProcessPackageBuild(ctx context.Context, input *runtime.BuildInput, layout *LayoutInfo, packageInfo *PackageBuildInfo) error {
+func (ib *IncrementalBuilder) postProcessPackageBuild(ctx context.Context, input *runtime.BuildInput, projectInfo *ProjectInfo, packageInfo *PackageBuildInfo) error {
 	// Extract and process the built package archive
-	if err := ib.extractAndProcessPackageArchive(input.Out(), layout, packageInfo); err != nil {
+	if err := ib.extractAndProcessPackageArchive(input.Out(), projectInfo, packageInfo); err != nil {
 		return fmt.Errorf("failed to extract and process package archive: %w", err)
 	}
 
@@ -1484,7 +1401,7 @@ func (ib *IncrementalBuilder) postProcessPackageBuild(ctx context.Context, input
 }
 
 // extractAndProcessPackageArchive extracts the built package archive and processes it
-func (ib *IncrementalBuilder) extractAndProcessPackageArchive(outputDir string, layout *LayoutInfo, packageInfo *PackageBuildInfo) error {
+func (ib *IncrementalBuilder) extractAndProcessPackageArchive(outputDir string, projectInfo *ProjectInfo, packageInfo *PackageBuildInfo) error {
 	// Look for the built package file (either .whl or .tar.gz)
 	// Python normalizes package names by converting dashes to underscores
 	normalizedName := strings.ReplaceAll(packageInfo.PackageName, "-", "_")
@@ -1517,7 +1434,7 @@ func (ib *IncrementalBuilder) extractAndProcessPackageArchive(outputDir string, 
 
 	// Process each archive file (should typically be just one)
 	for _, archiveFile := range files {
-		if err := ib.processPackageArchive(archiveFile, outputDir, layout, packageInfo); err != nil {
+		if err := ib.processPackageArchive(archiveFile, outputDir, projectInfo, packageInfo); err != nil {
 			return fmt.Errorf("failed to process archive %s: %w", archiveFile, err)
 		}
 	}
@@ -1526,7 +1443,7 @@ func (ib *IncrementalBuilder) extractAndProcessPackageArchive(outputDir string, 
 }
 
 // processPackageArchive processes a single package archive file
-func (ib *IncrementalBuilder) processPackageArchive(archiveFile, outputDir string, layout *LayoutInfo, packageInfo *PackageBuildInfo) error {
+func (ib *IncrementalBuilder) processPackageArchive(archiveFile, outputDir string, projectInfo *ProjectInfo, packageInfo *PackageBuildInfo) error {
 	// Handle different archive types
 	if strings.HasSuffix(archiveFile, ".whl") {
 		// For wheel files, we can skip extraction since they're already built
@@ -1554,7 +1471,7 @@ func (ib *IncrementalBuilder) processPackageArchive(archiveFile, outputDir strin
 	targetDir := filepath.Join(outputDir, baseName)
 
 	// Move extracted directory to target location
-	if err := ib.moveExtractedPackage(extractedDir, targetDir, baseName, layout); err != nil {
+	if err := ib.moveExtractedPackage(extractedDir, targetDir, baseName, projectInfo); err != nil {
 		return fmt.Errorf("failed to move extracted package: %w", err)
 	}
 
@@ -1567,13 +1484,9 @@ func (ib *IncrementalBuilder) processPackageArchive(archiveFile, outputDir strin
 }
 
 // moveExtractedPackage moves the extracted package to the correct location
-func (ib *IncrementalBuilder) moveExtractedPackage(extractedDir, targetDir, baseName string, layout *LayoutInfo) error {
-	// Special handling for flat layouts - files should be at the root level
-	if layout != nil && layout.Type == LayoutTypeFlat {
-		return ib.moveFlatLayoutPackage(extractedDir, targetDir)
-	}
-
-	// Check if the package has a src/{package_name} structure
+func (ib *IncrementalBuilder) moveExtractedPackage(extractedDir, targetDir, baseName string, projectInfo *ProjectInfo) error {
+	// Use a unified approach for all project structures
+	// First, check if there's a src/{package_name} structure
 	srcPath := filepath.Join(extractedDir, "src", baseName)
 	if _, err := os.Stat(srcPath); err == nil {
 		// For src layout, we need to flatten the structure by moving src/{package_name} contents
@@ -1595,6 +1508,12 @@ func (ib *IncrementalBuilder) moveExtractedPackage(extractedDir, targetDir, base
 		}
 	} else {
 		// Handle the regular case (no src directory)
+		// Check if this is a package with Python files that need to be moved to root level
+		if ib.shouldFlattenPackage(extractedDir) {
+			return ib.flattenPackageToRoot(extractedDir, targetDir)
+		}
+
+		// Standard case: just rename the directory
 		if err := os.RemoveAll(targetDir); err != nil {
 			return fmt.Errorf("failed to remove old directory: %w", err)
 		}
@@ -1607,36 +1526,31 @@ func (ib *IncrementalBuilder) moveExtractedPackage(extractedDir, targetDir, base
 	return nil
 }
 
-// moveFlatLayoutPackage moves files from a flat layout package to the root level
-func (ib *IncrementalBuilder) moveFlatLayoutPackage(extractedDir, outputDir string) error {
-	// For flat layouts, we need to move the Python files from the extracted package
-	// directory directly to the root of the output directory
-
-	// Look for the package subdirectory within the extracted directory
-	// The extracted directory structure is typically: extracted_dir/package_name/files
+// shouldFlattenPackage determines if a package should have its files moved to root level
+func (ib *IncrementalBuilder) shouldFlattenPackage(extractedDir string) bool {
+	// Check if the directory contains Python files that should be at root level
+	// This is determined by the presence of Python files directly in the extracted directory
 	entries, err := os.ReadDir(extractedDir)
 	if err != nil {
-		return fmt.Errorf("failed to read extracted directory: %w", err)
+		return false
 	}
 
-	var packageDir string
 	for _, entry := range entries {
-		if entry.IsDir() {
-			// This should be the package directory
-			packageDir = filepath.Join(extractedDir, entry.Name())
-			break
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".py") {
+			return true
 		}
 	}
+	return false
+}
 
-	if packageDir == "" {
-		return fmt.Errorf("no package directory found in extracted archive")
-	}
+// flattenPackageToRoot moves Python files from a package directory to the root level
+func (ib *IncrementalBuilder) flattenPackageToRoot(extractedDir, outputDir string) error {
+	// Move Python files from the extracted package directory to the root level
+	slog.Debug("flattening package to root level", "from", extractedDir, "to", outputDir)
 
-	slog.Debug("found package directory for flat layout", "dir", packageDir)
-
-	// Find all Python files in the package directory
+	// Find all Python files in the extracted directory
 	var pythonFiles []string
-	err = filepath.Walk(packageDir, func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(extractedDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -1656,34 +1570,26 @@ func (ib *IncrementalBuilder) moveFlatLayoutPackage(extractedDir, outputDir stri
 	})
 
 	if err != nil {
-		return fmt.Errorf("failed to walk package directory: %w", err)
+		return fmt.Errorf("failed to walk extracted directory: %w", err)
+	}
+
+	// Create output directory
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
 	// Move each Python file to the root of the output directory
 	for _, srcFile := range pythonFiles {
-		// Get the relative path from the package directory (not the extracted directory)
-		relPath, err := filepath.Rel(packageDir, srcFile)
-		if err != nil {
-			return fmt.Errorf("failed to get relative path for %s: %w", srcFile, err)
-		}
-
-		// For flat layouts, we want to flatten the structure
-		// So we take just the filename, not the full relative path
-		fileName := filepath.Base(relPath)
+		// For packages that need flattening, move files to root level
+		fileName := filepath.Base(srcFile)
 		destFile := filepath.Join(outputDir, fileName)
-
-		// Create destination directory if needed
-		destDir := filepath.Dir(destFile)
-		if err := os.MkdirAll(destDir, 0755); err != nil {
-			return fmt.Errorf("failed to create destination directory %s: %w", destDir, err)
-		}
 
 		// Copy the file
 		if err := ib.copyFile(srcFile, destFile); err != nil {
 			return fmt.Errorf("failed to copy %s to %s: %w", srcFile, destFile, err)
 		}
 
-		slog.Debug("moved flat layout file", "from", srcFile, "to", destFile)
+		slog.Debug("flattened package file", "from", srcFile, "to", destFile)
 	}
 
 	// Clean up the extracted directory
@@ -1691,7 +1597,7 @@ func (ib *IncrementalBuilder) moveFlatLayoutPackage(extractedDir, outputDir stri
 		slog.Warn("failed to clean up extracted directory", "dir", extractedDir, "error", err)
 	}
 
-	slog.Info("successfully moved flat layout package files to root level", "fileCount", len(pythonFiles))
+	slog.Info("successfully flattened package files to root level", "fileCount", len(pythonFiles))
 	return nil
 }
 
@@ -1826,7 +1732,7 @@ func (ib *IncrementalBuilder) ClearCache() error {
 		return fmt.Errorf("failed to clear dependency cache: %w", err)
 	}
 
-	ib.layoutDetector.ClearCache()
+	ib.projectResolver.ClearCache()
 
 	return nil
 }
@@ -1860,8 +1766,12 @@ func (ib *IncrementalBuilder) RecoverFromError(err error) error {
 			return ib.recoverFromCacheCorruption(pythonErr)
 		case ErrorTypeBuildFailed:
 			return ib.recoverFromBuildFailure(pythonErr)
-		case ErrorTypeLayoutDetection:
-			return ib.recoverFromLayoutDetectionFailure(pythonErr)
+		case ErrorTypeProjectStructure:
+			return ib.recoverFromProjectStructureFailure(pythonErr)
+		case ErrorTypeHandlerNotFound:
+			return ib.recoverFromHandlerNotFoundFailure(pythonErr)
+		case ErrorTypeConfigurationError:
+			return ib.recoverFromConfigurationFailure(pythonErr)
 		}
 	}
 	return err
@@ -1903,14 +1813,49 @@ func (ib *IncrementalBuilder) recoverFromBuildFailure(err *PythonRuntimeError) e
 	return err
 }
 
-// recoverFromLayoutDetectionFailure handles layout detection failure recovery
-func (ib *IncrementalBuilder) recoverFromLayoutDetectionFailure(err *PythonRuntimeError) error {
-	slog.Info("attempting to recover from layout detection failure")
+// recoverFromProjectStructureFailure handles project structure failure recovery
+func (ib *IncrementalBuilder) recoverFromProjectStructureFailure(err *PythonRuntimeError) error {
+	slog.Info("attempting to recover from project structure failure")
 
-	// Clear layout cache and try again
-	ib.layoutDetector.ClearCache()
+	// Clear project resolver cache and try again
+	ib.projectResolver.ClearCache()
 
 	// For now, just return the error - more sophisticated fallback could be implemented
+	return err
+}
+
+// recoverFromHandlerNotFoundFailure handles handler not found failure recovery
+func (ib *IncrementalBuilder) recoverFromHandlerNotFoundFailure(err *PythonRuntimeError) error {
+	slog.Info("attempting to recover from handler not found failure")
+
+	// Extract handler path from error context
+	handler, ok := err.Context["handler"].(string)
+	if !ok {
+		return err
+	}
+
+	// Try to suggest alternative handler locations
+	if searchPaths, exists := err.Context["searchPaths"].([]string); exists {
+		slog.Info("handler not found in search paths", "handler", handler, "searchPaths", searchPaths)
+	}
+
+	// For now, just return the error - could implement file discovery here
+	return err
+}
+
+// recoverFromConfigurationFailure handles configuration failure recovery
+func (ib *IncrementalBuilder) recoverFromConfigurationFailure(err *PythonRuntimeError) error {
+	slog.Info("attempting to recover from configuration failure")
+
+	// Extract configuration file from error context
+	configFile, ok := err.Context["configFile"].(string)
+	if !ok {
+		return err
+	}
+
+	slog.Info("configuration issue detected", "configFile", configFile)
+
+	// For now, just return the error - could implement config validation/repair here
 	return err
 }
 
@@ -1937,42 +1882,6 @@ func (ib *IncrementalBuilder) BuildWithRecovery(ctx context.Context, input *runt
 	})
 
 	return result, err
-}
-
-// installDependenciesWithCaching installs dependencies using caching when possible
-func (ib *IncrementalBuilder) installDependenciesWithCaching(ctx context.Context, input *runtime.BuildInput, layout *LayoutInfo, requirementsFile string, architecture string) error {
-	ib.progressReporter.UpdateProgress(StageBuildPackages, "Checking for cached dependencies")
-
-	slog.Info("installing dependencies with caching",
-		"requirementsFile", requirementsFile,
-		"architecture", architecture,
-		"outputDir", input.Out())
-
-	// Try to use cached dependencies first
-	cachedEntry, err := ib.dependencyCache.GetCachedDependencies(requirementsFile, architecture, input.Out())
-	if err == nil {
-		ib.progressReporter.UpdateProgress(StageBuildPackages, "Using cached dependencies")
-		slog.Info("using cached dependencies",
-			"dependencyCount", len(cachedEntry.DependencyList),
-			"cacheAge", time.Since(cachedEntry.CreatedAt))
-		return nil
-	}
-
-	ib.progressReporter.UpdateProgress(StageBuildPackages, "Installing dependencies from requirements")
-	slog.Info("cached dependencies not available, installing fresh",
-		"reason", err.Error())
-
-	// Install dependencies fresh
-	if err := ib.installDependenciesFresh(ctx, input, requirementsFile, architecture); err != nil {
-		return fmt.Errorf("failed to install dependencies: %w", err)
-	}
-
-	// Cache the installed dependencies for future use
-	if err := ib.cacheFreshDependencies(requirementsFile, architecture, input.Out()); err != nil {
-		slog.Warn("failed to cache dependencies", "error", err)
-	}
-
-	return nil
 }
 
 // installDependenciesFresh installs dependencies without using cache
@@ -2052,10 +1961,10 @@ func (ib *IncrementalBuilder) getDependencyCacheStats() (*DependencyCacheStats, 
 }
 
 // installDependenciesForBuild installs dependencies for the build
-func (ib *IncrementalBuilder) installDependenciesForBuild(ctx context.Context, input *runtime.BuildInput, layout *LayoutInfo, plan *BuildPlan, result *BuildResult) error {
+func (ib *IncrementalBuilder) installDependenciesForBuild(ctx context.Context, input *runtime.BuildInput, projectInfo *ProjectInfo, plan *BuildPlan, result *BuildResult) error {
 	// Generate requirements file first to get the dependency list
 	requirementsFile := filepath.Join(input.Out(), "requirements.txt")
-	if err := ib.generateRequirementsFile(ctx, input, layout, requirementsFile); err != nil {
+	if err := ib.generateRequirementsFile(ctx, input, projectInfo, requirementsFile); err != nil {
 		return fmt.Errorf("failed to generate requirements file: %w", err)
 	}
 
@@ -2068,7 +1977,7 @@ func (ib *IncrementalBuilder) installDependenciesForBuild(ctx context.Context, i
 	// Install dependencies for the correct target platform (Linux)
 	ib.progressReporter.UpdateProgress(StageBuildPackages, "Installing dependencies for Lambda")
 
-	if err := ib.installDependenciesForLambda(ctx, input, layout, requirementsFile, architecture); err != nil {
+	if err := ib.installDependenciesForLambda(ctx, input, projectInfo, requirementsFile, architecture); err != nil {
 		return fmt.Errorf("failed to install dependencies: %w", err)
 	}
 
@@ -2076,11 +1985,16 @@ func (ib *IncrementalBuilder) installDependenciesForBuild(ctx context.Context, i
 }
 
 // generateRequirementsFile generates a requirements.txt file for the build
-func (ib *IncrementalBuilder) generateRequirementsFile(ctx context.Context, input *runtime.BuildInput, layout *LayoutInfo, outputFile string) error {
+func (ib *IncrementalBuilder) generateRequirementsFile(ctx context.Context, input *runtime.BuildInput, projectInfo *ProjectInfo, outputFile string) error {
 	// Use UV export with --all-packages to include all workspace dependencies
 	// This matches the legacy builder behavior and ensures git dependencies are included
+	workspaceDir := projectInfo.SourceRoot
+	if projectInfo.PyprojectPath != "" {
+		workspaceDir = filepath.Dir(projectInfo.PyprojectPath)
+	}
+
 	exportCmd := &UvExportCommand{
-		WorkspaceDir:    layout.WorkspaceDir,
+		WorkspaceDir:    workspaceDir,
 		PackageName:     "", // Empty to use --all-packages
 		OutputFile:      outputFile,
 		NoEmitWorkspace: false,
@@ -2145,10 +2059,15 @@ func (ib *IncrementalBuilder) cleanupAbsolutePaths(artifactDir string) error {
 }
 
 // installDependenciesForLambda installs dependencies for Lambda with correct platform targeting
-func (ib *IncrementalBuilder) installDependenciesForLambda(ctx context.Context, input *runtime.BuildInput, layout *LayoutInfo, requirementsFile string, architecture string) error {
+func (ib *IncrementalBuilder) installDependenciesForLambda(ctx context.Context, input *runtime.BuildInput, projectInfo *ProjectInfo, requirementsFile string, architecture string) error {
+	workspaceDir := projectInfo.SourceRoot
+	if projectInfo.PyprojectPath != "" {
+		workspaceDir = filepath.Dir(projectInfo.PyprojectPath)
+	}
+
 	// First, sync workspace dependencies to resolve git dependencies and workspace packages
 	syncCmd := &UvSyncCommand{
-		WorkspaceDir: layout.WorkspaceDir,
+		WorkspaceDir: workspaceDir,
 		AllPackages:  true,
 		NoDev:        true,
 		Packages:     []string{}, // Empty means sync all packages
@@ -2164,7 +2083,7 @@ func (ib *IncrementalBuilder) installDependenciesForLambda(ctx context.Context, 
 	ib.progressReporter.UpdateProgress(StageBuildPackages, "Copying source files")
 	slog.Info("copying source files based on handler path", "handler", input.Handler)
 
-	if err := ib.copySourceFilesSimple(ctx, input, layout); err != nil {
+	if err := ib.copySourceFilesSimple(ctx, input, projectInfo); err != nil {
 		return fmt.Errorf("failed to copy source files: %w", err)
 	}
 
@@ -2172,215 +2091,151 @@ func (ib *IncrementalBuilder) installDependenciesForLambda(ctx context.Context, 
 	// This includes git dependencies like sst that are properly resolved after sync
 	ib.progressReporter.UpdateProgress(StageBuildPackages, "Copying synced dependencies")
 
-	if err := ib.copySyncedDependencies(ctx, input, layout, architecture); err != nil {
+	if err := ib.copySyncedDependencies(ctx, input, projectInfo, architecture); err != nil {
 		return fmt.Errorf("failed to copy synced dependencies: %w", err)
 	}
 
 	return nil
 }
 
-// buildWorkspacePackages builds all workspace packages using uv build
-func (ib *IncrementalBuilder) buildWorkspacePackages(ctx context.Context, input *runtime.BuildInput, layout *LayoutInfo) error {
-	// Use uv build --all --sdist to build all workspace packages
-	// This matches the legacy builder behavior and ensures git dependencies are built
-	buildCmd := &UvBuildCommand{
-		WorkspaceDir: layout.WorkspaceDir,
-		OutputDir:    input.Out(),
-		AllPackages:  true,
-		BuildType:    "sdist", // Source distribution
-	}
-
-	return ib.uvRunner.ExecuteBuildCommand(ctx, buildCmd)
-}
-
-// extractBuiltPackages extracts the built .tar.gz packages to the output directory
-func (ib *IncrementalBuilder) extractBuiltPackages(ctx context.Context, input *runtime.BuildInput, layout *LayoutInfo) error {
-	// Find all .tar.gz files in the output directory
-	entries, err := os.ReadDir(input.Out())
-	if err != nil {
-		return fmt.Errorf("failed to read output directory: %w", err)
-	}
-
-	var tarGzFiles []string
-	for _, entry := range entries {
-		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".tar.gz") {
-			tarGzFiles = append(tarGzFiles, filepath.Join(input.Out(), entry.Name()))
-		}
-	}
-
-	if len(tarGzFiles) == 0 {
-		return fmt.Errorf("no .tar.gz files found to extract")
-	}
-
-	slog.Info("extracting built packages", "files", tarGzFiles, "count", len(tarGzFiles))
-
-	// Extract each .tar.gz file
-	for _, file := range tarGzFiles {
-		slog.Info("extracting package", "file", file)
-
-		// Create a temporary directory for extraction
-		tempDir := filepath.Join(input.Out(), "temp_extract")
-		if err := os.MkdirAll(tempDir, 0755); err != nil {
-			return fmt.Errorf("failed to create temp directory: %w", err)
-		}
-		defer os.RemoveAll(tempDir)
-
-		// Use tar command to extract to temp directory
-		cmd := exec.CommandContext(ctx, "tar", "-xzf", file, "-C", tempDir)
-		if output, err := cmd.CombinedOutput(); err != nil {
-			slog.Error("failed to extract package", "file", file, "error", err, "output", string(output))
-			return fmt.Errorf("failed to extract %s: %w", file, err)
-		}
-
-		// For flat layouts, we need to flatten the extracted structure
-		// For other layouts, we need to preserve the structure but remove the package name wrapper
-		if err := ib.processExtractedPackage(tempDir, input.Out(), layout); err != nil {
-			return fmt.Errorf("failed to process extracted package %s: %w", file, err)
-		}
-
-		// Remove the .tar.gz file after extraction
-		if err := os.Remove(file); err != nil {
-			slog.Warn("failed to remove extracted tar.gz file", "file", file, "error", err)
-		}
-	}
-
-	slog.Info("successfully extracted all built packages", "count", len(tarGzFiles))
-	return nil
-}
-
-// processExtractedPackage processes the extracted package based on layout type
-func (ib *IncrementalBuilder) processExtractedPackage(tempDir, outputDir string, layout *LayoutInfo) error {
-	// Find the extracted package directory (should be the only directory in tempDir)
-	entries, err := os.ReadDir(tempDir)
-	if err != nil {
-		return fmt.Errorf("failed to read temp directory: %w", err)
-	}
-
-	var packageDir string
-	for _, entry := range entries {
-		if entry.IsDir() {
-			packageDir = filepath.Join(tempDir, entry.Name())
-			break
-		}
-	}
-
-	if packageDir == "" {
-		return fmt.Errorf("no package directory found in extracted archive")
-	}
-
-	slog.Info("processing extracted package", "packageDir", packageDir, "layout", layout.Type)
-
-	// Handle different layout types
-	switch layout.Type {
-	case LayoutTypeFlat:
-		// For flat layouts, copy all Python files directly to the output directory
-		return ib.copyFlatLayoutFiles(packageDir, outputDir)
-
-	case LayoutTypeNested, LayoutTypeWorkspace:
-		// For nested and workspace layouts, copy the contents without the package name wrapper
-		return ib.copyNestedLayoutFiles(packageDir, outputDir)
-
-	default:
-		// Default behavior: copy everything as-is
-		return copyDirectory(packageDir, outputDir)
-	}
-}
-
-// copyFlatLayoutFiles copies files for flat layout, flattening the structure
-func (ib *IncrementalBuilder) copyFlatLayoutFiles(packageDir, outputDir string) error {
-	return filepath.Walk(packageDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		// Skip directories and non-Python files for flat layout
-		if info.IsDir() || !strings.HasSuffix(info.Name(), ".py") {
-			return nil
-		}
-
-		// Copy Python files directly to output directory
-		destPath := filepath.Join(outputDir, info.Name())
-		return copyFile(path, destPath)
-	})
-}
-
-// copyNestedLayoutFiles copies files for nested/workspace layouts, preserving structure but removing package wrapper
-func (ib *IncrementalBuilder) copyNestedLayoutFiles(packageDir, outputDir string) error {
-	// Find the actual content directory inside the package
-	entries, err := os.ReadDir(packageDir)
-	if err != nil {
-		return fmt.Errorf("failed to read package directory: %w", err)
-	}
-
-	// Look for directories that contain the actual source code
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-
-		srcPath := filepath.Join(packageDir, entry.Name())
-
-		// Check if this directory contains Python files or subdirectories with Python files
-		if ib.containsPythonContent(srcPath) {
-			destPath := filepath.Join(outputDir, entry.Name())
-			if err := copyDirectory(srcPath, destPath); err != nil {
-				return fmt.Errorf("failed to copy directory %s: %w", entry.Name(), err)
-			}
-		}
-	}
-
-	return nil
-}
-
-// containsPythonContent checks if a directory contains Python files or subdirectories with Python files
-func (ib *IncrementalBuilder) containsPythonContent(dirPath string) bool {
-	entries, err := os.ReadDir(dirPath)
-	if err != nil {
-		return false
-	}
-
-	for _, entry := range entries {
-		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".py") {
-			return true
-		}
-		if entry.IsDir() {
-			subPath := filepath.Join(dirPath, entry.Name())
-			if ib.containsPythonContent(subPath) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 // copySourceFilesSimple copies source files using a simple, handler-path-based approach
-func (ib *IncrementalBuilder) copySourceFilesSimple(ctx context.Context, input *runtime.BuildInput, layout *LayoutInfo) error {
-	slog.Info("copying source files with simple approach", "handler", input.Handler, "workspaceDir", layout.WorkspaceDir)
+func (ib *IncrementalBuilder) copySourceFilesSimple(ctx context.Context, input *runtime.BuildInput, projectInfo *ProjectInfo) error {
+	workspaceDir := projectInfo.SourceRoot
+	if projectInfo.PyprojectPath != "" {
+		workspaceDir = filepath.Dir(projectInfo.PyprojectPath)
+	}
+
+	slog.Info("copying source files with simple approach", "handler", input.Handler, "workspaceDir", workspaceDir)
 
 	// Parse the handler path to understand what directories we need
 	handlerPath := input.Handler
 
-	// Extract the directory part of the handler path
+	// Extract the directory part of the handler path and resolve it relative to workspaceDir
 	// Examples:
 	// - "handler.main" -> copy all .py files from root
 	// - "app/functions/api/handler.main" -> copy "app" directory
 	// - "src/mypackage/handler.api_handler" -> copy "src" directory
+	// - "functions/src/functions/user/handler.main" -> copy entire structure
 
 	var dirsToInclude []string
 	var rootFilesToInclude []string
 
 	if strings.Contains(handlerPath, "/") {
-		// Handler is in a subdirectory, so we need to copy that directory
+		// Handler is in a subdirectory, determine what to copy
 		parts := strings.Split(handlerPath, "/")
-		topLevelDir := parts[0]
-		dirsToInclude = append(dirsToInclude, topLevelDir)
 
-		slog.Info("handler in subdirectory, including directory", "dir", topLevelDir)
+		// Find the actual handler file to verify the path structure
+		handlerFile := strings.Join(parts[:len(parts)-1], "/") + ".py"
+		fullHandlerPath := filepath.Join(workspaceDir, handlerFile)
+
+		slog.Info("checking handler file path", "handlerFile", handlerFile, "fullPath", fullHandlerPath)
+
+		// Check if the handler file exists at the expected location
+		if _, err := os.Stat(fullHandlerPath); err == nil {
+			// Handler file exists, determine what directories to copy
+			// We need to copy the top-level directory that contains the handler
+			topLevelDir := parts[0]
+
+			// But first check if this directory actually exists in workspaceDir
+			topLevelPath := filepath.Join(workspaceDir, topLevelDir)
+			if _, err := os.Stat(topLevelPath); err == nil {
+				dirsToInclude = append(dirsToInclude, topLevelDir)
+				slog.Info("handler in subdirectory, including directory", "dir", topLevelDir)
+			} else {
+				// The top-level directory doesn't exist in workspaceDir
+				// This might mean workspaceDir is already pointing to a subdirectory
+				// In this case, copy everything from workspaceDir
+				slog.Info("top-level directory not found in workspace, copying entire workspace", "topLevelDir", topLevelDir, "workspaceDir", workspaceDir)
+
+				entries, err := os.ReadDir(workspaceDir)
+				if err != nil {
+					return fmt.Errorf("failed to read workspace directory: %w", err)
+				}
+
+				for _, entry := range entries {
+					if entry.IsDir() {
+						dirsToInclude = append(dirsToInclude, entry.Name())
+					} else if strings.HasSuffix(entry.Name(), ".py") {
+						rootFilesToInclude = append(rootFilesToInclude, entry.Name())
+					}
+				}
+			}
+		} else {
+			// Handler file not found at expected location
+			// Try to find it by removing parts of the path (in case SourceRoot is deeper)
+			var actualHandlerPath string
+			var relativeHandlerPath string
+
+			for i := 1; i < len(parts)-1; i++ {
+				// Try removing the first i parts of the path
+				remainingParts := parts[i:]
+				testHandlerFile := strings.Join(remainingParts[:len(remainingParts)-1], "/") + ".py"
+				testFullPath := filepath.Join(workspaceDir, testHandlerFile)
+
+				slog.Info("trying alternative handler path", "testHandlerFile", testHandlerFile, "testFullPath", testFullPath)
+
+				if _, err := os.Stat(testFullPath); err == nil {
+					actualHandlerPath = testFullPath
+					relativeHandlerPath = testHandlerFile
+					break
+				}
+			}
+
+			if actualHandlerPath != "" {
+				// Handler file found at alternative location
+				relativeDir := filepath.Dir(relativeHandlerPath)
+				if relativeDir == "." {
+					// Handler is at root level of workspaceDir
+					slog.Info("handler found at workspace root, copying all content")
+					entries, err := os.ReadDir(workspaceDir)
+					if err != nil {
+						return fmt.Errorf("failed to read workspace directory: %w", err)
+					}
+
+					for _, entry := range entries {
+						if entry.IsDir() {
+							dirsToInclude = append(dirsToInclude, entry.Name())
+						} else if strings.HasSuffix(entry.Name(), ".py") {
+							rootFilesToInclude = append(rootFilesToInclude, entry.Name())
+						}
+					}
+				} else {
+					// Handler is in a subdirectory, copy the top-level directory
+					topLevelDir := strings.Split(relativeDir, "/")[0]
+					dirsToInclude = append(dirsToInclude, topLevelDir)
+					slog.Info("handler found in subdirectory, including directory", "dir", topLevelDir, "relativeDir", relativeDir)
+				}
+			} else {
+				// Handler file not found anywhere, fall back to copying based on original path
+				topLevelDir := parts[0]
+				topLevelPath := filepath.Join(workspaceDir, topLevelDir)
+				if _, err := os.Stat(topLevelPath); err == nil {
+					dirsToInclude = append(dirsToInclude, topLevelDir)
+					slog.Info("handler file not found, but directory exists, including directory", "dir", topLevelDir)
+				} else {
+					// Last resort: copy everything from workspaceDir
+					slog.Info("handler file not found and directory doesn't exist, copying entire workspace", "handlerPath", handlerPath, "workspaceDir", workspaceDir)
+
+					entries, err := os.ReadDir(workspaceDir)
+					if err != nil {
+						return fmt.Errorf("failed to read workspace directory: %w", err)
+					}
+
+					for _, entry := range entries {
+						if entry.IsDir() {
+							dirsToInclude = append(dirsToInclude, entry.Name())
+						} else if strings.HasSuffix(entry.Name(), ".py") {
+							rootFilesToInclude = append(rootFilesToInclude, entry.Name())
+						}
+					}
+				}
+			}
+		}
 	} else {
 		// Handler is at root level, copy all Python files from root
 		slog.Info("handler at root level, copying root Python files")
 
-		entries, err := os.ReadDir(layout.WorkspaceDir)
+		entries, err := os.ReadDir(workspaceDir)
 		if err != nil {
 			return fmt.Errorf("failed to read workspace directory: %w", err)
 		}
@@ -2395,7 +2250,7 @@ func (ib *IncrementalBuilder) copySourceFilesSimple(ctx context.Context, input *
 	// Also include any additional directories that might be needed (like shared utilities)
 	// Look for common directory names that often contain shared code
 	commonDirs := []string{"shared", "common", "utils", "lib", "core"}
-	entries, err := os.ReadDir(layout.WorkspaceDir)
+	entries, err := os.ReadDir(workspaceDir)
 	if err != nil {
 		return fmt.Errorf("failed to read workspace directory: %w", err)
 	}
@@ -2406,7 +2261,7 @@ func (ib *IncrementalBuilder) copySourceFilesSimple(ctx context.Context, input *
 			// Include common directories if they contain Python files
 			for _, commonDir := range commonDirs {
 				if dirName == commonDir {
-					dirPath := filepath.Join(layout.WorkspaceDir, dirName)
+					dirPath := filepath.Join(workspaceDir, dirName)
 					if ib.containsPythonContent(dirPath) {
 						// Only add if not already included
 						found := false
@@ -2429,7 +2284,7 @@ func (ib *IncrementalBuilder) copySourceFilesSimple(ctx context.Context, input *
 
 	// Copy directories
 	for _, dirName := range dirsToInclude {
-		srcPath := filepath.Join(layout.WorkspaceDir, dirName)
+		srcPath := filepath.Join(workspaceDir, dirName)
 		destPath := filepath.Join(input.Out(), dirName)
 
 		slog.Info("copying directory", "src", srcPath, "dest", destPath)
@@ -2441,7 +2296,7 @@ func (ib *IncrementalBuilder) copySourceFilesSimple(ctx context.Context, input *
 
 	// Copy root Python files
 	for _, fileName := range rootFilesToInclude {
-		srcPath := filepath.Join(layout.WorkspaceDir, fileName)
+		srcPath := filepath.Join(workspaceDir, fileName)
 		destPath := filepath.Join(input.Out(), fileName)
 
 		slog.Info("copying root file", "src", srcPath, "dest", destPath)
@@ -2458,93 +2313,29 @@ func (ib *IncrementalBuilder) copySourceFilesSimple(ctx context.Context, input *
 	return nil
 }
 
-// copySourceFiles copies source files directly for nested and workspace layouts
-func (ib *IncrementalBuilder) copySourceFiles(ctx context.Context, input *runtime.BuildInput, layout *LayoutInfo) error {
-	slog.Info("copying source files for layout", "type", layout.Type, "workspaceDir", layout.WorkspaceDir)
-
-	// Define what to copy based on layout type
-	var sourceDirs []string
-
-	switch layout.Type {
-	case LayoutTypeNested:
-		// For nested layouts, copy all directories that contain Python files
-		// This preserves the nested structure like app/functions/api/
-		entries, err := os.ReadDir(layout.WorkspaceDir)
-		if err != nil {
-			return fmt.Errorf("failed to read workspace directory: %w", err)
-		}
-
-		for _, entry := range entries {
-			if entry.IsDir() {
-				dirPath := filepath.Join(layout.WorkspaceDir, entry.Name())
-				if ib.containsPythonContent(dirPath) {
-					sourceDirs = append(sourceDirs, entry.Name())
-				}
-			}
-		}
-
-	case LayoutTypeWorkspace:
-		// For workspace layouts, copy the src directory and any other relevant directories
-		if layout.HasSrcDirectory {
-			sourceDirs = append(sourceDirs, "src")
-		}
-
-		// Also copy any other directories that contain Python files
-		entries, err := os.ReadDir(layout.WorkspaceDir)
-		if err != nil {
-			return fmt.Errorf("failed to read workspace directory: %w", err)
-		}
-
-		for _, entry := range entries {
-			if entry.IsDir() && entry.Name() != "src" {
-				dirPath := filepath.Join(layout.WorkspaceDir, entry.Name())
-				if ib.containsPythonContent(dirPath) {
-					sourceDirs = append(sourceDirs, entry.Name())
-				}
-			}
-		}
-
-	default:
-		return fmt.Errorf("copySourceFiles called with unsupported layout type: %s", layout.Type)
-	}
-
-	// Copy each source directory
-	for _, sourceDir := range sourceDirs {
-		srcPath := filepath.Join(layout.WorkspaceDir, sourceDir)
-		destPath := filepath.Join(input.Out(), sourceDir)
-
-		slog.Info("copying source directory", "src", srcPath, "dest", destPath)
-
-		if err := copyDirectory(srcPath, destPath); err != nil {
-			return fmt.Errorf("failed to copy directory %s: %w", sourceDir, err)
-		}
-	}
-
-	// Also copy any Python files at the root level
-	entries, err := os.ReadDir(layout.WorkspaceDir)
+// containsPythonContent checks if a directory contains Python files
+func (ib *IncrementalBuilder) containsPythonContent(dirPath string) bool {
+	entries, err := os.ReadDir(dirPath)
 	if err != nil {
-		return fmt.Errorf("failed to read workspace directory: %w", err)
+		return false
 	}
 
 	for _, entry := range entries {
 		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".py") {
-			srcPath := filepath.Join(layout.WorkspaceDir, entry.Name())
-			destPath := filepath.Join(input.Out(), entry.Name())
-
-			slog.Info("copying root Python file", "src", srcPath, "dest", destPath)
-
-			if err := copyFile(srcPath, destPath); err != nil {
-				return fmt.Errorf("failed to copy file %s: %w", entry.Name(), err)
+			return true
+		}
+		if entry.IsDir() {
+			subPath := filepath.Join(dirPath, entry.Name())
+			if ib.containsPythonContent(subPath) {
+				return true
 			}
 		}
 	}
-
-	slog.Info("successfully copied source files", "layout", layout.Type, "sourceDirs", sourceDirs)
-	return nil
+	return false
 }
 
 // copySyncedDependencies installs external dependencies with correct platform targeting
-func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input *runtime.BuildInput, layout *LayoutInfo, architecture string) error {
+func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input *runtime.BuildInput, projectInfo *ProjectInfo, architecture string) error {
 	// Use the requirements.txt that was already exported by the export step
 	requirementsPath := filepath.Join(input.Out(), "requirements.txt")
 
@@ -2556,7 +2347,7 @@ func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input 
 
 	// Filter out workspace packages from requirements.txt to avoid installation conflicts
 	filteredRequirementsPath := filepath.Join(input.Out(), "requirements-filtered.txt")
-	if err := ib.filterWorkspacePackagesFromRequirements(requirementsPath, filteredRequirementsPath, layout); err != nil {
+	if err := ib.filterWorkspacePackagesFromRequirements(requirementsPath, filteredRequirementsPath, projectInfo); err != nil {
 		return fmt.Errorf("failed to filter workspace packages from requirements: %w", err)
 	}
 
@@ -2581,10 +2372,15 @@ func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input 
 		slog.Info("using platform targeting", "platform", pythonPlatform)
 	}
 
+	workspaceDir := projectInfo.SourceRoot
+	if projectInfo.PyprojectPath != "" {
+		workspaceDir = filepath.Dir(projectInfo.PyprojectPath)
+	}
+
 	// Execute the uv pip install command
 	// Run from the workspace directory where pyproject.toml exists, not the artifact directory
 	installCmd := process.CommandContext(ctx, "uv", args...)
-	installCmd.Dir = layout.WorkspaceDir
+	installCmd.Dir = workspaceDir
 
 	installOutput, err := installCmd.CombinedOutput()
 	if err != nil {
@@ -2597,6 +2393,12 @@ func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input 
 
 	slog.Info("uv pip install completed successfully", "output", string(installOutput))
 
+	// Clean up __pycache__ directories and .pyc files from installed dependencies
+	if err := ib.cleanupInstalledDependencies(input.Out()); err != nil {
+		slog.Warn("failed to clean up installed dependencies", "error", err)
+		// Don't fail the build for cleanup issues, just warn
+	}
+
 	// Clean up the filtered requirements file
 	os.Remove(filteredRequirementsPath)
 
@@ -2604,7 +2406,7 @@ func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input 
 }
 
 // filterWorkspacePackagesFromRequirements filters out workspace packages from requirements.txt
-func (ib *IncrementalBuilder) filterWorkspacePackagesFromRequirements(inputPath, outputPath string, layout *LayoutInfo) error {
+func (ib *IncrementalBuilder) filterWorkspacePackagesFromRequirements(inputPath, outputPath string, projectInfo *ProjectInfo) error {
 	// Read the original requirements.txt
 	content, err := os.ReadFile(inputPath)
 	if err != nil {
@@ -2615,7 +2417,7 @@ func (ib *IncrementalBuilder) filterWorkspacePackagesFromRequirements(inputPath,
 	var filteredLines []string
 
 	// Get workspace package names
-	workspacePackages := ib.getWorkspacePackageNames(layout)
+	workspacePackages := ib.getWorkspacePackageNames(projectInfo)
 
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
@@ -2626,11 +2428,21 @@ func (ib *IncrementalBuilder) filterWorkspacePackagesFromRequirements(inputPath,
 			continue
 		}
 
-		// Skip editable installs of workspace packages (e.g., "-e ./core")
+		// Skip all editable installs that reference local paths
 		if strings.HasPrefix(line, "-e ") {
+			editablePath := strings.TrimSpace(strings.TrimPrefix(line, "-e "))
+
+			// Filter out any editable install that references a local path
+			if strings.HasPrefix(editablePath, "./") || strings.HasPrefix(editablePath, "../") ||
+				strings.HasPrefix(editablePath, "/") && !strings.Contains(editablePath, "://") {
+				slog.Debug("filtering out editable local path from requirements", "line", line)
+				continue
+			}
+
+			// Also check for workspace packages by name
 			shouldSkip := false
 			for _, pkg := range workspacePackages {
-				if strings.Contains(line, "./"+pkg) || strings.Contains(line, pkg) {
+				if strings.Contains(editablePath, "./"+pkg) || strings.Contains(editablePath, pkg) {
 					slog.Debug("filtering out workspace package from requirements", "line", line, "package", pkg)
 					shouldSkip = true
 					break
@@ -2639,6 +2451,24 @@ func (ib *IncrementalBuilder) filterWorkspacePackagesFromRequirements(inputPath,
 			if shouldSkip {
 				continue
 			}
+		}
+
+		// Skip file:// URLs and local path references that might not exist in the build environment
+		if strings.HasPrefix(line, "file://") || strings.Contains(line, "file://") {
+			slog.Debug("filtering out file:// URL from requirements", "line", line)
+			continue
+		}
+
+		// Skip local path references (relative paths starting with ./ or ../)
+		if strings.HasPrefix(line, "./") || strings.HasPrefix(line, "../") {
+			slog.Debug("filtering out local path reference from requirements", "line", line)
+			continue
+		}
+
+		// Skip absolute local paths that might be workspace-specific
+		if strings.HasPrefix(line, "/") && !strings.Contains(line, "://") {
+			slog.Debug("filtering out absolute local path from requirements", "line", line)
+			continue
 		}
 
 		// Include the line
@@ -2680,13 +2510,81 @@ func (ib *IncrementalBuilder) findSitePackagesPath(venvPath string) (string, err
 	return "", fmt.Errorf("site-packages directory not found in %s", venvPath)
 }
 
+// cleanupInstalledDependencies removes __pycache__ directories and .pyc files from installed dependencies
+func (ib *IncrementalBuilder) cleanupInstalledDependencies(targetDir string) error {
+	slog.Info("cleaning up __pycache__ directories and .pyc files from installed dependencies", "targetDir", targetDir)
+
+	var removedItems []string
+	var totalSize int64
+
+	err := filepath.Walk(targetDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil // Continue walking despite errors
+		}
+
+		// Skip the target directory itself
+		if path == targetDir {
+			return nil
+		}
+
+		// Remove __pycache__ directories
+		if info.IsDir() && info.Name() == "__pycache__" {
+			if err := os.RemoveAll(path); err != nil {
+				slog.Warn("failed to remove __pycache__ directory", "path", path, "error", err)
+			} else {
+				removedItems = append(removedItems, path)
+				slog.Debug("removed __pycache__ directory", "path", path)
+			}
+			return filepath.SkipDir // Skip walking into the removed directory
+		}
+
+		// Remove .pyc, .pyo, .pyd files
+		if !info.IsDir() {
+			ext := filepath.Ext(info.Name())
+			if ext == ".pyc" || ext == ".pyo" || ext == ".pyd" {
+				totalSize += info.Size()
+				if err := os.Remove(path); err != nil {
+					slog.Warn("failed to remove compiled Python file", "path", path, "error", err)
+				} else {
+					removedItems = append(removedItems, path)
+					slog.Debug("removed compiled Python file", "path", path, "size", info.Size())
+				}
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return fmt.Errorf("error walking target directory during cleanup: %w", err)
+	}
+
+	slog.Info("dependency cleanup completed",
+		"targetDir", targetDir,
+		"removedItems", len(removedItems),
+		"totalSizeRemoved", totalSize)
+
+	return nil
+}
+
 // getWorkspacePackageNames returns a list of workspace package names
-func (ib *IncrementalBuilder) getWorkspacePackageNames(layout *LayoutInfo) []string {
+func (ib *IncrementalBuilder) getWorkspacePackageNames(projectInfo *ProjectInfo) []string {
 	var packages []string
 
 	// Add the main package name
-	if layout.PackageName != "" && layout.PackageName != "unknown" {
-		packages = append(packages, layout.PackageName)
+	packageName := "unknown"
+	if projectInfo.PyprojectPath != "" {
+		if config, err := ib.projectResolver.ParsePyprojectToml(projectInfo.PyprojectPath); err == nil {
+			if config.Project.Name != "" {
+				packageName = config.Project.Name
+			} else if config.Tool.Poetry.Name != "" {
+				packageName = config.Tool.Poetry.Name
+			}
+		}
+	}
+
+	if packageName != "" && packageName != "unknown" {
+		packages = append(packages, packageName)
 	}
 
 	// Add workspace package names if available

@@ -120,8 +120,8 @@ func TestIncrementalBuilder_ProgressStages(t *testing.T) {
 	builder.progressReporter.StartStage(StageInit, "Starting build")
 	builder.progressReporter.CompleteStage(StageInit, "Build started")
 
-	builder.progressReporter.StartStage(StageLayoutDetect, "Detecting layout")
-	builder.progressReporter.CompleteStage(StageLayoutDetect, "Layout detected")
+	builder.progressReporter.StartStage(StageProjectResolve, "Resolving project structure")
+	builder.progressReporter.CompleteStage(StageProjectResolve, "Project structure resolved")
 
 	builder.progressReporter.StartStage(StageDependencies, "Analyzing dependencies")
 	builder.progressReporter.CompleteStage(StageDependencies, "Dependencies analyzed")
@@ -170,11 +170,11 @@ func TestIncrementalBuilder_ProgressFailure(t *testing.T) {
 	}
 
 	// Simulate build failure
-	builder.progressReporter.StartStage(StageLayoutDetect, "Detecting layout")
-	builder.progressReporter.FailStage(StageLayoutDetect, "Layout detection failed",
-		NewPythonRuntimeError(ErrorTypeLayoutDetection, ErrorSeverityError, "test error"))
+	builder.progressReporter.StartStage(StageProjectResolve, "Resolving project structure")
+	builder.progressReporter.FailStage(StageProjectResolve, "Project resolution failed",
+		NewPythonRuntimeError(ErrorTypeProjectStructure, ErrorSeverityError, "test error"))
 	builder.progressReporter.Fail("Build failed",
-		NewPythonRuntimeError(ErrorTypeLayoutDetection, ErrorSeverityError, "test error"))
+		NewPythonRuntimeError(ErrorTypeProjectStructure, ErrorSeverityError, "test error"))
 
 	// Give callbacks time to execute
 	time.Sleep(100 * time.Millisecond)
@@ -184,10 +184,10 @@ func TestIncrementalBuilder_ProgressFailure(t *testing.T) {
 		t.Errorf("Expected at least 3 events, got %d", len(events))
 	}
 
-	// Check that the last event is from the failed stage
+	// Check that the last event is from the failed build
 	lastEvent := events[len(events)-1]
-	if lastEvent.Stage != StageLayoutDetect {
-		t.Errorf("Expected last event stage %s, got %s", StageLayoutDetect, lastEvent.Stage)
+	if lastEvent.Stage != "failed" {
+		t.Errorf("Expected last event stage failed, got %s", lastEvent.Stage)
 	}
 
 	// Status field is not available in current ProgressEvent struct
@@ -221,7 +221,7 @@ func TestIncrementalBuilder_ProgressCaching(t *testing.T) {
 
 	// Simulate cached build
 	builder.progressReporter.StartStage(StageInit, "Starting build")
-	builder.progressReporter.MarkCached(StageLayoutDetect, "Using cached layout")
+	builder.progressReporter.MarkCached(StageProjectResolve, "Using cached project structure")
 	builder.progressReporter.MarkCached(StageDependencies, "Using cached dependencies")
 	builder.progressReporter.MarkCached(StageBuildPackages, "Using cached packages")
 	builder.progressReporter.Complete("Build completed using cache", map[string]interface{}{
@@ -262,8 +262,8 @@ func TestProgressReporter_TimeEstimation(t *testing.T) {
 	// }
 
 	// Simulate some progress
-	reporter.StartStage(StageLayoutDetect, "Detecting layout")
-	reporter.CompleteStage(StageLayoutDetect, "Layout detected")
+	reporter.StartStage(StageProjectResolve, "Resolving project structure")
+	reporter.CompleteStage(StageProjectResolve, "Project structure resolved")
 
 	// Complete build
 	reporter.Complete("Build completed", nil)

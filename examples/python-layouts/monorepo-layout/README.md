@@ -1,6 +1,6 @@
-# Monorepo Layout Example
+# Multi-Service Structure Example
 
-This example demonstrates a monorepo structure with multiple Python services in a single repository.
+This example demonstrates a multi-service structure with multiple Python services in a single repository.
 
 ## Project Structure
 

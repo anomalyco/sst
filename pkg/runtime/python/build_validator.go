@@ -50,6 +50,10 @@ func (bov *BuildOutputValidator) ValidateBuildOutputs() error {
 	// Find tar.gz files
 	tarGzFiles, err := bov.ListTarGzFiles()
 	if err != nil {
+		// If it's already a BuildValidationError, return it directly
+		if _, ok := err.(*BuildValidationError); ok {
+			return err
+		}
 		return fmt.Errorf("failed to list tar.gz files: %w", err)
 	}
 
@@ -91,6 +95,10 @@ func (bov *BuildOutputValidator) ListTarGzFiles() ([]string, error) {
 		alternativeFiles, err := bov.findTarGzFilesAlternative()
 		if err != nil {
 			bov.logger.Error("alternative tar.gz discovery failed", "error", err)
+			// If it's already a BuildValidationError, return it directly
+			if _, ok := err.(*BuildValidationError); ok {
+				return nil, err
+			}
 			return nil, fmt.Errorf("both glob and alternative discovery failed: %w", err)
 		}
 		files = alternativeFiles
@@ -156,12 +164,6 @@ func (bov *BuildOutputValidator) findTarGzFilesAlternative() ([]string, error) {
 		}
 	}
 
-	if len(tarGzFiles) > 0 {
-		bov.logger.Info("alternative discovery successful via directory scan",
-			"files", len(tarGzFiles))
-		return tarGzFiles, nil
-	}
-
 	// Method 2: Check for common patterns in subdirectories
 	bov.logger.Info("checking subdirectories for tar.gz files")
 	for _, entry := range entries {
@@ -206,7 +208,7 @@ func (bov *BuildOutputValidator) findTarGzFilesAlternative() ([]string, error) {
 		}
 	}
 
-	bov.logger.Info("alternative discovery successful via subdirectory scan",
+	bov.logger.Info("alternative discovery successful",
 		"files", len(tarGzFiles))
 	return tarGzFiles, nil
 }
