@@ -941,6 +941,15 @@ export class StaticSite extends Component implements Link.Linkable {
           const htmlFileOptions: typeof reversedFileOptions = [];
           const nonHtmlFileOptions: typeof reversedFileOptions = [];
 
+          /**
+           * StaticSite historically replays `fileOptions` in reverse so the
+           * last config wins. That works fine for cache headers, but it means
+           * HTML often syncs *before* hashed JS/CSS when users leave the
+           * defaults in place. We bucket options by whether they target HTML
+           * and run those after everything else, preserving the "last wins"
+           * semantics while ensuring every referenced asset is in S3 before a
+           * new `index.html` ships.
+           */
           for (const option of reversedFileOptions) {
             const patterns = Array.isArray(option.files)
               ? option.files
