@@ -942,13 +942,29 @@ export class StaticSite extends Component implements Link.Linkable {
           const nonHtmlFileOptions: typeof reversedFileOptions = [];
 
           /**
-           * StaticSite historically replays `fileOptions` in reverse so the
-           * last config wins. That works fine for cache headers, but it means
-           * HTML often syncs *before* hashed JS/CSS when users leave the
-           * defaults in place. We bucket options by whether they target HTML
-           * and run those after everything else, preserving the "last wins"
-           * semantics while ensuring every referenced asset is in S3 before a
-           * new `index.html` ships.
+           * StaticSite historically replays `fileOptions` in reverse order, so
+           * the *last* entry in config becomes the *first* upload pass. With
+           * the default options that put HTML last, the runtime actually pushes
+           * `index.html` to S3 *before* its hashed JS/CSS siblings:
+           *
+           * ```text
+           * deploy start
+           *   ├─▶ (reverse) upload index.html
+           *   │       └─▶ CloudFront serves fresh HTML referencing app.[hash].js
+           *   └───── lag ──▶ upload app.[hash].js (still missing in S3)
+           *                               ↓
+           *                           viewer request → S3 403 → white screen
+           * ```
+           *
+           * To close that race we bucket options by whether they touch HTML,
+           * process non-HTML first, then HTML. Behavioural invariants remain:
+           *
+           * ```text
+           * configure: [ ...non-html..., ...html... ]
+           * reverse ▶  [ html-group, non-html-group ]
+           * reorder ▶  [ non-html-group, html-group ]
+           * result  ▶  assets uploaded → index.html uploaded → no 403 gap
+           * ```
            */
           for (const option of reversedFileOptions) {
             const patterns = Array.isArray(option.files)
