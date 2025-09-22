@@ -17,7 +17,7 @@ export function physicalName(max: number, name: string, suffix: string = "") {
     crypto.randomBytes(8).toString("hex"),
     8,
   );
-  return `${main}-${random}${suffix}`;
+  return `${main}-${random}${suffix}`.replace(/-+/g, "-");
 }
 
 export function prefixName(max: number, name: string) {
