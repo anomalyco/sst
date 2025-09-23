@@ -152,7 +152,6 @@ def resolve_handler(handler_path, artifact_dir):
     last_error = None
     for i, strategy in enumerate(strategies, 1):
         try:
-            log(f"Trying import strategy {i}")
             module = strategy()
             if module:
                 log(f"Successfully imported module using strategy {i}")
@@ -174,7 +173,6 @@ def resolve_handler(handler_path, artifact_dir):
                 return module, handler_function
                 
         except Exception as e:
-            log(f"Strategy {i} failed: {e}")
             last_error = e
             continue
     

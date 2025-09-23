@@ -308,7 +308,7 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 		return nil, fmt.Errorf("failed to create stderr pipe: %v", err)
 	}
 
-	slog.Info("starting worker", "env", cmd.Env, "args", cmd.Args)
+	slog.Info("starting worker", "args", cmd.Args)
 	cmd.Start()
 
 	return &Worker{

@@ -382,8 +382,7 @@ def lambda_handler(event, context):
         'body': json.dumps({
             'message': 'Handler executed successfully',
             'timestamp': datetime.now().isoformat(),
-            'python_version': sys.version,
-            'environment': dict(os.environ)
+            'python_version': sys.version
         })
     }
 
