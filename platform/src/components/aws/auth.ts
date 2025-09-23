@@ -293,6 +293,7 @@ export class Auth extends Component implements Link.Linkable {
         },
         (args) => {
           args.url = {
+            ...(typeof args.url === "object" ? args.url : {}),
             cors: false,
           };
         },
@@ -320,11 +321,15 @@ export class Auth extends Component implements Link.Linkable {
   /**
    * The URL of the Auth component.
    *
-   * If the `domain` is set, this is the URL with the custom domain.
+   * If the `domain` is set, this is the URL of the Router created for the custom domain.
+   * If the `issuer` function is linked to a custom domain, this is the URL of the issuer.
    * Otherwise, it's the auto-generated function URL for the issuer.
    */
   public get url() {
-    return this._router?.url ?? this._issuer.url.apply((v) => v.slice(0, -1));
+    return (
+      this._router?.url ??
+      this._issuer.url.apply((v) => (v.endsWith("/") ? v.slice(0, -1) : v))
+    );
   }
 
   /**
