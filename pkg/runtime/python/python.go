@@ -340,7 +340,16 @@ func (r *PythonRuntime) ShouldRebuild(functionID string, file string) bool {
 		return false
 	}
 
-	// Rate limiting: prevent excessive rebuild checks
+	// For Python files, always rebuild since we can't easily track import dependencies
+	// This is simpler and more reliable than trying to parse Python imports
+	if strings.HasSuffix(file, ".py") {
+		slog.Info("Python file changed, rebuilding",
+			"functionID", functionID,
+			"file", file)
+		return true
+	}
+
+	// Rate limiting: prevent excessive rebuild checks for non-Python files
 	now := time.Now()
 	if lastCheck, exists := r.lastRebuildCheck[functionID]; exists {
 		if now.Sub(lastCheck) < r.rebuildCooldown {
@@ -362,12 +371,22 @@ func (r *PythonRuntime) ShouldRebuild(functionID string, file string) bool {
 		return true
 	}
 
-	// Use change detection to determine if rebuild is needed
-	result, err := r.changeDetector.DetectChanges(functionID, file)
+	// Get the handler for this function from the build cache
+	handler := r.getHandlerForFunction(functionID)
+	if handler == "" {
+		slog.Debug("no handler found for function, rebuilding",
+			"functionID", functionID,
+			"file", file)
+		return true
+	}
+
+	// Use change detection to determine if rebuild is needed for non-Python files
+	result, err := r.changeDetector.DetectChanges(functionID, handler)
 	if err != nil {
 		slog.Warn("failed to detect changes, rebuilding",
 			"functionID", functionID,
 			"file", file,
+			"handler", handler,
 			"error", err)
 		return true
 	}
@@ -376,16 +395,34 @@ func (r *PythonRuntime) ShouldRebuild(functionID string, file string) bool {
 		slog.Info("changes detected, rebuilding",
 			"functionID", functionID,
 			"file", file,
+			"handler", handler,
 			"reason", result.Reason,
 			"changeTypes", result.ChangeTypes,
 			"changedFiles", len(result.ChangedFiles))
 	} else {
 		slog.Debug("no changes detected, using cached build",
 			"functionID", functionID,
-			"file", file)
+			"file", file,
+			"handler", handler)
 	}
 
 	return result.HasChanges
+}
+
+// getHandlerForFunction retrieves the handler path for a given function ID
+func (r *PythonRuntime) getHandlerForFunction(functionID string) string {
+	if r.buildCache == nil {
+		return ""
+	}
+
+	// Try to get the handler from the build cache
+	cacheEntry, exists := r.buildCache.Get(functionID)
+	if !exists || cacheEntry == nil {
+		return ""
+	}
+
+	// Return the handler path from the cache entry
+	return cacheEntry.Handler
 }
 
 // isRelevantFile checks if a file change is relevant for Python functions
