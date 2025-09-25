@@ -108,9 +108,14 @@ func Kill(process *os.Process) error {
 		break
 
 	default:
-		if err := process.Signal(syscall.SIGTERM); err != nil {
-			slog.Error("failed to send sigterm", "pid", process.Pid)
-			return err
+		if err := syscall.Kill(-process.Pid, syscall.SIGTERM); err != nil {
+			slog.Info("failed to kill process group, trying individual process", "pid", process.Pid, "err", err)
+			if err := process.Signal(syscall.SIGTERM); err != nil {
+				slog.Error("failed to send sigterm", "pid", process.Pid)
+				return err
+			}
+		} else {
+			slog.Info("sent sigterm to process group", "pid", process.Pid)
 		}
 	}
 
@@ -126,9 +131,14 @@ func Kill(process *os.Process) error {
 		break
 	case <-time.After(killWait):
 		slog.Info("process not responding, sending sigkill", "pid", process.Pid)
-		if err := process.Signal(syscall.SIGKILL); err != nil {
-			slog.Error("failed to send sigkill", "pid", process.Pid)
-			return err
+		if err := syscall.Kill(-process.Pid, syscall.SIGKILL); err != nil {
+			slog.Info("failed to kill process group with SIGKILL, trying individual process", "pid", process.Pid, "err", err)
+			if err := process.Signal(syscall.SIGKILL); err != nil {
+				slog.Error("failed to send sigkill", "pid", process.Pid)
+				return err
+			}
+		} else {
+			slog.Info("sent sigkill to process group", "pid", process.Pid)
 		}
 
 		// Wait for SIGKILL to complete
