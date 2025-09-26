@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"time"
 
 	"github.com/sst/sst/v3/cmd/sst/cli"
 	"github.com/sst/sst/v3/internal/util"
@@ -17,18 +16,6 @@ import (
 )
 
 func CmdShell(c *cli.Cli) error {
-	// Debug output to file for Windows debugging
-	var debugFile *os.File
-	if runtime.GOOS == "windows" {
-		debugFile, _ = os.Create("sst-shell-debug.log")
-		if debugFile != nil {
-			defer debugFile.Close()
-			fmt.Fprintf(debugFile, "=== SST Shell Debug Log ===\n")
-			fmt.Fprintf(debugFile, "Time: %s\n", time.Now().Format(time.RFC3339))
-			fmt.Fprintf(debugFile, "Platform: %s\n", runtime.GOOS)
-		}
-	}
-
 	p, err := c.InitProject()
 	if err != nil {
 		return err
@@ -38,11 +25,6 @@ func CmdShell(c *cli.Cli) error {
 	var args []string
 	for _, arg := range c.Arguments() {
 		args = append(args, arg)
-	}
-
-	if debugFile != nil {
-		fmt.Fprintf(debugFile, "\n=== Command Arguments ===\n")
-		fmt.Fprintf(debugFile, "Raw arguments: %v\n", args)
 	}
 	cwd, _ := os.Getwd()
 	currentDir := cwd
@@ -71,17 +53,11 @@ func CmdShell(c *cli.Cli) error {
 	if runtime.GOOS == "windows" && len(args) > 0 && args[0] != "cmd" {
 		// Try to find the executable directly
 		if execPath, err := exec.LookPath(args[0]); err == nil {
-			if debugFile != nil {
-				fmt.Fprintf(debugFile, "Found executable: %s\n", execPath)
-			}
 			// Use exec.Command directly instead of process.Command to avoid potential issues
 			cmd = exec.Command(execPath, args[1:]...)
 			// Track it manually since we're not using process.Command
 			// (Note: this skips the process tracking in the process package)
 		} else {
-			if debugFile != nil {
-				fmt.Fprintf(debugFile, "Could not find executable %s, using process.Command\n", args[0])
-			}
 			cmd = process.Command(args[0], args[1:]...)
 		}
 	} else {
@@ -96,21 +72,6 @@ func CmdShell(c *cli.Cli) error {
 	complete, err := p.GetCompleted(c.Context)
 	if err != nil {
 		return err
-	}
-
-	// Debug logging
-	if debugFile != nil {
-		fmt.Fprintf(debugFile, "\n=== Resource Links ===\n")
-		fmt.Fprintf(debugFile, "Found %d links in completed state\n", len(complete.Links))
-		if _, exists := complete.Links["activityTable"]; exists {
-			fmt.Fprintf(debugFile, "activityTable: FOUND\n")
-		} else {
-			fmt.Fprintf(debugFile, "activityTable: NOT FOUND\n")
-			fmt.Fprintf(debugFile, "Available links:\n")
-			for name := range complete.Links {
-				fmt.Fprintf(debugFile, "  - %s\n", name)
-			}
-		}
 	}
 
 	target := c.String("target")
@@ -128,7 +89,7 @@ func CmdShell(c *cli.Cli) error {
 		// On Windows with many resources, use a consolidated environment variable to avoid 32KB limit
 		if runtime.GOOS == "windows" && len(complete.Links) > 50 {
 			// Create a single JSON with all resources
-			allResources := make(map[string]interface{})
+			allResources := make(map[string]any)
 			for resource, value := range complete.Links {
 				allResources[resource] = value.Properties
 			}
@@ -137,7 +98,6 @@ func CmdShell(c *cli.Cli) error {
 				"stage": p.App().Stage,
 			}
 
-			// Encode as base64 to avoid JSON escaping issues in environment variables
 			jsonData, err := json.Marshal(allResources)
 			if err != nil {
 				return err
@@ -146,11 +106,6 @@ func CmdShell(c *cli.Cli) error {
 			// Set as single environment variable that the SDK can parse
 			resourcesEnv := fmt.Sprintf("SST_RESOURCES_JSON=%s", string(jsonData))
 			cmd.Env = append(cmd.Env, resourcesEnv)
-
-			if debugFile != nil {
-				fmt.Fprintf(debugFile, "Using consolidated SST_RESOURCES_JSON (%d bytes)\n", len(jsonData))
-				fmt.Fprintf(debugFile, "Resources included: %d\n", len(allResources))
-			}
 		} else {
 			// Original approach: Add individual SST resource environment variables
 			for resource, value := range complete.Links {
@@ -160,18 +115,9 @@ func CmdShell(c *cli.Cli) error {
 				}
 				envVar := fmt.Sprintf("SST_RESOURCE_%s=%s", resource, string(jsonValue))
 				cmd.Env = append(cmd.Env, envVar)
-
-				// Debug logging
-				if debugFile != nil {
-					fmt.Fprintf(debugFile, "Setting SST_RESOURCE_%s (length: %d)\n", resource, len(jsonValue))
-				}
 			}
 			appEnv := fmt.Sprintf("SST_RESOURCE_App=%s", fmt.Sprintf(`{"name": "%s", "stage": "%s" }`, p.App().Name, p.App().Stage))
 			cmd.Env = append(cmd.Env, appEnv)
-
-			if debugFile != nil {
-				fmt.Fprintf(debugFile, "Setting SST_RESOURCE_App\n")
-			}
 		}
 
 		aws, ok := p.Provider("aws")
@@ -199,34 +145,6 @@ func CmdShell(c *cli.Cli) error {
 			}
 		}
 	}
-	// Debug: Verify environment variables are set
-	if debugFile != nil {
-		fmt.Fprintf(debugFile, "\n=== Final Environment ===\n")
-		sstResourceCount := 0
-		totalEnvSize := 0
-		for _, env := range cmd.Env {
-			totalEnvSize += len(env) + 1 // +1 for null terminator
-			if strings.HasPrefix(env, "SST_RESOURCE_") {
-				sstResourceCount++
-				// Log each SST_RESOURCE variable
-				parts := strings.SplitN(env, "=", 2)
-				if len(parts) == 2 {
-					fmt.Fprintf(debugFile, "ENV: %s = %d bytes\n", parts[0], len(parts[1]))
-				}
-			}
-		}
-		fmt.Fprintf(debugFile, "Total env vars: %d\n", len(cmd.Env))
-		fmt.Fprintf(debugFile, "SST_RESOURCE vars: %d\n", sstResourceCount)
-		fmt.Fprintf(debugFile, "Total environment size: %d bytes\n", totalEnvSize)
-		if runtime.GOOS == "windows" && totalEnvSize > 32767 {
-			fmt.Fprintf(debugFile, "WARNING: Environment size exceeds Windows limit (32KB)\n")
-		}
-		fmt.Fprintf(debugFile, "\n=== Executing Command ===\n")
-		fmt.Fprintf(debugFile, "Command: %s\n", args[0])
-		fmt.Fprintf(debugFile, "Arguments: %v\n", args[1:])
-		debugFile.Sync() // Force write to disk before executing command
-	}
-
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
