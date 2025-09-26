@@ -59,6 +59,15 @@ func CmdShell(c *cli.Cli) error {
 	if err != nil {
 		return err
 	}
+
+	// Debug logging for Windows issue
+	if runtime.GOOS == "windows" {
+		fmt.Fprintf(os.Stderr, "[DEBUG] Found %d links in completed state\n", len(complete.Links))
+		for name := range complete.Links {
+			fmt.Fprintf(os.Stderr, "[DEBUG] Link: %s\n", name)
+		}
+	}
+
 	target := c.String("target")
 	if target != "" {
 		cmd.Env = append(cmd.Env, c.Env()...)
@@ -77,9 +86,24 @@ func CmdShell(c *cli.Cli) error {
 			if err != nil {
 				return err
 			}
-			cmd.Env = append(cmd.Env, fmt.Sprintf("SST_RESOURCE_%s=%s", resource, string(jsonValue)))
+			envVar := fmt.Sprintf("SST_RESOURCE_%s=%s", resource, string(jsonValue))
+			cmd.Env = append(cmd.Env, envVar)
+
+			// Debug logging for Windows issue
+			if runtime.GOOS == "windows" {
+				truncated := string(jsonValue)
+				if len(truncated) > 50 {
+					truncated = truncated[:50] + "..."
+				}
+				fmt.Fprintf(os.Stderr, "[DEBUG] Setting env var: %s=%s\n", fmt.Sprintf("SST_RESOURCE_%s", resource), truncated)
+			}
 		}
-		cmd.Env = append(cmd.Env, fmt.Sprintf("SST_RESOURCE_App=%s", fmt.Sprintf(`{"name": "%s", "stage": "%s" }`, p.App().Name, p.App().Stage)))
+		appEnv := fmt.Sprintf("SST_RESOURCE_App=%s", fmt.Sprintf(`{"name": "%s", "stage": "%s" }`, p.App().Name, p.App().Stage))
+		cmd.Env = append(cmd.Env, appEnv)
+
+		if runtime.GOOS == "windows" {
+			fmt.Fprintf(os.Stderr, "[DEBUG] Setting env var: %s\n", appEnv)
+		}
 
 		aws, ok := p.Provider("aws")
 		if ok {
