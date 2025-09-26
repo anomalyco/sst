@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -63,10 +64,29 @@ func CmdShell(c *cli.Cli) error {
 			args = append(args, "sh")
 		}
 	}
-	cmd := process.Command(
-		args[0],
-		args[1:]...,
-	)
+
+	// On Windows, when executing commands like cross-env that manage their own environment,
+	// bypass cmd.exe and execute directly when possible
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" && len(args) > 0 && args[0] != "cmd" {
+		// Try to find the executable directly
+		if execPath, err := exec.LookPath(args[0]); err == nil {
+			if debugFile != nil {
+				fmt.Fprintf(debugFile, "Found executable: %s\n", execPath)
+			}
+			// Use exec.Command directly instead of process.Command to avoid potential issues
+			cmd = exec.Command(execPath, args[1:]...)
+			// Track it manually since we're not using process.Command
+			// (Note: this skips the process tracking in the process package)
+		} else {
+			if debugFile != nil {
+				fmt.Fprintf(debugFile, "Could not find executable %s, using process.Command\n", args[0])
+			}
+			cmd = process.Command(args[0], args[1:]...)
+		}
+	} else {
+		cmd = process.Command(args[0], args[1:]...)
+	}
 	// Initialize with current environment variables
 	cmd.Env = os.Environ()
 	// Add SST-specific environment variables
@@ -155,7 +175,9 @@ func CmdShell(c *cli.Cli) error {
 	if debugFile != nil {
 		fmt.Fprintf(debugFile, "\n=== Final Environment ===\n")
 		sstResourceCount := 0
+		totalEnvSize := 0
 		for _, env := range cmd.Env {
+			totalEnvSize += len(env) + 1 // +1 for null terminator
 			if strings.HasPrefix(env, "SST_RESOURCE_") {
 				sstResourceCount++
 				// Log each SST_RESOURCE variable
@@ -167,6 +189,10 @@ func CmdShell(c *cli.Cli) error {
 		}
 		fmt.Fprintf(debugFile, "Total env vars: %d\n", len(cmd.Env))
 		fmt.Fprintf(debugFile, "SST_RESOURCE vars: %d\n", sstResourceCount)
+		fmt.Fprintf(debugFile, "Total environment size: %d bytes\n", totalEnvSize)
+		if runtime.GOOS == "windows" && totalEnvSize > 32767 {
+			fmt.Fprintf(debugFile, "WARNING: Environment size exceeds Windows limit (32KB)\n")
+		}
 		fmt.Fprintf(debugFile, "\n=== Executing Command ===\n")
 		fmt.Fprintf(debugFile, "Command: %s\n", args[0])
 		fmt.Fprintf(debugFile, "Arguments: %v\n", args[1:])
