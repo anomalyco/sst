@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/sst/sst/v3/cmd/sst/cli"
 	"github.com/sst/sst/v3/internal/util"
@@ -15,6 +16,18 @@ import (
 )
 
 func CmdShell(c *cli.Cli) error {
+	// Debug output to file for Windows debugging
+	var debugFile *os.File
+	if runtime.GOOS == "windows" {
+		debugFile, _ = os.Create("sst-shell-debug.log")
+		if debugFile != nil {
+			defer debugFile.Close()
+			fmt.Fprintf(debugFile, "=== SST Shell Debug Log ===\n")
+			fmt.Fprintf(debugFile, "Time: %s\n", time.Now().Format(time.RFC3339))
+			fmt.Fprintf(debugFile, "Platform: %s\n", runtime.GOOS)
+		}
+	}
+
 	p, err := c.InitProject()
 	if err != nil {
 		return err
@@ -24,6 +37,11 @@ func CmdShell(c *cli.Cli) error {
 	var args []string
 	for _, arg := range c.Arguments() {
 		args = append(args, arg)
+	}
+
+	if debugFile != nil {
+		fmt.Fprintf(debugFile, "\n=== Command Arguments ===\n")
+		fmt.Fprintf(debugFile, "Raw arguments: %v\n", args)
 	}
 	cwd, _ := os.Getwd()
 	currentDir := cwd
@@ -60,16 +78,18 @@ func CmdShell(c *cli.Cli) error {
 		return err
 	}
 
-	// Debug logging for Windows issue
-	fmt.Fprintf(os.Stderr, "[DEBUG] Platform: %s\n", runtime.GOOS)
-	fmt.Fprintf(os.Stderr, "[DEBUG] Found %d links in completed state\n", len(complete.Links))
-	if _, exists := complete.Links["activityTable"]; exists {
-		fmt.Fprintf(os.Stderr, "[DEBUG] activityTable found in links\n")
-	} else {
-		fmt.Fprintf(os.Stderr, "[DEBUG] activityTable NOT found in links\n")
-		fmt.Fprintf(os.Stderr, "[DEBUG] Available links:\n")
-		for name := range complete.Links {
-			fmt.Fprintf(os.Stderr, "[DEBUG]   - %s\n", name)
+	// Debug logging
+	if debugFile != nil {
+		fmt.Fprintf(debugFile, "\n=== Resource Links ===\n")
+		fmt.Fprintf(debugFile, "Found %d links in completed state\n", len(complete.Links))
+		if _, exists := complete.Links["activityTable"]; exists {
+			fmt.Fprintf(debugFile, "activityTable: FOUND\n")
+		} else {
+			fmt.Fprintf(debugFile, "activityTable: NOT FOUND\n")
+			fmt.Fprintf(debugFile, "Available links:\n")
+			for name := range complete.Links {
+				fmt.Fprintf(debugFile, "  - %s\n", name)
+			}
 		}
 	}
 
@@ -95,12 +115,16 @@ func CmdShell(c *cli.Cli) error {
 			cmd.Env = append(cmd.Env, envVar)
 
 			// Debug logging
-			fmt.Fprintf(os.Stderr, "[DEBUG] Adding env var SST_RESOURCE_%s (length: %d)\n", resource, len(jsonValue))
+			if debugFile != nil {
+				fmt.Fprintf(debugFile, "Setting SST_RESOURCE_%s (length: %d)\n", resource, len(jsonValue))
+			}
 		}
 		appEnv := fmt.Sprintf("SST_RESOURCE_App=%s", fmt.Sprintf(`{"name": "%s", "stage": "%s" }`, p.App().Name, p.App().Stage))
 		cmd.Env = append(cmd.Env, appEnv)
 
-		fmt.Fprintf(os.Stderr, "[DEBUG] Adding env var SST_RESOURCE_App\n")
+		if debugFile != nil {
+			fmt.Fprintf(debugFile, "Setting SST_RESOURCE_App\n")
+		}
 
 		aws, ok := p.Provider("aws")
 		if ok {
@@ -128,14 +152,26 @@ func CmdShell(c *cli.Cli) error {
 		}
 	}
 	// Debug: Verify environment variables are set
-	sstResourceCount := 0
-	for _, env := range cmd.Env {
-		if strings.HasPrefix(env, "SST_RESOURCE_") {
-			sstResourceCount++
+	if debugFile != nil {
+		fmt.Fprintf(debugFile, "\n=== Final Environment ===\n")
+		sstResourceCount := 0
+		for _, env := range cmd.Env {
+			if strings.HasPrefix(env, "SST_RESOURCE_") {
+				sstResourceCount++
+				// Log each SST_RESOURCE variable
+				parts := strings.SplitN(env, "=", 2)
+				if len(parts) == 2 {
+					fmt.Fprintf(debugFile, "ENV: %s = %d bytes\n", parts[0], len(parts[1]))
+				}
+			}
 		}
+		fmt.Fprintf(debugFile, "Total env vars: %d\n", len(cmd.Env))
+		fmt.Fprintf(debugFile, "SST_RESOURCE vars: %d\n", sstResourceCount)
+		fmt.Fprintf(debugFile, "\n=== Executing Command ===\n")
+		fmt.Fprintf(debugFile, "Command: %s\n", args[0])
+		fmt.Fprintf(debugFile, "Arguments: %v\n", args[1:])
+		debugFile.Sync() // Force write to disk before executing command
 	}
-	fmt.Fprintf(os.Stderr, "[DEBUG] Total env vars: %d, SST_RESOURCE vars: %d\n", len(cmd.Env), sstResourceCount)
-	fmt.Fprintf(os.Stderr, "[DEBUG] Executing command: %s %v\n", args[0], args[1:])
 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
