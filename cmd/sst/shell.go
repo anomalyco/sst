@@ -49,7 +49,9 @@ func CmdShell(c *cli.Cli) error {
 		args[0],
 		args[1:]...,
 	)
-	// Get the environment variables
+	// Initialize with current environment variables
+	cmd.Env = os.Environ()
+	// Add SST-specific environment variables
 	cmd.Env = append(cmd.Env,
 		fmt.Sprintf("PS1=%s/%s> ", p.App().Name, p.App().Stage),
 	)
@@ -69,24 +71,27 @@ func CmdShell(c *cli.Cli) error {
 		}
 	}
 	if target == "" {
-		env := map[string]string{}
-		for _, item := range os.Environ() {
-			key, value, _ := strings.Cut(item, "=")
-			env[key] = value
-		}
+		// Add SST resource environment variables
 		for resource, value := range complete.Links {
 			jsonValue, err := json.Marshal(value.Properties)
 			if err != nil {
 				return err
 			}
-			env[fmt.Sprintf("SST_RESOURCE_%s", resource)] = string(jsonValue)
+			cmd.Env = append(cmd.Env, fmt.Sprintf("SST_RESOURCE_%s=%s", resource, string(jsonValue)))
 		}
-		env["SST_RESOURCE_App"] = fmt.Sprintf(`{"name": "%s", "stage": "%s" }`, p.App().Name, p.App().Stage)
+		cmd.Env = append(cmd.Env, fmt.Sprintf("SST_RESOURCE_App=%s", fmt.Sprintf(`{"name": "%s", "stage": "%s" }`, p.App().Name, p.App().Stage)))
 
 		aws, ok := p.Provider("aws")
 		if ok {
-			// newer versions of aws-sdk do not like it when you specify both profile and credentials
-			delete(env, "AWS_PROFILE")
+			// Remove AWS_PROFILE from environment
+			filteredEnv := []string{}
+			for _, envVar := range cmd.Env {
+				if !strings.HasPrefix(envVar, "AWS_PROFILE=") {
+					filteredEnv = append(filteredEnv, envVar)
+				}
+			}
+			cmd.Env = filteredEnv
+
 			provider := aws.(*provider.AwsProvider)
 			cfg := provider.Config()
 			creds, err := cfg.Credentials.Retrieve(c.Context)
@@ -99,10 +104,6 @@ func CmdShell(c *cli.Cli) error {
 			if cfg.Region != "" {
 				cmd.Env = append(cmd.Env, fmt.Sprintf("AWS_REGION=%s", cfg.Region))
 			}
-		}
-
-		for key, val := range env {
-			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", key, val))
 		}
 	}
 	cmd.Stdout = os.Stdout
