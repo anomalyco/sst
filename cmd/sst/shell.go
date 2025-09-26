@@ -61,10 +61,15 @@ func CmdShell(c *cli.Cli) error {
 	}
 
 	// Debug logging for Windows issue
-	if runtime.GOOS == "windows" {
-		fmt.Fprintf(os.Stderr, "[DEBUG] Found %d links in completed state\n", len(complete.Links))
+	fmt.Fprintf(os.Stderr, "[DEBUG] Platform: %s\n", runtime.GOOS)
+	fmt.Fprintf(os.Stderr, "[DEBUG] Found %d links in completed state\n", len(complete.Links))
+	if _, exists := complete.Links["activityTable"]; exists {
+		fmt.Fprintf(os.Stderr, "[DEBUG] activityTable found in links\n")
+	} else {
+		fmt.Fprintf(os.Stderr, "[DEBUG] activityTable NOT found in links\n")
+		fmt.Fprintf(os.Stderr, "[DEBUG] Available links:\n")
 		for name := range complete.Links {
-			fmt.Fprintf(os.Stderr, "[DEBUG] Link: %s\n", name)
+			fmt.Fprintf(os.Stderr, "[DEBUG]   - %s\n", name)
 		}
 	}
 
@@ -89,21 +94,13 @@ func CmdShell(c *cli.Cli) error {
 			envVar := fmt.Sprintf("SST_RESOURCE_%s=%s", resource, string(jsonValue))
 			cmd.Env = append(cmd.Env, envVar)
 
-			// Debug logging for Windows issue
-			if runtime.GOOS == "windows" {
-				truncated := string(jsonValue)
-				if len(truncated) > 50 {
-					truncated = truncated[:50] + "..."
-				}
-				fmt.Fprintf(os.Stderr, "[DEBUG] Setting env var: %s=%s\n", fmt.Sprintf("SST_RESOURCE_%s", resource), truncated)
-			}
+			// Debug logging
+			fmt.Fprintf(os.Stderr, "[DEBUG] Adding env var SST_RESOURCE_%s (length: %d)\n", resource, len(jsonValue))
 		}
 		appEnv := fmt.Sprintf("SST_RESOURCE_App=%s", fmt.Sprintf(`{"name": "%s", "stage": "%s" }`, p.App().Name, p.App().Stage))
 		cmd.Env = append(cmd.Env, appEnv)
 
-		if runtime.GOOS == "windows" {
-			fmt.Fprintf(os.Stderr, "[DEBUG] Setting env var: %s\n", appEnv)
-		}
+		fmt.Fprintf(os.Stderr, "[DEBUG] Adding env var SST_RESOURCE_App\n")
 
 		aws, ok := p.Provider("aws")
 		if ok {
@@ -130,6 +127,16 @@ func CmdShell(c *cli.Cli) error {
 			}
 		}
 	}
+	// Debug: Verify environment variables are set
+	sstResourceCount := 0
+	for _, env := range cmd.Env {
+		if strings.HasPrefix(env, "SST_RESOURCE_") {
+			sstResourceCount++
+		}
+	}
+	fmt.Fprintf(os.Stderr, "[DEBUG] Total env vars: %d, SST_RESOURCE vars: %d\n", len(cmd.Env), sstResourceCount)
+	fmt.Fprintf(os.Stderr, "[DEBUG] Executing command: %s %v\n", args[0], args[1:])
+
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
