@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/sst/sst/v3/cmd/sst/cli"
@@ -36,7 +37,12 @@ func CmdShell(c *cli.Cli) error {
 		currentDir = parentDir
 	}
 	if len(args) == 0 {
-		args = append(args, "sh")
+		switch runtime.GOOS {
+		case "windows":
+			args = append(args, "cmd")
+		default:
+			args = append(args, "sh")
+		}
 	}
 	cmd := process.Command(
 		args[0],
