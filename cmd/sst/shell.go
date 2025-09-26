@@ -125,25 +125,53 @@ func CmdShell(c *cli.Cli) error {
 		}
 	}
 	if target == "" {
-		// Add SST resource environment variables
-		for resource, value := range complete.Links {
-			jsonValue, err := json.Marshal(value.Properties)
+		// On Windows with many resources, use a consolidated environment variable to avoid 32KB limit
+		if runtime.GOOS == "windows" && len(complete.Links) > 50 {
+			// Create a single JSON with all resources
+			allResources := make(map[string]interface{})
+			for resource, value := range complete.Links {
+				allResources[resource] = value.Properties
+			}
+			allResources["App"] = map[string]string{
+				"name":  p.App().Name,
+				"stage": p.App().Stage,
+			}
+
+			// Encode as base64 to avoid JSON escaping issues in environment variables
+			jsonData, err := json.Marshal(allResources)
 			if err != nil {
 				return err
 			}
-			envVar := fmt.Sprintf("SST_RESOURCE_%s=%s", resource, string(jsonValue))
-			cmd.Env = append(cmd.Env, envVar)
 
-			// Debug logging
+			// Set as single environment variable that the SDK can parse
+			resourcesEnv := fmt.Sprintf("SST_RESOURCES_JSON=%s", string(jsonData))
+			cmd.Env = append(cmd.Env, resourcesEnv)
+
 			if debugFile != nil {
-				fmt.Fprintf(debugFile, "Setting SST_RESOURCE_%s (length: %d)\n", resource, len(jsonValue))
+				fmt.Fprintf(debugFile, "Using consolidated SST_RESOURCES_JSON (%d bytes)\n", len(jsonData))
+				fmt.Fprintf(debugFile, "Resources included: %d\n", len(allResources))
 			}
-		}
-		appEnv := fmt.Sprintf("SST_RESOURCE_App=%s", fmt.Sprintf(`{"name": "%s", "stage": "%s" }`, p.App().Name, p.App().Stage))
-		cmd.Env = append(cmd.Env, appEnv)
+		} else {
+			// Original approach: Add individual SST resource environment variables
+			for resource, value := range complete.Links {
+				jsonValue, err := json.Marshal(value.Properties)
+				if err != nil {
+					return err
+				}
+				envVar := fmt.Sprintf("SST_RESOURCE_%s=%s", resource, string(jsonValue))
+				cmd.Env = append(cmd.Env, envVar)
 
-		if debugFile != nil {
-			fmt.Fprintf(debugFile, "Setting SST_RESOURCE_App\n")
+				// Debug logging
+				if debugFile != nil {
+					fmt.Fprintf(debugFile, "Setting SST_RESOURCE_%s (length: %d)\n", resource, len(jsonValue))
+				}
+			}
+			appEnv := fmt.Sprintf("SST_RESOURCE_App=%s", fmt.Sprintf(`{"name": "%s", "stage": "%s" }`, p.App().Name, p.App().Stage))
+			cmd.Env = append(cmd.Env, appEnv)
+
+			if debugFile != nil {
+				fmt.Fprintf(debugFile, "Setting SST_RESOURCE_App\n")
+			}
 		}
 
 		aws, ok := p.Provider("aws")

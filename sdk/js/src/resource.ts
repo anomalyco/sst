@@ -19,6 +19,17 @@ const environment = {
   ...globalThis.process?.env,
 };
 
+// Handle consolidated resources JSON (for Windows with many resources)
+if (environment.SST_RESOURCES_JSON) {
+  try {
+    const allResources = JSON.parse(environment.SST_RESOURCES_JSON);
+    Object.assign(raw, allResources);
+  } catch (error) {
+    console.error("Failed to parse SST_RESOURCES_JSON:", error);
+  }
+}
+
+// Handle individual SST_RESOURCE_ environment variables
 for (const [key, value] of Object.entries(environment)) {
   if (key.startsWith("SST_RESOURCE_") && value) {
     raw[key.slice("SST_RESOURCE_".length)] = JSON.parse(value);
