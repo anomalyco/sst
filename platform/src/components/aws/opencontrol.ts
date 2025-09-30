@@ -65,7 +65,7 @@ export interface OpenControlArgs {
  * });
  * ```
  *
- * #### Link your AI API keys 
+ * #### Link your AI API keys
  *
  * ```ts title="sst.config.ts" {6}
  * const anthropicKey = new sst.Secret("AnthropicKey");
@@ -189,14 +189,12 @@ export class OpenControl extends Component {
           environment: {
             OPENCONTROL_KEY: key,
           },
-          url: true,
+          url: {
+            cors: false,
+          },
           _skipHint: true,
         },
-        (args) => {
-          args.url = {
-            cors: false,
-          };
-        },
+        undefined,
         { parent: self },
       ).apply((v) => v.getFunction());
     }
