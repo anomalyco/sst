@@ -2,6 +2,7 @@ import {
   ComponentResourceOptions,
   jsonStringify,
   Output,
+  output,
 } from "@pulumi/pulumi";
 import { Component } from "../component";
 import { Link } from "../link";
@@ -114,6 +115,33 @@ export interface AuthArgs {
    */
   domain?: CdnArgs["domain"];
   /**
+   * Provide your own DynamoDB table for storage instead of creating a new one.
+   *
+   * By default, the `Auth` component creates its own DynamoDB table for storage.
+   * You can optionally provide your own table instead.
+   *
+   * :::note
+   * The table must have a primary key with hash key `pk` and range key `sk` (both strings),
+   * and should have TTL enabled on the `expiry` attribute.
+   * :::
+   *
+   * @example
+   *
+   * ```ts
+   * const customTable = new sst.aws.Dynamo("MyAuthTable", {
+   *   fields: { pk: "string", sk: "string" },
+   *   primaryIndex: { hashKey: "pk", rangeKey: "sk" },
+   *   ttl: "expiry"
+   * });
+   *
+   * new sst.aws.Auth("MyAuth", {
+   *   issuer: "src/auth.handler",
+   *   table: customTable
+   * });
+   * ```
+   */
+  table?: Input<Dynamo>;
+  /**
    * Force upgrade from `Auth.v1` to the latest `Auth` version. The only valid value
    * is `v2`, which is the version of the new `Auth`.
    *
@@ -195,6 +223,23 @@ export interface AuthArgs {
  * });
  * ```
  *
+ * #### Use your own DynamoDB table
+ *
+ * Optionally, provide your own DynamoDB table for storage.
+ *
+ * ```ts title="sst.config.ts"
+ * const table = new sst.aws.Dynamo("MyAuthTable", {
+ *   fields: { pk: "string", sk: "string" },
+ *   primaryIndex: { hashKey: "pk", rangeKey: "sk" },
+ *   ttl: "expiry"
+ * });
+ *
+ * new sst.aws.Auth("MyAuth", {
+ *   issuer: "src/auth.handler",
+ *   table
+ * });
+ * ```
+ *
  * #### Link to a resource
  *
  * You can link the auth server to other resources, like a function or your Next.js app,
@@ -220,7 +265,7 @@ export interface AuthArgs {
  * ```
  */
 export class Auth extends Component implements Link.Linkable {
-  private readonly _table: Dynamo;
+  private readonly _table: Output<Dynamo>;
   private readonly _issuer: Output<Function>;
   private readonly _router?: Router;
   public static v1 = AuthV1;
@@ -264,14 +309,19 @@ export class Auth extends Component implements Link.Linkable {
     }
 
     function createTable() {
-      return new Dynamo(
-        `${name}Storage`,
-        {
-          fields: { pk: "string", sk: "string" },
-          primaryIndex: { hashKey: "pk", rangeKey: "sk" },
-          ttl: "expiry",
-        },
-        { parent: self },
+      if (args.table) {
+        return output(args.table);
+      }
+      return output(
+        new Dynamo(
+          `${name}Storage`,
+          {
+            fields: { pk: "string", sk: "string" },
+            primaryIndex: { hashKey: "pk", rangeKey: "sk" },
+            ttl: "expiry",
+          },
+          { parent: self },
+        ),
       );
     }
 
@@ -284,10 +334,12 @@ export class Auth extends Component implements Link.Linkable {
         {
           link: [table],
           environment: {
-            OPENAUTH_STORAGE: jsonStringify({
-              type: "dynamo",
-              options: { table: table.name },
-            }),
+            OPENAUTH_STORAGE: table.apply((t) =>
+              jsonStringify({
+                type: "dynamo",
+                options: { table: t.name },
+              }),
+            ),
           },
           _skipHint: true,
         },
