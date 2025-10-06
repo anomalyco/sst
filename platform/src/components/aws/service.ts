@@ -1883,7 +1883,7 @@ export class Service extends Component implements Link.Linkable {
               return [
                 k,
                 {
-                  path: v.path ?? "/",
+                  path: v.path ?? type === "application" ? "/" : undefined,
                   interval: v.interval ? toSeconds(v.interval) : 30,
                   timeout: v.timeout
                     ? toSeconds(v.timeout)
