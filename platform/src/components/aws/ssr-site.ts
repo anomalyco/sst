@@ -1131,10 +1131,13 @@ async function handler(event) {
                 ),
                 vpc: args.vpc,
                 nodejs: {
-                  format: "esm" as const,
-                  install: args.server?.install,
-                  loader: args.server?.loader,
                   ...planServer.nodejs,
+                  format: "esm" as const,
+                  install: [
+                    ...(args.server?.install ?? []),
+                    ...(planServer.nodejs?.install ?? [])
+                  ],
+                  loader: args.server?.loader ?? planServer.nodejs?.loader,
                 },
                 environment: output(args.environment).apply((environment) => ({
                   ...environment,
