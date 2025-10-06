@@ -87,7 +87,7 @@
  *
  * @packageDocumentation
  */
-import type { Shell } from "bun";
+import type { $ as Shell } from "bun";
 
 type Prettify<T> = {
   [K in keyof T]: T[K];
