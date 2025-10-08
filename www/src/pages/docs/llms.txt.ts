@@ -5,10 +5,8 @@ import { cleanMarkdown } from "../../utils/markdown-clean";
 export const GET: APIRoute = async () => {
   const docs = await getCollection("docs");
 
-  // Sort docs by slug to maintain consistent order
   const sortedDocs = docs.sort((a, b) => a.slug.localeCompare(b.slug));
 
-  // Generate llms.txt content
   const content = `# SST Documentation
 
 > The SST documentation for building full-stack applications on AWS and Cloudflare. Learn about components, deployment, and infrastructure as code.
@@ -19,7 +17,6 @@ ${sortedDocs
     const title = doc.data.title;
     const description = doc.data.description || '';
 
-    // Clean markdown content (remove Astro components, imports, etc.)
     const cleanedBody = cleanMarkdown(doc.body);
 
     return `## ${title}
@@ -36,7 +33,7 @@ ${cleanedBody}`;
   return new Response(content, {
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
-      "Cache-Control": "public, max-age=3600" // Cache for 1 hour
+      "Cache-Control": "public, max-age=3600"
     }
   });
 };

@@ -3,13 +3,10 @@ import type { APIRoute } from "astro";
 import { cleanMarkdown } from "../../utils/markdown-clean";
 
 export const GET: APIRoute = async () => {
-  // Get all documentation
   const docs = await getCollection("docs");
 
-  // Sort by slug for consistent ordering
   const sortedDocs = docs.sort((a, b) => a.slug.localeCompare(b.slug));
 
-  // Build complete documentation in one file
   const content = `# SST Complete Documentation
 
 > This file contains the complete SST documentation for AI agents and LLMs.
