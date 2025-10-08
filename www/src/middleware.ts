@@ -20,14 +20,17 @@ export const onRequest = defineMiddleware((context, next) => {
     markdownIndex !== -1 &&
     (htmlIndex === -1 || markdownIndex < htmlIndex);
 
-  // Only rewrite docs and blog routes (but not if already requesting .md directly)
+  // Only rewrite docs and blog routes (but not .md files)
   if (
     prefersMarkdown &&
     (url.pathname.startsWith("/docs/") || url.pathname.startsWith("/blog/")) &&
     !url.pathname.endsWith(".md")
   ) {
-    // Rewrite to markdown endpoint with .md extension
-    return context.rewrite(`${url.pathname}.md`);
+    // Rewrite to markdown endpoint - index pages get index.md, others get .md extension
+    const markdownPath = url.pathname.endsWith("/")
+      ? `${url.pathname}index.md`
+      : `${url.pathname}.md`;
+    return context.rewrite(markdownPath);
   }
 
   return next();
