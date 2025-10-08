@@ -2,10 +2,10 @@
 import type { Props } from '@astrojs/starlight/props';
 import config from '../../config.ts';
 
-const options = { 
-  year: 'numeric', 
-  month: 'long', 
-  day: 'numeric' 
+const options = {
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric'
 };
 
 const {
@@ -18,12 +18,28 @@ const {
 const slug = Astro.url.pathname.replace(/^\//, "").replace(/\/$/, "");
 
 const isBlogPost = slug.startsWith('blog/');
+const markdownUrl = `/${slug}.md`;
 ---
 
 { isBlogPost
   ? <Fragment>
       <a href="/blog" class="back-link">Blog</a>
-      <h1 class="blog" id="_top">{title}</h1>
+      <div class="title-container">
+        <h1 class="blog" id="_top">{title}</h1>
+        <button
+          class="copy-markdown-btn"
+          data-markdown-url={markdownUrl}
+          title="Copy as Markdown"
+          aria-label="Copy page as Markdown"
+        >
+          {/* copy */}
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18"><title>clipboard</title><g fill="#F7F7F7"><path fill-rule="evenodd" clip-rule="evenodd" d="M6.25 2.75V3.25C6.25 3.80228 6.69772 4.25 7.25 4.25H10.75C11.3023 4.25 11.75 3.80228 11.75 3.25V2.75H12.75C13.855 2.75 14.75 3.645 14.75 4.75V14.25C14.75 15.355 13.855 16.25 12.75 16.25H5.25C4.145 16.25 3.25 15.355 3.25 14.25V4.75C3.25 3.645 4.145 2.75 5.25 2.75H6.25Z" fill="#F7F7F7" fill-opacity="0.3" data-stroke="none" stroke="none"></path> <path d="M6.25 2.75H5.25C4.145 2.75 3.25 3.645 3.25 4.75V14.25C3.25 15.355 4.145 16.25 5.25 16.25H12.75C13.855 16.25 14.75 15.355 14.75 14.25V4.75C14.75 3.645 13.855 2.75 12.75 2.75H11.75" stroke="#F7F7F7" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"></path> <path d="M10.75 1.25H7.25C6.69772 1.25 6.25 1.69772 6.25 2.25V3.25C6.25 3.80228 6.69772 4.25 7.25 4.25H10.75C11.3023 4.25 11.75 3.80228 11.75 3.25V2.25C11.75 1.69772 11.3023 1.25 10.75 1.25Z" stroke="#F7F7F7" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"></path></g></svg>
+          {/* copied icon */}
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18"><title>clipboard-check</title><g fill="#F7F7F7"><path d="M5.25 2C3.73079 2 2.5 3.23079 2.5 4.75V14.25C2.5 15.7692 3.73079 17 5.25 17H12.75C14.2692 17 15.5 15.7692 15.5 14.25V4.75C15.5 3.23079 14.2692 2 12.75 2H5.25Z" fill="#F7F7F7" fill-opacity="0.4"></path> <path fill-rule="evenodd" clip-rule="evenodd" d="M12.2 6.65C12.5314 6.89853 12.5985 7.36863 12.35 7.7L8.60001 12.7C8.46432 12.8809 8.25424 12.991 8.02825 12.9995C7.80226 13.008 7.5845 12.9141 7.43558 12.7439L5.68558 10.7439C5.41282 10.4321 5.4444 9.95833 5.75613 9.68557C6.06786 9.4128 6.54168 9.44439 6.81444 9.75612L7.95516 11.0598L11.15 6.8C11.3985 6.46863 11.8686 6.40147 12.2 6.65Z" fill="#F7F7F7"></path> <path fill-rule="evenodd" clip-rule="evenodd" d="M5.5 2.25C5.5 1.28379 6.28379 0.5 7.25 0.5H10.75C11.7162 0.5 12.5 1.28379 12.5 2.25C12.5 3.21621 11.7162 4 10.75 4H7.25C6.28379 4 5.5 3.21621 5.5 2.25Z" fill="#F7F7F7"></path></g></svg>
+          <span class="btn-text">Copy Markdown</span>
+          <span class="btn-copied">Copied!</span>
+        </button>
+      </div>
       <div class="meta">
         <a target="_blank" href={config.authors[author].twitter}>
           {config.authors[author].name}
@@ -37,12 +53,69 @@ const isBlogPost = slug.startsWith('blog/');
       </div>
     </Fragment>
   : <Fragment>
-      <h1 id="_top">{title}</h1>
+      <div class="title-container">
+        <h1 id="_top">{title}</h1>
+        <button
+          class="copy-markdown-btn"
+          data-markdown-url={markdownUrl}
+          title="Copy as Markdown"
+          aria-label="Copy page as Markdown"
+        >
+          {/* copy */}
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18"><title>clipboard</title><g fill="#F7F7F7"><path fill-rule="evenodd" clip-rule="evenodd" d="M6.25 2.75V3.25C6.25 3.80228 6.69772 4.25 7.25 4.25H10.75C11.3023 4.25 11.75 3.80228 11.75 3.25V2.75H12.75C13.855 2.75 14.75 3.645 14.75 4.75V14.25C14.75 15.355 13.855 16.25 12.75 16.25H5.25C4.145 16.25 3.25 15.355 3.25 14.25V4.75C3.25 3.645 4.145 2.75 5.25 2.75H6.25Z" fill="#F7F7F7" fill-opacity="0.3" data-stroke="none" stroke="none"></path> <path d="M6.25 2.75H5.25C4.145 2.75 3.25 3.645 3.25 4.75V14.25C3.25 15.355 4.145 16.25 5.25 16.25H12.75C13.855 16.25 14.75 15.355 14.75 14.25V4.75C14.75 3.645 13.855 2.75 12.75 2.75H11.75" stroke="#F7F7F7" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"></path> <path d="M10.75 1.25H7.25C6.69772 1.25 6.25 1.69772 6.25 2.25V3.25C6.25 3.80228 6.69772 4.25 7.25 4.25H10.75C11.3023 4.25 11.75 3.80228 11.75 3.25V2.25C11.75 1.69772 11.3023 1.25 10.75 1.25Z" stroke="#F7F7F7" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"></path></g></svg>
+          {/* copied icon */}
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18"><title>clipboard-check</title><g fill="#F7F7F7"><path d="M5.25 2C3.73079 2 2.5 3.23079 2.5 4.75V14.25C2.5 15.7692 3.73079 17 5.25 17H12.75C14.2692 17 15.5 15.7692 15.5 14.25V4.75C15.5 3.23079 14.2692 2 12.75 2H5.25Z" fill="#F7F7F7" fill-opacity="0.4"></path> <path fill-rule="evenodd" clip-rule="evenodd" d="M12.2 6.65C12.5314 6.89853 12.5985 7.36863 12.35 7.7L8.60001 12.7C8.46432 12.8809 8.25424 12.991 8.02825 12.9995C7.80226 13.008 7.5845 12.9141 7.43558 12.7439L5.68558 10.7439C5.41282 10.4321 5.4444 9.95833 5.75613 9.68557C6.06786 9.4128 6.54168 9.44439 6.81444 9.75612L7.95516 11.0598L11.15 6.8C11.3985 6.46863 11.8686 6.40147 12.2 6.65Z" fill="#F7F7F7"></path> <path fill-rule="evenodd" clip-rule="evenodd" d="M5.5 2.25C5.5 1.28379 6.28379 0.5 7.25 0.5H10.75C11.7162 0.5 12.5 1.28379 12.5 2.25C12.5 3.21621 11.7162 4 10.75 4H7.25C6.28379 4 5.5 3.21621 5.5 2.25Z" fill="#F7F7F7"></path></g></svg>
+          <span class="btn-text">Copy Markdown</span>
+          <span class="btn-copied">Copied!</span>
+        </button>
+      </div>
       { description && <p class="page-description">{description}</p> }
     </Fragment>
 }
 
+<script>
+  document.querySelectorAll('.copy-markdown-btn').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      const button = e.currentTarget as HTMLButtonElement;
+      const markdownUrl = button.dataset.markdownUrl;
+
+      if (!markdownUrl) return;
+
+      try {
+        // Fetch the markdown content
+        const response = await fetch(markdownUrl);
+        if (!response.ok) throw new Error('Failed to fetch markdown');
+
+        const markdown = await response.text();
+
+        // Copy to clipboard
+        await navigator.clipboard.writeText(markdown);
+
+        // Show feedback
+        button.classList.add('copied');
+
+        // Reset after 2 seconds
+        setTimeout(() => {
+          button.classList.remove('copied');
+        }, 2000);
+      } catch (error) {
+        console.error('Failed to copy markdown:', error);
+        // Could show error state here
+      }
+    });
+  });
+</script>
+
 <style>
+/* Title container with button */
+.title-container {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
 h1 {
   font-weight: 500;
   color: var(--sl-color-white);
@@ -50,7 +123,11 @@ h1 {
   font-size: var(--sl-text-h1);
   font-family: var(--__sl-font-headings);
   letter-spacing: -1px;
+  margin: 0;
+  flex: 1;
+  min-width: 0; /* Allow title to shrink */
 }
+
 p.page-description {
   margin-top: 0.5rem;
   line-height: 1.5;
@@ -60,6 +137,69 @@ p.page-description {
 h1.blog {
   margin-top: 0.25rem;
 }
+
+/* Copy Markdown Button */
+.copy-markdown-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 0.875rem;
+  background: var(--sl-color-bg-nav);
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 0.375rem;
+  color: var(--sl-color-gray-2);
+  font-size: 0.875rem;
+  font-family: var(--__sl-font);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.copy-markdown-btn:hover {
+  background: var(--sl-color-gray-6);
+  border-color: var(--sl-color-gray-4);
+  color: var(--sl-color-white);
+}
+
+.copy-markdown-btn:active {
+  transform: scale(0.98);
+}
+
+.copy-markdown-btn svg {
+  width: 1.125rem;
+  height: 1.125rem;
+  flex-shrink: 0;
+}
+
+/* Toggle icons & text based on state */
+.copy-markdown-btn:not(.copied) svg + svg,
+.copy-markdown-btn:not(.copied) .btn-copied,
+.copy-markdown-btn.copied svg:first-of-type,
+.copy-markdown-btn.copied .btn-text {
+  display: none;
+}
+
+/* Copied state styling */
+.copy-markdown-btn.copied {
+  background: var(--sl-color-green-low);
+  border-color: var(--sl-color-green);
+  color: var(--sl-color-white);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .title-container {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .copy-markdown-btn {
+    align-self: flex-end;
+    font-size: 0.8125rem;
+    padding: 0.375rem 0.75rem;
+  }
+}
+
 a.back-link {
   color: var(--sl-color-text-accent);
   text-decoration: none;
