@@ -7,10 +7,7 @@ export async function getStaticPaths() {
 
   // Filter docs that start with "blog/" or "docs/"
   const filtered = docs.filter((doc) => {
-    return (
-      (doc.slug.startsWith("blog/") || doc.slug.startsWith("docs/")) &&
-      !doc.slug.endsWith("/index")
-    );
+    return doc.slug.startsWith("blog/") || doc.slug.startsWith("docs/");
   });
 
   return filtered.map((doc) => {
