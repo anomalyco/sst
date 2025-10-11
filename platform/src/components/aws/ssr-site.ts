@@ -1133,10 +1133,10 @@ async function handler(event) {
                 nodejs: {
                   ...planServer.nodejs,
                   format: "esm" as const,
-                  install: [
-                    ...(args.server?.install ?? []),
-                    ...(planServer.nodejs?.install ?? [])
-                  ],
+                  install: output(args.server?.install).apply((install) => [
+                    ...(install ?? []),
+                    ...(planServer.nodejs?.install ?? []),
+                  ]),
                   loader: args.server?.loader ?? planServer.nodejs?.loader,
                 },
                 environment: output(args.environment).apply((environment) => ({
