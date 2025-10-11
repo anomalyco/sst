@@ -21,7 +21,7 @@ jobs:
           fetch-depth: 0
       - uses: oven-sh/setup-bun@v1
         with:
-          bun-version: latest
+          bun-version: 1.2.23
 
       - uses: docker/login-action@v2
         with:
