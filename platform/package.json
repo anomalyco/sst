@@ -25,7 +25,7 @@
     "@aws-sdk/client-sts": "3.478.0",
     "@aws-sdk/middleware-retry": "3.374.0",
     "@pulumi/aws": "6.66.2",
-    "@pulumi/cloudflare": "6.6.0",
+    "@pulumi/cloudflare": "6.10.0",
     "@pulumi/command": "1.0.1",
     "@pulumi/docker-build": "0.0.8",
     "@pulumi/pulumi": "3.145.0",
