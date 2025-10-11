@@ -21,7 +21,7 @@ jobs:
           fetch-depth: 0
       - uses: oven-sh/setup-bun@v1
         with:
-          bun-version: 1.2.23
+          bun-version: latest
 
       - run: |
           npm config set //registry.npmjs.org/:_authToken $NODE_AUTH_TOKEN
