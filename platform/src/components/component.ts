@@ -96,7 +96,6 @@ export class Component extends ComponentResource {
           if (
             [
               // resources manually named
-              "pulumi:providers:aws-native",
               "aws:cloudwatch/logGroup:LogGroup",
               "aws:ecs/service:Service",
               "aws:ecs/taskDefinition:TaskDefinition",
@@ -104,6 +103,7 @@ export class Component extends ComponentResource {
               "aws:servicediscovery/privateDnsNamespace:PrivateDnsNamespace",
               "aws:servicediscovery/service:Service",
               // resources not prefixed
+              "pulumi:providers:aws-native",
               "pulumi-nodejs:dynamic:Resource",
               "random:index/randomId:RandomId",
               "random:index/randomPassword:RandomPassword",
@@ -155,6 +155,7 @@ export class Component extends ComponentResource {
               "aws:lambda/provisionedConcurrencyConfig:ProvisionedConcurrencyConfig",
               "aws:lb/listener:Listener",
               "aws:lb/listenerRule:ListenerRule",
+              "aws-native:bedrockagentcore:Runtime",
               "aws:opensearch/domainPolicy:DomainPolicy",
               "aws:rds/proxyDefaultTargetGroup:ProxyDefaultTargetGroup",
               "aws:rds/proxyTarget:ProxyTarget",
@@ -175,11 +176,11 @@ export class Component extends ComponentResource {
               "aws:sns/topicSubscription:TopicSubscription",
               "aws:sqs/queuePolicy:QueuePolicy",
               "aws:ssm/parameter:Parameter",
-              "aws-native:bedrockagentcore:Runtime",
               "cloudflare:index/dnsRecord:DnsRecord",
               "cloudflare:index/workersCronTrigger:WorkersCronTrigger",
               "cloudflare:index/workersCustomDomain:WorkersCustomDomain",
               "docker-build:index:Image",
+              "time:index/sleep:Sleep",
               "vercel:index/dnsRecord:DnsRecord",
             ].includes(args.type)
           )
@@ -323,6 +324,12 @@ export class Component extends ComponentResource {
               { lower: true },
             ],
           };
+
+          // Some resources don't have physical names and should be skipped
+          // const skipNaming = [
+          //   "time:index/sleep:Sleep", // Utility resource with no name field
+          // ];
+          // if (skipNaming.includes(args.type)) return;
 
           const rule = namingRules[args.type];
           if (!rule)
