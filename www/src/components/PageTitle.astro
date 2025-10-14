@@ -82,19 +82,17 @@ const markdownUrl = `/${slug}.md`;
       if (!markdownUrl) return;
 
       try {
-        // Fetch the markdown content
         const response = await fetch(markdownUrl);
         if (!response.ok) throw new Error('Failed to fetch markdown');
 
         const markdown = await response.text();
 
-        // Copy to clipboard
-        await navigator.clipboard.writeText(markdown);
+        setTimeout(async () => {
+          await navigator.clipboard.writeText(markdown);
+        }, 0);
 
-        // Show feedback
         button.classList.add('copied');
 
-        // Reset after 2 seconds
         setTimeout(() => {
           button.classList.remove('copied');
         }, 2000);
