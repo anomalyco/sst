@@ -425,7 +425,7 @@ export class Redis extends Component implements Link.Linkable {
 
   username: "${dev.username}"
   password: ${
-    dev.password ? `"${dev.password}"` : "\x1b[38;5;8m[no password]\x1b[0m"
+    dev.password ?? "\x1b[38;5;8m[no password]\x1b[0m"
   }
 
 Listening on "${dev.host}:${dev.port}"...`,
