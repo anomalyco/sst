@@ -731,6 +731,7 @@ Listening on "${dev.host}:${dev.port}"...`,
             multiAz,
             backupRetentionPeriod: 7,
             performanceInsightsEnabled: true,
+            autoMinorVersionUpgrade: false,
             tags: {
               "sst:component-version": _version.toString(),
               "sst:lookup:password": secret.id,

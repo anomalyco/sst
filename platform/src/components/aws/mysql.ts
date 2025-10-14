@@ -699,6 +699,7 @@ Listening on "${dev.host}:${dev.port}"...`,
             maxAllocatedStorage: storage,
             multiAz,
             backupRetentionPeriod: 7,
+            autoMinorVersionUpgrade: false,
             // performance insights is only supported on .micro and .small MySQL instances
             // https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_PerfInsights.Overview.Engines.html
             performanceInsightsEnabled: instanceType.apply(
