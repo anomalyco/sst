@@ -23,8 +23,10 @@ import {
   iam,
 } from "@pulumi/aws";
 import * as awsNative from "@pulumi/aws-native";
+import * as time from "@pulumiverse/time";
 import { imageBuilder } from "./helpers/container-builder.js";
 import { bootstrap } from "./helpers/bootstrap.js";
+import { parseRoleArn } from "./helpers/arn.js";
 import { Permission } from "./permission.js";
 import { Platform } from "@pulumi/docker-build";
 
@@ -380,7 +382,7 @@ export interface AgentRuntimeArgs {
  * ```
  */
 export class AgentRuntime extends Component implements Link.Linkable {
-  private runtime?: awsNative.bedrockagentcore.Runtime;
+  private agentRuntime!: Output<awsNative.bedrockagentcore.Runtime>;
   private role!: iam.Role;
   private _workloadIdentityArn?: Output<string>;
 
@@ -398,6 +400,7 @@ export class AgentRuntime extends Component implements Link.Linkable {
     const bootstrapData = region.apply((region) => bootstrap.forRegion(region));
     
     // Create aws-native provider with region configuration
+    // aws-native requires explicit region configuration unlike aws provider
     const awsNativeProvider = new awsNative.Provider(
       `${name}AwsNativeProvider`,
       {
@@ -418,13 +421,27 @@ export class AgentRuntime extends Component implements Link.Linkable {
     }
 
     const role = createRole();
-    this.role = role;
-
+    
+    // Wait for IAM role to propagate before creating the agent runtime
+    // AWS Bedrock Agent Core validates roles immediately, so we need to wait
+    // for IAM propagation across all AWS services
+    const roleDelay = new time.Sleep(
+      `${name}RoleDelay`,
+      {
+        createDuration: "10s",
+      },
+      { parent, dependsOn: [role] },
+    );
+    
     const image = createImage();
-    const runtime = createRuntime();
-    this.runtime = runtime;
-    this._workloadIdentityArn = runtime.workloadIdentityDetails.apply(
-      (details) => details?.workloadIdentityArn,
+    const agentRuntime = output(createAgentRuntime());
+
+    this.role = role;
+    this.agentRuntime = agentRuntime;
+    this._workloadIdentityArn = agentRuntime.apply((runtime) =>
+      runtime.workloadIdentityDetails.apply(
+        (details) => details?.workloadIdentityArn,
+      ),
     );
 
     registerReceiver();
@@ -482,6 +499,15 @@ export class AgentRuntime extends Component implements Link.Linkable {
     }
 
     function createRole() {
+      if (args.role) {
+        return iam.Role.get(
+          `${name}Role`,
+          output(args.role).apply(parseRoleArn).roleName,
+          {},
+          { parent },
+        );
+      }
+
       return new iam.Role(
         ...transform(
           args.transform?.role,
@@ -633,13 +659,13 @@ export class AgentRuntime extends Component implements Link.Linkable {
       );
     }
 
-    function createRuntime() {
+    function createAgentRuntime() {
       // Generate the runtime name using SST's naming convention
       // AWS Bedrock Agent Runtime names must match: [a-zA-Z][a-zA-Z0-9_]{0,47}
       // - Start with a letter
       // - Only letters, numbers, and underscores (no hyphens!)
       // - Max 48 characters
-      const runtimeName =
+      const agentRuntimeName =
         args.agentRuntimeName ??
         physicalName(48, name)
           .replace(/[^a-zA-Z0-9_]/g, "_") // Replace invalid chars with underscore
@@ -648,9 +674,9 @@ export class AgentRuntime extends Component implements Link.Linkable {
       return new awsNative.bedrockagentcore.Runtime(
         ...transform(
           args.transform?.runtime,
-          `${name}Runtime`,
+          `${name}AgentRuntime`,
           {
-            agentRuntimeName: runtimeName,
+            agentRuntimeName: agentRuntimeName,
             description: args.description,
             agentRuntimeArtifact: {
               containerConfiguration: {
@@ -664,33 +690,30 @@ export class AgentRuntime extends Component implements Link.Linkable {
               }),
             ),
             protocolConfiguration: args.protocolConfiguration ?? "MCP",
-            environmentVariables: all([
-              args.environmentVariables,
-              linkData,
-            ]).apply(([envVars, linkData]) => {
-              const env: Record<string, string> = {};
+            environmentVariables: all([args.environmentVariables, linkData]).apply(([envVars, linkData]) => {
+                const env: Record<string, string> = {};
 
-              // Add user-defined environment variables
-              if (envVars) {
-                Object.entries(envVars).forEach(([key, value]) => {
-                  // Since we're already inside an apply, the value is resolved
-                  env[key] = String(value);
+                // Add user-defined environment variables
+                if (envVars) {
+                  Object.entries(envVars).forEach(([key, value]) => {
+                    // Since we're already inside an apply, the value is resolved
+                    env[key] = String(value);
+                  });
+                }
+
+                // Add link data as environment variables
+                env.SST_RESOURCE_App = JSON.stringify({
+                  name: $app.name,
+                  stage: $app.stage,
                 });
-              }
 
-              // Add link data as environment variables
-              env.SST_RESOURCE_App = JSON.stringify({
-                name: $app.name,
-                stage: $app.stage,
-              });
+                linkData.forEach((link) => {
+                  env[`SST_RESOURCE_${link.name}`] = JSON.stringify(
+                    link.properties,
+                  );
+                });
 
-              linkData.forEach((link) => {
-                env[`SST_RESOURCE_${link.name}`] = JSON.stringify(
-                  link.properties,
-                );
-              });
-
-              return env;
+                return env;
             }),
             authorizerConfiguration: args.authorizerConfiguration
               ? output(args.authorizerConfiguration).apply((auth) => ({
@@ -708,7 +731,7 @@ export class AgentRuntime extends Component implements Link.Linkable {
                 }))
               : undefined,
           },
-          { parent, provider: awsNativeProvider, dependsOn: [role, image] },
+          { parent, provider: awsNativeProvider, dependsOn: [roleDelay] },
         ),
       );
     }
@@ -734,21 +757,24 @@ export class AgentRuntime extends Component implements Link.Linkable {
    * The ARN of the agent runtime.
    */
   public get agentRuntimeArn() {
-    return this.runtime?.agentRuntimeArn;
+    if (!this.agentRuntime) return output(undefined);
+    return this.agentRuntime.agentRuntimeArn;
   }
 
   /**
    * The ID of the agent runtime.
    */
   public get agentRuntimeId() {
-    return this.runtime?.agentRuntimeId;
+    if (!this.agentRuntime) return output(undefined);
+    return this.agentRuntime.agentRuntimeId;
   }
 
   /**
    * The version of the agent runtime.
    */
   public get agentRuntimeVersion() {
-    return this.runtime?.agentRuntimeVersion;
+    if (!this.agentRuntime) return output(undefined);
+    return this.agentRuntime.agentRuntimeVersion;
   }
 
   /**
@@ -766,7 +792,7 @@ export class AgentRuntime extends Component implements Link.Linkable {
       /**
        * The AWS Bedrock Agent Core Runtime resource.
        */
-      runtime: this.runtime,
+      agentRuntime: this.agentRuntime,
       /**
        * The IAM role used by the agent runtime.
        */
