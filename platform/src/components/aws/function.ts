@@ -2331,7 +2331,7 @@ export class Function extends Component implements Link.Linkable {
 
           // Calculate hash of the zip file
           const hash = crypto.createHash("sha256");
-          hash.update(await fs.promises.readFile(zipPath, "utf-8"));
+          hash.update(await fs.promises.readFile(zipPath));
           const hashValue = hash.digest("hex");
           const assetBucket = region.apply((region) =>
             bootstrap.forRegion(region).then((d) => d.asset),
@@ -2406,6 +2406,7 @@ export class Function extends Component implements Link.Linkable {
           concurrency,
           dev,
         ]) => {
+
           // This is a hack to avoid handler being marked as having propertyDependencies.
           // There is an unresolved bug in pulumi that causes issues when it does
           // @ts-expect-error

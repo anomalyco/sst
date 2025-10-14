@@ -349,6 +349,15 @@ func (r *PythonRuntime) ShouldRebuild(functionID string, file string) bool {
 		return true
 	}
 
+	// For infrastructure files, always rebuild since they affect function configuration
+	if strings.HasSuffix(file, ".ts") || strings.HasSuffix(file, ".js") || strings.HasSuffix(file, ".mjs") ||
+		filepath.Base(file) == "sst.config.ts" || filepath.Base(file) == "sst.config.js" || filepath.Base(file) == "package.json" {
+		slog.Info("Infrastructure file changed, rebuilding",
+			"functionID", functionID,
+			"file", file)
+		return true
+	}
+
 	// Rate limiting: prevent excessive rebuild checks for non-Python files
 	now := time.Now()
 	if lastCheck, exists := r.lastRebuildCheck[functionID]; exists {
@@ -427,12 +436,23 @@ func (r *PythonRuntime) getHandlerForFunction(functionID string) string {
 
 // isRelevantFile checks if a file change is relevant for Python functions
 func (r *PythonRuntime) isRelevantFile(file string) bool {
-	// Only rebuild for Python-related files
+	// Python-related files
 	relevantExtensions := []string{".py", ".toml", ".txt", ".lock", ".cfg"}
 	relevantFiles := []string{"pyproject.toml", "requirements.txt", "uv.lock", "poetry.lock", "Pipfile.lock", "setup.py", "setup.cfg"}
 
-	// Check file extension
+	// Infrastructure files that affect function deployment
+	infrastructureExtensions := []string{".ts", ".js", ".mjs", ".json"}
+	infrastructureFiles := []string{"sst.config.ts", "sst.config.js", "package.json"}
+
+	// Check Python file extensions
 	for _, ext := range relevantExtensions {
+		if strings.HasSuffix(file, ext) {
+			return true
+		}
+	}
+
+	// Check infrastructure file extensions
+	for _, ext := range infrastructureExtensions {
 		if strings.HasSuffix(file, ext) {
 			return true
 		}
@@ -442,6 +462,13 @@ func (r *PythonRuntime) isRelevantFile(file string) bool {
 	basename := filepath.Base(file)
 	for _, relevantFile := range relevantFiles {
 		if basename == relevantFile {
+			return true
+		}
+	}
+
+	// Check infrastructure filenames
+	for _, infraFile := range infrastructureFiles {
+		if basename == infraFile {
 			return true
 		}
 	}

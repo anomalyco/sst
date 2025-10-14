@@ -2510,9 +2510,9 @@ func (ib *IncrementalBuilder) findSitePackagesPath(venvPath string) (string, err
 	return "", fmt.Errorf("site-packages directory not found in %s", venvPath)
 }
 
-// cleanupInstalledDependencies removes __pycache__ directories and .pyc files from installed dependencies
+// cleanupInstalledDependencies removes __pycache__ directories, .pyc files, and system files from installed dependencies
 func (ib *IncrementalBuilder) cleanupInstalledDependencies(targetDir string) error {
-	slog.Info("cleaning up __pycache__ directories and .pyc files from installed dependencies", "targetDir", targetDir)
+	slog.Info("cleaning up __pycache__ directories, .pyc files, and system files from installed dependencies", "targetDir", targetDir)
 
 	var removedItems []string
 	var totalSize int64
@@ -2538,16 +2538,25 @@ func (ib *IncrementalBuilder) cleanupInstalledDependencies(targetDir string) err
 			return filepath.SkipDir // Skip walking into the removed directory
 		}
 
-		// Remove .pyc, .pyo, .pyd files
+		// Remove .pyc, .pyo, .pyd files and .DS_Store files
 		if !info.IsDir() {
 			ext := filepath.Ext(info.Name())
-			if ext == ".pyc" || ext == ".pyo" || ext == ".pyd" {
+			fileName := info.Name()
+			if ext == ".pyc" || ext == ".pyo" || ext == ".pyd" || fileName == ".DS_Store" {
 				totalSize += info.Size()
 				if err := os.Remove(path); err != nil {
-					slog.Warn("failed to remove compiled Python file", "path", path, "error", err)
+					if fileName == ".DS_Store" {
+						slog.Warn("failed to remove .DS_Store file", "path", path, "error", err)
+					} else {
+						slog.Warn("failed to remove compiled Python file", "path", path, "error", err)
+					}
 				} else {
 					removedItems = append(removedItems, path)
-					slog.Debug("removed compiled Python file", "path", path, "size", info.Size())
+					if fileName == ".DS_Store" {
+						slog.Debug("removed .DS_Store file", "path", path, "size", info.Size())
+					} else {
+						slog.Debug("removed compiled Python file", "path", path, "size", info.Size())
+					}
 				}
 			}
 		}
