@@ -96,6 +96,7 @@ export class Component extends ComponentResource {
           if (
             [
               // resources manually named
+              "pulumi:providers:aws-native",
               "aws:cloudwatch/logGroup:LogGroup",
               "aws:ecs/service:Service",
               "aws:ecs/taskDefinition:TaskDefinition",
@@ -174,6 +175,7 @@ export class Component extends ComponentResource {
               "aws:sns/topicSubscription:TopicSubscription",
               "aws:sqs/queuePolicy:QueuePolicy",
               "aws:ssm/parameter:Parameter",
+              "aws-native:bedrockagentcore:Runtime",
               "cloudflare:index/dnsRecord:DnsRecord",
               "cloudflare:index/workersCronTrigger:WorkersCronTrigger",
               "cloudflare:index/workersCustomDomain:WorkersCustomDomain",
