@@ -575,6 +575,7 @@ Listening on "${dev.host}:${dev.port}"...`,
                 subnetGroupName: subnetGroup.name,
                 parameterGroupName: parameterGroup.name,
                 securityGroupIds: vpc.securityGroups,
+                autoMinorVersionUpgrade: false,
                 tags: {
                   "sst:component-version": _version.toString(),
                   "sst:ref:secret": secret.id,

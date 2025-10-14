@@ -434,6 +434,7 @@ Listening on "${dev.host}:${dev.port}"...`,
             authToken,
             subnetGroupName: subnetGroup.name,
             securityGroupIds: vpc.securityGroups,
+            autoMinorVersionUpgrade: false,
             tags: {
               "sst:auth-token-ref": secret.id,
             },

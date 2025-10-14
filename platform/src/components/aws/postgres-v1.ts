@@ -344,6 +344,7 @@ export class Postgres extends Component implements Link.Linkable {
             engine: rds.EngineType.AuroraPostgresql,
             engineVersion: cluster.engineVersion,
             dbSubnetGroupName: subnetGroup?.name,
+            autoMinorVersionUpgrade: false,
           },
           { parent },
         ),
