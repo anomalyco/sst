@@ -5,7 +5,9 @@ import { cleanMarkdown } from "../../utils/markdown-clean";
 export const GET: APIRoute = async () => {
   const docs = await getCollection("docs");
 
-  const sortedDocs = docs.sort((a, b) => a.slug.localeCompare(b.slug));
+  const filteredDocs = docs.filter((doc) => !doc.slug.startsWith("blog/"));
+  
+  const sortedDocs = filteredDocs.sort((a, b) => a.slug.localeCompare(b.slug));
 
   const content = `# SST Documentation
 
