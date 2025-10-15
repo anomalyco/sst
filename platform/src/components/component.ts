@@ -231,7 +231,7 @@ export class Component extends ComponentResource {
             "aws:elasticache/replicationGroup:ReplicationGroup": [
               "replicationGroupId",
               40,
-              { lower: true },
+              { lower: true, replace: (name) => name.replaceAll(/-+/g, "-") },
             ],
             "aws:elasticache/subnetGroup:SubnetGroup": [
               "name",
