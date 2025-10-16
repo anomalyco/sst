@@ -15,6 +15,7 @@ import { DevCommand } from "../experimental/dev-command.js";
 import { Input as PulumiInput } from "../input.js";
 import { prefixName, physicalName } from "../naming.js";
 import { VisibleError } from "../error.js";
+import * as aws from "@pulumi/aws";
 import {
   ecr,
   getCallerIdentityOutput,
@@ -23,6 +24,7 @@ import {
   iam,
 } from "@pulumi/aws";
 import * as awsNative from "@pulumi/aws-native";
+import * as inputs from "@pulumi/aws-native/types/input";
 import * as time from "@pulumiverse/time";
 import { imageBuilder } from "./helpers/container-builder.js";
 import { bootstrap } from "./helpers/bootstrap.js";
@@ -178,14 +180,14 @@ export interface AgentRuntimeArgs {
    * @example
    * ```js
    * {
-   *   environmentVariables: {
+   *   environment: {
    *     MODEL_NAME: "claude-3-5-sonnet",
    *     TEMPERATURE: "0.7"
    *   }
    * }
    * ```
    */
-  environmentVariables?: Input<Record<string, Input<string>>>;
+  environment?: Input<Record<string, Input<string>>>;
   /**
    * The protocol configuration for the agent runtime.
    * @default `"MCP"`
@@ -398,7 +400,7 @@ export class AgentRuntime extends Component implements Link.Linkable {
     const partition = getPartitionOutput({}, opts).partition;
     const accountId = getCallerIdentityOutput({}, opts).accountId;
     const bootstrapData = region.apply((region) => bootstrap.forRegion(region));
-    
+
     // Create aws-native provider with region configuration
     // aws-native requires explicit region configuration unlike aws provider
     const awsNativeProvider = new awsNative.Provider(
@@ -413,15 +415,13 @@ export class AgentRuntime extends Component implements Link.Linkable {
     const dev = normalizeDev();
     const linkData = buildLinkData();
     const linkPermissions = buildLinkPermissions();
+    const role = createRole();
 
     if ($dev) {
       registerDevCommand();
-      registerReceiver();
       return;
     }
 
-    const role = createRole();
-    
     // Wait for IAM role to propagate before creating the agent runtime
     // AWS Bedrock Agent Core validates roles immediately, so we need to wait
     // for IAM propagation across all AWS services
@@ -432,7 +432,7 @@ export class AgentRuntime extends Component implements Link.Linkable {
       },
       { parent, dependsOn: [role] },
     );
-    
+
     const image = createImage();
     const agentRuntime = output(createAgentRuntime());
 
@@ -476,26 +476,32 @@ export class AgentRuntime extends Component implements Link.Linkable {
     function registerDevCommand() {
       if (!dev) return;
 
-      all([dev, imageArgs, linkData]).apply(([dev, imageArgs, linkData]) => {
-        const directory = dev.directory ?? imageArgs.context;
+      all([dev, imageArgs, role.arn, region]).apply(
+        ([dev, imageArgs, roleArn, region]) => {
+          const directory = dev.directory ?? imageArgs.context;
 
-        new DevCommand(
-          `${name}Dev`,
-          {
-            dev: {
-              title: dev.title,
-              autostart: dev.autostart,
-              command: dev.command,
-              directory,
+          new DevCommand(
+            `${name}Dev`,
+            {
+              dev: {
+                title: dev.title,
+                autostart: dev.autostart,
+                command: dev.command,
+                directory,
+              },
+              link: args.link,
+              environment: all([args.environment]).apply(([envVars]) => ({
+                ...(envVars ?? {}),
+                AWS_REGION: region,
+              })),
+              aws: {
+                role: roleArn,
+              },
             },
-            link: args.link,
-            environment: output(args.environmentVariables).apply(
-              (env) => env ?? {},
-            ),
-          },
-          { parent },
-        );
-      });
+            { parent },
+          );
+        },
+      );
     }
 
     function createRole() {
@@ -513,18 +519,35 @@ export class AgentRuntime extends Component implements Link.Linkable {
           args.transform?.role,
           `${name}Role`,
           {
-            assumeRolePolicy: JSON.stringify({
-              Version: "2012-10-17",
-              Statement: [
-                {
+            assumeRolePolicy: all([aws.getCallerIdentityOutput({})]).apply(
+              ([caller]) => {
+                const statements: any[] = [
+                  {
+                    Effect: "Allow",
+                    Action: "sts:AssumeRole",
+                    Principal: {
+                      Service: "bedrock-agentcore.amazonaws.com",
+                    },
+                  },
+                ];
+
+                // In dev mode, also allow the current AWS identity to assume the role
+                // if ($dev) {
+                statements.push({
                   Effect: "Allow",
                   Action: "sts:AssumeRole",
                   Principal: {
-                    Service: "bedrock-agentcore.amazonaws.com",
+                    AWS: caller.arn,
                   },
-                },
-              ],
-            }),
+                });
+                // }
+
+                return JSON.stringify({
+                  Version: "2012-10-17",
+                  Statement: statements,
+                });
+              },
+            ),
             managedPolicyArns: [
               interpolate`arn:${partition}:iam::aws:policy/CloudWatchLogsFullAccess`,
             ],
@@ -559,7 +582,14 @@ export class AgentRuntime extends Component implements Link.Linkable {
                 }
 
                 const policyJson = iam.getPolicyDocumentOutput({
-                  statements,
+                  statements: statements.map((item) => ({
+                    effect: (() => {
+                      const effect = item.effect ?? "allow";
+                      return effect.charAt(0).toUpperCase() + effect.slice(1);
+                    })(),
+                    actions: item.actions,
+                    resources: item.resources,
+                  })),
                 }).json;
 
                 return [
@@ -660,79 +690,97 @@ export class AgentRuntime extends Component implements Link.Linkable {
     }
 
     function createAgentRuntime() {
-      // Generate the runtime name using SST's naming convention
-      // AWS Bedrock Agent Runtime names must match: [a-zA-Z][a-zA-Z0-9_]{0,47}
-      // - Start with a letter
-      // - Only letters, numbers, and underscores (no hyphens!)
-      // - Max 48 characters
-      const agentRuntimeName =
-        args.agentRuntimeName ??
-        physicalName(48, name)
-          .replace(/[^a-zA-Z0-9_]/g, "_") // Replace invalid chars with underscore
-          .replace(/^[^a-zA-Z]+/, ""); // Ensure it starts with a letter
+      return all([
+        roleDelay,
+        image
+      ]).apply(
+        ([
+          roleDelay,
+         image
+        ]) => {
+          // Generate the runtime name using SST's naming convention
+          // AWS Bedrock Agent Runtime names must match: [a-zA-Z][a-zA-Z0-9_]{0,47}
+          // - Start with a letter
+          // - Only letters, numbers, and underscores (no hyphens!)
+          // - Max 48 characters
+          const agentRuntimeName =
+            args.agentRuntimeName ??
+            physicalName(48, name)
+              .replace(/[^a-zA-Z0-9_]/g, "_") // Replace invalid chars with underscore
+              .replace(/^[^a-zA-Z]+/, ""); // Ensure it starts with a letter
 
-      return new awsNative.bedrockagentcore.Runtime(
-        ...transform(
-          args.transform?.runtime,
-          `${name}AgentRuntime`,
-          {
-            agentRuntimeName: agentRuntimeName,
-            description: args.description,
-            agentRuntimeArtifact: {
-              containerConfiguration: {
-                containerUri: interpolate`${bootstrapData.assetEcrUrl}:${name}`,
+          return new awsNative.bedrockagentcore.Runtime(
+            ...transform(
+              args.transform?.runtime,
+              `${name}AgentRuntime`,
+              {
+                agentRuntimeName: agentRuntimeName,
+                description: args.description,
+                agentRuntimeArtifact: {
+                  containerConfiguration: {
+                    containerUri: interpolate`${bootstrapData.assetEcrUrl}:${name}`,
+                  },
+                },
+                roleArn: args.role ?? role.arn,
+                networkConfiguration: output(args.networkConfiguration).apply(
+                  (
+                    net,
+                  ): inputs.bedrockagentcore.RuntimeNetworkConfigurationArgs => ({
+                    networkMode: net?.networkMode ?? "PUBLIC",
+                  }),
+                ),
+                protocolConfiguration: args.protocolConfiguration ?? "MCP",
+                environmentVariables: all([args.environment, linkData]).apply(
+                  ([envVars, linkData]) => {
+                    const env: Record<string, string> = {};
+
+                    // Add user-defined environment variables
+                    if (envVars) {
+                      Object.entries(envVars).forEach(([key, value]) => {
+                        // Since we're already inside an apply, the value is resolved
+                        env[key] = String(value);
+                      });
+                    }
+
+                    // Add link data as environment variables
+                    env.SST_RESOURCE_App = JSON.stringify({
+                      name: $app.name,
+                      stage: $app.stage,
+                    });
+
+                    linkData.forEach((link) => {
+                      env[`SST_RESOURCE_${link.name}`] = JSON.stringify(
+                        link.properties,
+                      );
+                    });
+
+                    return env;
+                  },
+                ),
+                authorizerConfiguration: args.authorizerConfiguration
+                  ? output(args.authorizerConfiguration).apply((auth) => ({
+                      customJwtAuthorizer: auth.customJwtAuthorizer
+                        ? {
+                            discoveryUrl: output(
+                              auth.customJwtAuthorizer.discoveryUrl,
+                            ),
+                            allowedAudience:
+                              auth.customJwtAuthorizer.allowedAudience,
+                            allowedClients:
+                              auth.customJwtAuthorizer.allowedClients,
+                          }
+                        : undefined,
+                    }))
+                  : undefined,
               },
-            },
-            roleArn: args.role ?? role.arn,
-            networkConfiguration: output(args.networkConfiguration).apply(
-              (net) => ({
-                networkMode: net?.networkMode ?? "PUBLIC",
-              }),
+              {
+                parent,
+                provider: awsNativeProvider,
+                dependsOn: [roleDelay, image],
+              },
             ),
-            protocolConfiguration: args.protocolConfiguration ?? "MCP",
-            environmentVariables: all([args.environmentVariables, linkData]).apply(([envVars, linkData]) => {
-                const env: Record<string, string> = {};
-
-                // Add user-defined environment variables
-                if (envVars) {
-                  Object.entries(envVars).forEach(([key, value]) => {
-                    // Since we're already inside an apply, the value is resolved
-                    env[key] = String(value);
-                  });
-                }
-
-                // Add link data as environment variables
-                env.SST_RESOURCE_App = JSON.stringify({
-                  name: $app.name,
-                  stage: $app.stage,
-                });
-
-                linkData.forEach((link) => {
-                  env[`SST_RESOURCE_${link.name}`] = JSON.stringify(
-                    link.properties,
-                  );
-                });
-
-                return env;
-            }),
-            authorizerConfiguration: args.authorizerConfiguration
-              ? output(args.authorizerConfiguration).apply((auth) => ({
-                  customJwtAuthorizer: auth.customJwtAuthorizer
-                    ? {
-                        discoveryUrl: output(
-                          auth.customJwtAuthorizer.discoveryUrl,
-                        ),
-                        allowedAudience:
-                          auth.customJwtAuthorizer.allowedAudience,
-                        allowedClients:
-                          auth.customJwtAuthorizer.allowedClients,
-                      }
-                    : undefined,
-                }))
-              : undefined,
-          },
-          { parent, provider: awsNativeProvider, dependsOn: [roleDelay] },
-        ),
+          );
+        },
       );
     }
 
@@ -747,7 +795,7 @@ export class AgentRuntime extends Component implements Link.Linkable {
           links: output(args.link || [])
             .apply(Link.build)
             .apply((links) => links.map((link) => link.name)),
-          environment: output(args.environmentVariables || {}),
+          environment: output(args.environment || {}),
         },
       });
     }
@@ -813,4 +861,3 @@ export class AgentRuntime extends Component implements Link.Linkable {
 }
 
 const __pulumiType = "sst:aws:AgentRuntime";
-
