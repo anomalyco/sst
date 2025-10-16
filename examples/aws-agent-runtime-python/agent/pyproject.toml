@@ -1,0 +1,22 @@
+[project]
+name = "agent"
+version = "0.1.0"
+description = "Agent runtime example with strandsagents"
+dependencies = [
+    "bedrock-agentcore",
+    "boto3",
+    "sst",
+    "strands-agents",
+    "strands-agents-tools",
+]
+requires-python = "==3.13.*"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agent"]
+
+[tool.uv.sources]
+sst = { git = "https://github.com/sst/sst.git", branch = "dev", subdirectory = "sdk/python" }
