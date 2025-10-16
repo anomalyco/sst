@@ -325,12 +325,6 @@ export class Component extends ComponentResource {
             ],
           };
 
-          // Some resources don't have physical names and should be skipped
-          // const skipNaming = [
-          //   "time:index/sleep:Sleep", // Utility resource with no name field
-          // ];
-          // if (skipNaming.includes(args.type)) return;
-
           const rule = namingRules[args.type];
           if (!rule)
             throw new VisibleError(
