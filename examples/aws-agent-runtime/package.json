@@ -1,0 +1,19 @@
+{
+  "name": "aws-agent-runtime",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --hot index.ts"
+  },
+  "dependencies": {
+    "@ai-sdk/amazon-bedrock": "3.0.36",
+    "@aws-sdk/client-bedrock-agentcore": "^3.908.0",
+    "@aws-sdk/credential-providers": "^3.908.0",
+    "ai": "^5.0.70",
+    "hono": "^4.9.12",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}
