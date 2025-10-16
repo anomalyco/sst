@@ -483,6 +483,14 @@ func (da *DependencyAnalyzer) hasBuildConfiguration(pyprojectPath string) bool {
 
 	contentStr := string(content)
 
+	// Check for explicit markers that indicate this should NOT be built as a package
+	if strings.Contains(contentStr, "NOT a buildable package") ||
+		strings.Contains(contentStr, "Development environment - not a buildable package") ||
+		strings.Contains(contentStr, "SST will treat this as source code") {
+		slog.Debug("package explicitly marked as non-buildable", "path", pyprojectPath)
+		return false
+	}
+
 	// Look for build system configuration
 	if strings.Contains(contentStr, "[build-system]") {
 		return true

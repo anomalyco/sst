@@ -1993,12 +1993,27 @@ func (ib *IncrementalBuilder) generateRequirementsFile(ctx context.Context, inpu
 		workspaceDir = filepath.Dir(projectInfo.PyprojectPath)
 	}
 
+	// Check if this is a source code project (not a buildable package)
+	// If so, include dev dependencies since they might contain runtime deps
+	noDev := true
+	if projectInfo.PyprojectPath != "" {
+		if content, err := os.ReadFile(projectInfo.PyprojectPath); err == nil {
+			contentStr := string(content)
+			if strings.Contains(contentStr, "NOT a buildable package") ||
+				strings.Contains(contentStr, "Development environment - not a buildable package") ||
+				strings.Contains(contentStr, "SST will treat this as source code") {
+				noDev = false // Include dev dependencies for source code projects
+				slog.Info("including dev dependencies for source code project", "path", projectInfo.PyprojectPath)
+			}
+		}
+	}
+
 	exportCmd := &UvExportCommand{
 		WorkspaceDir:    workspaceDir,
 		PackageName:     "", // Empty to use --all-packages
 		OutputFile:      outputFile,
 		NoEmitWorkspace: false,
-		NoDev:           true,
+		NoDev:           noDev,
 		AllPackages:     true, // Export all packages in the workspace
 	}
 
@@ -2065,11 +2080,26 @@ func (ib *IncrementalBuilder) installDependenciesForLambda(ctx context.Context, 
 		workspaceDir = filepath.Dir(projectInfo.PyprojectPath)
 	}
 
+	// Check if this is a source code project (not a buildable package)
+	// If so, include dev dependencies since they might contain runtime deps
+	noDev := true
+	if projectInfo.PyprojectPath != "" {
+		if content, err := os.ReadFile(projectInfo.PyprojectPath); err == nil {
+			contentStr := string(content)
+			if strings.Contains(contentStr, "NOT a buildable package") ||
+				strings.Contains(contentStr, "Development environment - not a buildable package") ||
+				strings.Contains(contentStr, "SST will treat this as source code") {
+				noDev = false // Include dev dependencies for source code projects
+				slog.Info("including dev dependencies for source code project in sync", "path", projectInfo.PyprojectPath)
+			}
+		}
+	}
+
 	// First, sync workspace dependencies to resolve git dependencies and workspace packages
 	syncCmd := &UvSyncCommand{
 		WorkspaceDir: workspaceDir,
 		AllPackages:  true,
-		NoDev:        true,
+		NoDev:        noDev,
 		Packages:     []string{}, // Empty means sync all packages
 	}
 
