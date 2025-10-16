@@ -473,7 +473,7 @@ export class SvelteKit extends SsrSite {
             from: path.join(".svelte-kit", "svelte-kit-sst", "client"),
             to: "",
             cached: true,
-            versionedSubDir: "_app",
+            versionedSubDir: "_app/immutable",
           },
           {
             from: path.join(".svelte-kit", "svelte-kit-sst", "prerendered"),
