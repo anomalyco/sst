@@ -14,17 +14,11 @@ export default $config({
     };
   },
   async run() {
-    new sst.Linkable("MyLambda", {
-      properties: {
-        foo: "bar",
-      },
+    new sst.aws.Script("MyScript", {
+      onCreate: "function.create",
+      onUpdate: "function.update",
+      onDelete: "function.remove",
+      event: { foo: "bar" },
     });
-
-    // new sst.aws.Script("MyScript", {
-    //   onCreate: "function.create",
-    //   onUpdate: "function.update",
-    //   onDelete: "function.remove",
-    //   event: { foo: "bar" },
-    // });
   },
 });
