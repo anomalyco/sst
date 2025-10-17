@@ -64,6 +64,7 @@ func (s *Multiplexer) draw() {
 		hotkeys["enter"] = "copy"
 	}
 	hotkeys["ctrl-u/d"] = "scroll"
+	hotkeys["ctrl-l"] = "clear"
 	// sort hotkeys
 	keys := make([]string, 0, len(hotkeys))
 	for key := range hotkeys {

@@ -89,3 +89,9 @@ func (s *pane) isScrolling() bool {
 func (s *pane) scrollable() bool {
 	return s.vt.Scrollable()
 }
+
+func (s *pane) Clear() {
+	s.vt.Clear()
+	s.vt.ScrollReset()
+	s.vt.ClearScrollback()
+}
