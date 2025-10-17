@@ -29,7 +29,7 @@ import * as time from "@pulumiverse/time";
 import { imageBuilder } from "./helpers/container-builder.js";
 import { bootstrap } from "./helpers/bootstrap.js";
 import { parseRoleArn } from "./helpers/arn.js";
-import { Permission } from "./permission.js";
+import { Permission, permission } from "./permission.js";
 import { Platform } from "@pulumi/docker-build";
 
 export interface AgentRuntimeArgs {
@@ -856,6 +856,12 @@ export class AgentRuntime extends Component implements Link.Linkable {
         id: this.agentRuntimeId,
         workloadIdentityArn: this.workloadIdentityArn,
       },
+      include: [
+        permission({
+          actions: ["bedrock:*"],
+          resources: [this.agentRuntimeArn, interpolate`${this.agentRuntimeArn}/*`],
+        }),
+      ],
     };
   }
 }
