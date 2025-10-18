@@ -532,6 +532,7 @@ export class Service extends Component implements Link.Linkable {
                 })(),
                 actions: item.actions,
                 resources: item.resources,
+                conditions: "conditions" in item ? item.conditions : undefined,
               }),
             ),
           }),

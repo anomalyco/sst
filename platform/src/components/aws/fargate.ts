@@ -896,6 +896,7 @@ export function createTaskRole(
         })(),
         actions: item.actions,
         resources: item.resources,
+        conditions: "conditions" in item ? item.conditions : undefined,
       })),
     }),
   );

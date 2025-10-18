@@ -89,6 +89,43 @@ export type FunctionPermissionArgs = {
    * ```
    */
   resources: Input<Input<string>[]>;
+  /**
+   * Configure specific conditions for when the policy is in effect.
+   *
+   * @example
+   * ```js
+   * {
+   *   conditions: [
+   *     {
+   *       test: "StringEquals",
+   *       variable: "s3:x-amz-server-side-encryption",
+   *       values: ["AES256"]
+   *     },
+   *     {
+   *       test: "IpAddress",
+   *       variable: "aws:SourceIp",
+   *       values: ["10.0.0.0/16"]
+   *     }
+   *   ]
+   * }
+   * ```
+   */
+  conditions?: Input<
+    Input<{
+      /**
+       * Name of the [IAM condition operator](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_condition_operators.html) to evaluate.
+       */
+      test: Input<string>;
+      /**
+       * Name of a [Context Variable](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements.html#AvailableKeys) to apply the condition to. Context variables may either be standard AWS variables starting with `aws:` or service-specific variables prefixed with the service name.
+       */
+      variable: Input<string>;
+      /**
+       * The values to evaluate the condition against. If multiple values are provided, the condition matches if at least one of them applies. That is, AWS evaluates multiple values as though using an "OR" boolean operation.
+       */
+      values: Input<Input<string>[]>;
+    }>[]
+  >;
 };
 
 interface FunctionUrlCorsArgs {
@@ -2105,6 +2142,7 @@ export class Function extends Component implements Link.Linkable {
               })(),
               actions: item.actions,
               resources: item.resources,
+              conditions: "conditions" in item ? item.conditions : undefined,
             })),
           }),
       );
