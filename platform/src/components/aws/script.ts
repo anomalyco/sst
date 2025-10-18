@@ -129,22 +129,14 @@ class Provider implements dynamic.ResourceProvider {
     const response = await client.send(command);
 
     if (response.FunctionError) {
-      if ($dev) {
-        throw new Error(
-          `Invocation failed. Check your function logs for more details.`,
-        );
-      }
+      const payload = JSON.parse(Buffer.from(response.Payload!).toString()) as { errorType?: string; errorMessage?: string; trace?: string[] };
 
-      const payload = JSON.parse(Buffer.from(response.Payload!).toString());
+      const error = new Error();
+      error.name = payload.errorType ?? "Error";
+      error.message = (payload.trace ?? [payload.errorMessage ?? "Unknown error"]).join("\n");
+      error.stack = (payload.trace ?? [payload.errorMessage ?? "Unknown error"]).join("\n");
 
-      // @ts-ignore
-      const reason = `${payload.errorType}: ${
-        payload.errorMessage
-      } - https://${region}.console.aws.amazon.com/cloudwatch/home?region=${region}#logsV2:log-groups/log-group/${encodeURIComponent(
-        `/aws/lambda/${functionName}`,
-      )}`;
-
-      throw new Error(reason);
+      throw error;
     }
   }
 
