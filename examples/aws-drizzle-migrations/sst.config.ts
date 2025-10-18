@@ -76,12 +76,12 @@ export default $config({
       ],
     });
 
-    // if (!$dev) {
-    new sst.aws.Script("DatabaseMigratorScript", {
-      onCreate: migrator.arn,
-      onUpdate: migrator.arn,
-    });
-    // }
+    if (!$dev) {
+      new sst.aws.Script("DatabaseMigratorScript", {
+        onCreate: migrator.arn,
+        onUpdate: migrator.arn,
+      });
+    }
 
     new sst.x.DevCommand("Studio", {
       link: [rds],
