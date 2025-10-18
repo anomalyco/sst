@@ -4,7 +4,6 @@ export const create = async (event) => {
 };
 
 export const update = async (event) => {
-  throw new Error("test");
   console.log("update", event);
   return "ok";
 };
