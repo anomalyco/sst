@@ -131,12 +131,7 @@ class Provider implements dynamic.ResourceProvider {
     if (response.FunctionError) {
       const payload = JSON.parse(Buffer.from(response.Payload!).toString()) as { errorType?: string; errorMessage?: string; trace?: string[] };
 
-      const error = new Error();
-      error.name = payload.errorType ?? "Error";
-      error.message = (payload.trace ?? [payload.errorMessage ?? "Unknown error"]).join("\n");
-      error.stack = (payload.trace ?? [payload.errorMessage ?? "Unknown error"]).join("\n");
-
-      throw error;
+      throw new VisibleError(`Script invocation failed: ${payload.errorMessage}`);
     }
   }
 
