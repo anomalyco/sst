@@ -37,17 +37,41 @@ npm install
 
 Select the defaults and pick **AWS**. This'll create a `sst.config.ts` file in your project root.
 
-It'll also ask you to update your `app.config.ts` with something like this.
+##### Install nitro
 
-```ts title="app.config.ts"
+We use Nitro to serve our Tanstack Start app on AWS
+
+```bash
+npm install -D nitro
+```
+
+You will also need to add nitro to the `vite.config.ts` file.
+
+```ts title="vite.config.ts"
+import { tanstackStart } from "@tanstack/react-start/plugin/vite";
+import viteReact from "@vitejs/plugin-react";
+import { nitro } from "nitro/vite";
+import { defineConfig } from "vite";
+import tsConfigPaths from "vite-tsconfig-paths";
+
 export default defineConfig({
-  server: {
-    preset: "aws-lambda",
-    awsLambda: {
-      streaming: true
-    }
-  }
+	server: {
+		port: 3000,
+	},
+	plugins: [
+		tsConfigPaths({
+			projects: ["./tsconfig.json"],
+		}),
+		nitro({
+			config: {
+				preset: "aws-lambda",
+			},
+		}),
+		tanstackStart(),
+		viteReact(),
+	],
 });
+
 ```
 
 ---
