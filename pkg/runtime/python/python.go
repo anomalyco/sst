@@ -1843,8 +1843,29 @@ func (r *PythonRuntime) createSimpleDevBuild(ctx context.Context, input *runtime
 		return nil, fmt.Errorf("failed to create artifact directory: %v", err)
 	}
 
-	// Copy Python files with directory structure (fast, no package installation)
 	projectRoot := path.ResolveRootDir(input.CfgPath)
+
+	// Check if this is a properly structured project that doesn't need full copying
+	if r.isProperlyStructuredProject(projectRoot) {
+		// Fast path: create symlink to project root instead of copying all files
+		err := r.createProjectSymlink(projectRoot, input.Out())
+		if err != nil {
+			// Fallback to copying if symlink fails
+			err := r.copyPythonFilesWithProgress(projectRoot, input.Out(), input.FunctionID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to copy Python files: %v", err)
+			}
+		}
+
+		return &runtime.BuildOutput{
+			Handler:    input.Handler,
+			Sourcemaps: []string{},
+			Errors:     []string{},
+			Out:        input.Out(),
+		}, nil
+	}
+
+	// Fallback: Copy Python files with directory structure (for projects that need layout fixes)
 	err := r.copyPythonFilesWithProgress(projectRoot, input.Out(), input.FunctionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to copy Python files: %v", err)
@@ -1853,7 +1874,6 @@ func (r *PythonRuntime) createSimpleDevBuild(ctx context.Context, input *runtime
 	// Fix workspace layouts: flatten any package/src/package structures for import compatibility
 	err = r.flattenWorkspaceLayouts(input.Out(), input.FunctionID)
 	if err != nil {
-
 		return nil, fmt.Errorf("failed to flatten workspace layouts: %v", err)
 	}
 
@@ -1863,6 +1883,83 @@ func (r *PythonRuntime) createSimpleDevBuild(ctx context.Context, input *runtime
 		Errors:     []string{},
 		Out:        input.Out(),
 	}, nil
+}
+
+// isProperlyStructuredProject checks if a project is properly structured and doesn't need file copying
+func (r *PythonRuntime) isProperlyStructuredProject(projectRoot string) bool {
+	// Check for workspace layout patterns that would need flattening
+	hasWorkspaceLayouts := r.hasWorkspaceLayoutPatterns(projectRoot)
+
+	// If there are workspace layouts that need flattening, we need to copy
+	if hasWorkspaceLayouts {
+		return false
+	}
+
+	// Additional checks could be added here:
+	// - Check if all Python files are in standard locations
+	// - Check if there are any complex import patterns that need resolution
+	// - For now, if no workspace layouts need flattening, consider it properly structured
+
+	return true
+}
+
+// createProjectSymlink creates a symlink from the artifact directory to the project root
+func (r *PythonRuntime) createProjectSymlink(projectRoot, artifactDir string) error {
+	// Remove the artifact directory if it exists
+	if err := os.RemoveAll(artifactDir); err != nil {
+		return fmt.Errorf("failed to remove artifact directory: %w", err)
+	}
+
+	// Create parent directory for the symlink
+	parentDir := filepath.Dir(artifactDir)
+	if err := os.MkdirAll(parentDir, 0755); err != nil {
+		return fmt.Errorf("failed to create parent directory: %w", err)
+	}
+
+	// Create symlink from artifact directory to project root
+	err := os.Symlink(projectRoot, artifactDir)
+	if err != nil {
+		return fmt.Errorf("failed to create symlink: %w", err)
+	}
+
+	return nil
+}
+
+// hasWorkspaceLayoutPatterns checks if the project has package/src/package patterns that need flattening
+func (r *PythonRuntime) hasWorkspaceLayoutPatterns(projectRoot string) bool {
+	// Walk through the project looking for package/src/package patterns
+	var hasPatterns bool
+
+	filepath.Walk(projectRoot, func(path string, info os.FileInfo, err error) error {
+		if err != nil || !info.IsDir() {
+			return nil
+		}
+
+		// Skip hidden directories and common non-package directories
+		dirName := filepath.Base(path)
+		if strings.HasPrefix(dirName, ".") ||
+			dirName == "__pycache__" ||
+			dirName == "node_modules" ||
+			dirName == ".sst" {
+			return filepath.SkipDir
+		}
+
+		// Check if this directory follows the package/src/package pattern
+		srcDir := filepath.Join(path, "src")
+		if _, err := os.Stat(srcDir); err == nil {
+			// Check if there's a subdirectory in src with the same name as the parent
+			packageName := dirName
+			innerPackageDir := filepath.Join(srcDir, packageName)
+			if _, err := os.Stat(innerPackageDir); err == nil {
+				hasPatterns = true
+				return filepath.SkipDir // Found one, no need to continue this branch
+			}
+		}
+
+		return nil
+	})
+
+	return hasPatterns
 }
 
 // copySourceFiles copies Python source files and installs local packages
