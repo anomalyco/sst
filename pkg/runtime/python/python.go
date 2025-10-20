@@ -1847,10 +1847,10 @@ func (r *PythonRuntime) createSimpleDevBuild(ctx context.Context, input *runtime
 
 	// Check if this is a properly structured project that doesn't need full copying
 	if r.isProperlyStructuredProject(projectRoot) {
-		// Fast path: create symlink to project root instead of copying all files
-		err := r.createProjectSymlink(projectRoot, input.Out())
+		// Fast path: copy only essential files instead of everything
+		err := r.copyEssentialFiles(projectRoot, input.Out(), input.Handler)
 		if err != nil {
-			// Fallback to copying if symlink fails
+			// Fallback to full copying if essential copy fails
 			err := r.copyPythonFilesWithProgress(projectRoot, input.Out(), input.FunctionID)
 			if err != nil {
 				return nil, fmt.Errorf("failed to copy Python files: %v", err)
@@ -1903,26 +1903,11 @@ func (r *PythonRuntime) isProperlyStructuredProject(projectRoot string) bool {
 	return true
 }
 
-// createProjectSymlink creates a symlink from the artifact directory to the project root
-func (r *PythonRuntime) createProjectSymlink(projectRoot, artifactDir string) error {
-	// Remove the artifact directory if it exists
-	if err := os.RemoveAll(artifactDir); err != nil {
-		return fmt.Errorf("failed to remove artifact directory: %w", err)
-	}
-
-	// Create parent directory for the symlink
-	parentDir := filepath.Dir(artifactDir)
-	if err := os.MkdirAll(parentDir, 0755); err != nil {
-		return fmt.Errorf("failed to create parent directory: %w", err)
-	}
-
-	// Create symlink from artifact directory to project root
-	err := os.Symlink(projectRoot, artifactDir)
-	if err != nil {
-		return fmt.Errorf("failed to create symlink: %w", err)
-	}
-
-	return nil
+// copyEssentialFiles copies only the essential files needed for properly structured projects
+func (r *PythonRuntime) copyEssentialFiles(projectRoot, artifactDir, handler string) error {
+	// For properly structured projects, we only need to copy Python files
+	// This is much faster than full copying but avoids symlink issues
+	return r.copyPythonFiles(projectRoot, artifactDir)
 }
 
 // hasWorkspaceLayoutPatterns checks if the project has package/src/package patterns that need flattening

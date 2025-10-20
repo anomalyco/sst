@@ -1,11 +1,29 @@
 import importlib
 import json
+import logging
 import os
 import sys
 import traceback
 import time
 import requests
 from pathlib import Path
+
+
+# Configure Python logging to output to stdout so it appears alongside print statements
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    stream=sys.stdout,
+    force=True  # Override any existing logging configuration
+)
+
+# Also ensure that all loggers use our configuration
+root_logger = logging.getLogger()
+root_logger.handlers.clear()
+handler = logging.StreamHandler(sys.stdout)
+handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+root_logger.addHandler(handler)
+root_logger.setLevel(logging.INFO)
 
 
 # Error handling function to report errors back to the Lambda runtime API
