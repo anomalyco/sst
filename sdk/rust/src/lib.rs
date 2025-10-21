@@ -30,25 +30,29 @@ pub struct Resource {
 
 impl Resource {
     pub fn init() -> Result<Self, ResourceError> {
-        let key = BASE64_STANDARD.decode(env::var("SST_KEY")?)?;
-        let encrypted_data = std::fs::read(env::var("SST_KEY_FILE")?)?;
+        let mut resources: HashMap<String, Value> = HashMap::new();
 
-        let nonce = GenericArray::from_slice(&[0u8; 12]);
-        let cipher = Aes256Gcm::new(GenericArray::from_slice(&key));
+        if let (Ok(sst_key), Ok(sst_key_file)) = (env::var("SST_KEY"), env::var("SST_KEY_FILE")) {
+            let key = BASE64_STANDARD.decode(sst_key)?;
+            let encrypted_data = std::fs::read(sst_key_file)?;
 
-        let auth_tag_start = encrypted_data.len() - 16;
-        let actual_ciphertext = &encrypted_data[..auth_tag_start];
-        let auth_tag = &encrypted_data[auth_tag_start..];
+            let nonce = GenericArray::from_slice(&[0u8; 12]);
+            let cipher = Aes256Gcm::new(GenericArray::from_slice(&key));
 
-        let mut ciphertext_with_tag = Vec::with_capacity(encrypted_data.len());
-        ciphertext_with_tag.extend_from_slice(actual_ciphertext);
-        ciphertext_with_tag.extend_from_slice(auth_tag);
+            let auth_tag_start = encrypted_data.len() - 16;
+            let actual_ciphertext = &encrypted_data[..auth_tag_start];
+            let auth_tag = &encrypted_data[auth_tag_start..];
 
-        let decrypted = cipher
-            .decrypt(nonce, ciphertext_with_tag.as_ref())
-            .map_err(|e| ResourceError::DecryptionError(e.to_string()))?;
+            let mut ciphertext_with_tag = Vec::with_capacity(encrypted_data.len());
+            ciphertext_with_tag.extend_from_slice(actual_ciphertext);
+            ciphertext_with_tag.extend_from_slice(auth_tag);
 
-        let mut resources: HashMap<String, Value> = serde_json::from_slice(&decrypted)?;
+            let decrypted = cipher
+                .decrypt(nonce, ciphertext_with_tag.as_ref())
+                .map_err(|e| ResourceError::DecryptionError(e.to_string()))?;
+
+            resources = serde_json::from_slice(&decrypted)?;
+        }
 
         for (key, value) in env::vars() {
             if key.starts_with("SST_RESOURCE_") {
