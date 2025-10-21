@@ -227,7 +227,7 @@ func (r *PythonRuntime) Build(ctx context.Context, input *runtime.BuildInput) (*
 	file, err := r.getFile(input)
 	if err != nil {
 
-		return nil, fmt.Errorf("handler not found: %v", err)
+		return nil, fmt.Errorf("python runtime - handler not found: %v", err)
 	}
 
 	if input.Dev {
