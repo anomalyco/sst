@@ -1,0 +1,22 @@
+{
+  "name": "sst/sdk",
+  "description": "PHP SDK for SST",
+  "type": "library",
+  "license": "MIT",
+  "autoload": {
+    "psr-4": {
+      "Sst\\Sdk\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Sst\\Sdk\\Tests\\": "tests/"
+    }
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^12.4"
+  },
+  "scripts": {
+    "test": "phpunit"
+  }
+}
