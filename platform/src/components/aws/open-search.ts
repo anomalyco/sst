@@ -141,7 +141,7 @@ export interface OpenSearchArgs {
     /**
      * Transform the OpenSearch domain policy.
      */
-    policy?: Transform<iam.PolicyDocument>;
+    policy?: Transform<opensearch.DomainPolicyArgs>;
   };
 }
 
@@ -472,20 +472,23 @@ Listening on "${dev.url}"...`,
 
     function createPolicy() {
       return new opensearch.DomainPolicy(
-        `${name}DomainPolicy`,
-        {
-          domainName: domain.domainName,
-          accessPolicies: iam.getPolicyDocumentOutput({
-            statements: [
-              {
-                principals: [{ type: "*", identifiers: ["*"] }],
-                actions: ["*"],
-                resources: ["*"],
-              },
-            ],
-          }).json,
-        },
-        { parent: self },
+        ...transform(
+          args.transform?.policy,
+          `${name}DomainPolicy`,
+          {
+            domainName: domain.domainName,
+            accessPolicies: iam.getPolicyDocumentOutput({
+              statements: [
+                {
+                  principals: [{ type: "*", identifiers: ["*"] }],
+                  actions: ["*"],
+                  resources: ["*"],
+                },
+              ],
+            }).json,
+          },
+          { parent: self },
+        ),
       );
     }
   }
