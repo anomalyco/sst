@@ -61,7 +61,8 @@ func CmdMosaic(c *cli.Cli) error {
 		cwd, _ := os.Getwd()
 		currentDir := cwd
 		for {
-			newPath := filepath.Join(currentDir, "node_modules", ".bin") + string(os.PathListSeparator) + os.Getenv("PATH")
+			nodeBinPath := filepath.Join(currentDir, "node_modules", ".bin")
+			newPath := nodeBinPath + string(os.PathListSeparator) + os.Getenv("PATH")
 			os.Setenv("PATH", newPath)
 			parentDir := filepath.Dir(currentDir)
 			if parentDir == currentDir {
