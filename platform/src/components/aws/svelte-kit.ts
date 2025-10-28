@@ -415,7 +415,7 @@ export class SvelteKit extends SsrSite {
     super(__pulumiType, name, args, opts);
   }
 
-  protected normalizeBuildCommand() { }
+  protected normalizeBuildCommand() {}
 
   protected buildPlan(outputPath: Output<string>): Output<Plan> {
     return outputPath.apply((outputPath) => {
@@ -435,7 +435,7 @@ export class SvelteKit extends SsrSite {
         if (appDir && appPath && appPath.endsWith(appDir)) {
           basepath = appPath.substring(0, appPath.length - appDir.length);
         }
-      } catch (e) { }
+      } catch (e) {}
 
       return {
         base: basepath,
@@ -473,7 +473,8 @@ export class SvelteKit extends SsrSite {
             from: path.join(".svelte-kit", "svelte-kit-sst", "client"),
             to: "",
             cached: true,
-            versionedSubDir: "_app/immutable",
+            versionedSubDir: "_app",
+            deepRoute: "_app",
           },
           {
             from: path.join(".svelte-kit", "svelte-kit-sst", "prerendered"),
