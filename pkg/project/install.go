@@ -156,7 +156,7 @@ func (p *Project) writeTypes() error {
 	file.WriteString(`  interface Providers {` + "\n")
 	file.WriteString(`    providers?: {` + "\n")
 	for _, entry := range p.lock {
-		file.WriteString(`      "` + entry.Name + `"?:  (_` + entry.Alias + `.ProviderArgs & { version?: string }) | boolean | string;` + "\n")
+		file.WriteString(`      "` + entry.Name + `"?:  (_` + entry.Alias + `.ProviderArgs & { package?: string, version?: string }) | boolean | string;` + "\n")
 	}
 	file.WriteString(`    }` + "\n")
 	file.WriteString(`  }` + "\n")
@@ -218,12 +218,16 @@ func (p *Project) generateProviderLock() error {
 	}
 	for name, config := range p.app.Providers {
 		n := name
+		pkgName := config.(map[string]interface{})["package"]
+		if pkgName == nil || pkgName == "" {
+			pkgName = n
+		}
 		version := config.(map[string]interface{})["version"]
 		if version == nil || version == "" {
 			version = "latest"
 		}
 		wg.Go(func() error {
-			result, err := FindProvider(n, version.(string))
+			result, err := FindProvider(n, pkgName.(string), version.(string))
 			if err != nil {
 				return err
 			}
@@ -257,10 +261,10 @@ func (p *Project) generateProviderLock() error {
 	return nil
 }
 
-func FindProvider(name string, version string) (*ProviderLockEntry, error) {
+func FindProvider(name string, pkgName string, version string) (*ProviderLockEntry, error) {
 	registry := npm.LoadRegistry()
 	for _, prefix := range []string{"@sst-provider/", "@pulumi/", "@pulumiverse/", "pulumi-", "@", ""} {
-		pkg, err := npm.Get(registry, prefix+name, version)
+		pkg, err := npm.Get(registry, prefix+pkgName, version)
 		if err != nil {
 			continue
 		}
