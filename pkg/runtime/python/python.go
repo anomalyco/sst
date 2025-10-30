@@ -291,6 +291,11 @@ type PackageLayoutInfo struct {
 }
 
 func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runtime.Worker, error) {
+	// Check if we need to sync artifacts with source before starting the worker
+	if err := r.syncArtifactsIfNeeded(input); err != nil {
+		return nil, fmt.Errorf("failed to sync artifacts: %v", err)
+	}
+
 	// We need the lambda bridge in the artifact directory so that we can run the handler
 	// without having to manually isolate the runtime, So if it is not present then we need to copy it from
 	// the platform directory into the artifact directory
@@ -402,13 +407,13 @@ func (r *PythonRuntime) ShouldRebuild(functionID string, file string) bool {
 		return true
 	}
 
-	// For infrastructure files, always rebuild since they affect function configuration
+	// For infrastructure files, don't rebuild immediately - let it rebuild lazily on invoke
 	if strings.HasSuffix(file, ".ts") || strings.HasSuffix(file, ".js") || strings.HasSuffix(file, ".mjs") ||
 		filepath.Base(file) == "sst.config.ts" || filepath.Base(file) == "sst.config.js" || filepath.Base(file) == "package.json" {
-		slog.Info("Infrastructure file changed, rebuilding",
+		slog.Info("Infrastructure file changed, will rebuild on next invoke",
 			"functionID", functionID,
 			"file", file)
-		return true
+		return false
 	}
 
 	// If caching is not enabled, always rebuild
@@ -455,6 +460,115 @@ func (r *PythonRuntime) ShouldRebuild(functionID string, file string) bool {
 	}
 
 	return result.HasChanges
+}
+
+// syncArtifactsIfNeeded checks if artifacts need to be synced with source and does it if necessary
+func (r *PythonRuntime) syncArtifactsIfNeeded(input *runtime.RunInput) error {
+	projectRoot := path.ResolveRootDir(input.CfgPath)
+	artifactDir := input.Build.Out
+
+	// Since Run() is only called in dev mode, always sync Python files
+	return r.syncPythonFiles(projectRoot, artifactDir)
+}
+
+// syncPythonFiles syncs Python files from source to artifacts (adds, updates, deletes)
+func (r *PythonRuntime) syncPythonFiles(srcDir, destDir string) error {
+	// First, collect all Python files in source
+	sourceFiles := make(map[string]os.FileInfo)
+	err := filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		relPath, err := filepath.Rel(srcDir, path)
+		if err != nil {
+			return err
+		}
+
+		// Skip hidden directories and common non-Python directories
+		if info.IsDir() {
+			if strings.HasPrefix(filepath.Base(path), ".") ||
+				strings.Contains(relPath, "node_modules") ||
+				strings.Contains(relPath, "__pycache__") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		// Only track Python files
+		if strings.HasSuffix(path, ".py") {
+			sourceFiles[relPath] = info
+		}
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed to scan source files: %v", err)
+	}
+
+	// Collect all Python files in artifacts
+	artifactFiles := make(map[string]os.FileInfo)
+	if _, err := os.Stat(destDir); err == nil {
+		err = filepath.Walk(destDir, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+
+			relPath, err := filepath.Rel(destDir, path)
+			if err != nil {
+				return err
+			}
+
+			if !info.IsDir() && strings.HasSuffix(path, ".py") {
+				artifactFiles[relPath] = info
+			}
+
+			return nil
+		})
+		if err != nil {
+			return fmt.Errorf("failed to scan artifact files: %v", err)
+		}
+	}
+
+	// Delete files that exist in artifacts but not in source
+	for relPath := range artifactFiles {
+		if _, exists := sourceFiles[relPath]; !exists {
+			artifactPath := filepath.Join(destDir, relPath)
+			if err := os.Remove(artifactPath); err != nil {
+				return fmt.Errorf("failed to delete %s: %v", artifactPath, err)
+			}
+			slog.Info("deleted stale artifact", "file", relPath)
+		}
+	}
+
+	// Copy/update files that exist in source
+	for relPath, sourceInfo := range sourceFiles {
+		sourcePath := filepath.Join(srcDir, relPath)
+		artifactPath := filepath.Join(destDir, relPath)
+
+		// Check if we need to copy (file doesn't exist or is older)
+		needsCopy := true
+		if artifactInfo, exists := artifactFiles[relPath]; exists {
+			if !sourceInfo.ModTime().After(artifactInfo.ModTime()) {
+				needsCopy = false
+			}
+		}
+
+		if needsCopy {
+			// Ensure destination directory exists
+			if err := os.MkdirAll(filepath.Dir(artifactPath), 0755); err != nil {
+				return fmt.Errorf("failed to create directory for %s: %v", artifactPath, err)
+			}
+
+			// Copy the file
+			if err := copyFile(sourcePath, artifactPath); err != nil {
+				return fmt.Errorf("failed to copy %s: %v", relPath, err)
+			}
+			slog.Info("synced artifact", "file", relPath)
+		}
+	}
+
+	return nil
 }
 
 // getHandlerForFunction retrieves the handler path for a given function ID
@@ -2272,6 +2386,8 @@ func (r *PythonRuntime) installLocalPackages(srcDir, destDir string) error {
 
 // flattenWorkspaceLayouts detects and flattens package/src/package structures for all legacy projects
 func (r *PythonRuntime) flattenWorkspaceLayouts(artifactDir, functionID string) error {
+	// Create a content filter to exclude test files during flattening
+	contentFilter := NewContentFilter()
 	// Look for any directories that might have workspace layout (package/src/package)
 	entries, err := os.ReadDir(artifactDir)
 	if err != nil {
@@ -2293,11 +2409,13 @@ func (r *PythonRuntime) flattenWorkspaceLayouts(artifactDir, functionID string) 
 		// Check if this follows the package/src/package pattern
 		if _, err := os.Stat(innerPackageDir); err == nil {
 
-			// Copy contents of package/src/package to package/ (excluding __pycache__)
+			// Copy contents of package/src/package to package/ (excluding test files and build artifacts)
 			entries, err := os.ReadDir(innerPackageDir)
 			if err == nil {
 				for _, innerEntry := range entries {
-					if innerEntry.Name() == "__pycache__" {
+					// Use ContentFilter to determine if this file/directory should be excluded
+					if contentFilter.ShouldExclude(innerEntry.Name()) {
+						slog.Debug("excluding file/directory during workspace flattening", "name", innerEntry.Name())
 						continue
 					}
 
@@ -2305,7 +2423,7 @@ func (r *PythonRuntime) flattenWorkspaceLayouts(artifactDir, functionID string) 
 					destPath := filepath.Join(packageDir, innerEntry.Name())
 
 					if innerEntry.IsDir() {
-						err = r.copyDirectory(srcPath, destPath)
+						err = r.copyDirectoryWithFilter(srcPath, destPath, contentFilter)
 					} else {
 						err = copyFile(srcPath, destPath)
 					}
@@ -2338,6 +2456,42 @@ func (r *PythonRuntime) copyDirectory(src, dst string) error {
 		if err != nil {
 			return err
 		}
+		destPath := filepath.Join(dst, relPath)
+
+		if info.IsDir() {
+			return os.MkdirAll(destPath, info.Mode())
+		}
+
+		// Copy file
+		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+			return err
+		}
+
+		return copyFile(path, destPath)
+	})
+}
+
+// copyDirectoryWithFilter recursively copies a directory while applying ContentFilter
+func (r *PythonRuntime) copyDirectoryWithFilter(src, dst string, filter *ContentFilter) error {
+	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Calculate destination path
+		relPath, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+
+		// Apply ContentFilter to exclude unwanted files/directories
+		if filter.ShouldExclude(relPath) {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil // Skip this file
+		}
+
 		destPath := filepath.Join(dst, relPath)
 
 		if info.IsDir() {

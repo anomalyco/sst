@@ -2319,7 +2319,7 @@ func (ib *IncrementalBuilder) copySourceFilesSimple(ctx context.Context, input *
 
 		slog.Info("copying directory", "src", srcPath, "dest", destPath)
 
-		if err := copyDirectory(srcPath, destPath); err != nil {
+		if err := ib.copyDirectoryRecursive(srcPath, destPath); err != nil {
 			return fmt.Errorf("failed to copy directory %s: %w", dirName, err)
 		}
 	}
