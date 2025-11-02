@@ -23,7 +23,7 @@ export type { PostgresArgs as PostgresV1Args } from "./postgres-v1";
 export interface PostgresArgs {
   /**
    * The Postgres engine version. Check out the [available versions in your region](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/PostgreSQL.Concepts.General.DBVersions.html).
-   * @default `"16.4"`
+   * @default `"16"`
    * @example
    * ```js
    * {
@@ -397,7 +397,7 @@ interface PostgresRef {
  *   -e POSTGRES_USER=postgres \
  *   -e POSTGRES_PASSWORD=password \
  *   -e POSTGRES_DB=local \
- *   postgres:16.4
+ *   postgres:16
  * ```
  *
  * You can connect to it in `sst dev` by configuring the `dev` prop.
@@ -473,7 +473,7 @@ export class Postgres extends Component implements Link.Linkable {
 
     registerVersion();
     const multiAz = output(args.multiAz).apply((v) => v ?? false);
-    const engineVersion = output(args.version).apply((v) => v ?? "16.4");
+    const engineVersion = output(args.version).apply((v) => v ?? "16");
     const instanceType = output(args.instance).apply((v) => v ?? "t4g.micro");
     const username = output(args.username).apply((v) => v ?? "postgres");
     const storage = normalizeStorage();
