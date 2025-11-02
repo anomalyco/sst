@@ -1,6 +1,6 @@
 module github.com/sst/sst/v3
 
-go 1.23.11
+go 1.23.1
 
 require (
 	github.com/BurntSushi/toml v1.2.1
