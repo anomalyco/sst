@@ -165,6 +165,7 @@ export class Component extends ComponentResource {
               "aws:s3/bucketPolicy:BucketPolicy",
               "aws:s3/bucketPublicAccessBlock:BucketPublicAccessBlock",
               "aws:s3/bucketVersioningV2:BucketVersioningV2",
+              "aws:s3/bucketLifecycleConfigurationV2:BucketLifecycleConfigurationV2",
               "aws:s3/bucketWebsiteConfigurationV2:BucketWebsiteConfigurationV2",
               "aws:secretsmanager/secretVersion:SecretVersion",
               "aws:ses/domainIdentityVerification:DomainIdentityVerification",
