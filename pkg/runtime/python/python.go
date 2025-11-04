@@ -87,6 +87,9 @@ type PythonRuntime struct {
 	lastRebuildCheck map[string]time.Time
 	rebuildCooldown  time.Duration
 
+	// Track pending changes per function
+	pendingChanges map[string][]string // functionID -> list of changed files
+
 	// Mutex for thread-safe access
 	mutex sync.RWMutex
 }
@@ -104,6 +107,7 @@ func New() *PythonRuntime {
 		lastBuiltHandler: map[string]string{},
 		lastRebuildCheck: map[string]time.Time{},
 		rebuildCooldown:  10 * time.Second, // Prevent rebuilds more than once every 10 seconds
+		pendingChanges:   map[string][]string{},
 	}
 }
 
@@ -113,6 +117,7 @@ func NewWithCache(cacheDir string) (*PythonRuntime, error) {
 		lastBuiltHandler: map[string]string{},
 		lastRebuildCheck: map[string]time.Time{},
 		rebuildCooldown:  10 * time.Second, // Prevent rebuilds more than once every 10 seconds
+		pendingChanges:   map[string][]string{},
 	}
 
 	// Initialize cache and detection systems
@@ -205,6 +210,62 @@ func (r *PythonRuntime) DisableCaching() error {
 }
 
 func (r *PythonRuntime) Build(ctx context.Context, input *runtime.BuildInput) (*runtime.BuildOutput, error) {
+	buildStart := time.Now()
+	slog.Info("⏱️ Build() started",
+		"functionID", input.FunctionID,
+		"dev", input.Dev)
+
+	// Publish to dev screen
+	bus.Publish(&events.FunctionBuildProgressEvent{
+		FunctionID: input.FunctionID,
+		Stage:      "BuildStart",
+		Message:    "Build started",
+	})
+
+	// Fast path for dev mode: If we've already built this function, skip the expensive rebuild
+	// Check if we have a record of building this handler before
+	if input.Dev {
+		r.mutex.RLock()
+		lastBuilt, hasBuilt := r.lastBuiltHandler[input.FunctionID]
+		r.mutex.RUnlock()
+
+		slog.Info("🔍 Checking if we can skip build",
+			"functionID", input.FunctionID,
+			"hasBuilt", hasBuilt,
+			"lastBuilt", lastBuilt)
+
+		if hasBuilt && lastBuilt != "" {
+			// We've built this before, verify the artifact is complete
+			// Check if the handler file exists in the artifact directory
+			handlerFile := filepath.Join(input.Out(), input.Handler+".py")
+			if _, err := os.Stat(handlerFile); err == nil {
+				elapsed := time.Since(buildStart)
+				slog.Info("⚡ FAST BUILD: skipping rebuild, artifact is complete",
+					"functionID", input.FunctionID,
+					"elapsed", elapsed)
+
+				bus.Publish(&events.FunctionBuildProgressEvent{
+					FunctionID: input.FunctionID,
+					Stage:      "FastBuild",
+					Message:    fmt.Sprintf("Fast build in %v", elapsed),
+				})
+
+				return &runtime.BuildOutput{
+					Out:     input.Out(),
+					Handler: input.Handler,
+					Errors:  []string{},
+				}, nil
+			} else {
+				slog.Warn("⚠️ lastBuiltHandler says we built before, but handler file missing, doing full build",
+					"functionID", input.FunctionID,
+					"handlerFile", handlerFile,
+					"error", err)
+			}
+		} else {
+			slog.Info("📦 First build for this function, doing full build",
+				"functionID", input.FunctionID)
+		}
+	}
 
 	/// Workspaces are the most challenging part of the build process
 	/// UV currently does not support --include-workspace-deps for builds
@@ -234,13 +295,29 @@ func (r *PythonRuntime) Build(ctx context.Context, input *runtime.BuildInput) (*
 		// Development mode: Simple build without complex dependency management
 
 		// Still call CreateBuildAsset but it will be much simpler for dev
+		createStart := time.Now()
 		result, err := r.CreateBuildAsset(ctx, input)
+		slog.Info("⏱️ CreateBuildAsset completed",
+			"functionID", input.FunctionID,
+			"elapsed", time.Since(createStart))
 		if err != nil {
 
 			return nil, err
 		}
 
 		r.lastBuiltHandler[input.FunctionID] = file
+
+		elapsed := time.Since(buildStart)
+		slog.Info("⏱️ Build() completed",
+			"functionID", input.FunctionID,
+			"totalElapsed", elapsed)
+
+		// Publish to dev screen
+		bus.Publish(&events.FunctionBuildProgressEvent{
+			FunctionID: input.FunctionID,
+			Stage:      "BuildComplete",
+			Message:    fmt.Sprintf("Build completed in %v", elapsed),
+		})
 
 		return result, nil
 	} else {
@@ -252,6 +329,9 @@ func (r *PythonRuntime) Build(ctx context.Context, input *runtime.BuildInput) (*
 			return nil, err
 		}
 
+		slog.Info("⏱️ Build() completed (deployment)",
+			"functionID", input.FunctionID,
+			"totalElapsed", time.Since(buildStart))
 		return result, nil
 	}
 
@@ -283,18 +363,82 @@ type PyProject struct {
 	} `toml:"tool"`
 }
 
-type PackageLayoutInfo struct {
-	needsFlattening bool
-	layoutType      string
-	sourcePath      string
-	targetPath      string
-}
-
 func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runtime.Worker, error) {
+	startTime := time.Now()
+	slog.Info("⏱️ Run() started",
+		"functionID", input.FunctionID,
+		"workerID", input.WorkerID)
+
+	// Check if we have pending changes
+	// If so, return a worker that exits immediately to trigger restart on next invoke
+	r.mutex.Lock()
+	pendingFiles := r.pendingChanges[input.FunctionID]
+	hasPendingChanges := len(pendingFiles) > 0
+	r.mutex.Unlock()
+
+	if hasPendingChanges {
+		slog.Info("🔄 LAZY RESTART: pending changes detected, returning placeholder worker",
+			"functionID", input.FunctionID,
+			"workerID", input.WorkerID,
+			"pendingChanges", len(pendingFiles),
+			"files", pendingFiles,
+			"elapsed", time.Since(startTime))
+
+		// Publish event so it shows in dev screen
+		bus.Publish(&events.FunctionBuildProgressEvent{
+			FunctionID: input.FunctionID,
+			Stage:      "LazyRestart",
+			Message:    fmt.Sprintf("Pending changes (%d files), will restart on invoke", len(pendingFiles)),
+		})
+
+		// Clear pending changes NOW so the next Run() call will actually start the worker
+		r.mutex.Lock()
+		delete(r.pendingChanges, input.FunctionID)
+		r.mutex.Unlock()
+
+		slog.Info("🔄 LAZY RESTART: cleared pending changes for next restart",
+			"functionID", input.FunctionID)
+
+		// Create a dummy process that exits immediately using Python
+		// This will cause the worker to be removed from the workers map
+		// On next invoke, SST will reboot and call Run() again without pending changes
+		cmd := process.CommandContext(ctx, "python3", "-c", "import sys; sys.exit(0)")
+		stdout, _ := cmd.StdoutPipe()
+		stderr, _ := cmd.StderrPipe()
+		cmd.Start()
+
+		slog.Info("🔄 LAZY RESTART: placeholder worker created, will exit immediately",
+			"functionID", input.FunctionID,
+			"workerID", input.WorkerID,
+			"totalElapsed", time.Since(startTime))
+
+		return &Worker{
+			stdout: stdout,
+			stderr: stderr,
+			cmd:    cmd,
+		}, nil
+	}
+
+	slog.Info("✅ STARTING WORKER: no pending changes, starting actual Python process",
+		"functionID", input.FunctionID,
+		"workerID", input.WorkerID,
+		"elapsed", time.Since(startTime))
+
+	// NOTE: To show messages in the UI:
+	// - Use bus.Publish(&events.FunctionBuildProgressEvent{FunctionID: input.FunctionID, Stage: "stage", Message: "message"})
+	//   (preferred - shows in the correct function tab)
+	// - Or bus.Publish(&common.StdoutEvent{Line: "message"})
+	//   (shows in global output, not function-specific)
+
 	// Check if we need to sync artifacts with source before starting the worker
+	// This will also clear pending changes after syncing
+	syncStart := time.Now()
 	if err := r.syncArtifactsIfNeeded(input); err != nil {
 		return nil, fmt.Errorf("failed to sync artifacts: %v", err)
 	}
+	slog.Info("⏱️ syncArtifactsIfNeeded completed",
+		"functionID", input.FunctionID,
+		"elapsed", time.Since(syncStart))
 
 	// We need the lambda bridge in the artifact directory so that we can run the handler
 	// without having to manually isolate the runtime, So if it is not present then we need to copy it from
@@ -327,8 +471,12 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 		}
 	}
 
+	// Adjust handler path for flattened layouts
+	// For example: functions/src/functions/user/handler.lambda_handler -> functions/user/handler.lambda_handler
+	adjustedHandler := r.adjustHandlerForFlattenedLayout(input.Build.Handler)
+
 	// Always use handler path relative to artifact directory
-	handlerPath := filepath.Join(input.Build.Out, input.Build.Handler)
+	handlerPath := filepath.Join(input.Build.Out, adjustedHandler)
 
 	cmd := process.CommandContext(
 		ctx,
@@ -368,14 +516,22 @@ func (r *PythonRuntime) ShouldRebuild(functionID string, file string) bool {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
+	slog.Info("📝 ShouldRebuild called",
+		"functionID", functionID,
+		"file", file)
+
 	// Fast path: Check if the file is relevant for this function first
 	// This prevents expensive operations for irrelevant files
 	if !r.isRelevantFile(file) {
-		slog.Debug("file not relevant for Python function, skipping rebuild check",
+		slog.Info("📝 ShouldRebuild: file not relevant, returning FALSE",
 			"functionID", functionID,
 			"file", file)
 		return false
 	}
+
+	slog.Info("📝 ShouldRebuild: file IS relevant",
+		"functionID", functionID,
+		"file", file)
 
 	// Rate limiting: prevent excessive rebuild checks
 	// Apply rate limiting early to avoid expensive operations
@@ -398,10 +554,30 @@ func (r *PythonRuntime) ShouldRebuild(functionID string, file string) bool {
 		"hasChangeDetector", r.changeDetector != nil,
 		"hasBuildCache", r.buildCache != nil)
 
-	// For Python files, always rebuild since we can't easily track import dependencies
-	// This is simpler and more reliable than trying to parse Python imports
+	// For Python files, track the change for incremental sync
+	// Return true to stop workers, but don't rebuild yet
+	// The worker will restart on next invocation and Run() will sync only changed files
 	if strings.HasSuffix(file, ".py") {
-		slog.Info("Python file changed, rebuilding",
+		if r.pendingChanges[functionID] == nil {
+			r.pendingChanges[functionID] = []string{}
+		}
+		// Only add if not already tracked
+		alreadyTracked := false
+		for _, f := range r.pendingChanges[functionID] {
+			if f == file {
+				alreadyTracked = true
+				break
+			}
+		}
+		if !alreadyTracked {
+			r.pendingChanges[functionID] = append(r.pendingChanges[functionID], file)
+			slog.Info("📝 ShouldRebuild: Python file changed, tracking for lazy restart",
+				"functionID", functionID,
+				"file", file,
+				"totalPendingChanges", len(r.pendingChanges[functionID]))
+		}
+		// Return true to stop workers
+		slog.Info("📝 ShouldRebuild: returning TRUE for Python file",
 			"functionID", functionID,
 			"file", file)
 		return true
@@ -468,11 +644,71 @@ func (r *PythonRuntime) syncArtifactsIfNeeded(input *runtime.RunInput) error {
 	artifactDir := input.Build.Out
 
 	// Since Run() is only called in dev mode, always sync Python files
-	return r.syncPythonFiles(projectRoot, artifactDir)
+	if err := r.syncPythonFiles(input.FunctionID, projectRoot, artifactDir); err != nil {
+		return err
+	}
+
+	// After syncing, flatten workspace layouts if needed
+	// This ensures the artifact directory has the correct structure for Python imports
+	return r.flattenWorkspaceLayouts(artifactDir, input.FunctionID)
 }
 
 // syncPythonFiles syncs Python files from source to artifacts (adds, updates, deletes)
-func (r *PythonRuntime) syncPythonFiles(srcDir, destDir string) error {
+func (r *PythonRuntime) syncPythonFiles(functionID, srcDir, destDir string) error {
+	// Check if we have pending changes to sync
+	r.mutex.Lock()
+	pendingFiles := r.pendingChanges[functionID]
+	hasPendingChanges := len(pendingFiles) > 0
+	r.mutex.Unlock()
+
+	// If we have specific pending changes, only sync those files (for legacy projects)
+	if hasPendingChanges {
+		slog.Info("syncing only changed Python files",
+			"functionID", functionID,
+			"count", len(pendingFiles))
+
+		for _, relPath := range pendingFiles {
+			sourcePath := filepath.Join(srcDir, relPath)
+
+			// For legacy projects with workspace layouts, we need to handle flattened paths
+			// If the source path contains package/src/package pattern, adjust the artifact path
+			artifactPath := r.adjustPathForFlattenedLayout(destDir, relPath)
+
+			// Check if source file exists
+			if _, err := os.Stat(sourcePath); err != nil {
+				slog.Warn("source file not found, skipping sync",
+					"file", relPath,
+					"sourcePath", sourcePath,
+					"error", err)
+				continue
+			}
+
+			// Ensure destination directory exists
+			if err := os.MkdirAll(filepath.Dir(artifactPath), 0755); err != nil {
+				return fmt.Errorf("failed to create directory for %s: %v", artifactPath, err)
+			}
+
+			// Copy the file
+			if err := copyFile(sourcePath, artifactPath); err != nil {
+				return fmt.Errorf("failed to copy %s: %v", relPath, err)
+			}
+			slog.Info("synced changed file",
+				"file", relPath,
+				"sourcePath", sourcePath,
+				"artifactPath", artifactPath)
+		}
+
+		// Clear pending changes after sync
+		r.mutex.Lock()
+		delete(r.pendingChanges, functionID)
+		r.mutex.Unlock()
+
+		return nil
+	}
+
+	// No pending changes, do full sync (first time or after deploy)
+	slog.Info("performing full Python file sync", "functionID", functionID)
+
 	// First, collect all Python files in source
 	sourceFiles := make(map[string]os.FileInfo)
 	err := filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
@@ -569,6 +805,105 @@ func (r *PythonRuntime) syncPythonFiles(srcDir, destDir string) error {
 	}
 
 	return nil
+}
+
+// adjustPathForFlattenedLayout adjusts a file path to account for flattened workspace layouts
+// For example: package/src/package/file.py -> package/file.py
+func (r *PythonRuntime) adjustPathForFlattenedLayout(destDir, relPath string) string {
+	// Check if the path contains the package/src/package pattern
+	parts := strings.Split(relPath, string(filepath.Separator))
+
+	// Need at least 3 parts for package/src/package pattern
+	if len(parts) < 3 {
+		return filepath.Join(destDir, relPath)
+	}
+
+	// Look for src in the path
+	for i := 0; i < len(parts)-1; i++ {
+		if parts[i] == "src" && i > 0 && i < len(parts)-1 {
+			// Check if the part after "src" matches the part before "src"
+			packageName := parts[i-1]
+			nextPart := parts[i+1]
+
+			if packageName == nextPart {
+				// This is a package/src/package pattern, flatten it
+				// Remove the "src/package" part
+				flattenedParts := append(parts[:i], parts[i+2:]...)
+				flattenedPath := filepath.Join(flattenedParts...)
+
+				slog.Debug("adjusted path for flattened layout",
+					"original", relPath,
+					"flattened", flattenedPath)
+
+				return filepath.Join(destDir, flattenedPath)
+			}
+		}
+	}
+
+	// No flattening needed
+	return filepath.Join(destDir, relPath)
+}
+
+// adjustHandlerForFlattenedLayout adjusts a handler path to account for flattened workspace layouts
+// For example: functions/src/functions/user/handler.lambda_handler -> functions/user/handler.lambda_handler
+func (r *PythonRuntime) adjustHandlerForFlattenedLayout(handlerPath string) string {
+	// Split handler path into file path and function name
+	// Format: path/to/file.function_name
+	lastDot := strings.LastIndex(handlerPath, ".")
+	if lastDot == -1 {
+		// No function name, just adjust the path
+		return r.adjustHandlerPathOnly(handlerPath)
+	}
+
+	filePath := handlerPath[:lastDot]
+	functionName := handlerPath[lastDot+1:]
+
+	// Adjust the file path
+	adjustedFilePath := r.adjustHandlerPathOnly(filePath)
+
+	// Reconstruct handler path
+	adjustedHandler := adjustedFilePath + "." + functionName
+
+	if adjustedHandler != handlerPath {
+		slog.Info("adjusted handler path for flattened layout",
+			"original", handlerPath,
+			"adjusted", adjustedHandler)
+	}
+
+	return adjustedHandler
+}
+
+// adjustHandlerPathOnly adjusts just the path portion of a handler
+// For example: functions/src/functions/user/handler -> functions/user/handler
+func (r *PythonRuntime) adjustHandlerPathOnly(handlerPath string) string {
+	// Check if the path contains the package/src/package pattern
+	parts := strings.Split(handlerPath, "/")
+
+	// Need at least 3 parts for package/src/package pattern
+	if len(parts) < 3 {
+		return handlerPath
+	}
+
+	// Look for src in the path
+	for i := 0; i < len(parts)-1; i++ {
+		if parts[i] == "src" && i > 0 && i < len(parts)-1 {
+			// Check if the part after "src" matches the part before "src"
+			packageName := parts[i-1]
+			nextPart := parts[i+1]
+
+			if packageName == nextPart {
+				// This is a package/src/package pattern, flatten it
+				// Remove the "src/package" part
+				flattenedParts := append(parts[:i], parts[i+2:]...)
+				flattenedPath := strings.Join(flattenedParts, "/")
+
+				return flattenedPath
+			}
+		}
+	}
+
+	// No flattening needed
+	return handlerPath
 }
 
 // getHandlerForFunction retrieves the handler path for a given function ID
@@ -1950,47 +2285,16 @@ Resource = ResourceManager()
 	return nil
 }
 
-// createSimpleDevBuild creates a simple build for development mode by copying source files
+// createSimpleDevBuild creates a simple build for development mode by doing nothing
+// All work is deferred to Run() for just-in-time execution
 func (r *PythonRuntime) createSimpleDevBuild(ctx context.Context, input *runtime.BuildInput) (*runtime.BuildOutput, error) {
 	// Create artifact directory
 	if err := os.MkdirAll(input.Out(), 0755); err != nil {
 		return nil, fmt.Errorf("failed to create artifact directory: %v", err)
 	}
 
-	projectRoot := path.ResolveRootDir(input.CfgPath)
-
-	// Check if this is a properly structured project that doesn't need full copying
-	if r.isProperlyStructuredProject(projectRoot) {
-		// Fast path: copy only essential files instead of everything
-		err := r.copyEssentialFiles(projectRoot, input.Out(), input.Handler)
-		if err != nil {
-			// Fallback to full copying if essential copy fails
-			err := r.copyPythonFilesWithProgress(projectRoot, input.Out(), input.FunctionID)
-			if err != nil {
-				return nil, fmt.Errorf("failed to copy Python files: %v", err)
-			}
-		}
-
-		return &runtime.BuildOutput{
-			Handler:    input.Handler,
-			Sourcemaps: []string{},
-			Errors:     []string{},
-			Out:        input.Out(),
-		}, nil
-	}
-
-	// Fallback: Copy Python files with directory structure (for projects that need layout fixes)
-	err := r.copyPythonFilesWithProgress(projectRoot, input.Out(), input.FunctionID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to copy Python files: %v", err)
-	}
-
-	// Fix workspace layouts: flatten any package/src/package structures for import compatibility
-	err = r.flattenWorkspaceLayouts(input.Out(), input.FunctionID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to flatten workspace layouts: %v", err)
-	}
-
+	// In dev mode, don't copy any files during build
+	// All copying and flattening happens just-in-time in Run()
 	return &runtime.BuildOutput{
 		Handler:    input.Handler,
 		Sourcemaps: []string{},
@@ -2386,18 +2690,37 @@ func (r *PythonRuntime) installLocalPackages(srcDir, destDir string) error {
 
 // flattenWorkspaceLayouts detects and flattens package/src/package structures for all legacy projects
 func (r *PythonRuntime) flattenWorkspaceLayouts(artifactDir, functionID string) error {
+	// Create debug log file
+	logFile, err := os.Create(filepath.Join(artifactDir, "flatten_debug.log"))
+	if err == nil {
+		defer logFile.Close()
+		logFile.WriteString(fmt.Sprintf("=== Flatten Debug Log ===\n"))
+		logFile.WriteString(fmt.Sprintf("artifactDir: %s\n", artifactDir))
+		logFile.WriteString(fmt.Sprintf("functionID: %s\n\n", functionID))
+	}
+
 	// Create a content filter to exclude test files during flattening
 	contentFilter := NewContentFilter()
 	// Look for any directories that might have workspace layout (package/src/package)
 	entries, err := os.ReadDir(artifactDir)
 	if err != nil {
+		if logFile != nil {
+			logFile.WriteString(fmt.Sprintf("ERROR: Failed to read artifactDir: %v\n", err))
+		}
 		return err
+	}
+
+	if logFile != nil {
+		logFile.WriteString(fmt.Sprintf("Found %d entries in artifactDir\n", len(entries)))
 	}
 
 	var flattened []string
 
 	for _, entry := range entries {
 		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
+			if logFile != nil {
+				logFile.WriteString(fmt.Sprintf("Skipping: %s (isDir=%v, hidden=%v)\n", entry.Name(), entry.IsDir(), strings.HasPrefix(entry.Name(), ".")))
+			}
 			continue
 		}
 
@@ -2406,21 +2729,45 @@ func (r *PythonRuntime) flattenWorkspaceLayouts(artifactDir, functionID string) 
 		srcDir := filepath.Join(packageDir, "src")
 		innerPackageDir := filepath.Join(srcDir, packageName)
 
+		if logFile != nil {
+			logFile.WriteString(fmt.Sprintf("\nChecking package: %s\n", packageName))
+			logFile.WriteString(fmt.Sprintf("  packageDir: %s\n", packageDir))
+			logFile.WriteString(fmt.Sprintf("  srcDir: %s\n", srcDir))
+			logFile.WriteString(fmt.Sprintf("  innerPackageDir: %s\n", innerPackageDir))
+		}
+
 		// Check if this follows the package/src/package pattern
 		if _, err := os.Stat(innerPackageDir); err == nil {
+			if logFile != nil {
+				logFile.WriteString(fmt.Sprintf("  ✓ Pattern matches! Flattening %s/src/%s -> %s\n", packageName, packageName, packageName))
+			}
 
 			// Copy contents of package/src/package to package/ (excluding test files and build artifacts)
-			entries, err := os.ReadDir(innerPackageDir)
+			innerEntries, err := os.ReadDir(innerPackageDir)
 			if err == nil {
-				for _, innerEntry := range entries {
+				if logFile != nil {
+					logFile.WriteString(fmt.Sprintf("  Found %d entries in innerPackageDir\n", len(innerEntries)))
+				}
+
+				for _, innerEntry := range innerEntries {
+					if logFile != nil {
+						logFile.WriteString(fmt.Sprintf("    Processing: %s (isDir=%v)\n", innerEntry.Name(), innerEntry.IsDir()))
+					}
+
 					// Use ContentFilter to determine if this file/directory should be excluded
 					if contentFilter.ShouldExclude(innerEntry.Name()) {
-						slog.Debug("excluding file/directory during workspace flattening", "name", innerEntry.Name())
+						if logFile != nil {
+							logFile.WriteString(fmt.Sprintf("      ✗ Excluded by filter\n"))
+						}
 						continue
 					}
 
 					srcPath := filepath.Join(innerPackageDir, innerEntry.Name())
 					destPath := filepath.Join(packageDir, innerEntry.Name())
+
+					if logFile != nil {
+						logFile.WriteString(fmt.Sprintf("      Copying: %s -> %s\n", srcPath, destPath))
+					}
 
 					if innerEntry.IsDir() {
 						err = r.copyDirectoryWithFilter(srcPath, destPath, contentFilter)
@@ -2429,16 +2776,51 @@ func (r *PythonRuntime) flattenWorkspaceLayouts(artifactDir, functionID string) 
 					}
 
 					if err != nil {
+						if logFile != nil {
+							logFile.WriteString(fmt.Sprintf("      ✗ ERROR: %v\n", err))
+						}
 						return fmt.Errorf("failed to flatten %s structure: %w", packageName, err)
 					}
+
+					if logFile != nil {
+						logFile.WriteString(fmt.Sprintf("      ✓ Success\n"))
+					}
 				}
+
+				// CRITICAL: Remove the old src/ directory after flattening to avoid import confusion
+				if logFile != nil {
+					logFile.WriteString(fmt.Sprintf("  Removing old src directory: %s\n", srcDir))
+				}
+
+				if err := os.RemoveAll(srcDir); err != nil {
+					if logFile != nil {
+						logFile.WriteString(fmt.Sprintf("  ✗ Failed to remove src/: %v\n", err))
+					}
+					// Don't fail the entire operation, just log the warning
+				} else {
+					if logFile != nil {
+						logFile.WriteString(fmt.Sprintf("  ✓ Removed src/ successfully\n"))
+					}
+				}
+
 				flattened = append(flattened, packageName)
+			} else {
+				if logFile != nil {
+					logFile.WriteString(fmt.Sprintf("  ✗ Failed to read innerPackageDir: %v\n", err))
+				}
+			}
+		} else {
+			if logFile != nil {
+				logFile.WriteString(fmt.Sprintf("  ✗ Pattern doesn't match (innerPackageDir doesn't exist)\n"))
 			}
 		}
 	}
 
 	if len(flattened) > 0 {
-
+		slog.Info("workspace layout flattening completed",
+			"functionID", functionID,
+			"flattened", flattened,
+			"count", len(flattened))
 	}
 
 	return nil
@@ -2473,6 +2855,11 @@ func (r *PythonRuntime) copyDirectory(src, dst string) error {
 
 // copyDirectoryWithFilter recursively copies a directory while applying ContentFilter
 func (r *PythonRuntime) copyDirectoryWithFilter(src, dst string, filter *ContentFilter) error {
+	// Safety check for nil filter
+	if filter == nil {
+		return fmt.Errorf("ContentFilter cannot be nil")
+	}
+
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err

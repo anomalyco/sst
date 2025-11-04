@@ -124,33 +124,45 @@ def resolve_handler(handler_path, artifact_dir):
     Returns:
         tuple: (module, function) or raises ImportError
     """
-    log(f"Resolving handler: {handler_path}")
-    log(f"Artifact directory: {artifact_dir}")
+    # Only log in debug mode (set DEBUG=1 environment variable for verbose logging)
+    debug_mode = os.environ.get('DEBUG') == '1'
+    
+    if debug_mode:
+        log(f"Resolving handler: {handler_path}")
+        log(f"Artifact directory: {artifact_dir}")
     
     # Parse handler path
     if "." not in handler_path:
         raise ImportError(f"Invalid handler format: {handler_path}. Expected 'module.function'")
     
     module_path, function_name = handler_path.rsplit(".", 1)
-    log(f"Parsed - module_path: {module_path}, function_name: {function_name}")
+    
+    if debug_mode:
+        log(f"Parsed - module_path: {module_path}, function_name: {function_name}")
     
     # If the module_path is absolute, make it relative to artifact_dir
     if os.path.isabs(module_path):
         # Remove the artifact_dir prefix to get relative path
         if module_path.startswith(artifact_dir):
             module_path = os.path.relpath(module_path, artifact_dir)
-            log(f"Converted absolute path to relative: {module_path}")
+            if debug_mode:
+                log(f"Converted absolute path to relative: {module_path}")
         else:
             # This shouldn't happen, but handle it gracefully
-            log(f"Warning: absolute path doesn't start with artifact_dir")
+            if debug_mode:
+                log(f"Warning: absolute path doesn't start with artifact_dir")
     
     # Convert file path to module path (replace / with .)
     python_module_path = module_path.replace("/", ".").replace("\\", ".")
-    log(f"Python module path: {python_module_path}")
+    
+    if debug_mode:
+        log(f"Python module path: {python_module_path}")
     
     # Discover search paths
     search_paths = discover_search_paths(artifact_dir)
-    log(f"Search paths: {search_paths}")
+    
+    if debug_mode:
+        log(f"Search paths: {search_paths}")
     
     # Try different import strategies
     strategies = [
@@ -172,7 +184,8 @@ def resolve_handler(handler_path, artifact_dir):
         try:
             module = strategy()
             if module:
-                log(f"Successfully imported module using strategy {i}")
+                if debug_mode:
+                    log(f"Successfully imported module using strategy {i}")
                 
                 # Get the function from the module
                 if not hasattr(module, function_name):
@@ -194,7 +207,11 @@ def resolve_handler(handler_path, artifact_dir):
             last_error = e
             continue
     
-    # All strategies failed
+    # All strategies failed - now show detailed info for debugging
+    log(f"Failed to resolve handler: {handler_path}")
+    log(f"Artifact directory: {artifact_dir}")
+    log(f"Python module path: {python_module_path}")
+    log(f"Search paths: {search_paths}")
     raise ImportError(
         f"Could not import handler '{handler_path}'. "
         f"Searched in paths: {search_paths}. "
