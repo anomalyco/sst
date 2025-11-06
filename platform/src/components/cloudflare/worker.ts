@@ -287,7 +287,6 @@ export class Worker extends Component implements Link.Linkable {
       },
     );
     const build = buildHandler();
-    const assets = uploadAssets();
     const script = createScript();
     const workerUrl = createWorkersUrl();
     const workerDomain = createWorkersDomain();
@@ -439,86 +438,6 @@ export class Worker extends Component implements Link.Linkable {
       return buildResult;
     }
 
-    function generateScriptName() {
-      return physicalName(64, `${name}Script`).toLowerCase();
-    }
-
-    function uploadAssets() {
-      if (!args.assets) return;
-
-      // Build asset manifest
-      const MAX_ASSET_COUNT = 20_000;
-      const MAX_ASSET_MB_SIZE = 25;
-      const MAX_ASSET_BYTE_SIZE = MAX_ASSET_MB_SIZE * 1024 * 1024;
-
-      const directory = output(args.assets).directory.apply((v) =>
-        path.resolve($cli.paths.root, v),
-      );
-
-      return new WorkerAssets(
-        `${name}Assets`,
-        {
-          scriptName: generateScriptName(),
-          directory,
-          manifest: directory.apply(async (dir) => {
-            // Parse .assetsignore file
-            const ignorePatterns = [".assetsignore"];
-            const ignorePath = path.join(dir, ".assetsignore");
-            if (await existsAsync(ignorePath)) {
-              const content = await fs.readFile(ignorePath, "utf-8");
-              const lines = content
-                .split("\n")
-                .filter((line) => line.trim() !== "");
-              ignorePatterns.push(...lines);
-            }
-
-            const files = globSync("**", {
-              cwd: dir,
-              nodir: true,
-              dot: true,
-              ignore: ignorePatterns,
-            });
-
-            if (files.length >= MAX_ASSET_COUNT) {
-              throw new VisibleError(
-                `Maximum number of assets exceeded.\n` +
-                  `Cloudflare Workers supports up to ${MAX_ASSET_COUNT} assets. We found ${files.length} files in the assets directory "${dir}".`,
-              );
-            }
-
-            const manifest: Record<
-              string,
-              { hash: string; size: number; contentType: string }
-            > = {};
-
-            await Promise.all(
-              files.map(async (file) => {
-                const source = path.resolve(dir, file);
-                const [stat, content] = await Promise.all([
-                  fs.stat(source),
-                  fs.readFile(source, "utf-8"),
-                ]);
-
-                if (stat.size > MAX_ASSET_BYTE_SIZE) {
-                  throw new VisibleError(
-                    `Asset too large.\n` +
-                      `Cloudflare Workers supports assets with sizes of up to ${MAX_ASSET_MB_SIZE}mb (${MAX_ASSET_BYTE_SIZE} bytes). We found a file "${source}" with a size of ${stat.size} bytes.`,
-                  );
-                }
-                manifest["/" + file.split(path.sep).join("/")] = {
-                  hash: crypto.createHash("md5").update(content).digest("hex"),
-                  size: stat.size,
-                  contentType: getContentType(source, "UTF-8"),
-                };
-              }),
-            );
-            return manifest;
-          }),
-        },
-        { parent, ignoreChanges: ["scriptName"] },
-      );
-    }
-
     function createScript() {
       const contentFilePath = build.apply((build) =>
         path.join(build.out, build.handler),
@@ -528,7 +447,7 @@ export class Worker extends Component implements Link.Linkable {
           args.transform?.worker as Transform<cf.WorkersScriptArgs>,
           `${name}Script`,
           {
-            scriptName: assets?.scriptName ?? generateScriptName(),
+            scriptName: physicalName(64, `${name}Script`).toLowerCase(),
             mainModule: "placeholder",
             accountId: DEFAULT_ACCOUNT_ID,
             contentFile: contentFilePath,
@@ -540,7 +459,25 @@ export class Worker extends Component implements Link.Linkable {
             ),
             compatibilityDate: "2025-05-05",
             compatibilityFlags: ["nodejs_compat"],
-            assets: assets ? { jwt: assets.jwt } : undefined,
+            assets: args.assets
+              ? output(args.assets).apply(async (assets) => {
+                  const directory = path.join(
+                    $cli.paths.root,
+                    assets.directory,
+                  );
+                  let headers;
+                  try {
+                    headers = await fs.readFile(
+                      path.join(directory, "_headers"),
+                      "utf-8",
+                    );
+                  } catch (e) {}
+                  return {
+                    directory,
+                    config: { headers },
+                  };
+                })
+              : undefined,
             bindings: all([args.environment, iamCredentials, bindings]).apply(
               ([environment, iamCredentials, bindings]) => [
                 ...bindings,

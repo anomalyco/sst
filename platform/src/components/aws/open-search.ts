@@ -554,11 +554,11 @@ Listening on "${dev.url}"...`,
    *
    * ```ts title="sst.config.ts"
    * const search = $app.stage === "frank"
-   *   ? sst.aws.OpenSearch.get("MyOpenSearch", "arn:aws:es:us-east-1:123456789012:domain/app-dev-myopensearch-efsmkrbt")
+   *   ? sst.aws.OpenSearch.get("MyOpenSearch", "app-dev-myopensearch-efsmkrbt")
    *   : new sst.aws.OpenSearch("MyOpenSearch");
    * ```
    *
-   * Here `arn:aws:es:us-east-1:123456789012:domain/app-dev-myopensearch-efsmkrbt` is the
+   * Here `app-dev-myopensearch-efsmkrbt` is the
    * ID of the OpenSearch component created in the `dev` stage.
    * You can find this by outputting the ID in the `dev` stage.
    *
