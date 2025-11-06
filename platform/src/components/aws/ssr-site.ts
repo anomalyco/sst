@@ -121,6 +121,22 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
   route?: Prettify<RouterRouteArgsDeprecated>;
   router?: Prettify<RouterRouteArgs>;
   cachePolicy?: Input<string>;
+  /**
+   * Enable Origin Access Control to restrict Lambda function access to CloudFront only.
+   *
+   * When enabled, both server functions and image optimizer can only be
+   * accessed through CloudFront with proper AWS IAM authentication. Direct access
+   * to Lambda function URLs will be blocked.
+   *
+   * @default `false`
+   * @example
+   * ```js
+   * {
+   *   originAccessControl: true
+   * }
+   * ```
+   */
+  originAccessControl?: Input<boolean>;
   invalidation?: Input<
     | false
     | {
@@ -283,20 +299,6 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
      * ```
      */
     architecture?: FunctionArgs["architecture"];
-    /**
-     * Controls whether the server URL is restricted to CloudFront access only or publicly accessible.
-     *
-     * @default `false`
-     * @example
-     * ```js
-     * {
-     *   server: {
-     *     protectedUrl: true
-     *   }
-     * }
-     * ```
-     */
-    protectedUrl?: Input<boolean>;
     /**
      * Dependencies that need to be excluded from the server function package.
      *
@@ -903,25 +905,44 @@ async function handler(event) {
     const kvUpdated = createKvEntries();
     createInvalidation();
 
-    // Create Lambda permissions to allow CloudFront to invoke the server functions
-    all([distribution, servers, args.server?.protectedUrl]).apply(
-      ([dist, servers, isProtected]) => {
-        if (!dist || !isProtected) return;
-        servers.forEach(({ region, server }) => {
-          const provider = useProvider(region);
-          new lambda.Permission(
-            `${name}CloudFrontFunctionUrlAccess${logicalName(region)}`,
-            {
-              action: "lambda:InvokeFunctionUrl",
-              function: server.nodes.function.name,
-              principal: "cloudfront.amazonaws.com",
-              sourceArn: dist.nodes.distribution.arn,
-            },
-            { provider, parent: self },
-          );
-        });
-      },
-    );
+    // Create Lambda permissions to allow CloudFront to invoke the server functions and image optimizer
+    all([
+      distribution,
+      servers,
+      imageOptimizer,
+      args.originAccessControl,
+    ]).apply(([dist, servers, imgOptimizer, isProtected]) => {
+      if (!dist || !isProtected) return;
+
+      // Server functions
+      servers.forEach(({ region, server }) => {
+        const provider = useProvider(region);
+        new lambda.Permission(
+          `${name}CloudFrontFunctionUrlAccess${logicalName(region)}`,
+          {
+            action: "lambda:InvokeFunctionUrl",
+            function: server.nodes.function.name,
+            principal: "cloudfront.amazonaws.com",
+            sourceArn: dist.nodes.distribution.arn,
+          },
+          { provider, parent: self },
+        );
+      });
+
+      // Image optimizer
+      if (imgOptimizer) {
+        new lambda.Permission(
+          `${name}ImageOptimizerCloudFrontFunctionUrlAccess`,
+          {
+            action: "lambda:InvokeFunctionUrl",
+            function: imgOptimizer.nodes.function.name,
+            principal: "cloudfront.amazonaws.com",
+            sourceArn: dist.nodes.distribution.arn,
+          },
+          { parent: self },
+        );
+      }
+    });
 
     const server = servers.apply((servers) => servers[0]?.server);
     this.bucket = bucket;
@@ -1200,8 +1221,9 @@ async function handler(event) {
                   ...(layers ?? []),
                 ]),
                 url: {
-                  authorization: output(args.server?.protectedUrl).apply(
-                    (protectedUrl) => (protectedUrl ? "iam" : "none"),
+                  authorization: output(args.originAccessControl).apply(
+                    (originAccessControl) =>
+                      originAccessControl ? "iam" : "none",
                   ),
                 },
                 dev: false,
@@ -1282,7 +1304,11 @@ async function handler(event) {
               },
             ],
             ...imageOptimizer.function,
-            url: true,
+            url: {
+              authorization: output(args.originAccessControl).apply(
+                (originAccessControl) => (originAccessControl ? "iam" : "none"),
+              ),
+            },
             dev: false,
             _skipMetadata: true,
             _skipHint: true,
@@ -1425,9 +1451,17 @@ async function handler(event) {
         plan,
         bucket.nodes.bucket.bucketRegionalDomainName,
         timeout,
-        output(args.server?.protectedUrl)
+        output(args.originAccessControl),
       ]).apply(
-        ([servers, imageOptimizer, outputPath, plan, bucketDomain, timeout, protectedUrl]) =>
+        ([
+          servers,
+          imageOptimizer,
+          outputPath,
+          plan,
+          bucketDomain,
+          timeout,
+          originAccessControl,
+        ]) =>
           all([
             servers.map((s) => ({ region: s.region, url: s.server!.url })),
             imageOptimizer?.url,
@@ -1485,6 +1519,16 @@ async function handler(event) {
                 ? {
                     host: new URL(imageOptimizerUrl!).host,
                     route: plan.imageOptimizer!.prefix,
+                    ...(originAccessControl
+                      ? {
+                          originAccessControlConfig: {
+                            enabled: true,
+                            signingBehavior: "always",
+                            signingProtocol: "sigv4",
+                            originType: "lambda",
+                          },
+                        }
+                      : {}),
                   }
                 : undefined,
               servers: servers.map((s) => [
@@ -1496,14 +1540,16 @@ async function handler(event) {
                 timeouts: {
                   readTimeout: toSeconds(timeout),
                 },
-                ...(protectedUrl ? {
-                  originAccessControlConfig: {
-                    enabled: true,
-                    signingBehavior: "always",
-                    signingProtocol: "sigv4",
-                    originType: "lambda",
-                  }
-                } : {})
+                ...(originAccessControl
+                  ? {
+                      originAccessControlConfig: {
+                        enabled: true,
+                        signingBehavior: "always",
+                        signingProtocol: "sigv4",
+                        originType: "lambda",
+                      },
+                    }
+                  : {}),
               },
             } satisfies KV_SITE_METADATA);
             return kvEntries;
