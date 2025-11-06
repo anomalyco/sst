@@ -10,9 +10,9 @@ import (
 	"github.com/sst/sst/v3/pkg/project/common"
 )
 
-func Generate(root string, links common.Links) error {
+func Generate(root string, links common.Links, exclude []string) error {
 	return nil
-	projects := fs.FindDown(root, "config.ru")
+	projects := fs.FindDownWithExcludes(root, "config.ru", exclude)
 	files := []io.Writer{}
 	for _, project := range projects {
 		// check if lib path exists

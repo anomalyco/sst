@@ -10,17 +10,17 @@ import (
 	"github.com/sst/sst/v3/pkg/types/typescript"
 )
 
-type Generator = func(root string, complete common.Links) error
+type Generator = func(root string, complete common.Links, exclude []string) error
 
-func Generate(cfgPath string, complete common.Links) error {
+func Generate(cfgPath string, complete common.Links, exclude []string) error {
 	root := path.ResolveRootDir(cfgPath)
 	// gitroot, err := fs.FindUp(root, ".git")
 	// if err == nil {
 	// 	root = filepath.Dir(gitroot)
 	// }
-	slog.Info("generating types", "root", root)
+	slog.Info("generating types", "root", root, "exclude", exclude)
 	for _, generator := range All {
-		err := generator(root, complete)
+		err := generator(root, complete, exclude)
 		if err != nil {
 			return err
 		}

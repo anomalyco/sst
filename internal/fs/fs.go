@@ -37,6 +37,10 @@ func Exists(path string) bool {
 }
 
 func FindDown(dir, filename string) []string {
+	return FindDownWithExcludes(dir, filename, []string{})
+}
+
+func FindDownWithExcludes(dir, filename string, excludePatterns []string) []string {
 	var result []string
 
 	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
@@ -45,7 +49,12 @@ func FindDown(dir, filename string) []string {
 		}
 		if info.IsDir() {
 			name := info.Name()
+			// Always exclude node_modules and dot directories
 			if name == "node_modules" || strings.HasPrefix(name, ".") {
+				return filepath.SkipDir
+			}
+			// Check custom exclude patterns
+			if shouldExclude(name, excludePatterns) {
 				return filepath.SkipDir
 			}
 		}
@@ -56,4 +65,23 @@ func FindDown(dir, filename string) []string {
 	})
 
 	return result
+}
+
+// shouldExclude checks if a directory name matches any of the exclude patterns
+func shouldExclude(name string, patterns []string) bool {
+	for _, pattern := range patterns {
+		// Support glob patterns
+		matched, err := filepath.Match(pattern, name)
+		if err != nil {
+			// If pattern is invalid, try exact match as fallback
+			if name == pattern {
+				return true
+			}
+			continue
+		}
+		if matched {
+			return true
+		}
+	}
+	return false
 }
