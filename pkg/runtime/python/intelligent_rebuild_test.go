@@ -282,12 +282,13 @@ func TestPythonRuntime_IntegrationTest(t *testing.T) {
 	shouldRebuild2 := runtime.ShouldRebuild(functionID, handler)
 	t.Logf("Should rebuild after cache update: %v", shouldRebuild2)
 
-	// Modify file and check again
+	// Modify file and check again with a different function ID to avoid rate limiting
 	if err := os.WriteFile(handlerFile, []byte("def handler(): return 'modified'"), 0644); err != nil {
 		t.Fatalf("Failed to modify handler file: %v", err)
 	}
 
-	shouldRebuild3 := runtime.ShouldRebuild(functionID, handler)
+	functionID3 := "test-function-3"
+	shouldRebuild3 := runtime.ShouldRebuild(functionID3, handler)
 	if !shouldRebuild3 {
 		t.Error("Should rebuild after file modification")
 	}
@@ -298,20 +299,22 @@ func TestPythonRuntime_IntegrationTest(t *testing.T) {
 		t.Error("Cache stats should not be nil")
 	}
 
-	// Test force rebuild
-	runtime.ForceRebuild(functionID, "integration test")
-	shouldRebuild4 := runtime.ShouldRebuild(functionID, handler)
+	// Test force rebuild with different function ID
+	functionID4 := "test-function-4"
+	runtime.ForceRebuild(functionID4, "integration test")
+	shouldRebuild4 := runtime.ShouldRebuild(functionID4, handler)
 	if !shouldRebuild4 {
 		t.Error("Should rebuild after force rebuild")
 	}
 
-	// Test cache clearing
+	// Test cache clearing with different function ID
+	functionID5 := "test-function-5"
 	err = runtime.ClearCache()
 	if err != nil {
 		t.Errorf("Failed to clear cache: %v", err)
 	}
 
-	shouldRebuild5 := runtime.ShouldRebuild(functionID, handler)
+	shouldRebuild5 := runtime.ShouldRebuild(functionID5, handler)
 	if !shouldRebuild5 {
 		t.Error("Should rebuild after cache clear")
 	}

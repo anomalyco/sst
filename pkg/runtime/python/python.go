@@ -90,6 +90,10 @@ type PythonRuntime struct {
 	// Track pending changes per function
 	pendingChanges map[string][]string // functionID -> list of changed files
 
+	// Track if we've already signaled a restart for pending changes
+	// This prevents showing "LazyRestart" when worker is actually running
+	restartSignaled map[string]bool // functionID -> whether we've returned a dummy worker
+
 	// Mutex for thread-safe access
 	mutex sync.RWMutex
 }
@@ -108,6 +112,7 @@ func New() *PythonRuntime {
 		lastRebuildCheck: map[string]time.Time{},
 		rebuildCooldown:  10 * time.Second, // Prevent rebuilds more than once every 10 seconds
 		pendingChanges:   map[string][]string{},
+		restartSignaled:  map[string]bool{},
 	}
 }
 
@@ -118,6 +123,7 @@ func NewWithCache(cacheDir string) (*PythonRuntime, error) {
 		lastRebuildCheck: map[string]time.Time{},
 		rebuildCooldown:  10 * time.Second, // Prevent rebuilds more than once every 10 seconds
 		pendingChanges:   map[string][]string{},
+		restartSignaled:  map[string]bool{},
 	}
 
 	// Initialize cache and detection systems
@@ -369,14 +375,17 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 		"functionID", input.FunctionID,
 		"workerID", input.WorkerID)
 
-	// Check if we have pending changes
-	// If so, return a worker that exits immediately to trigger restart on next invoke
+	// Check if we have pending changes AND haven't already signaled a restart
 	r.mutex.Lock()
 	pendingFiles := r.pendingChanges[input.FunctionID]
 	hasPendingChanges := len(pendingFiles) > 0
-	r.mutex.Unlock()
+	alreadySignaled := r.restartSignaled[input.FunctionID]
 
-	if hasPendingChanges {
+	// If we have pending changes and haven't signaled yet, signal now
+	if hasPendingChanges && !alreadySignaled {
+		r.restartSignaled[input.FunctionID] = true
+		r.mutex.Unlock()
+
 		slog.Info("🔄 LAZY RESTART: pending changes detected, returning placeholder worker",
 			"functionID", input.FunctionID,
 			"workerID", input.WorkerID,
@@ -391,17 +400,9 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 			Message:    fmt.Sprintf("Pending changes (%d files), will restart on invoke", len(pendingFiles)),
 		})
 
-		// Clear pending changes NOW so the next Run() call will actually start the worker
-		r.mutex.Lock()
-		delete(r.pendingChanges, input.FunctionID)
-		r.mutex.Unlock()
-
-		slog.Info("🔄 LAZY RESTART: cleared pending changes for next restart",
-			"functionID", input.FunctionID)
-
-		// Create a dummy process that exits immediately using Python
+		// Create a dummy process that exits immediately
 		// This will cause the worker to be removed from the workers map
-		// On next invoke, SST will reboot and call Run() again without pending changes
+		// On next invoke, SST will reboot and call Run() again
 		cmd := process.CommandContext(ctx, "python3", "-c", "import sys; sys.exit(0)")
 		stdout, _ := cmd.StdoutPipe()
 		stderr, _ := cmd.StderrPipe()
@@ -419,19 +420,23 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 		}, nil
 	}
 
+	// Clear restart signal if we're starting a real worker (either no pending changes, or already signaled)
+	// This prevents getting stuck in LazyRestart mode
+	if alreadySignaled {
+		delete(r.restartSignaled, input.FunctionID)
+		slog.Info("🔄 Cleared restart signal, starting real worker",
+			"functionID", input.FunctionID,
+			"hasPendingChanges", hasPendingChanges)
+	}
+	r.mutex.Unlock()
+
 	slog.Info("✅ STARTING WORKER: no pending changes, starting actual Python process",
 		"functionID", input.FunctionID,
 		"workerID", input.WorkerID,
 		"elapsed", time.Since(startTime))
 
-	// NOTE: To show messages in the UI:
-	// - Use bus.Publish(&events.FunctionBuildProgressEvent{FunctionID: input.FunctionID, Stage: "stage", Message: "message"})
-	//   (preferred - shows in the correct function tab)
-	// - Or bus.Publish(&common.StdoutEvent{Line: "message"})
-	//   (shows in global output, not function-specific)
-
-	// Check if we need to sync artifacts with source before starting the worker
-	// This will also clear pending changes after syncing
+	// Sync artifacts with source before starting the worker
+	// This will clear pending changes after syncing
 	syncStart := time.Now()
 	if err := r.syncArtifactsIfNeeded(input); err != nil {
 		return nil, fmt.Errorf("failed to sync artifacts: %v", err)
@@ -513,9 +518,6 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 }
 
 func (r *PythonRuntime) ShouldRebuild(functionID string, file string) bool {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
 	slog.Info("📝 ShouldRebuild called",
 		"functionID", functionID,
 		"file", file)
@@ -535,9 +537,11 @@ func (r *PythonRuntime) ShouldRebuild(functionID string, file string) bool {
 
 	// Rate limiting: prevent excessive rebuild checks
 	// Apply rate limiting early to avoid expensive operations
+	r.mutex.Lock()
 	now := time.Now()
 	if lastCheck, exists := r.lastRebuildCheck[functionID]; exists {
 		if now.Sub(lastCheck) < r.rebuildCooldown {
+			r.mutex.Unlock()
 			slog.Debug("rebuild check rate limited",
 				"functionID", functionID,
 				"file", file,
@@ -547,6 +551,7 @@ func (r *PythonRuntime) ShouldRebuild(functionID string, file string) bool {
 		}
 	}
 	r.lastRebuildCheck[functionID] = now
+	r.mutex.Unlock()
 
 	slog.Debug("ShouldRebuild processing relevant file",
 		"functionID", functionID,
@@ -558,6 +563,7 @@ func (r *PythonRuntime) ShouldRebuild(functionID string, file string) bool {
 	// Return true to stop workers, but don't rebuild yet
 	// The worker will restart on next invocation and Run() will sync only changed files
 	if strings.HasSuffix(file, ".py") {
+		r.mutex.Lock()
 		if r.pendingChanges[functionID] == nil {
 			r.pendingChanges[functionID] = []string{}
 		}
@@ -576,6 +582,8 @@ func (r *PythonRuntime) ShouldRebuild(functionID string, file string) bool {
 				"file", file,
 				"totalPendingChanges", len(r.pendingChanges[functionID]))
 		}
+		r.mutex.Unlock()
+
 		// Return true to stop workers
 		slog.Info("📝 ShouldRebuild: returning TRUE for Python file",
 			"functionID", functionID,
@@ -655,55 +663,74 @@ func (r *PythonRuntime) syncArtifactsIfNeeded(input *runtime.RunInput) error {
 
 // syncPythonFiles syncs Python files from source to artifacts (adds, updates, deletes)
 func (r *PythonRuntime) syncPythonFiles(functionID, srcDir, destDir string) error {
-	// Check if we have pending changes to sync
-	r.mutex.Lock()
-	pendingFiles := r.pendingChanges[functionID]
-	hasPendingChanges := len(pendingFiles) > 0
-	r.mutex.Unlock()
-
-	// If we have specific pending changes, only sync those files (for legacy projects)
-	if hasPendingChanges {
-		slog.Info("syncing only changed Python files",
+	// Check if artifact directory is empty or nearly empty (first build)
+	// If so, do a full sync regardless of pending changes
+	entries, err := os.ReadDir(destDir)
+	if err != nil || len(entries) <= 1 { // <= 1 because lambdaric_python_bridge.py might be there
+		slog.Info("artifact directory empty or nearly empty, doing full sync",
 			"functionID", functionID,
-			"count", len(pendingFiles))
-
-		for _, relPath := range pendingFiles {
-			sourcePath := filepath.Join(srcDir, relPath)
-
-			// For legacy projects with workspace layouts, we need to handle flattened paths
-			// If the source path contains package/src/package pattern, adjust the artifact path
-			artifactPath := r.adjustPathForFlattenedLayout(destDir, relPath)
-
-			// Check if source file exists
-			if _, err := os.Stat(sourcePath); err != nil {
-				slog.Warn("source file not found, skipping sync",
-					"file", relPath,
-					"sourcePath", sourcePath,
-					"error", err)
-				continue
-			}
-
-			// Ensure destination directory exists
-			if err := os.MkdirAll(filepath.Dir(artifactPath), 0755); err != nil {
-				return fmt.Errorf("failed to create directory for %s: %v", artifactPath, err)
-			}
-
-			// Copy the file
-			if err := copyFile(sourcePath, artifactPath); err != nil {
-				return fmt.Errorf("failed to copy %s: %v", relPath, err)
-			}
-			slog.Info("synced changed file",
-				"file", relPath,
-				"sourcePath", sourcePath,
-				"artifactPath", artifactPath)
-		}
-
-		// Clear pending changes after sync
+			"destDir", destDir)
+		// Clear any pending changes since we're doing a full sync anyway
 		r.mutex.Lock()
 		delete(r.pendingChanges, functionID)
+		delete(r.restartSignaled, functionID)
+		r.mutex.Unlock()
+		// Fall through to full sync below
+	} else {
+		// Check if we have pending changes to sync
+		r.mutex.Lock()
+		pendingFiles := r.pendingChanges[functionID]
+		hasPendingChanges := len(pendingFiles) > 0
 		r.mutex.Unlock()
 
-		return nil
+		// If we have specific pending changes, only sync those files
+		if hasPendingChanges {
+			slog.Info("syncing only changed Python files",
+				"functionID", functionID,
+				"count", len(pendingFiles))
+
+			for _, relPath := range pendingFiles {
+				sourcePath := filepath.Join(srcDir, relPath)
+
+				// For legacy projects with workspace layouts, we need to handle flattened paths
+				// If the source path contains package/src/package pattern, adjust the artifact path
+				artifactPath := r.adjustPathForFlattenedLayout(destDir, relPath)
+
+				// Check if source file exists
+				if _, err := os.Stat(sourcePath); err != nil {
+					slog.Warn("source file not found, skipping sync",
+						"file", relPath,
+						"sourcePath", sourcePath,
+						"error", err)
+					continue
+				}
+
+				// Ensure destination directory exists
+				if err := os.MkdirAll(filepath.Dir(artifactPath), 0755); err != nil {
+					return fmt.Errorf("failed to create directory for %s: %v", artifactPath, err)
+				}
+
+				// Copy the file
+				if err := copyFile(sourcePath, artifactPath); err != nil {
+					return fmt.Errorf("failed to copy %s: %v", relPath, err)
+				}
+				slog.Info("synced changed file",
+					"file", relPath,
+					"sourcePath", sourcePath,
+					"artifactPath", artifactPath)
+			}
+
+			// Clear pending changes AND restart signal after successful sync
+			r.mutex.Lock()
+			delete(r.pendingChanges, functionID)
+			delete(r.restartSignaled, functionID)
+			r.mutex.Unlock()
+
+			slog.Info("cleared pending changes and restart signal after sync",
+				"functionID", functionID)
+
+			return nil
+		}
 	}
 
 	// No pending changes, do full sync (first time or after deploy)
@@ -711,7 +738,7 @@ func (r *PythonRuntime) syncPythonFiles(functionID, srcDir, destDir string) erro
 
 	// First, collect all Python files in source
 	sourceFiles := make(map[string]os.FileInfo)
-	err := filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
+	err = filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
