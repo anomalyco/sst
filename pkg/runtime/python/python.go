@@ -94,6 +94,10 @@ type PythonRuntime struct {
 	// This prevents showing "LazyRestart" when worker is actually running
 	restartSignaled map[string]bool // functionID -> whether we've returned a dummy worker
 
+	// Track when files changed and when workers last restarted
+	fileChangeTime  map[string]time.Time // file path -> when it changed
+	lastWorkerStart map[string]time.Time // functionID -> when worker last started
+
 	// Mutex for thread-safe access
 	mutex sync.RWMutex
 }
@@ -113,6 +117,8 @@ func New() *PythonRuntime {
 		rebuildCooldown:  10 * time.Second, // Prevent rebuilds more than once every 10 seconds
 		pendingChanges:   map[string][]string{},
 		restartSignaled:  map[string]bool{},
+		fileChangeTime:   map[string]time.Time{},
+		lastWorkerStart:  map[string]time.Time{},
 	}
 }
 
@@ -124,6 +130,8 @@ func NewWithCache(cacheDir string) (*PythonRuntime, error) {
 		rebuildCooldown:  10 * time.Second, // Prevent rebuilds more than once every 10 seconds
 		pendingChanges:   map[string][]string{},
 		restartSignaled:  map[string]bool{},
+		fileChangeTime:   map[string]time.Time{},
+		lastWorkerStart:  map[string]time.Time{},
 	}
 
 	// Initialize cache and detection systems
@@ -435,6 +443,11 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 		"workerID", input.WorkerID,
 		"elapsed", time.Since(startTime))
 
+	// Track when this worker is starting
+	r.mutex.Lock()
+	r.lastWorkerStart[input.FunctionID] = time.Now()
+	r.mutex.Unlock()
+
 	// Sync artifacts with source before starting the worker
 	// This will clear pending changes after syncing
 	syncStart := time.Now()
@@ -476,12 +489,30 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 		}
 	}
 
-	// Adjust handler path for flattened layouts
-	// For example: functions/src/functions/user/handler.lambda_handler -> functions/user/handler.lambda_handler
-	adjustedHandler := r.adjustHandlerForFlattenedLayout(input.Build.Handler)
+	projectRoot := path.ResolveRootDir(input.CfgPath)
+	isLegacyLayout := r.hasWorkspaceLayoutPatterns(projectRoot)
 
-	// Always use handler path relative to artifact directory
-	handlerPath := filepath.Join(input.Build.Out, adjustedHandler)
+	var handlerPath string
+	var workingDir string
+
+	if isLegacyLayout {
+		// Legacy layout: files are copied and flattened in artifact directory
+		adjustedHandler := r.adjustHandlerForFlattenedLayout(input.Build.Handler)
+		handlerPath = filepath.Join(input.Build.Out, adjustedHandler)
+		workingDir = input.Build.Out
+		slog.Info("Python runtime: legacy layout, running from artifact directory",
+			"dir", workingDir,
+			"handlerPath", handlerPath)
+	} else {
+		// Modern layout: run from source with PYTHONPATH
+		// Pass the relative handler path since PYTHONPATH is set to projectRoot
+		handlerPath = input.Build.Handler
+		workingDir = projectRoot
+		slog.Info("Python runtime: modern layout, running from project root",
+			"dir", workingDir,
+			"handlerPath", handlerPath,
+			"relative", true)
+	}
 
 	cmd := process.CommandContext(
 		ctx,
@@ -492,11 +523,23 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 		handlerPath,
 		input.WorkerID,
 	)
-	cmd.Env = append(input.Env, "AWS_LAMBDA_RUNTIME_API="+input.Server)
 
-	// Always run from artifact directory (both dev and deployment)
-	cmd.Dir = input.Build.Out
-	slog.Info("Python runtime: running from artifact directory", "dir", input.Build.Out)
+	// Set up environment
+	env := append(input.Env, "AWS_LAMBDA_RUNTIME_API="+input.Server)
+
+	// For modern layouts, set PYTHONPATH to project root and point to resource.enc in artifact dir
+	if !isLegacyLayout {
+		env = append(env, "PYTHONPATH="+projectRoot)
+		// Set SST_KEY_FILE to point to resource.enc in the artifact directory
+		resourceEncPath := filepath.Join(input.Build.Out, "resource.enc")
+		env = append(env, "SST_KEY_FILE="+resourceEncPath)
+		slog.Info("Python runtime: set PYTHONPATH and SST_KEY_FILE for modern layout",
+			"PYTHONPATH", projectRoot,
+			"SST_KEY_FILE", resourceEncPath)
+	}
+
+	cmd.Env = env
+	cmd.Dir = workingDir
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stdout pipe: %v", err)
@@ -564,6 +607,24 @@ func (r *PythonRuntime) ShouldRebuild(functionID string, file string) bool {
 	// The worker will restart on next invocation and Run() will sync only changed files
 	if strings.HasSuffix(file, ".py") {
 		r.mutex.Lock()
+
+		// Track when this file changed
+		r.fileChangeTime[file] = now
+
+		// Check if worker was already restarted after this file changed
+		if lastStart, exists := r.lastWorkerStart[functionID]; exists {
+			// If worker started after the file change, no need to restart again
+			if lastStart.After(r.fileChangeTime[file]) {
+				r.mutex.Unlock()
+				slog.Info("📝 ShouldRebuild: worker already restarted after file change, skipping",
+					"functionID", functionID,
+					"file", file,
+					"fileChangeTime", r.fileChangeTime[file],
+					"lastWorkerStart", lastStart)
+				return false
+			}
+		}
+
 		if r.pendingChanges[functionID] == nil {
 			r.pendingChanges[functionID] = []string{}
 		}
@@ -651,14 +712,39 @@ func (r *PythonRuntime) syncArtifactsIfNeeded(input *runtime.RunInput) error {
 	projectRoot := path.ResolveRootDir(input.CfgPath)
 	artifactDir := input.Build.Out
 
-	// Since Run() is only called in dev mode, always sync Python files
-	if err := r.syncPythonFiles(input.FunctionID, projectRoot, artifactDir); err != nil {
-		return err
+	// Only sync files for legacy workspace layouts that need flattening
+	// Modern layouts (monorepo, standard) run directly from source via PYTHONPATH
+	if r.hasWorkspaceLayoutPatterns(projectRoot) {
+		slog.Info("legacy workspace layout detected, syncing files",
+			"functionID", input.FunctionID,
+			"projectRoot", projectRoot)
+
+		if err := r.syncPythonFiles(input.FunctionID, projectRoot, artifactDir); err != nil {
+			return err
+		}
+
+		// After syncing, flatten workspace layouts
+		// This ensures the artifact directory has the correct structure for Python imports
+		return r.flattenWorkspaceLayouts(artifactDir, input.FunctionID)
 	}
 
-	// After syncing, flatten workspace layouts if needed
-	// This ensures the artifact directory has the correct structure for Python imports
-	return r.flattenWorkspaceLayouts(artifactDir, input.FunctionID)
+	slog.Info("modern layout detected, skipping file sync (running from source)",
+		"functionID", input.FunctionID,
+		"projectRoot", projectRoot)
+
+	// For modern layouts, we don't sync files but we still need to clear pending changes
+	// since the worker will run directly from source
+	r.mutex.Lock()
+	if len(r.pendingChanges[input.FunctionID]) > 0 {
+		slog.Info("clearing pending changes for modern layout",
+			"functionID", input.FunctionID,
+			"pendingChanges", len(r.pendingChanges[input.FunctionID]))
+		delete(r.pendingChanges, input.FunctionID)
+		delete(r.restartSignaled, input.FunctionID)
+	}
+	r.mutex.Unlock()
+
+	return nil
 }
 
 // syncPythonFiles syncs Python files from source to artifacts (adds, updates, deletes)
@@ -1385,270 +1471,6 @@ func shouldSkipFile(name string, isDir bool) bool {
 	return false
 }
 
-// detectFlatLayout detects if this is a flat-layout project based on the artifact contents
-func (r *PythonRuntime) detectFlatLayout(artifactDir string) bool {
-	entries, err := os.ReadDir(artifactDir)
-	if err != nil {
-		slog.Warn("failed to read artifact directory for layout detection", "error", err)
-		return false
-	}
-
-	var hasSST, hasPyProjectToml, hasDirectPyFiles bool
-	var moduleCount int
-
-	for _, entry := range entries {
-		name := entry.Name()
-
-		// Check for SST directory (indicates entire project was included)
-		if name == ".sst" && entry.IsDir() {
-			hasSST = true
-		}
-
-		// Check for project configuration files
-		if name == "pyproject.toml" || name == "setup.py" {
-			hasPyProjectToml = true
-		}
-
-		// Check for direct Python files in root
-		if !entry.IsDir() && strings.HasSuffix(name, ".py") {
-			hasDirectPyFiles = true
-		}
-
-		// Count module directories
-		if entry.IsDir() {
-			modulePath := filepath.Join(artifactDir, name)
-			if initFile := filepath.Join(modulePath, "__init__.py"); fileExists(initFile) {
-				moduleCount++
-			}
-		}
-	}
-
-	// Check if modules contain project-level files that indicate flat layout
-	var hasProjectFilesInModules bool
-	for _, entry := range entries {
-		if entry.IsDir() {
-			modulePath := filepath.Join(artifactDir, entry.Name())
-			// Check if module contains project-level files
-			if moduleEntries, err := os.ReadDir(modulePath); err == nil {
-				for _, moduleEntry := range moduleEntries {
-					if moduleEntry.Name() == "pyproject.toml" ||
-						moduleEntry.Name() == "uv.lock" ||
-						moduleEntry.Name() == "setup.py" {
-						hasProjectFilesInModules = true
-						break
-					}
-				}
-			}
-			if hasProjectFilesInModules {
-				break
-			}
-		}
-	}
-
-	// Flat layout indicators:
-	// 1. Has .sst directory (entire project included)
-	// 2. Has pyproject.toml (project config included)
-	// 3. Has direct Python files in root
-	// 4. Low module count (typically just one package) with project files in modules
-	// 5. Modules contain project-level files like pyproject.toml or uv.lock
-	isFlat := hasSST || (hasPyProjectToml && (hasDirectPyFiles || moduleCount <= 1)) ||
-		(moduleCount <= 2 && hasProjectFilesInModules)
-
-	slog.Info("flat layout detection results",
-		"artifactDir", artifactDir,
-		"hasSST", hasSST,
-		"hasPyProjectToml", hasPyProjectToml,
-		"hasDirectPyFiles", hasDirectPyFiles,
-		"moduleCount", moduleCount,
-		"isFlat", isFlat)
-
-	return isFlat
-}
-
-// applyMinimalFiltering applies minimal content filtering for workspace layouts
-func (r *PythonRuntime) applyMinimalFiltering(artifactDir string, filter *ContentFilter) error {
-	slog.Info("applying minimal content filtering", "artifactDir", artifactDir)
-
-	entries, err := os.ReadDir(artifactDir)
-	if err != nil {
-		return fmt.Errorf("failed to read artifact directory: %w", err)
-	}
-
-	var removedItems []string
-
-	for _, entry := range entries {
-		// Only remove obvious build artifacts and cache directories
-		if filter.ShouldExclude(entry.Name()) {
-			itemPath := filepath.Join(artifactDir, entry.Name())
-
-			// Only remove specific items that are safe to remove
-			if entry.Name() == "__pycache__" ||
-				strings.HasSuffix(entry.Name(), ".pyc") ||
-				strings.HasSuffix(entry.Name(), ".pyo") ||
-				entry.Name() == ".pytest_cache" ||
-				entry.Name() == ".sst" ||
-				strings.HasPrefix(entry.Name(), ".sst-") {
-
-				if err := os.RemoveAll(itemPath); err != nil {
-					slog.Warn("failed to remove item during minimal filtering",
-						"item", entry.Name(),
-						"path", itemPath,
-						"error", err)
-				} else {
-					removedItems = append(removedItems, entry.Name())
-					slog.Debug("removed item during minimal filtering",
-						"item", entry.Name())
-				}
-			}
-		}
-	}
-
-	slog.Info("minimal content filtering completed",
-		"artifactDir", artifactDir,
-		"removedItems", removedItems,
-		"count", len(removedItems))
-
-	return nil
-}
-
-// ensureInitPyFiles ensures that __init__.py files are created in all necessary directories
-func (r *PythonRuntime) ensureInitPyFiles(targetDir, moduleName string) error {
-	slog.Info("ensuring __init__.py files", "targetDir", targetDir, "moduleName", moduleName)
-
-	// Create __init__.py in the main module directory
-	mainInitFile := filepath.Join(targetDir, "__init__.py")
-	if err := r.createInitPyFile(mainInitFile); err != nil {
-		return fmt.Errorf("failed to create main __init__.py: %w", err)
-	}
-
-	// Recursively ensure __init__.py files in subdirectories that contain Python files
-	return r.ensureInitPyFilesRecursive(targetDir)
-}
-
-// createInitPyFile creates an __init__.py file if it doesn't exist
-func (r *PythonRuntime) createInitPyFile(initPath string) error {
-	if _, err := os.Stat(initPath); os.IsNotExist(err) {
-		slog.Info("creating __init__.py file", "path", initPath)
-
-		// Create a basic __init__.py file with a docstring
-		content := fmt.Sprintf(`"""
-%s module.
-
-This file makes Python treat the directory as a package.
-"""
-`, filepath.Base(filepath.Dir(initPath)))
-
-		if err := os.WriteFile(initPath, []byte(content), 0644); err != nil {
-			slog.Error("failed to create __init__.py", "path", initPath, "error", err)
-			return fmt.Errorf("failed to create __init__.py at %s: %w", initPath, err)
-		}
-
-		slog.Info("successfully created __init__.py", "path", initPath)
-	} else if err != nil {
-		return fmt.Errorf("failed to stat __init__.py at %s: %w", initPath, err)
-	} else {
-		slog.Debug("__init__.py already exists", "path", initPath)
-
-		// Verify the existing file is readable
-		if content, err := os.ReadFile(initPath); err != nil {
-			slog.Warn("existing __init__.py file is not readable", "path", initPath, "error", err)
-		} else {
-			slog.Debug("existing __init__.py file validated",
-				"path", initPath,
-				"size", len(content))
-		}
-	}
-
-	return nil
-}
-
-// ensureInitPyFilesRecursive recursively ensures __init__.py files in subdirectories
-func (r *PythonRuntime) ensureInitPyFilesRecursive(dir string) error {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return fmt.Errorf("failed to read directory %s: %w", dir, err)
-	}
-
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-
-		// Skip common non-package directories
-		if r.shouldSkipDirectory(entry.Name()) {
-			continue
-		}
-
-		subDir := filepath.Join(dir, entry.Name())
-
-		// Check if this directory contains Python files
-		if r.containsPythonFiles(subDir) {
-			initFile := filepath.Join(subDir, "__init__.py")
-			if err := r.createInitPyFile(initFile); err != nil {
-				slog.Warn("failed to create __init__.py in subdirectory",
-					"subDir", subDir,
-					"error", err)
-				// Don't fail the entire process for subdirectory __init__.py issues
-			}
-
-			// Recursively process subdirectories
-			if err := r.ensureInitPyFilesRecursive(subDir); err != nil {
-				slog.Warn("failed to ensure __init__.py files in subdirectory",
-					"subDir", subDir,
-					"error", err)
-				// Don't fail the entire process for subdirectory issues
-			}
-		}
-	}
-
-	return nil
-}
-
-// shouldSkipDirectory checks if a directory should be skipped for __init__.py creation
-func (r *PythonRuntime) shouldSkipDirectory(dirName string) bool {
-	skipDirs := []string{
-		"__pycache__",
-		".pytest_cache",
-		".git",
-		".sst",
-		"node_modules",
-		".venv",
-		"venv",
-		"env",
-		".env",
-		"tests",
-		"test",
-	}
-
-	for _, skipDir := range skipDirs {
-		if dirName == skipDir {
-			return true
-		}
-	}
-
-	// Skip .dist-info and .egg-info directories
-	if strings.HasSuffix(dirName, ".dist-info") || strings.HasSuffix(dirName, ".egg-info") {
-		return true
-	}
-
-	return false
-}
-
-// containsPythonFiles checks if a directory contains Python files
-func (r *PythonRuntime) containsPythonFiles(dirPath string) bool {
-	entries, err := os.ReadDir(dirPath)
-	if err != nil {
-		return false
-	}
-
-	for _, entry := range entries {
-		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".py") {
-			return true
-		}
-	}
-	return false
-}
-
 func (r *PythonRuntime) getWorkspaceDirectory(input *runtime.BuildInput) (string, error) {
 	startTime := time.Now()
 	slog.Info("getWorkspaceDirectory started", "functionID", input.FunctionID, "handler", input.Handler)
@@ -2044,274 +1866,6 @@ func (r *PythonRuntime) updateCacheAfterBuild(input *runtime.BuildInput, buildOu
 	}
 }
 
-// cleanupModuleBuildArtifacts removes build artifacts from extracted modules
-func (r *PythonRuntime) cleanupModuleBuildArtifacts(moduleDir string) error {
-	slog.Info("cleaning up build artifacts from module", "moduleDir", moduleDir)
-
-	// List of directories and files to remove from modules
-	artifactsToRemove := []string{
-		".sst",
-		"__pycache__",
-		".pytest_cache",
-		".coverage",
-		"htmlcov",
-		".git",
-		".gitignore",
-		".gitattributes",
-		"node_modules",
-		".vscode",
-		".idea",
-		"Dockerfile",
-		"docker-compose.yml",
-		"docker-compose.yaml",
-		"Makefile",
-		"README.md",
-		"README.rst",
-		"README.txt",
-		"CHANGELOG.md",
-		"CHANGELOG.rst",
-		"CHANGELOG.txt",
-		"LICENSE",
-		"LICENSE.txt",
-		"MANIFEST.in",
-		"setup.cfg",
-		"tox.ini",
-		".pre-commit-config.yaml",
-	}
-
-	var removedItems []string
-
-	for _, artifact := range artifactsToRemove {
-		artifactPath := filepath.Join(moduleDir, artifact)
-		if _, err := os.Stat(artifactPath); err == nil {
-			if err := os.RemoveAll(artifactPath); err != nil {
-				slog.Warn("failed to remove build artifact",
-					"artifact", artifact,
-					"path", artifactPath,
-					"error", err)
-			} else {
-				removedItems = append(removedItems, artifact)
-				slog.Debug("removed build artifact",
-					"artifact", artifact,
-					"path", artifactPath)
-			}
-		}
-	}
-
-	// Also remove any .pyc files
-	err := filepath.Walk(moduleDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil // Continue walking despite errors
-		}
-
-		if !info.IsDir() && (strings.HasSuffix(info.Name(), ".pyc") || strings.HasSuffix(info.Name(), ".pyo")) {
-			if err := os.Remove(path); err != nil {
-				slog.Warn("failed to remove compiled Python file",
-					"path", path,
-					"error", err)
-			} else {
-				slog.Debug("removed compiled Python file", "path", path)
-			}
-		}
-
-		return nil
-	})
-
-	if err != nil {
-		slog.Warn("error walking module directory for cleanup",
-			"moduleDir", moduleDir,
-			"error", err)
-	}
-
-	slog.Info("module build artifact cleanup completed",
-		"moduleDir", moduleDir,
-		"removedItems", removedItems,
-		"count", len(removedItems))
-
-	return nil
-}
-
-// cleanupAbsolutePaths removes any directories with absolute paths from the artifact directory
-func (r *PythonRuntime) cleanupAbsolutePaths(artifactDir string) error {
-	slog.Info("cleaning up absolute paths from artifact directory", "artifactDir", artifactDir)
-
-	entries, err := os.ReadDir(artifactDir)
-	if err != nil {
-		return fmt.Errorf("failed to read artifact directory: %w", err)
-	}
-
-	var removedItems []string
-	for _, entry := range entries {
-		if entry.IsDir() {
-			// Check if directory name contains absolute path indicators
-			name := entry.Name()
-			if strings.Contains(name, ":") && (strings.Contains(name, "/Users/") || strings.Contains(name, "/home/") || strings.Contains(name, "C:\\")) {
-				itemPath := filepath.Join(artifactDir, name)
-				slog.Info("removing absolute path directory", "path", itemPath)
-
-				if err := os.RemoveAll(itemPath); err != nil {
-					slog.Warn("failed to remove absolute path directory", "path", itemPath, "error", err)
-				} else {
-					removedItems = append(removedItems, name)
-				}
-			}
-		}
-	}
-
-	if len(removedItems) > 0 {
-		slog.Info("cleaned up absolute path directories",
-			"artifactDir", artifactDir,
-			"removedItems", removedItems,
-			"count", len(removedItems))
-	}
-
-	return nil
-}
-
-// addSSTModule adds the SST Python runtime module to the deployment package
-func (r *PythonRuntime) addSSTModule(artifactDir string) error {
-	slog.Info("adding SST runtime module to deployment package", "artifactDir", artifactDir)
-
-	// Get the path to the SST module file
-	// The module is embedded in the Go binary at compile time
-	sstModuleContent := `"""
-SST Python Runtime Module
-
-This module provides access to SST resources in Python Lambda functions.
-It reads encrypted resource data from resource.enc and provides a Resource API.
-"""
-
-import os
-import json
-import base64
-from typing import Any, Dict
-
-
-class ResourceProxy:
-    """Proxy object that provides attribute access to resource properties."""
-    
-    def __init__(self, data: Dict[str, Any]):
-        self._data = data
-    
-    def __getattr__(self, name: str) -> Any:
-        if name in self._data:
-            value = self._data[name]
-            if isinstance(value, dict):
-                return ResourceProxy(value)
-            return value
-        raise AttributeError(f"Resource has no attribute '{name}'")
-
-
-class ResourceManager:
-    """Manages SST resources by decrypting and parsing resource.enc file."""
-    
-    def __init__(self):
-        self._resources = None
-        self._load_resources()
-    
-    def _load_resources(self):
-        """Load and decrypt resources from resource.enc file."""
-        try:
-            # Get encryption key from environment
-            key_b64 = os.environ.get('SST_KEY')
-            if not key_b64:
-                # In development mode, resources might be provided directly via env vars
-                self._load_dev_resources()
-                return
-            
-            # Try to import cryptography for decryption
-            try:
-                from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-                from cryptography.hazmat.backends import default_backend
-            except ImportError:
-                print("Warning: cryptography package not available, falling back to development mode")
-                self._load_dev_resources()
-                return
-            
-            # Decode the base64 key
-            key = base64.b64decode(key_b64)
-            
-            # Read the encrypted resource file
-            resource_file = os.environ.get('SST_KEY_FILE', 'resource.enc')
-            if not os.path.exists(resource_file):
-                print(f"Warning: Resource file {resource_file} not found, falling back to development mode")
-                self._load_dev_resources()
-                return
-            
-            with open(resource_file, 'rb') as f:
-                ciphertext = f.read()
-            
-            # Decrypt using AES-GCM (matching Go implementation)
-            # Go uses 12-byte nonce (all zeros) and no additional data
-            nonce = b'\x00' * 12
-            cipher = Cipher(algorithms.AES(key), modes.GCM(nonce), backend=default_backend())
-            decryptor = cipher.decryptor()
-            
-            # The ciphertext includes the auth tag at the end (16 bytes for GCM)
-            if len(ciphertext) < 16:
-                raise ValueError("Invalid ciphertext: too short")
-            
-            # Split ciphertext and auth tag
-            actual_ciphertext = ciphertext[:-16]
-            auth_tag = ciphertext[-16:]
-            
-            # Set the auth tag and decrypt
-            decryptor.authenticate_additional_data(b'')
-            plaintext = decryptor.update(actual_ciphertext)
-            decryptor.finalize_with_tag(auth_tag)
-            
-            # Parse JSON
-            self._resources = json.loads(plaintext.decode('utf-8'))
-            
-        except Exception as e:
-            # Fallback to development mode if decryption fails
-            print(f"Warning: Failed to decrypt resources ({e}), falling back to development mode")
-            self._load_dev_resources()
-    
-    def _load_dev_resources(self):
-        """Load resources from environment variables (development mode)."""
-        self._resources = {}
-        
-        # Look for SST_RESOURCE_* environment variables
-        for key, value in os.environ.items():
-            if key.startswith('SST_RESOURCE_') and key != 'SST_RESOURCE_App':
-                resource_name = key[13:]  # Remove 'SST_RESOURCE_' prefix
-                try:
-                    self._resources[resource_name] = json.loads(value)
-                except json.JSONDecodeError:
-                    self._resources[resource_name] = value
-    
-    def __getattr__(self, name: str) -> Any:
-        if self._resources is None:
-            raise RuntimeError("Resources not loaded")
-        
-        if name in self._resources:
-            value = self._resources[name]
-            if isinstance(value, dict):
-                return ResourceProxy(value)
-            return value
-        
-        raise AttributeError(f"Resource '{name}' not found")
-
-
-# Global resource manager instance
-Resource = ResourceManager()
-`
-
-	// Create the sst.py file in the artifact directory
-	sstModulePath := filepath.Join(artifactDir, "sst.py")
-	err := os.WriteFile(sstModulePath, []byte(sstModuleContent), 0644)
-	if err != nil {
-		return fmt.Errorf("failed to write SST module: %w", err)
-	}
-
-	slog.Info("SST runtime module added successfully",
-		"path", sstModulePath,
-		"size", len(sstModuleContent))
-
-	return nil
-}
-
 // createSimpleDevBuild creates a simple build for development mode by doing nothing
 // All work is deferred to Run() for just-in-time execution
 func (r *PythonRuntime) createSimpleDevBuild(ctx context.Context, input *runtime.BuildInput) (*runtime.BuildOutput, error) {
@@ -2328,31 +1882,6 @@ func (r *PythonRuntime) createSimpleDevBuild(ctx context.Context, input *runtime
 		Errors:     []string{},
 		Out:        input.Out(),
 	}, nil
-}
-
-// isProperlyStructuredProject checks if a project is properly structured and doesn't need file copying
-func (r *PythonRuntime) isProperlyStructuredProject(projectRoot string) bool {
-	// Check for workspace layout patterns that would need flattening
-	hasWorkspaceLayouts := r.hasWorkspaceLayoutPatterns(projectRoot)
-
-	// If there are workspace layouts that need flattening, we need to copy
-	if hasWorkspaceLayouts {
-		return false
-	}
-
-	// Additional checks could be added here:
-	// - Check if all Python files are in standard locations
-	// - Check if there are any complex import patterns that need resolution
-	// - For now, if no workspace layouts need flattening, consider it properly structured
-
-	return true
-}
-
-// copyEssentialFiles copies only the essential files needed for properly structured projects
-func (r *PythonRuntime) copyEssentialFiles(projectRoot, artifactDir, handler string) error {
-	// For properly structured projects, we only need to copy Python files
-	// This is much faster than full copying but avoids symlink issues
-	return r.copyPythonFiles(projectRoot, artifactDir)
 }
 
 // hasWorkspaceLayoutPatterns checks if the project has package/src/package patterns that need flattening
@@ -2408,139 +1937,6 @@ func (r *PythonRuntime) copySourceFiles(srcDir, destDir string) error {
 	if err != nil {
 
 		return fmt.Errorf("failed to install local packages: %w", err)
-	}
-
-	return nil
-}
-
-// hasComplexImports checks if the handler has complex imports that require full project copy
-func (r *PythonRuntime) hasComplexImports(input *runtime.BuildInput, projectRoot string) (bool, error) {
-	file, err := r.getFile(input)
-	if err != nil {
-		return true, err // If we can't get the file, assume complex
-	}
-
-	// Read the handler file to check for imports
-	content, err := os.ReadFile(file)
-	if err != nil {
-		return true, err // If we can't read, assume complex
-	}
-
-	contentStr := string(content)
-
-	// Check for indicators of complex imports:
-	// 1. Relative imports (from . import, from .. import)
-	// 2. Local package imports (not standard library)
-	// 3. Multiple directories in import paths
-
-	lines := strings.Split(contentStr, "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-
-		// Skip comments and empty lines
-		if strings.HasPrefix(line, "#") || line == "" {
-			continue
-		}
-
-		// Check for relative imports
-		if strings.Contains(line, "from .") || strings.Contains(line, "from ..") {
-			return true, nil
-		}
-
-		// Check for local package imports (imports with multiple path segments)
-		if strings.HasPrefix(line, "from ") || strings.HasPrefix(line, "import ") {
-			// Extract the import path
-			parts := strings.Fields(line)
-			if len(parts) >= 2 {
-				importPath := parts[1]
-				// If import has multiple segments and doesn't look like standard library
-				if strings.Contains(importPath, ".") && !isStandardLibrary(importPath) {
-					return true, nil
-				}
-			}
-		}
-	}
-
-	// Check if there are other Python files in parent directories (workspace layout)
-	handlerDir := filepath.Dir(file)
-	parentDir := filepath.Dir(handlerDir)
-
-	// If handler is not in project root and parent has Python files, likely complex
-	if parentDir != projectRoot {
-		entries, err := os.ReadDir(parentDir)
-		if err == nil {
-			for _, entry := range entries {
-				if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".py") {
-					return true, nil
-				}
-			}
-		}
-	}
-
-	return false, nil
-}
-
-// isStandardLibrary checks if an import looks like standard library
-func isStandardLibrary(importPath string) bool {
-	// Common standard library modules
-	stdLibModules := []string{
-		"os", "sys", "json", "time", "datetime", "re", "urllib", "http",
-		"logging", "collections", "itertools", "functools", "pathlib",
-		"typing", "dataclasses", "enum", "abc", "contextlib", "copy",
-		"pickle", "base64", "hashlib", "hmac", "secrets", "uuid",
-		"math", "random", "statistics", "decimal", "fractions",
-	}
-
-	// Get the root module name
-	rootModule := strings.Split(importPath, ".")[0]
-
-	for _, stdMod := range stdLibModules {
-		if rootModule == stdMod {
-			return true
-		}
-	}
-
-	return false
-}
-
-// copyHandlerFilesOnly copies only the handler file and its directory for dev mode (much faster)
-func (r *PythonRuntime) copyHandlerFilesOnly(input *runtime.BuildInput, projectRoot, destDir string) error {
-	// Get the handler file path
-	file, err := r.getFile(input)
-	if err != nil {
-		return fmt.Errorf("failed to get handler file: %w", err)
-	}
-
-	// Get the directory containing the handler
-	handlerDir := filepath.Dir(file)
-
-	// Calculate relative path from project root to handler directory
-	relHandlerDir, err := filepath.Rel(projectRoot, handlerDir)
-	if err != nil {
-		return fmt.Errorf("failed to get relative handler directory: %w", err)
-	}
-
-	// Create the handler directory in destination
-	destHandlerDir := filepath.Join(destDir, relHandlerDir)
-	if err := os.MkdirAll(destHandlerDir, 0755); err != nil {
-		return fmt.Errorf("failed to create handler directory: %w", err)
-	}
-
-	// Copy all Python files from the handler directory only
-	entries, err := os.ReadDir(handlerDir)
-	if err != nil {
-		return fmt.Errorf("failed to read handler directory: %w", err)
-	}
-
-	for _, entry := range entries {
-		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".py") {
-			srcFile := filepath.Join(handlerDir, entry.Name())
-			destFile := filepath.Join(destHandlerDir, entry.Name())
-
-			if err := copyFile(srcFile, destFile); err != nil {
-				return fmt.Errorf("failed to copy %s: %w", entry.Name(), err)
-			}
-		}
 	}
 
 	return nil

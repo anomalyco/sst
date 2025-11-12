@@ -1265,7 +1265,7 @@ func (ib *IncrementalBuilder) copyDirectoryRecursive(src, dest string) error {
 
 		if info.IsDir() {
 			// Use ContentFilter to determine if directory should be excluded
-			if ib.contentFilter.ShouldExclude(relPath) {
+			if ib.contentFilter != nil && ib.contentFilter.ShouldExclude(relPath) {
 				slog.Debug("skipping directory by content filter", "path", relPath)
 				return filepath.SkipDir
 			}
@@ -1278,7 +1278,7 @@ func (ib *IncrementalBuilder) copyDirectoryRecursive(src, dest string) error {
 			return os.MkdirAll(destPath, info.Mode())
 		} else {
 			// Use ContentFilter to determine if file should be excluded
-			if ib.contentFilter.ShouldExclude(relPath) {
+			if ib.contentFilter != nil && ib.contentFilter.ShouldExclude(relPath) {
 				slog.Debug("skipping file by content filter", "path", relPath)
 				return nil // Skip this file
 			}

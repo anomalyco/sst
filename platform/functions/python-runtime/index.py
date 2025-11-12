@@ -52,275 +52,111 @@ def log(message):
     sys.stderr.flush()
 
 
-def discover_search_paths(artifact_dir):
+def resolve_handler_simple(handler_path):
     """
-    Discover all possible Python module search paths in the artifact directory.
-    
-    Returns:
-        List[str]: List of directories to search for Python modules
-    """
-    search_paths = [artifact_dir]
-    
-    # Common patterns in SST artifacts
-    patterns = [
-        "*/src",
-        "*/src/*",
-        "*",
-        "*/app",
-        "*/app/*",
-        "*/services",
-        "*/services/*",
-        "*/functions",
-        "*/functions/*"
-    ]
-    
-    for pattern in patterns:
-        if "*" in pattern:
-            # Handle glob patterns
-            parts = pattern.split("/")
-            current_paths = [artifact_dir]
-            
-            for part in parts:
-                if part == "*":
-                    # Expand wildcard
-                    new_paths = []
-                    for path in current_paths:
-                        try:
-                            for item in os.listdir(path):
-                                item_path = os.path.join(path, item)
-                                if os.path.isdir(item_path):
-                                    new_paths.append(item_path)
-                        except (OSError, PermissionError):
-                            continue
-                    current_paths = new_paths
-                else:
-                    # Regular directory
-                    current_paths = [os.path.join(path, part) for path in current_paths]
-            
-            search_paths.extend(current_paths)
-        else:
-            # Direct path
-            search_paths.append(os.path.join(artifact_dir, pattern))
-    
-    # Filter to existing directories and remove duplicates
-    valid_paths = []
-    seen = set()
-    for path in search_paths:
-        if os.path.isdir(path) and path not in seen:
-            valid_paths.append(path)
-            seen.add(path)
-    
-    return valid_paths
-
-
-def resolve_handler(handler_path, artifact_dir):
-    """
-    Resolve handler path to importable module and function.
+    Simple handler resolution using standard Python imports.
+    Works when PYTHONPATH is properly set (modern layouts).
     
     Args:
-        handler_path: Handler path like 'src/mypackage/handler.api_handler'
-        artifact_dir: Root directory of the Lambda artifact
+        handler_path: Handler path like 'services/api/handler.main'
         
     Returns:
         tuple: (module, function) or raises ImportError
     """
-    # Only log in debug mode (set DEBUG=1 environment variable for verbose logging)
-    debug_mode = os.environ.get('DEBUG') == '1'
-    
-    if debug_mode:
-        log(f"Resolving handler: {handler_path}")
-        log(f"Artifact directory: {artifact_dir}")
-    
     # Parse handler path
     if "." not in handler_path:
         raise ImportError(f"Invalid handler format: {handler_path}. Expected 'module.function'")
     
     module_path, function_name = handler_path.rsplit(".", 1)
     
-    if debug_mode:
-        log(f"Parsed - module_path: {module_path}, function_name: {function_name}")
-    
-    # If the module_path is absolute, make it relative to artifact_dir
+    # If handler_path is an absolute path, extract just the relative portion
     if os.path.isabs(module_path):
-        # Remove the artifact_dir prefix to get relative path
-        if module_path.startswith(artifact_dir):
-            module_path = os.path.relpath(module_path, artifact_dir)
-            if debug_mode:
-                log(f"Converted absolute path to relative: {module_path}")
-        else:
-            # This shouldn't happen, but handle it gracefully
-            if debug_mode:
-                log(f"Warning: absolute path doesn't start with artifact_dir")
+        # For absolute paths, we need to find the relative path from PYTHONPATH
+        # Since we can't determine this reliably, just use the basename
+        # This shouldn't happen in modern layouts, but handle it gracefully
+        module_path = os.path.basename(module_path)
+        log(f"Warning: Absolute path detected, using basename: {module_path}")
     
     # Convert file path to module path (replace / with .)
-    python_module_path = module_path.replace("/", ".").replace("\\", ".")
+    # Remove any leading dots that might have been created
+    python_module_path = module_path.replace("/", ".").replace("\\", ".").lstrip(".")
     
-    if debug_mode:
-        log(f"Python module path: {python_module_path}")
+    log(f"Importing module: {python_module_path}")
     
-    # Discover search paths
-    search_paths = discover_search_paths(artifact_dir)
+    # Simple import - Python will use PYTHONPATH
+    module = importlib.import_module(python_module_path)
     
-    if debug_mode:
-        log(f"Search paths: {search_paths}")
+    # Get the function from the module
+    if not hasattr(module, function_name):
+        available_functions = [name for name in dir(module) if not name.startswith('_')]
+        raise ImportError(
+            f"Function '{function_name}' not found in module '{module.__name__}'. "
+            f"Available functions: {available_functions}"
+        )
     
-    # Try different import strategies
-    strategies = [
-        # Strategy 1: Direct import with original path
-        lambda: try_import_direct(python_module_path, search_paths),
+    handler_function = getattr(module, function_name)
+    if not callable(handler_function):
+        raise ImportError(
+            f"'{function_name}' is not a callable function in module '{module.__name__}'"
+        )
+    
+    return module, handler_function
+
+
+def resolve_handler_legacy(handler_path, artifact_dir):
+    """
+    Legacy handler resolution for flattened artifact directories.
+    Used when files are copied and flattened (legacy layouts).
+    
+    Args:
+        handler_path: Handler path like 'handler.main' or 'functions/user/handler.main'
+        artifact_dir: Root directory of the Lambda artifact
         
-        # Strategy 2: Import from each search path
-        lambda: try_import_from_paths(module_path, search_paths),
-        
-        # Strategy 3: Try as relative import from common bases
-        lambda: try_import_relative(module_path, search_paths),
-        
-        # Strategy 4: Search for module file directly
-        lambda: try_import_by_file_search(module_path, search_paths)
-    ]
+    Returns:
+        tuple: (module, function) or raises ImportError
+    """
+    # Parse handler path
+    if "." not in handler_path:
+        raise ImportError(f"Invalid handler format: {handler_path}. Expected 'module.function'")
     
-    last_error = None
-    for i, strategy in enumerate(strategies, 1):
+    module_path, function_name = handler_path.rsplit(".", 1)
+    
+    # If handler_path is an absolute path, make it relative to artifact_dir
+    if os.path.isabs(module_path):
         try:
-            module = strategy()
-            if module:
-                if debug_mode:
-                    log(f"Successfully imported module using strategy {i}")
-                
-                # Get the function from the module
-                if not hasattr(module, function_name):
-                    available_functions = [name for name in dir(module) if not name.startswith('_')]
-                    raise ImportError(
-                        f"Function '{function_name}' not found in module '{module.__name__}'. "
-                        f"Available functions: {available_functions}"
-                    )
-                
-                handler_function = getattr(module, function_name)
-                if not callable(handler_function):
-                    raise ImportError(
-                        f"'{function_name}' is not a callable function in module '{module.__name__}'"
-                    )
-                
-                return module, handler_function
-                
-        except Exception as e:
-            last_error = e
-            continue
+            module_path = os.path.relpath(module_path, artifact_dir)
+        except ValueError:
+            # If paths are on different drives (Windows), just use basename
+            module_path = os.path.basename(module_path)
     
-    # All strategies failed - now show detailed info for debugging
-    log(f"Failed to resolve handler: {handler_path}")
-    log(f"Artifact directory: {artifact_dir}")
-    log(f"Python module path: {python_module_path}")
-    log(f"Search paths: {search_paths}")
-    raise ImportError(
-        f"Could not import handler '{handler_path}'. "
-        f"Searched in paths: {search_paths}. "
-        f"Last error: {last_error}"
-    )
-
-
-def try_import_direct(python_module_path, search_paths):
-    """Try importing the module path directly."""
-    for search_path in search_paths:
-        original_path = sys.path[:]
-        try:
-            sys.path.insert(0, search_path)
-            return importlib.import_module(python_module_path)
-        except ImportError:
-            continue
-        finally:
-            sys.path[:] = original_path
-    return None
-
-
-def try_import_from_paths(module_path, search_paths):
-    """Try importing by adding each search path and importing the basename."""
-    module_parts = module_path.split("/")
-    module_name = module_parts[-1]
+    # Convert file path to module path (replace / with .)
+    # Remove any leading dots that might have been created
+    python_module_path = module_path.replace("/", ".").replace("\\", ".").lstrip(".")
     
-    for search_path in search_paths:
-        # Try importing just the module name
-        original_path = sys.path[:]
-        try:
-            # Add the directory that should contain the module
-            module_dir = search_path
-            for part in module_parts[:-1]:
-                module_dir = os.path.join(module_dir, part)
-            
-            if os.path.isdir(module_dir):
-                sys.path.insert(0, module_dir)
-                return importlib.import_module(module_name)
-        except ImportError:
-            continue
-        finally:
-            sys.path[:] = original_path
-    return None
-
-
-def try_import_relative(module_path, search_paths):
-    """Try importing as relative module from different base paths."""
-    module_parts = module_path.split("/")
+    log(f"Importing module from artifact: {python_module_path}")
     
-    for search_path in search_paths:
-        original_path = sys.path[:]
-        try:
-            sys.path.insert(0, search_path)
-            
-            # Try different combinations of the module path
-            for i in range(len(module_parts)):
-                try_path = ".".join(module_parts[i:])
-                try:
-                    return importlib.import_module(try_path)
-                except ImportError:
-                    continue
-        except ImportError:
-            continue
-        finally:
-            sys.path[:] = original_path
-    return None
-
-
-def try_import_by_file_search(module_path, search_paths):
-    """Search for the module file directly and import it."""
-    module_parts = module_path.split("/")
-    module_name = module_parts[-1]
+    # Add artifact directory to sys.path
+    if artifact_dir not in sys.path:
+        sys.path.insert(0, artifact_dir)
     
-    # Look for the module file
-    for search_path in search_paths:
-        # Build the expected file path
-        file_path = search_path
-        for part in module_parts:
-            file_path = os.path.join(file_path, part)
-        
-        # Try .py extension
-        py_file = file_path + ".py"
-        if os.path.isfile(py_file):
-            # Found the file, try to import it
-            original_path = sys.path[:]
-            try:
-                parent_dir = os.path.dirname(py_file)
-                sys.path.insert(0, parent_dir)
-                return importlib.import_module(module_name)
-            except ImportError:
-                continue
-            finally:
-                sys.path[:] = original_path
-        
-        # Try as package directory
-        if os.path.isdir(file_path):
-            init_file = os.path.join(file_path, "__init__.py")
-            if os.path.isfile(init_file):
-                original_path = sys.path[:]
-                try:
-                    parent_dir = os.path.dirname(file_path)
-                    sys.path.insert(0, parent_dir)
-                    return importlib.import_module(module_name)
-                except ImportError:
-                    continue
-                finally:
-                    sys.path[:] = original_path
+    # Import the module
+    module = importlib.import_module(python_module_path)
     
-    return None
+    # Get the function from the module
+    if not hasattr(module, function_name):
+        available_functions = [name for name in dir(module) if not name.startswith('_')]
+        raise ImportError(
+            f"Function '{function_name}' not found in module '{module.__name__}'. "
+            f"Available functions: {available_functions}"
+        )
+    
+    handler_function = getattr(module, function_name)
+    if not callable(handler_function):
+        raise ImportError(
+            f"'{function_name}' is not a callable function in module '{module.__name__}'"
+        )
+    
+    return module, handler_function
 
 
 # Parse the handler from command-line arguments
@@ -330,13 +166,28 @@ AWS_LAMBDA_RUNTIME_API = f"http://{os.environ['AWS_LAMBDA_RUNTIME_API']}/2018-06
 # Get the current working directory (artifact directory)
 artifact_dir = os.getcwd()
 
+# Check if PYTHONPATH is set - if so, use simple import (modern layout)
+# Otherwise use legacy import from artifact directory
+pythonpath_set = 'PYTHONPATH' in os.environ
+
 try:
-    # Resolve the handler using the new logic
-    module, handler_function = resolve_handler(handler, artifact_dir)
+    if pythonpath_set:
+        # Modern layout: PYTHONPATH is set, use standard Python imports
+        log(f"Modern layout detected (PYTHONPATH={os.environ['PYTHONPATH']})")
+        module, handler_function = resolve_handler_simple(handler)
+    else:
+        # Legacy layout: import from artifact directory
+        log(f"Legacy layout detected (artifact_dir={artifact_dir})")
+        module, handler_function = resolve_handler_legacy(handler, artifact_dir)
+    
     log(f"Successfully resolved handler: {handler}")
     
 except Exception as ex:
     log(f"Failed to resolve handler: {ex}")
+    log(f"Handler: {handler}")
+    log(f"Working directory: {artifact_dir}")
+    log(f"PYTHONPATH: {os.environ.get('PYTHONPATH', 'not set')}")
+    log(f"sys.path: {sys.path}")
     report_error(ex)
     sys.exit(1)
 
