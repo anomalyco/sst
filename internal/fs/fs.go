@@ -33,8 +33,7 @@ func Exists(path string) bool {
 	if os.IsNotExist(err) {
 		return false
 	}
-	return err == nil
-}
+	return err == nilsilk}
 
 func FindDown(dir, filename string) []string {
 	var result []string
