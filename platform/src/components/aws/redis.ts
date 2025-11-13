@@ -422,10 +422,6 @@ export class Redis extends Component implements Link.Linkable {
     const version = all([engine, args.version]).apply(
       ([engine, v]) => v ?? (engine === "redis" ? "7.1" : "7.2"),
     );
-    const instance = output(args.instance).apply((v) => v ?? "t4g.micro");
-    const argsCluster = normalizeCluster();
-    const vpc = normalizeVpc();
-    const serverless = normalizeServerless();
 
     const dev = registerDev();
     if (dev?.enabled) {
@@ -433,14 +429,18 @@ export class Redis extends Component implements Link.Linkable {
       return;
     }
 
-    const { authToken, secret } = createAuthToken();
-    this._authToken = authToken;
-
+    const vpc = normalizeVpc();
+    const serverless = normalizeServerless();
     if (serverless.enabled) {
       const serverlessCache = createServerlessCache();
       this.serverlessCache = serverlessCache;
       return;
     }
+    const instance = output(args.instance).apply((v) => v ?? "t4g.micro");
+    const argsCluster = normalizeCluster();
+
+    const { authToken, secret } = createAuthToken();
+    this._authToken = authToken;
 
     const subnetGroup = createSubnetGroup();
     const parameterGroup = createParameterGroup();
@@ -733,7 +733,6 @@ Listening on "${dev.host}:${dev.port}"...`,
                 subnetIds: vpc.subnets,
                 tags: {
                   "sst:component-version": _version.toString(),
-                  "sst:ref:secret": secret.id,
                 },
               },
               { parent: self },
