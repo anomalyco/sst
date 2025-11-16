@@ -12,8 +12,11 @@ import {
   ComponentResourceOptions,
   Resource,
 } from "@pulumi/pulumi";
+import * as pulumi from "@pulumi/pulumi";
+import * as aws from "@pulumi/aws";
 import { Cdn, CdnArgs } from "./cdn.js";
-import { Function, FunctionArgs } from "./function.js";
+import { Function, FunctionArgs, FunctionArn } from "./function.js";
+import { parseLambdaEdgeArn } from "./helpers/arn.js";
 import { Bucket, BucketArgs } from "./bucket.js";
 import { BucketFile, BucketFiles } from "./providers/bucket-files.js";
 import { logicalName } from "../naming.js";
@@ -28,7 +31,7 @@ import { VisibleError } from "../error.js";
 import { Cron } from "./cron.js";
 import { BaseSiteFileOptions, getContentType } from "../base/base-site.js";
 import { BaseSsrSiteArgs, buildApp } from "../base/base-ssr-site.js";
-import { cloudfront, getRegionOutput, lambda, Region } from "@pulumi/aws";
+import { cloudfront, getRegionOutput, lambda, Region, iam } from "@pulumi/aws";
 import { KvKeys } from "./providers/kv-keys.js";
 import { useProvider } from "./helpers/provider.js";
 import { Link } from "../link.js";
@@ -42,7 +45,8 @@ import {
   RouterRouteArgs,
 } from "./router.js";
 import { DistributionInvalidation } from "./providers/distribution-invalidation.js";
-import { toSeconds } from "../duration.js";
+import { toSeconds, DurationSeconds } from "../duration.js";
+import { Size, toMBs } from "../size.js";
 import { KvRoutesUpdate } from "./providers/kv-routes-update.js";
 import { CONSOLE_URL, getQuota } from "./helpers/quota.js";
 import { toPosix } from "../path.js";
@@ -122,21 +126,94 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
   router?: Prettify<RouterRouteArgs>;
   cachePolicy?: Input<string>;
   /**
-   * Enable Origin Access Control to restrict Lambda function access to CloudFront only.
+   * Configure Lambda function protection through CloudFront.
    *
-   * When enabled, both server functions and image optimizer can only be
-   * accessed through CloudFront with proper AWS IAM authentication. Direct access
-   * to Lambda function URLs will be blocked.
+   * @default `"none"`
    *
-   * @default `false`
+   * The available options are:
+   * - `"none"`: Lambda URLs are publicly accessible. Use when you control all traffic or have application-level authentication.
+   * - `"oac"`: Lambda URLs protected by CloudFront Origin Access Control. Requires manual `x-amz-content-sha256` header for POST requests. Use when you control all POST requests.
+   * - `"oac-with-edge-signing"`: Full protection with automatic header signing via Lambda@Edge. Works with external webhooks and callbacks. Higher cost and latency but works out of the box.
+   *
    * @example
    * ```js
+   * // No protection (default)
    * {
-   *   originAccessControl: true
+   *   lambdaProtection: "none"
+   * }
+   * ```
+   *
+   * @example
+   * ```js
+   * // OAC protection, manual header signing required
+   * {
+   *   lambdaProtection: "oac"
+   * }
+   * ```
+   *
+   * @example
+   * ```js
+   * // Full protection with automatic Lambda@Edge
+   * {
+   *   lambdaProtection: "oac-with-edge-signing"
+   * }
+   * ```
+   *
+   * @example
+   * ```js
+   * // Custom Lambda@Edge configuration
+   * {
+   *   lambdaProtection: {
+   *     mode: "oac-with-edge-signing",
+   *     edgeFunction: {
+   *       memory: "256 MB",
+   *       timeout: "10 seconds"
+   *     }
+   *   }
+   * }
+   * ```
+   *
+   * @example
+   * ```js
+   * // Use existing Lambda@Edge function
+   * {
+   *   lambdaProtection: {
+   *     mode: "oac-with-edge-signing",
+   *     edgeFunction: {
+   *       arn: "arn:aws:lambda:us-east-1:123456789012:function:my-signing-function:1"
+   *     }
+   *   }
    * }
    * ```
    */
-  originAccessControl?: Input<boolean>;
+  lambdaProtection?: Input<
+    | "none"
+    | "oac"
+    | "oac-with-edge-signing"
+    | {
+        mode: "oac-with-edge-signing";
+        edgeFunction?: {
+          /**
+           * Custom Lambda@Edge function ARN to use for request signing.
+           * If provided, this function will be used instead of creating a new one.
+           * Must be a qualified ARN (with version) and deployed in us-east-1.
+           */
+          arn?: Input<FunctionArn>;
+          /**
+           * Memory size for the auto-created Lambda@Edge function.
+           * Only used when arn is not provided.
+           * @default `"128 MB"`
+           */
+          memory?: Input<Size>;
+          /**
+           * Timeout for the auto-created Lambda@Edge function.
+           * Only used when arn is not provided.
+           * @default `"5 seconds"`
+           */
+          timeout?: Input<DurationSeconds>;
+        };
+      }
+  >;
   invalidation?: Input<
     | false
     | {
@@ -689,6 +766,7 @@ export abstract class SsrSite extends Component implements Link.Linkable {
     const sitePath = regions.apply(() => normalizeSitePath());
     const dev = normalizeDev();
     const purge = output(args.assets).apply((assets) => assets?.purge ?? false);
+    const lambdaProtection = normalizeLambdaProtection();
 
     if (dev.enabled) {
       const server = createDevServer();
@@ -725,6 +803,7 @@ export abstract class SsrSite extends Component implements Link.Linkable {
     const imageOptimizer = createImageOptimizer();
     const assetsUploaded = uploadAssets();
     const kvNamespace = buildKvNamespace();
+    const edgeFunction = createLambdaEdgeFunction();
 
     let distribution: Cdn | undefined;
     let distributionId: Output<string>;
@@ -895,6 +974,41 @@ async function handler(event) {
                   ? [{ eventType: "viewer-response", functionArn: resFn.arn }]
                   : []),
               ]),
+              lambdaFunctionAssociations: all([
+                lambdaProtection,
+                edgeFunction,
+              ]).apply(([protection, autoEdgeFunction]) => {
+                if (protection.mode !== "oac-with-edge-signing") {
+                  return [];
+                }
+
+                // Use provided ARN if available
+                if (
+                  "edgeFunction" in protection &&
+                  protection.edgeFunction?.arn
+                ) {
+                  return [
+                    {
+                      eventType: "origin-request",
+                      lambdaArn: protection.edgeFunction.arn,
+                      includeBody: true,
+                    },
+                  ];
+                }
+
+                // Use auto-created function if available
+                if (autoEdgeFunction) {
+                  return [
+                    {
+                      eventType: "origin-request",
+                      lambdaArn: autoEdgeFunction.qualifiedArn,
+                      includeBody: true,
+                    },
+                  ];
+                }
+
+                return [];
+              }),
             },
           },
           { parent: self },
@@ -905,44 +1019,82 @@ async function handler(event) {
     const kvUpdated = createKvEntries();
     createInvalidation();
 
-    // Create Lambda permissions to allow CloudFront to invoke the server functions and image optimizer
-    all([
-      distribution,
-      servers,
-      imageOptimizer,
-      args.originAccessControl,
-    ]).apply(([dist, servers, imgOptimizer, isProtected]) => {
-      if (!dist || !isProtected) return;
+    // Create Lambda permissions based on protection mode
+    all([distribution, servers, imageOptimizer, lambdaProtection]).apply(
+      ([dist, servers, imgOptimizer, protection]) => {
+        if (!dist) return;
 
-      // Server functions
-      servers.forEach(({ region, server }) => {
-        const provider = useProvider(region);
-        new lambda.Permission(
-          `${name}CloudFrontFunctionUrlAccess${logicalName(region)}`,
-          {
-            action: "lambda:InvokeFunctionUrl",
-            function: server.nodes.function.name,
-            principal: "cloudfront.amazonaws.com",
-            sourceArn: dist.nodes.distribution.arn,
-          },
-          { provider, parent: self },
-        );
-      });
+        // Server functions
+        servers.forEach(({ region, server }) => {
+          const provider = useProvider(region);
 
-      // Image optimizer
-      if (imgOptimizer) {
-        new lambda.Permission(
-          `${name}ImageOptimizerCloudFrontFunctionUrlAccess`,
-          {
-            action: "lambda:InvokeFunctionUrl",
-            function: imgOptimizer.nodes.function.name,
-            principal: "cloudfront.amazonaws.com",
-            sourceArn: dist.nodes.distribution.arn,
-          },
-          { parent: self },
-        );
-      }
-    });
+          if (protection.mode === "none") {
+            // Create explicit public access permission with functionUrlAuthType parameter
+            new lambda.Permission(
+              `${name}PublicFunctionUrlAccess${logicalName(region)}`,
+              {
+                action: "lambda:InvokeFunctionUrl",
+                function: server.nodes.function.name,
+                principal: "*",
+                statementId: "FunctionURLAllowPublicAccess",
+                // Try the functionUrlAuthType parameter (your hypothesis)
+                functionUrlAuthType: "NONE",
+              },
+              { provider, parent: self },
+            );
+          } else if (
+            protection.mode === "oac" ||
+            protection.mode === "oac-with-edge-signing"
+          ) {
+            // Create CloudFront-specific permission for OAC modes
+            new lambda.Permission(
+              `${name}CloudFrontFunctionUrlAccess${logicalName(region)}`,
+              {
+                action: "lambda:InvokeFunctionUrl",
+                function: server.nodes.function.name,
+                principal: "cloudfront.amazonaws.com",
+                sourceArn: dist.nodes.distribution.arn,
+              },
+              { provider, parent: self },
+            );
+          }
+        });
+
+        // Image optimizer
+        if (imgOptimizer) {
+          if (protection.mode === "none") {
+            // Create explicit public access permission for image optimizer
+            new lambda.Permission(
+              `${name}ImageOptimizerPublicFunctionUrlAccess`,
+              {
+                action: "lambda:InvokeFunctionUrl",
+                function: imgOptimizer.nodes.function.name,
+                principal: "*",
+                statementId: "FunctionURLAllowPublicAccess",
+                // Try the functionUrlAuthType parameter (your hypothesis)
+                functionUrlAuthType: "NONE",
+              },
+              { parent: self },
+            );
+          } else if (
+            protection.mode === "oac" ||
+            protection.mode === "oac-with-edge-signing"
+          ) {
+            // Create CloudFront-specific permission for image optimizer
+            new lambda.Permission(
+              `${name}ImageOptimizerCloudFrontFunctionUrlAccess`,
+              {
+                action: "lambda:InvokeFunctionUrl",
+                function: imgOptimizer.nodes.function.name,
+                principal: "cloudfront.amazonaws.com",
+                sourceArn: dist.nodes.distribution.arn,
+              },
+              { parent: self },
+            );
+          }
+        }
+      },
+    );
 
     const server = servers.apply((servers) => servers[0]?.server);
     this.bucket = bucket;
@@ -1091,6 +1243,154 @@ async function handler(event) {
       });
     }
 
+    function normalizeLambdaProtection() {
+      return output(args.lambdaProtection).apply((protection) => {
+        // Default to "none" if not specified
+        if (!protection) return { mode: "none" as const };
+
+        // Handle string values
+        if (typeof protection === "string") {
+          return { mode: protection };
+        }
+
+        // Handle object form - validate ARN if provided
+        if (
+          protection.mode === "oac-with-edge-signing" &&
+          "edgeFunction" in protection &&
+          protection.edgeFunction?.arn
+        ) {
+          const arn = protection.edgeFunction.arn;
+          // Use SST's consistent ARN validation
+          if (typeof arn === "string") {
+            parseLambdaEdgeArn(arn); // Throws VisibleError if invalid
+          }
+        }
+
+        return protection;
+      });
+    }
+
+    function createLambdaEdgeFunction() {
+      return lambdaProtection.apply((protection) => {
+        // Only create function if mode is oac-with-edge-signing and no ARN is provided
+        if (
+          protection.mode !== "oac-with-edge-signing" ||
+          ("edgeFunction" in protection && protection.edgeFunction?.arn)
+        ) {
+          return undefined;
+        }
+
+        const edgeConfig =
+          "edgeFunction" in protection ? protection.edgeFunction : {};
+        const memory = edgeConfig?.memory ? toMBs(edgeConfig.memory) : 128;
+        const timeout = edgeConfig?.timeout ? toSeconds(edgeConfig.timeout) : 5;
+
+        // Create IAM role for Lambda@Edge using SST transform pattern
+        const edgeRole = new aws.iam.Role(
+          ...transform(
+            undefined, // No transform override for now
+            `${name}EdgeFunctionRole`,
+            {
+              assumeRolePolicy: JSON.stringify({
+                Version: "2012-10-17",
+                Statement: [
+                  {
+                    Action: "sts:AssumeRole",
+                    Effect: "Allow",
+                    Principal: {
+                      Service: [
+                        "lambda.amazonaws.com",
+                        "edgelambda.amazonaws.com",
+                      ],
+                    },
+                  },
+                ],
+              }),
+              managedPolicyArns: [
+                "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+              ],
+            },
+            { parent: self },
+          ),
+        );
+
+        // Create the Lambda@Edge function using SST transform pattern
+        const edgeFunction = new aws.lambda.Function(
+          ...transform(
+            undefined, // No transform override for now
+            `${name}EdgeFunction`,
+            {
+              runtime: "nodejs22.x",
+              handler: "index.handler",
+              role: edgeRole.arn,
+              code: new pulumi.asset.AssetArchive({
+                "index.js": new pulumi.asset.StringAsset(`
+// Lambda@Edge function for automatic SHA256 header signing
+// This function adds the required x-amz-content-sha256 header for POST/PUT/PATCH requests
+// going to Lambda function URLs with Origin Access Control enabled.
+
+const crypto = require('crypto');
+
+exports.handler = async (event) => {
+  const request = event.Records[0].cf.request;
+  
+  // Only process requests that need SHA256 signing (methods with body)
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method)) {
+    return request;
+  }
+  
+  try {
+    // Get the request body
+    let bodyString = '';
+    
+    if (request.body && request.body.data) {
+      // Lambda@Edge provides body as base64-encoded string
+      if (request.body.encoding === 'base64') {
+        // Decode base64 to get the actual body content
+        bodyString = Buffer.from(request.body.data, 'base64').toString('utf8');
+      } else {
+        // If not base64 encoded, use as-is
+        bodyString = request.body.data;
+      }
+    }
+    
+    // Compute SHA256 hash of the body (similar to your digestMessage function)
+    const hash = crypto.createHash('sha256').update(bodyString, 'utf8').digest('hex');
+    
+    // Add the x-amz-content-sha256 header in CloudFront format
+    request.headers['x-amz-content-sha256'] = [{
+      key: 'x-amz-content-sha256',
+      value: hash
+    }];
+    
+    console.log(\`Added SHA256 header for \${request.method} request to \${request.uri}: \${hash}\`);
+    
+  } catch (error) {
+    console.error('Error computing SHA256 hash:', error);
+    // Continue without the header rather than failing the request
+  }
+  
+  return request;
+};
+              `),
+              }),
+              publish: true, // Required for Lambda@Edge
+              timeout: timeout,
+              memorySize: memory,
+              description: `${name} Lambda@Edge function for OAC request signing`,
+            },
+            {
+              parent: self,
+              // Lambda@Edge functions must be created in us-east-1
+              provider: useProvider("us-east-1"),
+            },
+          ),
+        );
+
+        return edgeFunction;
+      });
+    }
+
     function createDevServer() {
       return new Function(
         ...transform(
@@ -1221,9 +1521,11 @@ async function handler(event) {
                   ...(layers ?? []),
                 ]),
                 url: {
-                  authorization: output(args.originAccessControl).apply(
-                    (originAccessControl) =>
-                      originAccessControl ? "iam" : "none",
+                  authorization: lambdaProtection.apply((protection) =>
+                    protection.mode === "oac" ||
+                    protection.mode === "oac-with-edge-signing"
+                      ? "iam"
+                      : "none",
                   ),
                 },
                 dev: false,
@@ -1305,8 +1607,11 @@ async function handler(event) {
             ],
             ...imageOptimizer.function,
             url: {
-              authorization: output(args.originAccessControl).apply(
-                (originAccessControl) => (originAccessControl ? "iam" : "none"),
+              authorization: lambdaProtection.apply((protection) =>
+                protection.mode === "oac" ||
+                protection.mode === "oac-with-edge-signing"
+                  ? "iam"
+                  : "none",
               ),
             },
             dev: false,
@@ -1451,7 +1756,7 @@ async function handler(event) {
         plan,
         bucket.nodes.bucket.bucketRegionalDomainName,
         timeout,
-        output(args.originAccessControl),
+        lambdaProtection,
       ]).apply(
         ([
           servers,
@@ -1460,7 +1765,7 @@ async function handler(event) {
           plan,
           bucketDomain,
           timeout,
-          originAccessControl,
+          protection,
         ]) =>
           all([
             servers.map((s) => ({ region: s.region, url: s.server!.url })),
@@ -1519,7 +1824,8 @@ async function handler(event) {
                 ? {
                     host: new URL(imageOptimizerUrl!).host,
                     route: plan.imageOptimizer!.prefix,
-                    ...(originAccessControl
+                    ...(protection.mode === "oac" ||
+                    protection.mode === "oac-with-edge-signing"
                       ? {
                           originAccessControlConfig: {
                             enabled: true,
@@ -1540,7 +1846,8 @@ async function handler(event) {
                 timeouts: {
                   readTimeout: toSeconds(timeout),
                 },
-                ...(originAccessControl
+                ...(protection.mode === "oac" ||
+                protection.mode === "oac-with-edge-signing"
                   ? {
                       originAccessControlConfig: {
                         enabled: true,
