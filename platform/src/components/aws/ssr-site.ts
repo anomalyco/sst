@@ -131,7 +131,7 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
    * @default `"none"`
    *
    * The available options are:
-   * - `"none"`: Lambda URLs are publicly accessible. Use when you control all traffic or have application-level authentication.
+   * - `"none"`: Lambda URLs are publicly accessible.
    * - `"oac"`: Lambda URLs protected by CloudFront Origin Access Control. Requires manual `x-amz-content-sha256` header for POST requests. Use when you control all POST requests.
    * - `"oac-with-edge-signing"`: Full protection with automatic header signing via Lambda@Edge. Works with external webhooks and callbacks. Higher cost and latency but works out of the box.
    *
@@ -1029,7 +1029,7 @@ async function handler(event) {
           const provider = useProvider(region);
 
           if (protection.mode === "none") {
-            // Create explicit public access permission with functionUrlAuthType parameter
+            // Create explicit public access permission for none mode
             new lambda.Permission(
               `${name}PublicFunctionUrlAccess${logicalName(region)}`,
               {
@@ -1037,7 +1037,6 @@ async function handler(event) {
                 function: server.nodes.function.name,
                 principal: "*",
                 statementId: "FunctionURLAllowPublicAccess",
-                // Try the functionUrlAuthType parameter (your hypothesis)
                 functionUrlAuthType: "NONE",
               },
               { provider, parent: self },
@@ -1063,7 +1062,6 @@ async function handler(event) {
         // Image optimizer
         if (imgOptimizer) {
           if (protection.mode === "none") {
-            // Create explicit public access permission for image optimizer
             new lambda.Permission(
               `${name}ImageOptimizerPublicFunctionUrlAccess`,
               {
@@ -1071,7 +1069,6 @@ async function handler(event) {
                 function: imgOptimizer.nodes.function.name,
                 principal: "*",
                 statementId: "FunctionURLAllowPublicAccess",
-                // Try the functionUrlAuthType parameter (your hypothesis)
                 functionUrlAuthType: "NONE",
               },
               { parent: self },
@@ -1080,7 +1077,6 @@ async function handler(event) {
             protection.mode === "oac" ||
             protection.mode === "oac-with-edge-signing"
           ) {
-            // Create CloudFront-specific permission for image optimizer
             new lambda.Permission(
               `${name}ImageOptimizerCloudFrontFunctionUrlAccess`,
               {
@@ -1260,9 +1256,8 @@ async function handler(event) {
           protection.edgeFunction?.arn
         ) {
           const arn = protection.edgeFunction.arn;
-          // Use SST's consistent ARN validation
           if (typeof arn === "string") {
-            parseLambdaEdgeArn(arn); // Throws VisibleError if invalid
+            parseLambdaEdgeArn(arn);
           }
         }
 
@@ -1288,7 +1283,7 @@ async function handler(event) {
         // Create IAM role for Lambda@Edge using SST transform pattern
         const edgeRole = new aws.iam.Role(
           ...transform(
-            undefined, // No transform override for now
+            undefined,
             `${name}EdgeFunctionRole`,
             {
               assumeRolePolicy: JSON.stringify({
@@ -1317,7 +1312,7 @@ async function handler(event) {
         // Create the Lambda@Edge function using SST transform pattern
         const edgeFunction = new aws.lambda.Function(
           ...transform(
-            undefined, // No transform override for now
+            undefined,
             `${name}EdgeFunction`,
             {
               runtime: "nodejs22.x",
@@ -1354,7 +1349,7 @@ exports.handler = async (event) => {
       }
     }
     
-    // Compute SHA256 hash of the body (similar to your digestMessage function)
+    // Compute SHA256 hash of the body
     const hash = crypto.createHash('sha256').update(bodyString, 'utf8').digest('hex');
     
     // Add the x-amz-content-sha256 header in CloudFront format
