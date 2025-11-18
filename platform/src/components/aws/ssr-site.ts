@@ -225,7 +225,7 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
     /**
      * The runtime environment for the server function.
      *
-     * @default `"nodejs20.x"`
+     * @default `"nodejs22.x"`
      * @example
      * ```js
      * {
@@ -645,21 +645,21 @@ export abstract class SsrSite extends Component implements Link.Linkable {
   private prodUrl?: Output<string | undefined>;
 
   protected abstract normalizeBuildCommand(
-    args: SsrSiteArgs,
+    args: SsrSiteArgs
   ): Output<string> | void;
 
   protected abstract buildPlan(
     outputPath: Output<string>,
     name: string,
     args: SsrSiteArgs,
-    { bucket }: { bucket: Bucket },
+    { bucket }: { bucket: Bucket }
   ): Output<Plan>;
 
   constructor(
     type: string,
     name: string,
     args: SsrSiteArgs = {},
-    opts: ComponentResourceOptions = {},
+    opts: ComponentResourceOptions = {}
   ) {
     super(type, name, args, opts);
     const self = this;
@@ -696,14 +696,14 @@ export abstract class SsrSite extends Component implements Link.Linkable {
       name,
       args,
       sitePath,
-      buildCommand ?? undefined,
+      buildCommand ?? undefined
     );
     const bucket = createS3Bucket();
     const plan = validatePlan(
-      this.buildPlan(outputPath, name, args, { bucket }),
+      this.buildPlan(outputPath, name, args, { bucket })
     );
     const timeout = all([serverTimeout, plan.server]).apply(
-      ([argsTimeout, plan]) => argsTimeout ?? plan?.timeout ?? "20 seconds",
+      ([argsTimeout, plan]) => argsTimeout ?? plan?.timeout ?? "20 seconds"
     );
     const servers = createServers();
     const imageOptimizer = createImageOptimizer();
@@ -725,7 +725,7 @@ export abstract class SsrSite extends Component implements Link.Linkable {
       distribution = createDistribution();
       distributionId = distribution.nodes.distribution.id;
       prodUrl = distribution.domainUrl.apply((domainUrl) =>
-        output(domainUrl ?? distribution!.url),
+        output(domainUrl ?? distribution!.url)
       );
     }
 
@@ -754,7 +754,7 @@ export abstract class SsrSite extends Component implements Link.Linkable {
             enableAcceptEncodingGzip: true,
           },
         },
-        { parent: self },
+        { parent: self }
       );
     }
 
@@ -766,7 +766,7 @@ export abstract class SsrSite extends Component implements Link.Linkable {
         return new cloudfront.KeyValueStore(
           `${name}KvStore`,
           {},
-          { parent: self },
+          { parent: self }
         ).arn;
       });
     }
@@ -802,7 +802,7 @@ async function handler(event) {
   return event.request;
 }`,
           },
-          { parent: self },
+          { parent: self }
         );
       });
     }
@@ -827,7 +827,7 @@ async function handler(event) {
   return event.response;
 }`,
           },
-          { parent: self },
+          { parent: self }
         );
       });
     }
@@ -881,8 +881,8 @@ async function handler(event) {
               ]),
             },
           },
-          { parent: self },
-        ),
+          { parent: self }
+        )
       );
     }
 
@@ -913,7 +913,7 @@ async function handler(event) {
     function validateDeprecatedProps() {
       if (args.cdn !== undefined)
         throw new VisibleError(
-          `"cdn" prop is deprecated. Use the "route.router" prop instead to use an existing "Router" component to serve your site.`,
+          `"cdn" prop is deprecated. Use the "route.router" prop instead to use an existing "Router" component to serve your site.`
         );
     }
 
@@ -944,8 +944,8 @@ async function handler(event) {
         if (!fs.existsSync(sitePath)) {
           throw new VisibleError(
             `Site directory not found at "${path.resolve(
-              sitePath,
-            )}". Please check the path setting in your configuration.`,
+              sitePath
+            )}". Please check the path setting in your configuration.`
           );
         }
         return sitePath;
@@ -954,11 +954,11 @@ async function handler(event) {
 
     function normalizeRegions() {
       return output(
-        args.regions ?? [getRegionOutput(undefined, { parent: self }).name],
+        args.regions ?? [getRegionOutput(undefined, { parent: self }).name]
       ).apply((regions) => {
         if (regions.length === 0)
           throw new VisibleError(
-            "No deployment regions specified. Please specify at least one region in the 'regions' property.",
+            "No deployment regions specified. Please specify at least one region in the 'regions' property."
           );
 
         return regions.map((region) => {
@@ -975,12 +975,12 @@ async function handler(event) {
             ].includes(region)
           )
             throw new VisibleError(
-              `Region ${region} is not supported by this component. Please select a different AWS region.`,
+              `Region ${region} is not supported by this component. Please select a different AWS region.`
             );
 
           if (!Object.values(Region).includes(region as Region))
             throw new VisibleError(
-              `Invalid AWS region: "${region}". Please specify a valid AWS region.`,
+              `Invalid AWS region: "${region}". Please specify a valid AWS region.`
             );
           return region as Region;
         });
@@ -993,12 +993,12 @@ async function handler(event) {
       if (route) {
         if (args.domain)
           throw new VisibleError(
-            `Cannot provide both "domain" and "route". Use the "domain" prop on the "Router" component when serving your site through a Router.`,
+            `Cannot provide both "domain" and "route". Use the "domain" prop on the "Router" component when serving your site through a Router.`
           );
 
         if (args.edge)
           throw new VisibleError(
-            `Cannot provide both "edge" and "route". Use the "edge" prop on the "Router" component when serving your site through a Router.`,
+            `Cannot provide both "edge" and "route". Use the "edge" prop on the "Router" component when serving your site through a Router.`
           );
       }
 
@@ -1010,12 +1010,12 @@ async function handler(event) {
         ([edge, serverEdge]) => {
           if (serverEdge)
             throw new VisibleError(
-              `The "server.edge" prop is deprecated. Use the "edge" prop on the top level instead.`,
+              `The "server.edge" prop is deprecated. Use the "edge" prop on the top level instead.`
             );
 
           if (!edge) return edge;
           return edge;
-        },
+        }
       );
     }
 
@@ -1028,7 +1028,7 @@ async function handler(event) {
           getQuota("cloudfront-response-timeout").apply((quota) => {
             if (seconds > quota)
               throw new VisibleError(
-                `Server timeout for "${name}" is longer than the allowed CloudFront response timeout of ${quota} seconds. You can contact AWS Support to increase the timeout - ${CONSOLE_URL}`,
+                `Server timeout for "${name}" is longer than the allowed CloudFront response timeout of ${quota} seconds. You can contact AWS Support to increase the timeout - ${CONSOLE_URL}`
               );
           });
         }
@@ -1043,13 +1043,13 @@ async function handler(event) {
           `${name}DevServer`,
           {
             description: `${name} dev server`,
-            runtime: "nodejs20.x",
+            runtime: "nodejs22.x",
             timeout: "20 seconds",
             memory: "128 MB",
             bundle: path.join(
               $cli.paths.platform,
               "functions",
-              "empty-function",
+              "empty-function"
             ),
             handler: "index.handler",
             environment: args.environment,
@@ -1057,8 +1057,8 @@ async function handler(event) {
             link: args.link,
             dev: false,
           },
-          { parent: self },
-        ),
+          { parent: self }
+        )
       );
     }
 
@@ -1074,12 +1074,12 @@ async function handler(event) {
         if (route?.pathPrefix && route.pathPrefix !== "/") {
           if (!plan.base)
             throw new VisibleError(
-              `No base path found for site. You must configure the base path to match the route path prefix "${route.pathPrefix}".`,
+              `No base path found for site. You must configure the base path to match the route path prefix "${route.pathPrefix}".`
             );
 
           if (!plan.base.startsWith(route.pathPrefix))
             throw new VisibleError(
-              `The site base path "${plan.base}" must start with the route path prefix "${route.pathPrefix}".`,
+              `The site base path "${plan.base}" must start with the route path prefix "${route.pathPrefix}".`
             );
         }
 
@@ -1101,8 +1101,8 @@ async function handler(event) {
           args.transform?.assets,
           `${name}Assets`,
           { access: "cloudfront" },
-          { parent: self, retainOnDelete: false },
-        ),
+          { parent: self, retainOnDelete: false }
+        )
       );
     }
 
@@ -1120,14 +1120,14 @@ async function handler(event) {
                 ...planServer,
                 description: planServer.description ?? `${name} server`,
                 runtime: output(args.server?.runtime).apply(
-                  (v) => v ?? planServer.runtime ?? "nodejs20.x",
+                  (v) => v ?? planServer.runtime ?? "nodejs22.x"
                 ),
                 timeout,
                 memory: output(args.server?.memory).apply(
-                  (v) => v ?? planServer.memory ?? "1024 MB",
+                  (v) => v ?? planServer.memory ?? "1024 MB"
                 ),
                 architecture: output(args.server?.architecture).apply(
-                  (v) => v ?? planServer.architecture ?? "x86_64",
+                  (v) => v ?? planServer.architecture ?? "x86_64"
                 ),
                 vpc: args.vpc,
                 nodejs: {
@@ -1169,8 +1169,8 @@ async function handler(event) {
                 dev: false,
                 _skipHint: true,
               },
-              { provider, parent: self },
-            ),
+              { provider, parent: self }
+            )
           );
 
           if (args.warm) {
@@ -1182,7 +1182,7 @@ async function handler(event) {
                 job: {
                   description: `${name} warmer`,
                   bundle: path.join($cli.paths.platform, "dist", "ssr-warmer"),
-                  runtime: "nodejs20.x",
+                  runtime: "nodejs22.x",
                   handler: "index.handler",
                   timeout: "900 seconds",
                   memory: "128 MB",
@@ -1190,7 +1190,7 @@ async function handler(event) {
                   environment: {
                     FUNCTION_NAME: server.nodes.function.name,
                     CONCURRENCY: output(args.warm).apply((warm) =>
-                      warm.toString(),
+                      warm.toString()
                     ),
                   },
                   link: [server],
@@ -1205,7 +1205,7 @@ async function handler(event) {
                   },
                 },
               },
-              { provider, parent: self },
+              { provider, parent: self }
             );
 
             // Prewarm on deploy
@@ -1218,7 +1218,7 @@ async function handler(event) {
                 },
                 input: JSON.stringify({}),
               },
-              { provider, parent: self },
+              { provider, parent: self }
             );
           }
 
@@ -1249,7 +1249,7 @@ async function handler(event) {
             _skipMetadata: true,
             _skipHint: true,
           },
-          { parent: self },
+          { parent: self }
         );
       });
     }
@@ -1341,16 +1341,16 @@ async function handler(event) {
                         path.join(
                           copy.to,
                           route?.pathPrefix?.replace(/^\//, "") ?? "",
-                          file,
-                        ),
+                          file
+                        )
                       ),
                       hash,
                       cacheControl: fileOption.cacheControl,
                       contentType:
                         fileOption.contentType ?? getContentType(file, "UTF-8"),
                     };
-                  }),
-                )),
+                  })
+                ))
               );
               filesUploaded.push(...files);
             }
@@ -1364,9 +1364,9 @@ async function handler(event) {
               purge,
               region: getRegionOutput(undefined, { parent: self }).name,
             },
-            { parent: self },
+            { parent: self }
           );
-        },
+        }
       );
     }
 
@@ -1428,7 +1428,7 @@ async function handler(event) {
                     }
                     // Directory + NOT expand: add to route
                     dirs.push(toPosix(path.join("/", childPath, item.name)));
-                  },
+                  }
                 );
               };
               processDir();
@@ -1460,7 +1460,7 @@ async function handler(event) {
               },
             } satisfies KV_SITE_METADATA);
             return kvEntries;
-          }),
+          })
       );
 
       return new KvKeys(
@@ -1471,7 +1471,7 @@ async function handler(event) {
           entries,
           purge,
         },
-        { parent: self },
+        { parent: self }
       );
     }
 
@@ -1484,11 +1484,11 @@ async function handler(event) {
           key: "routes",
           entry: route!.apply((route) =>
             ["site", kvNamespace, route!.hostPattern, route!.pathPrefix].join(
-              ",",
-            ),
+              ","
+            )
           ),
         },
-        { parent: self },
+        { parent: self }
       );
     }
 
@@ -1517,7 +1517,7 @@ async function handler(event) {
             cachedS3Files.forEach((item) => {
               if (!item.versionedSubDir) return;
               invalidationPaths.push(
-                toPosix(path.join("/", item.to, item.versionedSubDir, "*")),
+                toPosix(path.join("/", item.to, item.versionedSubDir, "*"))
               );
             });
           } else {
@@ -1546,7 +1546,7 @@ async function handler(event) {
                   cwd: path.resolve(
                     outputPath,
                     item.from,
-                    item.versionedSubDir,
+                    item.versionedSubDir
                   ),
                 }).forEach((filePath) => hash.update(filePath));
               }
@@ -1565,9 +1565,9 @@ async function handler(event) {
                   hash.update(
                     fs.readFileSync(
                       path.resolve(outputPath, item.from, filePath),
-                      "utf-8",
-                    ),
-                  ),
+                      "utf-8"
+                    )
+                  )
                 );
               }
             });
@@ -1585,9 +1585,9 @@ async function handler(event) {
             {
               parent: self,
               dependsOn: [assetsUploaded, kvUpdated, ...invalidationDependsOn],
-            },
+            }
           );
-        },
+        }
       );
     }
   }
@@ -1600,7 +1600,7 @@ async function handler(event) {
    */
   public get url() {
     return all([this.prodUrl, this.devUrl]).apply(
-      ([prodUrl, devUrl]) => (prodUrl ?? devUrl)!,
+      ([prodUrl, devUrl]) => (prodUrl ?? devUrl)!
     );
   }
 

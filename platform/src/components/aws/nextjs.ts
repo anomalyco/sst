@@ -554,7 +554,7 @@ export class Nextjs extends SsrSite {
   constructor(
     name: string,
     args: NextjsArgs = {},
-    opts: ComponentResourceOptions = {},
+    opts: ComponentResourceOptions = {}
   ) {
     super(__pulumiType, name, args, opts);
   }
@@ -568,7 +568,7 @@ export class Nextjs extends SsrSite {
           ? "open-next"
           : "@opennextjs/aws";
         return `npx --yes ${packageName}@${version} build`;
-      },
+      }
     );
   }
 
@@ -576,7 +576,7 @@ export class Nextjs extends SsrSite {
     outputPath: Output<string>,
     name: string,
     args: NextjsArgs,
-    { bucket }: { bucket: Bucket },
+    { bucket }: { bucket: Bucket }
   ): Output<Plan> {
     const parent = this;
 
@@ -587,7 +587,7 @@ export class Nextjs extends SsrSite {
 
         if (Object.entries(openNextOutput.edgeFunctions).length) {
           throw new VisibleError(
-            `Lambda@Edge runtime is deprecated. Update your OpenNext configuration to use the standard Lambda runtime and deploy to multiple regions using the "regions" option in your Nextjs component.`,
+            `Lambda@Edge runtime is deprecated. Update your OpenNext configuration to use the standard Lambda runtime and deploy to multiple regions using the "regions" option in your Nextjs component.`
           );
         }
 
@@ -625,7 +625,7 @@ export class Nextjs extends SsrSite {
               bundle: path.join(outputPath, serverOrigin.bundle),
               handler: serverOrigin.handler,
               streaming: serverOrigin.streaming,
-              runtime: "nodejs20.x" as const,
+              runtime: "nodejs22.x" as const,
               environment: {
                 CACHE_BUCKET_NAME: bucketName,
                 CACHE_BUCKET_KEY_PREFIX: "_cache",
@@ -708,7 +708,7 @@ export class Nextjs extends SsrSite {
                 description: `${name} image optimizer`,
                 handler: imageOptimizerOrigin.handler,
                 bundle: path.join(outputPath, imageOptimizerOrigin.bundle),
-                runtime: "nodejs20.x" as const,
+                runtime: "nodejs22.x" as const,
                 architecture: "arm64" as const,
                 environment: {
                   BUCKET_NAME: bucketName,
@@ -734,7 +734,7 @@ export class Nextjs extends SsrSite {
               to: "_cache",
             },
             buildId,
-          }),
+          })
         );
 
         return {
@@ -748,11 +748,11 @@ export class Nextjs extends SsrSite {
           const openNextOutputPath = path.join(
             outputPath,
             ".open-next",
-            "open-next.output.json",
+            "open-next.output.json"
           );
           if (!fs.existsSync(openNextOutputPath)) {
             throw new VisibleError(
-              `Could not load OpenNext output file at "${openNextOutputPath}". Make sure your Next.js app was built correctly with OpenNext.`,
+              `Could not load OpenNext output file at "${openNextOutputPath}". Make sure your Next.js app was built correctly with OpenNext.`
             );
           }
           const content = fs.readFileSync(openNextOutputPath).toString();
@@ -781,7 +781,7 @@ export class Nextjs extends SsrSite {
           } catch (e) {
             console.error(e);
             throw new VisibleError(
-              `Build ID not found in ".next/BUILD_ID" for site "${name}". Ensure your Next.js app was built successfully.`,
+              `Build ID not found in ".next/BUILD_ID" for site "${name}". Ensure your Next.js app was built successfully.`
             );
           }
         }
@@ -790,7 +790,7 @@ export class Nextjs extends SsrSite {
           try {
             const content = fs.readFileSync(
               path.join(outputPath, ".next", "routes-manifest.json"),
-              "utf-8",
+              "utf-8"
             );
             const json = JSON.parse(content) as {
               basePath: string;
@@ -799,7 +799,7 @@ export class Nextjs extends SsrSite {
           } catch (e) {
             console.error(e);
             throw new VisibleError(
-              `Base path configuration not found in ".next/routes-manifest.json" for site "${name}". Check your Next.js configuration.`,
+              `Base path configuration not found in ".next/routes-manifest.json" for site "${name}". Check your Next.js configuration.`
             );
           }
         }
@@ -808,7 +808,7 @@ export class Nextjs extends SsrSite {
           try {
             const content = fs
               .readFileSync(
-                path.join(outputPath, ".next/prerender-manifest.json"),
+                path.join(outputPath, ".next/prerender-manifest.json")
               )
               .toString();
             return JSON.parse(content) as {
@@ -838,14 +838,14 @@ export class Nextjs extends SsrSite {
                 },
               },
             },
-            { parent },
+            { parent }
           );
           const subscriber = queue.subscribe(
             {
               description: `${name} ISR revalidator`,
               handler: revalidationFunction.handler,
               bundle: path.join(outputPath, revalidationFunction.bundle),
-              runtime: "nodejs20.x",
+              runtime: "nodejs22.x",
               timeout: "30 seconds",
               permissions: [
                 {
@@ -869,7 +869,7 @@ export class Nextjs extends SsrSite {
                 },
               },
             },
-            { parent },
+            { parent }
           );
           return {
             revalidationQueue: queue,
@@ -903,7 +903,7 @@ export class Nextjs extends SsrSite {
                 },
               ],
             },
-            { parent, retainOnDelete: false },
+            { parent, retainOnDelete: false }
           );
         }
 
@@ -915,7 +915,7 @@ export class Nextjs extends SsrSite {
           // 1GB per 40,000, up to 10GB. This tends to use ~70% of the memory
           // provisioned when testing.
           const prerenderedRouteCount = Object.keys(
-            prerenderManifest?.routes ?? {},
+            prerenderManifest?.routes ?? {}
           ).length;
           const seedFn = new Function(
             `${name}RevalidationSeeder`,
@@ -925,13 +925,13 @@ export class Nextjs extends SsrSite {
                 openNextOutput.additionalProps.initializationFunction.handler,
               bundle: path.join(
                 outputPath,
-                openNextOutput.additionalProps.initializationFunction.bundle,
+                openNextOutput.additionalProps.initializationFunction.bundle
               ),
-              runtime: "nodejs20.x",
+              runtime: "nodejs22.x",
               timeout: "900 seconds",
               memory: `${Math.min(
                 10240,
-                Math.max(128, Math.ceil(prerenderedRouteCount / 4000) * 128),
+                Math.max(128, Math.ceil(prerenderedRouteCount / 4000) * 128)
               )} MB`,
               permissions: [
                 {
@@ -950,7 +950,7 @@ export class Nextjs extends SsrSite {
               _skipMetadata: true,
               _skipHint: true,
             },
-            { parent },
+            { parent }
           );
           new lambda.Invocation(
             `${name}RevalidationSeed`,
@@ -963,10 +963,10 @@ export class Nextjs extends SsrSite {
                 RequestType: "Create",
               }),
             },
-            { parent },
+            { parent }
           );
         }
-      },
+      }
     );
 
     this.revalidationQueue = ret.revalidationQueue;

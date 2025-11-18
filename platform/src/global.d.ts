@@ -119,7 +119,7 @@ declare global {
    * ```
    */
   export function $resolve<T extends Record<string, any>>(
-    val: T,
+    val: T
   ): util.Output<util.Unwrap<T>>;
   export function $resolve<T1, T2, T3, T4, T5, T6, T7, T8>(
     values: [
@@ -130,8 +130,8 @@ declare global {
       util.Input<T5>,
       util.Input<T6>,
       util.Input<T7>,
-      util.Input<T8>,
-    ],
+      util.Input<T8>
+    ]
   ): util.Output<
     [
       util.Unwrap<T1>,
@@ -141,7 +141,7 @@ declare global {
       util.Unwrap<T5>,
       util.Unwrap<T6>,
       util.Unwrap<T7>,
-      util.Unwrap<T8>,
+      util.Unwrap<T8>
     ]
   >;
   export function $resolve<T1, T2, T3, T4, T5, T6, T7>(
@@ -152,8 +152,8 @@ declare global {
       util.Input<T4>,
       util.Input<T5>,
       util.Input<T6>,
-      util.Input<T7>,
-    ],
+      util.Input<T7>
+    ]
   ): util.Output<
     [
       util.Unwrap<T1>,
@@ -162,7 +162,7 @@ declare global {
       util.Unwrap<T4>,
       util.Unwrap<T5>,
       util.Unwrap<T6>,
-      util.Unwrap<T7>,
+      util.Unwrap<T7>
     ]
   >;
   export function $resolve<T1, T2, T3, T4, T5, T6>(
@@ -172,8 +172,8 @@ declare global {
       util.Input<T3>,
       util.Input<T4>,
       util.Input<T5>,
-      util.Input<T6>,
-    ],
+      util.Input<T6>
+    ]
   ): util.Output<
     [
       util.Unwrap<T1>,
@@ -181,7 +181,7 @@ declare global {
       util.Unwrap<T3>,
       util.Unwrap<T4>,
       util.Unwrap<T5>,
-      util.Unwrap<T6>,
+      util.Unwrap<T6>
     ]
   >;
   export function $resolve<T1, T2, T3, T4, T5>(
@@ -190,25 +190,25 @@ declare global {
       util.Input<T2>,
       util.Input<T3>,
       util.Input<T4>,
-      util.Input<T5>,
-    ],
+      util.Input<T5>
+    ]
   ): util.Output<
     [
       util.Unwrap<T1>,
       util.Unwrap<T2>,
       util.Unwrap<T3>,
       util.Unwrap<T4>,
-      util.Unwrap<T5>,
+      util.Unwrap<T5>
     ]
   >;
   export function $resolve<T1, T2, T3, T4>(
-    values: [util.Input<T1>, util.Input<T2>, util.Input<T3>, util.Input<T4>],
+    values: [util.Input<T1>, util.Input<T2>, util.Input<T3>, util.Input<T4>]
   ): util.Output<[Unwrap<T1>, util.Unwrap<T2>, Unwrap<T3>, Unwrap<T4>]>;
   export function $resolve<T1, T2, T3>(
-    values: [util.Input<T1>, util.Input<T2>, util.Input<T3>],
+    values: [util.Input<T1>, util.Input<T2>, util.Input<T3>]
   ): util.Output<[util.Unwrap<T1>, util.Unwrap<T2>, util.Unwrap<T3>]>;
   export function $resolve<T1, T2>(
-    values: [util.Input<T1>, util.Input<T2>],
+    values: [util.Input<T1>, util.Input<T2>]
   ): util.Output<[Unwrap<T1>, util.Unwrap<T2>]>;
   /**
    * Use string interpolation on Output values.
@@ -322,7 +322,7 @@ declare global {
    * ```ts title="sst.config.ts"
    * $transform(sst.aws.Function, (args, opts, name) => {
    *   // Set the default if it's not set by the component
-   *   args.runtime ??= "nodejs20.x";
+   *   args.runtime ??= "nodejs22.x";
    * });
    * ```
    *

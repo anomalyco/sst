@@ -199,7 +199,7 @@ For example, set a default `runtime` for your functions.
 ```ts title="sst.config.ts"
 $transform(sst.aws.Function, (args, opts) => {
   // Set the default if it's not set by the component
-  args.runtime ??= "nodejs18.x";
+  args.runtime ??= "nodejs20.x";
 });
 ```
 
@@ -214,11 +214,11 @@ new sst.aws.Function("MyFunctionA", {
 
 new sst.aws.Function("MyFunctionB", {
   handler: "src/lambdaB.handler",
-  runtime: "nodejs20.x"
+  runtime: "nodejs22.x"
 });
 ```
 
-So given the above transform, `MyFunctionA` will have a runtime of `nodejs18.x` and `MyFunctionB` will have a runtime of `nodejs20.x`.
+So given the above transform, `MyFunctionA` will have a runtime of `nodejs20.x` and `MyFunctionB` will have a runtime of `nodejs22.x`.
 
 :::note
 The `$transform` is only applied to components that are defined after it.
