@@ -927,7 +927,7 @@ async function handler(event) {
         outputs: {
           title: devArgs.title,
           command: output(devArgs.command ?? "npm run dev"),
-          autostart: output(devArgs.autostart ?? true),
+          autostart: output(devArgs.autostart ?? args.dev === false ? false : true),
           directory: output(devArgs.directory ?? sitePath),
           environment: args.environment,
           links: output(args.link || [])
