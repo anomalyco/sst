@@ -389,6 +389,33 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 	hasPendingChanges := len(pendingFiles) > 0
 	alreadySignaled := r.restartSignaled[input.FunctionID]
 
+	// Check if worker was recently restarted and all pending changes are older than the restart
+	// This prevents unnecessary restarts when Run() is called from file change handler
+	if lastStart, exists := r.lastWorkerStart[input.FunctionID]; exists && hasPendingChanges {
+		allChangesOlderThanRestart := true
+		for _, file := range pendingFiles {
+			if changeTime, ok := r.fileChangeTime[file]; ok {
+				if changeTime.After(lastStart) {
+					allChangesOlderThanRestart = false
+					break
+				}
+			}
+		}
+
+		if allChangesOlderThanRestart {
+			// All pending changes are older than the last restart, clear them and skip restart
+			slog.Info("🔄 Run() skipping restart: worker already restarted after all pending changes",
+				"functionID", input.FunctionID,
+				"workerID", input.WorkerID,
+				"lastWorkerStart", lastStart,
+				"pendingChanges", len(pendingFiles))
+			delete(r.pendingChanges, input.FunctionID)
+			delete(r.restartSignaled, input.FunctionID)
+			hasPendingChanges = false
+			alreadySignaled = false
+		}
+	}
+
 	// If we have pending changes and haven't signaled yet, signal now
 	if hasPendingChanges && !alreadySignaled {
 		r.restartSignaled[input.FunctionID] = true
@@ -612,37 +639,51 @@ func (r *PythonRuntime) ShouldRebuild(functionID string, file string) bool {
 		r.fileChangeTime[file] = now
 
 		// Check if worker was already restarted after this file changed
+		// If the worker started AFTER the file's last change time, skip restart
 		if lastStart, exists := r.lastWorkerStart[functionID]; exists {
-			// If worker started after the file change, no need to restart again
-			if lastStart.After(r.fileChangeTime[file]) {
+			// Worker has been started before, check if it's newer than this file change
+			if lastStart.After(now) || lastStart.Equal(now) {
+				// Worker just started, definitely don't need to restart
 				r.mutex.Unlock()
-				slog.Info("📝 ShouldRebuild: worker already restarted after file change, skipping",
+				slog.Info("📝 ShouldRebuild: worker just started, skipping restart",
 					"functionID", functionID,
 					"file", file,
-					"fileChangeTime", r.fileChangeTime[file],
-					"lastWorkerStart", lastStart)
+					"lastWorkerStart", lastStart,
+					"fileChangeTime", now)
 				return false
+			}
+
+			// Check if there are already pending changes for this function
+			// If yes, we don't need to restart again - it's already queued
+			if len(r.pendingChanges[functionID]) > 0 {
+				// Check if this file is already tracked
+				alreadyTracked := false
+				for _, f := range r.pendingChanges[functionID] {
+					if f == file {
+						alreadyTracked = true
+						break
+					}
+				}
+				if alreadyTracked {
+					r.mutex.Unlock()
+					slog.Info("📝 ShouldRebuild: file already tracked in pending changes, skipping",
+						"functionID", functionID,
+						"file", file,
+						"totalPendingChanges", len(r.pendingChanges[functionID]))
+					return false
+				}
 			}
 		}
 
+		// Add to pending changes
 		if r.pendingChanges[functionID] == nil {
 			r.pendingChanges[functionID] = []string{}
 		}
-		// Only add if not already tracked
-		alreadyTracked := false
-		for _, f := range r.pendingChanges[functionID] {
-			if f == file {
-				alreadyTracked = true
-				break
-			}
-		}
-		if !alreadyTracked {
-			r.pendingChanges[functionID] = append(r.pendingChanges[functionID], file)
-			slog.Info("📝 ShouldRebuild: Python file changed, tracking for lazy restart",
-				"functionID", functionID,
-				"file", file,
-				"totalPendingChanges", len(r.pendingChanges[functionID]))
-		}
+		r.pendingChanges[functionID] = append(r.pendingChanges[functionID], file)
+		slog.Info("📝 ShouldRebuild: Python file changed, tracking for lazy restart",
+			"functionID", functionID,
+			"file", file,
+			"totalPendingChanges", len(r.pendingChanges[functionID]))
 		r.mutex.Unlock()
 
 		// Return true to stop workers
