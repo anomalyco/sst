@@ -17,8 +17,11 @@ import (
 	"cloud.google.com/go/storage"
 	"github.com/sst/sst/v3/internal/util"
 	"golang.org/x/oauth2/google"
+	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type GCPProvider struct {
@@ -108,6 +111,7 @@ func (g *GCPProvider) Init(app, stage string, args map[string]any) error {
 
 	g.project = project
 	g.region = region
+	g.zone = zone
 	g.credentials = creds
 	slog.Info("gcp project selected", "project", project)
 	return nil
@@ -310,10 +314,10 @@ func (g *GCPHome) getPassphrase(app string, stage string) (string, error) {
 
 	result, err := secretClient.AccessSecretVersion(ctx, req)
 	if err != nil {
-		if strings.Contains(err.Error(), "NotFound") {
+		if isNotFoundError(err) {
 			return "", nil
 		}
-		return "", err
+		return "", wrapError(err)
 	}
 
 	return string(result.Payload.Data), nil
@@ -329,57 +333,69 @@ func (g *GCPHome) setPassphrase(app, stage, passphrase string) error {
 	secretName := g.pathForPassphrase(app, stage)
 	parent := fmt.Sprintf("projects/%s", g.provider.project)
 
-	// Check if secret already exists
 	getReq := &secretmanagerpb.GetSecretRequest{
 		Name: fmt.Sprintf("projects/%s/secrets/%s", g.provider.project, secretName),
 	}
 
 	_, err = secretClient.GetSecret(ctx, getReq)
-	if err != nil && !strings.Contains(err.Error(), "NotFound") {
-		return err
+	if err != nil {
+		if isNotFoundError(err) {
+			return createSecretAndAddVersion(ctx, secretClient, parent, secretName, passphrase)
+		}
+		return wrapError(err)
 	}
 
-	if err != nil && strings.Contains(err.Error(), "NotFound") {
-		// Create the secret
-		createReq := &secretmanagerpb.CreateSecretRequest{
-			Parent:   parent,
-			SecretId: secretName,
-			Secret: &secretmanagerpb.Secret{
-				Replication: &secretmanagerpb.Replication{
-					Replication: &secretmanagerpb.Replication_Automatic_{
-						Automatic: &secretmanagerpb.Replication_Automatic{},
-					},
+	return addSecretVersion(ctx, secretClient, secretName, passphrase)
+}
+
+func createSecretAndAddVersion(ctx context.Context, secretClient *secretmanager.Client, parent, secretName, passphrase string) error {
+	createReq := &secretmanagerpb.CreateSecretRequest{
+		Parent:   parent,
+		SecretId: secretName,
+		Secret: &secretmanagerpb.Secret{
+			Replication: &secretmanagerpb.Replication{
+				Replication: &secretmanagerpb.Replication_Automatic_{
+					Automatic: &secretmanagerpb.Replication_Automatic{},
 				},
 			},
-		}
-
-		secret, err := secretClient.CreateSecret(ctx, createReq)
-		if err != nil {
-			return err
-		}
-
-		// Add the secret version
-		addReq := &secretmanagerpb.AddSecretVersionRequest{
-			Parent: secret.Name,
-			Payload: &secretmanagerpb.SecretPayload{
-				Data: []byte(passphrase),
-			},
-		}
-
-		_, err = secretClient.AddSecretVersion(ctx, addReq)
-		return err
+		},
 	}
 
-	// Secret exists, add a new version
+	secret, err := secretClient.CreateSecret(ctx, createReq)
+	if err != nil {
+		return wrapError(err)
+	}
+
+	return addSecretVersion(ctx, secretClient, secret.Name, passphrase)
+}
+
+func addSecretVersion(ctx context.Context, secretClient *secretmanager.Client, secretName, passphrase string) error {
 	addReq := &secretmanagerpb.AddSecretVersionRequest{
-		Parent: fmt.Sprintf("projects/%s/secrets/%s", g.provider.project, secretName),
+		Parent: secretName,
 		Payload: &secretmanagerpb.SecretPayload{
 			Data: []byte(passphrase),
 		},
 	}
 
-	_, err = secretClient.AddSecretVersion(ctx, addReq)
-	return err
+	_, err := secretClient.AddSecretVersion(ctx, addReq)
+	if err != nil {
+		if st, ok := status.FromError(err); ok {
+			switch st.Code() {
+			case codes.PermissionDenied, codes.Unimplemented:
+				return wrapError(err)
+			}
+		}
+
+		var gErr *googleapi.Error
+		if errors.As(err, &gErr) {
+			switch gErr.Code {
+			case 403, 501:
+				return util.NewReadableError(err, gErr.Message)
+			}
+		}
+		return err
+	}
+	return nil
 }
 
 func (g *GCPHome) listStages(app string) ([]string, error) {
@@ -442,6 +458,43 @@ func (g *GCPHome) pathForData(key, app, stage string) string {
 
 func (g *GCPHome) pathForPassphrase(app string, stage string) string {
 	return fmt.Sprintf("sst-passphrase-%s-%s", app, stage)
+}
+
+func isNotFoundError(err error) bool {
+	if st, ok := status.FromError(err); ok {
+		return st.Code() == codes.NotFound
+	}
+
+	var gErr *googleapi.Error
+	if errors.As(err, &gErr) {
+		return gErr.Code == 404
+	}
+
+	return strings.Contains(err.Error(), "NotFound")
+}
+
+func wrapError(err error) error {
+	if st, ok := status.FromError(err); ok {
+		for _, detail := range st.Details() {
+			if detailWithMethods, ok := detail.(interface {
+				GetLocale() string
+				GetMessage() string
+			}); ok {
+				locale := detailWithMethods.GetLocale()
+				if locale == "en-US" || locale == "" {
+					return util.NewReadableError(err, detailWithMethods.GetMessage())
+				}
+			}
+		}
+		return util.NewReadableError(err, st.Message())
+	}
+
+	var gErr *googleapi.Error
+	if errors.As(err, &gErr) {
+		return util.NewReadableError(err, gErr.Message)
+	}
+
+	return err
 }
 
 func firstNonEmptyEnv(envs ...string) string {
