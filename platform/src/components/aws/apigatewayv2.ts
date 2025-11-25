@@ -872,7 +872,7 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
               }),
             },
           },
-          { parent },
+          { parent, dependsOn: [logGroup] },
         ),
       );
     }
