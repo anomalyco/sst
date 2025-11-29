@@ -18,11 +18,18 @@ Before you get started, make sure to [configure your AWS credentials](/docs/iam-
 Let's start by creating our app.
 
 ```bash
-npx gitpick TanStack/router/tree/main/examples/react/start-bare aws-tanstack-start
-cd aws-tanstack-start
+npm create @tanstack/start@latest
 ```
 
-We are using a bare TanStack example template.
+Now use the init wizard to setup your TanStack Start project:
+- Name: aws-start-basic
+- Tailwind: `<your choice>`
+- Toolchain: `ESLint`
+- Deployment Adapter: `Nitro (agnostic)`
+- Add-ons: `<your choice>`
+- Examples: none
+
+This will create a project with the basic options, and Nitro pre-installed for deployments.
 
 ---
 
@@ -37,41 +44,40 @@ npm install
 
 Select the defaults and pick **AWS**. This'll create a `sst.config.ts` file in your project root.
 
-##### Install nitro
+##### Configure Nitro
 
-We use Nitro to serve our Tanstack Start app on AWS
-
-```bash
-npm install -D nitro
-```
-
-You will also need to add nitro to the `vite.config.ts` file.
+We use Nitro to serve our Tanstack Start app on AWS. You will need to add the correct nitro settings to the `vite.config.ts` file.
 
 ```ts title="vite.config.ts"
-import { tanstackStart } from "@tanstack/react-start/plugin/vite";
-import viteReact from "@vitejs/plugin-react";
-import { nitro } from "nitro/vite";
-import { defineConfig } from "vite";
-import tsConfigPaths from "vite-tsconfig-paths";
+import { defineConfig } from 'vite'
+import { devtools } from '@tanstack/devtools-vite'
+import { tanstackStart } from '@tanstack/react-start/plugin/vite'
+import viteReact from '@vitejs/plugin-react'
+import viteTsConfigPaths from 'vite-tsconfig-paths'
+import tailwindcss from '@tailwindcss/vite'
+import { nitro } from 'nitro/vite'
 
-export default defineConfig({
-	server: {
-		port: 3000,
-	},
-	plugins: [
-		tsConfigPaths({
-			projects: ["./tsconfig.json"],
-		}),
-		nitro({
-			config: {
-				preset: "aws-lambda",
-			},
-		}),
-		tanstackStart(),
-		viteReact(),
-	],
-});
+const config = defineConfig({
+  plugins: [
+    devtools(),
+    nitro(),
+    // this is the plugin that enables path aliases
+    viteTsConfigPaths({
+      projects: ['./tsconfig.json'],
+    }),
+    tailwindcss(),
+    tanstackStart(),
+    viteReact(),
+  ],
+  nitro: {
+    preset: 'aws-lambda',
+    awsLambda: {
+      streaming: true
+    }
+  }
+})
 
+export default config
 ```
 
 ---
