@@ -18,6 +18,7 @@ import (
 
 	"github.com/pulumi/pulumi/sdk/v3/go/auto/events"
 	"github.com/pulumi/pulumi/sdk/v3/go/common/apitype"
+	"github.com/sst/sst/v3/internal/util"
 	"github.com/sst/sst/v3/pkg/bus"
 	"github.com/sst/sst/v3/pkg/flag"
 	"github.com/sst/sst/v3/pkg/global"
@@ -327,7 +328,7 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 				return res.URN.Name() == item
 			})
 			if index == -1 {
-				return fmt.Errorf("Target not found: %v", item)
+				return util.NewReadableError(nil, fmt.Sprintf("Target not found: %v", item))
 			}
 			args = append(args, "--target", string(completed.Resources[index].URN))
 		}
