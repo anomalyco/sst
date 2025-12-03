@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
-	"runtime"
 	"sync"
 	"syscall"
 	"time"
@@ -98,59 +97,46 @@ func Kill(process *os.Process) error {
 	}
 	slog.Info("killing process", "pid", process.Pid)
 
-	switch runtime.GOOS {
-
-	case "windows":
-		if err := process.Kill(); err != nil {
-			slog.Error("failed to kill", "pid", process.Pid)
-			return err
-		}
-		break
-
-	default:
-		if err := syscall.Kill(-process.Pid, syscall.SIGTERM); err != nil {
-			slog.Info("failed to kill process group, trying individual process", "pid", process.Pid, "err", err)
-			if err := process.Signal(syscall.SIGTERM); err != nil {
-				slog.Error("failed to send sigterm", "pid", process.Pid)
-				return err
-			}
-		} else {
-			slog.Info("sent sigterm to process group", "pid", process.Pid)
-		}
-	}
-
 	done := make(chan struct{})
 	go func() {
-		process.Wait()
+		_, _ = process.Wait()
 		close(done)
 	}()
 
+	if err := sendTermSignal(process); err != nil {
+		slog.Error("failed to send term signal, escalating", "pid", process.Pid, "err", err)
+	} else {
+		select {
+		case <-done:
+			slog.Info("process killed with term", "pid", process.Pid)
+			goto cleanup
+		case <-time.After(killWait):
+			slog.Info("process not responding to term, sending kill", "pid", process.Pid)
+		}
+	}
+
 	select {
 	case <-done:
-		slog.Info("process killed with term", "pid", process.Pid)
-		break
+		slog.Info("process killed before kill escalation", "pid", process.Pid)
 	case <-time.After(killWait):
-		slog.Info("process not responding, sending sigkill", "pid", process.Pid)
-		if err := syscall.Kill(-process.Pid, syscall.SIGKILL); err != nil {
-			slog.Info("failed to kill process group with SIGKILL, trying individual process", "pid", process.Pid, "err", err)
-			if err := process.Signal(syscall.SIGKILL); err != nil {
-				slog.Error("failed to send sigkill", "pid", process.Pid)
-				return err
-			}
-		} else {
-			slog.Info("sent sigkill to process group", "pid", process.Pid)
+		slog.Info("process not responding, sending kill signal", "pid", process.Pid)
+		if err := sendKillSignal(process); err != nil {
+			slog.Error("failed to send kill signal", "pid", process.Pid, "err", err)
+
+			return err
 		}
 
-		// Wait for SIGKILL to complete
 		select {
 		case <-done:
 			slog.Info("process killed with kill", "pid", process.Pid)
-			break
 		case <-time.After(killWait):
-			slog.Info("timed out waiting for sigkill", "pid", process.Pid)
+			slog.Info("timed out waiting for kill signal", "pid", process.Pid)
+
 			return syscall.ETIMEDOUT
 		}
 	}
+
+cleanup:
 	lock.Lock()
 	defer lock.Unlock()
 	for i := len(cmds) - 1; i >= 0; i-- {
@@ -161,5 +147,6 @@ func Kill(process *os.Process) error {
 		}
 	}
 	slog.Info("untracked process", "pid", process.Pid)
+
 	return nil
 }
