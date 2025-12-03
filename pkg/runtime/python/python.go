@@ -111,6 +111,11 @@ type FunctionLogEvent struct {
 }
 
 func New() *PythonRuntime {
+	// Check if uv sync is needed (one-time check on initialization)
+	if cwd, err := os.Getwd(); err == nil {
+		checkUvSyncNeeded(cwd)
+	}
+
 	return &PythonRuntime{
 		lastBuiltHandler: map[string]string{},
 		lastRebuildCheck: map[string]time.Time{},
@@ -132,6 +137,11 @@ func NewWithCache(cacheDir string) (*PythonRuntime, error) {
 		restartSignaled:  map[string]bool{},
 		fileChangeTime:   map[string]time.Time{},
 		lastWorkerStart:  map[string]time.Time{},
+	}
+
+	// Run uv sync if needed (one-time on initialization)
+	if cwd, err := os.Getwd(); err == nil {
+		checkUvSyncNeeded(cwd)
 	}
 
 	// Initialize cache and detection systems
@@ -374,6 +384,13 @@ type PyProject struct {
 				} `toml:"find"`
 			} `toml:"packages"`
 		} `toml:"setuptools"`
+		Uv struct {
+			Package   bool `toml:"package"`
+			Workspace struct {
+				Members []string `toml:"members"`
+			} `toml:"workspace"`
+			Sources map[string]interface{} `toml:"sources"`
+		} `toml:"uv"`
 	} `toml:"tool"`
 }
 
@@ -556,12 +573,25 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 
 	// For modern layouts, set PYTHONPATH to project root and point to resource.enc in artifact dir
 	if !isLegacyLayout {
-		env = append(env, "PYTHONPATH="+projectRoot)
+		// Build PYTHONPATH with common Python paths
+		pythonPaths := []string{projectRoot}
+
+		// Add src/ if it exists (common Python pattern)
+		srcDir := filepath.Join(projectRoot, "src")
+		if _, err := os.Stat(srcDir); err == nil {
+			pythonPaths = append(pythonPaths, srcDir)
+			slog.Info("Python runtime: adding src/ to PYTHONPATH", "srcDir", srcDir)
+		}
+
+		// Join paths with OS-specific separator (: on Unix, ; on Windows)
+		pythonPath := strings.Join(pythonPaths, string(os.PathListSeparator))
+		env = append(env, "PYTHONPATH="+pythonPath)
+
 		// Set SST_KEY_FILE to point to resource.enc in the artifact directory
 		resourceEncPath := filepath.Join(input.Build.Out, "resource.enc")
 		env = append(env, "SST_KEY_FILE="+resourceEncPath)
 		slog.Info("Python runtime: set PYTHONPATH and SST_KEY_FILE for modern layout",
-			"PYTHONPATH", projectRoot,
+			"PYTHONPATH", pythonPath,
 			"SST_KEY_FILE", resourceEncPath)
 	}
 
@@ -808,6 +838,25 @@ func (r *PythonRuntime) syncPythonFiles(functionID, srcDir, destDir string) erro
 		r.mutex.Lock()
 		pendingFiles := r.pendingChanges[functionID]
 		hasPendingChanges := len(pendingFiles) > 0
+
+		// CRITICAL FIX: Clear pending changes immediately after reading them
+		// This prevents accumulation if multiple syncs happen
+		if hasPendingChanges {
+			// Make a copy of the pending files list
+			pendingFilesCopy := make([]string, len(pendingFiles))
+			copy(pendingFilesCopy, pendingFiles)
+
+			// Clear the pending changes map immediately
+			delete(r.pendingChanges, functionID)
+			delete(r.restartSignaled, functionID)
+
+			// Use the copy for syncing
+			pendingFiles = pendingFilesCopy
+
+			slog.Info("cleared pending changes before sync (preventing accumulation)",
+				"functionID", functionID,
+				"fileCount", len(pendingFiles))
+		}
 		r.mutex.Unlock()
 
 		// If we have specific pending changes, only sync those files
@@ -847,14 +896,9 @@ func (r *PythonRuntime) syncPythonFiles(functionID, srcDir, destDir string) erro
 					"artifactPath", artifactPath)
 			}
 
-			// Clear pending changes AND restart signal after successful sync
-			r.mutex.Lock()
-			delete(r.pendingChanges, functionID)
-			delete(r.restartSignaled, functionID)
-			r.mutex.Unlock()
-
-			slog.Info("cleared pending changes and restart signal after sync",
-				"functionID", functionID)
+			slog.Info("completed sync of changed files",
+				"functionID", functionID,
+				"syncedCount", len(pendingFiles))
 
 			return nil
 		}
@@ -2356,4 +2400,72 @@ func (r *PythonRuntime) copyDirectoryWithFilter(src, dst string, filter *Content
 
 		return copyFile(path, destPath)
 	})
+}
+
+// checkUvSyncNeeded runs uv sync if needed during runtime initialization
+// This is called once when the Python runtime is initialized
+func checkUvSyncNeeded(projectRoot string) {
+	// Check if pyproject.toml exists
+	pyprojectPath := filepath.Join(projectRoot, "pyproject.toml")
+	pyprojectData, err := os.ReadFile(pyprojectPath)
+	if err != nil {
+		return // No pyproject.toml, nothing to check
+	}
+
+	// Parse to check for [tool.uv] package = true or workspace
+	var pyproject PyProject
+	if err := toml.Unmarshal(pyprojectData, &pyproject); err != nil {
+		return // Can't parse, skip check
+	}
+
+	// Check if UV package mode or workspace is enabled
+	hasUvPackage := pyproject.Tool.Uv.Package
+	hasWorkspace := len(pyproject.Tool.Uv.Workspace.Members) > 0
+
+	if !hasUvPackage && !hasWorkspace {
+		return // Not using UV features, no need to sync
+	}
+
+	// Check if .venv exists and is populated
+	venvPath := filepath.Join(projectRoot, ".venv")
+	pythonPath := filepath.Join(venvPath, "bin", "python")
+	if _, err := os.Stat(pythonPath); err == nil {
+		slog.Debug("UV virtual environment already exists, skipping sync",
+			"projectRoot", projectRoot,
+			"venvPath", venvPath)
+		return // .venv exists and has python, already synced
+	}
+
+	// Run uv sync
+	slog.Info("UV package mode detected, running uv sync",
+		"projectRoot", projectRoot,
+		"hasUvPackage", hasUvPackage,
+		"hasWorkspace", hasWorkspace)
+
+	fmt.Fprintf(os.Stderr, "\n🔄 Running uv sync to install packages...\n")
+
+	// Check if uv.lock exists to determine if we should use --frozen
+	uvLockPath := filepath.Join(projectRoot, "uv.lock")
+	args := []string{"sync"}
+	if _, err := os.Stat(uvLockPath); err == nil {
+		args = append(args, "--frozen")
+		slog.Debug("using --frozen flag (uv.lock exists)", "uvLockPath", uvLockPath)
+	}
+
+	cmd := exec.Command("uv", args...)
+	cmd.Dir = projectRoot
+	cmd.Stdout = os.Stderr // Show output to user
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		slog.Warn("uv sync failed, continuing anyway",
+			"error", err,
+			"projectRoot", projectRoot)
+		fmt.Fprintf(os.Stderr, "⚠️  uv sync failed: %v\n", err)
+		fmt.Fprintf(os.Stderr, "   Continuing anyway - you may need to run 'uv sync' manually\n\n")
+		return
+	}
+
+	fmt.Fprintf(os.Stderr, "✓ uv sync completed successfully\n\n")
+	slog.Info("uv sync completed successfully", "projectRoot", projectRoot)
 }

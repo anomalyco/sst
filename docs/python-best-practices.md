@@ -183,6 +183,7 @@ When no custom configuration is found, SST applies sensible defaults:
 - **Version control**: `.git/`, `.gitignore`, `.gitattributes`
 - **Virtual environments**: `.venv/`, `venv/`, `env/`
 - **IDE files**: `.vscode/`, `.idea/`, `*.swp`, `.DS_Store`
+- **Test directories**: `tests/`, `test/` (entire directories and their contents)
 - **Test artifacts**: `.pytest_cache/`, `.coverage`, `htmlcov/`
 - **Documentation**: `README.md`, `CHANGELOG.md`, `LICENSE`
 - **Development config**: `pyproject.toml`, `setup.py`, `tox.ini`, `Makefile`
@@ -190,6 +191,8 @@ When no custom configuration is found, SST applies sensible defaults:
 - **Node.js artifacts**: `node_modules/`, `package-lock.json` (for mixed projects)
 - **Temporary files**: `*.log`, `*.tmp`, `tmp/`, `temp/`
 - **SST cache**: `.sst/`
+
+**Note on Test Files**: SST excludes test directories (`tests/`, `test/`) but does NOT exclude individual files with `test_` prefix or `_test` suffix. This is intentional because some projects use these naming patterns for legitimate non-test files (e.g., `test_data.py` for test data fixtures, `user_test_helpers.py` for user testing utilities). If you want to exclude specific test files, add them to your `[tool.sst]` exclude patterns.
 
 ### Pattern Matching
 
@@ -215,13 +218,15 @@ include = [
 ]
 
 exclude = [
-    "test_*.py",              # Test files starting with test_
-    "**/*_test.py",           # Test files ending with _test.py anywhere
+    "test_*.py",              # Exclude test files starting with test_
+    "**/*_test.py",           # Exclude test files ending with _test.py anywhere
     "temp/**",                # Everything in temp directory
     "*.log",                  # All log files
     "cache/[0-9][0-9][0-9][0-9]/**"  # Cache directories with 4-digit names
 ]
 ```
+
+**Note**: By default, SST does NOT exclude `test_*.py` or `*_test.py` files because some projects use these patterns for legitimate non-test code. Only test directories (`tests/`, `test/`) are excluded by default. If your project follows the convention of naming test files with these patterns, add them to your exclude list as shown above.
 
 ### Common Use Cases
 

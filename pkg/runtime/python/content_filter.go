@@ -113,13 +113,11 @@ func getDefaultExcludePatterns() []string {
 		"docker-compose.yml",
 		"docker-compose.yaml",
 
-		// Test directories and files
+		// Test directories
 		"tests",
 		"tests/**",
 		"test",
 		"test/**",
-		"*_test.py",
-		"test_*.py",
 
 		// Configuration files that shouldn't be deployed
 		"pyproject.toml",
