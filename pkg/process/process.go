@@ -143,7 +143,8 @@ cleanup:
 		if cmds[i].Process != nil && cmds[i].Process.Pid == process.Pid {
 			cmds[i] = cmds[len(cmds)-1]
 			cmds = cmds[:len(cmds)-1]
-			break
+
+			return nil
 		}
 	}
 	slog.Info("untracked process", "pid", process.Pid)
