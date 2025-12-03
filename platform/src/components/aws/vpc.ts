@@ -875,7 +875,7 @@ export class Vpc extends Component implements Link.Linkable {
                 args.transform?.elasticIp,
                 `${name}ElasticIp${i + 1}`,
                 {
-                  vpc: true,
+                  domain: "vpc",
                 },
                 { parent: self },
               ),
