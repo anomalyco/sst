@@ -11,7 +11,7 @@ import (
 )
 
 func sendSignal(process *os.Process, sig syscall.Signal) error {
-	if process == nil || process.Pid <= 0 {
+	if process.Pid <= 0 {
 		return errors.New("invalid process")
 	}
 	if err := syscall.Kill(-process.Pid, sig); err != nil {
