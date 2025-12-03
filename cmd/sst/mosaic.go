@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	goruntime "runtime"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/kballard/go-shellquote"
@@ -128,11 +127,7 @@ func CmdMosaic(c *cli.Cli) error {
 					for k, v := range nextEnv.Env {
 						cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 					}
-					if goruntime.GOOS != "windows" {
-						cmd.SysProcAttr = &syscall.SysProcAttr{
-							Setpgid: true,
-						}
-					}
+					process.Detach(cmd)
 					cmd.Stdin = os.Stdin
 					cmd.Stdout = os.Stdout
 					cmd.Stderr = os.Stderr

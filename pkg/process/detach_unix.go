@@ -9,8 +9,10 @@ import (
 )
 
 func Detach(cmd *exec.Cmd) {
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setpgid: true,
-		Pgid:    0,
+	if cmd.SysProcAttr == nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
 	}
+	// Ensure the child is the leader of its own process group without
+	// clobbering any other existing SysProcAttr fields set by the caller.
+	cmd.SysProcAttr.Setpgid = true
 }
