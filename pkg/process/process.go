@@ -103,6 +103,8 @@ func Kill(process *os.Process) error {
 		close(done)
 	}()
 
+	var killErr error
+
 	if err := sendTermSignal(process); err != nil {
 		slog.Error("failed to send term signal, escalating", "pid", process.Pid, "err", err)
 	} else {
@@ -122,8 +124,8 @@ func Kill(process *os.Process) error {
 		slog.Info("process not responding, sending kill signal", "pid", process.Pid)
 		if err := sendKillSignal(process); err != nil {
 			slog.Error("failed to send kill signal", "pid", process.Pid, "err", err)
-
-			return err
+			killErr = err
+			goto cleanup
 		}
 
 		select {
@@ -131,8 +133,7 @@ func Kill(process *os.Process) error {
 			slog.Info("process killed with kill", "pid", process.Pid)
 		case <-time.After(killWait):
 			slog.Info("timed out waiting for kill signal", "pid", process.Pid)
-
-			return syscall.ETIMEDOUT
+			killErr = syscall.ETIMEDOUT
 		}
 	}
 
@@ -144,10 +145,10 @@ cleanup:
 			cmds[i] = cmds[len(cmds)-1]
 			cmds = cmds[:len(cmds)-1]
 
-			return nil
+			return killErr
 		}
 	}
 	slog.Info("untracked process", "pid", process.Pid)
 
-	return nil
+	return killErr
 }
