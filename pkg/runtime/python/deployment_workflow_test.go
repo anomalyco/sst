@@ -45,6 +45,24 @@ func TestDeploymentWorkflow(t *testing.T) {
 			handler:     "app/functions/api/handler.main",
 			runtime:     "python3.11",
 		},
+		{
+			name:        "monorepo-layout-api",
+			examplePath: "examples/python-layouts/monorepo-layout",
+			handler:     "services/api/handler.main",
+			runtime:     "python3.12",
+		},
+		{
+			name:        "monorepo-layout-auth",
+			examplePath: "examples/python-layouts/monorepo-layout",
+			handler:     "services/auth/handler.main",
+			runtime:     "python3.12",
+		},
+		{
+			name:        "monorepo-layout-worker",
+			examplePath: "examples/python-layouts/monorepo-layout",
+			handler:     "services/worker/handler.main",
+			runtime:     "python3.12",
+		},
 	}
 
 	for _, tt := range tests {

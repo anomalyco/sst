@@ -1310,6 +1310,34 @@ func (ib *IncrementalBuilder) copyFile(src, dest string) error {
 func (ib *IncrementalBuilder) adjustHandlerPath(input *runtime.BuildInput, projectInfo *ProjectInfo) (string, error) {
 	originalHandler := input.Handler
 
+	// Check if the workspace (pyproject.toml location) is a subdirectory
+	// If so, we need to strip that prefix from the handler path
+	if projectInfo != nil && projectInfo.PyprojectPath != "" {
+		workspaceDir := filepath.Dir(projectInfo.PyprojectPath)
+		projectRoot := projectInfo.ProjectRoot
+
+		// Calculate relative path from project root to workspace
+		if workspaceDir != projectRoot {
+			relWorkspace, err := filepath.Rel(projectRoot, workspaceDir)
+			if err == nil && relWorkspace != "." && !strings.HasPrefix(relWorkspace, "..") {
+				// Convert to forward slashes for handler path comparison
+				relWorkspaceSlash := strings.ReplaceAll(relWorkspace, string(filepath.Separator), "/")
+
+				// Check if handler starts with the workspace prefix
+				if strings.HasPrefix(originalHandler, relWorkspaceSlash+"/") {
+					// Strip the workspace prefix from the handler
+					adjustedHandler := strings.TrimPrefix(originalHandler, relWorkspaceSlash+"/")
+					slog.Info("incremental builder handler path adjustment",
+						"original", originalHandler,
+						"adjusted", adjustedHandler,
+						"reason", "stripped workspace prefix",
+						"workspaceDir", relWorkspaceSlash)
+					return adjustedHandler, nil
+				}
+			}
+		}
+	}
+
 	// Check if handler path contains the pattern {package_name}/src/{package_name}
 	// If so, we need to adjust it because the build process flattens this structure
 	if strings.Contains(originalHandler, "/src/") {
@@ -1986,8 +2014,7 @@ func (ib *IncrementalBuilder) installDependenciesForBuild(ctx context.Context, i
 
 // generateRequirementsFile generates a requirements.txt file for the build
 func (ib *IncrementalBuilder) generateRequirementsFile(ctx context.Context, input *runtime.BuildInput, projectInfo *ProjectInfo, outputFile string) error {
-	// Use UV export with --all-packages to include all workspace dependencies
-	// This matches the legacy builder behavior and ensures git dependencies are included
+	// Use UV export to generate requirements
 	workspaceDir := projectInfo.SourceRoot
 	if projectInfo.PyprojectPath != "" {
 		workspaceDir = filepath.Dir(projectInfo.PyprojectPath)
@@ -2008,13 +2035,45 @@ func (ib *IncrementalBuilder) generateRequirementsFile(ctx context.Context, inpu
 		}
 	}
 
+	// Check if this is a workspace member (has its own pyproject.toml in a subdirectory)
+	// If so, export only that package's dependencies for isolation
+	packageName := ""
+	useAllPackages := true
+
+	if projectInfo.PyprojectPath != "" {
+		if config, err := ib.projectResolver.ParsePyprojectToml(projectInfo.PyprojectPath); err == nil {
+			if config.Project.Name != "" {
+				// Check if this pyproject.toml is in a subdirectory (workspace member)
+				// by walking up to find a parent pyproject.toml (workspace root)
+				pyprojectDir := filepath.Dir(projectInfo.PyprojectPath)
+				currentDir := filepath.Dir(pyprojectDir)
+
+				// Walk up to find any parent pyproject.toml
+				for currentDir != "/" && currentDir != "." && currentDir != projectInfo.SourceRoot {
+					parentPyproject := filepath.Join(currentDir, "pyproject.toml")
+					if _, err := os.Stat(parentPyproject); err == nil {
+						// Found a parent pyproject.toml - this is a workspace member
+						packageName = config.Project.Name
+						useAllPackages = false
+						slog.Info("using per-package dependency export for workspace member",
+							"package", packageName,
+							"pyprojectPath", projectInfo.PyprojectPath,
+							"parentPyproject", parentPyproject)
+						break
+					}
+					currentDir = filepath.Dir(currentDir)
+				}
+			}
+		}
+	}
+
 	exportCmd := &UvExportCommand{
 		WorkspaceDir:    workspaceDir,
-		PackageName:     "", // Empty to use --all-packages
+		PackageName:     packageName,
 		OutputFile:      outputFile,
 		NoEmitWorkspace: false,
 		NoDev:           noDev,
-		AllPackages:     true, // Export all packages in the workspace
+		AllPackages:     useAllPackages,
 	}
 
 	return ib.uvRunner.ExecuteExportCommand(ctx, exportCmd)
@@ -2095,12 +2154,49 @@ func (ib *IncrementalBuilder) installDependenciesForLambda(ctx context.Context, 
 		}
 	}
 
-	// First, sync workspace dependencies to resolve git dependencies and workspace packages
+	// Check if this is a workspace member (has its own pyproject.toml in a subdirectory)
+	// If so, sync only that package's dependencies for isolation
+	packageName := ""
+	useAllPackages := true
+
+	if projectInfo.PyprojectPath != "" {
+		if config, err := ib.projectResolver.ParsePyprojectToml(projectInfo.PyprojectPath); err == nil {
+			if config.Project.Name != "" {
+				// Check if this pyproject.toml is in a subdirectory (workspace member)
+				// by walking up to find a parent pyproject.toml (workspace root)
+				pyprojectDir := filepath.Dir(projectInfo.PyprojectPath)
+				currentDir := filepath.Dir(pyprojectDir)
+
+				// Walk up to find any parent pyproject.toml
+				for currentDir != "/" && currentDir != "." && currentDir != projectInfo.SourceRoot {
+					parentPyproject := filepath.Join(currentDir, "pyproject.toml")
+					if _, err := os.Stat(parentPyproject); err == nil {
+						// Found a parent pyproject.toml - this is a workspace member
+						packageName = config.Project.Name
+						useAllPackages = false
+						slog.Info("using per-package sync for workspace member",
+							"package", packageName,
+							"pyprojectPath", projectInfo.PyprojectPath,
+							"parentPyproject", parentPyproject)
+						break
+					}
+					currentDir = filepath.Dir(currentDir)
+				}
+			}
+		}
+	}
+
+	// Build sync command with appropriate package targeting
+	packages := []string{}
+	if packageName != "" {
+		packages = []string{packageName}
+	}
+
 	syncCmd := &UvSyncCommand{
 		WorkspaceDir: workspaceDir,
-		AllPackages:  true,
+		AllPackages:  useAllPackages,
 		NoDev:        noDev,
-		Packages:     []string{}, // Empty means sync all packages
+		Packages:     packages,
 	}
 
 	ib.progressReporter.UpdateProgress(StageBuildPackages, "Syncing workspace dependencies")
@@ -2253,6 +2349,11 @@ func (ib *IncrementalBuilder) copySourceFilesSimple(ctx context.Context, input *
 
 					for _, entry := range entries {
 						if entry.IsDir() {
+							// Skip virtual environments and build artifacts
+							if ib.contentFilter != nil && ib.contentFilter.ShouldExclude(entry.Name()) {
+								slog.Debug("skipping excluded directory", "name", entry.Name())
+								continue
+							}
 							dirsToInclude = append(dirsToInclude, entry.Name())
 						} else if strings.HasSuffix(entry.Name(), ".py") {
 							rootFilesToInclude = append(rootFilesToInclude, entry.Name())
