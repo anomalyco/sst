@@ -20,6 +20,7 @@ type UVSource struct {
 	Tag          string `toml:"tag"`
 	Rev          string `toml:"rev"`
 	Subdirectory string `toml:"subdirectory"`
+	Workspace    bool   `toml:"workspace"` // For workspace members: { workspace = true }
 }
 
 // ProjectResolver provides simplified Python project resolution without layout classification
@@ -468,12 +469,15 @@ func (pr *ProjectResolver) validateUVSource(sourceName string, source UVSource) 
 	if source.Git != "" {
 		sourceTypes++
 	}
+	if source.Workspace {
+		sourceTypes++
+	}
 
 	if sourceTypes == 0 {
-		return fmt.Errorf("no source specified (must have path, url, or git)")
+		return fmt.Errorf("no source specified (must have path, url, git, or workspace)")
 	}
 	if sourceTypes > 1 {
-		return fmt.Errorf("multiple source types specified (use only one of path, url, or git)")
+		return fmt.Errorf("multiple source types specified (use only one of path, url, git, or workspace)")
 	}
 
 	// For local path sources, we could validate they exist, but we'll be permissive

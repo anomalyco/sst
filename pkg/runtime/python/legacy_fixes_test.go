@@ -90,9 +90,9 @@ boto3>=1.34.0`
 		}
 
 		ib := &IncrementalBuilder{}
-		err = ib.filterWorkspacePackagesFromRequirements(inputPath, outputPath, projectInfo)
+		_, err = ib.filterWorkspacePackagesFromRequirementsAndGetPaths(inputPath, outputPath, projectInfo, tempDir)
 		if err != nil {
-			t.Fatalf("filterWorkspacePackagesFromRequirements failed: %v", err)
+			t.Fatalf("filterWorkspacePackagesFromRequirementsAndGetPaths failed: %v", err)
 		}
 
 		// Read filtered content

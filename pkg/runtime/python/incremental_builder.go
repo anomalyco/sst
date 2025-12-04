@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -2020,6 +2021,12 @@ func (ib *IncrementalBuilder) generateRequirementsFile(ctx context.Context, inpu
 		workspaceDir = filepath.Dir(projectInfo.PyprojectPath)
 	}
 
+	slog.Info("generateRequirementsFile starting",
+		"pyprojectPath", projectInfo.PyprojectPath,
+		"sourceRoot", projectInfo.SourceRoot,
+		"workspaceDir", workspaceDir,
+		"outputFile", outputFile)
+
 	// Check if this is a source code project (not a buildable package)
 	// If so, include dev dependencies since they might contain runtime deps
 	noDev := true
@@ -2041,21 +2048,34 @@ func (ib *IncrementalBuilder) generateRequirementsFile(ctx context.Context, inpu
 	useAllPackages := true
 
 	if projectInfo.PyprojectPath != "" {
+		slog.Info("checking for workspace member status", "pyprojectPath", projectInfo.PyprojectPath)
 		if config, err := ib.projectResolver.ParsePyprojectToml(projectInfo.PyprojectPath); err == nil {
+			slog.Info("parsed pyproject.toml", "projectName", config.Project.Name)
 			if config.Project.Name != "" {
 				// Check if this pyproject.toml is in a subdirectory (workspace member)
 				// by walking up to find a parent pyproject.toml (workspace root)
 				pyprojectDir := filepath.Dir(projectInfo.PyprojectPath)
 				currentDir := filepath.Dir(pyprojectDir)
 
+				slog.Info("walking up to find parent pyproject.toml",
+					"pyprojectDir", pyprojectDir,
+					"startingDir", currentDir,
+					"sourceRoot", projectInfo.SourceRoot)
+
 				// Walk up to find any parent pyproject.toml
+				iterCount := 0
 				for currentDir != "/" && currentDir != "." && currentDir != projectInfo.SourceRoot {
+					iterCount++
 					parentPyproject := filepath.Join(currentDir, "pyproject.toml")
+					slog.Info("checking for parent pyproject.toml",
+						"iteration", iterCount,
+						"currentDir", currentDir,
+						"checking", parentPyproject)
 					if _, err := os.Stat(parentPyproject); err == nil {
 						// Found a parent pyproject.toml - this is a workspace member
 						packageName = config.Project.Name
 						useAllPackages = false
-						slog.Info("using per-package dependency export for workspace member",
+						slog.Info("found parent pyproject.toml - using per-package dependency export",
 							"package", packageName,
 							"pyprojectPath", projectInfo.PyprojectPath,
 							"parentPyproject", parentPyproject)
@@ -2063,9 +2083,24 @@ func (ib *IncrementalBuilder) generateRequirementsFile(ctx context.Context, inpu
 					}
 					currentDir = filepath.Dir(currentDir)
 				}
+				if useAllPackages {
+					slog.Info("no parent pyproject.toml found - using all-packages export",
+						"finalDir", currentDir,
+						"iterations", iterCount,
+						"stoppedBecause", fmt.Sprintf("currentDir=%s, sourceRoot=%s, isRoot=%v, isDot=%v",
+							currentDir, projectInfo.SourceRoot,
+							currentDir == "/", currentDir == "."))
+				}
 			}
+		} else {
+			slog.Warn("failed to parse pyproject.toml", "path", projectInfo.PyprojectPath, "error", err)
 		}
 	}
+
+	slog.Info("generateRequirementsFile decision",
+		"packageName", packageName,
+		"useAllPackages", useAllPackages,
+		"workspaceDir", workspaceDir)
 
 	exportCmd := &UvExportCommand{
 		WorkspaceDir:    workspaceDir,
@@ -2476,10 +2511,43 @@ func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input 
 		return nil
 	}
 
-	// Filter out workspace packages from requirements.txt to avoid installation conflicts
+	// Get workspace root directory - find the topmost pyproject.toml (UV workspace root)
+	workspaceRoot := projectInfo.SourceRoot
+	if projectInfo.PyprojectPath != "" {
+		// Walk up from pyproject.toml to find the workspace root (where the root pyproject.toml with [tool.uv.workspace] is)
+		// We want to find the HIGHEST directory that contains a pyproject.toml
+		pyprojectDir := filepath.Dir(projectInfo.PyprojectPath)
+		workspaceRoot = pyprojectDir // Start with the current pyproject.toml location
+
+		// Walk up the directory tree looking for pyproject.toml files
+		currentDir := pyprojectDir
+		for {
+			parentDir := filepath.Dir(currentDir)
+			// Stop if we've reached the root or haven't moved
+			if parentDir == currentDir || parentDir == "/" || parentDir == "." {
+				break
+			}
+			parentPyproject := filepath.Join(parentDir, "pyproject.toml")
+			if _, err := os.Stat(parentPyproject); err == nil {
+				// Found a pyproject.toml in parent, this becomes our new potential workspace root
+				workspaceRoot = parentDir
+				slog.Debug("found pyproject.toml in parent", "parentDir", parentDir)
+			}
+			currentDir = parentDir
+		}
+	}
+	slog.Info("determined workspace root for dependency installation", "workspaceRoot", workspaceRoot, "pyprojectPath", projectInfo.PyprojectPath)
+
+	// Filter out workspace packages from requirements.txt and copy their source code
 	filteredRequirementsPath := filepath.Join(input.Out(), "requirements-filtered.txt")
-	if err := ib.filterWorkspacePackagesFromRequirements(requirementsPath, filteredRequirementsPath, projectInfo); err != nil {
+	workspacePackagePaths, err := ib.filterWorkspacePackagesFromRequirementsAndGetPaths(requirementsPath, filteredRequirementsPath, projectInfo, workspaceRoot)
+	if err != nil {
 		return fmt.Errorf("failed to filter workspace packages from requirements: %w", err)
+	}
+
+	// Copy workspace package source code to artifact
+	if err := ib.copyWorkspacePackageSources(ctx, workspacePackagePaths, workspaceRoot, input.Out()); err != nil {
+		return fmt.Errorf("failed to copy workspace package sources: %w", err)
 	}
 
 	// Use the filtered requirements file
@@ -2536,16 +2604,18 @@ func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input 
 	return nil
 }
 
-// filterWorkspacePackagesFromRequirements filters out workspace packages from requirements.txt
-func (ib *IncrementalBuilder) filterWorkspacePackagesFromRequirements(inputPath, outputPath string, projectInfo *ProjectInfo) error {
+// filterWorkspacePackagesFromRequirementsAndGetPaths filters out workspace packages from requirements.txt
+// and returns the paths of the filtered workspace packages for source copying
+func (ib *IncrementalBuilder) filterWorkspacePackagesFromRequirementsAndGetPaths(inputPath, outputPath string, projectInfo *ProjectInfo, workspaceRoot string) ([]string, error) {
 	// Read the original requirements.txt
 	content, err := os.ReadFile(inputPath)
 	if err != nil {
-		return fmt.Errorf("failed to read requirements file: %w", err)
+		return nil, fmt.Errorf("failed to read requirements file: %w", err)
 	}
 
 	lines := strings.Split(string(content), "\n")
 	var filteredLines []string
+	var workspacePackagePaths []string
 
 	// Get workspace package names
 	workspacePackages := ib.getWorkspacePackageNames(projectInfo)
@@ -2567,6 +2637,12 @@ func (ib *IncrementalBuilder) filterWorkspacePackagesFromRequirements(inputPath,
 			if strings.HasPrefix(editablePath, "./") || strings.HasPrefix(editablePath, "../") ||
 				strings.HasPrefix(editablePath, "/") && !strings.Contains(editablePath, "://") {
 				slog.Debug("filtering out editable local path from requirements", "line", line)
+				// Record the path for source copying
+				fullPath := filepath.Join(workspaceRoot, editablePath)
+				if strings.HasPrefix(editablePath, "./") {
+					fullPath = filepath.Join(workspaceRoot, strings.TrimPrefix(editablePath, "./"))
+				}
+				workspacePackagePaths = append(workspacePackagePaths, fullPath)
 				continue
 			}
 
@@ -2575,6 +2651,11 @@ func (ib *IncrementalBuilder) filterWorkspacePackagesFromRequirements(inputPath,
 			for _, pkg := range workspacePackages {
 				if strings.Contains(editablePath, "./"+pkg) || strings.Contains(editablePath, pkg) {
 					slog.Debug("filtering out workspace package from requirements", "line", line, "package", pkg)
+					fullPath := filepath.Join(workspaceRoot, editablePath)
+					if strings.HasPrefix(editablePath, "./") {
+						fullPath = filepath.Join(workspaceRoot, strings.TrimPrefix(editablePath, "./"))
+					}
+					workspacePackagePaths = append(workspacePackagePaths, fullPath)
 					shouldSkip = true
 					break
 				}
@@ -2609,15 +2690,159 @@ func (ib *IncrementalBuilder) filterWorkspacePackagesFromRequirements(inputPath,
 	// Write the filtered requirements.txt
 	filteredContent := strings.Join(filteredLines, "\n")
 	if err := os.WriteFile(outputPath, []byte(filteredContent), 0644); err != nil {
-		return fmt.Errorf("failed to write filtered requirements file: %w", err)
+		return nil, fmt.Errorf("failed to write filtered requirements file: %w", err)
 	}
 
 	slog.Info("filtered workspace packages from requirements.txt",
 		"originalLines", len(lines),
 		"filteredLines", len(filteredLines),
-		"workspacePackages", workspacePackages)
+		"workspacePackages", workspacePackages,
+		"workspacePackagePaths", workspacePackagePaths)
+
+	return workspacePackagePaths, nil
+}
+
+// copyWorkspacePackageSources copies workspace package source code to the artifact directory
+func (ib *IncrementalBuilder) copyWorkspacePackageSources(ctx context.Context, packagePaths []string, workspaceRoot string, artifactDir string) error {
+	if len(packagePaths) == 0 {
+		return nil
+	}
+
+	slog.Info("copying workspace package sources to artifact",
+		"packagePaths", packagePaths,
+		"workspaceRoot", workspaceRoot,
+		"artifactDir", artifactDir)
+
+	for _, pkgPath := range packagePaths {
+		// Parse the package's pyproject.toml to determine the package name and source layout
+		pyprojectPath := filepath.Join(pkgPath, "pyproject.toml")
+		if _, err := os.Stat(pyprojectPath); os.IsNotExist(err) {
+			slog.Warn("workspace package has no pyproject.toml, skipping", "path", pkgPath)
+			continue
+		}
+
+		config, err := ib.projectResolver.ParsePyprojectToml(pyprojectPath)
+		if err != nil {
+			slog.Warn("failed to parse workspace package pyproject.toml", "path", pyprojectPath, "error", err)
+			continue
+		}
+
+		packageName := config.Project.Name
+		if packageName == "" {
+			packageName = filepath.Base(pkgPath)
+		}
+
+		// Determine source directory based on hatch configuration or convention
+		// Check for src/{package_name}/ layout first (common convention)
+		srcLayoutPath := filepath.Join(pkgPath, "src", packageName)
+		if _, err := os.Stat(srcLayoutPath); err == nil {
+			// Copy src/{package_name}/ as {package_name}/ in artifact
+			destPath := filepath.Join(artifactDir, packageName)
+			slog.Info("copying workspace package with src layout",
+				"package", packageName,
+				"source", srcLayoutPath,
+				"dest", destPath)
+
+			if err := ib.copyDirectory(srcLayoutPath, destPath); err != nil {
+				return fmt.Errorf("failed to copy workspace package %s: %w", packageName, err)
+			}
+			continue
+		}
+
+		// Check for flat src/ layout (src/ contains the package code directly)
+		srcPath := filepath.Join(pkgPath, "src")
+		if _, err := os.Stat(srcPath); err == nil {
+			// Check if src/ contains an __init__.py (flat package) or subdirectories
+			srcInitPath := filepath.Join(srcPath, "__init__.py")
+			if _, err := os.Stat(srcInitPath); err == nil {
+				// Flat src layout - copy src/ as {package_name}/
+				destPath := filepath.Join(artifactDir, packageName)
+				slog.Info("copying workspace package with flat src layout",
+					"package", packageName,
+					"source", srcPath,
+					"dest", destPath)
+
+				if err := ib.copyDirectory(srcPath, destPath); err != nil {
+					return fmt.Errorf("failed to copy workspace package %s: %w", packageName, err)
+				}
+				continue
+			}
+		}
+
+		// Check for {package_name}/ directory at package root
+		pkgDirPath := filepath.Join(pkgPath, packageName)
+		if _, err := os.Stat(pkgDirPath); err == nil {
+			destPath := filepath.Join(artifactDir, packageName)
+			slog.Info("copying workspace package from root directory",
+				"package", packageName,
+				"source", pkgDirPath,
+				"dest", destPath)
+
+			if err := ib.copyDirectory(pkgDirPath, destPath); err != nil {
+				return fmt.Errorf("failed to copy workspace package %s: %w", packageName, err)
+			}
+			continue
+		}
+
+		slog.Warn("could not determine source layout for workspace package",
+			"package", packageName,
+			"path", pkgPath)
+	}
 
 	return nil
+}
+
+// copyDirectory recursively copies a directory
+func (ib *IncrementalBuilder) copyDirectory(src, dst string) error {
+	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Skip __pycache__ directories
+		if info.IsDir() && info.Name() == "__pycache__" {
+			return filepath.SkipDir
+		}
+
+		// Skip .pyc files
+		if !info.IsDir() && strings.HasSuffix(info.Name(), ".pyc") {
+			return nil
+		}
+
+		// Calculate relative path and destination
+		relPath, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		dstPath := filepath.Join(dst, relPath)
+
+		if info.IsDir() {
+			return os.MkdirAll(dstPath, info.Mode())
+		}
+
+		// Copy file
+		srcFile, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer srcFile.Close()
+
+		if err := os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
+			return err
+		}
+
+		dstFile, err := os.Create(dstPath)
+		if err != nil {
+			return err
+		}
+		defer dstFile.Close()
+
+		if _, err := io.Copy(dstFile, srcFile); err != nil {
+			return err
+		}
+
+		return os.Chmod(dstPath, info.Mode())
+	})
 }
 
 // findSitePackagesPath finds the site-packages directory in the venv
