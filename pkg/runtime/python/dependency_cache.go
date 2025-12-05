@@ -387,6 +387,26 @@ func (dc *DependencyCache) copyDirectory(src string, dst string) error {
 			return err
 		}
 
+		// Skip unwanted directories (shouldn't be in cache, but be defensive)
+		if info.IsDir() {
+			dirName := filepath.Base(path)
+			skipDirs := []string{
+				".venv",
+				"venv",
+				"env",
+				".env",
+				"__pycache__",
+				".pytest_cache",
+				".mypy_cache",
+				"node_modules",
+			}
+			for _, skipDir := range skipDirs {
+				if dirName == skipDir {
+					return filepath.SkipDir
+				}
+			}
+		}
+
 		dstPath := filepath.Join(dst, relPath)
 
 		if info.IsDir() {

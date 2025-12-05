@@ -445,11 +445,15 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 			"files", pendingFiles,
 			"elapsed", time.Since(startTime))
 
-		// Publish event so it shows in dev screen
+		// Publish event so it shows in dev screen with file details
+		fileList := strings.Join(pendingFiles, ", ")
+		if len(fileList) > 100 {
+			fileList = fileList[:100] + "..."
+		}
 		bus.Publish(&events.FunctionBuildProgressEvent{
 			FunctionID: input.FunctionID,
 			Stage:      "LazyRestart",
-			Message:    fmt.Sprintf("Pending changes (%d files), will restart on invoke", len(pendingFiles)),
+			Message:    fmt.Sprintf("Pending changes (%d files): %s", len(pendingFiles), fileList),
 		})
 
 		// Create a dummy process that exits immediately
@@ -618,22 +622,32 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 }
 
 func (r *PythonRuntime) ShouldRebuild(functionID string, file string) bool {
-	slog.Info("📝 ShouldRebuild called",
+	slog.Debug("📝 ShouldRebuild called",
 		"functionID", functionID,
 		"file", file)
 
-	// Fast path: Check if the file is relevant for this function first
-	// This prevents expensive operations for irrelevant files
-	if !r.isRelevantFile(file) {
-		slog.Info("📝 ShouldRebuild: file not relevant, returning FALSE",
+	// CRITICAL: Check if file should be ignored FIRST to prevent infinite loops
+	// This must come before isRelevantFile check
+	if r.shouldIgnoreFile(file) {
+		slog.Debug("📝 ShouldRebuild: file should be ignored, returning FALSE",
 			"functionID", functionID,
 			"file", file)
 		return false
 	}
 
-	slog.Info("📝 ShouldRebuild: file IS relevant",
+	// Fast path: Check if the file is relevant for this function
+	// This prevents expensive operations for irrelevant files
+	if !r.isRelevantFile(file) {
+		slog.Debug("📝 ShouldRebuild: file not relevant, returning FALSE",
+			"functionID", functionID,
+			"file", file)
+		return false
+	}
+
+	slog.Error("� ShoudldRebuild: file IS relevant, may trigger restart",
 		"functionID", functionID,
-		"file", file)
+		"file", file,
+		"absolutePath", file)
 
 	// Rate limiting: prevent excessive rebuild checks
 	// Apply rate limiting early to avoid expensive operations
@@ -659,9 +673,9 @@ func (r *PythonRuntime) ShouldRebuild(functionID string, file string) bool {
 		"hasChangeDetector", r.changeDetector != nil,
 		"hasBuildCache", r.buildCache != nil)
 
-	// For Python files, track the change for incremental sync
-	// Return true to stop workers, but don't rebuild yet
-	// The worker will restart on next invocation and Run() will sync only changed files
+	// For Python files, check if we need to restart workers
+	// Modern layouts run from source, so changes are picked up automatically via uv run
+	// Legacy layouts copy files, so they need worker restarts
 	if strings.HasSuffix(file, ".py") {
 		r.mutex.Lock()
 
@@ -669,24 +683,17 @@ func (r *PythonRuntime) ShouldRebuild(functionID string, file string) bool {
 		r.fileChangeTime[file] = now
 
 		// Check if worker was already restarted after this file changed
-		// If the worker started AFTER the file's last change time, skip restart
 		if lastStart, exists := r.lastWorkerStart[functionID]; exists {
-			// Worker has been started before, check if it's newer than this file change
 			if lastStart.After(now) || lastStart.Equal(now) {
-				// Worker just started, definitely don't need to restart
 				r.mutex.Unlock()
 				slog.Info("📝 ShouldRebuild: worker just started, skipping restart",
 					"functionID", functionID,
-					"file", file,
-					"lastWorkerStart", lastStart,
-					"fileChangeTime", now)
+					"file", file)
 				return false
 			}
 
-			// Check if there are already pending changes for this function
-			// If yes, we don't need to restart again - it's already queued
+			// Check if there are already pending changes
 			if len(r.pendingChanges[functionID]) > 0 {
-				// Check if this file is already tracked
 				alreadyTracked := false
 				for _, f := range r.pendingChanges[functionID] {
 					if f == file {
@@ -696,10 +703,9 @@ func (r *PythonRuntime) ShouldRebuild(functionID string, file string) bool {
 				}
 				if alreadyTracked {
 					r.mutex.Unlock()
-					slog.Info("📝 ShouldRebuild: file already tracked in pending changes, skipping",
+					slog.Info("📝 ShouldRebuild: file already tracked, skipping",
 						"functionID", functionID,
-						"file", file,
-						"totalPendingChanges", len(r.pendingChanges[functionID]))
+						"file", file)
 					return false
 				}
 			}
@@ -710,16 +716,12 @@ func (r *PythonRuntime) ShouldRebuild(functionID string, file string) bool {
 			r.pendingChanges[functionID] = []string{}
 		}
 		r.pendingChanges[functionID] = append(r.pendingChanges[functionID], file)
-		slog.Info("📝 ShouldRebuild: Python file changed, tracking for lazy restart",
+		slog.Error("🚨 ShouldRebuild: Python file changed, will trigger restart",
 			"functionID", functionID,
 			"file", file,
 			"totalPendingChanges", len(r.pendingChanges[functionID]))
 		r.mutex.Unlock()
 
-		// Return true to stop workers
-		slog.Info("📝 ShouldRebuild: returning TRUE for Python file",
-			"functionID", functionID,
-			"file", file)
 		return true
 	}
 
@@ -1169,23 +1171,26 @@ func (r *PythonRuntime) isRelevantFile(file string) bool {
 
 // shouldIgnoreFile determines if a file should be ignored to prevent infinite rebuild loops
 func (r *PythonRuntime) shouldIgnoreFile(file string) bool {
+	// Normalize path separators for consistent matching
+	normalizedFile := filepath.ToSlash(file)
+
 	// Ignore build artifacts and cache directories that could cause feedback loops
 	ignorePaths := []string{
-		".sst/",          // SST cache and build artifacts
-		"__pycache__/",   // Python bytecode cache
-		".pytest_cache/", // Pytest cache
-		".mypy_cache/",   // MyPy cache
-		".coverage",      // Coverage files
-		"build/",         // Build directories
-		"dist/",          // Distribution directories
-		".git/",          // Git directory
-		"node_modules/",  // Node modules
-		".venv/",         // Virtual environments
-		"venv/",
-		"env/",
-		".tox/",       // Tox cache
-		".eggs/",      // Egg cache
-		"*.egg-info/", // Egg info
+		".sst",          // SST cache and build artifacts (matches .sst and .sst/*)
+		"__pycache__",   // Python bytecode cache
+		".pytest_cache", // Pytest cache
+		".mypy_cache",   // MyPy cache
+		".coverage",     // Coverage files
+		"build",         // Build directories
+		"dist",          // Distribution directories
+		".git",          // Git directory
+		"node_modules",  // Node modules
+		".venv",         // Virtual environments
+		"venv",
+		"env",
+		".tox",      // Tox cache
+		".eggs",     // Egg cache
+		".egg-info", // Egg info
 	}
 
 	// Ignore file extensions that are build artifacts
@@ -1199,12 +1204,17 @@ func (r *PythonRuntime) shouldIgnoreFile(file string) bool {
 	}
 
 	// Check if file path contains any ignore patterns
-	for _, ignorePath := range ignorePaths {
-		if strings.Contains(file, ignorePath) {
-			slog.Debug("ignoring file due to path pattern",
-				"file", file,
-				"pattern", ignorePath)
-			return true
+	// Split path into parts and check each part
+	pathParts := strings.Split(normalizedFile, "/")
+	for _, part := range pathParts {
+		for _, ignorePath := range ignorePaths {
+			if part == ignorePath || strings.HasPrefix(part, ignorePath) {
+				slog.Debug("ignoring file due to path pattern",
+					"file", file,
+					"pattern", ignorePath,
+					"matchedPart", part)
+				return true
+			}
 		}
 	}
 
@@ -2092,11 +2102,29 @@ func (r *PythonRuntime) copyPythonFiles(srcDir, destDir string) error {
 		if strings.HasPrefix(filepath.Base(path), ".") && info.IsDir() {
 			return filepath.SkipDir
 		}
-		if strings.Contains(relPath, "node_modules") || strings.Contains(relPath, "__pycache__") {
-			if info.IsDir() {
-				return filepath.SkipDir
+
+		// Skip virtual environments and other unwanted directories
+		if info.IsDir() {
+			dirName := filepath.Base(path)
+			skipDirs := []string{
+				"node_modules",
+				"__pycache__",
+				"venv",
+				"env",
+				".venv",
+				".env",
+				".tox",
+				"build",
+				"dist",
+				".pytest_cache",
+				".mypy_cache",
 			}
-			return nil
+			for _, skipDir := range skipDirs {
+				if dirName == skipDir {
+					slog.Debug("skipping directory during Python file copy", "dir", relPath)
+					return filepath.SkipDir
+				}
+			}
 		}
 
 		// Only copy Python files and directories
@@ -2346,6 +2374,39 @@ func (r *PythonRuntime) copyDirectory(src, dst string) error {
 		if err != nil {
 			return err
 		}
+
+		// Skip unwanted directories and files
+		if info.IsDir() {
+			// Check if this directory should be skipped
+			dirName := filepath.Base(path)
+			skipDirs := []string{
+				"__pycache__",
+				".pytest_cache",
+				".mypy_cache",
+				".ruff_cache",
+				".venv",
+				"venv",
+				"env",
+				".env",
+				"node_modules",
+				".git",
+				".svn",
+				".hg",
+				".tox",
+				"htmlcov",
+				".nyc_output",
+				"coverage",
+				"dist",
+				"build",
+			}
+			for _, skipDir := range skipDirs {
+				if dirName == skipDir {
+					slog.Debug("skipping directory during copy", "dir", relPath)
+					return filepath.SkipDir
+				}
+			}
+		}
+
 		destPath := filepath.Join(dst, relPath)
 
 		if info.IsDir() {
