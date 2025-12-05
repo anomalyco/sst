@@ -2634,10 +2634,6 @@ export class Function extends Component implements Link.Linkable {
     });
   }
 
-  // this is only because pulumi tries to set the property in the constructor
-  // when calling super(), without this, it throws an error about trying to set a property that only has a getter
-  private set url(value: Output<string | undefined>) {}
-  
   /**
    * The name of the Lambda function.
    */
