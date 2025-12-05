@@ -2511,11 +2511,11 @@ func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input 
 		return nil
 	}
 
-	// Get workspace root directory - find the topmost pyproject.toml (UV workspace root)
+	// Get workspace root directory - find the UV workspace root (pyproject.toml with [tool.uv.workspace])
 	workspaceRoot := projectInfo.SourceRoot
 	if projectInfo.PyprojectPath != "" {
-		// Walk up from pyproject.toml to find the workspace root (where the root pyproject.toml with [tool.uv.workspace] is)
-		// We want to find the HIGHEST directory that contains a pyproject.toml
+		// Walk up from pyproject.toml to find the workspace root
+		// The workspace root is the FIRST parent directory containing a pyproject.toml with [tool.uv.workspace]
 		pyprojectDir := filepath.Dir(projectInfo.PyprojectPath)
 		workspaceRoot = pyprojectDir // Start with the current pyproject.toml location
 
@@ -2529,9 +2529,15 @@ func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input 
 			}
 			parentPyproject := filepath.Join(parentDir, "pyproject.toml")
 			if _, err := os.Stat(parentPyproject); err == nil {
-				// Found a pyproject.toml in parent, this becomes our new potential workspace root
-				workspaceRoot = parentDir
-				slog.Debug("found pyproject.toml in parent", "parentDir", parentDir)
+				// Found a pyproject.toml in parent - check if it defines a UV workspace
+				if config, parseErr := ib.projectResolver.ParsePyprojectToml(parentPyproject); parseErr == nil {
+					if len(config.Tool.UV.Workspace.Members) > 0 {
+						// This pyproject.toml defines a UV workspace - use it as workspace root and stop
+						workspaceRoot = parentDir
+						slog.Debug("found UV workspace root", "parentDir", parentDir, "members", config.Tool.UV.Workspace.Members)
+						break // Stop at the first UV workspace we find
+					}
+				}
 			}
 			currentDir = parentDir
 		}
@@ -2784,6 +2790,25 @@ func (ib *IncrementalBuilder) copyWorkspacePackageSources(ctx context.Context, p
 			continue
 		}
 
+		// Check if the package directory itself is the package (has __init__.py at root)
+		// This handles the case where the directory name IS the package name
+		rootInitPath := filepath.Join(pkgPath, "__init__.py")
+		if _, err := os.Stat(rootInitPath); err == nil {
+			// The package directory itself is the package - copy it as {directory_name}/
+			dirName := filepath.Base(pkgPath)
+			destPath := filepath.Join(artifactDir, dirName)
+			slog.Info("copying workspace package as flat package directory",
+				"package", packageName,
+				"dirName", dirName,
+				"source", pkgPath,
+				"dest", destPath)
+
+			if err := ib.copyDirectory(pkgPath, destPath); err != nil {
+				return fmt.Errorf("failed to copy workspace package %s: %w", packageName, err)
+			}
+			continue
+		}
+
 		slog.Warn("could not determine source layout for workspace package",
 			"package", packageName,
 			"path", pkgPath)
@@ -2933,29 +2958,27 @@ func (ib *IncrementalBuilder) cleanupInstalledDependencies(targetDir string) err
 }
 
 // getWorkspacePackageNames returns a list of workspace package names
+// getWorkspacePackageNames returns a list of workspace package names by reading the workspace root's pyproject.toml
 func (ib *IncrementalBuilder) getWorkspacePackageNames(projectInfo *ProjectInfo) []string {
 	var packages []string
 
-	// Add the main package name
-	packageName := "unknown"
+	// Add the main package name from the service's pyproject.toml
 	if projectInfo.PyprojectPath != "" {
 		if config, err := ib.projectResolver.ParsePyprojectToml(projectInfo.PyprojectPath); err == nil {
 			if config.Project.Name != "" {
-				packageName = config.Project.Name
+				packages = append(packages, config.Project.Name)
 			} else if config.Tool.Poetry.Name != "" {
-				packageName = config.Tool.Poetry.Name
+				packages = append(packages, config.Tool.Poetry.Name)
+			}
+
+			// Also add any workspace packages referenced via { workspace = true }
+			for name, source := range config.Tool.UV.Sources {
+				if source.Workspace {
+					packages = append(packages, name)
+				}
 			}
 		}
 	}
-
-	if packageName != "" && packageName != "unknown" {
-		packages = append(packages, packageName)
-	}
-
-	// Add workspace package names if available
-	// This would need to be enhanced to read from pyproject.toml workspace members
-	// For now, we'll use common patterns
-	packages = append(packages, "core", "functions")
 
 	return packages
 }

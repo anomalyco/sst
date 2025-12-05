@@ -61,7 +61,7 @@ Each service's `pyproject.toml` should:
 
 1. Define a unique `[project].name`
 2. List only dependencies needed by that service
-3. Include `shared` as a path dependency if using shared utilities
+3. Reference `shared` using `{ workspace = true }` to include the shared utilities
 
 Example (`services/api/pyproject.toml`):
 
@@ -72,12 +72,28 @@ version = "0.1.0"
 dependencies = [
     "boto3>=1.34.0",
     "fastapi>=0.104.0",
-    "shared",  # Local shared package
+    "shared",  # Local shared package from workspace
 ]
 
+# Reference workspace members using { workspace = true }
+# This tells UV to resolve 'shared' from the workspace defined in root pyproject.toml
 [tool.uv.sources]
-shared = { path = "../../shared", editable = true }
+shared = { workspace = true }
 ```
+
+The root `pyproject.toml` defines which packages are workspace members:
+
+```toml
+[tool.uv.workspace]
+members = ["services/*", "shared"]
+```
+
+SST automatically:
+
+1. Detects workspace members and their dependencies
+2. Exports only the dependencies needed by each service
+3. Copies workspace package source code into Lambda artifacts
+4. Filters out editable installs that won't work in Lambda
 
 ## Setup
 

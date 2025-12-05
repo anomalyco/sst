@@ -27,7 +27,9 @@ packages = ["services", "shared"]
 packages = ["services", "shared"]
 
 [tool.uv.sources]
-shared = { path = "shared", editable = true }
+shared = { workspace = true }
 
+# UV workspace: services/* are workspace members, shared is also a member
+# Each service can reference 'shared' using { workspace = true } in their pyproject.toml
 [tool.uv.workspace]
-members = ["services/*"]
+members = ["services/*", "shared"]

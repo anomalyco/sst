@@ -16,5 +16,6 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["."]
 
+# Use workspace = true to reference the shared package from the UV workspace
 [tool.uv.sources]
-shared = { path = "../../shared", editable = true }
+shared = { workspace = true }
