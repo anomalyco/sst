@@ -78,6 +78,9 @@ export module task {
      * @default `"fargate"`
      */
     capacity?: "fargate" | "spot";
+    memory?: number;
+    cpu?: number;
+    storage?: number;
   }
 
   interface Task {
@@ -247,6 +250,9 @@ export module task {
           },
         },
         overrides: {
+          ...(options?.cpu ? { cpu: options.cpu } : {}),
+          ...(options?.memory ? { memory: options.memory } : {}),
+          ...(options?.storage ? { storage: options.storage } : {}),
           containerOverrides: resource.containers.map((name) => ({
             name,
             environment: Object.entries(environment ?? {}).map(
