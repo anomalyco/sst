@@ -1,5 +1,4 @@
 import { AwsOptions, client } from "./client.js";
-
 /**
  * The `task` client SDK is available through the following.
  *
@@ -78,8 +77,17 @@ export module task {
      * @default `"fargate"`
      */
     capacity?: "fargate" | "spot";
-    memory?: number;
-    cpu?: number;
+    /**
+     * The amount of memory allocated for this task. This value overrides the memory allocated in the task definition.
+     */
+    memory?: string;
+    /**
+     * The amount of CPU allocated for this task. This value overrides the CPU allocated in the task definition.
+     */
+    cpu?: string;
+    /**
+     * Ephemeral storage size in GiB allocated for this task. This value overrides the ephemeral storage allocated in the task definition.
+     */
     storage?: number;
   }
 
