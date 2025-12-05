@@ -252,7 +252,9 @@ export module task {
         overrides: {
           ...(options?.cpu ? { cpu: options.cpu } : {}),
           ...(options?.memory ? { memory: options.memory } : {}),
-          ...(options?.storage ? { storage: options.storage } : {}),
+          ...(options?.storage
+            ? { ephemeralStorage: { sizeInGiB: options.storage } }
+            : {}),
           containerOverrides: resource.containers.map((name) => ({
             name,
             environment: Object.entries(environment ?? {}).map(
