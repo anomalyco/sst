@@ -78,15 +78,15 @@ export module task {
      */
     capacity?: "fargate" | "spot";
     /**
-     * The amount of memory allocated for this task. This value overrides the memory allocated in the task definition.
+     * Overrides the memory allocated for this task in the task definition.
      */
-    memory?: string;
+    memory?: `${number} GB`;
     /**
-     * The amount of CPU allocated for this task. This value overrides the CPU allocated in the task definition.
+     * Overrides the CPU allocated for this task in the task definition.
      */
-    cpu?: string;
+    cpu?: `${number} vCPU`;
     /**
-     * Ephemeral storage size in GiB allocated for this task. This value overrides the ephemeral storage allocated in the task definition.
+     * Overrides the ephemeral storage (in GiB) allocated for this task in the task definition.
      */
     storage?: number;
   }
