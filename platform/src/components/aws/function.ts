@@ -1185,6 +1185,114 @@ export interface FunctionArgs {
            * ```
            */
           cache?: Input<boolean>;
+          /**
+           * Key-value pairs of [build args](https://docs.docker.com/build/guide/build-args/) to pass
+           * to the Docker build command.
+           *
+           * :::caution
+           * Build arguments are persisted in the image. Use `secrets` for sensitive values.
+           * :::
+           *
+           * @example
+           * ```ts
+           * {
+           *   python: {
+           *     container: {
+           *       buildArgs: {
+           *         GIT_COMMIT: "abc123"
+           *       }
+           *     }
+           *   }
+           * }
+           * ```
+           */
+          buildArgs?: Input<Record<string, Input<string>>>;
+          /**
+           * Key-value pairs of [build secrets](https://docs.docker.com/build/building/secrets/) to
+           * pass to the Docker build command.
+           *
+           * Unlike build arguments, secrets are not persisted in the final image. Use this for
+           * sensitive values like authentication tokens for private package registries.
+           *
+           * @example
+           * ```ts
+           * {
+           *   python: {
+           *     container: {
+           *       secrets: {
+           *         CODEARTIFACT_AUTH_TOKEN: process.env.CODEARTIFACT_AUTH_TOKEN
+           *       }
+           *     }
+           *   }
+           * }
+           * ```
+           *
+           * In your Dockerfile, access them using the `--mount=type=secret` syntax:
+           *
+           * ```dockerfile
+           * RUN --mount=type=secret,id=CODEARTIFACT_AUTH_TOKEN \
+           *   CODEARTIFACT_AUTH_TOKEN=$(cat /run/secrets/CODEARTIFACT_AUTH_TOKEN) \
+           *   pip install my-package
+           * ```
+           */
+          secrets?: Input<Record<string, Input<string>>>;
+          /**
+           * The stage to build up to in a [multi-stage Dockerfile](https://docs.docker.com/build/building/multi-stage/#stop-at-a-specific-build-stage).
+           *
+           * @example
+           * ```ts
+           * {
+           *   python: {
+           *     container: {
+           *       target: "production"
+           *     }
+           *   }
+           * }
+           * ```
+           */
+          target?: Input<string>;
+          /**
+           * Set the [network mode](https://docs.docker.com/reference/cli/docker/buildx/build/#network)
+           * for RUN instructions during the Docker build.
+           *
+           * @example
+           * ```ts
+           * {
+           *   python: {
+           *     container: {
+           *       network: "host"
+           *     }
+           *   }
+           * }
+           * ```
+           */
+          network?: Input<"default" | "host" | "none">;
+          /**
+           * [SSH agent socket or keys](https://docs.docker.com/build/building/secrets/#ssh-mounts)
+           * to expose to the Docker build.
+           *
+           * Use this when your build needs to access private Git repositories over SSH.
+           *
+           * @example
+           * ```ts
+           * {
+           *   python: {
+           *     container: {
+           *       ssh: {
+           *         default: ["$SSH_AUTH_SOCK"]
+           *       }
+           *     }
+           *   }
+           * }
+           * ```
+           *
+           * In your Dockerfile, access them using the `--mount=type=ssh` syntax:
+           *
+           * ```dockerfile
+           * RUN --mount=type=ssh git clone git@github.com:org/private-repo.git
+           * ```
+           */
+          ssh?: Input<Record<string, Input<Input<string>[]>>>;
         }
     >;
   }>;
@@ -2231,14 +2339,20 @@ export class Function extends Component implements Link.Linkable {
       // The build artifact directory already exists, with all the user code and
       // config files. It also has the dockerfile, we need to now just build and push to
       // the container registry.
-      return all([isContainer, dev, bundle, containerCache]).apply(
+      return all([isContainer, dev, bundle, containerCache, args.python]).apply(
         ([
           isContainer,
           dev,
           bundle, // We need the bundle to be resolved because of implicit dockerfiles even though we don't use it here
           containerCache,
+          pythonArgs,
         ]) => {
           if (!isContainer || dev) return;
+
+          const containerOpts =
+            typeof pythonArgs?.container === "object"
+              ? pythonArgs.container
+              : undefined;
 
           const authToken = ecr.getAuthorizationTokenOutput({
             registryId: bootstrapData.assetEcrRegistryId,
@@ -2255,6 +2369,16 @@ export class Function extends Component implements Link.Linkable {
                   `${name}-src`,
                 ),
               },
+              buildArgs: containerOpts?.buildArgs,
+              secrets: containerOpts?.secrets,
+              target: containerOpts?.target,
+              network: containerOpts?.network,
+              ssh: containerOpts?.ssh
+                ? Object.entries(containerOpts.ssh).map(([id, paths]) => ({
+                    id,
+                    paths,
+                  }))
+                : undefined,
               ...(containerCache !== false
                 ? {
                     cacheFrom: [
