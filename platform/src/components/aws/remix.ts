@@ -422,7 +422,7 @@ export class Remix extends SsrSite {
     super(__pulumiType, name, args, opts);
   }
 
-  protected normalizeBuildCommand() { }
+  protected normalizeBuildCommand() {}
 
   protected buildPlan(
     outputPath: Output<string>,
@@ -478,6 +478,7 @@ export class Remix extends SsrSite {
           if (!file) return;
 
           try {
+            // @ts-ignore
             const vite = await import("vite");
             const config = await vite.loadConfigFromFile(
               { command: "build", mode: "production" },

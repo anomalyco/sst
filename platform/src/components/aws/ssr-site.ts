@@ -497,9 +497,7 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
    * Or reference an existing VPC.
    *
    * ```js title="sst.config.ts"
-   * const myVpc = sst.aws.Vpc.get("MyVpc", {
-   *   id: "vpc-12345678901234567"
-   * });
+   * const myVpc = sst.aws.Vpc.get("MyVpc", "vpc-12345678901234567");
    * ```
    *
    * And pass it in.
@@ -904,10 +902,6 @@ async function handler(event) {
         edge: false,
         server: server.arn,
       },
-      _dev: {
-        ...dev.outputs,
-        aws: { role: server.nodes.role.arn },
-      },
     });
 
     function validateDeprecatedProps() {
@@ -1131,10 +1125,13 @@ async function handler(event) {
                 ),
                 vpc: args.vpc,
                 nodejs: {
-                  format: "esm" as const,
-                  install: args.server?.install,
-                  loader: args.server?.loader,
                   ...planServer.nodejs,
+                  format: "esm" as const,
+                  install: output(args.server?.install).apply((install) => [
+                    ...(install ?? []),
+                    ...(planServer.nodejs?.install ?? []),
+                  ]),
+                  loader: args.server?.loader ?? planServer.nodejs?.loader,
                 },
                 environment: output(args.environment).apply((environment) => ({
                   ...environment,
