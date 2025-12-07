@@ -2,6 +2,7 @@ package python
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -163,6 +165,9 @@ type IncrementalBuilder struct {
 
 	// Removed fallback manager - using direct error handling instead
 
+	// syncCompleted tracks if uv sync has been run for this build session
+	syncCompleted map[string]bool // workspaceDir -> whether sync completed
+
 	// mutex protects concurrent access
 	mutex sync.RWMutex
 
@@ -293,6 +298,9 @@ type BuildResult struct {
 
 	// BuildPlan contains the build plan that was executed
 	BuildPlan *BuildPlan
+
+	// DependencyAnalysis caches the dependency analysis to avoid re-analyzing
+	DependencyAnalysis *DependencyAnalysis
 }
 
 // NewIncrementalBuilder creates a new incremental builder with the given configuration
@@ -410,6 +418,7 @@ func NewIncrementalBuilder(config IncrementalBuilderConfig) (*IncrementalBuilder
 		dependencyCache:    dependencyCache,
 		progressReporter:   progressReporter,
 		contentFilter:      contentFilter,
+		syncCompleted:      make(map[string]bool),
 		// fallbackManager removed
 		config: config,
 	}, nil
@@ -559,7 +568,8 @@ func (ib *IncrementalBuilder) buildInternal(ctx context.Context, input *runtime.
 	// Execute build plan with error recovery
 	ib.progressReporter.StartStage(StageBuildPackages, "Building packages")
 
-	buildResult, err := ib.executeBuildPlan(ctx, input, projectInfo, buildPlan)
+	// Pass dependencies to executeBuildPlan so it can cache them in the result
+	buildResult, err := ib.executeBuildPlan(ctx, input, projectInfo, buildPlan, dependencies)
 	if err != nil {
 		// Try to recover from build failures
 		if pythonErr, ok := err.(*PythonRuntimeError); ok {
@@ -593,8 +603,12 @@ func (ib *IncrementalBuilder) buildInternal(ctx context.Context, input *runtime.
 	// Update cache with build results
 	ib.progressReporter.StartStage(StagePostProcess, "Post-processing build results")
 
-	if err := ib.updateCacheAfterBuild(input, projectInfo, buildResult); err != nil {
-		slog.Warn("failed to update cache after build", "error", err)
+	// Skip cache updates during deployment - they're only useful for dev mode
+	// This saves ~17 seconds per function during deployment
+	if input.Dev {
+		if err := ib.updateCacheAfterBuild(input, projectInfo, buildResult); err != nil {
+			slog.Warn("failed to update cache after build", "error", err)
+		}
 	}
 
 	ib.progressReporter.CompleteStage(StagePostProcess, "Post-processing completed")
@@ -702,7 +716,7 @@ func (ib *IncrementalBuilder) tryUseCachedResult(ctx context.Context, input *run
 }
 
 // executeBuildPlan executes the build plan and builds the necessary packages
-func (ib *IncrementalBuilder) executeBuildPlan(ctx context.Context, input *runtime.BuildInput, projectInfo *ProjectInfo, plan *BuildPlan) (*BuildResult, error) {
+func (ib *IncrementalBuilder) executeBuildPlan(ctx context.Context, input *runtime.BuildInput, projectInfo *ProjectInfo, plan *BuildPlan, dependencies *DependencyAnalysis) (*BuildResult, error) {
 	// Add nil checks to prevent segfaults
 	if ib == nil {
 		return nil, fmt.Errorf("incremental builder is nil")
@@ -718,13 +732,14 @@ func (ib *IncrementalBuilder) executeBuildPlan(ctx context.Context, input *runti
 	}
 
 	result := &BuildResult{
-		Success:        true,
-		BuildPlan:      plan,
-		PackagesBuilt:  []string{},
-		PackagesCached: []string{},
-		Errors:         []string{},
-		Warnings:       []string{},
-		BuildDuration:  0,
+		Success:            true,
+		BuildPlan:          plan,
+		PackagesBuilt:      []string{},
+		PackagesCached:     []string{},
+		Errors:             []string{},
+		Warnings:           []string{},
+		BuildDuration:      0,
+		DependencyAnalysis: dependencies, // Cache for later use
 	}
 
 	startTime := time.Now()
@@ -768,6 +783,7 @@ func (ib *IncrementalBuilder) executeBuildPlan(ctx context.Context, input *runti
 
 	// Install dependencies with caching if needed
 	if !input.IsContainer || input.Dev {
+		ib.progressReporter.UpdateProgress(StageBuildPackages, "Installing dependencies")
 		if err := ib.installDependenciesForBuild(ctx, input, projectInfo, plan, result); err != nil {
 			result.Success = false
 			result.Errors = append(result.Errors, err.Error())
@@ -775,7 +791,7 @@ func (ib *IncrementalBuilder) executeBuildPlan(ctx context.Context, input *runti
 		}
 	}
 
-	// Create final build output
+	// Create final build output (pass result which contains cached dependency analysis)
 	buildOutput, err := ib.createFinalBuildOutput(ctx, input, projectInfo, result)
 	if err != nil {
 		result.Success = false
@@ -1027,7 +1043,8 @@ func (ib *IncrementalBuilder) buildPackage(ctx context.Context, input *runtime.B
 // createFinalBuildOutput creates the final build output from the build results
 func (ib *IncrementalBuilder) createFinalBuildOutput(ctx context.Context, input *runtime.BuildInput, projectInfo *ProjectInfo, result *BuildResult) (*runtime.BuildOutput, error) {
 	// Copy source directories that weren't built as packages
-	if err := ib.copySourceDirectories(ctx, input, projectInfo); err != nil {
+	// Pass cached dependency analysis to avoid expensive re-analysis
+	if err := ib.copySourceDirectories(ctx, input, projectInfo, result.DependencyAnalysis); err != nil {
 		return nil, fmt.Errorf("failed to copy source directories: %w", err)
 	}
 
@@ -1063,15 +1080,22 @@ func (ib *IncrementalBuilder) createFinalBuildOutput(ctx context.Context, input 
 }
 
 // copySourceDirectories copies source directories that weren't built as packages
-func (ib *IncrementalBuilder) copySourceDirectories(ctx context.Context, input *runtime.BuildInput, projectInfo *ProjectInfo) error {
-	// Get dependency analysis to find local packages
-	analyzer := NewDependencyAnalyzer(DependencyAnalyzerConfig{
-		ProjectResolver: ib.projectResolver,
-	})
+func (ib *IncrementalBuilder) copySourceDirectories(ctx context.Context, input *runtime.BuildInput, projectInfo *ProjectInfo, cachedAnalysis *DependencyAnalysis) error {
+	var analysis *DependencyAnalysis
+	var err error
 
-	analysis, err := analyzer.AnalyzeDependencies(ctx, projectInfo)
-	if err != nil {
-		return fmt.Errorf("failed to analyze dependencies for source copying: %w", err)
+	// Use cached analysis if available to avoid expensive re-analysis
+	if cachedAnalysis != nil {
+		analysis = cachedAnalysis
+	} else {
+		// Fallback: analyze dependencies if not cached
+		analyzer := NewDependencyAnalyzer(DependencyAnalyzerConfig{
+			ProjectResolver: ib.projectResolver,
+		})
+		analysis, err = analyzer.AnalyzeDependencies(ctx, projectInfo)
+		if err != nil {
+			return fmt.Errorf("failed to analyze dependencies for source copying: %w", err)
+		}
 	}
 
 	// Copy source directories that are not buildable packages
@@ -1991,9 +2015,9 @@ func (ib *IncrementalBuilder) getDependencyCacheStats() (*DependencyCacheStats, 
 
 // installDependenciesForBuild installs dependencies for the build
 func (ib *IncrementalBuilder) installDependenciesForBuild(ctx context.Context, input *runtime.BuildInput, projectInfo *ProjectInfo, plan *BuildPlan, result *BuildResult) error {
-	// Generate requirements file first to get the dependency list
+	// Generate requirements file - uses shared global file for all functions in same workspace
 	requirementsFile := filepath.Join(input.Out(), "requirements.txt")
-	if err := ib.generateRequirementsFile(ctx, input, projectInfo, requirementsFile); err != nil {
+	if err := ib.generateOrCopyRequirementsFile(ctx, input, projectInfo, requirementsFile); err != nil {
 		return fmt.Errorf("failed to generate requirements file: %w", err)
 	}
 
@@ -2013,9 +2037,10 @@ func (ib *IncrementalBuilder) installDependenciesForBuild(ctx context.Context, i
 	return nil
 }
 
-// generateRequirementsFile generates a requirements.txt file for the build
-func (ib *IncrementalBuilder) generateRequirementsFile(ctx context.Context, input *runtime.BuildInput, projectInfo *ProjectInfo, outputFile string) error {
-	// Use UV export to generate requirements
+// generateOrCopyRequirementsFile generates requirements.txt once per workspace in a shared location,
+// then copies it to each function's output directory
+func (ib *IncrementalBuilder) generateOrCopyRequirementsFile(ctx context.Context, input *runtime.BuildInput, projectInfo *ProjectInfo, outputFile string) error {
+	// Use UV export to generate requirements - supports both all-packages and per-package modes
 	workspaceDir := projectInfo.SourceRoot
 	if projectInfo.PyprojectPath != "" {
 		workspaceDir = filepath.Dir(projectInfo.PyprojectPath)
@@ -2111,7 +2136,81 @@ func (ib *IncrementalBuilder) generateRequirementsFile(ctx context.Context, inpu
 		AllPackages:     useAllPackages,
 	}
 
-	return ib.uvRunner.ExecuteExportCommand(ctx, exportCmd)
+	// Check if we've already generated requirements.txt for this workspace
+	globalRequirementsFilesMutex.Lock()
+	sharedRequirementsFile, exists := globalRequirementsFiles[workspaceDir]
+	globalRequirementsFilesMutex.Unlock()
+
+	if exists {
+		// Copy the shared requirements.txt to this function's output directory
+		data, err := os.ReadFile(sharedRequirementsFile)
+		if err != nil {
+			return fmt.Errorf("failed to read shared requirements.txt: %w", err)
+		}
+		if err := os.WriteFile(outputFile, data, 0644); err != nil {
+			return fmt.Errorf("failed to write requirements.txt: %w", err)
+		}
+		slog.Info("copied shared requirements.txt",
+			"from", sharedRequirementsFile,
+			"to", outputFile,
+			"size", len(data),
+			"hash", fmt.Sprintf("%x", sha256.Sum256(data))[:16])
+		return nil
+	}
+
+	// First function for this workspace - generate requirements.txt
+	if err := ib.uvRunner.ExecuteExportCommand(ctx, exportCmd); err != nil {
+		return err
+	}
+
+	// Verify the generated file
+	if data, err := os.ReadFile(outputFile); err == nil {
+		slog.Info("generated shared requirements.txt",
+			"file", outputFile,
+			"size", len(data),
+			"hash", fmt.Sprintf("%x", sha256.Sum256(data))[:16])
+	}
+
+	// Store this as the shared requirements.txt for this workspace
+	globalRequirementsFilesMutex.Lock()
+	globalRequirementsFiles[workspaceDir] = outputFile
+	globalRequirementsFilesMutex.Unlock()
+
+	return nil
+}
+
+// sortRequirementsFile sorts a requirements.txt file alphabetically for deterministic caching
+func (ib *IncrementalBuilder) sortRequirementsFile(filePath string) error {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to read requirements file: %w", err)
+	}
+
+	lines := strings.Split(string(data), "\n")
+
+	// Separate comments/blank lines from package lines
+	var comments []string
+	var packages []string
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			comments = append(comments, line)
+		} else {
+			packages = append(packages, line)
+		}
+	}
+
+	// Sort package lines alphabetically
+	sort.Strings(packages)
+
+	// Reconstruct file: comments first, then sorted packages
+	var result []string
+	result = append(result, comments...)
+	result = append(result, packages...)
+
+	// Write back
+	return os.WriteFile(filePath, []byte(strings.Join(result, "\n")), 0644)
 }
 
 // InputProperties represents the input properties structure
@@ -2227,17 +2326,37 @@ func (ib *IncrementalBuilder) installDependenciesForLambda(ctx context.Context, 
 		packages = []string{packageName}
 	}
 
-	syncCmd := &UvSyncCommand{
-		WorkspaceDir: workspaceDir,
-		AllPackages:  useAllPackages,
-		NoDev:        noDev,
-		Packages:     packages,
+	// Only sync once per workspace directory to avoid redundant syncs across multiple functions
+	// Use global sync tracker so it's shared across all IncrementalBuilder instances
+	globalSyncMutex.Lock()
+	alreadySynced := globalSyncCompleted[workspaceDir]
+	if !alreadySynced {
+		globalSyncCompleted[workspaceDir] = true
 	}
+	globalSyncMutex.Unlock()
 
-	ib.progressReporter.UpdateProgress(StageBuildPackages, "Syncing workspace dependencies")
+	if !alreadySynced {
+		syncCmd := &UvSyncCommand{
+			WorkspaceDir: workspaceDir,
+			AllPackages:  useAllPackages,
+			NoDev:        noDev,
+			Packages:     packages,
+		}
 
-	if err := ib.uvRunner.ExecuteSyncCommand(ctx, syncCmd); err != nil {
-		return fmt.Errorf("failed to sync workspace dependencies: %w", err)
+		ib.progressReporter.UpdateProgress(StageBuildPackages, "Syncing workspace dependencies (first function)")
+
+		if err := ib.uvRunner.ExecuteSyncCommand(ctx, syncCmd); err != nil {
+			// Clear the sync flag on error so it can be retried
+			globalSyncMutex.Lock()
+			delete(globalSyncCompleted, workspaceDir)
+			globalSyncMutex.Unlock()
+			return fmt.Errorf("failed to sync workspace dependencies: %w", err)
+		}
+
+		slog.Info("uv sync completed, will be reused for remaining functions", "workspaceDir", workspaceDir)
+	} else {
+		ib.progressReporter.UpdateProgress(StageBuildPackages, "Reusing synced workspace dependencies")
+		slog.Info("skipping uv sync, already completed for this workspace", "workspaceDir", workspaceDir)
 	}
 
 	// Simplified approach: copy source files based on handler path
@@ -2502,6 +2621,9 @@ func (ib *IncrementalBuilder) containsPythonContent(dirPath string) bool {
 
 // copySyncedDependencies installs external dependencies with correct platform targeting
 func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input *runtime.BuildInput, projectInfo *ProjectInfo, architecture string) error {
+	startTime := time.Now()
+	slog.Info("⏱️ copySyncedDependencies START", "functionID", input.FunctionID)
+
 	// Use the requirements.txt that was already exported by the export step
 	requirementsPath := filepath.Join(input.Out(), "requirements.txt")
 
@@ -2544,6 +2666,95 @@ func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input 
 	}
 	slog.Info("determined workspace root for dependency installation", "workspaceRoot", workspaceRoot, "pyprojectPath", projectInfo.PyprojectPath)
 
+	// OPTIMIZATION: Use global dependency installation cache (like SST v2's Docker layer caching)
+	// This installs dependencies ONCE and reuses for all functions
+	requirementsHash, err := ib.hashFile(requirementsPath)
+	var cacheKey string
+	if err == nil {
+		cacheKey = fmt.Sprintf("%s-%s", requirementsHash, architecture)
+
+		// Show first line of requirements.txt to debug differences
+		if data, err := os.ReadFile(requirementsPath); err == nil {
+			lines := strings.Split(string(data), "\n")
+			firstLine := "empty"
+			if len(lines) > 0 && lines[0] != "" {
+				firstLine = lines[0]
+				if len(firstLine) > 50 {
+					firstLine = firstLine[:50] + "..."
+				}
+			}
+			ib.progressReporter.UpdateProgress(StageBuildPackages, fmt.Sprintf("🔑 Key: %s | First: %s", cacheKey[:16], firstLine))
+		} else {
+			ib.progressReporter.UpdateProgress(StageBuildPackages, fmt.Sprintf("🔑 Cache key: %s", cacheKey[:16]))
+		}
+
+		// Get or create a lock for this cache key
+		globalDependencyInstallLocksMutex.Lock()
+		cacheLock, exists := globalDependencyInstallLocks[cacheKey]
+		lockMessage := ""
+		if !exists {
+			cacheLock = &sync.Mutex{}
+			globalDependencyInstallLocks[cacheKey] = cacheLock
+			lockMessage = "🔒 Created new install lock"
+		} else {
+			lockMessage = "🔒 Reusing existing lock (will wait)"
+		}
+		globalDependencyInstallLocksMutex.Unlock()
+		ib.progressReporter.UpdateProgress(StageBuildPackages, lockMessage)
+
+		// Acquire the lock for this cache key
+		// This ensures only ONE function installs dependencies for this requirements.txt
+		// Other functions wait here until the first one completes
+		cacheLock.Lock()
+		defer cacheLock.Unlock()
+		ib.progressReporter.UpdateProgress(StageBuildPackages, "✅ Got install lock")
+
+		// Check cache again after acquiring lock (another function may have installed while we waited)
+		globalDependencyInstallCacheMutex.RLock()
+		globalInstallDir, cacheExists := globalDependencyInstallCache[cacheKey]
+		cacheSize := len(globalDependencyInstallCache)
+		globalDependencyInstallCacheMutex.RUnlock()
+
+		ib.progressReporter.UpdateProgress(StageBuildPackages, fmt.Sprintf("🔍 Cache check: exists=%v, size=%d", cacheExists, cacheSize))
+
+		if cacheExists {
+			// Dependencies already installed globally, just copy them
+			ib.progressReporter.UpdateProgress(StageBuildPackages, "⚡ CACHE HIT! Copying from global cache...")
+
+			// Copy only the dependency packages, not the entire directory
+			// This avoids copying requirements.txt and other function-specific files
+			if err := ib.copyDependencyPackages(globalInstallDir, input.Out()); err != nil {
+				ib.progressReporter.UpdateProgress(StageBuildPackages, fmt.Sprintf("❌ Copy failed: %v, installing fresh", err))
+			} else {
+				ib.progressReporter.UpdateProgress(StageBuildPackages, fmt.Sprintf("✅ Copied from cache (%v)", time.Since(startTime)))
+				return nil
+			}
+		}
+
+		// If we get here, we're the first function to install for this cache key
+		ib.progressReporter.UpdateProgress(StageBuildPackages, "📦 CACHE MISS - Installing dependencies...")
+	}
+
+	// Try to use dependency cache if available
+	if ib.dependencyCache != nil {
+		cacheCheckStart := time.Now()
+		cachedEntry, err := ib.dependencyCache.GetCachedDependencies(requirementsPath, architecture, input.Out())
+		cacheCheckDuration := time.Since(cacheCheckStart)
+
+		if err == nil && cachedEntry != nil {
+			totalDuration := time.Since(startTime)
+			slog.Info("✅ copySyncedDependencies COMPLETE (cached)",
+				"functionID", input.FunctionID,
+				"cacheCheckTime", cacheCheckDuration,
+				"totalTime", totalDuration)
+			return nil
+		}
+		slog.Info("cache miss, will install fresh",
+			"functionID", input.FunctionID,
+			"cacheCheckTime", cacheCheckDuration,
+			"error", err)
+	}
+
 	// Filter out workspace packages from requirements.txt and copy their source code
 	filteredRequirementsPath := filepath.Join(input.Out(), "requirements-filtered.txt")
 	workspacePackagePaths, err := ib.filterWorkspacePackagesFromRequirementsAndGetPaths(requirementsPath, filteredRequirementsPath, projectInfo, workspaceRoot)
@@ -2567,14 +2778,28 @@ func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input 
 	// Build the uv pip install command with platform targeting (same as legacy builder)
 	args := []string{"pip", "install", "-r", requirementsPath, "--target", input.Out()}
 
-	// Add platform targeting for non-dev builds (same logic as legacy builder)
-	if !input.Dev {
+	// Add platform targeting for Lambda deployments
+	// Use platform targeting for actual deployments (not dev mode, not containers)
+	// In dev mode, we need native binaries for the local machine
+	if !input.Dev && !input.IsContainer {
 		pythonPlatform := "x86_64-unknown-linux-gnu"
 		if architecture == "arm64" {
 			pythonPlatform = "aarch64-unknown-linux-gnu"
 		}
-		args = append(args, "--python-platform", pythonPlatform)
-		slog.Info("using platform targeting", "platform", pythonPlatform)
+
+		// Extract Python version from runtime string (e.g., "python3.13" -> "3.13")
+		pythonVersion := strings.TrimPrefix(input.Runtime, "python")
+		if pythonVersion == "" || pythonVersion == input.Runtime {
+			pythonVersion = "3.13" // fallback to 3.13 if parsing fails
+		}
+
+		args = append(args, "--python-platform", pythonPlatform, "--python-version", pythonVersion)
+		slog.Info("using platform targeting for Lambda deployment",
+			"platform", pythonPlatform,
+			"pythonVersion", pythonVersion,
+			"runtime", input.Runtime)
+	} else if input.Dev {
+		slog.Info("skipping platform targeting for dev mode (using native binaries)")
 	}
 
 	workspaceDir := projectInfo.SourceRoot
@@ -2604,8 +2829,40 @@ func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input 
 		// Don't fail the build for cleanup issues, just warn
 	}
 
+	// Cache the installed dependencies for future builds
+	if ib.dependencyCache != nil {
+		// Get list of installed packages (simplified - just use directory listing)
+		var dependencyList []string
+		if entries, err := os.ReadDir(input.Out()); err == nil {
+			for _, entry := range entries {
+				if entry.IsDir() && !strings.HasPrefix(entry.Name(), ".") {
+					dependencyList = append(dependencyList, entry.Name())
+				}
+			}
+		}
+
+		if err := ib.dependencyCache.CacheDependencies(requirementsPath, architecture, input.Out(), dependencyList); err != nil {
+			slog.Warn("failed to cache dependencies", "error", err)
+		} else {
+			slog.Info("cached dependencies for future builds", "count", len(dependencyList))
+		}
+	}
+
+	// Store in global dependency installation cache for future functions
+	// Note: cacheKey is set earlier if requirementsHash was computed successfully
+	if cacheKey != "" {
+		globalDependencyInstallCacheMutex.Lock()
+		globalDependencyInstallCache[cacheKey] = input.Out()
+		newCacheSize := len(globalDependencyInstallCache)
+		globalDependencyInstallCacheMutex.Unlock()
+		ib.progressReporter.UpdateProgress(StageBuildPackages, fmt.Sprintf("💾 Stored in cache (size=%d)", newCacheSize))
+	}
+
 	// Clean up the filtered requirements file
 	os.Remove(filteredRequirementsPath)
+
+	totalDuration := time.Since(startTime)
+	slog.Info("✅ copySyncedDependencies COMPLETE (fresh install)", "functionID", input.FunctionID, "elapsed", totalDuration)
 
 	return nil
 }
@@ -2626,14 +2883,35 @@ func (ib *IncrementalBuilder) filterWorkspacePackagesFromRequirementsAndGetPaths
 	// Get workspace package names
 	workspacePackages := ib.getWorkspacePackageNames(projectInfo)
 
+	// Track if we're skipping a multi-line requirement (package with continuation lines)
+	skippingMultiLine := false
+
 	for _, line := range lines {
+		originalLine := line
 		line = strings.TrimSpace(line)
+
+		// Check if this is a continuation line (starts with whitespace and contains \)
+		isContinuation := len(originalLine) > 0 && (originalLine[0] == ' ' || originalLine[0] == '\t')
+
+		// If we're skipping a multi-line requirement, skip continuation lines too
+		if skippingMultiLine {
+			if isContinuation || strings.HasPrefix(line, "--hash=") {
+				slog.Debug("skipping continuation line", "line", line)
+				continue
+			} else {
+				// End of multi-line requirement
+				skippingMultiLine = false
+			}
+		}
 
 		// Skip empty lines and comments
 		if line == "" || strings.HasPrefix(line, "#") {
-			filteredLines = append(filteredLines, line)
+			filteredLines = append(filteredLines, originalLine)
 			continue
 		}
+
+		// Check if this line should be filtered
+		shouldSkip := false
 
 		// Skip all editable installs that reference local paths
 		if strings.HasPrefix(line, "-e ") {
@@ -2653,7 +2931,6 @@ func (ib *IncrementalBuilder) filterWorkspacePackagesFromRequirementsAndGetPaths
 			}
 
 			// Also check for workspace packages by name
-			shouldSkip := false
 			for _, pkg := range workspacePackages {
 				if strings.Contains(editablePath, "./"+pkg) || strings.Contains(editablePath, pkg) {
 					slog.Debug("filtering out workspace package from requirements", "line", line, "package", pkg)
@@ -2666,31 +2943,37 @@ func (ib *IncrementalBuilder) filterWorkspacePackagesFromRequirementsAndGetPaths
 					break
 				}
 			}
-			if shouldSkip {
-				continue
-			}
 		}
 
-		// Skip file:// URLs and local path references that might not exist in the build environment
-		if strings.HasPrefix(line, "file://") || strings.Contains(line, "file://") {
+		// Skip file:// URLs and local path references
+		if !shouldSkip && (strings.HasPrefix(line, "file://") || strings.Contains(line, "file://")) {
 			slog.Debug("filtering out file:// URL from requirements", "line", line)
-			continue
+			shouldSkip = true
 		}
 
 		// Skip local path references (relative paths starting with ./ or ../)
-		if strings.HasPrefix(line, "./") || strings.HasPrefix(line, "../") {
+		if !shouldSkip && (strings.HasPrefix(line, "./") || strings.HasPrefix(line, "../")) {
 			slog.Debug("filtering out local path reference from requirements", "line", line)
-			continue
+			shouldSkip = true
 		}
 
 		// Skip absolute local paths that might be workspace-specific
-		if strings.HasPrefix(line, "/") && !strings.Contains(line, "://") {
+		if !shouldSkip && strings.HasPrefix(line, "/") && !strings.Contains(line, "://") {
 			slog.Debug("filtering out absolute local path from requirements", "line", line)
+			shouldSkip = true
+		}
+
+		if shouldSkip {
+			// Check if this is a multi-line requirement (ends with \)
+			if strings.HasSuffix(line, "\\") {
+				skippingMultiLine = true
+				slog.Debug("starting to skip multi-line requirement", "line", line)
+			}
 			continue
 		}
 
 		// Include the line
-		filteredLines = append(filteredLines, line)
+		filteredLines = append(filteredLines, originalLine)
 	}
 
 	// Write the filtered requirements.txt
@@ -3008,4 +3291,109 @@ func (ib *IncrementalBuilder) shouldSkipPackage(packageName string) bool {
 	}
 
 	return false
+}
+
+// hashFile computes a hash of a file's contents for cache key generation
+func (ib *IncrementalBuilder) hashFile(filePath string) (string, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read file for hashing: %w", err)
+	}
+
+	// Use SHA256 for proper hashing of the entire file
+	// This ensures identical files always produce the same hash
+	hash := fmt.Sprintf("%x", sha256.Sum256(data))
+	return hash, nil
+}
+
+// copyDependencyPackages copies only the installed dependency packages (not requirements.txt, etc.)
+func (ib *IncrementalBuilder) copyDependencyPackages(srcDir, destDir string) error {
+	slog.Info("copying dependency packages with hardlinks", "src", srcDir, "dest", destDir)
+
+	// Read source directory to find package directories
+	entries, err := os.ReadDir(srcDir)
+	if err != nil {
+		return fmt.Errorf("failed to read source directory: %w", err)
+	}
+
+	copiedCount := 0
+	for _, entry := range entries {
+		// Skip non-directories and special files
+		if !entry.IsDir() {
+			continue
+		}
+
+		name := entry.Name()
+
+		// Skip special directories and files we don't want to copy
+		if name == "__pycache__" || strings.HasPrefix(name, ".") {
+			continue
+		}
+
+		// Skip files that aren't packages (requirements.txt, etc.)
+		srcPath := filepath.Join(srcDir, name)
+		destPath := filepath.Join(destDir, name)
+
+		// Copy this package directory with hardlinks
+		if err := ib.copyDirectoryWithHardlinks(srcPath, destPath); err != nil {
+			slog.Warn("failed to copy package", "package", name, "error", err)
+			continue
+		}
+
+		copiedCount++
+	}
+
+	slog.Info("copied dependency packages", "count", copiedCount)
+	return nil
+}
+
+// copyDirectoryWithHardlinks copies a directory using hardlinks for files (instant, no disk space)
+func (ib *IncrementalBuilder) copyDirectoryWithHardlinks(srcDir, destDir string) error {
+	// Walk the source directory
+	return filepath.Walk(srcDir, func(srcPath string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Calculate relative path
+		relPath, err := filepath.Rel(srcDir, srcPath)
+		if err != nil {
+			return fmt.Errorf("failed to get relative path: %w", err)
+		}
+
+		destPath := filepath.Join(destDir, relPath)
+
+		// Handle directories
+		if info.IsDir() {
+			// Create directory if it doesn't exist
+			if err := os.MkdirAll(destPath, info.Mode()); err != nil {
+				return fmt.Errorf("failed to create directory %s: %w", destPath, err)
+			}
+			return nil
+		}
+
+		// Handle files - create hardlink
+		// First ensure parent directory exists
+		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+			return fmt.Errorf("failed to create parent directory for %s: %w", destPath, err)
+		}
+
+		// Remove destination if it exists (hardlink will fail if file exists)
+		os.Remove(destPath)
+
+		// Create hardlink (instant, no disk space used)
+		if err := os.Link(srcPath, destPath); err != nil {
+			// If hardlink fails (e.g., cross-device), fall back to copy
+			slog.Warn("hardlink failed, falling back to copy", "src", srcPath, "dest", destPath, "error", err)
+			data, err := os.ReadFile(srcPath)
+			if err != nil {
+				return fmt.Errorf("failed to read file for copy: %w", err)
+			}
+			if err := os.WriteFile(destPath, data, info.Mode()); err != nil {
+				return fmt.Errorf("failed to write file: %w", err)
+			}
+		}
+
+		return nil
+	})
 }

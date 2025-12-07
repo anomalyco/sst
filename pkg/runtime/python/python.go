@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	goruntime "runtime"
 	"strings"
 	"sync"
 	"time"
@@ -20,6 +21,36 @@ import (
 	"github.com/sst/sst/v3/pkg/process"
 	"github.com/sst/sst/v3/pkg/project/path"
 	"github.com/sst/sst/v3/pkg/runtime"
+)
+
+// Global sync tracker shared across all builds
+var (
+	globalSyncCompleted = make(map[string]bool)
+	globalSyncMutex     sync.RWMutex
+
+	// Global build semaphore to limit concurrent builds
+	// This prevents system overload when Pulumi tries to build 100+ functions in parallel
+	globalBuildSemaphore = make(chan struct{}, 4) // Allow max 4 concurrent builds
+
+	// Global dependency analysis cache - shared across ALL function builds
+	// Key is the pyproject.toml path, value is the cached analysis
+	globalDependencyCache      = make(map[string]*DependencyAnalysis)
+	globalDependencyCacheMutex sync.RWMutex
+
+	// Global dependency installation cache - like SST v2's Docker layer caching
+	// Key is requirements.txt hash + architecture, value is the installation directory
+	// This allows us to install dependencies ONCE and reuse for all functions
+	globalDependencyInstallCache      = make(map[string]string)
+	globalDependencyInstallCacheMutex sync.RWMutex
+
+	// Global dependency installation locks - ensures only ONE function installs per cache key
+	// Other functions wait for the installation to complete, then copy from cache
+	globalDependencyInstallLocks      = make(map[string]*sync.Mutex)
+	globalDependencyInstallLocksMutex sync.Mutex
+
+	// Global requirements.txt generation - generate once per workspace, reuse for all functions
+	globalRequirementsFiles      = make(map[string]string) // workspaceDir -> requirements.txt path
+	globalRequirementsFilesMutex sync.Mutex
 )
 
 type Worker struct {
@@ -235,9 +266,32 @@ func (r *PythonRuntime) DisableCaching() error {
 
 func (r *PythonRuntime) Build(ctx context.Context, input *runtime.BuildInput) (*runtime.BuildOutput, error) {
 	buildStart := time.Now()
-	slog.Info("⏱️ Build() started",
+
+	// Acquire semaphore to limit concurrent builds (prevents system overload)
+	// This is critical because Pulumi calls Build() for all functions in parallel
+	numGoroutinesBefore := goruntime.NumGoroutine()
+	slog.Info("🔍 Build() ENTRY",
 		"functionID", input.FunctionID,
-		"dev", input.Dev)
+		"dev", input.Dev,
+		"goroutinesBefore", numGoroutinesBefore,
+		"waitingForSemaphore", true)
+
+	globalBuildSemaphore <- struct{}{} // Acquire
+	defer func() {
+		numGoroutinesAfter := goruntime.NumGoroutine()
+		slog.Info("🔍 Build() EXIT",
+			"functionID", input.FunctionID,
+			"goroutinesAfter", numGoroutinesAfter,
+			"delta", numGoroutinesAfter-numGoroutinesBefore)
+		<-globalBuildSemaphore
+	}() // Release
+
+	numGoroutinesAcquired := goruntime.NumGoroutine()
+	slog.Info("🔍 Build() ACQUIRED SEMAPHORE",
+		"functionID", input.FunctionID,
+		"dev", input.Dev,
+		"goroutinesAcquired", numGoroutinesAcquired,
+		"deltaFromEntry", numGoroutinesAcquired-numGoroutinesBefore)
 
 	// Publish to dev screen
 	bus.Publish(&events.FunctionBuildProgressEvent{
@@ -1377,14 +1431,27 @@ func (r *PythonRuntime) getFile(input *runtime.BuildInput) (string, error) {
 	startTime := time.Now()
 	slog.Info("getFile started", "handler", input.Handler)
 
-	dir := filepath.Dir(input.Handler)
-	base := strings.TrimSuffix(filepath.Base(input.Handler), filepath.Ext(input.Handler))
 	rootDir := path.ResolveRootDir(input.CfgPath)
 
-	slog.Info("getFile: resolved paths", "elapsed", time.Since(startTime), "dir", dir, "base", base, "rootDir", rootDir)
+	// Handler format is: path/to/file.function_name
+	// We need to split on the LAST dot to separate file path from function name
+	lastDotIndex := strings.LastIndex(input.Handler, ".")
+	if lastDotIndex == -1 {
+		return "", fmt.Errorf("invalid handler format '%s': expected 'path/to/file.function_name'", input.Handler)
+	}
+
+	// Everything before the last dot is the file path (without .py extension)
+	filePath := input.Handler[:lastDotIndex]
+	functionName := input.Handler[lastDotIndex+1:]
+
+	slog.Info("getFile: parsed handler",
+		"elapsed", time.Since(startTime),
+		"filePath", filePath,
+		"functionName", functionName,
+		"rootDir", rootDir)
 
 	// Look for .py file
-	pythonFile := filepath.Join(rootDir, dir, base+".py")
+	pythonFile := filepath.Join(rootDir, filePath+".py")
 	slog.Info("getFile: checking for Python file", "elapsed", time.Since(startTime), "pythonFile", pythonFile)
 
 	if _, err := os.Stat(pythonFile); err == nil {
@@ -1394,9 +1461,23 @@ func (r *PythonRuntime) getFile(input *runtime.BuildInput) (string, error) {
 
 	// No Python file found for the handler
 	slog.Error("getFile: Python file not found", "elapsed", time.Since(startTime), "expectedFile", pythonFile)
-	return "", fmt.Errorf("could not find Python file '%s.py' in directory '%s'",
-		base,
-		filepath.Join(rootDir, dir))
+
+	// List what files DO exist in the directory to help debug
+	dirPath := filepath.Join(rootDir, filepath.Dir(filePath))
+	if entries, err := os.ReadDir(dirPath); err == nil {
+		var files []string
+		for _, entry := range entries {
+			if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".py") {
+				files = append(files, entry.Name())
+			}
+		}
+		slog.Error("getFile: Python files in directory", "dir", dirPath, "files", files)
+	}
+
+	return "", fmt.Errorf("could not find Python file '%s.py' for handler '%s' (looked in: %s)",
+		filepath.Base(filePath),
+		input.Handler,
+		pythonFile)
 }
 
 func copyFile(src, dst string) error {
@@ -1623,8 +1704,10 @@ func (r *PythonRuntime) getPackageName(input *runtime.BuildInput) (string, error
 		return "", err
 	}
 
+	pyprojectPath := filepath.Join(workspaceDir, "pyproject.toml")
+
 	// Read the pyproject.toml file
-	pyproject, err := os.ReadFile(filepath.Join(workspaceDir, "pyproject.toml"))
+	pyproject, err := os.ReadFile(pyprojectPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to read pyproject.toml file: %v", err)
 	}
@@ -1636,7 +1719,17 @@ func (r *PythonRuntime) getPackageName(input *runtime.BuildInput) (string, error
 		return "", fmt.Errorf("failed to parse pyproject.toml file: %v", err)
 	}
 
-	return pyprojectData.Project.Name, nil
+	packageName := pyprojectData.Project.Name
+	if packageName == "" {
+		return "", fmt.Errorf("no project name found in pyproject.toml at %s", pyprojectPath)
+	}
+
+	slog.Info("resolved package name from pyproject.toml",
+		"packageName", packageName,
+		"pyprojectPath", pyprojectPath,
+		"functionID", input.FunctionID)
+
+	return packageName, nil
 
 }
 

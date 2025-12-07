@@ -141,11 +141,21 @@ func NewDependencyAnalyzer(config DependencyAnalyzerConfig) *DependencyAnalyzer 
 
 // AnalyzeDependencies performs comprehensive dependency analysis for a project
 func (da *DependencyAnalyzer) AnalyzeDependencies(ctx context.Context, projectInfo *ProjectInfo) (*DependencyAnalysis, error) {
+	// Check GLOBAL cache first (shared across all function builds)
+	cacheKey := da.generateCacheKey(projectInfo)
+
+	globalDependencyCacheMutex.RLock()
+	if cached, exists := globalDependencyCache[cacheKey]; exists {
+		globalDependencyCacheMutex.RUnlock()
+		slog.Info("⚡ Using GLOBAL dependency cache (shared across all functions)", "cacheKey", cacheKey)
+		return cached, nil
+	}
+	globalDependencyCacheMutex.RUnlock()
+
 	da.mutex.Lock()
 	defer da.mutex.Unlock()
 
-	// Check cache first using content-based invalidation
-	cacheKey := da.generateCacheKey(projectInfo)
+	// Check instance cache using content-based invalidation
 	if cached, exists := da.dependencyCache[cacheKey]; exists {
 		// Validate cache using content hashes instead of time
 		if da.isCacheValid(cached, projectInfo) {
@@ -156,14 +166,20 @@ func (da *DependencyAnalyzer) AnalyzeDependencies(ctx context.Context, projectIn
 	}
 
 	// Perform dependency analysis
+	slog.Info("⏱️ Analyzing dependencies (not in global cache)", "cacheKey", cacheKey)
 	analysis, err := da.analyzeDependenciesInternal(ctx, projectInfo)
 	if err != nil {
 		return nil, err
 	}
 
-	// Cache the result
+	// Cache the result in both instance and GLOBAL cache
 	analysis.AnalyzedAt = time.Now()
 	da.dependencyCache[cacheKey] = analysis
+
+	globalDependencyCacheMutex.Lock()
+	globalDependencyCache[cacheKey] = analysis
+	globalDependencyCacheMutex.Unlock()
+	slog.Info("⚡ Cached dependency analysis globally for reuse", "cacheKey", cacheKey)
 
 	return analysis, nil
 }

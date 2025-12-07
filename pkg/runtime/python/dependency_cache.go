@@ -374,7 +374,7 @@ func (dc *DependencyCache) copyDependenciesToCache(installPath string, cachedPat
 	return dc.copyDirectory(installPath, cachedPath)
 }
 
-// copyDirectory recursively copies a directory
+// copyDirectory recursively copies a directory using hardlinks for speed
 func (dc *DependencyCache) copyDirectory(src string, dst string) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -413,6 +413,12 @@ func (dc *DependencyCache) copyDirectory(src string, dst string) error {
 			return os.MkdirAll(dstPath, info.Mode())
 		}
 
+		// Try hardlink first (instant), fall back to copy if it fails
+		if err := os.Link(path, dstPath); err == nil {
+			return nil
+		}
+
+		// Hardlink failed (maybe cross-device), do regular copy
 		return dc.copyFile(path, dstPath)
 	})
 }

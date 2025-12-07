@@ -266,6 +266,7 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 		// "PULUMI_DISABLE_AUTOMATIC_PLUGIN_ACQUISITION=true",
 		"NODE_OPTIONS=--enable-source-maps --no-deprecation",
 		"PULUMI_HOME="+global.ConfigDir(),
+		"PULUMI_PARALLELISM=4", // Limit Pulumi parallelism to prevent system overload
 	)
 	if input.ServerPort != 0 {
 		env = append(env, "SST_SERVER=http://127.0.0.1:"+fmt.Sprint(input.ServerPort))
@@ -317,7 +318,7 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	case "refresh":
 		args = append([]string{"refresh", "--yes"}, args...)
 	case "deploy":
-		args = append([]string{"up", "--yes", "-f"}, args...)
+		args = append([]string{"up", "--yes", "-f", "--parallel", "4"}, args...)
 	case "remove":
 		args = append([]string{"destroy", "--yes", "-f"}, args...)
 	}

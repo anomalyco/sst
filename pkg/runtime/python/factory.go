@@ -47,8 +47,8 @@ func (rf *RuntimeFactory) CreateIncrementalBuilder(workingDir string, input *run
 		ArtifactDir:             input.Out(),
 		MaxCacheAge:             DefaultDependencyCacheAge, // For dependency cache, NOT build cache
 		MaxCacheSize:            DefaultMaxCacheSize,
-		EnableParallelBuilds:    true,
-		MaxParallelBuilds:       DefaultMaxParallelBuilds,
+		EnableParallelBuilds:    false, // Disabled to prevent thread explosion
+		MaxParallelBuilds:       1,
 		EnableProgressReporting: true,
 		EnableBuildOptimization: true,
 		FunctionID:              input.FunctionID,
@@ -64,8 +64,8 @@ func (rf *RuntimeFactory) CreateIncrementalBuilderWithCacheDir(workingDir string
 		ArtifactDir:             input.Out(),
 		MaxCacheAge:             DefaultDependencyCacheAge, // For dependency cache, NOT build cache
 		MaxCacheSize:            DefaultMaxCacheSize,
-		EnableParallelBuilds:    true,
-		MaxParallelBuilds:       DefaultMaxParallelBuilds,
+		EnableParallelBuilds:    false, // Disabled to prevent thread explosion
+		MaxParallelBuilds:       1,
 		EnableProgressReporting: true,
 		EnableBuildOptimization: true,
 		FunctionID:              input.FunctionID,

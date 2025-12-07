@@ -2,10 +2,12 @@ package python
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 // ChangeDetector monitors file modifications and determines if rebuilds are needed
@@ -571,11 +573,15 @@ func (cd *ChangeDetector) AddIgnorePattern(pattern string) {
 
 // UpdateCacheAfterBuild updates the cache with new build information
 func (cd *ChangeDetector) UpdateCacheAfterBuild(functionID, handler string, projectInfo *ProjectInfo, buildOutput *CachedBuildOutput) error {
+	startTime := time.Now()
+
 	// Find all relevant files
+	slog.Info("⏱️ Finding relevant files for cache...", "functionID", functionID)
 	relevantFiles, err := cd.findRelevantFiles(projectInfo)
 	if err != nil {
 		return fmt.Errorf("failed to find relevant files: %w", err)
 	}
+	slog.Info("⏱️ Found relevant files", "functionID", functionID, "count", len(relevantFiles), "elapsed", time.Since(startTime))
 
 	// Create new cache entry
 	entry := &CacheEntry{
@@ -588,10 +594,17 @@ func (cd *ChangeDetector) UpdateCacheAfterBuild(functionID, handler string, proj
 	}
 
 	// Update file hashes
+	hashStart := time.Now()
+	slog.Info("⏱️ Updating file hashes...", "functionID", functionID, "fileCount", len(relevantFiles))
 	if err := cd.buildCache.UpdateFileHashes(entry, relevantFiles); err != nil {
 		return fmt.Errorf("failed to update file hashes: %w", err)
 	}
+	slog.Info("⏱️ File hashes updated", "functionID", functionID, "elapsed", time.Since(hashStart))
 
 	// Store in cache
-	return cd.buildCache.Set(functionID, entry)
+	cacheStart := time.Now()
+	slog.Info("⏱️ Storing cache entry...", "functionID", functionID)
+	err = cd.buildCache.Set(functionID, entry)
+	slog.Info("⏱️ Cache entry stored", "functionID", functionID, "elapsed", time.Since(cacheStart), "totalElapsed", time.Since(startTime))
+	return err
 }
