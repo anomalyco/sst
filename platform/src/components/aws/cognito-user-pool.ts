@@ -2,8 +2,10 @@ import { ComponentResourceOptions, Output, all, output } from "@pulumi/pulumi";
 import { Component, Prettify, Transform, transform } from "../component";
 import { Input } from "../input";
 import { Link } from "../link";
+import { Dns } from "../dns";
 import { CognitoIdentityProvider } from "./cognito-identity-provider";
 import { CognitoUserPoolClient } from "./cognito-user-pool-client";
+import { CognitoUserPoolDomain } from "./cognito-user-pool-domain";
 import { Function, FunctionArgs, FunctionArn } from "./function.js";
 import { VisibleError } from "../error";
 import { cognito, lambda } from "@pulumi/aws";
@@ -320,6 +322,73 @@ export interface CognitoUserPoolArgs {
    */
   triggers?: Input<Prettify<Triggers>>;
   /**
+   * Configure a domain for the User Pool's hosted UI.
+   *
+   * You can use either a Cognito-provided prefix domain or your own custom domain.
+   *
+   * @example
+   *
+   * Add a Cognito prefix domain.
+   *
+   * ```ts
+   * {
+   *   domain: {
+   *     prefix: "my-app-dev"
+   *   }
+   * }
+   * ```
+   *
+   * This creates a domain at `my-app-dev.auth.{region}.amazoncognito.com`.
+   *
+   * Add a custom domain. By default, creates an ACM certificate and configures
+   * DNS records using Route 53.
+   *
+   * ```ts
+   * {
+   *   domain: "auth.example.com"
+   * }
+   * ```
+   *
+   * Use a domain hosted on Cloudflare.
+   *
+   * ```ts
+   * {
+   *   domain: {
+   *     name: "auth.example.com",
+   *     dns: sst.cloudflare.dns()
+   *   }
+   * }
+   * ```
+   */
+  domain?: Input<
+    | string
+    | {
+        /**
+         * Use an Amazon Cognito prefix domain. Creates a domain at
+         * `{prefix}.auth.{region}.amazoncognito.com`.
+         *
+         * Cannot contain "aws", "amazon", or "cognito".
+         */
+        prefix?: Input<string>;
+        /**
+         * The custom domain name. Must be a subdomain (e.g., `auth.example.com`).
+         */
+        name?: Input<string>;
+        /**
+         * The DNS provider for automatic certificate validation and record creation.
+         * Set to `false` for manual DNS setup.
+         *
+         * @default `sst.aws.dns`
+         */
+        dns?: Input<false | (Dns & {})>;
+        /**
+         * ARN of an existing ACM certificate in `us-east-1`. By default, a certificate
+         * is created and validated automatically.
+         */
+        cert?: Input<string>;
+      }
+  >;
+  /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
    */
@@ -328,6 +397,10 @@ export interface CognitoUserPoolArgs {
      * Transform the Cognito User Pool resource.
      */
     userPool?: Transform<cognito.UserPoolArgs>;
+    /**
+     * Transform the Cognito User Pool domain resource.
+     */
+    domain?: Transform<cognito.UserPoolDomainArgs>;
   };
 }
 
@@ -443,6 +516,26 @@ interface CognitoUserPoolRef {
  * });
  * ```
  *
+ * #### Add a hosted UI domain
+ *
+ * Use a Cognito prefix domain for the hosted UI.
+ *
+ * ```ts title="sst.config.ts"
+ * new sst.aws.CognitoUserPool("MyUserPool", {
+ *   domain: {
+ *     prefix: "my-app-dev"
+ *   }
+ * });
+ * ```
+ *
+ * Or use your own custom domain.
+ *
+ * ```ts title="sst.config.ts"
+ * new sst.aws.CognitoUserPool("MyUserPool", {
+ *   domain: "auth.example.com"
+ * });
+ * ```
+ *
  * #### Configure triggers
  *
  * ```ts title="sst.config.ts"
@@ -484,6 +577,7 @@ interface CognitoUserPoolRef {
 export class CognitoUserPool extends Component implements Link.Linkable {
   private constructorOpts: ComponentResourceOptions;
   private userPool: Output<cognito.UserPool>;
+  private _domainUrl?: Output<string>;
 
   constructor(
     name: string,
@@ -505,9 +599,11 @@ export class CognitoUserPool extends Component implements Link.Linkable {
     const triggers = normalizeTriggers();
     const verify = normalizeVerify();
     const userPool = createUserPool();
+    const domain = createDomain();
 
     this.constructorOpts = opts;
     this.userPool = userPool;
+    this._domainUrl = domain?.domainUrl;
 
     function normalizeAliasesAndUsernames() {
       all([args.aliases, args.usernames]).apply(([aliases, usernames]) => {
@@ -694,6 +790,20 @@ export class CognitoUserPool extends Component implements Link.Linkable {
           ),
       );
     }
+
+    function createDomain() {
+      if (!args.domain) return;
+
+      return new CognitoUserPoolDomain(
+        `${name}Domain`,
+        {
+          userPool: userPool.id,
+          domain: args.domain,
+          transform: args.transform?.domain,
+        },
+        { parent, provider: opts.provider },
+      );
+    }
   }
 
   /**
@@ -708,6 +818,13 @@ export class CognitoUserPool extends Component implements Link.Linkable {
    */
   public get arn() {
     return this.userPool.arn;
+  }
+
+  /**
+   * If a `domain` is configured, this is the full URL of the hosted UI.
+   */
+  public get domainUrl() {
+    return this._domainUrl;
   }
 
   /**
