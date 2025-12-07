@@ -11,12 +11,13 @@ export default defineConfig({
     tsConfigPaths({
       projects: ['./tsconfig.json'],
     }),
-    nitro({
-      config: {
-        preset: 'aws-lambda',
-        compatibilityDate: '2025-10-18',
-      },
-    }),
+    nitro(),
     tanstackStart(),
   ],
+  nitro: {
+    preset: 'aws-lambda',
+    awsLambda: {
+      streaming: true
+    }
+  }
 })
