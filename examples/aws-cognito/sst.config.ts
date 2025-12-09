@@ -16,7 +16,11 @@ export default $config({
         },
       },
     });
-    const client = userPool.addClient("Web");
+
+    const client = userPool.addClient("Web", {
+      callbackUrls: ['https://example.com/auth/callback']
+    });
+
     const identityPool = new sst.aws.CognitoIdentityPool("MyIdentityPool", {
       userPools: [
         {
