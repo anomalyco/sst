@@ -1,5 +1,10 @@
 /// <reference path="./.sst/platform/config.d.ts" />
-
+/**
+ * ## AWS Cogito User Pool
+ *
+ * Create a Cognito User Pool with triggers and identity pool.
+ *
+ */
 export default $config({
   app(input) {
     return {
