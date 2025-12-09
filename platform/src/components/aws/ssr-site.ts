@@ -497,9 +497,7 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
    * Or reference an existing VPC.
    *
    * ```js title="sst.config.ts"
-   * const myVpc = sst.aws.Vpc.get("MyVpc", {
-   *   id: "vpc-12345678901234567"
-   * });
+   * const myVpc = sst.aws.Vpc.get("MyVpc", "vpc-12345678901234567");
    * ```
    *
    * And pass it in.
@@ -599,7 +597,7 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
     fileOptions?: Input<Prettify<BaseSiteFileOptions>[]>;
     /**
      * Configure if files from previous deployments should be purged from the bucket.
-     * @default `true`
+     * @default `false`
      * @example
      * ```js
      * {
@@ -903,10 +901,6 @@ async function handler(event) {
         url: this.url,
         edge: false,
         server: server.arn,
-      },
-      _dev: {
-        ...dev.outputs,
-        aws: { role: server.nodes.role.arn },
       },
     });
 

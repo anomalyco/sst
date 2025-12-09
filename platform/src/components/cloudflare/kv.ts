@@ -114,6 +114,13 @@ export class Kv extends Component implements Link.Linkable {
   }
 
   /**
+   * The generated ID of the KV namespace.
+   */
+  public get namespaceId() {
+    return this.namespace.id;
+  }
+
+  /**
    * The underlying [resources](/docs/components/#nodes) this component creates.
    */
   public get nodes() {
