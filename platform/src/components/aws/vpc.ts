@@ -688,7 +688,9 @@ export class Vpc extends Component implements Link.Linkable {
           ([bastion, elasticIps, privateKeyValue, privateSubnets, publicSubnets]) => {
             if (!bastion) return;
             return {
-              ip: elasticIps[0]?.publicIp ?? bastion.publicIp,
+              ip: natInstances.apply((instances) =>
+                instances.length ? elasticIps[0]?.publicIp : bastion.publicIp,
+              ),
               username: "ec2-user",
               privateKey: privateKeyValue!,
               subnets: [...privateSubnets, ...publicSubnets].map(
