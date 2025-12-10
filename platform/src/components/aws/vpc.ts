@@ -680,14 +680,17 @@ export class Vpc extends Component implements Link.Linkable {
       self.registerOutputs({
         _tunnel: all([
           self.bastionInstance,
+          self.elasticIps,
           self.privateKeyValue,
           self._privateSubnets,
           self._publicSubnets,
         ]).apply(
-          ([bastion, privateKeyValue, privateSubnets, publicSubnets]) => {
+          ([bastion, elasticIps, privateKeyValue, privateSubnets, publicSubnets]) => {
             if (!bastion) return;
             return {
-              ip: bastion.publicIp,
+              ip: natInstances.apply((instances) =>
+                instances.length ? elasticIps[0]?.publicIp : bastion.publicIp,
+              ),
               username: "ec2-user",
               privateKey: privateKeyValue!,
               subnets: [...privateSubnets, ...publicSubnets].map(
