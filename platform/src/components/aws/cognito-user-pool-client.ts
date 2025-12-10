@@ -63,7 +63,7 @@ export class CognitoUserPoolClient extends Component implements Link.Linkable {
               "openid",
               "aws.cognito.signin.user.admin",
             ],
-            callbackUrls: this.callbackUrls,
+            callbackUrls: callbackUrls,
             supportedIdentityProviders: providers,
           },
           { parent },
