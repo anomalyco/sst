@@ -85,6 +85,8 @@ go run ../../cmd/sst <command>
 If you want to build the CLI, you can run `go build ./cmd/sst` from the root. This will create a
 `sst` binary that you can use.
 
+For building the docs, you need to run `bun generate` and `bun dev` inside the `www` directory.
+
 ---
 
 **Join our community** [Discord](https://sst.dev/discord) | [YouTube](https://www.youtube.com/c/sst-dev) | [X.com](https://x.com/SST_dev)

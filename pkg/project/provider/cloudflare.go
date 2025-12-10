@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	_ "unsafe"
 
 	cloudflare "github.com/cloudflare/cloudflare-go"
@@ -77,6 +78,7 @@ func (c CloudflareProvider) Api() *cloudflare.API {
 }
 
 type CloudflareHome struct {
+	sync.Mutex
 	provider  *CloudflareProvider
 	bootstrap *bootstrap
 }
@@ -132,6 +134,8 @@ func (c *CloudflareHome) Bootstrap() error {
 func makeRequestContext(*cloudflare.API, context.Context, string, string, interface{}) ([]byte, error)
 
 func (c *CloudflareHome) putData(kind, app, stage string, data io.Reader) error {
+	c.Lock()
+	defer c.Unlock()
 	path := filepath.Join(kind, app, stage)
 	_, err := makeRequestContext(c.provider.api, context.Background(), http.MethodPut, "/accounts/"+c.provider.identifier.Identifier+"/r2/buckets/"+c.bootstrap.State+"/objects/"+path, data)
 	if err != nil {
@@ -141,6 +145,8 @@ func (c *CloudflareHome) putData(kind, app, stage string, data io.Reader) error 
 }
 
 func (c *CloudflareHome) getData(kind, app, stage string) (io.Reader, error) {
+	c.Lock()
+	defer c.Unlock()
 	path := filepath.Join(kind, app, stage)
 	data, err := makeRequestContext(c.provider.api, context.Background(), http.MethodGet, "/accounts/"+c.provider.identifier.Identifier+"/r2/buckets/"+c.bootstrap.State+"/objects/"+path, nil)
 	if err != nil {
@@ -153,6 +159,8 @@ func (c *CloudflareHome) getData(kind, app, stage string) (io.Reader, error) {
 }
 
 func (c *CloudflareHome) removeData(kind, app, stage string) error {
+	c.Lock()
+	defer c.Unlock()
 	path := filepath.Join(kind, app, stage)
 	_, err := makeRequestContext(c.provider.api, context.Background(), http.MethodDelete, "/accounts/"+c.provider.identifier.Identifier+"/r2/buckets/"+c.bootstrap.State+"/objects/"+path, nil)
 	if err != nil {

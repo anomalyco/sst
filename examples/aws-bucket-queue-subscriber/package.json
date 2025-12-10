@@ -1,0 +1,19 @@
+{
+  "name": "aws-bucket-queue-subscriber",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "deploy": "go run ../../cmd/sst deploy",
+    "remove": "go run ../../cmd/sst remove",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.149",
+    "sst": "3.0.37"
+  }
+}

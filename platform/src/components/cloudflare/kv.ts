@@ -92,7 +92,9 @@ export class Kv extends Component implements Link.Linkable {
    */
   getSSTLink() {
     return {
-      properties: {},
+      properties: {
+        namespaceId: this.namespace.id,
+      },
       include: [
         binding({
           type: "kvNamespaceBindings",
@@ -108,6 +110,13 @@ export class Kv extends Component implements Link.Linkable {
    * The generated ID of the KV namespace.
    */
   public get id() {
+    return this.namespace.id;
+  }
+
+  /**
+   * The generated ID of the KV namespace.
+   */
+  public get namespaceId() {
     return this.namespace.id;
   }
 

@@ -96,7 +96,9 @@ export class Bucket extends Component implements Link.Linkable {
    */
   getSSTLink() {
     return {
-      properties: {},
+      properties: {
+        name: this.bucket.name,
+      },
       include: [
         binding({
           type: "r2BucketBindings",

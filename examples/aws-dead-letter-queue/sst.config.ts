@@ -1,9 +1,9 @@
 /// <reference path="./.sst/platform/config.d.ts" />
 
 /**
- * ## Subscribe to queues
+ * ## Subscribe to queues with dead-letter queue
  *
- * Create an SQS queue, subscribe to it, and publish to it from a function.
+ * Messages not processed successfully by the primary subscriber function will be sent to the dead-letter queue after the retry limit is reached.
  */
 export default $config({
   app(input) {

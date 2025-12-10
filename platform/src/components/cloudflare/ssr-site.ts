@@ -1,20 +1,18 @@
 import path from "path";
 import fs from "fs";
-import { globSync } from "glob";
-import crypto from "crypto";
-import { Output, Unwrap, output, all, ComponentResource } from "@pulumi/pulumi";
+import { Output, output, all, ComponentResourceOptions } from "@pulumi/pulumi";
 import { Input } from "../input.js";
-import { transform, type Transform } from "../component.js";
+import { Component, transform, type Transform } from "../component.js";
 import { VisibleError } from "../error.js";
-import { BaseSiteFileOptions, getContentType } from "../base/base-site.js";
-import { BaseSsrSiteArgs } from "../base/base-ssr-site.js";
-import { Kv, KvArgs } from "./kv.js";
+import { BaseSsrSiteArgs, buildApp } from "../base/base-ssr-site.js";
 import { Worker, WorkerArgs } from "./worker.js";
-import { KvData } from "./providers/kv-data.js";
-import { DEFAULT_ACCOUNT_ID } from "./account-id.js";
-import { toPosix } from "../path.js";
+import { Link } from "../link.js";
 
-type Plan = ReturnType<typeof validatePlan>;
+export type Plan = {
+  server: string;
+  assets: string;
+};
+
 export interface SsrSiteArgs extends BaseSsrSiteArgs {
   domain?: Input<string>;
   /**
@@ -23,240 +21,127 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
    */
   transform?: {
     /**
-     * Transform the Kv resource used for uploading the assets.
+     * Transform the Worker component used for handling the server-side rendering.
      */
-    assets?: Transform<KvArgs>;
+    server?: Transform<WorkerArgs>;
   };
 }
 
-export function prepare(args: SsrSiteArgs) {
-  const sitePath = normalizeSitePath();
+export abstract class SsrSite extends Component implements Link.Linkable {
+  private server: Worker;
 
-  return {
-    sitePath,
-  };
+  protected abstract buildPlan(
+    outputPath: Output<string>,
+    name: string,
+    args: SsrSiteArgs,
+  ): Output<Plan>;
 
-  function normalizeSitePath() {
-    return output(args.path).apply((sitePath) => {
-      if (!sitePath) return ".";
+  constructor(
+    type: string,
+    name: string,
+    args: SsrSiteArgs = {},
+    opts: ComponentResourceOptions = {},
+  ) {
+    super(type, name, args, opts);
+    const self = this;
 
-      if (!fs.existsSync(sitePath)) {
-        throw new VisibleError(`No site found at "${path.resolve(sitePath)}"`);
-      }
-      return sitePath;
-    });
-  }
-}
+    const sitePath = normalizeSitePath();
+    const outputPath = $dev ? sitePath : buildApp(self, name, args, sitePath);
+    const plan = validatePlan(this.buildPlan(outputPath, name, args));
+    const worker = createWorker();
 
-export function createKvStorage(
-  parent: ComponentResource,
-  name: string,
-  args: SsrSiteArgs,
-) {
-  return new Kv(
-    ...transform(
-      args.transform?.assets,
-      `${name}Assets`,
-      {},
-      {
-        parent,
-        retainOnDelete: false,
+    this.server = worker;
+
+    this.registerOutputs({
+      _hint: $dev ? undefined : this.url,
+      _dev: {
+        environment: args.environment,
+        command: "npm run dev",
+        directory: sitePath,
+        autostart: true,
+        links: output(args.link || [])
+          .apply(Link.build)
+          .apply((links) => links.map((link) => link.name)),
       },
-    ),
-  );
-}
+      _metadata: {
+        mode: $dev ? "placeholder" : "deployed",
+        path: sitePath,
+      },
+    });
 
-export function createRouter(
-  parent: ComponentResource,
-  name: string,
-  args: SsrSiteArgs,
-  outputPath: Output<string>,
-  storage: Kv,
-  plan: Input<Plan>,
-) {
-  return all([outputPath, plan]).apply(([outputPath, plan]) => {
-    const assetManifest = generateAssetManifest();
-    const kvData = uploadAssets();
-    const server = createServerWorker();
-    const router = createRouterWorker();
+    function normalizeSitePath() {
+      return output(args.path).apply((sitePath) => {
+        if (!sitePath) return ".";
 
-    return { server, router };
-
-    function generateAssetManifest() {
-      return output(args.assets).apply(async (assets) => {
-        // Define content headers
-        const versionedFilesTTL = 31536000; // 1 year
-        const nonVersionedFilesTTL = 86400; // 1 day
-
-        const manifest = [];
-
-        // Handle each copy source
-        for (const copy of plan.assets.copy) {
-          // Build fileOptions
-          const fileOptions: BaseSiteFileOptions[] = [
-            // unversioned files
-            {
-              files: "**",
-              ignore: copy.versionedSubDir
-                ? toPosix(path.join(copy.versionedSubDir, "**"))
-                : undefined,
-              cacheControl:
-                assets?.nonVersionedFilesCacheHeader ??
-                `public,max-age=0,s-maxage=${nonVersionedFilesTTL},stale-while-revalidate=${nonVersionedFilesTTL}`,
-            },
-            // versioned files
-            ...(copy.versionedSubDir
-              ? [
-                  {
-                    files: toPosix(path.join(copy.versionedSubDir, "**")),
-                    cacheControl:
-                      assets?.versionedFilesCacheHeader ??
-                      `public,max-age=${versionedFilesTTL},immutable`,
-                  },
-                ]
-              : []),
-            ...(assets?.fileOptions ?? []),
-          ];
-
-          // Upload files based on fileOptions
-          const filesProcessed: string[] = [];
-          for (const fileOption of fileOptions.reverse()) {
-            const files = globSync(fileOption.files, {
-              cwd: path.resolve(outputPath, copy.from),
-              nodir: true,
-              dot: true,
-              ignore: fileOption.ignore,
-            }).filter((file) => !filesProcessed.includes(file));
-            filesProcessed.push(...files);
-
-            manifest.push(
-              ...(await Promise.all(
-                files.map(async (file) => {
-                  const source = path.resolve(outputPath, copy.from, file);
-                  const content = await fs.promises.readFile(source, "utf-8");
-                  const hash = crypto
-                    .createHash("sha256")
-                    .update(content)
-                    .digest("hex");
-                  return {
-                    source,
-                    key: toPosix(path.join(copy.to, file)),
-                    hash,
-                    cacheControl: fileOption.cacheControl,
-                    contentType:
-                      fileOption.contentType ?? getContentType(file, "UTF-8"),
-                  };
-                }),
-              )),
-            );
-          }
+        if (!fs.existsSync(sitePath)) {
+          throw new VisibleError(
+            `Site directory not found at "${path.resolve(
+              sitePath,
+            )}". Please check the path setting in your configuration.`,
+          );
         }
-        return manifest;
+        return sitePath;
       });
     }
 
-    function uploadAssets() {
-      return new KvData(
-        `${name}AssetFiles`,
-        {
-          accountId: DEFAULT_ACCOUNT_ID,
-          namespaceId: storage.id,
-          entries: assetManifest.apply((manifest) =>
-            manifest.map((m) => ({
-              source: m.source,
-              key: m.key,
-              hash: m.hash,
-              cacheControl: m.cacheControl,
-              contentType: m.contentType,
-            })),
-          ),
-        },
-        { parent },
-      );
+    function validatePlan(plan: Output<Plan>) {
+      return plan;
     }
 
-    function createServerWorker() {
+    function createWorker() {
       return new Worker(
-        `${name}Server`,
-        {
-          ...plan.server,
-          environment: output(args.environment).apply((environment) => ({
-            ...environment,
-            ...plan.server.environment,
-          })),
-          link: output(args.link).apply((link) => [
-            ...(plan.server.link ?? []),
-            ...(link ?? []),
-          ]),
-          dev: false,
-        },
-        { parent },
-      );
-    }
-
-    function createRouterWorker() {
-      return new Worker(
-        `${name}Router`,
-        {
-          handler: path.join(
-            $cli.paths.platform,
-            "functions",
-            "cf-ssr-site-router-worker",
-          ),
-          url: true,
-          dev: false,
-          domain: args.domain,
-          build: {
-            esbuild: assetManifest.apply((assetManifest) => ({
-              define: {
-                SST_ASSET_MANIFEST: JSON.stringify(
-                  Object.fromEntries(assetManifest.map((e) => [e.key, e.hash])),
-                ),
-                SST_ROUTES: JSON.stringify(plan.routes),
-              },
-            })),
-          },
-          transform: {
-            worker: (workerArgs) => {
-              workerArgs.bindings = output(workerArgs.bindings ?? []).apply(
-                (bindings) => [
-                  ...bindings,
-                  {
-                    type: "kv_namespace",
-                    name: "ASSETS",
-                    namespaceId: storage.id,
-                  },
-                  {
-                    type: "service",
-                    name: "SERVER",
-                    service: server.nodes.worker.scriptName,
-                  },
-                ],
-              );
+        ...transform(
+          args.transform?.server,
+          `${name}Worker`,
+          {
+            handler: all([outputPath, plan.server]).apply(
+              ([outputPath, server]) => path.join(outputPath, server),
+            ),
+            environment: args.environment,
+            link: args.link,
+            url: true,
+            dev: false,
+            domain: args.domain,
+            assets: {
+              directory: all([outputPath, plan.assets]).apply(
+                ([outputPath, assets]) => path.join(outputPath, assets),
+              ),
             },
           },
-        },
-        // create distribution after assets are uploaded
-        { dependsOn: kvData, parent },
+          { parent: self },
+        ),
       );
     }
-  });
-}
+  }
 
-export function validatePlan(input: {
-  server: Unwrap<WorkerArgs>;
-  assets: {
-    copy: {
-      from: string;
-      to: string;
-      cached: boolean;
-      versionedSubDir?: string;
-    }[];
-  };
-  routes: {
-    regex: string;
-    origin: "server" | "assets";
-  }[];
-}) {
-  return input;
+  /**
+   * The URL of the Remix app.
+   *
+   * If the `domain` is set, this is the URL with the custom domain.
+   * Otherwise, it's the auto-generated CloudFront URL.
+   */
+  public get url() {
+    return this.server.url;
+  }
+
+  /**
+   * The underlying [resources](/docs/components/#nodes) this component creates.
+   */
+  public get nodes() {
+    return {
+      /**
+       * The Cloudflare Worker that renders the site.
+       */
+      server: this.server,
+    };
+  }
+
+  /** @internal */
+  public getSSTLink() {
+    return {
+      properties: {
+        url: this.url,
+      },
+    };
+  }
 }

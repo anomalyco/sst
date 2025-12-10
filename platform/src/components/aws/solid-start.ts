@@ -438,6 +438,14 @@ export class SolidStart extends SsrSite {
       );
       const basepath = appConfig.match(/baseURL: ['"](.*)['"]/)?.[1];
 
+      // Remove the .output/public/_server directory from the assets
+      // b/c all `_server` requests should go to the server function. If this folder is
+      // not removed, it will create an s3 route that conflicts with the `_server` route.
+      fs.rmSync(path.join(outputPath, ".output", "public", "_server"), {
+        recursive: true,
+        force: true,
+      });
+
       return {
         base: basepath,
         server: {

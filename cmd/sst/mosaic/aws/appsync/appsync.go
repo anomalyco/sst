@@ -11,6 +11,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"os"
 	"sync"
 	"time"
 
@@ -24,6 +26,60 @@ var log = slog.Default().With("service", "appsync.connection")
 
 var ErrSubscriptionFailed = fmt.Errorf("appsync subscription failed")
 var ErrConnectionFailed = fmt.Errorf("appsync connection failed")
+
+func getProxyURL(isHTTPS bool) (*url.URL, error) {
+	var proxyEnv string
+
+	if isHTTPS {
+		proxyEnv = os.Getenv("HTTPS_PROXY")
+		if proxyEnv == "" {
+			proxyEnv = os.Getenv("https_proxy")
+		}
+	}
+
+	if proxyEnv == "" {
+		proxyEnv = os.Getenv("HTTP_PROXY")
+		if proxyEnv == "" {
+			proxyEnv = os.Getenv("http_proxy")
+		}
+	}
+
+	if proxyEnv != "" {
+		noProxy := os.Getenv("NO_PROXY")
+		if noProxy == "" {
+			noProxy = os.Getenv("no_proxy")
+		}
+
+		if noProxy == "*" {
+			return nil, nil
+		}
+	}
+
+	if proxyEnv == "" {
+		return nil, nil
+	}
+
+	return url.Parse(proxyEnv)
+}
+
+func getHTTPClient() *http.Client {
+	proxyURL, err := getProxyURL(true)
+	if err != nil {
+		log.Warn("failed to parse proxy URL", "err", err)
+		return http.DefaultClient
+	}
+
+	if proxyURL == nil {
+		return http.DefaultClient
+	}
+
+	log.Info("using proxy for HTTP requests", "proxy", proxyURL.String())
+	return &http.Client{
+		Transport: &http.Transport{
+			Proxy: http.ProxyURL(proxyURL),
+		},
+	}
+}
 
 type Connection struct {
 	conn             *websocket.Conn
@@ -87,9 +143,21 @@ func (c *Connection) connect(ctx context.Context) error {
 		return err
 	}
 	auth64 := base64.URLEncoding.WithPadding(base64.NoPadding).EncodeToString(authJson)
+
+	// Configure WebSocket dialer with proxy support
 	dialer := websocket.Dialer{
 		Subprotocols: []string{"aws-appsync-event-ws", "header-" + auth64},
 	}
+
+	// Add proxy support to WebSocket dialer
+	proxyURL, err := getProxyURL(true) // WebSocket uses wss:// (HTTPS)
+	if err != nil {
+		log.Warn("failed to parse proxy URL", "err", err)
+	} else if proxyURL != nil {
+		dialer.Proxy = http.ProxyURL(proxyURL)
+		log.Info("using proxy for WebSocket connection", "proxy", proxyURL.String())
+	}
+
 	conn, _, err := dialer.DialContext(ctx, "wss://"+c.realtimeEndpoint+"/event/realtime", nil)
 	if err != nil {
 		return err
@@ -307,7 +375,10 @@ func (c *Connection) Publish(ctx context.Context, channel string, event interfac
 	if err != nil {
 		return err
 	}
-	resp, err := http.DefaultClient.Do(req)
+
+	// Use HTTP client that respects proxy settings
+	client := getHTTPClient()
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}

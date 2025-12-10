@@ -124,50 +124,50 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
   invalidation?: Input<
     | false
     | {
-      /**
-       * Configure if `sst deploy` should wait for the CloudFront cache invalidation to finish.
-       *
-       * :::tip
-       * For non-prod environments it might make sense to pass in `false`.
-       * :::
-       *
-       * Waiting for this process to finish ensures that new content will be available after the deploy finishes. However, this process can sometimes take more than 5 mins.
-       * @default `false`
-       * @example
-       * ```js
-       * {
-       *   invalidation: {
-       *     wait: true
-       *   }
-       * }
-       * ```
-       */
-      wait?: Input<boolean>;
-      /**
-       * The paths to invalidate.
-       *
-       * You can either pass in an array of glob patterns to invalidate specific files. Or you can use one of these built-in options:
-       * - `all`: All files will be invalidated when any file changes
-       * - `versioned`: Only versioned files will be invalidated when versioned files change
-       *
-       * :::note
-       * Each glob pattern counts as a single invalidation. Whereas, invalidating
-       * `/*` counts as a single invalidation.
-       * :::
-       * @default `"all"`
-       * @example
-       * Invalidate the `index.html` and all files under the `products/` route.
-       * ```js
-       * {
-       *   invalidation: {
-       *     paths: ["/index.html", "/products/*"]
-       *   }
-       * }
-       * ```
-       * This counts as two invalidations.
-       */
-      paths?: Input<"all" | "versioned" | string[]>;
-    }
+        /**
+         * Configure if `sst deploy` should wait for the CloudFront cache invalidation to finish.
+         *
+         * :::tip
+         * For non-prod environments it might make sense to pass in `false`.
+         * :::
+         *
+         * Waiting for this process to finish ensures that new content will be available after the deploy finishes. However, this process can sometimes take more than 5 mins.
+         * @default `false`
+         * @example
+         * ```js
+         * {
+         *   invalidation: {
+         *     wait: true
+         *   }
+         * }
+         * ```
+         */
+        wait?: Input<boolean>;
+        /**
+         * The paths to invalidate.
+         *
+         * You can either pass in an array of glob patterns to invalidate specific files. Or you can use one of these built-in options:
+         * - `all`: All files will be invalidated when any file changes
+         * - `versioned`: Only versioned files will be invalidated when versioned files change
+         *
+         * :::note
+         * Each glob pattern counts as a single invalidation. Whereas, invalidating
+         * `/*` counts as a single invalidation.
+         * :::
+         * @default `"all"`
+         * @example
+         * Invalidate the `index.html` and all files under the `products/` route.
+         * ```js
+         * {
+         *   invalidation: {
+         *     paths: ["/index.html", "/products/*"]
+         *   }
+         * }
+         * ```
+         * This counts as two invalidations.
+         */
+        paths?: Input<"all" | "versioned" | string[]>;
+      }
   >;
   /**
    * Regions that the server function will be deployed to.
@@ -406,7 +406,7 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
        * {
        *   edge: {
        *     viewerRequest: {
-       *       injection: `event.request.headers["x-foo"] = "bar";`
+       *       injection: `event.request.headers["x-foo"] = { value: "bar" };`
        *     }
        *   }
        * }
@@ -460,7 +460,7 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
        * {
        *   edge: {
        *     viewerResponse: {
-       *       injection: `event.response.headers["x-foo"] = {value: "bar"};`
+       *       injection: `event.response.headers["x-foo"] = { value: "bar" };`
        *     }
        *   }
        * }
@@ -497,9 +497,7 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
    * Or reference an existing VPC.
    *
    * ```js title="sst.config.ts"
-   * const myVpc = sst.aws.Vpc.get("MyVpc", {
-   *   id: "vpc-12345678901234567"
-   * });
+   * const myVpc = sst.aws.Vpc.get("MyVpc", "vpc-12345678901234567");
    * ```
    *
    * And pass it in.
@@ -511,6 +509,106 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
    * ```
    */
   vpc?: FunctionArgs["vpc"];
+  assets?: Input<{
+    /**
+     * Character encoding for text based assets, like HTML, CSS, JS. This is
+     * used to set the `Content-Type` header when these files are served out.
+     *
+     * If set to `"none"`, then no charset will be returned in header.
+     * @default `"utf-8"`
+     * @example
+     * ```js
+     * {
+     *   assets: {
+     *     textEncoding: "iso-8859-1"
+     *   }
+     * }
+     * ```
+     */
+    textEncoding?: Input<
+      "utf-8" | "iso-8859-1" | "windows-1252" | "ascii" | "none"
+    >;
+    /**
+     * The `Cache-Control` header used for versioned files, like `main-1234.css`. This is
+     * used by both CloudFront and the browser cache.
+     *
+     * The default `max-age` is set to 1 year.
+     * @default `"public,max-age=31536000,immutable"`
+     * @example
+     * ```js
+     * {
+     *   assets: {
+     *     versionedFilesCacheHeader: "public,max-age=31536000,immutable"
+     *   }
+     * }
+     * ```
+     */
+    versionedFilesCacheHeader?: Input<string>;
+    /**
+     * The `Cache-Control` header used for non-versioned files, like `index.html`. This is used by both CloudFront and the browser cache.
+     *
+     * The default is set to not cache on browsers, and cache for 1 day on CloudFront.
+     * @default `"public,max-age=0,s-maxage=86400,stale-while-revalidate=8640"`
+     * @example
+     * ```js
+     * {
+     *   assets: {
+     *     nonVersionedFilesCacheHeader: "public,max-age=0,no-cache"
+     *   }
+     * }
+     * ```
+     */
+    nonVersionedFilesCacheHeader?: Input<string>;
+    /**
+     * Specify the `Content-Type` and `Cache-Control` headers for specific files. This allows
+     * you to override the default behavior for specific files using glob patterns.
+     *
+     * @example
+     * Apply `Cache-Control` and `Content-Type` to all zip files.
+     * ```js
+     * {
+     *   assets: {
+     *     fileOptions: [
+     *       {
+     *         files: "**\/*.zip",
+     *         contentType: "application/zip",
+     *         cacheControl: "private,no-cache,no-store,must-revalidate"
+     *       }
+     *     ]
+     *   }
+     * }
+     * ```
+     * Apply `Cache-Control` to all CSS and JS files except for CSS files with `index-`
+     * prefix in the `main/` directory.
+     * ```js
+     * {
+     *   assets: {
+     *     fileOptions: [
+     *       {
+     *         files: ["**\/*.css", "**\/*.js"],
+     *         ignore: "main\/index-*.css",
+     *         cacheControl: "private,no-cache,no-store,must-revalidate"
+     *       }
+     *     ]
+     *   }
+     * }
+     * ```
+     */
+    fileOptions?: Input<Prettify<BaseSiteFileOptions>[]>;
+    /**
+     * Configure if files from previous deployments should be purged from the bucket.
+     * @default `false`
+     * @example
+     * ```js
+     * {
+     *   assets: {
+     *     purge: false
+     *   }
+     * }
+     * ```
+     */
+    purge?: Input<boolean>;
+  }>;
   /**
    * @deprecated The `route` prop is now the recommended way to use the `Router` component
    * to serve your site. Setting `route` will not create a standalone CloudFront
@@ -804,10 +902,6 @@ async function handler(event) {
         edge: false,
         server: server.arn,
       },
-      _dev: {
-        ...dev.outputs,
-        aws: { role: server.nodes.role.arn },
-      },
     });
 
     function validateDeprecatedProps() {
@@ -1031,10 +1125,13 @@ async function handler(event) {
                 ),
                 vpc: args.vpc,
                 nodejs: {
-                  format: "esm" as const,
-                  install: args.server?.install,
-                  loader: args.server?.loader,
                   ...planServer.nodejs,
+                  format: "esm" as const,
+                  install: output(args.server?.install).apply((install) => [
+                    ...(install ?? []),
+                    ...(planServer.nodejs?.install ?? []),
+                  ]),
+                  loader: args.server?.loader ?? planServer.nodejs?.loader,
                 },
                 environment: output(args.environment).apply((environment) => ({
                   ...environment,
@@ -1161,11 +1258,11 @@ async function handler(event) {
         `  });`,
         ...(streaming
           ? [
-            `  const response = await p;`,
-            `  responseStream.write(JSON.stringify(response));`,
-            `  responseStream.end();`,
-            `  return;`,
-          ]
+              `  const response = await p;`,
+              `  responseStream.write(JSON.stringify(response));`,
+              `  responseStream.end();`,
+              `  return;`,
+            ]
           : [`  return p;`]),
         `}`,
       ].join("\n");
@@ -1202,13 +1299,13 @@ async function handler(event) {
               // versioned files
               ...(copy.versionedSubDir
                 ? [
-                  {
-                    files: toPosix(path.join(copy.versionedSubDir, "**")),
-                    cacheControl:
-                      assets?.versionedFilesCacheHeader ??
-                      `public,max-age=${versionedFilesTTL},immutable`,
-                  },
-                ]
+                    {
+                      files: toPosix(path.join(copy.versionedSubDir, "**")),
+                      cacheControl:
+                        assets?.versionedFilesCacheHeader ??
+                        `public,max-age=${versionedFilesTTL},immutable`,
+                    },
+                  ]
                 : []),
               ...(assets?.fileOptions ?? []),
             ];
@@ -1292,38 +1389,43 @@ async function handler(event) {
           ]).apply(([servers, imageOptimizerUrl]) => {
             const kvEntries: Record<string, string> = {};
             const dirs: string[] = [];
+            // Router append .html and index.html suffixes to requests to s3 routes:
+            // - `.well-known` contain files without suffix, hence will be appended .html
+            // - in the future, it might make sense for each dir to have props that controls
+            //   the suffixes ie. "handleTrailingSlashse"
+            const expandDirs = [".well-known"];
 
             plan.assets.forEach((copy) => {
-              fs.readdirSync(path.join(outputPath, copy.from), {
-                withFileTypes: true,
-              }).forEach((item) => {
-                if (item.isFile()) {
-                  kvEntries[toPosix(path.join("/", item.name))] = "s3";
-                  return;
-                }
-
-                // Handle deep routes
-                // In Next.js, asset requests are prefixed with is /_next/static, and
-                // image optimization requests are prefixed with /_next/image. We cannot
-                // route by 1 level of subdirs (ie. /_next/`), so we need to route by 2
-                // levels of subdirs.
-                if (item.name !== copy.deepRoute) {
-                  dirs.push(toPosix(path.join("/", item.name)));
-                  return;
-                }
-
-                fs.readdirSync(path.join(outputPath, copy.from, item.name), {
-                  withFileTypes: true,
-                }).forEach((subItem) => {
-                  if (subItem.isFile()) {
-                    kvEntries[
-                      toPosix(path.join("/", item.name, subItem.name))
-                    ] = "s3";
-                    return;
-                  }
-                  dirs.push(toPosix(path.join("/", item.name, subItem.name)));
-                });
-              });
+              const processDir = (childPath = "", level = 0) => {
+                const currentPath = path.join(outputPath, copy.from, childPath);
+                fs.readdirSync(currentPath, { withFileTypes: true }).forEach(
+                  (item) => {
+                    // File: add to kvEntries
+                    if (item.isFile()) {
+                      kvEntries[toPosix(path.join("/", childPath, item.name))] =
+                        "s3";
+                      return;
+                    }
+                    // Directory + deep routes: recursively process it
+                    //   In Next.js, asset requests are prefixed with is /_next/static,
+                    //   and image optimization requests are prefixed with /_next/image.
+                    //   We cannot route by 1 level of subdirs (ie. /_next/`), so we need
+                    //   to route by 2 levels of subdirs.
+                    // Directory + expand: recursively process it
+                    if (
+                      level === 0 &&
+                      (expandDirs.includes(item.name) ||
+                        item.name === copy.deepRoute)
+                    ) {
+                      processDir(path.join(childPath, item.name), level + 1);
+                      return;
+                    }
+                    // Directory + NOT expand: add to route
+                    dirs.push(toPosix(path.join("/", childPath, item.name)));
+                  },
+                );
+              };
+              processDir();
             });
 
             kvEntries["metadata"] = JSON.stringify({
@@ -1336,9 +1438,9 @@ async function handler(event) {
               },
               image: imageOptimizerUrl
                 ? {
-                  host: new URL(imageOptimizerUrl!).host,
-                  route: plan.imageOptimizer!.prefix,
-                }
+                    host: new URL(imageOptimizerUrl!).host,
+                    route: plan.imageOptimizer!.prefix,
+                  }
                 : undefined,
               servers: servers.map((s) => [
                 new URL(s.url).host,

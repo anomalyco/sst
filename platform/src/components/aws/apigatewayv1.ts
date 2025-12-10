@@ -903,12 +903,18 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
    * api.route("ANY /", "src/route.handler");
    * ```
    *
-   * Add a default route.
+   * Add a default or fallback route. Here for every request other than `GET /hi`,
+   * the `default.handler` function will be invoked.
    *
    * ```js title="sst.config.ts"
-   * api.route("GET /", "src/get.handler")
-   * api.route("$default", "src/default.handler");
+   * api.route("GET /hi", "src/get.handler");
+   *
+   * api.route("ANY /", "src/default.handler");
+   * api.route("ANY /{proxy+}", "src/default.handler");
    * ```
+   *
+   * The `/{proxy+}` matches any path that starts with `/`, so if you want a
+   * fallback route for the root `/` path, you need to add a `ANY /` route as well.
    *
    * Add a parameterized route.
    *

@@ -321,6 +321,34 @@ export interface BucketArgs {
           values: Input<Input<string>[]>;
         }>[]
       >;
+      /**
+       * The S3 file paths that the policy is applied to. The paths are specified using
+       * the [S3 path format](https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-prefixes.html).
+       * The bucket arn will be prepended to the paths when constructing the policy.
+       * @default `["", "*"]`
+       * @example
+       * Apply the policy to the bucket itself.
+       * ```js
+       * {
+       *   paths: [""]
+       * }
+       * ```
+       *
+       * Apply to all files in the bucket.
+       * ```js
+       * {
+       *   paths: ["*"]
+       * }
+       * ```
+       *
+       * Apply to all files in the `images/` folder.
+       * ```js
+       * {
+       *   paths: ["images/*"]
+       * }
+       * ```
+       */
+      paths?: Input<Input<string>[]>;
     }>[]
   >;
   /**
@@ -786,6 +814,9 @@ export class Bucket extends Component implements Link.Linkable {
                     canonical: "Canonical",
                   }[i.type],
                 })),
+          paths: p.paths
+            ? p.paths.map((path) => path.replace(/^\//, ""))
+            : ["", "*"],
         })),
       );
     }
@@ -876,9 +907,14 @@ export class Bucket extends Component implements Link.Linkable {
             });
           }
           statements.push(
-            ...policyArgs.map((p) => ({
-              ...p,
-              resources: [bucket.arn, interpolate`${bucket.arn}/*`],
+            ...policyArgs.map((policy) => ({
+              effect: policy.effect,
+              principals: policy.principals,
+              actions: policy.actions,
+              conditions: policy.conditions,
+              resources: policy.paths.map((path) =>
+                path === "" ? bucket.arn : interpolate`${bucket.arn}/${path}`,
+              ),
             })),
           );
 

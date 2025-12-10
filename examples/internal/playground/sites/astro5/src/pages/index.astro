@@ -2,7 +2,7 @@
 import Welcome from '../components/Welcome.astro';
 import Layout from '../layouts/Layout.astro';
 
-const base = import.meta.env.BASE_URL;
+const base = import.meta.env.BASE_URL === "/" ? "" : import.meta.env.BASE_URL;
 ---
 
 <Layout>

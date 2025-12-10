@@ -58,11 +58,11 @@ export const OidcAdapter = /* @__PURE__ */ (config: OidcConfig) => {
       const state = getCookie(c, "auth_state");
       const tokenset = await client.callback(
         callback,
-        Object.fromEntries(form),
+        Object.fromEntries(form as any),
         {
           nonce,
           state,
-        },
+        }
       );
 
       return ctx.success(c, {

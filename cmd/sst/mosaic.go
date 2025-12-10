@@ -61,7 +61,8 @@ func CmdMosaic(c *cli.Cli) error {
 		cwd, _ := os.Getwd()
 		currentDir := cwd
 		for {
-			newPath := filepath.Join(currentDir, "node_modules", ".bin") + string(os.PathListSeparator) + os.Getenv("PATH")
+			nodeBinPath := filepath.Join(currentDir, "node_modules", ".bin")
+			newPath := nodeBinPath + string(os.PathListSeparator) + os.Getenv("PATH")
 			os.Setenv("PATH", newPath)
 			parentDir := filepath.Dir(currentDir)
 			if parentDir == currentDir {
@@ -158,7 +159,10 @@ func CmdMosaic(c *cli.Cli) error {
 
 	wg.Go(func() error {
 		defer c.Cancel()
-		return watcher.Start(c.Context, p.PathRoot())
+		return watcher.Start(c.Context, watcher.WatchConfig{
+			Root:  p.PathRoot(),
+			Watch: p.App().Watch,
+		})
 	})
 
 	server, err := server.New()
@@ -352,7 +356,6 @@ func CmdMosaic(c *cli.Cli) error {
 	err = wg.Wait()
 	slog.Info("done mosaic", "err", err)
 	return err
-
 }
 
 func diff(a map[string]string, b map[string]string) bool {
