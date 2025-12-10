@@ -1239,33 +1239,62 @@ export class Vpc extends Component implements Link.Linkable {
             ),
           );
 
-          const role = new iam.Role(
-            `${name}BastionRole`,
-            {
-              assumeRolePolicy: iam.getPolicyDocumentOutput({
-                statements: [
+          // Check if iamInstanceProfile is provided via transform
+          const bastionTransform = args.transform?.bastionInstance;
+          const hasCustomInstanceProfile =
+            bastionTransform &&
+            typeof bastionTransform === "object" &&
+            "iamInstanceProfile" in bastionTransform;
+
+          const instanceProfile = hasCustomInstanceProfile
+            ? (() => {
+                const profile = (
+                  bastionTransform as {
+                    iamInstanceProfile: Input<string> | iam.InstanceProfile;
+                  }
+                ).iamInstanceProfile;
+                // If it's already an InstanceProfile resource, use it directly
+                if (profile instanceof iam.InstanceProfile) {
+                  return profile;
+                }
+                // Otherwise it's a string name, get the existing instance profile
+                return iam.InstanceProfile.get(
+                  `${name}BastionProfile`,
+                  profile as Input<string>,
+                  {},
+                  { parent: self },
+                );
+              })()
+            : (() => {
+                const role = new iam.Role(
+                  `${name}BastionRole`,
                   {
-                    actions: ["sts:AssumeRole"],
-                    principals: [
-                      {
-                        type: "Service",
-                        identifiers: ["ec2.amazonaws.com"],
-                      },
+                    assumeRolePolicy: iam.getPolicyDocumentOutput({
+                      statements: [
+                        {
+                          actions: ["sts:AssumeRole"],
+                          principals: [
+                            {
+                              type: "Service",
+                              identifiers: ["ec2.amazonaws.com"],
+                            },
+                          ],
+                        },
+                      ],
+                    }).json,
+                    managedPolicyArns: [
+                      interpolate`arn:${partition}:iam::aws:policy/AmazonSSMManagedInstanceCore`,
                     ],
                   },
-                ],
-              }).json,
-              managedPolicyArns: [
-                interpolate`arn:${partition}:iam::aws:policy/AmazonSSMManagedInstanceCore`,
-              ],
-            },
-            { parent: self },
-          );
-          const instanceProfile = new iam.InstanceProfile(
-            `${name}BastionProfile`,
-            { role: role.name },
-            { parent: self },
-          );
+                  { parent: self },
+                );
+                return new iam.InstanceProfile(
+                  `${name}BastionProfile`,
+                  { role: role.name },
+                  { parent: self },
+                );
+              })();
+
           const ami = ec2.getAmiOutput(
             {
               owners: ["amazon"],
