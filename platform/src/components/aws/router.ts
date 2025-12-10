@@ -1538,7 +1538,7 @@ async function handler(event) {
         || (host.includes("*") && new RegExp(host).test(requestHostRegexPattern));
       if (!hostMatches) return;
 
-      const pathMatches = event.request.uri.startsWith(path);
+      const pathMatches = event.request.uri.startsWith(path) && (event.request.uri === path || event.request.uri[path.length] === '/' || path === '/');
       if (!pathMatches) return;
 
       match = {
