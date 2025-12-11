@@ -31,8 +31,8 @@ export class CognitoUserPoolClient extends Component implements Link.Linkable {
     const parent = this;
 
     const providers = normalizeProviders();
-    const client = createClient();
     const callbackUrls = normalizeCallbackUrls();
+    const client = createClient();
 
     this.client = client;
 
