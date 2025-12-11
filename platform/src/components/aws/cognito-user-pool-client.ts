@@ -42,8 +42,8 @@ export class CognitoUserPoolClient extends Component implements Link.Linkable {
     }
 
     function normalizeCallbackUrls() {
-      if(!args.callbackUrls) return ["https://example.com"]
-      return output(args.callbackUrls)
+      if (!args.callbackUrls) return ["https://example.com"];
+      return output(args.callbackUrls);
     }
 
     function createClient() {
