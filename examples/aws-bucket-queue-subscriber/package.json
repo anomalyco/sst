@@ -1,5 +1,5 @@
 {
-  "name": "queue",
+  "name": "aws-bucket-queue-subscriber",
   "version": "1.0.0",
   "description": "",
   "type": "module",
@@ -15,8 +15,5 @@
   "devDependencies": {
     "@types/aws-lambda": "^8.10.149",
     "sst": "3.0.37"
-  },
-  "dependencies": {
-    "@aws-sdk/client-sqs": "^3.515.0"
   }
 }

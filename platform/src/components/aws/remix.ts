@@ -478,7 +478,7 @@ export class Remix extends SsrSite {
           if (!file) return;
 
           try {
-            // @ts-expect-error
+            // @ts-ignore
             const vite = await import("vite");
             const config = await vite.loadConfigFromFile(
               { command: "build", mode: "production" },

@@ -335,7 +335,7 @@ func (c *Cli) Stage(cfgPath string) (string, error) {
 			}
 		}
 	}
-	godotenv.Load(filepath.Join(filepath.Dir(cfgPath), ".env."+stage))
+	godotenv.Overload(filepath.Join(filepath.Dir(cfgPath), ".env."+stage))
 	return stage, nil
 }
 
