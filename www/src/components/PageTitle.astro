@@ -41,17 +41,19 @@ const isDocsPost = slug.startsWith('docs/');
   : <Fragment>
       <div class="title-container">
         <h1 id="_top">{title}</h1>
-        {
-        isDocsPost ? <button
-          class="copy-markdown-btn"
-          data-copy-as-markdown-button
-          data-body={body}
-        >
-          Copy as Markdown
-        </button> : <Fragment></Fragment>
-        }
+        {isDocsPost ? (
+          <button
+            class="copy-markdown-btn"
+            data-copy-as-markdown-button
+            data-body={body}
+          >
+            Copy as Markdown
+          </button>
+        ) : (
+          <Fragment></Fragment>
+        )}
       </div>
-      { description && <p class="page-description">{description}</p> }
+      {description && <p class="page-description">{description}</p>}
     </Fragment>
 }
 <script>
