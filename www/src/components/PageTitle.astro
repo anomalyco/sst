@@ -13,11 +13,13 @@ const {
 	lastUpdated,
 	entry: {
     data: { title, author },
+    body,
 	},
 } = Astro.locals.starlightRoute;
 const slug = Astro.url.pathname.replace(/^\//, "").replace(/\/$/, "");
 
 const isBlogPost = slug.startsWith('blog/');
+const isDocsPost = slug.startsWith('docs/');
 ---
 
 { isBlogPost
@@ -37,10 +39,33 @@ const isBlogPost = slug.startsWith('blog/');
       </div>
     </Fragment>
   : <Fragment>
-      <h1 id="_top">{title}</h1>
+      <div class="title-container">
+        <h1 id="_top">{title}</h1>
+        {
+        isDocsPost ? <button
+          class="copy-markdown-btn"
+          data-copy-as-markdown-button
+          data-body={body}
+        >
+          Copy as Markdown
+        </button> : <Fragment></Fragment>
+        }
+      </div>
       { description && <p class="page-description">{description}</p> }
     </Fragment>
 }
+<script>
+  const buttons = document.querySelectorAll('[data-copy-as-markdown-button]');
+
+  buttons.forEach((button) => {
+    button.addEventListener('click', () => {
+      const body = (button as any).dataset.body;
+      if (body) navigator.clipboard.writeText(body);
+    });
+  });
+
+</script>
+
 
 <style>
 h1 {
@@ -55,6 +80,27 @@ p.page-description {
   margin-top: 0.5rem;
   line-height: 1.5;
   color: var(--color-text-secondary);
+}
+
+.title-container {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.copy-markdown-btn {
+  background: var(--sl-color-bg-accent);
+  color: var(--sl-color-white);
+  border: none;
+  border-radius: 4px;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.copy-markdown-btn:hover {
+  background: var(--sl-color-bg-accent-hover, #555);
 }
 
 h1.blog {
