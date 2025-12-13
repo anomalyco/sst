@@ -135,6 +135,10 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
    * - `"oac"`: Lambda URLs protected by CloudFront Origin Access Control. Requires manual `x-amz-content-sha256` header for POST requests. Use when you control all POST requests.
    * - `"oac-with-edge-signing"`: Full protection with automatic header signing via Lambda@Edge. Works with external webhooks and callbacks. Higher cost and latency but works out of the box.
    *
+   * :::note
+   * When using `"oac-with-edge-signing"`, request bodies are limited to 1MB due to Lambda@Edge payload limits. For file uploads larger than 1MB, consider using presigned S3 URLs or the `"oac"` mode with manual header signing.
+   * :::
+   *
    * @example
    * ```js
    * // No protection (default)

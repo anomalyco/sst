@@ -10,8 +10,16 @@ interface CloudFrontRequest {
   body?: {
     data: string;
     encoding?: "base64" | "text";
+    inputTruncated?: boolean;
   };
   headers: Record<string, Array<{ key: string; value: string }>>;
+}
+
+interface CloudFrontResponse {
+  status: string;
+  statusDescription: string;
+  headers: Record<string, Array<{ key: string; value: string }>>;
+  body: string;
 }
 
 interface CloudFrontEvent {
@@ -22,7 +30,9 @@ interface CloudFrontEvent {
   }>;
 }
 
-export async function handler(event: CloudFrontEvent) {
+export async function handler(
+  event: CloudFrontEvent,
+): Promise<CloudFrontRequest | CloudFrontResponse> {
   const request = event.Records[0].cf.request;
 
   // Only process requests that need SHA256 signing (methods with body)
@@ -30,26 +40,31 @@ export async function handler(event: CloudFrontEvent) {
     return request;
   }
 
+  // Check if body was truncated (exceeds 1MB Lambda@Edge limit)
+  if (request.body?.inputTruncated) {
+    return {
+      status: "413",
+      statusDescription: "Payload Too Large",
+      headers: {
+        "content-type": [{ key: "Content-Type", value: "application/json" }],
+      },
+      body: JSON.stringify({
+        error:
+          "Request body exceeds 1MB Lambda@Edge limit. Use presigned S3 URLs for large uploads.",
+      }),
+    };
+  }
+
   try {
-    // Get the request body
-    let bodyString = "";
+    // Get the request body as raw bytes (never convert to UTF-8 string)
+    const bodyBuffer = request.body?.data
+      ? request.body.encoding === "base64"
+        ? Buffer.from(request.body.data, "base64")
+        : Buffer.from(request.body.data)
+      : Buffer.alloc(0);
 
-    if (request.body && request.body.data) {
-      // Lambda@Edge provides body as base64-encoded string
-      if (request.body.encoding === "base64") {
-        // Decode base64 to get the actual body content
-        bodyString = Buffer.from(request.body.data, "base64").toString("utf8");
-      } else {
-        // If not base64 encoded, use as-is
-        bodyString = request.body.data;
-      }
-    }
-
-    // Compute SHA256 hash of the body
-    const hash = crypto
-      .createHash("sha256")
-      .update(bodyString, "utf8")
-      .digest("hex");
+    // Compute SHA256 hash of the raw bytes
+    const hash = crypto.createHash("sha256").update(bodyBuffer).digest("hex");
 
     // Add the x-amz-content-sha256 header in CloudFront format
     request.headers["x-amz-content-sha256"] = [
