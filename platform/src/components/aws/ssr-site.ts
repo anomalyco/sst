@@ -139,6 +139,10 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
    * When using `"oac-with-edge-signing"`, request bodies are limited to 1MB due to Lambda@Edge payload limits. For file uploads larger than 1MB, consider using presigned S3 URLs or the `"oac"` mode with manual header signing.
    * :::
    *
+   * :::note
+   * When removing a stage that uses `"oac-with-edge-signing"`, deletion may take 5-10 minutes while AWS removes the Lambda@Edge replicated functions from all edge locations.
+   * :::
+   *
    * @example
    * ```js
    * // No protection (default)
