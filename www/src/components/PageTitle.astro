@@ -58,12 +58,26 @@ const isDocsPost = slug.startsWith('docs/');
   const buttons = document.querySelectorAll('[data-copy-as-markdown-button]');
 
   buttons.forEach((button) => {
-    button.addEventListener('click', () => {
-      const body = (button as any).dataset.body;
-      if (body) navigator.clipboard.writeText(body);
+    button.addEventListener('click', async () => {
+      const body = button.dataset.body;
+      if (!body || button.disabled) return;
+
+      try {
+        await navigator.clipboard.writeText(body);
+
+        const originalText = button.textContent;
+        button.textContent = 'Copied!';
+        button.disabled = true;
+
+        setTimeout(() => {
+          button.textContent = originalText;
+          button.disabled = false;
+        }, 1000);
+      } catch (err) {
+        console.error('Failed to copy markdown:', err);
+      }
     });
   });
-
 </script>
 
 
@@ -85,22 +99,44 @@ p.page-description {
 .title-container {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 0.75rem;
 }
 
 .copy-markdown-btn {
-  background: var(--sl-color-bg-accent);
-  color: var(--sl-color-white);
-  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  border: 1px solid var(--divider-color);
   border-radius: 4px;
   padding: 0.3rem 0.6rem;
   font-size: 0.875rem;
   cursor: pointer;
-  transition: background 0.2s ease;
+  /* Adding a fixed width to prevent layout shift on press */
+  width: 145px; 
+  transition:
+    color 0.2s ease,
+    border-color 0.2s ease,
+    background-color 0.2s ease,
+    opacity 0.2s ease;
 }
 
 .copy-markdown-btn:hover {
-  background: var(--sl-color-bg-accent-hover, #555);
+  color: var(--color-text);
+  border-color: var(--color-text-dimmed);
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+:root[data-theme='light'] .copy-markdown-btn:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+/* Disabled “copied” state */
+.copy-markdown-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+  background: transparent;
+  border-color: var(--color-text-dimmed);
+  color: var(--color-text-dimmed);
 }
 
 h1.blog {
