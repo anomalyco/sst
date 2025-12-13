@@ -597,7 +597,7 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
     fileOptions?: Input<Prettify<BaseSiteFileOptions>[]>;
     /**
      * Configure if files from previous deployments should be purged from the bucket.
-     * @default `true`
+     * @default `false`
      * @example
      * ```js
      * {
