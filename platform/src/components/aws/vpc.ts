@@ -345,12 +345,14 @@ export class Vpc extends Component implements Link.Linkable {
   private securityGroup: ec2.SecurityGroup;
   private natGateways: Output<ec2.NatGateway[]>;
   private natInstances: Output<ec2.Instance[]>;
+  private natSecurityGroup: Output<ec2.SecurityGroup | undefined>;
   private elasticIps: Output<ec2.Eip[]>;
   private _publicSubnets: Output<ec2.Subnet[]>;
   private _privateSubnets: Output<ec2.Subnet[]>;
   private publicRouteTables: Output<ec2.RouteTable[]>;
   private privateRouteTables: Output<ec2.RouteTable[]>;
   private bastionInstance: Output<ec2.Instance | undefined>;
+  private bastionSecurityGroup: Output<ec2.SecurityGroup | undefined>;
   private cloudmapNamespace: servicediscovery.PrivateDnsNamespace;
   private privateKeyValue: Output<string | undefined>;
   public static v1 = VpcV1;
@@ -376,8 +378,10 @@ export class Vpc extends Component implements Link.Linkable {
       this.privateRouteTables = output(ref.privateRouteTables);
       this.natGateways = output(ref.natGateways);
       this.natInstances = output(ref.natInstances);
+      this.natSecurityGroup = output(ref.natSecurityGroup);
       this.elasticIps = ref.elasticIps;
       this.bastionInstance = ref.bastionInstance;
+      this.bastionSecurityGroup = output(ref.bastionSecurityGroup);
       this.cloudmapNamespace = ref.cloudmapNamespace;
       this.privateKeyValue = output(ref.privateKeyValue);
       registerOutputs();
@@ -396,9 +400,9 @@ export class Vpc extends Component implements Link.Linkable {
     const { publicSubnets, publicRouteTables } = createPublicSubnets();
     const elasticIps = createElasticIps();
     const natGateways = createNatGateways();
-    const natInstances = createNatInstances();
+    const { natInstances, natSecurityGroup } = createNatInstances();
     const { privateSubnets, privateRouteTables } = createPrivateSubnets();
-    const bastionInstance = createBastion();
+    const { bastionInstance, bastionSecurityGroup } = createBastion();
     const cloudmapNamespace = createCloudmapNamespace();
 
     this.vpc = vpc;
@@ -406,12 +410,14 @@ export class Vpc extends Component implements Link.Linkable {
     this.securityGroup = securityGroup;
     this.natGateways = natGateways;
     this.natInstances = natInstances;
+    this.natSecurityGroup = natSecurityGroup;
     this.elasticIps = elasticIps;
     this._publicSubnets = publicSubnets;
     this._privateSubnets = privateSubnets;
     this.publicRouteTables = publicRouteTables;
     this.privateRouteTables = privateRouteTables;
     this.bastionInstance = output(bastionInstance);
+    this.bastionSecurityGroup = bastionSecurityGroup;
     this.cloudmapNamespace = cloudmapNamespace;
     this.privateKeyValue = output(privateKeyValue);
     registerOutputs();
@@ -657,8 +663,10 @@ export class Vpc extends Component implements Link.Linkable {
         privateRouteTables,
         natGateways,
         natInstances,
+        natSecurityGroup,
         elasticIps,
         bastionInstance,
+        bastionSecurityGroup,
         cloudmapNamespace,
         privateKeyValue,
       };
@@ -909,9 +917,13 @@ export class Vpc extends Component implements Link.Linkable {
 
     function createNatInstances() {
       return nat.apply((nat) => {
-        if (nat?.type !== "ec2") return output([]);
+        if (nat?.type !== "ec2")
+          return output({
+            natSecurityGroup: undefined,
+            natInstances: [] as ec2.Instance[],
+          });
 
-        const sg = new ec2.SecurityGroup(
+        const natSecurityGroup = new ec2.SecurityGroup(
           ...transform(
             args.transform?.natSecurityGroup,
             `${name}NatInstanceSecurityGroup`,
@@ -994,36 +1006,52 @@ export class Vpc extends Component implements Link.Linkable {
           elasticIps,
           keyPair,
           args.bastion,
-        ]).apply(([zones, publicSubnets, elasticIps, keyPair, bastion]) =>
-          zones.map((_, i) => {
-            const instance = new ec2.Instance(
-              ...transform(
-                args.transform?.natInstance,
-                `${name}NatInstance${i + 1}`,
-                {
-                  instanceType: nat.ec2.instance,
-                  ami,
-                  subnetId: publicSubnets[i].id,
-                  vpcSecurityGroupIds: [sg.id],
-                  iamInstanceProfile: instanceProfile.name,
-                  sourceDestCheck: false,
-                  keyName: keyPair?.keyName,
-                  tags: {
-                    Name: `${name} NAT Instance`,
-                    "sst:is-nat": "true",
-                    ...(bastion && i === 0 ? { "sst:is-bastion": "true" } : {}),
+          natSecurityGroup,
+        ]).apply(
+          ([
+            zones,
+            publicSubnets,
+            elasticIps,
+            keyPair,
+            bastion,
+            natSecurityGroup,
+          ]) => ({
+            natInstances: zones.map((_, i) => {
+              const instance = new ec2.Instance(
+                ...transform(
+                  args.transform?.natInstance,
+                  `${name}NatInstance${i + 1}`,
+                  {
+                    instanceType: nat.ec2.instance,
+                    ami,
+                    subnetId: publicSubnets[i].id,
+                    vpcSecurityGroupIds: [natSecurityGroup.id],
+                    iamInstanceProfile: instanceProfile.name,
+                    sourceDestCheck: false,
+                    keyName: keyPair?.keyName,
+                    tags: {
+                      Name: `${name} NAT Instance`,
+                      "sst:is-nat": "true",
+                      ...(bastion && i === 0
+                        ? { "sst:is-bastion": "true" }
+                        : {}),
+                    },
                   },
+                  { parent: self },
+                ),
+              );
+
+              new ec2.EipAssociation(
+                `${name}NatInstanceEipAssociation${i + 1}`,
+                {
+                  instanceId: instance.id,
+                  allocationId: elasticIps[i]?.id ?? nat.ip![i],
                 },
-                { parent: self },
-              ),
-            );
+              );
 
-            new ec2.EipAssociation(`${name}NatInstanceEipAssociation${i + 1}`, {
-              instanceId: instance.id,
-              allocationId: elasticIps[i]?.id ?? nat.ip![i],
-            });
-
-            return instance;
+              return instance;
+            }),
+            natSecurityGroup,
           }),
         );
       });
@@ -1152,11 +1180,19 @@ export class Vpc extends Component implements Link.Linkable {
     function createBastion() {
       return all([args.bastion, natInstances, keyPair]).apply(
         ([bastion, natInstances, keyPair]) => {
-          if (!bastion) return undefined;
+          if (!bastion)
+            return {
+              bastionSecurityGroup: undefined,
+              bastionInstance: undefined,
+            };
 
-          if (natInstances.length) return natInstances[0];
+          if (natInstances.length)
+            return {
+              bastionSecurityGroup: natSecurityGroup,
+              bastionInstance: natInstances[0],
+            };
 
-          const sg = new ec2.SecurityGroup(
+          const bastionSecurityGroup = new ec2.SecurityGroup(
             ...transform(
               args.transform?.bastionSecurityGroup,
               `${name}BastionSecurityGroup`,
@@ -1228,7 +1264,7 @@ export class Vpc extends Component implements Link.Linkable {
             },
             { parent: self },
           );
-          return new ec2.Instance(
+          const bastionInstance = new ec2.Instance(
             ...transform(
               args.transform?.bastionInstance,
               `${name}BastionInstance`,
@@ -1236,7 +1272,7 @@ export class Vpc extends Component implements Link.Linkable {
                 instanceType: "t4g.nano",
                 ami: ami.id,
                 subnetId: publicSubnets.apply((v) => v[0].id),
-                vpcSecurityGroupIds: [sg.id],
+                vpcSecurityGroupIds: [bastionSecurityGroup.id],
                 iamInstanceProfile: instanceProfile.name,
                 keyName: keyPair?.keyName,
                 tags: {
@@ -1246,6 +1282,7 @@ export class Vpc extends Component implements Link.Linkable {
               { parent: self },
             ),
           );
+          return { bastionInstance, bastionSecurityGroup };
         },
       );
     }
@@ -1334,6 +1371,10 @@ export class Vpc extends Component implements Link.Linkable {
        */
       natInstances: this.natInstances,
       /**
+       * The Amazon EC2 Security Group for the NAT instances.
+       */
+      natSecurityGroup: this.natSecurityGroup,
+      /**
        * The Amazon EC2 Elastic IP.
        */
       elasticIps: this.elasticIps,
@@ -1357,6 +1398,10 @@ export class Vpc extends Component implements Link.Linkable {
        * The Amazon EC2 bastion instance.
        */
       bastionInstance: this.bastionInstance,
+      /**
+       * The Amazon EC2 Security Group for the bastion instance.
+       */
+      bastionSecurityGroup: this.bastionSecurityGroup,
       /**
        * The AWS Cloudmap namespace.
        */
