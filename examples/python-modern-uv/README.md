@@ -68,6 +68,19 @@ from api import models  # Should work because package = true
 from api import models  # Should work via workspace dependency
 ```
 
+### Test 4: Worker-Only Dependency Isolation
+**Handler**: `packages/worker/src/worker/handler.lambda_handler`
+**Tests**:
+- ✅ Worker has `arrow` dependency that api and root do NOT have
+- ✅ Arrow is only bundled with worker function, not api or root
+- ✅ Verifies per-package dependency isolation in workspaces
+
+**Expected behavior**:
+- Worker's `pyproject.toml` includes `arrow>=1.3.0`
+- API's `pyproject.toml` does NOT include `arrow`
+- Root's `pyproject.toml` does NOT include `arrow`
+- Worker handler imports and uses `arrow` successfully
+
 ## Running Tests
 
 ### Development Mode
