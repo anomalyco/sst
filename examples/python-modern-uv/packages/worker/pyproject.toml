@@ -1,0 +1,16 @@
+[project]
+name = "worker"
+version = "0.1.0"
+description = "Worker package that imports from api"
+dependencies = ["api", "requests>=2.31.0"]
+requires-python = ">=3.11"
+
+[tool.uv]
+package = true
+
+[tool.uv.sources]
+api = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
