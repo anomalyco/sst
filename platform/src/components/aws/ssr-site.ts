@@ -230,12 +230,12 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
      * ```js
      * {
      *   server: {
-     *     runtime: "nodejs22.x"
+     *     runtime: "nodejs24.x"
      *   }
      * }
      * ```
      */
-    runtime?: Input<"nodejs18.x" | "nodejs20.x" | "nodejs22.x">;
+    runtime?: Input<"nodejs18.x" | "nodejs20.x" | "nodejs22.x" | "nodejs24.x";
     /**
      * The maximum amount of time the server function can run.
      *
