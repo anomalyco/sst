@@ -2,37 +2,10 @@
 // This function adds the required x-amz-content-sha256 header for POST/PUT/PATCH requests
 // going to Lambda function URLs with Origin Access Control enabled.
 
-import crypto from "crypto";
+import { CloudFrontRequestHandler } from "aws-lambda";
+import crypto from "node:crypto";
 
-interface CloudFrontRequest {
-  method: string;
-  uri: string;
-  body?: {
-    data: string;
-    encoding?: "base64" | "text";
-    inputTruncated?: boolean;
-  };
-  headers: Record<string, Array<{ key: string; value: string }>>;
-}
-
-interface CloudFrontResponse {
-  status: string;
-  statusDescription: string;
-  headers: Record<string, Array<{ key: string; value: string }>>;
-  body: string;
-}
-
-interface CloudFrontEvent {
-  Records: Array<{
-    cf: {
-      request: CloudFrontRequest;
-    };
-  }>;
-}
-
-export async function handler(
-  event: CloudFrontEvent,
-): Promise<CloudFrontRequest | CloudFrontResponse> {
+export const handler: CloudFrontRequestHandler = async (event) => {
   const request = event.Records[0].cf.request;
 
   // Only process requests that need SHA256 signing (methods with body)
