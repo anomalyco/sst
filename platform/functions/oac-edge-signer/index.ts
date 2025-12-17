@@ -56,4 +56,4 @@ export const handler: CloudFrontRequestHandler = async (event) => {
   }
 
   return request;
-}
+};
