@@ -147,7 +147,7 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
    * ```js
    * // No protection (default)
    * {
-   *   lambdaProtection: "none"
+   *   protection: "none"
    * }
    * ```
    *
@@ -155,7 +155,7 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
    * ```js
    * // OAC protection, manual header signing required
    * {
-   *   lambdaProtection: "oac"
+   *   protection: "oac"
    * }
    * ```
    *
@@ -163,7 +163,7 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
    * ```js
    * // Full protection with automatic Lambda@Edge
    * {
-   *   lambdaProtection: "oac-with-edge-signing"
+   *   protection: "oac-with-edge-signing"
    * }
    * ```
    *
@@ -171,7 +171,7 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
    * ```js
    * // Custom Lambda@Edge configuration
    * {
-   *   lambdaProtection: {
+   *   protection: {
    *     mode: "oac-with-edge-signing",
    *     edgeFunction: {
    *       memory: "256 MB",
@@ -185,7 +185,7 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
    * ```js
    * // Use existing Lambda@Edge function
    * {
-   *   lambdaProtection: {
+   *   protection: {
    *     mode: "oac-with-edge-signing",
    *     edgeFunction: {
    *       arn: "arn:aws:lambda:us-east-1:123456789012:function:my-signing-function:1"
@@ -194,7 +194,7 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
    * }
    * ```
    */
-  lambdaProtection?: Input<
+  protection?: Input<
     | "none"
     | "oac"
     | "oac-with-edge-signing"
@@ -772,7 +772,7 @@ export abstract class SsrSite extends Component implements Link.Linkable {
     const sitePath = regions.apply(() => normalizeSitePath());
     const dev = normalizeDev();
     const purge = output(args.assets).apply((assets) => assets?.purge ?? false);
-    const lambdaProtection = normalizeLambdaProtection();
+    const protection = normalizeProtection();
 
     if (dev.enabled) {
       const server = createDevServer();
@@ -980,41 +980,40 @@ async function handler(event) {
                   ? [{ eventType: "viewer-response", functionArn: resFn.arn }]
                   : []),
               ]),
-              lambdaFunctionAssociations: all([
-                lambdaProtection,
-                edgeFunction,
-              ]).apply(([protection, autoEdgeFunction]) => {
-                if (protection.mode !== "oac-with-edge-signing") {
+              lambdaFunctionAssociations: all([protection, edgeFunction]).apply(
+                ([protectionConfig, autoEdgeFunction]) => {
+                  if (protectionConfig.mode !== "oac-with-edge-signing") {
+                    return [];
+                  }
+
+                  // Use provided ARN if available
+                  if (
+                    "edgeFunction" in protectionConfig &&
+                    protectionConfig.edgeFunction?.arn
+                  ) {
+                    return [
+                      {
+                        eventType: "origin-request",
+                        lambdaArn: protectionConfig.edgeFunction.arn,
+                        includeBody: true,
+                      },
+                    ];
+                  }
+
+                  // Use auto-created function if available
+                  if (autoEdgeFunction) {
+                    return [
+                      {
+                        eventType: "origin-request",
+                        lambdaArn: autoEdgeFunction.qualifiedArn,
+                        includeBody: true,
+                      },
+                    ];
+                  }
+
                   return [];
-                }
-
-                // Use provided ARN if available
-                if (
-                  "edgeFunction" in protection &&
-                  protection.edgeFunction?.arn
-                ) {
-                  return [
-                    {
-                      eventType: "origin-request",
-                      lambdaArn: protection.edgeFunction.arn,
-                      includeBody: true,
-                    },
-                  ];
-                }
-
-                // Use auto-created function if available
-                if (autoEdgeFunction) {
-                  return [
-                    {
-                      eventType: "origin-request",
-                      lambdaArn: autoEdgeFunction.qualifiedArn,
-                      includeBody: true,
-                    },
-                  ];
-                }
-
-                return [];
-              }),
+                },
+              ),
             },
           },
           { parent: self },
@@ -1026,7 +1025,7 @@ async function handler(event) {
     createInvalidation();
 
     // Create Lambda permissions based on protection mode
-    all([distribution, servers, imageOptimizer, lambdaProtection]).apply(
+    all([distribution, servers, imageOptimizer, protection]).apply(
       ([dist, servers, imgOptimizer, protection]) => {
         if (!dist) return;
 
@@ -1241,8 +1240,8 @@ async function handler(event) {
       });
     }
 
-    function normalizeLambdaProtection() {
-      return output(args.lambdaProtection).apply((protection) => {
+    function normalizeProtection() {
+      return output(args.protection).apply((protection) => {
         // Default to "none" if not specified
         if (!protection) return { mode: "none" as const };
 
@@ -1268,17 +1267,20 @@ async function handler(event) {
     }
 
     function createLambdaEdgeFunction() {
-      return lambdaProtection.apply((protection) => {
+      return protection.apply((protectionConfig) => {
         // Only create function if mode is oac-with-edge-signing and no ARN is provided
         if (
-          protection.mode !== "oac-with-edge-signing" ||
-          ("edgeFunction" in protection && protection.edgeFunction?.arn)
+          protectionConfig.mode !== "oac-with-edge-signing" ||
+          ("edgeFunction" in protectionConfig &&
+            protectionConfig.edgeFunction?.arn)
         ) {
           return undefined;
         }
 
         const edgeConfig =
-          "edgeFunction" in protection ? protection.edgeFunction : {};
+          "edgeFunction" in protectionConfig
+            ? protectionConfig.edgeFunction
+            : {};
         const memory = edgeConfig?.memory ? toMBs(edgeConfig.memory) : 128;
         const timeout = edgeConfig?.timeout ? toSeconds(edgeConfig.timeout) : 5;
 
@@ -1470,9 +1472,8 @@ async function handler(event) {
                   ...(layers ?? []),
                 ]),
                 url: {
-                  authorization: lambdaProtection.apply((protection) =>
-                    protection.mode === "oac" ||
-                    protection.mode === "oac-with-edge-signing"
+                  authorization: protection.apply((p) =>
+                    p.mode === "oac" || p.mode === "oac-with-edge-signing"
                       ? "iam"
                       : "none",
                   ),
@@ -1556,9 +1557,8 @@ async function handler(event) {
             ],
             ...imageOptimizer.function,
             url: {
-              authorization: lambdaProtection.apply((protection) =>
-                protection.mode === "oac" ||
-                protection.mode === "oac-with-edge-signing"
+              authorization: protection.apply((p) =>
+                p.mode === "oac" || p.mode === "oac-with-edge-signing"
                   ? "iam"
                   : "none",
               ),
@@ -1705,7 +1705,7 @@ async function handler(event) {
         plan,
         bucket.nodes.bucket.bucketRegionalDomainName,
         timeout,
-        lambdaProtection,
+        protection,
       ]).apply(
         ([
           servers,
@@ -1714,7 +1714,7 @@ async function handler(event) {
           plan,
           bucketDomain,
           timeout,
-          protection,
+          protectionConfig,
         ]) =>
           all([
             servers.map((s) => ({ region: s.region, url: s.server!.url })),
@@ -1773,8 +1773,8 @@ async function handler(event) {
                 ? {
                     host: new URL(imageOptimizerUrl!).host,
                     route: plan.imageOptimizer!.prefix,
-                    ...(protection.mode === "oac" ||
-                    protection.mode === "oac-with-edge-signing"
+                    ...(protectionConfig.mode === "oac" ||
+                    protectionConfig.mode === "oac-with-edge-signing"
                       ? {
                           originAccessControlConfig: {
                             enabled: true,
@@ -1795,8 +1795,8 @@ async function handler(event) {
                 timeouts: {
                   readTimeout: toSeconds(timeout),
                 },
-                ...(protection.mode === "oac" ||
-                protection.mode === "oac-with-edge-signing"
+                ...(protectionConfig.mode === "oac" ||
+                protectionConfig.mode === "oac-with-edge-signing"
                   ? {
                       originAccessControlConfig: {
                         enabled: true,
