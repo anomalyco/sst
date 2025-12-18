@@ -50,7 +50,7 @@ class Provider implements dynamic.ResourceProvider {
   ) {
     const oldFilesMap = new Map(oldEntries.map((f) => [f.key, f]));
 
-    const toUpload = entries.filter((entry) => {
+    const changedEntries = entries.filter((entry) => {
       const old = oldFilesMap.get(entry.key);
       return (
         old?.hash !== entry.hash ||
@@ -62,8 +62,10 @@ class Provider implements dynamic.ResourceProvider {
     // Split into HTML and non-HTML to upload non-HTML first.
     // This avoids a race condition where the CDN serves new HTML
     // referencing assets that haven't been uploaded yet.
-    const htmlEntries = toUpload.filter((e) => e.key.endsWith(".html"));
-    const nonHtmlEntries = toUpload.filter((e) => !e.key.endsWith(".html"));
+    const htmlEntries = changedEntries.filter((e) => e.key.endsWith(".html"));
+    const nonHtmlEntries = changedEntries.filter(
+      (e) => !e.key.endsWith(".html"),
+    );
 
     const uploadEntry = async (entry: KvDataEntry) => {
       const formData = new FormData();
@@ -93,7 +95,6 @@ class Provider implements dynamic.ResourceProvider {
       }
     };
 
-    // Upload non-HTML first, then HTML
     await Promise.all(nonHtmlEntries.map(uploadEntry));
     await Promise.all(htmlEntries.map(uploadEntry));
   }
