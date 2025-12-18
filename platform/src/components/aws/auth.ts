@@ -5,6 +5,7 @@ import {
   output,
 } from "@pulumi/pulumi";
 import { Component, Transform, transform } from "../component";
+import { VisibleError } from "../error";
 import { Link } from "../link";
 import { FunctionArgs, Function, Dynamo, CdnArgs, Router, RouterArgs } from ".";
 import { functionBuilder } from "./helpers/function-builder";
@@ -344,7 +345,28 @@ export class Auth extends Component implements Link.Linkable {
 
     function createTable() {
       if (args.table) {
-        return output(args.table);
+        return output(args.table).apply((table) => {
+          const t = table.nodes.table;
+          t.hashKey.apply((hashKey) => {
+            if (hashKey !== "pk")
+              throw new VisibleError(
+                `The provided table must have "pk" as the hash key, but got "${hashKey}".`,
+              );
+          });
+          t.rangeKey.apply((rangeKey) => {
+            if (rangeKey !== "sk")
+              throw new VisibleError(
+                `The provided table must have "sk" as the range key, but got "${rangeKey}".`,
+              );
+          });
+          t.ttl.apply((ttl) => {
+            if (ttl?.attributeName !== "expiry")
+              throw new VisibleError(
+                `The provided table must have TTL enabled on the "expiry" attribute, but got "${ttl?.attributeName}".`,
+              );
+          });
+          return table;
+        });
       }
       return output(
         new Dynamo(
