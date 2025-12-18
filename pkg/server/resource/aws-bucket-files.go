@@ -2,7 +2,6 @@ package resource
 
 import (
 	"bytes"
-	"log/slog"
 	"os"
 	"strings"
 	"sync"
@@ -137,8 +136,6 @@ func (r *BucketFiles) upload(client *s3.Client, bucketName string, files []Bucke
 			nonHtmlFiles = append(nonHtmlFiles, file)
 		}
 	}
-
-	slog.Info("uploading files")
 
 	if err := r.uploadFiles(client, bucketName, nonHtmlFiles); err != nil {
 		return err
