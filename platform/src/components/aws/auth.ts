@@ -4,7 +4,7 @@ import {
   Output,
   output,
 } from "@pulumi/pulumi";
-import { Component, Transform } from "../component";
+import { Component, Transform, transform } from "../component";
 import { Link } from "../link";
 import { FunctionArgs, Function, Dynamo, CdnArgs, Router, RouterArgs } from ".";
 import { functionBuilder } from "./helpers/function-builder";
@@ -390,21 +390,17 @@ export class Auth extends Component implements Link.Linkable {
     function createRouter() {
       if (!args.domain) return;
 
-      const routerArgs: RouterArgs = {
-        domain: args.domain,
-        _skipHint: true,
-      };
-
-      // Apply transform if provided
-      if (args.transform?.router) {
-        if (typeof args.transform.router === "function") {
-          args.transform.router(routerArgs, {}, `${name}Router`);
-        } else {
-          Object.assign(routerArgs, args.transform.router);
-        }
-      }
-
-      const router = new Router(`${name}Router`, routerArgs, { parent: self });
+      const router = new Router(
+        ...transform(
+          args.transform?.router,
+          `${name}Router`,
+          {
+            domain: args.domain,
+            _skipHint: true,
+          },
+          { parent: self },
+        ),
+      );
       router.route("/", issuer.url);
 
       return router;
