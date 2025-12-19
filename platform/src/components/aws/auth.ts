@@ -1,4 +1,5 @@
 import {
+  all,
   ComponentResourceOptions,
   jsonStringify,
   Output,
@@ -344,41 +345,44 @@ export class Auth extends Component implements Link.Linkable {
     }
 
     function createTable() {
-      if (args.table) {
-        return output(args.table).apply((table) => {
-          const t = table.nodes.table;
-          t.hashKey.apply((hashKey) => {
+      return output(args.table).apply((table) => {
+        if (table) {
+          return all([
+            table.nodes.table.hashKey,
+            table.nodes.table.rangeKey,
+            table.nodes.table.ttl,
+          ]).apply(([hashKey, rangeKey, ttl]) => {
             if (hashKey !== "pk")
               throw new VisibleError(
                 `The provided table must have "pk" as the hash key, but got "${hashKey}".`,
               );
-          });
-          t.rangeKey.apply((rangeKey) => {
+
             if (rangeKey !== "sk")
               throw new VisibleError(
                 `The provided table must have "sk" as the range key, but got "${rangeKey}".`,
               );
-          });
-          t.ttl.apply((ttl) => {
+
             if (ttl?.attributeName !== "expiry")
               throw new VisibleError(
                 `The provided table must have TTL enabled on the "expiry" attribute, but got "${ttl?.attributeName}".`,
               );
+
+            return table;
           });
-          return table;
-        });
-      }
-      return output(
-        new Dynamo(
-          `${name}Storage`,
-          {
-            fields: { pk: "string", sk: "string" },
-            primaryIndex: { hashKey: "pk", rangeKey: "sk" },
-            ttl: "expiry",
-          },
-          { parent: self },
-        ),
-      );
+        }
+
+        return output(
+          new Dynamo(
+            `${name}Storage`,
+            {
+              fields: { pk: "string", sk: "string" },
+              primaryIndex: { hashKey: "pk", rangeKey: "sk" },
+              ttl: "expiry",
+            },
+            { parent: self },
+          ),
+        );
+      });
     }
 
     function createIssuer() {
