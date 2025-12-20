@@ -127,6 +127,11 @@ export interface AuthArgs {
    * and should have TTL enabled on the `expiry` attribute.
    * :::
    *
+   * :::caution
+   * If you add this to an existing `Auth` component, the previously auto-created table will
+   * be removed and all user data will be lost. Make sure to migrate your data beforehand.
+   * :::
+   *
    * @example
    *
    * ```ts
