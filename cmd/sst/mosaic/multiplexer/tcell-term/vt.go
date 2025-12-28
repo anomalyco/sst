@@ -67,11 +67,10 @@ type VT struct {
 }
 
 type selection struct {
-	content strings.Builder
-	startX  int
-	startY  int
-	endX    int
-	endY    int
+	startX int
+	startY int
+	endX   int
+	endY   int
 }
 
 type cursorState struct {
@@ -527,7 +526,6 @@ func (vt *VT) Draw() {
 		return
 	}
 	offset := 0
-	vt.selection.content = strings.Builder{}
 	if vt.IsScrolling() {
 		for x := vt.scroll; x < len(vt.primaryScrollback); x += 1 {
 			if offset >= vt.height() {
@@ -551,7 +549,6 @@ func (vt *VT) drawRow(row int, cols []cell) {
 	if vt.scroll != -1 {
 		scrollOffset = vt.scroll
 	}
-	builder := strings.Builder{}
 	for col := 0; col < len(cols); {
 		cell := cols[col]
 		w := cell.width
@@ -563,17 +560,12 @@ func (vt *VT) drawRow(row int, cols []cell) {
 		style := cell.attrs
 		if vt.selection != nil && isCellSelected(col, row+scrollOffset, vt.selection.startX, vt.selection.startY, vt.selection.endX, vt.selection.endY) {
 			style = style.Reverse(true)
-			builder.WriteRune(content)
 		}
 		vt.surface.SetContent(col, row, content, cell.combining, style)
 		if w == 0 {
 			w = 1
 		}
 		col += 1
-	}
-	if builder.Len() > 0 {
-		vt.selection.content.WriteString(strings.TrimRight(builder.String(), " "))
-		vt.selection.content.WriteRune('\n')
 	}
 }
 
@@ -607,7 +599,72 @@ func (vt *VT) Clear() {
 }
 
 func (vt *VT) Copy() string {
-	return strings.TrimRightFunc(vt.selection.content.String(), unicode.IsSpace)
+	if !vt.HasSelection() {
+		return ""
+	}
+
+	// Normalize selection coordinates
+	startX, startY, endX, endY := vt.selection.startX, vt.selection.startY, vt.selection.endX, vt.selection.endY
+	if endY < startY || (endY == startY && endX < startX) {
+		startX, startY, endX, endY = endX, endY, startX, startY
+	}
+
+	var builder strings.Builder
+
+	// Determine which rows to iterate through
+	totalScrollback := len(vt.primaryScrollback)
+
+	for y := startY; y <= endY; y++ {
+		var row []cell
+
+		// Get the row from either scrollback or active screen
+		if y < totalScrollback {
+			row = vt.primaryScrollback[y]
+		} else {
+			screenY := y - totalScrollback
+			if screenY < len(vt.activeScreen) {
+				row = vt.activeScreen[screenY]
+			} else {
+				continue
+			}
+		}
+
+		// Determine the column range for this row
+		colStart := 0
+		colEnd := len(row) - 1
+
+		if y == startY {
+			colStart = startX
+		}
+		if y == endY {
+			colEnd = endX
+		}
+
+		// Extract text from this row
+		rowBuilder := strings.Builder{}
+		for x := colStart; x <= colEnd && x < len(row); x++ {
+			cell := row[x]
+			content := cell.content
+			if content == '\x00' {
+				content = ' '
+			}
+			rowBuilder.WriteRune(content)
+			for _, comb := range cell.combining {
+				rowBuilder.WriteRune(comb)
+			}
+		}
+
+		// Add the row text, trimming trailing spaces
+		rowText := strings.TrimRight(rowBuilder.String(), " ")
+		if rowText != "" || y < endY {
+			builder.WriteString(rowText)
+			if y < endY {
+				builder.WriteRune('\n')
+			}
+		}
+	}
+
+	return strings.TrimRightFunc(builder.String(), unicode.IsSpace)
 }
 
 func (vt *VT) SelectStart(x int, y int) {
