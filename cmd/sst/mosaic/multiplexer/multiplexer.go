@@ -32,8 +32,11 @@ type Multiplexer struct {
 	main      *views.ViewPort
 	stack     *views.BoxLayout
 
-	dragging bool
-	click    *tcell.EventMouse
+	dragging        bool
+	click           *tcell.EventMouse
+	scrollDirection int // -1 for up, 0 for none, 1 for down
+	scrollStop      chan struct{}
+	lastMouseX      int
 }
 
 func New() (*Multiplexer, error) {
@@ -103,6 +106,21 @@ func (s *Multiplexer) Start() {
 				shouldBreak = true
 				return
 
+			case *EventScrollTick:
+				if s.dragging && s.scrollDirection != 0 {
+					if selected != nil && selected.scrollable() {
+						if s.scrollDirection < 0 {
+							selected.scrollUp(1)
+							selected.vt.SelectEnd(s.lastMouseX, 0)
+						} else {
+							selected.scrollDown(1)
+							selected.vt.SelectEnd(s.lastMouseX, s.height-1)
+						}
+						s.draw()
+					}
+				}
+				return
+
 			case *EventProcess:
 				for _, p := range s.processes {
 					if p.key == evt.Key {
@@ -155,6 +173,7 @@ func (s *Multiplexer) Start() {
 						s.copy()
 					}
 					s.dragging = false
+					s.stopScrollTimer()
 					return
 				}
 				if evt.Buttons()&tcell.ButtonPrimary != 0 {
@@ -194,8 +213,18 @@ func (s *Multiplexer) Start() {
 						}
 						s.click = evt
 						offsetX := x - SIDEBAR_WIDTH - 1
+						s.lastMouseX = offsetX
 						if s.dragging {
 							selected.vt.SelectEnd(offsetX, y)
+							if y <= 0 && selected.scrollable() {
+								selected.scrollUp(1)
+								s.startScrollTimer(-1)
+							} else if y >= s.height-1 {
+								selected.scrollDown(1)
+								s.startScrollTimer(1)
+							} else {
+								s.stopScrollTimer()
+							}
 						}
 						if !s.dragging {
 							s.dragging = true
@@ -342,8 +371,46 @@ func (e *EventExit) When() time.Time {
 	return e.when
 }
 
+type EventScrollTick struct {
+	when time.Time
+}
+
+func (e *EventScrollTick) When() time.Time {
+	return e.when
+}
+
 func (s *Multiplexer) Exit() {
 	s.screen.PostEvent(&EventExit{})
+}
+
+func (s *Multiplexer) startScrollTimer(direction int) {
+	if s.scrollDirection == direction && s.scrollStop != nil {
+		return
+	}
+	s.stopScrollTimer()
+	s.scrollDirection = direction
+	s.scrollStop = make(chan struct{})
+
+	go func() {
+		ticker := time.NewTicker(50 * time.Millisecond) // ~20 scrolls per second
+		defer ticker.Stop()
+		for {
+			select {
+			case <-s.scrollStop:
+				return
+			case <-ticker.C:
+				s.screen.PostEvent(&EventScrollTick{when: time.Now()})
+			}
+		}
+	}()
+}
+
+func (s *Multiplexer) stopScrollTimer() {
+	if s.scrollStop != nil {
+		close(s.scrollStop)
+		s.scrollStop = nil
+	}
+	s.scrollDirection = 0
 }
 
 func (s *Multiplexer) scrollDown(n int) {
