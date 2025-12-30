@@ -19,14 +19,16 @@ const (
 	PydFileExt    = ".pyd"
 
 	// Common directory names
-	PycacheDir     = "__pycache__"
-	SstDir         = ".sst"
-	SstCacheDir    = ".sst/cache"
-	GitDir         = ".git"
-	VenvDir        = ".venv"
-	VenvAltDir     = "venv"
-	NodeModulesDir = "node_modules"
-	PytestCacheDir = ".pytest_cache"
+	PycacheDir        = "__pycache__"
+	SstDir            = ".sst"
+	SstCacheDir       = ".sst/cache"
+	SstCacheDevDir    = ".sst/cache/dev"
+	SstCacheDeployDir = ".sst/cache/deploy"
+	GitDir            = ".git"
+	VenvDir           = ".venv"
+	VenvAltDir        = "venv"
+	NodeModulesDir    = "node_modules"
+	PytestCacheDir    = ".pytest_cache"
 
 	// File permissions
 	DefaultFileMode = 0644

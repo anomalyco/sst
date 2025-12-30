@@ -1174,12 +1174,18 @@ func (da *DependencyAnalyzer) topologicalSort(graph map[string][]string) ([]stri
 }
 
 // generateCacheKey generates a cache key for dependency analysis
+// The key is based on the workspace directory only (not the module path)
+// because dependency analysis is the same for all functions in the same workspace
 func (da *DependencyAnalyzer) generateCacheKey(projectInfo *ProjectInfo) string {
 	workspaceDir := projectInfo.SourceRoot
 	if projectInfo.PyprojectPath != "" {
 		workspaceDir = filepath.Dir(projectInfo.PyprojectPath)
 	}
-	return fmt.Sprintf("%s:%s", workspaceDir, projectInfo.ModulePath)
+	// NOTE: We intentionally do NOT include ModulePath in the cache key
+	// because dependency analysis (pyproject.toml, uv.lock) is shared across
+	// all functions in the same workspace. Including ModulePath would cause
+	// each function to re-analyze dependencies, which is slow (~1 minute).
+	return workspaceDir
 }
 
 // removeDuplicateStrings removes duplicate strings from a slice

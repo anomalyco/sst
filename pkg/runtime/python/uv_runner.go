@@ -141,6 +141,10 @@ type UvSyncCommand struct {
 
 	// ExtraArgs contains additional arguments for the sync command
 	ExtraArgs []string
+
+	// TargetVenv specifies a custom venv path (uses UV_PROJECT_ENVIRONMENT)
+	// If empty, uses the default .venv in WorkspaceDir
+	TargetVenv string
 }
 
 // UvExportCommand represents a UV export command
@@ -312,83 +316,6 @@ func (ur *UvCommandRunner) ExecuteBuildCommand(ctx context.Context, cmd *UvBuild
 	return nil
 }
 
-// ExecuteSelectiveBuildCommand executes UV build for multiple specific packages
-func (ur *UvCommandRunner) ExecuteSelectiveBuildCommand(ctx context.Context, packages []string, outputDir string, buildType string) error {
-	if len(packages) == 0 {
-		slog.Info("no packages to build, skipping selective build")
-		return nil
-	}
-
-	slog.Info("executing selective build",
-		"packages", packages,
-		"outputDir", outputDir,
-		"buildType", buildType)
-
-	// Build each package individually for better control and caching
-	for _, packageName := range packages {
-		buildCmd := &UvBuildCommand{
-			PackageName: packageName,
-			OutputDir:   outputDir,
-			BuildType:   buildType,
-		}
-
-		if err := ur.ExecuteBuildCommand(ctx, buildCmd); err != nil {
-			return fmt.Errorf("failed to build package %s: %w", packageName, err)
-		}
-	}
-
-	slog.Info("selective build completed",
-		"packagesBuilt", len(packages),
-		"outputDir", outputDir)
-
-	return nil
-}
-
-// ExecuteBuildAllCommand executes UV build for all packages (fallback)
-func (ur *UvCommandRunner) ExecuteBuildAllCommand(ctx context.Context, outputDir string, buildType string) error {
-	slog.Info("executing build all command",
-		"outputDir", outputDir,
-		"buildType", buildType)
-
-	// Construct UV build command for all packages
-	args := []string{"build", "--all"}
-
-	// Add build type
-	if buildType != "" {
-		switch buildType {
-		case "sdist":
-			args = append(args, "--sdist")
-		case "wheel":
-			args = append(args, "--wheel")
-		default:
-			args = append(args, "--sdist") // Default to sdist
-		}
-	} else {
-		args = append(args, "--sdist")
-	}
-
-	// Add output directory
-	if outputDir != "" {
-		args = append(args, "--out-dir="+outputDir)
-	}
-
-	// Execute command
-	result, err := ur.executeCommand(ctx, "uv", args, "")
-	if err != nil {
-		return fmt.Errorf("UV build all failed: %w", err)
-	}
-
-	if !result.Success {
-		return fmt.Errorf("UV build all failed with exit code %d: %s", result.ExitCode, result.Stderr)
-	}
-
-	slog.Info("UV build all completed",
-		"duration", result.Duration,
-		"cached", result.Cached)
-
-	return nil
-}
-
 // ExecuteSyncCommand executes a UV sync command with optimization
 func (ur *UvCommandRunner) ExecuteSyncCommand(ctx context.Context, cmd *UvSyncCommand) error {
 	// Check if sync is needed based on file changes
@@ -423,11 +350,22 @@ func (ur *UvCommandRunner) ExecuteSyncCommand(ctx context.Context, cmd *UvSyncCo
 		slog.Info("executing UV sync",
 			"workspaceDir", cmd.WorkspaceDir,
 			"packages", len(cmd.Packages),
-			"allPackages", cmd.AllPackages)
+			"allPackages", cmd.AllPackages,
+			"targetVenv", cmd.TargetVenv)
 	}
 
-	// Execute command
-	result, err := ur.executeCommand(ctx, "uv", args, cmd.WorkspaceDir)
+	// Execute command with custom venv if specified
+	var result *CommandResult
+	var err error
+	if cmd.TargetVenv != "" {
+		// Use UV_PROJECT_ENVIRONMENT to sync to a build-specific venv
+		// This prevents modifying the user's development .venv
+		result, err = ur.executeCommandWithEnv(ctx, "uv", args, cmd.WorkspaceDir, map[string]string{
+			"UV_PROJECT_ENVIRONMENT": cmd.TargetVenv,
+		})
+	} else {
+		result, err = ur.executeCommand(ctx, "uv", args, cmd.WorkspaceDir)
+	}
 	if err != nil {
 		return fmt.Errorf("UV sync failed: %w", err)
 	}
@@ -848,6 +786,59 @@ func (ur *UvCommandRunner) executeCommand(ctx context.Context, command string, a
 	return result, nil
 }
 
+// executeCommandWithEnv executes a command with custom environment variables
+func (ur *UvCommandRunner) executeCommandWithEnv(ctx context.Context, command string, args []string, workingDir string, env map[string]string) (*CommandResult, error) {
+	startTime := time.Now()
+
+	// Create command with timeout
+	cmdCtx, cancel := context.WithTimeout(ctx, ur.config.CommandTimeout)
+	defer cancel()
+
+	cmd := process.CommandContext(cmdCtx, command, args...)
+	if workingDir != "" {
+		cmd.Dir = workingDir
+	}
+
+	// Set up environment with custom vars
+	cmd.Env = os.Environ()
+	for k, v := range env {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
+	}
+
+	slog.Info("executing UV command with custom env",
+		"command", command,
+		"args", strings.Join(args, " "),
+		"workingDir", workingDir,
+		"customEnv", env)
+
+	output, err := cmd.CombinedOutput()
+	duration := time.Since(startTime)
+
+	result := &CommandResult{
+		Command:    command,
+		Args:       args,
+		WorkingDir: workingDir,
+		Stdout:     string(output),
+		Stderr:     "",
+		ExitCode:   0,
+		Duration:   duration,
+		ExecutedAt: time.Now(),
+		Success:    err == nil,
+	}
+
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			result.ExitCode = exitErr.ExitCode()
+		} else {
+			result.ExitCode = -1
+		}
+		result.Stderr = string(output)
+		return result, fmt.Errorf("command failed with exit code %d: %s", result.ExitCode, string(output))
+	}
+
+	return result, nil
+}
+
 // executeCommandOnce executes a command once without retries
 func (ur *UvCommandRunner) executeCommandOnce(ctx context.Context, command string, args []string, workingDir string) (*CommandResult, error) {
 	// Add nil checks to prevent segfaults
@@ -1191,133 +1182,6 @@ type UvCommandCacheStats struct {
 	SkippedCommands int           `json:"skippedCommands"`
 	TotalDuration   time.Duration `json:"totalDuration"`
 	AverageDuration time.Duration `json:"averageDuration"`
-}
-
-// ValidateUvInstallation checks if UV is properly installed and accessible
-func (ur *UvCommandRunner) ValidateUvInstallation(ctx context.Context) error {
-	// Try to run 'uv --version'
-	result, err := ur.executeCommandOnce(ctx, "uv", []string{"--version"}, "")
-	if err != nil {
-		return fmt.Errorf("UV is not installed or not accessible: %w", err)
-	}
-
-	if !result.Success {
-		return fmt.Errorf("UV version check failed with exit code %d: %s", result.ExitCode, result.Stderr)
-	}
-
-	slog.Info("UV installation validated", "version", strings.TrimSpace(result.Stdout))
-	return nil
-}
-
-// GetUvVersion returns the version of UV
-func (ur *UvCommandRunner) GetUvVersion(ctx context.Context) (string, error) {
-	result, err := ur.executeCommandOnce(ctx, "uv", []string{"--version"}, "")
-	if err != nil {
-		return "", fmt.Errorf("failed to get UV version: %w", err)
-	}
-
-	if !result.Success {
-		return "", fmt.Errorf("UV version check failed: %s", result.Stderr)
-	}
-
-	version := strings.TrimSpace(result.Stdout)
-	// Remove "uv " prefix if present
-	if strings.HasPrefix(version, "uv ") {
-		version = strings.TrimPrefix(version, "uv ")
-	}
-
-	return version, nil
-}
-
-// OptimizeWorkspace performs comprehensive workspace optimization
-func (ur *UvCommandRunner) OptimizeWorkspace(ctx context.Context, workspaceDir string) error {
-	slog.Info("optimizing UV workspace", "workspaceDir", workspaceDir)
-
-	// Check workspace health first
-	if err := ur.CheckWorkspaceHealth(ctx, workspaceDir); err != nil {
-		return fmt.Errorf("workspace health check failed: %w", err)
-	}
-
-	// Perform conditional sync if needed
-	syncCmd := &UvSyncCommand{
-		WorkspaceDir: workspaceDir,
-		AllPackages:  true,
-		NoDev:        false,
-	}
-
-	if err := ur.ExecuteSyncCommand(ctx, syncCmd); err != nil {
-		return fmt.Errorf("workspace sync failed: %w", err)
-	}
-
-	slog.Info("workspace optimization completed", "workspaceDir", workspaceDir)
-	return nil
-}
-
-// GetOptimizationReport returns a report on UV command optimizations
-func (ur *UvCommandRunner) GetOptimizationReport() *UvOptimizationReport {
-	stats := ur.GetCacheStats()
-
-	report := &UvOptimizationReport{
-		CacheStats:        *stats,
-		OptimizationLevel: "standard",
-	}
-
-	// Calculate optimization metrics
-	if stats.TotalEntries > 0 {
-		report.TimesSaved = time.Duration(stats.SkippedCommands) * stats.AverageDuration
-		report.CommandsOptimized = stats.SkippedCommands
-
-		if stats.HitRate > 0.8 {
-			report.OptimizationLevel = "excellent"
-		} else if stats.HitRate > 0.5 {
-			report.OptimizationLevel = "good"
-		} else if stats.HitRate > 0.2 {
-			report.OptimizationLevel = "fair"
-		} else {
-			report.OptimizationLevel = "poor"
-		}
-	}
-
-	return report
-}
-
-// UvOptimizationReport contains information about UV command optimizations
-type UvOptimizationReport struct {
-	CacheStats        UvCommandCacheStats `json:"cacheStats"`
-	OptimizationLevel string              `json:"optimizationLevel"`
-	TimesSaved        time.Duration       `json:"timesSaved"`
-	CommandsOptimized int                 `json:"commandsOptimized"`
-}
-
-// ResetOptimizationState resets all optimization state
-func (ur *UvCommandRunner) ResetOptimizationState() {
-	ur.mutex.Lock()
-	defer ur.mutex.Unlock()
-
-	ur.commandCache = make(map[string]*CommandResult)
-	slog.Info("UV command optimization state reset")
-}
-
-// CheckWorkspaceHealth checks if a UV workspace is healthy
-func (ur *UvCommandRunner) CheckWorkspaceHealth(ctx context.Context, workspaceDir string) error {
-	// Check if pyproject.toml exists
-	pyprojectPath := filepath.Join(workspaceDir, "pyproject.toml")
-	if _, err := os.Stat(pyprojectPath); err != nil {
-		return fmt.Errorf("pyproject.toml not found in workspace: %w", err)
-	}
-
-	// Try to run 'uv sync --dry-run' to check workspace health
-	result, err := ur.executeCommandOnce(ctx, "uv", []string{"sync", "--dry-run"}, workspaceDir)
-	if err != nil {
-		return fmt.Errorf("workspace health check failed: %w", err)
-	}
-
-	if !result.Success {
-		return fmt.Errorf("workspace has issues: %s", result.Stderr)
-	}
-
-	slog.Info("workspace health check passed", "workspaceDir", workspaceDir)
-	return nil
 }
 
 // shouldExecuteSync determines if a sync command should be executed

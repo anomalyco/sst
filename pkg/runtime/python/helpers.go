@@ -82,9 +82,17 @@ func NewPathHelpers() *PathHelpers {
 	return &PathHelpers{}
 }
 
-// GetCacheDir returns the standard cache directory path
+// GetCacheDir returns the standard cache directory path (legacy, use GetCacheDirForMode)
 func (ph *PathHelpers) GetCacheDir(workingDir string) string {
 	return filepath.Join(workingDir, SstCacheDir)
+}
+
+// GetCacheDirForMode returns the cache directory for dev or deploy mode
+func (ph *PathHelpers) GetCacheDirForMode(workingDir string, isDev bool) string {
+	if isDev {
+		return filepath.Join(workingDir, SstCacheDevDir)
+	}
+	return filepath.Join(workingDir, SstCacheDeployDir)
 }
 
 // GetSstDir returns the SST directory path

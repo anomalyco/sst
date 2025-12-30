@@ -48,29 +48,33 @@ func TestInfrastructureFileChanges(t *testing.T) {
 }
 
 func TestShouldRebuildInfrastructureChanges(t *testing.T) {
-	runtime := &PythonRuntime{
-		lastRebuildCheck: make(map[string]time.Time),
-		rebuildCooldown:  time.Millisecond * 100, // Short cooldown for testing
-	}
-
 	testCases := []struct {
 		filename string
 		expected bool
 		desc     string
 	}{
-		// Infrastructure files should always trigger rebuild
-		{"sst.config.ts", true, "SST config changes should trigger rebuild"},
-		{"infra/api.ts", true, "Infrastructure TypeScript should trigger rebuild"},
-		{"components/auth.js", true, "Infrastructure JavaScript should trigger rebuild"},
-		{"package.json", true, "package.json changes should trigger rebuild"},
+		// Infrastructure files should NOT trigger immediate rebuild (lazy rebuild on invoke)
+		{"sst.config.ts", false, "SST config changes should NOT trigger immediate rebuild"},
+		{"infra/api.ts", false, "Infrastructure TypeScript should NOT trigger immediate rebuild"},
+		{"components/auth.js", false, "Infrastructure JavaScript should NOT trigger immediate rebuild"},
+		{"package.json", false, "package.json changes should NOT trigger immediate rebuild"},
 
-		// Python files should always trigger rebuild
+		// Python files should trigger rebuild (worker restart)
 		{"handler.py", true, "Python files should trigger rebuild"},
 		{"lib/models.py", true, "Python modules should trigger rebuild"},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.desc, func(t *testing.T) {
+			// Create fresh runtime for each test to avoid rate limiting interference
+			runtime := &PythonRuntime{
+				lastRebuildCheck: make(map[string]time.Time),
+				rebuildCooldown:  time.Millisecond * 1, // Very short cooldown for testing
+				pendingChanges:   make(map[string][]string),
+				restartSignaled:  make(map[string]bool),
+				fileChangeTime:   make(map[string]time.Time),
+				lastWorkerStart:  make(map[string]time.Time),
+			}
 			result := runtime.ShouldRebuild("test-function", tc.filename)
 			if result != tc.expected {
 				t.Errorf("ShouldRebuild('test-function', %q) = %v, expected %v", tc.filename, result, tc.expected)

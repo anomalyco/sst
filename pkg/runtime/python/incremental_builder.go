@@ -2336,11 +2336,21 @@ func (ib *IncrementalBuilder) installDependenciesForLambda(ctx context.Context, 
 	globalSyncMutex.Unlock()
 
 	if !alreadySynced {
+		// Use a build-specific venv in .sst to avoid modifying the user's development .venv
+		// This prevents dev dependencies from being removed during deploy
+		buildVenvPath := filepath.Join(ib.config.CacheDir, "build-venv")
+		if err := os.MkdirAll(buildVenvPath, 0755); err != nil {
+			slog.Warn("failed to create build venv directory, falling back to project venv",
+				"error", err, "path", buildVenvPath)
+			buildVenvPath = "" // Fall back to default behavior
+		}
+
 		syncCmd := &UvSyncCommand{
 			WorkspaceDir: workspaceDir,
 			AllPackages:  useAllPackages,
 			NoDev:        noDev,
 			Packages:     packages,
+			TargetVenv:   buildVenvPath,
 		}
 
 		ib.progressReporter.UpdateProgress(StageBuildPackages, "Syncing workspace dependencies (first function)")
@@ -2673,6 +2683,15 @@ func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input 
 	if err == nil {
 		cacheKey = fmt.Sprintf("%s-%s", requirementsHash, architecture)
 
+		// Check if a previous build with this cache key failed
+		// If so, fail fast to prevent deploying bad code
+		globalDependencyInstallFailuresMutex.RLock()
+		if prevErr, failed := globalDependencyInstallFailures[cacheKey]; failed {
+			globalDependencyInstallFailuresMutex.RUnlock()
+			return fmt.Errorf("dependency installation previously failed for this requirements set - refusing to deploy potentially bad code: %w", prevErr)
+		}
+		globalDependencyInstallFailuresMutex.RUnlock()
+
 		// Show first line of requirements.txt to debug differences
 		if data, err := os.ReadFile(requirementsPath); err == nil {
 			lines := strings.Split(string(data), "\n")
@@ -2702,10 +2721,29 @@ func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input 
 		globalDependencyInstallLocksMutex.Unlock()
 		ib.progressReporter.UpdateProgress(StageBuildPackages, lockMessage)
 
-		// Acquire the lock for this cache key
+		// Acquire the lock for this cache key with timeout
 		// This ensures only ONE function installs dependencies for this requirements.txt
-		// Other functions wait here until the first one completes
-		cacheLock.Lock()
+		// Other functions wait here until the first one completes (or timeout)
+		//
+		// Use TryLock in a loop to avoid goroutine leaks when many functions timeout
+		lockDeadline := time.Now().Add(10 * time.Minute)
+		gotLock := false
+		for time.Now().Before(lockDeadline) {
+			if cacheLock.TryLock() {
+				gotLock = true
+				break
+			}
+			// Check if context is cancelled
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("context cancelled while waiting for dependency install lock")
+			case <-time.After(500 * time.Millisecond):
+				// Try again
+			}
+		}
+		if !gotLock {
+			return fmt.Errorf("timed out waiting for dependency install lock after 10 minutes - another build may be stuck")
+		}
 		defer cacheLock.Unlock()
 		ib.progressReporter.UpdateProgress(StageBuildPackages, "✅ Got install lock")
 
@@ -2724,7 +2762,12 @@ func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input 
 			// Copy only the dependency packages, not the entire directory
 			// This avoids copying requirements.txt and other function-specific files
 			if err := ib.copyDependencyPackages(globalInstallDir, input.Out()); err != nil {
-				ib.progressReporter.UpdateProgress(StageBuildPackages, fmt.Sprintf("❌ Copy failed: %v, installing fresh", err))
+				ib.progressReporter.UpdateProgress(StageBuildPackages, fmt.Sprintf("❌ Copy failed: %v, invalidating cache and installing fresh", err))
+				// Invalidate the bad cache entry so other functions don't use it
+				globalDependencyInstallCacheMutex.Lock()
+				delete(globalDependencyInstallCache, cacheKey)
+				globalDependencyInstallCacheMutex.Unlock()
+				slog.Warn("invalidated bad cache entry", "cacheKey", cacheKey, "error", err)
 			} else {
 				ib.progressReporter.UpdateProgress(StageBuildPackages, fmt.Sprintf("✅ Copied from cache (%v)", time.Since(startTime)))
 				return nil
@@ -2776,6 +2819,9 @@ func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input 
 		"architecture", architecture)
 
 	// Build the uv pip install command with platform targeting (same as legacy builder)
+	// Note: We don't use --reinstall because it forces re-fetching git dependencies every time,
+	// which is very slow for packages like sst that come from large git repos.
+	// The artifact directory is already cleaned before each build, so this is safe.
 	args := []string{"pip", "install", "-r", requirementsPath, "--target", input.Out()}
 
 	// Add platform targeting for Lambda deployments
@@ -2807,18 +2853,63 @@ func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input 
 		workspaceDir = filepath.Dir(projectInfo.PyprojectPath)
 	}
 
-	// Execute the uv pip install command
+	// Execute the uv pip install command with timeout
 	// Run from the workspace directory where pyproject.toml exists, not the artifact directory
-	installCmd := process.CommandContext(ctx, "uv", args...)
+	// Use a 15-minute timeout to allow for large dependency installations
+	installCtx, installCancel := context.WithTimeout(ctx, 15*time.Minute)
+	defer installCancel()
+
+	installCmd := process.CommandContext(installCtx, "uv", args...)
 	installCmd.Dir = workspaceDir
 
-	installOutput, err := installCmd.CombinedOutput()
+	slog.Info("starting uv pip install", "command", strings.Join(args, " "), "workingDir", workspaceDir)
+	ib.progressReporter.UpdateProgress(StageBuildPackages, "📦 Running uv pip install (this may take a while)...")
+
+	// Use a channel to handle timeout properly since CombinedOutput blocks
+	type cmdResult struct {
+		output []byte
+		err    error
+	}
+	resultChan := make(chan cmdResult, 1)
+
+	go func() {
+		output, err := installCmd.CombinedOutput()
+		resultChan <- cmdResult{output, err}
+	}()
+
+	var installOutput []byte
+	select {
+	case result := <-resultChan:
+		installOutput = result.output
+		err = result.err
+	case <-installCtx.Done():
+		// Kill the process if it's still running
+		if installCmd.Process != nil {
+			installCmd.Process.Kill()
+		}
+		timeoutErr := fmt.Errorf("uv pip install timed out after 15 minutes - check network connectivity and try again")
+		// Record failure so other functions don't try to use bad cache
+		if cacheKey != "" {
+			globalDependencyInstallFailuresMutex.Lock()
+			globalDependencyInstallFailures[cacheKey] = timeoutErr
+			globalDependencyInstallFailuresMutex.Unlock()
+		}
+		return timeoutErr
+	}
+
 	if err != nil {
 		slog.Error("uv pip install failed",
 			"command", strings.Join(installCmd.Args, " "),
 			"error", err,
 			"output", string(installOutput))
-		return fmt.Errorf("failed to run uv pip install: %v\n%s", err, string(installOutput))
+		installErr := fmt.Errorf("failed to run uv pip install: %v\n%s", err, string(installOutput))
+		// Record failure so other functions don't try to use bad cache
+		if cacheKey != "" {
+			globalDependencyInstallFailuresMutex.Lock()
+			globalDependencyInstallFailures[cacheKey] = installErr
+			globalDependencyInstallFailuresMutex.Unlock()
+		}
+		return installErr
 	}
 
 	slog.Info("uv pip install completed successfully", "output", string(installOutput))
@@ -3153,27 +3244,6 @@ func (ib *IncrementalBuilder) copyDirectory(src, dst string) error {
 	})
 }
 
-// findSitePackagesPath finds the site-packages directory in the venv
-func (ib *IncrementalBuilder) findSitePackagesPath(venvPath string) (string, error) {
-	// Try common Python version paths
-	libPath := filepath.Join(venvPath, "lib")
-	entries, err := os.ReadDir(libPath)
-	if err != nil {
-		return "", fmt.Errorf("failed to read lib directory: %w", err)
-	}
-
-	for _, entry := range entries {
-		if strings.HasPrefix(entry.Name(), "python") && entry.IsDir() {
-			sitePackagesPath := filepath.Join(libPath, entry.Name(), "site-packages")
-			if _, err := os.Stat(sitePackagesPath); err == nil {
-				return sitePackagesPath, nil
-			}
-		}
-	}
-
-	return "", fmt.Errorf("site-packages directory not found in %s", venvPath)
-}
-
 // cleanupInstalledDependencies removes __pycache__ directories, .pyc files, and system files from installed dependencies
 func (ib *IncrementalBuilder) cleanupInstalledDependencies(targetDir string) error {
 	slog.Info("cleaning up __pycache__ directories, .pyc files, and system files from installed dependencies", "targetDir", targetDir)
@@ -3310,19 +3380,15 @@ func (ib *IncrementalBuilder) hashFile(filePath string) (string, error) {
 func (ib *IncrementalBuilder) copyDependencyPackages(srcDir, destDir string) error {
 	slog.Info("copying dependency packages with hardlinks", "src", srcDir, "dest", destDir)
 
-	// Read source directory to find package directories
+	// Read source directory to find package directories and root-level files
 	entries, err := os.ReadDir(srcDir)
 	if err != nil {
 		return fmt.Errorf("failed to read source directory: %w", err)
 	}
 
 	copiedCount := 0
+	copiedFiles := 0
 	for _, entry := range entries {
-		// Skip non-directories and special files
-		if !entry.IsDir() {
-			continue
-		}
-
 		name := entry.Name()
 
 		// Skip special directories and files we don't want to copy
@@ -3330,20 +3396,84 @@ func (ib *IncrementalBuilder) copyDependencyPackages(srcDir, destDir string) err
 			continue
 		}
 
-		// Skip files that aren't packages (requirements.txt, etc.)
-		srcPath := filepath.Join(srcDir, name)
-		destPath := filepath.Join(destDir, name)
-
-		// Copy this package directory with hardlinks
-		if err := ib.copyDirectoryWithHardlinks(srcPath, destPath); err != nil {
-			slog.Warn("failed to copy package", "package", name, "error", err)
+		// Skip non-package files (requirements.txt, resource.enc, etc.)
+		if name == "requirements.txt" || name == "requirements-filtered.txt" || name == "resource.enc" {
 			continue
 		}
 
-		copiedCount++
+		srcPath := filepath.Join(srcDir, name)
+		destPath := filepath.Join(destDir, name)
+
+		if entry.IsDir() {
+			// Copy package directory with hardlinks
+			if err := ib.copyDirectoryWithHardlinks(srcPath, destPath); err != nil {
+				slog.Warn("failed to copy package", "package", name, "error", err)
+				continue
+			}
+			copiedCount++
+		} else if strings.HasSuffix(name, ".so") || strings.HasSuffix(name, ".py") {
+			// Copy root-level .so files (like _cffi_backend.cpython-313-aarch64-linux-gnu.so)
+			// and root-level .py files (like typing_extensions.py, six.py)
+			// These are packages that install as single files at the root level
+			if err := ib.copyFileWithHardlink(srcPath, destPath); err != nil {
+				slog.Warn("failed to copy root file", "file", name, "error", err)
+				continue
+			}
+			copiedFiles++
+			slog.Info("copied root-level file", "file", name)
+		}
 	}
 
-	slog.Info("copied dependency packages", "count", copiedCount)
+	slog.Info("copied dependency packages", "directories", copiedCount, "rootFiles", copiedFiles)
+	return nil
+}
+
+// copyFileWithHardlink copies a single file using hardlink or falls back to copy
+func (ib *IncrementalBuilder) copyFileWithHardlink(srcPath, destPath string) error {
+	// Get file info
+	info, err := os.Stat(srcPath)
+	if err != nil {
+		return fmt.Errorf("failed to stat source file: %w", err)
+	}
+
+	// Ensure parent directory exists
+	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+		return fmt.Errorf("failed to create parent directory: %w", err)
+	}
+
+	// Remove destination if it exists
+	os.Remove(destPath)
+
+	// Check if source is a symlink
+	fileInfo, err := os.Lstat(srcPath)
+	if err != nil {
+		return fmt.Errorf("failed to lstat source file: %w", err)
+	}
+
+	if fileInfo.Mode()&os.ModeSymlink != 0 {
+		// Source is a symlink - copy the file contents
+		data, err := os.ReadFile(srcPath)
+		if err != nil {
+			return fmt.Errorf("failed to read symlinked file: %w", err)
+		}
+		if err := os.WriteFile(destPath, data, info.Mode()); err != nil {
+			return fmt.Errorf("failed to write file: %w", err)
+		}
+		return nil
+	}
+
+	// Try hardlink first
+	if err := os.Link(srcPath, destPath); err != nil {
+		// Fall back to copy
+		data, err := os.ReadFile(srcPath)
+		if err != nil {
+			return fmt.Errorf("failed to read file: %w", err)
+		}
+		if err := os.WriteFile(destPath, data, info.Mode()); err != nil {
+			return fmt.Errorf("failed to write file: %w", err)
+		}
+	}
+
 	return nil
 }
 
@@ -3372,7 +3502,7 @@ func (ib *IncrementalBuilder) copyDirectoryWithHardlinks(srcDir, destDir string)
 			return nil
 		}
 
-		// Handle files - create hardlink
+		// Handle files - create hardlink or copy
 		// First ensure parent directory exists
 		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
 			return fmt.Errorf("failed to create parent directory for %s: %w", destPath, err)
@@ -3380,6 +3510,28 @@ func (ib *IncrementalBuilder) copyDirectoryWithHardlinks(srcDir, destDir string)
 
 		// Remove destination if it exists (hardlink will fail if file exists)
 		os.Remove(destPath)
+
+		// Check if source is a symlink - if so, we must copy instead of hardlink
+		// UV installs use symlinks to its cache, and hardlinking to those would
+		// create a hardlink to the UV cache file itself. If anything later modifies
+		// the hardlinked file, it would corrupt the UV cache!
+		fileInfo, err := os.Lstat(srcPath)
+		if err != nil {
+			return fmt.Errorf("failed to lstat source file: %w", err)
+		}
+
+		if fileInfo.Mode()&os.ModeSymlink != 0 {
+			// Source is a symlink - copy the file contents instead of hardlinking
+			// This protects the UV cache from corruption
+			data, err := os.ReadFile(srcPath)
+			if err != nil {
+				return fmt.Errorf("failed to read symlinked file for copy: %w", err)
+			}
+			if err := os.WriteFile(destPath, data, info.Mode()); err != nil {
+				return fmt.Errorf("failed to write file: %w", err)
+			}
+			return nil
+		}
 
 		// Create hardlink (instant, no disk space used)
 		if err := os.Link(srcPath, destPath); err != nil {

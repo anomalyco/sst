@@ -9,13 +9,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	goruntime "runtime"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/BurntSushi/toml"
-	"github.com/sst/sst/v3/cmd/sst/mosaic/ui/common"
 	"github.com/sst/sst/v3/pkg/bus"
 	"github.com/sst/sst/v3/pkg/events"
 	"github.com/sst/sst/v3/pkg/process"
@@ -51,6 +49,11 @@ var (
 	// Global requirements.txt generation - generate once per workspace, reuse for all functions
 	globalRequirementsFiles      = make(map[string]string) // workspaceDir -> requirements.txt path
 	globalRequirementsFilesMutex sync.Mutex
+
+	// Global build failure tracking - if ANY function's dependency install fails,
+	// mark the cache key as failed so other functions don't use potentially bad cache
+	globalDependencyInstallFailures      = make(map[string]error)
+	globalDependencyInstallFailuresMutex sync.RWMutex
 )
 
 type Worker struct {
@@ -269,29 +272,11 @@ func (r *PythonRuntime) Build(ctx context.Context, input *runtime.BuildInput) (*
 
 	// Acquire semaphore to limit concurrent builds (prevents system overload)
 	// This is critical because Pulumi calls Build() for all functions in parallel
-	numGoroutinesBefore := goruntime.NumGoroutine()
-	slog.Info("🔍 Build() ENTRY",
-		"functionID", input.FunctionID,
-		"dev", input.Dev,
-		"goroutinesBefore", numGoroutinesBefore,
-		"waitingForSemaphore", true)
-
+	// Note: artifact directories are cleared by runtime.go's Collection.Build() before this is called
 	globalBuildSemaphore <- struct{}{} // Acquire
 	defer func() {
-		numGoroutinesAfter := goruntime.NumGoroutine()
-		slog.Info("🔍 Build() EXIT",
-			"functionID", input.FunctionID,
-			"goroutinesAfter", numGoroutinesAfter,
-			"delta", numGoroutinesAfter-numGoroutinesBefore)
 		<-globalBuildSemaphore
 	}() // Release
-
-	numGoroutinesAcquired := goruntime.NumGoroutine()
-	slog.Info("🔍 Build() ACQUIRED SEMAPHORE",
-		"functionID", input.FunctionID,
-		"dev", input.Dev,
-		"goroutinesAcquired", numGoroutinesAcquired,
-		"deltaFromEntry", numGoroutinesAcquired-numGoroutinesBefore)
 
 	// Publish to dev screen
 	bus.Publish(&events.FunctionBuildProgressEvent{
@@ -307,25 +292,15 @@ func (r *PythonRuntime) Build(ctx context.Context, input *runtime.BuildInput) (*
 		lastBuilt, hasBuilt := r.lastBuiltHandler[input.FunctionID]
 		r.mutex.RUnlock()
 
-		slog.Info("🔍 Checking if we can skip build",
-			"functionID", input.FunctionID,
-			"hasBuilt", hasBuilt,
-			"lastBuilt", lastBuilt)
-
 		if hasBuilt && lastBuilt != "" {
 			// We've built this before, verify the artifact is complete
 			// Check if the handler file exists in the artifact directory
 			handlerFile := filepath.Join(input.Out(), input.Handler+".py")
 			if _, err := os.Stat(handlerFile); err == nil {
-				elapsed := time.Since(buildStart)
-				slog.Info("⚡ FAST BUILD: skipping rebuild, artifact is complete",
-					"functionID", input.FunctionID,
-					"elapsed", elapsed)
-
 				bus.Publish(&events.FunctionBuildProgressEvent{
 					FunctionID: input.FunctionID,
 					Stage:      "FastBuild",
-					Message:    fmt.Sprintf("Fast build in %v", elapsed),
+					Message:    fmt.Sprintf("Fast build in %v", time.Since(buildStart)),
 				})
 
 				return &runtime.BuildOutput{
@@ -333,15 +308,7 @@ func (r *PythonRuntime) Build(ctx context.Context, input *runtime.BuildInput) (*
 					Handler: input.Handler,
 					Errors:  []string{},
 				}, nil
-			} else {
-				slog.Warn("⚠️ lastBuiltHandler says we built before, but handler file missing, doing full build",
-					"functionID", input.FunctionID,
-					"handlerFile", handlerFile,
-					"error", err)
 			}
-		} else {
-			slog.Info("📦 First build for this function, doing full build",
-				"functionID", input.FunctionID)
 		}
 	}
 
@@ -371,45 +338,27 @@ func (r *PythonRuntime) Build(ctx context.Context, input *runtime.BuildInput) (*
 
 	if input.Dev {
 		// Development mode: Simple build without complex dependency management
-
-		// Still call CreateBuildAsset but it will be much simpler for dev
-		createStart := time.Now()
 		result, err := r.CreateBuildAsset(ctx, input)
-		slog.Info("⏱️ CreateBuildAsset completed",
-			"functionID", input.FunctionID,
-			"elapsed", time.Since(createStart))
 		if err != nil {
-
 			return nil, err
 		}
 
 		r.lastBuiltHandler[input.FunctionID] = file
 
-		elapsed := time.Since(buildStart)
-		slog.Info("⏱️ Build() completed",
-			"functionID", input.FunctionID,
-			"totalElapsed", elapsed)
-
 		// Publish to dev screen
 		bus.Publish(&events.FunctionBuildProgressEvent{
 			FunctionID: input.FunctionID,
 			Stage:      "BuildComplete",
-			Message:    fmt.Sprintf("Build completed in %v", elapsed),
+			Message:    fmt.Sprintf("Build completed in %v", time.Since(buildStart)),
 		})
 
 		return result, nil
 	} else {
 		// Deployment mode: Use the original complex build system
-
 		result, err := r.CreateBuildAsset(ctx, input)
 		if err != nil {
-
 			return nil, err
 		}
-
-		slog.Info("⏱️ Build() completed (deployment)",
-			"functionID", input.FunctionID,
-			"totalElapsed", time.Since(buildStart))
 		return result, nil
 	}
 
@@ -449,11 +398,6 @@ type PyProject struct {
 }
 
 func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runtime.Worker, error) {
-	startTime := time.Now()
-	slog.Info("⏱️ Run() started",
-		"functionID", input.FunctionID,
-		"workerID", input.WorkerID)
-
 	// Check if we have pending changes AND haven't already signaled a restart
 	r.mutex.Lock()
 	pendingFiles := r.pendingChanges[input.FunctionID]
@@ -475,11 +419,6 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 
 		if allChangesOlderThanRestart {
 			// All pending changes are older than the last restart, clear them and skip restart
-			slog.Info("🔄 Run() skipping restart: worker already restarted after all pending changes",
-				"functionID", input.FunctionID,
-				"workerID", input.WorkerID,
-				"lastWorkerStart", lastStart,
-				"pendingChanges", len(pendingFiles))
 			delete(r.pendingChanges, input.FunctionID)
 			delete(r.restartSignaled, input.FunctionID)
 			hasPendingChanges = false
@@ -491,13 +430,6 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 	if hasPendingChanges && !alreadySignaled {
 		r.restartSignaled[input.FunctionID] = true
 		r.mutex.Unlock()
-
-		slog.Info("🔄 LAZY RESTART: pending changes detected, returning placeholder worker",
-			"functionID", input.FunctionID,
-			"workerID", input.WorkerID,
-			"pendingChanges", len(pendingFiles),
-			"files", pendingFiles,
-			"elapsed", time.Since(startTime))
 
 		// Publish event so it shows in dev screen with file details
 		fileList := strings.Join(pendingFiles, ", ")
@@ -518,11 +450,6 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 		stderr, _ := cmd.StderrPipe()
 		cmd.Start()
 
-		slog.Info("🔄 LAZY RESTART: placeholder worker created, will exit immediately",
-			"functionID", input.FunctionID,
-			"workerID", input.WorkerID,
-			"totalElapsed", time.Since(startTime))
-
 		return &Worker{
 			stdout: stdout,
 			stderr: stderr,
@@ -534,16 +461,8 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 	// This prevents getting stuck in LazyRestart mode
 	if alreadySignaled {
 		delete(r.restartSignaled, input.FunctionID)
-		slog.Info("🔄 Cleared restart signal, starting real worker",
-			"functionID", input.FunctionID,
-			"hasPendingChanges", hasPendingChanges)
 	}
 	r.mutex.Unlock()
-
-	slog.Info("✅ STARTING WORKER: no pending changes, starting actual Python process",
-		"functionID", input.FunctionID,
-		"workerID", input.WorkerID,
-		"elapsed", time.Since(startTime))
 
 	// Track when this worker is starting
 	r.mutex.Lock()
@@ -552,13 +471,9 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 
 	// Sync artifacts with source before starting the worker
 	// This will clear pending changes after syncing
-	syncStart := time.Now()
 	if err := r.syncArtifactsIfNeeded(input); err != nil {
 		return nil, fmt.Errorf("failed to sync artifacts: %v", err)
 	}
-	slog.Info("⏱️ syncArtifactsIfNeeded completed",
-		"functionID", input.FunctionID,
-		"elapsed", time.Since(syncStart))
 
 	// We need the lambda bridge in the artifact directory so that we can run the handler
 	// without having to manually isolate the runtime, So if it is not present then we need to copy it from
@@ -1395,18 +1310,23 @@ func (r *PythonRuntime) CreateBuildAsset(ctx context.Context, input *runtime.Bui
 func (r *PythonRuntime) createBuildAssetIncremental(ctx context.Context, input *runtime.BuildInput, arch string, workingDir string) (*runtime.BuildOutput, error) {
 	// Create incremental builder with sensible defaults
 	factory := NewRuntimeFactory()
+	// Progress callback - only publish important stage completions, not verbose updates
 	progressCallback := func(event ProgressEvent) {
-		// Emit FunctionBuildProgressEvent if FunctionID is available
+		// Filter to only show important stages (complete, failed, or major milestones)
+		// Skip verbose micro-updates that clutter the deploy output
+		switch event.Stage {
+		case "complete", "failed":
+			// Always show completion/failure
+		default:
+			// Skip verbose progress updates
+			return
+		}
+
 		if input.FunctionID != "" {
 			bus.Publish(&events.FunctionBuildProgressEvent{
 				FunctionID: input.FunctionID,
 				Stage:      event.Stage,
 				Message:    event.Message,
-			})
-		} else {
-			// Fallback to StdoutEvent if FunctionID is not available
-			bus.Publish(&common.StdoutEvent{
-				Line: fmt.Sprintf("🔨 Build %s: %s", event.Stage, event.Message),
 			})
 		}
 	}
@@ -2600,7 +2520,7 @@ func checkUvSyncNeeded(projectRoot string) {
 
 	// Check if uv.lock exists to determine if we should use --frozen
 	uvLockPath := filepath.Join(projectRoot, "uv.lock")
-	args := []string{"sync"}
+	args := []string{"sync", "--no-dev"}
 	if _, err := os.Stat(uvLockPath); err == nil {
 		args = append(args, "--frozen")
 		slog.Debug("using --frozen flag (uv.lock exists)", "uvLockPath", uvLockPath)

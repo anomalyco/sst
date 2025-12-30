@@ -43,7 +43,7 @@ func (rf *RuntimeFactory) CreateIncrementalBuilder(workingDir string, input *run
 	pathHelpers := NewPathHelpers()
 
 	return NewIncrementalBuilder(IncrementalBuilderConfig{
-		CacheDir:                pathHelpers.GetCacheDir(workingDir),
+		CacheDir:                pathHelpers.GetCacheDirForMode(workingDir, input.Dev),
 		ArtifactDir:             input.Out(),
 		MaxCacheAge:             DefaultDependencyCacheAge, // For dependency cache, NOT build cache
 		MaxCacheSize:            DefaultMaxCacheSize,

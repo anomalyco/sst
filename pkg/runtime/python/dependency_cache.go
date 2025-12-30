@@ -413,6 +413,20 @@ func (dc *DependencyCache) copyDirectory(src string, dst string) error {
 			return os.MkdirAll(dstPath, info.Mode())
 		}
 
+		// Check if source is a symlink - if so, we must copy instead of hardlink
+		// UV installs use symlinks to its cache, and hardlinking to those would
+		// create a hardlink to the UV cache file itself. If anything later modifies
+		// the hardlinked file, it would corrupt the UV cache!
+		fileInfo, err := os.Lstat(path)
+		if err != nil {
+			return err
+		}
+
+		if fileInfo.Mode()&os.ModeSymlink != 0 {
+			// Source is a symlink - copy the file contents instead of hardlinking
+			return dc.copyFile(path, dstPath)
+		}
+
 		// Try hardlink first (instant), fall back to copy if it fails
 		if err := os.Link(path, dstPath); err == nil {
 			return nil
