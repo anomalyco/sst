@@ -419,6 +419,9 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 
 		if allChangesOlderThanRestart {
 			// All pending changes are older than the last restart, clear them and skip restart
+			slog.Info("Run: all pending changes older than last restart, clearing",
+				"functionID", input.FunctionID,
+				"pendingCount", len(pendingFiles))
 			delete(r.pendingChanges, input.FunctionID)
 			delete(r.restartSignaled, input.FunctionID)
 			hasPendingChanges = false
@@ -427,6 +430,8 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 	}
 
 	// If we have pending changes and haven't signaled yet, signal now
+	// BUT: if alreadySignaled is true, we're in the second call after the dummy worker exited
+	// In that case, proceed to start the real worker
 	if hasPendingChanges && !alreadySignaled {
 		r.restartSignaled[input.FunctionID] = true
 		r.mutex.Unlock()
@@ -457,10 +462,16 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 		}, nil
 	}
 
-	// Clear restart signal if we're starting a real worker (either no pending changes, or already signaled)
-	// This prevents getting stuck in LazyRestart mode
-	if alreadySignaled {
+	// Clear restart signal AND pending changes when starting a real worker
+	// This is critical to prevent the restart loop
+	if alreadySignaled || hasPendingChanges {
+		slog.Info("Run: starting real worker, clearing restart state",
+			"functionID", input.FunctionID,
+			"alreadySignaled", alreadySignaled,
+			"pendingChanges", len(r.pendingChanges[input.FunctionID]))
 		delete(r.restartSignaled, input.FunctionID)
+		// Don't clear pendingChanges here - let syncArtifactsIfNeeded handle it
+		// so the files actually get synced
 	}
 	r.mutex.Unlock()
 
@@ -651,6 +662,29 @@ func (r *PythonRuntime) ShouldRebuild(functionID string, file string) bool {
 		// Track when this file changed
 		r.fileChangeTime[file] = now
 
+		// CRITICAL: If a restart is already signaled/in-progress, just add to pending changes
+		// but DON'T return true - this prevents the restart loop where each file change
+		// triggers another full restart cycle for all 50+ functions
+		if r.restartSignaled[functionID] {
+			// Add file to pending changes if not already tracked
+			alreadyTracked := false
+			for _, f := range r.pendingChanges[functionID] {
+				if f == file {
+					alreadyTracked = true
+					break
+				}
+			}
+			if !alreadyTracked {
+				r.pendingChanges[functionID] = append(r.pendingChanges[functionID], file)
+				slog.Info("📝 ShouldRebuild: restart already in progress, queuing file",
+					"functionID", functionID,
+					"file", file,
+					"totalPendingChanges", len(r.pendingChanges[functionID]))
+			}
+			r.mutex.Unlock()
+			return false // Don't trigger another restart cycle
+		}
+
 		// Check if worker was already restarted after this file changed
 		if lastStart, exists := r.lastWorkerStart[functionID]; exists {
 			if lastStart.After(now) || lastStart.Equal(now) {
@@ -685,7 +719,7 @@ func (r *PythonRuntime) ShouldRebuild(functionID string, file string) bool {
 			r.pendingChanges[functionID] = []string{}
 		}
 		r.pendingChanges[functionID] = append(r.pendingChanges[functionID], file)
-		slog.Error("🚨 ShouldRebuild: Python file changed, will trigger restart",
+		slog.Info("🚨 ShouldRebuild: Python file changed, will trigger restart",
 			"functionID", functionID,
 			"file", file,
 			"totalPendingChanges", len(r.pendingChanges[functionID]))
