@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	goruntime "runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -2827,23 +2828,50 @@ func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input 
 	// Add platform targeting for Lambda deployments
 	// Use platform targeting for actual deployments (not dev mode, not containers)
 	// In dev mode, we need native binaries for the local machine
+	//
+	// OPTIMIZATION: Skip platform targeting if we're already on the target platform
+	// This allows UV to use native wheels from cache instead of cross-compiling
 	if !input.Dev && !input.IsContainer {
-		pythonPlatform := "x86_64-unknown-linux-gnu"
-		if architecture == "arm64" {
-			pythonPlatform = "aarch64-unknown-linux-gnu"
+		// Determine if we need cross-platform targeting
+		needsCrossPlatform := false
+		currentArch := goruntime.GOARCH // "amd64" or "arm64"
+		currentOS := goruntime.GOOS     // "linux", "darwin", etc.
+
+		// We need cross-platform targeting if:
+		// 1. We're not on Linux (Lambda runs on Linux)
+		// 2. Our architecture doesn't match the target
+		targetIsArm := architecture == "arm64"
+		currentIsArm := currentArch == "arm64"
+
+		if currentOS != "linux" || targetIsArm != currentIsArm {
+			needsCrossPlatform = true
 		}
 
-		// Extract Python version from runtime string (e.g., "python3.13" -> "3.13")
-		pythonVersion := strings.TrimPrefix(input.Runtime, "python")
-		if pythonVersion == "" || pythonVersion == input.Runtime {
-			pythonVersion = "3.13" // fallback to 3.13 if parsing fails
-		}
+		if needsCrossPlatform {
+			pythonPlatform := "x86_64-unknown-linux-gnu"
+			if architecture == "arm64" {
+				pythonPlatform = "aarch64-unknown-linux-gnu"
+			}
 
-		args = append(args, "--python-platform", pythonPlatform, "--python-version", pythonVersion)
-		slog.Info("using platform targeting for Lambda deployment",
-			"platform", pythonPlatform,
-			"pythonVersion", pythonVersion,
-			"runtime", input.Runtime)
+			// Extract Python version from runtime string (e.g., "python3.13" -> "3.13")
+			pythonVersion := strings.TrimPrefix(input.Runtime, "python")
+			if pythonVersion == "" || pythonVersion == input.Runtime {
+				pythonVersion = "3.13" // fallback to 3.13 if parsing fails
+			}
+
+			args = append(args, "--python-platform", pythonPlatform, "--python-version", pythonVersion)
+			slog.Info("using platform targeting for Lambda deployment (cross-platform build)",
+				"platform", pythonPlatform,
+				"pythonVersion", pythonVersion,
+				"runtime", input.Runtime,
+				"currentOS", currentOS,
+				"currentArch", currentArch)
+		} else {
+			slog.Info("skipping platform targeting - native build on matching platform",
+				"targetArch", architecture,
+				"currentOS", currentOS,
+				"currentArch", currentArch)
+		}
 	} else if input.Dev {
 		slog.Info("skipping platform targeting for dev mode (using native binaries)")
 	}

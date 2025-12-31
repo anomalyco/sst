@@ -117,6 +117,11 @@ type PythonRuntime struct {
 	// Cache directory for sharing with incremental builder
 	cacheDir string
 
+	// Cached incremental builder - reused across all function builds
+	// This is critical for performance: creating a new IncrementalBuilder for each
+	// of 50+ functions was causing massive CPU/memory overhead
+	incrementalBuilder *IncrementalBuilder
+
 	// Rate limiting for rebuild checks
 	lastRebuildCheck map[string]time.Time
 	rebuildCooldown  time.Duration
@@ -1342,43 +1347,64 @@ func (r *PythonRuntime) CreateBuildAsset(ctx context.Context, input *runtime.Bui
 
 // createBuildAssetIncremental creates build assets using incremental building
 func (r *PythonRuntime) createBuildAssetIncremental(ctx context.Context, input *runtime.BuildInput, arch string, workingDir string) (*runtime.BuildOutput, error) {
-	// Create incremental builder with sensible defaults
-	factory := NewRuntimeFactory()
-	// Progress callback - only publish important stage completions, not verbose updates
-	progressCallback := func(event ProgressEvent) {
-		// Filter to only show important stages (complete, failed, or major milestones)
-		// Skip verbose micro-updates that clutter the deploy output
-		switch event.Stage {
-		case "complete", "failed":
-			// Always show completion/failure
-		default:
-			// Skip verbose progress updates
-			return
-		}
+	startTime := time.Now()
 
-		if input.FunctionID != "" {
+	// CRITICAL OPTIMIZATION: Reuse the IncrementalBuilder across all function builds
+	// Creating a new IncrementalBuilder for each of 50+ functions was causing massive
+	// CPU/memory overhead because each one creates BuildCache, ChangeDetector,
+	// DependencyAnalyzer, UvCommandRunner, DependencyCache, etc.
+
+	r.mutex.Lock()
+	if r.incrementalBuilder == nil {
+		// Create incremental builder with sensible defaults - only once
+		factory := NewRuntimeFactory()
+
+		// Progress callback - publish to dev screen so user can see what's happening
+		progressCallback := func(event ProgressEvent) {
 			bus.Publish(&events.FunctionBuildProgressEvent{
-				FunctionID: input.FunctionID,
+				FunctionID: "python-build",
 				Stage:      event.Stage,
 				Message:    event.Message,
 			})
 		}
-	}
 
-	// Use the runtime's cache directory if available, otherwise use default
-	var incrementalBuilder *IncrementalBuilder
-	var err error
-	if r.cacheDir != "" {
-		incrementalBuilder, err = factory.CreateIncrementalBuilderWithCacheDir(workingDir, input, progressCallback, r.cacheDir)
-	} else {
-		incrementalBuilder, err = factory.CreateIncrementalBuilder(workingDir, input, progressCallback)
+		var err error
+		if r.cacheDir != "" {
+			r.incrementalBuilder, err = factory.CreateIncrementalBuilderWithCacheDir(workingDir, input, progressCallback, r.cacheDir)
+		} else {
+			r.incrementalBuilder, err = factory.CreateIncrementalBuilder(workingDir, input, progressCallback)
+		}
+		if err != nil {
+			r.mutex.Unlock()
+			return nil, fmt.Errorf("failed to create incremental builder: %w", err)
+		}
+		slog.Info("🔧 Created shared IncrementalBuilder for all Python functions")
 	}
+	incrementalBuilder := r.incrementalBuilder
+	r.mutex.Unlock()
+
+	slog.Info("📦 Building function",
+		"functionID", input.FunctionID,
+		"handler", input.Handler,
+		"arch", arch)
+
+	// Use the shared incremental builder
+	result, err := incrementalBuilder.Build(ctx, input)
+
+	elapsed := time.Since(startTime)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create incremental builder: %w", err)
+		slog.Error("❌ Build failed",
+			"functionID", input.FunctionID,
+			"elapsed", elapsed,
+			"error", err)
+		return nil, err
 	}
 
-	// Use incremental builder
-	return incrementalBuilder.Build(ctx, input)
+	slog.Info("✅ Build completed",
+		"functionID", input.FunctionID,
+		"elapsed", elapsed)
+
+	return result, nil
 }
 
 func (r *PythonRuntime) getFile(input *runtime.BuildInput) (string, error) {
