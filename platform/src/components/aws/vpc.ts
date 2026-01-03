@@ -588,6 +588,23 @@ export class Vpc extends Component implements Link.Linkable {
             }),
           ),
         );
+      const natSecurityGroup = ec2
+        .getSecurityGroupsOutput(
+          {
+            filters: [
+              { name: "tag:sst:is-nat-sg", values: ["true"] },
+              { name: "vpc-id", values: [vpcId] },
+            ],
+          },
+          { parent: self },
+        )
+        .ids.apply((ids) => 
+          ids.length 
+            ? ec2.SecurityGroup.get(`${name}NatInstanceSecurityGroup`, ids[0], undefined, {
+              parent: self
+            })
+            : undefined,
+        );
       const bastionInstance = ec2
         .getInstancesOutput(
           {
@@ -603,6 +620,23 @@ export class Vpc extends Component implements Link.Linkable {
             ? ec2.Instance.get(`${name}BastionInstance`, ids[0], undefined, {
                 parent: self,
               })
+            : undefined,
+        );
+      const bastionSecurityGroup = ec2
+        .getSecurityGroupsOutput(
+          {
+            filters: [
+              { name: "tag:sst:is-bastion-sg", values: ["true"] },
+              { name: "vpc-id", values: [vpcId] },
+            ],
+          },
+          { parent: self },
+        )
+        .ids.apply((ids) => 
+          ids.length 
+            ? ec2.SecurityGroup.get(`${name}BastionSecurityGroup`, ids[0], undefined, {
+              parent: self
+            })
             : undefined,
         );
 
@@ -945,6 +979,9 @@ export class Vpc extends Component implements Link.Linkable {
                   cidrBlocks: ["0.0.0.0/0"],
                 },
               ],
+              tags: {
+                "sst:is-nat-sg": "true",
+              },
             },
             { parent: self },
           ),
@@ -1214,6 +1251,9 @@ export class Vpc extends Component implements Link.Linkable {
                     cidrBlocks: ["0.0.0.0/0"],
                   },
                 ],
+                tags: {
+                  "sst:is-bastion-sg": "true",
+                }
               },
               { parent: self },
             ),
