@@ -472,9 +472,11 @@ export class Vpc extends Component implements Link.Linkable {
           )
           .ids.apply((ids) => {
             if (!ids.length) {
-              throw new VisibleError(
-                `Security group not found in VPC ${vpcId}`,
-              );
+              vpcId.apply(vpcId => {
+                throw new VisibleError(
+                  `Security group not found in VPC ${vpcId}`,
+                );
+              });
             }
             return ids[0];
           }),
