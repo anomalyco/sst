@@ -101,6 +101,25 @@ interface BucketCorsArgs {
 
 interface BucketLifecycleArgs {
   /**
+   * The unique identifier for the lifecycle rule.
+   *
+   * This ID must be unique across all lifecycle rules in the bucket and cannot exceed 255 characters.
+   * Whitespace-only values are not allowed.
+   *
+   * If not provided, SST will generate a unique ID based on the bucket component name and rule index.
+   *
+   * @example
+   * Use stable IDs to ensure rule identity is preserved when reordering rules.
+   * ```js
+   * {
+   *   id: "expire-tmp-files",
+   *   prefix: "/tmp",
+   *   expiresIn: "7 days"
+   * }
+   * ```
+   */
+  id?: Input<string>;
+  /**
    * An S3 object key prefix that the lifecycle rule applies to.
    * @example
    * Applies to all the objects in the `images/` folder.
@@ -439,6 +458,24 @@ export interface BucketArgs {
    *     {
    *       prefix: "/tmp",
    *       expiresIn: "30 days"
+   *     }
+   *   ]
+   * }
+   * ```
+   *
+   * Use stable IDs to preserve rule identity when reordering.
+   * ```js
+   * {
+   *   lifecycle: [
+   *     {
+   *       id: "expire-tmp-files",
+   *       prefix: "/tmp",
+   *       expiresIn: "7 days"
+   *     },
+   *     {
+   *       id: "archive-old-logs",
+   *       prefix: "/logs",
+   *       expiresIn: "90 days"
    *     }
    *   ]
    * }
@@ -924,6 +961,35 @@ export class Bucket extends Component implements Link.Linkable {
       return output(args.lifecycle).apply((lifecycleRules) => {
         if (!lifecycleRules || lifecycleRules.length === 0) return;
 
+        const seenIds = new Map<string, number>();
+
+        const resolvedIds = lifecycleRules.map((rule, index) => {
+          const rawId = rule.id ?? `${name}LifecycleRule${index}`;
+          const resolvedId = rawId.trim();
+
+          if (resolvedId.length === 0) {
+            throw new VisibleError(
+              `Lifecycle rule at index ${index} has an empty or whitespace-only "id". Please provide a valid id or omit it to use the auto-generated id.`,
+            );
+          }
+
+          if (resolvedId.length > 255) {
+            throw new VisibleError(
+              `Lifecycle rule at index ${index} has an "id" that is ${resolvedId.length} characters long. AWS S3 lifecycle rule IDs cannot exceed 255 characters.`,
+            );
+          }
+
+          const existingIndex = seenIds.get(resolvedId);
+          if (existingIndex !== undefined) {
+            throw new VisibleError(
+              `Lifecycle rule "id" values must be unique. The id "${resolvedId}" is used by rules at indexes ${existingIndex} and ${index}.`,
+            );
+          }
+          seenIds.set(resolvedId, index);
+
+          return resolvedId;
+        });
+
         return new s3.BucketLifecycleConfigurationV2(
           ...transform(
             args.transform?.lifecycle,
@@ -931,7 +997,7 @@ export class Bucket extends Component implements Link.Linkable {
             {
               bucket: bucket.bucket,
               rules: lifecycleRules.map((rule, index) => ({
-                id: `${name}LifecycleRule${index}`,
+                id: resolvedIds[index],
                 status: rule.enabled !== false ? "Enabled" : "Disabled",
                 expiration:
                   rule.expiresIn || rule.expiresAt
