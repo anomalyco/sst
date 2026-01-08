@@ -23,12 +23,6 @@ jobs:
         with:
           bun-version: latest
 
-      - run: |
-          npm config set //registry.npmjs.org/:_authToken $NODE_AUTH_TOKEN
-          npm whoami
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
       - run: git fetch --force --tags
 
       - uses: actions/setup-go@v5

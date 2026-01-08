@@ -28,7 +28,7 @@
     "@pulumi/cloudflare": "6.10.0",
     "@pulumi/command": "1.0.1",
     "@pulumi/docker-build": "0.0.8",
-    "@pulumi/pulumi": "3.145.0",
+    "@pulumi/pulumi": "3.210.0",
     "@pulumi/random": "4.16.6",
     "@pulumi/tls": "5.0.1",
     "@pulumiverse/vercel": "1.11.0",
@@ -42,6 +42,7 @@
     "esbuild": "0.20.2",
     "glob": "10.3.10",
     "prettier": "3.1.1",
+    "ts-node": "^10.9.2",
     "typescript": "5.7.2",
     "undici": "^6.19.5",
     "unenv-sst": "npm:unenv-nightly@2.0.0-20241024-111401-d4156ac"
@@ -54,6 +55,7 @@
     "vitest": "^1.2.2"
   },
   "overrides": {
-    "string-width": "4.2.3"
+    "string-width": "4.2.3",
+    "google-protobuf": "3.21.2"
   }
 }

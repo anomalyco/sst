@@ -276,7 +276,7 @@ export interface TanStackStartArgs extends SsrSiteArgs {
  * The `TanStackStart` component lets you deploy a [TanStack Start](https://tanstack.com/start/latest) app to AWS.
  *
  * :::note
- * You need to make sure the `server.preset` value in the `app.config.ts` is set to `aws-lambda`.
+ * You need to make sure the `vite.config.ts` file is configured to use Nitro for deployments on aws-lambda by adding the `nitro` property and setting the `preset` to `aws-lambda`.
  * :::
  *
  * @example
