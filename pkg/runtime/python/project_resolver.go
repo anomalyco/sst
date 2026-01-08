@@ -118,10 +118,13 @@ type PyprojectConfig struct {
 			} `toml:"packages"`
 		} `toml:"setuptools"`
 
-		// SST configuration for file inclusion/exclusion
+		// SST configuration for file inclusion/exclusion and Lambda runtime options
 		SST struct {
 			Include []string `toml:"include"`
 			Exclude []string `toml:"exclude"`
+			// IncludeLambdaRuntime when true, includes boto3/botocore in the Lambda package
+			// By default (false), these are excluded since Lambda provides them
+			IncludeLambdaRuntime bool `toml:"include-lambda-runtime"`
 		} `toml:"sst"`
 	} `toml:"tool"`
 

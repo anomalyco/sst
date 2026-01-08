@@ -155,9 +155,6 @@ type IncrementalBuilder struct {
 	// uvRunner executes UV commands efficiently
 	uvRunner *UvCommandRunner
 
-	// dependencyCache manages caching of installed dependencies
-	dependencyCache *DependencyCache
-
 	// progressReporter tracks and reports build progress
 	progressReporter *ProgressReporter
 
@@ -382,19 +379,6 @@ func NewIncrementalBuilder(config IncrementalBuilderConfig) (*IncrementalBuilder
 		BuildCache:           buildCache,
 	})
 
-	// Initialize dependency cache
-	dependencyCache, err := NewDependencyCache(DependencyCacheConfig{
-		CacheDir:              filepath.Join(config.CacheDir, "dependencies"),
-		BuildCache:            buildCache,
-		MaxCacheSize:          config.MaxCacheSize / 2, // Use half of total cache for dependencies
-		MaxCacheAge:           config.MaxCacheAge,
-		EnableSharedCache:     true,
-		EnableIntegrityChecks: config.EnableBuildOptimization,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create dependency cache: %w", err)
-	}
-
 	// Create progress reporter
 	progressReporter := NewProgressReporter()
 
@@ -416,12 +400,10 @@ func NewIncrementalBuilder(config IncrementalBuilderConfig) (*IncrementalBuilder
 		dependencyAnalyzer: dependencyAnalyzer,
 		buildPlanner:       buildPlanner,
 		uvRunner:           uvRunner,
-		dependencyCache:    dependencyCache,
 		progressReporter:   progressReporter,
 		contentFilter:      contentFilter,
 		syncCompleted:      make(map[string]bool),
-		// fallbackManager removed
-		config: config,
+		config:             config,
 	}, nil
 }
 
@@ -938,10 +920,32 @@ func (ib *IncrementalBuilder) buildPackageGroup(ctx context.Context, input *runt
 		}(packageName, packageInfo)
 	}
 
-	// Wait for all builds to complete
+	// Wait for all builds to complete with timeout to prevent indefinite hangs
+	// This is critical for CI/CD environments where a hung goroutine can block the entire pipeline
 	slog.Info("waiting for all builds to complete in group", "goroutinesStarted", len(group))
-	wg.Wait()
-	slog.Info("all builds completed, closing error channel")
+
+	waitDone := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(waitDone)
+	}()
+
+	// Use a 10-minute timeout for the entire group - individual packages should complete much faster
+	groupTimeout := 10 * time.Minute
+	select {
+	case <-waitDone:
+		slog.Info("all builds completed, closing error channel")
+	case <-time.After(groupTimeout):
+		slog.Error("TIMEOUT: parallel build group timed out after 10 minutes - possible deadlock or hung process",
+			"group", group)
+		// Don't wait for goroutines - they may be stuck. Return error immediately.
+		// The goroutines will eventually complete or be cleaned up when the process exits.
+		return fmt.Errorf("parallel build group timed out after %v - check for hung uv commands or deadlocks", groupTimeout)
+	case <-ctx.Done():
+		slog.Error("context cancelled while waiting for parallel builds", "error", ctx.Err())
+		return fmt.Errorf("context cancelled during parallel builds: %w", ctx.Err())
+	}
+
 	close(errChan)
 
 	// Check for errors
@@ -1043,12 +1047,6 @@ func (ib *IncrementalBuilder) buildPackage(ctx context.Context, input *runtime.B
 
 // createFinalBuildOutput creates the final build output from the build results
 func (ib *IncrementalBuilder) createFinalBuildOutput(ctx context.Context, input *runtime.BuildInput, projectInfo *ProjectInfo, result *BuildResult) (*runtime.BuildOutput, error) {
-	// Copy source directories that weren't built as packages
-	// Pass cached dependency analysis to avoid expensive re-analysis
-	if err := ib.copySourceDirectories(ctx, input, projectInfo, result.DependencyAnalysis); err != nil {
-		return nil, fmt.Errorf("failed to copy source directories: %w", err)
-	}
-
 	// Clean up any absolute path directories that may have been created by the cache system
 	if err := ib.cleanupAbsolutePaths(input.Out()); err != nil {
 		slog.Warn("failed to clean up absolute paths", "error", err)
@@ -1078,201 +1076,6 @@ func (ib *IncrementalBuilder) createFinalBuildOutput(ctx context.Context, input 
 		Errors:     result.Errors,
 		Sourcemaps: []string{}, // TODO: collect sourcemaps
 	}, nil
-}
-
-// copySourceDirectories copies source directories that weren't built as packages
-func (ib *IncrementalBuilder) copySourceDirectories(ctx context.Context, input *runtime.BuildInput, projectInfo *ProjectInfo, cachedAnalysis *DependencyAnalysis) error {
-	var analysis *DependencyAnalysis
-	var err error
-
-	// Use cached analysis if available to avoid expensive re-analysis
-	if cachedAnalysis != nil {
-		analysis = cachedAnalysis
-	} else {
-		// Fallback: analyze dependencies if not cached
-		analyzer := NewDependencyAnalyzer(DependencyAnalyzerConfig{
-			ProjectResolver: ib.projectResolver,
-		})
-		analysis, err = analyzer.AnalyzeDependencies(ctx, projectInfo)
-		if err != nil {
-			return fmt.Errorf("failed to analyze dependencies for source copying: %w", err)
-		}
-	}
-
-	// Copy source directories that are not buildable packages
-	sourceCount := 0
-	for _, pkg := range analysis.LocalPackages {
-		if !pkg.BuildRequired {
-			sourceCount++
-		}
-	}
-
-	if sourceCount > 0 {
-		ib.progressReporter.UpdateProgress(StagePostProcess, fmt.Sprintf("Including %d Python source directories (no build required)", sourceCount))
-	}
-
-	copiedCount := 0
-	for _, pkg := range analysis.LocalPackages {
-		if !pkg.BuildRequired {
-			copiedCount++
-			// This is a source directory that should be copied directly
-			ib.progressReporter.UpdateProgress(StagePostProcess, fmt.Sprintf("Including Python source: %s (%d/%d)", pkg.Name, copiedCount, sourceCount))
-
-			slog.Info("including python source directory",
-				"package", pkg.Name,
-				"path", pkg.Path,
-				"sourceFiles", len(pkg.SourceFiles),
-				"reason", "no build configuration required")
-
-			if err := ib.copySourceDirectory(pkg.Path, input.Out(), projectInfo.SourceRoot, projectInfo); err != nil {
-				return fmt.Errorf("failed to copy source directory %s: %w", pkg.Path, err)
-			}
-		}
-	}
-
-	return nil
-}
-
-// copySourceDirectory copies a source directory to the artifacts directory
-func (ib *IncrementalBuilder) copySourceDirectory(srcPath, destDir, workspaceDir string, projectInfo *ProjectInfo) error {
-	// Calculate the relative path from workspace to source directory
-	relPath, err := filepath.Rel(workspaceDir, srcPath)
-	if err != nil {
-		return fmt.Errorf("failed to calculate relative path: %w", err)
-	}
-
-	// Prevent recursive copying by checking if destination is inside source
-	absDestDir, err := filepath.Abs(destDir)
-	if err != nil {
-		return fmt.Errorf("failed to get absolute destination path: %w", err)
-	}
-
-	absSrcPath, err := filepath.Abs(srcPath)
-	if err != nil {
-		return fmt.Errorf("failed to get absolute source path: %w", err)
-	}
-
-	// Check if destination is inside source (would cause recursive copy)
-	if strings.HasPrefix(absDestDir, absSrcPath+string(filepath.Separator)) {
-		slog.Warn("skipping recursive copy",
-			"source", absSrcPath,
-			"destination", absDestDir)
-		return nil
-	}
-
-	destPath := filepath.Join(destDir, relPath)
-
-	// Check if this is a simple structure (source directory is the project root)
-	if projectInfo != nil && srcPath == projectInfo.ProjectRoot {
-		// For simple structures, copy the contents directly to the artifact directory
-		// instead of creating a subdirectory
-		slog.Info("detected flat layout, copying contents directly to artifact root",
-			"srcPath", srcPath,
-			"destDir", destDir)
-		return ib.copyFlatLayoutContents(srcPath, destDir)
-	}
-
-	// Check if this source directory needs src layout flattening
-	// For simplified approach, we check if the source path contains src/ pattern
-	if flattenedPath, shouldFlatten := ib.checkForSrcLayoutFlattening(srcPath, destPath, workspaceDir, projectInfo); shouldFlatten {
-		slog.Info("flattening src layout for workspace package",
-			"srcPath", srcPath,
-			"originalDestPath", destPath,
-			"flattenedDestPath", flattenedPath)
-		destPath = flattenedPath
-	}
-
-	// Create destination directory
-	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
-		return fmt.Errorf("failed to create destination directory: %w", err)
-	}
-
-	// Copy the directory recursively
-	return ib.copyDirectoryRecursive(srcPath, destPath)
-}
-
-// copyFlatLayoutContents copies the contents of a flat layout directory directly to the destination
-func (ib *IncrementalBuilder) copyFlatLayoutContents(srcPath, destDir string) error {
-	// Read the source directory
-	entries, err := os.ReadDir(srcPath)
-	if err != nil {
-		return fmt.Errorf("failed to read source directory: %w", err)
-	}
-
-	// Copy each Python file and relevant files directly to the destination
-	for _, entry := range entries {
-		srcFile := filepath.Join(srcPath, entry.Name())
-		destFile := filepath.Join(destDir, entry.Name())
-
-		// Use ContentFilter to determine if file should be excluded
-		if ib.contentFilter.ShouldExclude(entry.Name()) {
-			slog.Debug("skipping file/directory by content filter", "name", entry.Name())
-			continue
-		}
-
-		if entry.IsDir() {
-			// Recursively copy subdirectories
-			if err := ib.copyDirectoryRecursive(srcFile, destFile); err != nil {
-				return fmt.Errorf("failed to copy directory %s: %w", entry.Name(), err)
-			}
-		} else {
-			// Copy individual files
-			if err := ib.copyFile(srcFile, destFile); err != nil {
-				return fmt.Errorf("failed to copy file %s: %w", entry.Name(), err)
-			}
-		}
-	}
-
-	return nil
-}
-
-// checkForSrcLayoutFlattening determines if a source path needs src layout flattening
-func (ib *IncrementalBuilder) checkForSrcLayoutFlattening(srcPath, destPath, workspaceDir string, projectInfo *ProjectInfo) (string, bool) {
-	// Parse the source path to see if it matches src/{package_name} pattern
-	relSrcPath, err := filepath.Rel(workspaceDir, srcPath)
-	if err != nil {
-		return destPath, false
-	}
-
-	// Split the path to analyze the structure
-	pathParts := strings.Split(relSrcPath, string(filepath.Separator))
-	if len(pathParts) < 3 {
-		return destPath, false // Not enough parts for package/src/package_name
-	}
-
-	// Check if this matches the pattern: {package}/src/{package_name}
-	packageDir := pathParts[0]
-	srcDir := pathParts[1]
-	packageName := pathParts[2]
-
-	if srcDir != "src" {
-		return destPath, false // Not a src directory
-	}
-
-	// Check if this follows the src/{package_name} pattern that needs flattening
-	// This is a simplified check based on the path structure
-	if strings.Contains(relSrcPath, "/src/") && strings.Contains(relSrcPath, packageName) {
-		// This is a src layout that should be flattened
-		// Change destination from package/src/package_name to package
-		relDestPath, err := filepath.Rel(workspaceDir, destPath)
-		if err != nil {
-			return destPath, false
-		}
-
-		// Replace package/src/package_name with just package
-		destPathParts := strings.Split(relDestPath, string(filepath.Separator))
-		if len(destPathParts) >= 3 && destPathParts[1] == "src" && destPathParts[2] == packageName {
-			// Flatten: package/src/package_name -> package
-			flattenedRelPath := packageDir
-
-			// Convert back to absolute path relative to destDir
-			finalDestPath := filepath.Join(filepath.Dir(filepath.Dir(filepath.Dir(destPath))), flattenedRelPath)
-
-			return finalDestPath, true
-		}
-	}
-
-	return destPath, false
 }
 
 // copyDirectoryRecursive copies a directory and all its contents recursively
@@ -1333,63 +1136,15 @@ func (ib *IncrementalBuilder) copyFile(src, dest string) error {
 }
 
 // adjustHandlerPath adjusts the handler path based on the project structure
+// For modern UV workspace projects, the handler path should match the artifact structure exactly.
+// We only adjust for legacy patterns like src/ prefix flattening.
 func (ib *IncrementalBuilder) adjustHandlerPath(input *runtime.BuildInput, projectInfo *ProjectInfo) (string, error) {
 	originalHandler := input.Handler
 
-	// Check if the workspace (pyproject.toml location) is a subdirectory
-	// If so, we need to strip that prefix from the handler path
-	if projectInfo != nil && projectInfo.PyprojectPath != "" {
-		workspaceDir := filepath.Dir(projectInfo.PyprojectPath)
-		projectRoot := projectInfo.ProjectRoot
-
-		// Calculate relative path from project root to workspace
-		if workspaceDir != projectRoot {
-			relWorkspace, err := filepath.Rel(projectRoot, workspaceDir)
-			if err == nil && relWorkspace != "." && !strings.HasPrefix(relWorkspace, "..") {
-				// Convert to forward slashes for handler path comparison
-				relWorkspaceSlash := strings.ReplaceAll(relWorkspace, string(filepath.Separator), "/")
-
-				// Check if handler starts with the workspace prefix
-				if strings.HasPrefix(originalHandler, relWorkspaceSlash+"/") {
-					// Strip the workspace prefix from the handler
-					adjustedHandler := strings.TrimPrefix(originalHandler, relWorkspaceSlash+"/")
-					slog.Info("incremental builder handler path adjustment",
-						"original", originalHandler,
-						"adjusted", adjustedHandler,
-						"reason", "stripped workspace prefix",
-						"workspaceDir", relWorkspaceSlash)
-					return adjustedHandler, nil
-				}
-			}
-		}
-	}
-
-	// Check if handler path contains the pattern {package_name}/src/{package_name}
-	// If so, we need to adjust it because the build process flattens this structure
-	if strings.Contains(originalHandler, "/src/") {
-		// Pattern: functions/src/functions/api.handler -> functions/api.handler
-		parts := strings.Split(originalHandler, "/")
-		var adjustedParts []string
-
-		skipNext := false
-		for i, part := range parts {
-			if skipNext {
-				skipNext = false
-				continue
-			}
-
-			if part == "src" && i > 0 && i < len(parts)-1 {
-				// Check if the next part matches the previous part (package name)
-				if i+1 < len(parts) && parts[i+1] == parts[i-1] {
-					// Skip both "src" and the duplicate package name
-					skipNext = true
-					continue
-				}
-			}
-			adjustedParts = append(adjustedParts, part)
-		}
-
-		adjustedHandler := strings.Join(adjustedParts, "/")
+	// Only adjust for src/ prefix - this is a legacy pattern where src/ is flattened
+	// Pattern: src/functions/api.handler -> functions/api.handler
+	if strings.HasPrefix(originalHandler, "src/") {
+		adjustedHandler := strings.TrimPrefix(originalHandler, "src/")
 		slog.Info("incremental builder handler path adjustment",
 			"original", originalHandler,
 			"adjusted", adjustedHandler,
@@ -1748,25 +1503,18 @@ func (ib *IncrementalBuilder) GetBuildStats() *IncrementalBuilderStats {
 		buildResultStats = &BuildResultCacheStats{}
 	}
 
-	dependencyCacheStats, err := ib.getDependencyCacheStats()
-	if err != nil {
-		dependencyCacheStats = nil
-	}
-
 	return &IncrementalBuilderStats{
-		CacheStats:           cacheStats,
-		BuildResultStats:     *buildResultStats,
-		DependencyCacheStats: dependencyCacheStats,
-		Config:               ib.config,
+		CacheStats:       cacheStats,
+		BuildResultStats: *buildResultStats,
+		Config:           ib.config,
 	}
 }
 
 // IncrementalBuilderStats contains statistics about the incremental builder
 type IncrementalBuilderStats struct {
-	CacheStats           CacheStats               `json:"cacheStats"`
-	BuildResultStats     BuildResultCacheStats    `json:"buildResultStats"`
-	DependencyCacheStats *DependencyCacheStats    `json:"dependencyCacheStats,omitempty"`
-	Config               IncrementalBuilderConfig `json:"config"`
+	CacheStats       CacheStats               `json:"cacheStats"`
+	BuildResultStats BuildResultCacheStats    `json:"buildResultStats"`
+	Config           IncrementalBuilderConfig `json:"config"`
 }
 
 // ClearCache clears all caches
@@ -1780,10 +1528,6 @@ func (ib *IncrementalBuilder) ClearCache() error {
 
 	if err := ib.buildResultCache.CleanupExpiredResults(); err != nil {
 		return fmt.Errorf("failed to cleanup build result cache: %w", err)
-	}
-
-	if err := ib.dependencyCache.ClearCache(); err != nil {
-		return fmt.Errorf("failed to clear dependency cache: %w", err)
 	}
 
 	ib.projectResolver.ClearCache()
@@ -1959,18 +1703,6 @@ func (ib *IncrementalBuilder) installDependenciesFresh(ctx context.Context, inpu
 	return ib.uvRunner.ExecuteInstallCommand(ctx, installCmd)
 }
 
-// cacheFreshDependencies caches freshly installed dependencies
-func (ib *IncrementalBuilder) cacheFreshDependencies(requirementsFile string, architecture string, installPath string) error {
-	// Parse requirements file to get dependency list
-	dependencyList, err := ib.parseDependencyList(requirementsFile)
-	if err != nil {
-		return fmt.Errorf("failed to parse dependency list: %w", err)
-	}
-
-	// Cache the dependencies
-	return ib.dependencyCache.CacheDependencies(requirementsFile, architecture, installPath, dependencyList)
-}
-
 // parseDependencyList parses a requirements file to extract dependency names
 func (ib *IncrementalBuilder) parseDependencyList(requirementsFile string) ([]string, error) {
 	content, err := os.ReadFile(requirementsFile)
@@ -2007,11 +1739,6 @@ func (ib *IncrementalBuilder) parseDependencyList(requirementsFile string) ([]st
 func (ib *IncrementalBuilder) shouldUseDependencyCache(input *runtime.BuildInput) bool {
 	// Use dependency cache for non-dev builds and when optimization is enabled
 	return !input.Dev && ib.config.EnableBuildOptimization
-}
-
-// getDependencyCacheStats returns statistics about the dependency cache
-func (ib *IncrementalBuilder) getDependencyCacheStats() (*DependencyCacheStats, error) {
-	return ib.dependencyCache.GetStats()
 }
 
 // installDependenciesForBuild installs dependencies for the build
@@ -2390,16 +2117,50 @@ func (ib *IncrementalBuilder) installDependenciesForLambda(ctx context.Context, 
 }
 
 // copySourceFilesSimple copies source files using a simple, handler-path-based approach
+// NOTE: This function is only needed for projects that don't use UV workspace packages.
+// For UV workspace projects, copyWorkspacePackageSources handles copying the handler's package.
 func (ib *IncrementalBuilder) copySourceFilesSimple(ctx context.Context, input *runtime.BuildInput, projectInfo *ProjectInfo) error {
 	workspaceDir := projectInfo.SourceRoot
 	if projectInfo.PyprojectPath != "" {
 		workspaceDir = filepath.Dir(projectInfo.PyprojectPath)
 	}
 
+	// If the handler is inside a UV workspace package, skip this function.
+	// The workspace package will be copied by copyWorkspacePackageSources instead.
+	// This prevents duplicate copying of directories like "functions" that exist
+	// both at root level (from this function) and inside "backend/" (from workspace copy).
+	if projectInfo.PyprojectPath != "" && projectInfo.ProjectRoot != "" {
+		// Check if workspaceDir is different from ProjectRoot (meaning we're in a workspace member)
+		if workspaceDir != projectInfo.ProjectRoot {
+			slog.Info("skipping copySourceFilesSimple - handler is inside a workspace package",
+				"handler", input.Handler,
+				"workspaceDir", workspaceDir,
+				"projectRoot", projectInfo.ProjectRoot)
+			return nil
+		}
+	}
+
 	slog.Info("copying source files with simple approach", "handler", input.Handler, "workspaceDir", workspaceDir)
 
 	// Parse the handler path to understand what directories we need
 	handlerPath := input.Handler
+
+	// Make handler path relative to workspaceDir if the handler path starts with a prefix
+	// that matches the relative path from project root to workspaceDir
+	// e.g., if handler is "packages/api/auth/handler.main" and workspaceDir is "/project/packages/api"
+	// then we need to strip "packages/api/" from the handler path to get "auth/handler.main"
+	if projectInfo.ProjectRoot != "" && workspaceDir != projectInfo.ProjectRoot {
+		relWorkspacePath, err := filepath.Rel(projectInfo.ProjectRoot, workspaceDir)
+		if err == nil && relWorkspacePath != "." {
+			// Normalize to forward slashes for comparison
+			relWorkspacePath = filepath.ToSlash(relWorkspacePath)
+			prefix := relWorkspacePath + "/"
+			if strings.HasPrefix(handlerPath, prefix) {
+				handlerPath = strings.TrimPrefix(handlerPath, prefix)
+				slog.Info("adjusted handler path relative to workspace", "originalHandler", input.Handler, "adjustedHandler", handlerPath, "strippedPrefix", prefix)
+			}
+		}
+	}
 
 	// Extract the directory part of the handler path and resolve it relative to workspaceDir
 	// Examples:
@@ -2416,7 +2177,10 @@ func (ib *IncrementalBuilder) copySourceFilesSimple(ctx context.Context, input *
 		parts := strings.Split(handlerPath, "/")
 
 		// Find the actual handler file to verify the path structure
-		handlerFile := strings.Join(parts[:len(parts)-1], "/") + ".py"
+		// The last part is "filename.function_name", so we need to extract just the filename
+		lastPart := parts[len(parts)-1]
+		fileName := strings.Split(lastPart, ".")[0] // Get filename without function name
+		handlerFile := strings.Join(append(parts[:len(parts)-1], fileName), "/") + ".py"
 		fullHandlerPath := filepath.Join(workspaceDir, handlerFile)
 
 		slog.Info("checking handler file path", "handlerFile", handlerFile, "fullPath", fullHandlerPath)
@@ -2543,41 +2307,6 @@ func (ib *IncrementalBuilder) copySourceFilesSimple(ctx context.Context, input *
 		}
 	}
 
-	// Also include any additional directories that might be needed (like shared utilities)
-	// Look for common directory names that often contain shared code
-	commonDirs := []string{"shared", "common", "utils", "lib", "core"}
-	entries, err := os.ReadDir(workspaceDir)
-	if err != nil {
-		return fmt.Errorf("failed to read workspace directory: %w", err)
-	}
-
-	for _, entry := range entries {
-		if entry.IsDir() {
-			dirName := entry.Name()
-			// Include common directories if they contain Python files
-			for _, commonDir := range commonDirs {
-				if dirName == commonDir {
-					dirPath := filepath.Join(workspaceDir, dirName)
-					if ib.containsPythonContent(dirPath) {
-						// Only add if not already included
-						found := false
-						for _, existing := range dirsToInclude {
-							if existing == dirName {
-								found = true
-								break
-							}
-						}
-						if !found {
-							dirsToInclude = append(dirsToInclude, dirName)
-							slog.Info("including common directory", "dir", dirName)
-						}
-					}
-					break
-				}
-			}
-		}
-	}
-
 	// Copy directories
 	for _, dirName := range dirsToInclude {
 		srcPath := filepath.Join(workspaceDir, dirName)
@@ -2677,23 +2406,85 @@ func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input 
 	}
 	slog.Info("determined workspace root for dependency installation", "workspaceRoot", workspaceRoot, "pyprojectPath", projectInfo.PyprojectPath)
 
-	// OPTIMIZATION: Use global dependency installation cache (like SST v2's Docker layer caching)
-	// This installs dependencies ONCE and reuses for all functions
+	// Filter out workspace packages from requirements.txt BEFORE cache checks
+	// This allows us to copy handler workspace on all paths (including cache hits)
+	filteredRequirementsPath := filepath.Join(input.Out(), "requirements-filtered.txt")
+	workspacePackagePaths, err := ib.filterWorkspacePackagesFromRequirementsAndGetPaths(requirementsPath, filteredRequirementsPath, projectInfo, workspaceRoot)
+	if err != nil {
+		return fmt.Errorf("failed to filter workspace packages from requirements: %w", err)
+	}
+
+	// The handler's own workspace package won't be in requirements.txt (it's the package being exported,
+	// not a dependency). We need to explicitly add it based on the pyproject.toml location.
+	if projectInfo.PyprojectPath != "" {
+		handlerPkgPath := filepath.Dir(projectInfo.PyprojectPath)
+		// Only add if it's different from workspace root (i.e., it's a workspace member, not the root)
+		if handlerPkgPath != workspaceRoot {
+			// Check if it's not already in the list
+			alreadyIncluded := false
+			for _, p := range workspacePackagePaths {
+				if p == handlerPkgPath {
+					alreadyIncluded = true
+					break
+				}
+			}
+			if !alreadyIncluded {
+				slog.Info("adding handler's workspace package (not in requirements.txt)",
+					"handlerPkgPath", handlerPkgPath,
+					"handler", input.Handler)
+				workspacePackagePaths = append(workspacePackagePaths, handlerPkgPath)
+			}
+		}
+	}
+
+	// Split workspace packages into:
+	// 1. Handler's workspace (contains the handler file) -> copy to input.Out() (function-specific)
+	// 2. Dependency workspaces (shared libraries) -> copy to depsCacheDir (cached)
+	var handlerWorkspacePaths []string
+	var dependencyWorkspacePaths []string
+
+	for _, pkgPath := range workspacePackagePaths {
+		// Check if this workspace contains the handler file
+		// The handler path is relative to workspace root, e.g., "packages/api/auth/login.handler"
+		handlerDir := filepath.Dir(input.Handler)
+		pkgRelPath, _ := filepath.Rel(workspaceRoot, pkgPath)
+
+		// If the handler path starts with this package's relative path, it's the handler's workspace
+		if strings.HasPrefix(handlerDir, pkgRelPath) || strings.HasPrefix(input.Handler, pkgRelPath) {
+			slog.Info("workspace package contains handler, will copy to artifact",
+				"pkgPath", pkgPath,
+				"pkgRelPath", pkgRelPath,
+				"handler", input.Handler)
+			handlerWorkspacePaths = append(handlerWorkspacePaths, pkgPath)
+		} else {
+			slog.Info("workspace package is a dependency, will copy to deps cache",
+				"pkgPath", pkgPath,
+				"pkgRelPath", pkgRelPath,
+				"handler", input.Handler)
+			dependencyWorkspacePaths = append(dependencyWorkspacePaths, pkgPath)
+		}
+	}
+
+	// Copy handler's workspace package to artifact BEFORE cache checks
+	// This ensures handler code is always present, even on cache hits
+	if err := ib.copyWorkspacePackageSources(ctx, handlerWorkspacePaths, workspaceRoot, input.Out()); err != nil {
+		return fmt.Errorf("failed to copy handler workspace package sources: %w", err)
+	}
+
+	// Use the filtered requirements file for cache key calculation
+	requirementsPath = filteredRequirementsPath
+
+	// Calculate cache key from requirements hash + architecture
+	// This allows sharing dependencies across functions with identical requirements
 	requirementsHash, err := ib.hashFile(requirementsPath)
 	var cacheKey string
+	var depsCacheDir string
+
 	if err == nil {
 		cacheKey = fmt.Sprintf("%s-%s", requirementsHash, architecture)
+		depsCacheDir = filepath.Join(filepath.Dir(input.Out()), ".deps", cacheKey)
 
-		// Check if a previous build with this cache key failed
-		// If so, fail fast to prevent deploying bad code
-		globalDependencyInstallFailuresMutex.RLock()
-		if prevErr, failed := globalDependencyInstallFailures[cacheKey]; failed {
-			globalDependencyInstallFailuresMutex.RUnlock()
-			return fmt.Errorf("dependency installation previously failed for this requirements set - refusing to deploy potentially bad code: %w", prevErr)
-		}
-		globalDependencyInstallFailuresMutex.RUnlock()
-
-		// Show first line of requirements.txt to debug differences
+		// Log cache key for debugging
 		if data, err := os.ReadFile(requirementsPath); err == nil {
 			lines := strings.Split(string(data), "\n")
 			firstLine := "empty"
@@ -2704,37 +2495,28 @@ func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input 
 				}
 			}
 			ib.progressReporter.UpdateProgress(StageBuildPackages, fmt.Sprintf("🔑 Key: %s | First: %s", cacheKey[:16], firstLine))
-		} else {
-			ib.progressReporter.UpdateProgress(StageBuildPackages, fmt.Sprintf("🔑 Cache key: %s", cacheKey[:16]))
 		}
 
-		// Get or create a lock for this cache key
+		// Get or create a lock for this cache key to prevent concurrent installs
 		globalDependencyInstallLocksMutex.Lock()
 		cacheLock, exists := globalDependencyInstallLocks[cacheKey]
-		lockMessage := ""
 		if !exists {
 			cacheLock = &sync.Mutex{}
 			globalDependencyInstallLocks[cacheKey] = cacheLock
-			lockMessage = "🔒 Created new install lock"
+			ib.progressReporter.UpdateProgress(StageBuildPackages, "🔒 Created install lock")
 		} else {
-			lockMessage = "🔒 Reusing existing lock (will wait)"
+			ib.progressReporter.UpdateProgress(StageBuildPackages, "🔒 Waiting for install lock...")
 		}
 		globalDependencyInstallLocksMutex.Unlock()
-		ib.progressReporter.UpdateProgress(StageBuildPackages, lockMessage)
 
-		// Acquire the lock for this cache key with timeout
-		// This ensures only ONE function installs dependencies for this requirements.txt
-		// Other functions wait here until the first one completes (or timeout)
-		//
-		// Use TryLock in a loop to avoid goroutine leaks when many functions timeout
-		lockDeadline := time.Now().Add(10 * time.Minute)
+		// Acquire lock with timeout (5 minutes)
+		lockDeadline := time.Now().Add(5 * time.Minute)
 		gotLock := false
 		for time.Now().Before(lockDeadline) {
 			if cacheLock.TryLock() {
 				gotLock = true
 				break
 			}
-			// Check if context is cancelled
 			select {
 			case <-ctx.Done():
 				return fmt.Errorf("context cancelled while waiting for dependency install lock")
@@ -2743,87 +2525,57 @@ func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input 
 			}
 		}
 		if !gotLock {
-			return fmt.Errorf("timed out waiting for dependency install lock after 10 minutes - another build may be stuck")
+			return fmt.Errorf("timed out waiting for dependency install lock after 5 minutes")
 		}
 		defer cacheLock.Unlock()
 		ib.progressReporter.UpdateProgress(StageBuildPackages, "✅ Got install lock")
 
-		// Check cache again after acquiring lock (another function may have installed while we waited)
-		globalDependencyInstallCacheMutex.RLock()
-		globalInstallDir, cacheExists := globalDependencyInstallCache[cacheKey]
-		cacheSize := len(globalDependencyInstallCache)
-		globalDependencyInstallCacheMutex.RUnlock()
+		// Check if disk cache exists (from this deploy or previous deploy)
+		if entries, err := os.ReadDir(depsCacheDir); err == nil && len(entries) > 0 {
+			slog.Info("disk cache hit", "depsCacheDir", depsCacheDir, "entries", len(entries))
+			ib.progressReporter.UpdateProgress(StageBuildPackages, "⚡ CACHE HIT! Copying from disk cache...")
 
-		ib.progressReporter.UpdateProgress(StageBuildPackages, fmt.Sprintf("🔍 Cache check: exists=%v, size=%d", cacheExists, cacheSize))
-
-		if cacheExists {
-			// Dependencies already installed globally, just copy them
-			ib.progressReporter.UpdateProgress(StageBuildPackages, "⚡ CACHE HIT! Copying from global cache...")
-
-			// Copy only the dependency packages, not the entire directory
-			// This avoids copying requirements.txt and other function-specific files
-			if err := ib.copyDependencyPackages(globalInstallDir, input.Out()); err != nil {
-				ib.progressReporter.UpdateProgress(StageBuildPackages, fmt.Sprintf("❌ Copy failed: %v, invalidating cache and installing fresh", err))
-				// Invalidate the bad cache entry so other functions don't use it
-				globalDependencyInstallCacheMutex.Lock()
-				delete(globalDependencyInstallCache, cacheKey)
-				globalDependencyInstallCacheMutex.Unlock()
-				slog.Warn("invalidated bad cache entry", "cacheKey", cacheKey, "error", err)
+			if err := ib.copyDependencyPackages(depsCacheDir, input.Out()); err != nil {
+				slog.Warn("failed to copy from disk cache, will reinstall", "error", err)
+				// Remove bad cache and continue to reinstall
+				os.RemoveAll(depsCacheDir)
 			} else {
-				ib.progressReporter.UpdateProgress(StageBuildPackages, fmt.Sprintf("✅ Copied from cache (%v)", time.Since(startTime)))
+				totalDuration := time.Since(startTime)
+				slog.Info("✅ copySyncedDependencies COMPLETE (disk cache hit)", "functionID", input.FunctionID, "elapsed", totalDuration)
+				ib.progressReporter.UpdateProgress(StageBuildPackages, fmt.Sprintf("✅ Copied from cache (%v)", totalDuration))
 				return nil
 			}
 		}
 
-		// If we get here, we're the first function to install for this cache key
+		// Cache miss - create the cache directory
 		ib.progressReporter.UpdateProgress(StageBuildPackages, "📦 CACHE MISS - Installing dependencies...")
-	}
-
-	// Try to use dependency cache if available
-	if ib.dependencyCache != nil {
-		cacheCheckStart := time.Now()
-		cachedEntry, err := ib.dependencyCache.GetCachedDependencies(requirementsPath, architecture, input.Out())
-		cacheCheckDuration := time.Since(cacheCheckStart)
-
-		if err == nil && cachedEntry != nil {
-			totalDuration := time.Since(startTime)
-			slog.Info("✅ copySyncedDependencies COMPLETE (cached)",
-				"functionID", input.FunctionID,
-				"cacheCheckTime", cacheCheckDuration,
-				"totalTime", totalDuration)
-			return nil
+		if err := os.MkdirAll(depsCacheDir, 0755); err != nil {
+			return fmt.Errorf("failed to create deps cache directory: %w", err)
 		}
-		slog.Info("cache miss, will install fresh",
-			"functionID", input.FunctionID,
-			"cacheCheckTime", cacheCheckDuration,
-			"error", err)
+		slog.Info("using dedicated deps cache directory", "depsCacheDir", depsCacheDir, "cacheKey", cacheKey)
+	} else {
+		// Fallback to installing directly to output (shouldn't happen normally)
+		depsCacheDir = input.Out()
 	}
 
-	// Filter out workspace packages from requirements.txt and copy their source code
-	filteredRequirementsPath := filepath.Join(input.Out(), "requirements-filtered.txt")
-	workspacePackagePaths, err := ib.filterWorkspacePackagesFromRequirementsAndGetPaths(requirementsPath, filteredRequirementsPath, projectInfo, workspaceRoot)
-	if err != nil {
-		return fmt.Errorf("failed to filter workspace packages from requirements: %w", err)
+	// NOTE: The old ib.dependencyCache is no longer used here.
+	// We now use the .deps/{hash}/ directory cache which includes workspace packages.
+	// The old cache didn't include workspace packages and caused issues.	// Copy dependency workspace packages to deps cache (shared across functions)
+	// This only happens on cache miss - the deps cache will include these packages
+	if err := ib.copyWorkspacePackageSources(ctx, dependencyWorkspacePaths, workspaceRoot, depsCacheDir); err != nil {
+		return fmt.Errorf("failed to copy dependency workspace package sources: %w", err)
 	}
-
-	// Copy workspace package source code to artifact
-	if err := ib.copyWorkspacePackageSources(ctx, workspacePackagePaths, workspaceRoot, input.Out()); err != nil {
-		return fmt.Errorf("failed to copy workspace package sources: %w", err)
-	}
-
-	// Use the filtered requirements file
-	requirementsPath = filteredRequirementsPath
 
 	slog.Info("installing dependencies using uv pip install",
 		"requirementsFile", requirementsPath,
-		"targetDir", input.Out(),
+		"targetDir", depsCacheDir,
 		"architecture", architecture)
 
 	// Build the uv pip install command with platform targeting (same as legacy builder)
 	// Note: We don't use --reinstall because it forces re-fetching git dependencies every time,
 	// which is very slow for packages like sst that come from large git repos.
-	// The artifact directory is already cleaned before each build, so this is safe.
-	args := []string{"pip", "install", "-r", requirementsPath, "--target", input.Out()}
+	// Install to depsCacheDir (dedicated cache directory) instead of input.Out()
+	args := []string{"pip", "install", "-r", requirementsPath, "--target", depsCacheDir}
 
 	// Add platform targeting for Lambda deployments
 	// Use platform targeting for actual deployments (not dev mode, not containers)
@@ -2876,10 +2628,10 @@ func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input 
 		slog.Info("skipping platform targeting for dev mode (using native binaries)")
 	}
 
-	workspaceDir := projectInfo.SourceRoot
-	if projectInfo.PyprojectPath != "" {
-		workspaceDir = filepath.Dir(projectInfo.PyprojectPath)
-	}
+	// Run uv pip install from the WORKSPACE ROOT, not the handler's package directory
+	// This is critical because requirements.txt contains relative paths like ./vendored_sst
+	// that are relative to the workspace root (where uv export was run)
+	installWorkspaceDir := workspaceRoot
 
 	// Execute the uv pip install command with timeout
 	// Run from the workspace directory where pyproject.toml exists, not the artifact directory
@@ -2888,9 +2640,9 @@ func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input 
 	defer installCancel()
 
 	installCmd := process.CommandContext(installCtx, "uv", args...)
-	installCmd.Dir = workspaceDir
+	installCmd.Dir = installWorkspaceDir
 
-	slog.Info("starting uv pip install", "command", strings.Join(args, " "), "workingDir", workspaceDir)
+	slog.Info("starting uv pip install", "command", strings.Join(args, " "), "workingDir", installWorkspaceDir)
 	ib.progressReporter.UpdateProgress(StageBuildPackages, "📦 Running uv pip install (this may take a while)...")
 
 	// Use a channel to handle timeout properly since CombinedOutput blocks
@@ -2900,6 +2652,28 @@ func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input 
 	}
 	resultChan := make(chan cmdResult, 1)
 
+	// Start a ticker to log progress every 30 seconds - helps diagnose hangs in CI/CD
+	installStartTime := time.Now()
+	progressDone := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-progressDone:
+				return
+			case <-ticker.C:
+				elapsed := time.Since(installStartTime)
+				slog.Info("uv pip install still running",
+					"elapsed", elapsed,
+					"functionID", input.FunctionID,
+					"workingDir", installWorkspaceDir)
+				ib.progressReporter.UpdateProgress(StageBuildPackages,
+					fmt.Sprintf("📦 uv pip install running... (%v elapsed)", elapsed.Round(time.Second)))
+			}
+		}
+	}()
+
 	go func() {
 		output, err := installCmd.CombinedOutput()
 		resultChan <- cmdResult{output, err}
@@ -2908,21 +2682,20 @@ func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input 
 	var installOutput []byte
 	select {
 	case result := <-resultChan:
+		close(progressDone) // Stop the progress ticker
 		installOutput = result.output
 		err = result.err
 	case <-installCtx.Done():
+		close(progressDone) // Stop the progress ticker
 		// Kill the process if it's still running
 		if installCmd.Process != nil {
 			installCmd.Process.Kill()
 		}
-		timeoutErr := fmt.Errorf("uv pip install timed out after 15 minutes - check network connectivity and try again")
-		// Record failure so other functions don't try to use bad cache
+		// Remove partial cache on timeout
 		if cacheKey != "" {
-			globalDependencyInstallFailuresMutex.Lock()
-			globalDependencyInstallFailures[cacheKey] = timeoutErr
-			globalDependencyInstallFailuresMutex.Unlock()
+			os.RemoveAll(depsCacheDir)
 		}
-		return timeoutErr
+		return fmt.Errorf("uv pip install timed out after 15 minutes - check network connectivity and try again")
 	}
 
 	if err != nil {
@@ -2930,51 +2703,25 @@ func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input 
 			"command", strings.Join(installCmd.Args, " "),
 			"error", err,
 			"output", string(installOutput))
-		installErr := fmt.Errorf("failed to run uv pip install: %v\n%s", err, string(installOutput))
-		// Record failure so other functions don't try to use bad cache
+		// Remove partial cache on failure
 		if cacheKey != "" {
-			globalDependencyInstallFailuresMutex.Lock()
-			globalDependencyInstallFailures[cacheKey] = installErr
-			globalDependencyInstallFailuresMutex.Unlock()
+			os.RemoveAll(depsCacheDir)
 		}
-		return installErr
+		return fmt.Errorf("failed to run uv pip install: %v\n%s", err, string(installOutput))
 	}
 
 	slog.Info("uv pip install completed successfully", "output", string(installOutput))
 
 	// Clean up __pycache__ directories and .pyc files from installed dependencies
-	if err := ib.cleanupInstalledDependencies(input.Out()); err != nil {
+	// Also removes boto3/botocore (Lambda provides them) unless user opts in
+	if err := ib.cleanupInstalledDependencies(depsCacheDir, projectInfo); err != nil {
 		slog.Warn("failed to clean up installed dependencies", "error", err)
 		// Don't fail the build for cleanup issues, just warn
 	}
 
-	// Cache the installed dependencies for future builds
-	if ib.dependencyCache != nil {
-		// Get list of installed packages (simplified - just use directory listing)
-		var dependencyList []string
-		if entries, err := os.ReadDir(input.Out()); err == nil {
-			for _, entry := range entries {
-				if entry.IsDir() && !strings.HasPrefix(entry.Name(), ".") {
-					dependencyList = append(dependencyList, entry.Name())
-				}
-			}
-		}
-
-		if err := ib.dependencyCache.CacheDependencies(requirementsPath, architecture, input.Out(), dependencyList); err != nil {
-			slog.Warn("failed to cache dependencies", "error", err)
-		} else {
-			slog.Info("cached dependencies for future builds", "count", len(dependencyList))
-		}
-	}
-
-	// Store in global dependency installation cache for future functions
-	// Note: cacheKey is set earlier if requirementsHash was computed successfully
-	if cacheKey != "" {
-		globalDependencyInstallCacheMutex.Lock()
-		globalDependencyInstallCache[cacheKey] = input.Out()
-		newCacheSize := len(globalDependencyInstallCache)
-		globalDependencyInstallCacheMutex.Unlock()
-		ib.progressReporter.UpdateProgress(StageBuildPackages, fmt.Sprintf("💾 Stored in cache (size=%d)", newCacheSize))
+	// Copy dependencies from cache directory to function artifact
+	if err := ib.copyDependencyPackages(depsCacheDir, input.Out()); err != nil {
+		return fmt.Errorf("failed to copy dependencies to artifact: %w", err)
 	}
 
 	// Clean up the filtered requirements file
@@ -2982,12 +2729,15 @@ func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input 
 
 	totalDuration := time.Since(startTime)
 	slog.Info("✅ copySyncedDependencies COMPLETE (fresh install)", "functionID", input.FunctionID, "elapsed", totalDuration)
+	ib.progressReporter.UpdateProgress(StageBuildPackages, fmt.Sprintf("✅ Installed dependencies (%v)", totalDuration))
 
 	return nil
 }
 
 // filterWorkspacePackagesFromRequirementsAndGetPaths filters out workspace packages from requirements.txt
-// and returns the paths of the filtered workspace packages for source copying
+// and returns the paths of the filtered workspace packages for source copying.
+// By default, it also filters out boto3/botocore since Lambda provides them.
+// To include them, set [tool.sst] include-lambda-runtime = true in pyproject.toml
 func (ib *IncrementalBuilder) filterWorkspacePackagesFromRequirementsAndGetPaths(inputPath, outputPath string, projectInfo *ProjectInfo, workspaceRoot string) ([]string, error) {
 	// Read the original requirements.txt
 	content, err := os.ReadFile(inputPath)
@@ -3002,8 +2752,21 @@ func (ib *IncrementalBuilder) filterWorkspacePackagesFromRequirementsAndGetPaths
 	// Get workspace package names
 	workspacePackages := ib.getWorkspacePackageNames(projectInfo)
 
+	// Check if user wants to include Lambda runtime packages (boto3/botocore)
+	// Default is to exclude them since Lambda provides them
+	includeLambdaRuntime := false
+	if projectInfo.PyprojectPath != "" {
+		if config, err := ib.projectResolver.ParsePyprojectToml(projectInfo.PyprojectPath); err == nil {
+			includeLambdaRuntime = config.Tool.SST.IncludeLambdaRuntime
+		}
+	}
+
+	// Lambda runtime packages to exclude by default (Lambda provides these)
+	lambdaRuntimePackages := []string{"boto3", "botocore"}
+
 	// Track if we're skipping a multi-line requirement (package with continuation lines)
 	skippingMultiLine := false
+	lambdaPackagesFiltered := 0
 
 	for _, line := range lines {
 		originalLine := line
@@ -3033,13 +2796,15 @@ func (ib *IncrementalBuilder) filterWorkspacePackagesFromRequirementsAndGetPaths
 		shouldSkip := false
 
 		// Skip all editable installs that reference local paths
+		// Editable installs create symlinks which won't work in Lambda
+		// We need to copy these manually
 		if strings.HasPrefix(line, "-e ") {
 			editablePath := strings.TrimSpace(strings.TrimPrefix(line, "-e "))
 
 			// Filter out any editable install that references a local path
 			if strings.HasPrefix(editablePath, "./") || strings.HasPrefix(editablePath, "../") ||
 				strings.HasPrefix(editablePath, "/") && !strings.Contains(editablePath, "://") {
-				slog.Debug("filtering out editable local path from requirements", "line", line)
+				slog.Debug("filtering out editable local path from requirements (creates symlinks)", "line", line)
 				// Record the path for source copying
 				fullPath := filepath.Join(workspaceRoot, editablePath)
 				if strings.HasPrefix(editablePath, "./") {
@@ -3048,38 +2813,40 @@ func (ib *IncrementalBuilder) filterWorkspacePackagesFromRequirementsAndGetPaths
 				workspacePackagePaths = append(workspacePackagePaths, fullPath)
 				continue
 			}
+		}
 
-			// Also check for workspace packages by name
-			for _, pkg := range workspacePackages {
-				if strings.Contains(editablePath, "./"+pkg) || strings.Contains(editablePath, pkg) {
-					slog.Debug("filtering out workspace package from requirements", "line", line, "package", pkg)
-					fullPath := filepath.Join(workspaceRoot, editablePath)
-					if strings.HasPrefix(editablePath, "./") {
-						fullPath = filepath.Join(workspaceRoot, strings.TrimPrefix(editablePath, "./"))
-					}
-					workspacePackagePaths = append(workspacePackagePaths, fullPath)
+		// NON-editable local path references (./path, ../path) are handled by uv pip install
+		// Don't filter them out - uv knows how to install packages from local paths correctly
+		// This is cleaner than trying to manually copy with all the layout detection complexity
+
+		// file:// URLs are also handled by uv pip install - don't filter them
+
+		// Absolute local paths are also handled by uv pip install - don't filter them
+
+		// Filter out Lambda runtime packages (boto3/botocore) unless user opts in
+		// These are provided by Lambda runtime, so including them wastes ~23MB per function
+		if !shouldSkip && !includeLambdaRuntime {
+			// Extract package name from requirement line (e.g., "boto3==1.34.0" -> "boto3")
+			pkgName := line
+			// Handle version specifiers
+			for _, sep := range []string{"==", ">=", "<=", "!=", "~=", ">", "<", "[", " "} {
+				if idx := strings.Index(pkgName, sep); idx > 0 {
+					pkgName = pkgName[:idx]
+				}
+			}
+			pkgName = strings.TrimSpace(pkgName)
+
+			for _, lambdaPkg := range lambdaRuntimePackages {
+				if strings.EqualFold(pkgName, lambdaPkg) {
+					slog.Debug("filtering out Lambda runtime package from requirements",
+						"line", line,
+						"package", lambdaPkg,
+						"reason", "provided by Lambda runtime")
 					shouldSkip = true
+					lambdaPackagesFiltered++
 					break
 				}
 			}
-		}
-
-		// Skip file:// URLs and local path references
-		if !shouldSkip && (strings.HasPrefix(line, "file://") || strings.Contains(line, "file://")) {
-			slog.Debug("filtering out file:// URL from requirements", "line", line)
-			shouldSkip = true
-		}
-
-		// Skip local path references (relative paths starting with ./ or ../)
-		if !shouldSkip && (strings.HasPrefix(line, "./") || strings.HasPrefix(line, "../")) {
-			slog.Debug("filtering out local path reference from requirements", "line", line)
-			shouldSkip = true
-		}
-
-		// Skip absolute local paths that might be workspace-specific
-		if !shouldSkip && strings.HasPrefix(line, "/") && !strings.Contains(line, "://") {
-			slog.Debug("filtering out absolute local path from requirements", "line", line)
-			shouldSkip = true
 		}
 
 		if shouldSkip {
@@ -3101,11 +2868,13 @@ func (ib *IncrementalBuilder) filterWorkspacePackagesFromRequirementsAndGetPaths
 		return nil, fmt.Errorf("failed to write filtered requirements file: %w", err)
 	}
 
-	slog.Info("filtered workspace packages from requirements.txt",
+	slog.Info("filtered packages from requirements.txt",
 		"originalLines", len(lines),
 		"filteredLines", len(filteredLines),
 		"workspacePackages", workspacePackages,
-		"workspacePackagePaths", workspacePackagePaths)
+		"workspacePackagePaths", workspacePackagePaths,
+		"lambdaRuntimePackagesFiltered", lambdaPackagesFiltered,
+		"includeLambdaRuntime", includeLambdaRuntime)
 
 	return workspacePackagePaths, nil
 }
@@ -3140,18 +2909,25 @@ func (ib *IncrementalBuilder) copyWorkspacePackageSources(ctx context.Context, p
 			packageName = filepath.Base(pkgPath)
 		}
 
+		// Calculate the relative path from workspace root to this package for filter prefix
+		// This allows patterns like "backend/tests/**" to match when copying "backend/"
+		filterPrefix, _ := filepath.Rel(workspaceRoot, pkgPath)
+
 		// Determine source directory based on hatch configuration or convention
 		// Check for src/{package_name}/ layout first (common convention)
 		srcLayoutPath := filepath.Join(pkgPath, "src", packageName)
 		if _, err := os.Stat(srcLayoutPath); err == nil {
 			// Copy src/{package_name}/ as {package_name}/ in artifact
 			destPath := filepath.Join(artifactDir, packageName)
+			// For src layout, the filter prefix should include src/{packageName}
+			srcFilterPrefix := filepath.Join(filterPrefix, "src", packageName)
 			slog.Info("copying workspace package with src layout",
 				"package", packageName,
 				"source", srcLayoutPath,
-				"dest", destPath)
+				"dest", destPath,
+				"filterPrefix", srcFilterPrefix)
 
-			if err := ib.copyDirectory(srcLayoutPath, destPath); err != nil {
+			if err := ib.copyDirectory(srcLayoutPath, destPath, srcFilterPrefix); err != nil {
 				return fmt.Errorf("failed to copy workspace package %s: %w", packageName, err)
 			}
 			continue
@@ -3165,12 +2941,14 @@ func (ib *IncrementalBuilder) copyWorkspacePackageSources(ctx context.Context, p
 			if _, err := os.Stat(srcInitPath); err == nil {
 				// Flat src layout - copy src/ as {package_name}/
 				destPath := filepath.Join(artifactDir, packageName)
+				srcFilterPrefix := filepath.Join(filterPrefix, "src")
 				slog.Info("copying workspace package with flat src layout",
 					"package", packageName,
 					"source", srcPath,
-					"dest", destPath)
+					"dest", destPath,
+					"filterPrefix", srcFilterPrefix)
 
-				if err := ib.copyDirectory(srcPath, destPath); err != nil {
+				if err := ib.copyDirectory(srcPath, destPath, srcFilterPrefix); err != nil {
 					return fmt.Errorf("failed to copy workspace package %s: %w", packageName, err)
 				}
 				continue
@@ -3181,12 +2959,14 @@ func (ib *IncrementalBuilder) copyWorkspacePackageSources(ctx context.Context, p
 		pkgDirPath := filepath.Join(pkgPath, packageName)
 		if _, err := os.Stat(pkgDirPath); err == nil {
 			destPath := filepath.Join(artifactDir, packageName)
+			pkgFilterPrefix := filepath.Join(filterPrefix, packageName)
 			slog.Info("copying workspace package from root directory",
 				"package", packageName,
 				"source", pkgDirPath,
-				"dest", destPath)
+				"dest", destPath,
+				"filterPrefix", pkgFilterPrefix)
 
-			if err := ib.copyDirectory(pkgDirPath, destPath); err != nil {
+			if err := ib.copyDirectory(pkgDirPath, destPath, pkgFilterPrefix); err != nil {
 				return fmt.Errorf("failed to copy workspace package %s: %w", packageName, err)
 			}
 			continue
@@ -3203,10 +2983,43 @@ func (ib *IncrementalBuilder) copyWorkspacePackageSources(ctx context.Context, p
 				"package", packageName,
 				"dirName", dirName,
 				"source", pkgPath,
-				"dest", destPath)
+				"dest", destPath,
+				"filterPrefix", filterPrefix)
 
-			if err := ib.copyDirectory(pkgPath, destPath); err != nil {
+			if err := ib.copyDirectory(pkgPath, destPath, filterPrefix); err != nil {
 				return fmt.Errorf("failed to copy workspace package %s: %w", packageName, err)
+			}
+			continue
+		}
+
+		// Handle namespace packages - directories with Python files in subdirectories but no __init__.py
+		// This is common for handler-based layouts like packages/api/auth/login.py
+		// We preserve the relative path from workspace root so handler paths work correctly
+		// e.g., packages/api/ -> packages/api/ in artifact (not gtf-api/)
+		hasPythonFiles := false
+		filepath.Walk(pkgPath, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if !info.IsDir() && strings.HasSuffix(info.Name(), ".py") {
+				hasPythonFiles = true
+				return filepath.SkipAll // Found one, stop walking
+			}
+			return nil
+		})
+
+		if hasPythonFiles {
+			// Copy preserving the relative path from workspace root
+			// filterPrefix is already the relative path (e.g., "packages/api")
+			destPath := filepath.Join(artifactDir, filterPrefix)
+			slog.Info("copying namespace package preserving relative path",
+				"package", packageName,
+				"source", pkgPath,
+				"dest", destPath,
+				"filterPrefix", filterPrefix)
+
+			if err := ib.copyDirectory(pkgPath, destPath, filterPrefix); err != nil {
+				return fmt.Errorf("failed to copy namespace package %s: %w", packageName, err)
 			}
 			continue
 		}
@@ -3220,11 +3033,21 @@ func (ib *IncrementalBuilder) copyWorkspacePackageSources(ctx context.Context, p
 }
 
 // copyDirectory recursively copies a directory
-func (ib *IncrementalBuilder) copyDirectory(src, dst string) error {
+// filterPrefix is prepended to relative paths when checking the content filter
+// (e.g., when copying "backend/", pass "backend" so "tests/" matches "backend/tests/**" patterns)
+func (ib *IncrementalBuilder) copyDirectory(src, dst string, filterPrefix ...string) error {
+	prefix := ""
+	if len(filterPrefix) > 0 && filterPrefix[0] != "" {
+		prefix = filterPrefix[0]
+	}
+
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
+
+		// Calculate relative path for filtering
+		relPath, _ := filepath.Rel(src, path)
 
 		// Skip __pycache__ directories
 		if info.IsDir() && info.Name() == "__pycache__" {
@@ -3236,11 +3059,26 @@ func (ib *IncrementalBuilder) copyDirectory(src, dst string) error {
 			return nil
 		}
 
-		// Calculate relative path and destination
-		relPath, err := filepath.Rel(src, path)
-		if err != nil {
-			return err
+		// Use ContentFilter to determine if file/directory should be excluded
+		if ib.contentFilter != nil {
+			// Build the path to check against filter patterns
+			// If prefix is set, prepend it so "tests/" matches "backend/tests/**"
+			filterPath := relPath
+			if prefix != "" && relPath != "." {
+				filterPath = filepath.Join(prefix, relPath)
+			}
+
+			if ib.contentFilter.ShouldExclude(filterPath) {
+				if info.IsDir() {
+					slog.Debug("skipping directory by content filter in copyDirectory", "path", relPath, "filterPath", filterPath)
+					return filepath.SkipDir
+				}
+				slog.Debug("skipping file by content filter in copyDirectory", "path", relPath, "filterPath", filterPath)
+				return nil
+			}
 		}
+
+		// Calculate relative path and destination
 		dstPath := filepath.Join(dst, relPath)
 
 		if info.IsDir() {
@@ -3273,8 +3111,46 @@ func (ib *IncrementalBuilder) copyDirectory(src, dst string) error {
 }
 
 // cleanupInstalledDependencies removes __pycache__ directories, .pyc files, and system files from installed dependencies
-func (ib *IncrementalBuilder) cleanupInstalledDependencies(targetDir string) error {
+// It also removes boto3/botocore packages since Lambda provides them (saves ~22MB per function)
+func (ib *IncrementalBuilder) cleanupInstalledDependencies(targetDir string, projectInfo *ProjectInfo) error {
 	slog.Info("cleaning up __pycache__ directories, .pyc files, and system files from installed dependencies", "targetDir", targetDir)
+
+	// Check if user wants to include Lambda runtime packages (boto3/botocore)
+	// Default is to exclude them since Lambda provides them
+	includeLambdaRuntime := false
+	if projectInfo != nil && projectInfo.PyprojectPath != "" {
+		if config, err := ib.projectResolver.ParsePyprojectToml(projectInfo.PyprojectPath); err == nil {
+			includeLambdaRuntime = config.Tool.SST.IncludeLambdaRuntime
+		}
+	}
+
+	// Remove boto3/botocore if present and user hasn't opted in (Lambda provides these, saves ~22MB)
+	// These packages come in as transitive dependencies (e.g., aioboto3 -> aiobotocore -> botocore)
+	if !includeLambdaRuntime {
+		lambdaRuntimePackages := []string{"boto3", "botocore"}
+		for _, pkg := range lambdaRuntimePackages {
+			pkgDir := filepath.Join(targetDir, pkg)
+			if info, err := os.Stat(pkgDir); err == nil && info.IsDir() {
+				if err := os.RemoveAll(pkgDir); err != nil {
+					slog.Warn("failed to remove Lambda runtime package", "package", pkg, "error", err)
+				} else {
+					slog.Info("removed Lambda runtime package (provided by Lambda)", "package", pkg)
+				}
+			}
+			// Also remove the dist-info directory
+			entries, _ := os.ReadDir(targetDir)
+			for _, entry := range entries {
+				if entry.IsDir() && strings.HasPrefix(entry.Name(), pkg+"-") && strings.HasSuffix(entry.Name(), ".dist-info") {
+					distInfoDir := filepath.Join(targetDir, entry.Name())
+					if err := os.RemoveAll(distInfoDir); err != nil {
+						slog.Warn("failed to remove dist-info directory", "dir", entry.Name(), "error", err)
+					} else {
+						slog.Debug("removed dist-info directory", "dir", entry.Name())
+					}
+				}
+			}
+		}
+	}
 
 	var removedItems []string
 	var totalSize int64
@@ -3320,6 +3196,57 @@ func (ib *IncrementalBuilder) cleanupInstalledDependencies(targetDir string) err
 						slog.Debug("removed compiled Python file", "path", path, "size", info.Size())
 					}
 				}
+			}
+			// Remove .pyi type stub files and py.typed markers (only useful for IDE, not runtime)
+			if ext == ".pyi" || fileName == "py.typed" {
+				totalSize += info.Size()
+				if err := os.Remove(path); err != nil {
+					slog.Warn("failed to remove type stub file", "path", path, "error", err)
+				} else {
+					removedItems = append(removedItems, path)
+					slog.Debug("removed type stub file", "path", path, "size", info.Size())
+				}
+			}
+		}
+
+		// Remove .dist-info directories (pip metadata, not needed at runtime)
+		if info.IsDir() && strings.HasSuffix(info.Name(), ".dist-info") {
+			dirSize := int64(0)
+			filepath.Walk(path, func(_ string, fi os.FileInfo, _ error) error {
+				if fi != nil && !fi.IsDir() {
+					dirSize += fi.Size()
+				}
+				return nil
+			})
+			totalSize += dirSize
+			if err := os.RemoveAll(path); err != nil {
+				slog.Warn("failed to remove .dist-info directory", "path", path, "error", err)
+			} else {
+				removedItems = append(removedItems, path)
+				slog.Debug("removed .dist-info directory", "path", path, "size", dirSize)
+			}
+			return filepath.SkipDir
+		}
+
+		// Remove test directories (e.g., Crypto/SelfTest, tests/, test/)
+		if info.IsDir() {
+			dirName := info.Name()
+			if dirName == "SelfTest" || dirName == "tests" || dirName == "test" {
+				dirSize := int64(0)
+				filepath.Walk(path, func(_ string, fi os.FileInfo, _ error) error {
+					if fi != nil && !fi.IsDir() {
+						dirSize += fi.Size()
+					}
+					return nil
+				})
+				totalSize += dirSize
+				if err := os.RemoveAll(path); err != nil {
+					slog.Warn("failed to remove test directory", "path", path, "error", err)
+				} else {
+					removedItems = append(removedItems, path)
+					slog.Debug("removed test directory", "path", path, "size", dirSize)
+				}
+				return filepath.SkipDir
 			}
 		}
 
@@ -3406,7 +3333,7 @@ func (ib *IncrementalBuilder) hashFile(filePath string) (string, error) {
 
 // copyDependencyPackages copies only the installed dependency packages (not requirements.txt, etc.)
 func (ib *IncrementalBuilder) copyDependencyPackages(srcDir, destDir string) error {
-	slog.Info("copying dependency packages with hardlinks", "src", srcDir, "dest", destDir)
+	slog.Info("copying dependency packages", "src", srcDir, "dest", destDir)
 
 	// Read source directory to find package directories and root-level files
 	entries, err := os.ReadDir(srcDir)
@@ -3433,8 +3360,8 @@ func (ib *IncrementalBuilder) copyDependencyPackages(srcDir, destDir string) err
 		destPath := filepath.Join(destDir, name)
 
 		if entry.IsDir() {
-			// Copy package directory with hardlinks
-			if err := ib.copyDirectoryWithHardlinks(srcPath, destPath); err != nil {
+			// Copy package directory
+			if err := ib.copyDirectory(srcPath, destPath); err != nil {
 				slog.Warn("failed to copy package", "package", name, "error", err)
 				continue
 			}
@@ -3443,7 +3370,7 @@ func (ib *IncrementalBuilder) copyDependencyPackages(srcDir, destDir string) err
 			// Copy root-level .so files (like _cffi_backend.cpython-313-aarch64-linux-gnu.so)
 			// and root-level .py files (like typing_extensions.py, six.py)
 			// These are packages that install as single files at the root level
-			if err := ib.copyFileWithHardlink(srcPath, destPath); err != nil {
+			if err := ib.copyFile(srcPath, destPath); err != nil {
 				slog.Warn("failed to copy root file", "file", name, "error", err)
 				continue
 			}
@@ -3454,126 +3381,4 @@ func (ib *IncrementalBuilder) copyDependencyPackages(srcDir, destDir string) err
 
 	slog.Info("copied dependency packages", "directories", copiedCount, "rootFiles", copiedFiles)
 	return nil
-}
-
-// copyFileWithHardlink copies a single file using hardlink or falls back to copy
-func (ib *IncrementalBuilder) copyFileWithHardlink(srcPath, destPath string) error {
-	// Get file info
-	info, err := os.Stat(srcPath)
-	if err != nil {
-		return fmt.Errorf("failed to stat source file: %w", err)
-	}
-
-	// Ensure parent directory exists
-	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
-		return fmt.Errorf("failed to create parent directory: %w", err)
-	}
-
-	// Remove destination if it exists
-	os.Remove(destPath)
-
-	// Check if source is a symlink
-	fileInfo, err := os.Lstat(srcPath)
-	if err != nil {
-		return fmt.Errorf("failed to lstat source file: %w", err)
-	}
-
-	if fileInfo.Mode()&os.ModeSymlink != 0 {
-		// Source is a symlink - copy the file contents
-		data, err := os.ReadFile(srcPath)
-		if err != nil {
-			return fmt.Errorf("failed to read symlinked file: %w", err)
-		}
-		if err := os.WriteFile(destPath, data, info.Mode()); err != nil {
-			return fmt.Errorf("failed to write file: %w", err)
-		}
-		return nil
-	}
-
-	// Try hardlink first
-	if err := os.Link(srcPath, destPath); err != nil {
-		// Fall back to copy
-		data, err := os.ReadFile(srcPath)
-		if err != nil {
-			return fmt.Errorf("failed to read file: %w", err)
-		}
-		if err := os.WriteFile(destPath, data, info.Mode()); err != nil {
-			return fmt.Errorf("failed to write file: %w", err)
-		}
-	}
-
-	return nil
-}
-
-// copyDirectoryWithHardlinks copies a directory using hardlinks for files (instant, no disk space)
-func (ib *IncrementalBuilder) copyDirectoryWithHardlinks(srcDir, destDir string) error {
-	// Walk the source directory
-	return filepath.Walk(srcDir, func(srcPath string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		// Calculate relative path
-		relPath, err := filepath.Rel(srcDir, srcPath)
-		if err != nil {
-			return fmt.Errorf("failed to get relative path: %w", err)
-		}
-
-		destPath := filepath.Join(destDir, relPath)
-
-		// Handle directories
-		if info.IsDir() {
-			// Create directory if it doesn't exist
-			if err := os.MkdirAll(destPath, info.Mode()); err != nil {
-				return fmt.Errorf("failed to create directory %s: %w", destPath, err)
-			}
-			return nil
-		}
-
-		// Handle files - create hardlink or copy
-		// First ensure parent directory exists
-		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
-			return fmt.Errorf("failed to create parent directory for %s: %w", destPath, err)
-		}
-
-		// Remove destination if it exists (hardlink will fail if file exists)
-		os.Remove(destPath)
-
-		// Check if source is a symlink - if so, we must copy instead of hardlink
-		// UV installs use symlinks to its cache, and hardlinking to those would
-		// create a hardlink to the UV cache file itself. If anything later modifies
-		// the hardlinked file, it would corrupt the UV cache!
-		fileInfo, err := os.Lstat(srcPath)
-		if err != nil {
-			return fmt.Errorf("failed to lstat source file: %w", err)
-		}
-
-		if fileInfo.Mode()&os.ModeSymlink != 0 {
-			// Source is a symlink - copy the file contents instead of hardlinking
-			// This protects the UV cache from corruption
-			data, err := os.ReadFile(srcPath)
-			if err != nil {
-				return fmt.Errorf("failed to read symlinked file for copy: %w", err)
-			}
-			if err := os.WriteFile(destPath, data, info.Mode()); err != nil {
-				return fmt.Errorf("failed to write file: %w", err)
-			}
-			return nil
-		}
-
-		// Create hardlink (instant, no disk space used)
-		if err := os.Link(srcPath, destPath); err != nil {
-			// If hardlink fails (e.g., cross-device), fall back to copy
-			slog.Warn("hardlink failed, falling back to copy", "src", srcPath, "dest", destPath, "error", err)
-			data, err := os.ReadFile(srcPath)
-			if err != nil {
-				return fmt.Errorf("failed to read file for copy: %w", err)
-			}
-			if err := os.WriteFile(destPath, data, info.Mode()); err != nil {
-				return fmt.Errorf("failed to write file: %w", err)
-			}
-		}
-
-		return nil
-	})
 }

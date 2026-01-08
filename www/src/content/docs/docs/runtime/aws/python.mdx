@@ -427,6 +427,30 @@ sst deploy
 4. **Use absolute imports** for better performance
 5. **Keep dependencies minimal** to reduce build times
 
+### macOS Troubleshooting
+
+If you're developing on macOS and experience issues after your first successful deploy (hangs, timeouts, or high CPU/memory usage), try cleaning the artifact cache:
+
+```bash
+rm -rf .sst/artifacts/*-src && sst deploy
+```
+
+This is caused by a macOS/APFS filesystem quirk where hardlinked directories can't be cleanly removed. The Python runtime uses hardlinks to speed up dependency caching across multiple functions, but macOS's `RemoveAll` operation can fail on subsequent deploys.
+
+**Symptoms:**
+- Deploy hangs after "Installing dependencies..."
+- High CPU usage or thousands of threads in the `sst` process
+- Timeout errors like "timed out waiting for dependency install lock"
+- Works fine on first deploy, fails on subsequent deploys
+
+**Workaround:** Add the cleanup command to your deploy workflow:
+```bash
+# Create an alias for easy use
+alias sst-deploy="rm -rf .sst/artifacts/*-src && sst deploy"
+```
+
+This issue does not affect Linux CI/CD environments.
+
 ## Container Mode
 
 For large dependencies (numpy, pandas, ML libraries), use container mode:

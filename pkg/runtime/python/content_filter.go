@@ -452,14 +452,7 @@ func (cf *ContentFilter) ValidateFilteredContent(targetDir string, maxSizeBytes 
 
 	// Check size limits
 	if maxSizeBytes > 0 && totalSize > maxSizeBytes {
-		return &BuildValidationError{
-			Stage:      "filter",
-			Command:    "content filtering",
-			Files:      []string{targetDir},
-			Expected:   []string{fmt.Sprintf("size <= %d bytes", maxSizeBytes)},
-			Actual:     []string{fmt.Sprintf("size = %d bytes", totalSize)},
-			Suggestion: fmt.Sprintf("Filtered content is %d bytes, which exceeds the maximum size limit of %d bytes. Consider adding more exclude patterns or reducing the content size.", totalSize, maxSizeBytes),
-		}
+		return fmt.Errorf("filtered content size %d bytes exceeds maximum %d bytes - consider adding more exclude patterns", totalSize, maxSizeBytes)
 	}
 
 	// Check that we have some Python files

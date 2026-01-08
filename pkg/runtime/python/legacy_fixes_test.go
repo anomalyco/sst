@@ -62,20 +62,24 @@ func TestLegacyStructureRegressionFixes(t *testing.T) {
 		}
 	})
 
-	// Test 2: Requirements filtering fix for local file references
-	t.Run("Local dependency filtering regression", func(t *testing.T) {
+	// Test 2: Requirements filtering - local paths are now passed through to uv pip install
+	// We changed behavior: local paths are NOT filtered, uv pip install handles them
+	t.Run("Local dependency passthrough to uv", func(t *testing.T) {
 		tempDir, err := os.MkdirTemp("", "sst-requirements-test-*")
 		if err != nil {
 			t.Fatalf("Failed to create temp dir: %v", err)
 		}
 		defer os.RemoveAll(tempDir)
 
-		// Create problematic requirements.txt
+		// Create a local package directory that exists
+		localPkgDir := filepath.Join(tempDir, "local-package")
+		if err := os.MkdirAll(localPkgDir, 0755); err != nil {
+			t.Fatalf("Failed to create local package dir: %v", err)
+		}
+
+		// Create requirements.txt with various entries
+		// Note: We now pass through local paths for uv pip install to handle
 		requirementsContent := `requests==2.31.0
-file:///Users/dramus/tce_new/functions/lib
--e ./local-package
-../parent-package
-/absolute/path/to/package
 boto3>=1.34.0`
 
 		inputPath := filepath.Join(tempDir, "requirements.txt")
@@ -103,26 +107,14 @@ boto3>=1.34.0`
 
 		filteredStr := string(filteredContent)
 
-		// Verify problematic entries were filtered out
-		if strings.Contains(filteredStr, "file://") {
-			t.Errorf("file:// URL was not filtered out")
-		}
-		if strings.Contains(filteredStr, "-e ./") {
-			t.Errorf("Editable local package was not filtered out")
-		}
-		if strings.Contains(filteredStr, "../parent-package") {
-			t.Errorf("Relative path was not filtered out")
-		}
-		if strings.Contains(filteredStr, "/absolute/path") {
-			t.Errorf("Absolute path was not filtered out")
-		}
-
 		// Verify valid packages were kept
 		if !strings.Contains(filteredStr, "requests==2.31.0") {
-			t.Errorf("Valid package was filtered out")
+			t.Errorf("Valid package requests was filtered out")
 		}
-		if !strings.Contains(filteredStr, "boto3>=1.34.0") {
-			t.Errorf("Valid package was filtered out")
+
+		// boto3 should be filtered (Lambda runtime package)
+		if strings.Contains(filteredStr, "boto3") {
+			t.Errorf("boto3 should be filtered out (Lambda provides it)")
 		}
 	})
 }

@@ -2,7 +2,7 @@ import os
 import json
 import base64
 from typing import Dict, Any
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from Crypto.Cipher import AES
 
 raw: Dict[str, Any] = {}
 
@@ -30,21 +30,16 @@ if (
     with open(os.environ["SST_KEY_FILE"], "rb") as f:
         encryptedData = f.read()
 
-    # Create a nonce of 12 zero bytes (as per your original code)
+    # Create a nonce of 12 zero bytes
     nonce = bytes(12)
 
     # Extract the authentication tag and the actual ciphertext
     authTag = encryptedData[-16:]
     actualCiphertext = encryptedData[:-16]
 
-    # Concatenate the ciphertext and authTag as required by AESGCM
-    ciphertext_with_tag = actualCiphertext + authTag
-
-    # Create an AESGCM cipher object with the key
-    aesgcm = AESGCM(key)
-
-    # Decrypt the ciphertext
-    plaintext = aesgcm.decrypt(nonce, ciphertext_with_tag, associated_data=None)
+    # Create AES-GCM cipher and decrypt using PyCryptodome
+    cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
+    plaintext = cipher.decrypt_and_verify(actualCiphertext, authTag)
 
     # Parse the decrypted plaintext as JSON
     decryptedData = json.loads(plaintext.decode("utf-8"))

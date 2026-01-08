@@ -35,25 +35,14 @@ var (
 	globalDependencyCache      = make(map[string]*DependencyAnalysis)
 	globalDependencyCacheMutex sync.RWMutex
 
-	// Global dependency installation cache - like SST v2's Docker layer caching
-	// Key is requirements.txt hash + architecture, value is the installation directory
-	// This allows us to install dependencies ONCE and reuse for all functions
-	globalDependencyInstallCache      = make(map[string]string)
-	globalDependencyInstallCacheMutex sync.RWMutex
-
 	// Global dependency installation locks - ensures only ONE function installs per cache key
-	// Other functions wait for the installation to complete, then copy from cache
+	// Other functions wait for the installation to complete, then copy from disk cache
 	globalDependencyInstallLocks      = make(map[string]*sync.Mutex)
 	globalDependencyInstallLocksMutex sync.Mutex
 
 	// Global requirements.txt generation - generate once per workspace, reuse for all functions
 	globalRequirementsFiles      = make(map[string]string) // workspaceDir -> requirements.txt path
 	globalRequirementsFilesMutex sync.Mutex
-
-	// Global build failure tracking - if ANY function's dependency install fails,
-	// mark the cache key as failed so other functions don't use potentially bad cache
-	globalDependencyInstallFailures      = make(map[string]error)
-	globalDependencyInstallFailuresMutex sync.RWMutex
 )
 
 type Worker struct {
@@ -1753,203 +1742,6 @@ func (r *PythonRuntime) adjustHandlerPath(input *runtime.BuildInput) (string, er
 	return originalHandler, nil
 }
 
-// validateDeploymentReadiness performs final validation to ensure the artifact is ready for deployment
-func (r *PythonRuntime) validateDeploymentReadiness(artifactDir, handlerPath string, validationResult *ArtifactValidationResult, progressReporter *BuildProgressReporter) error {
-	slog.Info("validating deployment readiness",
-		"artifactDir", artifactDir,
-		"handlerPath", handlerPath)
-
-	// 1. Ensure artifact directory exists and is not empty
-	entries, err := os.ReadDir(artifactDir)
-	if err != nil {
-		return fmt.Errorf("failed to read artifact directory: %w", err)
-	}
-
-	if len(entries) == 0 {
-		return fmt.Errorf("artifact directory is empty: %s", artifactDir)
-	}
-
-	// 2. Validate that critical validation checks passed
-	if validationResult != nil {
-		if !validationResult.Success {
-			return fmt.Errorf("artifact validation failed with %d errors", len(validationResult.ErrorMessages))
-		}
-
-		if !validationResult.HandlerCompatible {
-			return fmt.Errorf("handler path '%s' is not compatible with deployed modules", handlerPath)
-		}
-
-		if len(validationResult.PythonModules) == 0 {
-			return fmt.Errorf("no Python modules found in artifact")
-		}
-
-		if len(validationResult.MissingModules) > 0 {
-			return fmt.Errorf("missing required modules: %s", strings.Join(validationResult.MissingModules, ", "))
-		}
-	}
-
-	// 3. Validate essential files exist
-	essentialChecks := []struct {
-		name        string
-		path        string
-		required    bool
-		description string
-	}{
-		{
-			name:        "requirements.txt",
-			path:        filepath.Join(artifactDir, "requirements.txt"),
-			required:    false, // Not always required (e.g., no external deps)
-			description: "Python dependencies file",
-		},
-	}
-
-	for _, check := range essentialChecks {
-		exists := fileExists(check.path)
-		if check.required && !exists {
-			return fmt.Errorf("required file missing: %s (%s)", check.name, check.description)
-		}
-
-		slog.Debug("essential file check",
-			"file", check.name,
-			"path", check.path,
-			"exists", exists,
-			"required", check.required)
-	}
-
-	// 4. Validate handler module structure
-	if handlerPath != "" {
-		var expectedModule string
-		var handlerParts []string
-
-		if strings.Contains(handlerPath, "/") {
-			// Workspace layout: functions/handler.lambda_handler
-			handlerParts = strings.Split(handlerPath, "/")
-			if len(handlerParts) > 0 {
-				expectedModule = handlerParts[0]
-			}
-		} else {
-			// Flat layout: handler.lambda_handler or module.handler.lambda_handler
-			// For flat layouts, we need to check if the handler path contains a module prefix
-			dotParts := strings.Split(handlerPath, ".")
-			if len(dotParts) >= 3 {
-				// Format: module.handler.lambda_handler
-				expectedModule = dotParts[0]
-				handlerParts = []string{expectedModule, strings.Join(dotParts[1:len(dotParts)-1], ".")}
-			} else if len(dotParts) == 2 {
-				// Format: handler.lambda_handler (no module prefix)
-				// In this case, we need to find which module contains the handler file
-				handlerFile := dotParts[0] + ".py"
-				if validationResult != nil {
-					for _, module := range validationResult.PythonModules {
-						handlerFilePath := filepath.Join(artifactDir, module, handlerFile)
-						if fileExists(handlerFilePath) {
-							expectedModule = module
-							handlerParts = []string{module, dotParts[0]}
-							break
-						}
-					}
-				}
-				if expectedModule == "" {
-					// If no module contains the handler file, this might be an error
-					// but we'll let the later validation catch it
-					expectedModule = dotParts[0] // This will likely fail validation
-					handlerParts = []string{expectedModule}
-				}
-			} else {
-				return fmt.Errorf("invalid handler path format: %s", handlerPath)
-			}
-		}
-
-		if expectedModule != "" {
-			modulePath := filepath.Join(artifactDir, expectedModule)
-
-			if !fileExists(modulePath) {
-				return fmt.Errorf("handler module directory not found: %s", modulePath)
-			}
-
-			// Check if it's a proper Python module
-			initPyPath := filepath.Join(modulePath, "__init__.py")
-			if !fileExists(initPyPath) {
-				slog.Warn("handler module missing __init__.py file",
-					"module", expectedModule,
-					"path", initPyPath)
-
-				// Report warning about missing __init__.py
-				progressReporter.ReportWarning("validate",
-					fmt.Sprintf("Module '%s' missing __init__.py file", expectedModule),
-					map[string]interface{}{
-						"module": expectedModule,
-						"path":   initPyPath,
-					})
-			}
-
-			// If handler specifies a file, check if it exists
-			if len(handlerParts) > 1 {
-				// Parse handler path: module/file.function -> module, file.py, function
-				// For example: functions/handler.lambda_handler -> functions, handler.py, lambda_handler
-				handlerFileAndFunc := strings.Join(handlerParts[1:], "/")
-
-				// Split on the last dot to separate file from function
-				lastDotIndex := strings.LastIndex(handlerFileAndFunc, ".")
-				var handlerFile string
-				if lastDotIndex != -1 {
-					// Extract just the file part (before the last dot)
-					handlerFile = handlerFileAndFunc[:lastDotIndex] + ".py"
-				} else {
-					// No function specified, treat entire thing as file
-					handlerFile = handlerFileAndFunc + ".py"
-				}
-
-				handlerFilePath := filepath.Join(modulePath, handlerFile)
-
-				if !fileExists(handlerFilePath) {
-					return fmt.Errorf("handler file not found: %s", handlerFilePath)
-				}
-
-				slog.Debug("handler file validation successful",
-					"handlerPath", handlerPath,
-					"handlerFile", handlerFilePath)
-			}
-		}
-	}
-
-	// 5. Calculate and log final artifact statistics
-	var totalSize int64
-	var fileCount int
-	var pythonFileCount int
-
-	err = filepath.Walk(artifactDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil // Continue despite errors
-		}
-
-		if !info.IsDir() {
-			fileCount++
-			totalSize += info.Size()
-
-			if strings.HasSuffix(info.Name(), ".py") {
-				pythonFileCount++
-			}
-		}
-
-		return nil
-	})
-
-	if err != nil {
-		slog.Warn("failed to calculate artifact statistics", "error", err)
-	}
-
-	slog.Info("deployment readiness validation successful",
-		"artifactDir", artifactDir,
-		"handlerPath", handlerPath,
-		"totalSize", totalSize,
-		"fileCount", fileCount,
-		"pythonFileCount", pythonFileCount,
-		"ready", true)
-
-	return nil
-}
-
 // calculateArtifactSummary calculates summary information about the deployment artifact
 func (r *PythonRuntime) calculateArtifactSummary(artifactDir string) ArtifactSummary {
 	summary := ArtifactSummary{}
@@ -2536,70 +2328,10 @@ func (r *PythonRuntime) copyDirectoryWithFilter(src, dst string, filter *Content
 	})
 }
 
-// checkUvSyncNeeded runs uv sync if needed during runtime initialization
-// This is called once when the Python runtime is initialized
+// checkUvSyncNeeded is disabled - it was causing issues by removing dev/extra dependencies
+// Users should run 'uv sync' manually if needed
 func checkUvSyncNeeded(projectRoot string) {
-	// Check if pyproject.toml exists
-	pyprojectPath := filepath.Join(projectRoot, "pyproject.toml")
-	pyprojectData, err := os.ReadFile(pyprojectPath)
-	if err != nil {
-		return // No pyproject.toml, nothing to check
-	}
-
-	// Parse to check for [tool.uv] package = true or workspace
-	var pyproject PyProject
-	if err := toml.Unmarshal(pyprojectData, &pyproject); err != nil {
-		return // Can't parse, skip check
-	}
-
-	// Check if UV package mode or workspace is enabled
-	hasUvPackage := pyproject.Tool.Uv.Package
-	hasWorkspace := len(pyproject.Tool.Uv.Workspace.Members) > 0
-
-	if !hasUvPackage && !hasWorkspace {
-		return // Not using UV features, no need to sync
-	}
-
-	// Check if .venv exists and is populated
-	venvPath := filepath.Join(projectRoot, ".venv")
-	pythonPath := filepath.Join(venvPath, "bin", "python")
-	if _, err := os.Stat(pythonPath); err == nil {
-		slog.Debug("UV virtual environment already exists, skipping sync",
-			"projectRoot", projectRoot,
-			"venvPath", venvPath)
-		return // .venv exists and has python, already synced
-	}
-
-	// Run uv sync
-	slog.Info("UV package mode detected, running uv sync",
-		"projectRoot", projectRoot,
-		"hasUvPackage", hasUvPackage,
-		"hasWorkspace", hasWorkspace)
-
-	fmt.Fprintf(os.Stderr, "\n🔄 Running uv sync to install packages...\n")
-
-	// Check if uv.lock exists to determine if we should use --frozen
-	uvLockPath := filepath.Join(projectRoot, "uv.lock")
-	args := []string{"sync", "--no-dev"}
-	if _, err := os.Stat(uvLockPath); err == nil {
-		args = append(args, "--frozen")
-		slog.Debug("using --frozen flag (uv.lock exists)", "uvLockPath", uvLockPath)
-	}
-
-	cmd := exec.Command("uv", args...)
-	cmd.Dir = projectRoot
-	cmd.Stdout = os.Stderr // Show output to user
-	cmd.Stderr = os.Stderr
-
-	if err := cmd.Run(); err != nil {
-		slog.Warn("uv sync failed, continuing anyway",
-			"error", err,
-			"projectRoot", projectRoot)
-		fmt.Fprintf(os.Stderr, "⚠️  uv sync failed: %v\n", err)
-		fmt.Fprintf(os.Stderr, "   Continuing anyway - you may need to run 'uv sync' manually\n\n")
-		return
-	}
-
-	fmt.Fprintf(os.Stderr, "✓ uv sync completed successfully\n\n")
-	slog.Info("uv sync completed successfully", "projectRoot", projectRoot)
+	// Disabled - this was stripping dev dependencies from user's venv
+	// The build process uses its own isolated venv in .sst/python-cache/build-venv
+	return
 }

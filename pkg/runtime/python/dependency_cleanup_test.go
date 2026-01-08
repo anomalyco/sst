@@ -15,12 +15,16 @@ func TestIncrementalBuilder_CleanupInstalledDependencies(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	// Create test structure simulating installed Python packages with __pycache__
+	// Note: boto3/botocore are Lambda runtime packages and SHOULD be removed
 	testFiles := map[string]string{
 		// Normal package files (should be kept)
 		"requests/__init__.py": "# requests package",
 		"requests/api.py":      "# requests api",
+
+		// Lambda runtime packages (should be removed - Lambda provides these)
 		"boto3/__init__.py":    "# boto3 package",
 		"boto3/session.py":     "# boto3 session",
+		"botocore/__init__.py": "# botocore package",
 
 		// __pycache__ directories and files (should be removed)
 		"requests/__pycache__/__init__.cpython-312.pyc": "compiled python",
@@ -52,7 +56,7 @@ func TestIncrementalBuilder_CleanupInstalledDependencies(t *testing.T) {
 
 	// Create IncrementalBuilder and run cleanup
 	builder := &IncrementalBuilder{}
-	if err := builder.cleanupInstalledDependencies(tempDir); err != nil {
+	if err := builder.cleanupInstalledDependencies(tempDir, nil); err != nil {
 		t.Fatalf("cleanupInstalledDependencies failed: %v", err)
 	}
 
@@ -69,7 +73,7 @@ func TestIncrementalBuilder_CleanupInstalledDependencies(t *testing.T) {
 		}
 	}
 
-	// Check that __pycache__ files were removed
+	// Check that __pycache__ files and Lambda runtime packages were removed
 	expectedRemoved := []string{
 		"requests/__pycache__/__init__.cpython-312.pyc",
 		"requests/__pycache__/api.cpython-312.pyc",
@@ -78,6 +82,10 @@ func TestIncrementalBuilder_CleanupInstalledDependencies(t *testing.T) {
 		"some_module.pyc",
 		"another.pyo",
 		"native.pyd",
+		// Lambda runtime packages should be removed
+		"boto3/__init__.py",
+		"boto3/session.py",
+		"botocore/__init__.py",
 	}
 
 	for _, expectedFile := range expectedRemoved {
@@ -93,12 +101,10 @@ func TestIncrementalBuilder_CleanupInstalledDependencies(t *testing.T) {
 		}
 	}
 
-	// Check that normal files were kept
+	// Check that normal files were kept (NOT Lambda runtime packages)
 	expectedKept := []string{
 		"requests/__init__.py",
 		"requests/api.py",
-		"boto3/__init__.py",
-		"boto3/session.py",
 		"package.json",
 		"README.md",
 		"data/config.json",
@@ -126,6 +132,18 @@ func TestIncrementalBuilder_CleanupInstalledDependencies(t *testing.T) {
 	for _, dir := range pycacheDirs {
 		if _, err := os.Stat(dir); err == nil {
 			t.Errorf("__pycache__ directory %s should have been removed", dir)
+		}
+	}
+
+	// Verify Lambda runtime package directories were removed
+	lambdaDirs := []string{
+		filepath.Join(tempDir, "boto3"),
+		filepath.Join(tempDir, "botocore"),
+	}
+
+	for _, dir := range lambdaDirs {
+		if _, err := os.Stat(dir); err == nil {
+			t.Errorf("Lambda runtime package directory %s should have been removed", dir)
 		}
 	}
 
