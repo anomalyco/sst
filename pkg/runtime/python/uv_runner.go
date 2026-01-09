@@ -549,7 +549,7 @@ func (ur *UvCommandRunner) createDetailedExportError(result *CommandResult, cmd 
 		errorMsg += "\nSuggestion: Run 'uv sync' first to ensure dependencies are resolved"
 	}
 
-	return fmt.Errorf(errorMsg)
+	return fmt.Errorf("%s", errorMsg)
 }
 
 // ExecuteInstallCommand executes a UV pip install command with optimization
@@ -720,7 +720,7 @@ func (ur *UvCommandRunner) createDetailedInstallError(result *CommandResult, cmd
 		errorMsg += "\nSuggestion: Check if all package versions in requirements.txt are available"
 	}
 
-	return fmt.Errorf(errorMsg)
+	return fmt.Errorf("%s", errorMsg)
 }
 
 // executeCommand executes a command with caching and retry logic
@@ -1291,5 +1291,5 @@ func (ur *UvCommandRunner) createDetailedSyncError(result *CommandResult, cmd *U
 		errorMsg += "\nSuggestion: Try removing uv.lock and running sync again"
 	}
 
-	return fmt.Errorf(errorMsg)
+	return fmt.Errorf("%s", errorMsg)
 }
