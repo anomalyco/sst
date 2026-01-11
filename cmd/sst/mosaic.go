@@ -302,6 +302,7 @@ func CmdMosaic(c *cli.Cli) error {
 
 	if mode == "basic" {
 		wg.Go(func() error {
+			<-server.Ready
 			return CmdUI(c)
 		})
 	}
