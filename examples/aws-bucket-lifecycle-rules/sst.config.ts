@@ -17,16 +17,15 @@ export default $config({
     const bucket = new sst.aws.Bucket("MyBucket", {
       lifecycle: [
         {
-          expiresIn: "30 days",
+          expiresIn: "60 days",
         },
         {
           id: "expire-tmp-files",
-          prefix: "tmp1/",
+          prefix: "tmp/",
           expiresIn: "30 days",
         },
         {
-          // id: "expire-tmp-files",
-          prefix: "tmp2/",
+          prefix: "data/",
           expiresAt: "2028-12-31",
         },
       ],
