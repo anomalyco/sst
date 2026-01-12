@@ -1,9 +1,9 @@
 /// <reference path="./.sst/platform/config.d.ts" />
 
 /**
- * ## Bucket policy
+ * ## Bucket lifecycle policies
  *
- * Create an S3 bucket and transform its bucket policy.
+ * Configure S3 bucket lifecycle policies to expire objects automatically.
  */
 export default $config({
   app(input) {
