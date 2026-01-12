@@ -138,6 +138,19 @@ func (w *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		},
 	}
 
+	// Apply user overrides for configurable esbuild options
+	if !build.ESBuild.KeepNames {
+		options.KeepNames = false
+	}
+
+	if build.ESBuild.Target != 0 {
+		options.Target = build.ESBuild.Target
+	}
+
+	if build.ESBuild.Sourcemap != 0 {
+		options.Sourcemap = build.ESBuild.Sourcemap
+	}
+
 	w.lock.RLock()
 	buildContext, ok := w.contexts[input.FunctionID]
 	w.lock.RUnlock()
