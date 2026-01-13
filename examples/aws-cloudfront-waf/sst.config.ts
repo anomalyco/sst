@@ -3,8 +3,10 @@
 /**
  * ## CloudFront Web Application Firewall (WAF)
  *
- * Enable WAF for a CloudFront distribution created by `sst.aws.Nextjs`. The WAF is
- * configured using AWS managed rules and is attached to the distribution at creation time.
+ * Enable WAF for a CloudFront distribution created by `sst.aws.StaticSite`.
+ *
+ * The WAF is configured using AWS managed rules and is attached to the
+ * CloudFront distribution at creation time.
  */
 export default $config({
   app(input) {
@@ -14,6 +16,7 @@ export default $config({
       removal: input?.stage === "production" ? "retain" : "remove",
     };
   },
+
   async run() {
     const webAcl = new aws.wafv2.WebAcl("WebAcl", {
       scope: "CLOUDFRONT",
@@ -43,7 +46,8 @@ export default $config({
       ],
     });
 
-    const site = new sst.aws.Nextjs("NextjsSite", {
+    const site = new sst.aws.StaticSite("Site", {
+      buildOutput: "public",
       transform: {
         cdn: {
           transform: {
