@@ -39,7 +39,7 @@ type EventProcess struct {
 }
 
 func (s *Multiplexer) AddProcess(key string, args []string, icon string, title string, cwd string, killable bool, autostart bool, env ...string) {
-	s.screen.PostEvent(&EventProcess{
+	s.procChan <- &EventProcess{
 		Key:       key,
 		Args:      args,
 		Icon:      icon,
@@ -48,7 +48,7 @@ func (s *Multiplexer) AddProcess(key string, args []string, icon string, title s
 		Killable:  killable,
 		Autostart: autostart,
 		Env:       env,
-	})
+	}
 }
 
 func (p *pane) start() error {

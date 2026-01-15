@@ -33,12 +33,16 @@ type Multiplexer struct {
 
 	dragging bool
 	click    *tcell.EventMouse
+	ready    chan struct{}
+	procChan chan *EventProcess
 }
 
 func New() (*Multiplexer, error) {
 	var err error
 	result := &Multiplexer{}
 	result.processes = []*pane{}
+	result.ready = make(chan struct{})
+	result.procChan = make(chan *EventProcess, 1000)
 	result.screen, err = tcell.NewScreen()
 	if err != nil {
 		return nil, err
@@ -57,6 +61,11 @@ func New() (*Multiplexer, error) {
 		process.Command("tmux", "set-option", "-p", "set-clipboard", "on").Run()
 	}
 	return result, nil
+}
+
+// Ready returns a channel that is closed when the multiplexer is ready to receive events
+func (s *Multiplexer) Ready() <-chan struct{} {
+	return s.ready
 }
 
 func (s *Multiplexer) mainRect() (int, int) {
@@ -80,6 +89,15 @@ func (s *Multiplexer) Start() {
 	}()
 
 	s.resize(s.screen.Size())
+	close(s.ready)
+
+	// Process events from procChan by forwarding to screen events
+	go func() {
+		for evt := range s.procChan {
+			// Use PostEventWait to ensure events are not dropped
+			s.screen.PostEventWait(evt)
+		}
+	}()
 
 	for {
 		unknown := s.screen.PollEvent()
@@ -103,41 +121,7 @@ func (s *Multiplexer) Start() {
 				return
 
 			case *EventProcess:
-				for _, p := range s.processes {
-					if p.key == evt.Key {
-						if p.dead && evt.Autostart {
-							p.start()
-							s.sort()
-							s.draw()
-						}
-						return
-					}
-				}
-				proc := &pane{
-					icon:     evt.Icon,
-					key:      evt.Key,
-					dir:      evt.Cwd,
-					title:    evt.Title,
-					args:     evt.Args,
-					killable: evt.Killable,
-					env:      evt.Env,
-				}
-				term := tcellterm.New()
-				term.SetSurface(s.main)
-				term.Attach(func(ev tcell.Event) {
-					s.screen.PostEvent(ev)
-				})
-				proc.vt = term
-				if evt.Autostart {
-					proc.start()
-				}
-				if !evt.Autostart {
-					proc.vt.Start(process.Command("echo", evt.Key+" has auto-start disabled, press enter to start."))
-					proc.dead = true
-				}
-				s.processes = append(s.processes, proc)
-				s.sort()
-				s.draw()
+				s.InitProcess(evt.Key, evt.Args, evt.Icon, evt.Title, evt.Cwd, evt.Killable, evt.Autostart, evt.Env...)
 				break
 
 			case *tcell.EventMouse:
@@ -380,4 +364,44 @@ func (s *Multiplexer) copy() {
 	}
 	encoded := base64.StdEncoding.EncodeToString([]byte(data))
 	fmt.Fprintf(os.Stdout, "\x1b]52;c;%s\x07", encoded)
+}
+
+func (s *Multiplexer) InitProcess(key string, args []string, icon string, title string, cwd string, killable bool, autostart bool, env ...string) {
+	for _, p := range s.processes {
+		if p.key == key {
+			if p.dead && autostart {
+				p.start()
+				s.sort()
+				s.draw()
+			}
+			return
+		}
+	}
+
+	proc := &pane{
+		icon:     icon,
+		key:      key,
+		dir:      cwd,
+		title:    title,
+		args:     args,
+		killable: killable,
+		env:      env,
+	}
+	term := tcellterm.New()
+	term.SetSurface(s.main)
+	term.Attach(func(ev tcell.Event) {
+		s.screen.PostEvent(ev)
+	})
+	proc.vt = term
+
+	if autostart {
+		proc.start()
+	} else {
+		proc.vt.Start(process.Command("echo", key+" has auto-start disabled, press enter to start."))
+		proc.dead = true
+	}
+
+	s.processes = append(s.processes, proc)
+	s.sort()
+	s.draw()
 }
