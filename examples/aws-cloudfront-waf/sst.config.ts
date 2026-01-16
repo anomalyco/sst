@@ -47,7 +47,7 @@ export default $config({
     });
 
     const site = new sst.aws.StaticSite("Site", {
-      buildOutput: "public",
+      path: "public",
       transform: {
         cdn: {
           transform: {
