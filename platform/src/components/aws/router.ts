@@ -1485,9 +1485,8 @@ async function handler(event) {
   ${blockCloudfrontUrlInjection}
   ${CF_ROUTER_INJECTION}
 
-  const routerNS = "${kvNamespace}";
-
   async function getRoutes() {
+    const routerNS = "${kvNamespace}";
     let routes = [];
     try {
       const v = await cf.kvs().get(routerNS + ":routes");
