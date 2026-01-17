@@ -833,7 +833,13 @@ func (ur *UvCommandRunner) executeCommandWithEnv(ctx context.Context, command st
 			result.ExitCode = -1
 		}
 		result.Stderr = string(output)
-		return result, fmt.Errorf("command failed with exit code %d: %s", result.ExitCode, string(output))
+		// Return result with nil error so caller can use createDetailedSyncError
+		// for better error messages instead of generic "command failed" message
+		slog.Error("UV command with custom env failed",
+			"command", command,
+			"args", strings.Join(args, " "),
+			"exitCode", result.ExitCode,
+			"stderr", result.Stderr)
 	}
 
 	return result, nil

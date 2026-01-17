@@ -111,9 +111,9 @@ type PythonRuntime struct {
 	// of 50+ functions was causing massive CPU/memory overhead
 	incrementalBuilder *IncrementalBuilder
 
-	// Rate limiting for rebuild checks
-	lastRebuildCheck map[string]time.Time
-	rebuildCooldown  time.Duration
+	// Track when each function was last rebuilt - used to skip file changes
+	// that occurred before the last rebuild (mtime comparison)
+	lastRebuildTime map[string]time.Time
 
 	// Track pending changes per function
 	pendingChanges map[string][]string // functionID -> list of changed files
@@ -121,10 +121,6 @@ type PythonRuntime struct {
 	// Track if we've already signaled a restart for pending changes
 	// This prevents showing "LazyRestart" when worker is actually running
 	restartSignaled map[string]bool // functionID -> whether we've returned a dummy worker
-
-	// Track when files changed and when workers last restarted
-	fileChangeTime  map[string]time.Time // file path -> when it changed
-	lastWorkerStart map[string]time.Time // functionID -> when worker last started
 
 	// Mutex for thread-safe access
 	mutex sync.RWMutex
@@ -146,12 +142,9 @@ func New() *PythonRuntime {
 
 	return &PythonRuntime{
 		lastBuiltHandler: map[string]string{},
-		lastRebuildCheck: map[string]time.Time{},
-		rebuildCooldown:  10 * time.Second, // Prevent rebuilds more than once every 10 seconds
+		lastRebuildTime:  map[string]time.Time{},
 		pendingChanges:   map[string][]string{},
 		restartSignaled:  map[string]bool{},
-		fileChangeTime:   map[string]time.Time{},
-		lastWorkerStart:  map[string]time.Time{},
 	}
 }
 
@@ -159,12 +152,9 @@ func New() *PythonRuntime {
 func NewWithCache(cacheDir string) (*PythonRuntime, error) {
 	runtime := &PythonRuntime{
 		lastBuiltHandler: map[string]string{},
-		lastRebuildCheck: map[string]time.Time{},
-		rebuildCooldown:  10 * time.Second, // Prevent rebuilds more than once every 10 seconds
+		lastRebuildTime:  map[string]time.Time{},
 		pendingChanges:   map[string][]string{},
 		restartSignaled:  map[string]bool{},
-		fileChangeTime:   map[string]time.Time{},
-		lastWorkerStart:  map[string]time.Time{},
 	}
 
 	// Run uv sync if needed (one-time on initialization)
@@ -337,13 +327,24 @@ func (r *PythonRuntime) Build(ctx context.Context, input *runtime.BuildInput) (*
 			return nil, err
 		}
 
+		r.mutex.Lock()
 		r.lastBuiltHandler[input.FunctionID] = file
+		r.lastRebuildTime[input.FunctionID] = time.Now()
+		// Clear pending changes and restart signal after successful build
+		delete(r.pendingChanges, input.FunctionID)
+		delete(r.restartSignaled, input.FunctionID)
+		r.mutex.Unlock()
 
 		// Publish to dev screen
 		bus.Publish(&events.FunctionBuildProgressEvent{
 			FunctionID: input.FunctionID,
 			Stage:      "BuildComplete",
 			Message:    fmt.Sprintf("Build completed in %v", time.Since(buildStart)),
+		})
+		bus.Publish(&events.FunctionBuildProgressEvent{
+			FunctionID: input.FunctionID,
+			Stage:      "BuildComplete",
+			Message:    input.Handler,
 		})
 
 		return result, nil
@@ -360,6 +361,26 @@ func (r *PythonRuntime) Build(ctx context.Context, input *runtime.BuildInput) (*
 
 func (r *PythonRuntime) Match(runtime string) bool {
 	return strings.HasPrefix(runtime, "python")
+}
+
+// ShouldRunEagerly returns false for Python to enable lazy worker startup.
+//
+// Unlike Node.js (which uses esbuild's metafile for precise per-function dependency tracking),
+// Python lacks static import analysis. A change to shared library code (e.g., backend/lib/)
+// triggers ShouldRebuild() returning true for ALL functions, not just the ones that import it.
+//
+// With 50+ functions, eager startup after every file change means:
+// - 50+ Python processes starting simultaneously
+// - Each takes ~1-2 seconds to import modules and become ready
+// - System becomes unresponsive during this startup storm
+//
+// By returning false, we opt into lazy startup:
+// - Workers are stopped and builds invalidated (normal behavior)
+// - Workers only restart when actually invoked (just-in-time)
+// - Only actively-used functions incur startup cost
+// - Idle functions stay stopped until needed
+func (r *PythonRuntime) ShouldRunEagerly() bool {
+	return false
 }
 
 type Source struct {
@@ -392,90 +413,22 @@ type PyProject struct {
 }
 
 func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runtime.Worker, error) {
-	// Check if we have pending changes AND haven't already signaled a restart
+	runStart := time.Now()
+
+	// Publish RunStart event
+	bus.Publish(&events.FunctionBuildProgressEvent{
+		FunctionID: input.FunctionID,
+		Stage:      "RunStart",
+		Message:    fmt.Sprintf("Worker %s starting", input.WorkerID),
+	})
+
+	// Clear any pending state from ShouldRebuild
 	r.mutex.Lock()
-	pendingFiles := r.pendingChanges[input.FunctionID]
-	hasPendingChanges := len(pendingFiles) > 0
-	alreadySignaled := r.restartSignaled[input.FunctionID]
-
-	// Check if worker was recently restarted and all pending changes are older than the restart
-	// This prevents unnecessary restarts when Run() is called from file change handler
-	if lastStart, exists := r.lastWorkerStart[input.FunctionID]; exists && hasPendingChanges {
-		allChangesOlderThanRestart := true
-		for _, file := range pendingFiles {
-			if changeTime, ok := r.fileChangeTime[file]; ok {
-				if changeTime.After(lastStart) {
-					allChangesOlderThanRestart = false
-					break
-				}
-			}
-		}
-
-		if allChangesOlderThanRestart {
-			// All pending changes are older than the last restart, clear them and skip restart
-			slog.Info("Run: all pending changes older than last restart, clearing",
-				"functionID", input.FunctionID,
-				"pendingCount", len(pendingFiles))
-			delete(r.pendingChanges, input.FunctionID)
-			delete(r.restartSignaled, input.FunctionID)
-			hasPendingChanges = false
-			alreadySignaled = false
-		}
-	}
-
-	// If we have pending changes and haven't signaled yet, signal now
-	// BUT: if alreadySignaled is true, we're in the second call after the dummy worker exited
-	// In that case, proceed to start the real worker
-	if hasPendingChanges && !alreadySignaled {
-		r.restartSignaled[input.FunctionID] = true
-		r.mutex.Unlock()
-
-		// Publish event so it shows in dev screen with file details
-		fileList := strings.Join(pendingFiles, ", ")
-		if len(fileList) > 100 {
-			fileList = fileList[:100] + "..."
-		}
-		bus.Publish(&events.FunctionBuildProgressEvent{
-			FunctionID: input.FunctionID,
-			Stage:      "LazyRestart",
-			Message:    fmt.Sprintf("Pending changes (%d files): %s", len(pendingFiles), fileList),
-		})
-
-		// Create a dummy process that exits immediately
-		// This will cause the worker to be removed from the workers map
-		// On next invoke, SST will reboot and call Run() again
-		cmd := process.CommandContext(ctx, "python3", "-c", "import sys; sys.exit(0)")
-		stdout, _ := cmd.StdoutPipe()
-		stderr, _ := cmd.StderrPipe()
-		cmd.Start()
-
-		return &Worker{
-			stdout: stdout,
-			stderr: stderr,
-			cmd:    cmd,
-		}, nil
-	}
-
-	// Clear restart signal AND pending changes when starting a real worker
-	// This is critical to prevent the restart loop
-	if alreadySignaled || hasPendingChanges {
-		slog.Info("Run: starting real worker, clearing restart state",
-			"functionID", input.FunctionID,
-			"alreadySignaled", alreadySignaled,
-			"pendingChanges", len(r.pendingChanges[input.FunctionID]))
-		delete(r.restartSignaled, input.FunctionID)
-		// Don't clear pendingChanges here - let syncArtifactsIfNeeded handle it
-		// so the files actually get synced
-	}
-	r.mutex.Unlock()
-
-	// Track when this worker is starting
-	r.mutex.Lock()
-	r.lastWorkerStart[input.FunctionID] = time.Now()
+	delete(r.pendingChanges, input.FunctionID)
+	delete(r.restartSignaled, input.FunctionID)
 	r.mutex.Unlock()
 
 	// Sync artifacts with source before starting the worker
-	// This will clear pending changes after syncing
 	if err := r.syncArtifactsIfNeeded(input); err != nil {
 		return nil, fmt.Errorf("failed to sync artifacts: %v", err)
 	}
@@ -587,6 +540,13 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 	slog.Info("starting worker", "args", cmd.Args)
 	cmd.Start()
 
+	// Publish RunComplete event with timing
+	bus.Publish(&events.FunctionBuildProgressEvent{
+		FunctionID: input.FunctionID,
+		Stage:      "RunComplete",
+		Message:    fmt.Sprintf("Worker %s started in %v", input.WorkerID, time.Since(runStart)),
+	})
+
 	return &Worker{
 		stdout,
 		stderr,
@@ -596,185 +556,36 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 }
 
 func (r *PythonRuntime) ShouldRebuild(functionID string, file string) bool {
-	slog.Debug("📝 ShouldRebuild called",
-		"functionID", functionID,
-		"file", file)
+	// Simple implementation: rebuild if it's a relevant Python file that we shouldn't ignore.
+	//
+	// We intentionally don't do complex per-function dependency tracking here because:
+	// 1. Python imports are dynamic and hard to analyze statically
+	// 2. Build() is very fast (~50µs in dev mode)
+	// 3. With ShouldRunEagerly() returning false, workers start lazily on-demand
+	//    so we don't pay the ~1-2s Run() cost for idle functions
+	//
+	// The combination of fast builds + lazy startup means we can afford to rebuild
+	// all functions on any Python file change without performance issues.
 
-	// CRITICAL: Check if file should be ignored FIRST to prevent infinite loops
-	// This must come before isRelevantFile check
 	if r.shouldIgnoreFile(file) {
-		slog.Debug("📝 ShouldRebuild: file should be ignored, returning FALSE",
-			"functionID", functionID,
-			"file", file)
 		return false
 	}
 
-	// Fast path: Check if the file is relevant for this function
-	// This prevents expensive operations for irrelevant files
 	if !r.isRelevantFile(file) {
-		slog.Debug("📝 ShouldRebuild: file not relevant, returning FALSE",
-			"functionID", functionID,
-			"file", file)
 		return false
 	}
 
-	slog.Error("� ShoudldRebuild: file IS relevant, may trigger restart",
-		"functionID", functionID,
-		"file", file,
-		"absolutePath", file)
+	return true
+}
 
-	// Rate limiting: prevent excessive rebuild checks
-	// Apply rate limiting early to avoid expensive operations
-	r.mutex.Lock()
-	now := time.Now()
-	if lastCheck, exists := r.lastRebuildCheck[functionID]; exists {
-		if now.Sub(lastCheck) < r.rebuildCooldown {
-			r.mutex.Unlock()
-			slog.Debug("rebuild check rate limited",
-				"functionID", functionID,
-				"file", file,
-				"timeSinceLastCheck", now.Sub(lastCheck),
-				"cooldown", r.rebuildCooldown)
-			return false
+// appendIfMissing appends a string to a slice if it's not already present
+func appendIfMissing(slice []string, s string) []string {
+	for _, item := range slice {
+		if item == s {
+			return slice
 		}
 	}
-	r.lastRebuildCheck[functionID] = now
-	r.mutex.Unlock()
-
-	slog.Debug("ShouldRebuild processing relevant file",
-		"functionID", functionID,
-		"file", file,
-		"hasChangeDetector", r.changeDetector != nil,
-		"hasBuildCache", r.buildCache != nil)
-
-	// For Python files, check if we need to restart workers
-	// Modern layouts run from source, so changes are picked up automatically via uv run
-	// Legacy layouts copy files, so they need worker restarts
-	if strings.HasSuffix(file, ".py") {
-		r.mutex.Lock()
-
-		// Track when this file changed
-		r.fileChangeTime[file] = now
-
-		// CRITICAL: If a restart is already signaled/in-progress, just add to pending changes
-		// but DON'T return true - this prevents the restart loop where each file change
-		// triggers another full restart cycle for all 50+ functions
-		if r.restartSignaled[functionID] {
-			// Add file to pending changes if not already tracked
-			alreadyTracked := false
-			for _, f := range r.pendingChanges[functionID] {
-				if f == file {
-					alreadyTracked = true
-					break
-				}
-			}
-			if !alreadyTracked {
-				r.pendingChanges[functionID] = append(r.pendingChanges[functionID], file)
-				slog.Info("📝 ShouldRebuild: restart already in progress, queuing file",
-					"functionID", functionID,
-					"file", file,
-					"totalPendingChanges", len(r.pendingChanges[functionID]))
-			}
-			r.mutex.Unlock()
-			return false // Don't trigger another restart cycle
-		}
-
-		// Check if worker was already restarted after this file changed
-		if lastStart, exists := r.lastWorkerStart[functionID]; exists {
-			if lastStart.After(now) || lastStart.Equal(now) {
-				r.mutex.Unlock()
-				slog.Info("📝 ShouldRebuild: worker just started, skipping restart",
-					"functionID", functionID,
-					"file", file)
-				return false
-			}
-
-			// Check if there are already pending changes
-			if len(r.pendingChanges[functionID]) > 0 {
-				alreadyTracked := false
-				for _, f := range r.pendingChanges[functionID] {
-					if f == file {
-						alreadyTracked = true
-						break
-					}
-				}
-				if alreadyTracked {
-					r.mutex.Unlock()
-					slog.Info("📝 ShouldRebuild: file already tracked, skipping",
-						"functionID", functionID,
-						"file", file)
-					return false
-				}
-			}
-		}
-
-		// Add to pending changes
-		if r.pendingChanges[functionID] == nil {
-			r.pendingChanges[functionID] = []string{}
-		}
-		r.pendingChanges[functionID] = append(r.pendingChanges[functionID], file)
-		slog.Info("🚨 ShouldRebuild: Python file changed, will trigger restart",
-			"functionID", functionID,
-			"file", file,
-			"totalPendingChanges", len(r.pendingChanges[functionID]))
-		r.mutex.Unlock()
-
-		return true
-	}
-
-	// For infrastructure files, don't rebuild immediately - let it rebuild lazily on invoke
-	if strings.HasSuffix(file, ".ts") || strings.HasSuffix(file, ".js") || strings.HasSuffix(file, ".mjs") ||
-		filepath.Base(file) == "sst.config.ts" || filepath.Base(file) == "sst.config.js" || filepath.Base(file) == "package.json" {
-		slog.Info("Infrastructure file changed, will rebuild on next invoke",
-			"functionID", functionID,
-			"file", file)
-		return false
-	}
-
-	// If caching is not enabled, always rebuild
-	if r.changeDetector == nil {
-		slog.Warn("caching not enabled, rebuilding",
-			"functionID", functionID,
-			"reason", "changeDetector is nil")
-		return true
-	}
-
-	// Get the handler for this function from the build cache
-	handler := r.getHandlerForFunction(functionID)
-	if handler == "" {
-		slog.Debug("no handler found for function, rebuilding",
-			"functionID", functionID,
-			"file", file)
-		return true
-	}
-
-	// Use change detection to determine if rebuild is needed for non-Python files
-	result, err := r.changeDetector.DetectChanges(functionID, handler)
-	if err != nil {
-		slog.Warn("failed to detect changes, rebuilding",
-			"functionID", functionID,
-			"file", file,
-			"handler", handler,
-			"error", err)
-		return true
-	}
-
-	if result.HasChanges {
-		slog.Info("changes detected, rebuilding",
-			"functionID", functionID,
-			"file", file,
-			"handler", handler,
-			"reason", result.Reason,
-			"changeTypes", result.ChangeTypes,
-			"changedFiles", len(result.ChangedFiles))
-	} else {
-		slog.Debug("no changes detected, using cached build",
-			"functionID", functionID,
-			"file", file,
-			"handler", handler)
-	}
-
-	return result.HasChanges
+	return append(slice, s)
 }
 
 // syncArtifactsIfNeeded checks if artifacts need to be synced with source and does it if necessary
@@ -1126,23 +937,13 @@ func (r *PythonRuntime) isRelevantFile(file string) bool {
 		return false
 	}
 
-	// Python-related files (removed .txt to be more specific)
+	// ONLY Python-related files are relevant for Python runtime
+	// Frontend/infrastructure files (.ts, .js, .json, .vue) are NOT relevant
 	relevantExtensions := []string{".py", ".toml", ".lock", ".cfg"}
 	relevantFiles := []string{"pyproject.toml", "requirements.txt", "uv.lock", "poetry.lock", "Pipfile.lock", "setup.py", "setup.cfg"}
 
-	// Infrastructure files that affect function deployment
-	infrastructureExtensions := []string{".ts", ".js", ".mjs", ".json"}
-	infrastructureFiles := []string{"sst.config.ts", "sst.config.js", "package.json"}
-
 	// Check Python file extensions
 	for _, ext := range relevantExtensions {
-		if strings.HasSuffix(file, ext) {
-			return true
-		}
-	}
-
-	// Check infrastructure file extensions
-	for _, ext := range infrastructureExtensions {
 		if strings.HasSuffix(file, ext) {
 			return true
 		}
@@ -1156,13 +957,92 @@ func (r *PythonRuntime) isRelevantFile(file string) bool {
 		}
 	}
 
-	// Check infrastructure filenames
-	for _, infraFile := range infrastructureFiles {
-		if basename == infraFile {
-			return true
+	return false
+}
+
+// isFileRelatedToFunction checks if a changed file is actually related to a specific function
+// This prevents rebuilding ALL functions when ANY .py file changes
+func (r *PythonRuntime) isFileRelatedToFunction(functionID string, file string) bool {
+	// Get the handler path for this function
+	r.mutex.RLock()
+	handlerPath, hasHandler := r.lastBuiltHandler[functionID]
+	r.mutex.RUnlock()
+
+	if !hasHandler || handlerPath == "" {
+		// No handler info yet - this is likely the first build
+		// Be conservative and return true to allow the build
+		slog.Debug("isFileRelatedToFunction: no handler info, allowing rebuild",
+			"functionID", functionID,
+			"file", file)
+		return true
+	}
+
+	// Normalize both paths for comparison
+	absFile, err := filepath.Abs(file)
+	if err != nil {
+		absFile = file
+	}
+	absHandlerPath, err := filepath.Abs(handlerPath)
+	if err != nil {
+		absHandlerPath = handlerPath
+	}
+
+	// Check if the changed file IS the handler file
+	if absFile == absHandlerPath {
+		slog.Debug("isFileRelatedToFunction: file is the handler",
+			"functionID", functionID,
+			"file", absFile)
+		return true
+	}
+
+	// Get the directory containing the handler
+	handlerDir := filepath.Dir(absHandlerPath)
+
+	// Check if the changed file is in the SAME directory as the handler
+	// (not subdirectories - just the same directory)
+	fileDir := filepath.Dir(absFile)
+	if fileDir == handlerDir {
+		slog.Debug("isFileRelatedToFunction: file is in same directory as handler",
+			"functionID", functionID,
+			"file", absFile,
+			"handlerDir", handlerDir)
+		return true
+	}
+
+	// Check if the changed file is in a parent directory of the handler
+	// This catches changes to __init__.py files in parent packages
+	if strings.HasPrefix(handlerDir, fileDir) {
+		slog.Debug("isFileRelatedToFunction: file is in parent directory of handler",
+			"functionID", functionID,
+			"file", absFile,
+			"fileDir", fileDir,
+			"handlerDir", handlerDir)
+		return true
+	}
+
+	// For global config files, only rebuild if they're at the project root
+	// (not in some random subdirectory)
+	basename := filepath.Base(file)
+	globalFiles := []string{"pyproject.toml", "uv.lock", "requirements.txt"}
+	for _, globalFile := range globalFiles {
+		if basename == globalFile {
+			// Only trigger if this is likely a root-level config
+			// Check if the file is NOT deep in a subdirectory
+			relPath, err := filepath.Rel(handlerDir, absFile)
+			if err == nil && strings.HasPrefix(relPath, "..") {
+				// File is above the handler directory - likely project root
+				slog.Debug("isFileRelatedToFunction: global config file changed",
+					"functionID", functionID,
+					"file", file)
+				return true
+			}
 		}
 	}
 
+	slog.Debug("isFileRelatedToFunction: file not related to this function",
+		"functionID", functionID,
+		"file", absFile,
+		"handlerPath", absHandlerPath)
 	return false
 }
 

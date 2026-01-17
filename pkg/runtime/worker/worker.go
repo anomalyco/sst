@@ -214,6 +214,12 @@ func (r *Runtime) ShouldRebuild(functionID string, file string) bool {
 	return false
 }
 
+// ShouldRunEagerly returns true for Cloudflare Workers - workers restart immediately after rebuild.
+// Workers use esbuild's metafile for precise per-function dependency tracking.
+func (r *Runtime) ShouldRunEagerly() bool {
+	return true
+}
+
 func (r *Runtime) Run(ctx context.Context, input *runtime.RunInput) (runtime.Worker, error) {
 	return nil, fmt.Errorf("not implemented")
 }

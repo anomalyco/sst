@@ -145,3 +145,10 @@ func (r *Runtime) ShouldRebuild(functionID string, file string) bool {
 	}
 	return !strings.HasPrefix(rel, "..")
 }
+
+// ShouldRunEagerly returns true for Go - workers restart immediately after rebuild.
+// Go uses directory-based dependency tracking, so only functions in the changed
+// directory will rebuild.
+func (r *Runtime) ShouldRunEagerly() bool {
+	return true
+}
