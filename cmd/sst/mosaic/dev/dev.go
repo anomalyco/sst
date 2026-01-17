@@ -36,7 +36,11 @@ func Start(ctx context.Context, p *project.Project, server *server.Server) error
 			case <-ctx.Done():
 				return nil
 			case evt := <-evts:
-				complete = evt.(*project.CompleteEvent)
+				casted := evt.(*project.CompleteEvent)
+				if casted.Old {
+					continue
+				}
+				complete = casted
 			}
 		}
 	})

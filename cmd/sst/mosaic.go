@@ -296,6 +296,9 @@ func CmdMosaic(c *cli.Cli) error {
 				case unknown := <-completeEvts:
 					switch evt := unknown.(type) {
 					case *project.CompleteEvent:
+						if evt.Old {
+							continue
+						}
 						processCompleteEventForMultiplexer(evt)
 					}
 				}
@@ -352,6 +355,9 @@ func CmdMosaic(c *cli.Cli) error {
 				case unknown := <-completeEvts:
 					switch evt := unknown.(type) {
 					case *project.CompleteEvent:
+						if evt.Old {
+							continue
+						}
 						processCompleteEventForMonoplexer(evt)
 					}
 				}
