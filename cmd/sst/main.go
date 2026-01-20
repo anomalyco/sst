@@ -805,12 +805,6 @@ var root = &cli.Command{
 					"```bash frame=\"none\"",
 					"sst remove --target MyComponent",
 					"```",
-					"",
-					"Alternatively, exclude a specific component from the remove.",
-					"",
-					"```bash frame=\"none\"",
-					"sst remove --exclude MyComponent",
-					"```",
 				}, "\n"),
 			},
 			Flags: []cli.Flag{
@@ -820,14 +814,6 @@ var root = &cli.Command{
 					Description: cli.Description{
 						Short: "Run it only for a component",
 						Long:  "Only run it for the given component.",
-					},
-				},
-				{
-					Name: "exclude",
-					Type: "string",
-					Description: cli.Description{
-						Short: "Exclude a component",
-						Long:  "Exclude the specified component from the operation.",
 					},
 				},
 			},
