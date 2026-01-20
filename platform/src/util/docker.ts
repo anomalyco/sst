@@ -23,14 +23,18 @@ export function requireDocker(): void {
   }
 }
 
+type ContainerImage = Input<string | { context?: Input<string> }>;
+
+function isLocalImage(image: ContainerImage | undefined) {
+  return !!(image && typeof image === "object" && "context" in image);
+}
+
 export function needsLocalDocker(args: {
-  image?: Input<string | { context?: Input<string> }>;
-  containers?: Input<{ image?: Input<string | { context?: Input<string> }> }>[];
-}): boolean {
+  image?: ContainerImage;
+  containers?: Input<{ image?: ContainerImage }>[];
+}) {
   const { image, containers } = args;
-  const isLocalImage = (img: typeof image) =>
-    img && typeof img === "object" && "context" in img;
-  return !!(
+  return (
     isLocalImage(image) ||
     (Array.isArray(containers) &&
       containers.some(
@@ -38,7 +42,7 @@ export function needsLocalDocker(args: {
           c &&
           typeof c === "object" &&
           "image" in c &&
-          isLocalImage(c.image as typeof image),
+          isLocalImage(c.image),
       ))
   );
 }
