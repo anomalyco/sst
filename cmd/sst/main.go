@@ -805,6 +805,12 @@ var root = &cli.Command{
 					"```bash frame=\"none\"",
 					"sst remove --target MyComponent",
 					"```",
+					"",
+					"Alternatively, exclude a specific component from the remove.",
+					"",
+					"```bash frame=\"none\"",
+					"sst remove --exclude MyComponent",
+					"```",
 				}, "\n"),
 			},
 			Flags: []cli.Flag{
@@ -814,6 +820,14 @@ var root = &cli.Command{
 					Description: cli.Description{
 						Short: "Run it only for a component",
 						Long:  "Only run it for the given component.",
+					},
+				},
+				{
+					Name: "exclude",
+					Type: "string",
+					Description: cli.Description{
+						Short: "Exclude a component",
+						Long:  "Exclude the specified component from the operation.",
 					},
 				},
 			},
@@ -968,6 +982,12 @@ var root = &cli.Command{
 					"sst refresh --target MyComponent",
 					"```",
 					"",
+					"Alternatively, exclude a specific component from the refresh.",
+					"",
+					"```bash frame=\"none\"",
+					"sst refresh --exclude MyComponent",
+					"```",
+					"",
 					"This is useful for cases where you want to ensure that your local state is in sync with your cloud provider. [Learn more about how state works](/docs/providers/#how-state-works).",
 				}, "\n"),
 			},
@@ -978,6 +998,14 @@ var root = &cli.Command{
 					Description: cli.Description{
 						Short: "Run it only for a component",
 						Long:  "Only run it for the given component.",
+					},
+				},
+				{
+					Name: "exclude",
+					Type: "string",
+					Description: cli.Description{
+						Short: "Exclude a component",
+						Long:  "Exclude the specified component from the operation.",
 					},
 				},
 			},

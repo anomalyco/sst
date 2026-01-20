@@ -23,6 +23,11 @@ func CmdRefresh(c *cli.Cli) error {
 		target = strings.Split(c.String("target"), ",")
 	}
 
+	exclude := []string{}
+	if c.String("exclude") != "" {
+		exclude = strings.Split(c.String("exclude"), ",")
+	}
+
 	var wg errgroup.Group
 	defer wg.Wait()
 	ui := ui.New(c.Context)
@@ -47,6 +52,7 @@ func CmdRefresh(c *cli.Cli) error {
 	err = p.Run(c.Context, &project.StackInput{
 		Command:    "refresh",
 		Target:     target,
+		Exclude:    exclude,
 		ServerPort: s.Port,
 		Verbose:    c.Bool("verbose"),
 	})
