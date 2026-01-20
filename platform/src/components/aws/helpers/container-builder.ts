@@ -1,6 +1,7 @@
 import { all, ComponentResourceOptions } from "@pulumi/pulumi";
 import { Semaphore } from "../../../util/semaphore";
 import { Image, ImageArgs } from "@pulumi/docker-build";
+import { requireDocker } from "../../../util/docker";
 
 const limiter = new Semaphore(
   parseInt(process.env.SST_BUILD_CONCURRENCY_CONTAINER || "1"),
@@ -11,6 +12,7 @@ export function imageBuilder(
   args: ImageArgs,
   opts?: ComponentResourceOptions,
 ) {
+  requireDocker();
   // Wait for the all args values to be resolved before acquiring the semaphore
   return all([args]).apply(async ([args]) => {
     await limiter.acquire(name);
