@@ -573,6 +573,13 @@ loop:
 		provider.Cleanup(p.home, p.app.Name, p.app.Stage)
 	}
 
+	// Run deploy.after hook for deploy command only (not dev or diff)
+	if input.Command == "deploy" && !input.Dev && complete.Finished {
+		if err := p.RunDeployHook(complete); err != nil {
+			log.Error("deploy hook failed", "err", err)
+		}
+	}
+
 	log.Info("done running stack command", "resources", len(complete.Resources))
 	if cmd.ProcessState.ExitCode() > 0 {
 		return ErrStackRunFailed

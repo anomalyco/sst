@@ -505,6 +505,15 @@ func (u *UI) Event(unknown interface{}) {
 			}
 		}
 		u.blank()
+	case *project.HookStartEvent:
+		u.printEvent(TEXT_INFO, "Hook", fmt.Sprintf("Running %s hook...", evt.Hook))
+
+	case *project.HookCompleteEvent:
+		u.printEvent(TEXT_SUCCESS, "Hook", fmt.Sprintf("%s completed", evt.Hook))
+
+	case *project.HookErrorEvent:
+		u.printEvent(TEXT_DANGER, "Hook", fmt.Sprintf("%s failed: %s", evt.Hook, evt.Error))
+
 	case *cloudflare.WorkerBuildEvent:
 		if len(evt.Errors) > 0 {
 			u.printEvent(TEXT_DANGER, "Build Error", u.functionName(evt.WorkerID)+" "+strings.Join(evt.Errors, "\n"))
