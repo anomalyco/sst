@@ -111,26 +111,9 @@ func getCompletedEvent(ctx context.Context, passphrase string, workdir *PulumiWo
 		}
 
 		if resource.Type == "sst:sst:LinkRef" && outputs["target"] != nil && outputs["properties"] != nil {
-			properties, ok := outputs["properties"].(map[string]interface{})
-			if !ok {
-				continue
+			if link, target, ok := parseLinkRef(outputs); ok {
+				complete.Links[target] = link
 			}
-			link := common.Link{
-				Properties: properties,
-				Include:    []common.LinkInclude{},
-			}
-			if outputs["include"] != nil {
-				include, ok := outputs["include"].([]interface{})
-				if ok {
-					for _, include := range include {
-						link.Include = append(link.Include, common.LinkInclude{
-							Type:  include.(map[string]interface{})["type"].(string),
-							Other: include.(map[string]interface{}),
-						})
-					}
-				}
-			}
-			complete.Links[outputs["target"].(string)] = link
 		}
 	}
 
@@ -145,6 +128,41 @@ func getCompletedEvent(ctx context.Context, passphrase string, workdir *PulumiWo
 	return complete, nil
 }
 
+func parseLinkRef(outputs map[string]interface{}) (common.Link, string, bool) {
+	properties, ok := outputs["properties"].(map[string]interface{})
+	if !ok {
+		return common.Link{}, "", false
+	}
+
+	target, ok := outputs["target"].(string)
+	if !ok {
+		return common.Link{}, "", false
+	}
+
+	link := common.Link{
+		Properties: properties,
+		Include:    []common.LinkInclude{},
+	}
+
+	if outputs["include"] != nil {
+		include, ok := outputs["include"].([]interface{})
+		if ok {
+			for _, include := range include {
+				if includeMap, ok := include.(map[string]interface{}); ok {
+					if typeStr, ok := includeMap["type"].(string); ok {
+						link.Include = append(link.Include, common.LinkInclude{
+							Type:  typeStr,
+							Other: includeMap,
+						})
+					}
+				}
+			}
+		}
+	}
+
+	return link, target, true
+}
+
 func parsePlaintext(input interface{}) interface{} {
 	switch cast := input.(type) {
 	case apitype.SecretV1:
@@ -156,6 +174,10 @@ func parsePlaintext(input interface{}) interface{} {
 		json.Unmarshal([]byte(cast.Plaintext), &parsed)
 		return parsed
 	case map[string]interface{}:
+		// If we see a ciphertext field, this is a secret from a Pulumi preview so return a placeholder
+		if _, hasCiphertext := cast["ciphertext"].(string); hasCiphertext {
+			return "placeholder-secret-value"
+		}
 		for key, value := range cast {
 			cast[key] = parsePlaintext(value)
 		}
