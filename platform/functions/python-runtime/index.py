@@ -81,8 +81,6 @@ def resolve_handler_simple(handler_path):
     # Remove any leading dots that might have been created
     python_module_path = module_path.replace("/", ".").replace("\\", ".").lstrip(".")
     
-    log(f"Importing module: {python_module_path}")
-    
     # Simple import - Python will use PYTHONPATH
     module = importlib.import_module(python_module_path)
     
@@ -133,8 +131,6 @@ def resolve_handler_legacy(handler_path, artifact_dir):
     # Remove any leading dots that might have been created
     python_module_path = module_path.replace("/", ".").replace("\\", ".").lstrip(".")
     
-    log(f"Importing module from artifact: {python_module_path}")
-    
     # Add artifact directory to sys.path
     if artifact_dir not in sys.path:
         sys.path.insert(0, artifact_dir)
@@ -172,22 +168,23 @@ pythonpath_set = 'PYTHONPATH' in os.environ
 
 try:
     if pythonpath_set:
-        # Modern layout: PYTHONPATH is set, use standard Python imports
-        log(f"Modern layout detected (PYTHONPATH={os.environ['PYTHONPATH']})")
         module, handler_function = resolve_handler_simple(handler)
     else:
-        # Legacy layout: import from artifact directory
-        log(f"Legacy layout detected (artifact_dir={artifact_dir})")
         module, handler_function = resolve_handler_legacy(handler, artifact_dir)
     
-    log(f"Successfully resolved handler: {handler}")
+    log(f"Loaded {handler}")
     
 except Exception as ex:
-    log(f"Failed to resolve handler: {ex}")
-    log(f"Handler: {handler}")
-    log(f"Working directory: {artifact_dir}")
-    log(f"PYTHONPATH: {os.environ.get('PYTHONPATH', 'not set')}")
-    log(f"sys.path: {sys.path}")
+    # Parse handler to show what we tried to import
+    module_path = handler.rsplit(".", 1)[0] if "." in handler else handler
+    python_module = module_path.replace("/", ".").replace("\\", ".").lstrip(".")
+    
+    log(f"Failed to load handler: {handler}")
+    log(f"  Error: {ex}")
+    log(f"  Module: {python_module}")
+    log(f"  Working dir: {artifact_dir}")
+    log(f"  PYTHONPATH: {os.environ.get('PYTHONPATH', 'not set')}")
+    log(f"  sys.path: {sys.path}")
     report_error(ex)
     sys.exit(1)
 

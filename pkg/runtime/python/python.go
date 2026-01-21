@@ -252,8 +252,6 @@ func (r *PythonRuntime) DisableCaching() error {
 }
 
 func (r *PythonRuntime) Build(ctx context.Context, input *runtime.BuildInput) (*runtime.BuildOutput, error) {
-	buildStart := time.Now()
-
 	// Acquire semaphore to limit concurrent builds (prevents system overload)
 	// This is critical because Pulumi calls Build() for all functions in parallel
 	// Note: artifact directories are cleared by runtime.go's Collection.Build() before this is called
@@ -261,13 +259,6 @@ func (r *PythonRuntime) Build(ctx context.Context, input *runtime.BuildInput) (*
 	defer func() {
 		<-globalBuildSemaphore
 	}() // Release
-
-	// Publish to dev screen
-	bus.Publish(&events.FunctionBuildProgressEvent{
-		FunctionID: input.FunctionID,
-		Stage:      "BuildStart",
-		Message:    "Build started",
-	})
 
 	// Fast path for dev mode: If we've already built this function, skip the expensive rebuild
 	// Check if we have a record of building this handler before
@@ -281,12 +272,6 @@ func (r *PythonRuntime) Build(ctx context.Context, input *runtime.BuildInput) (*
 			// Check if the handler file exists in the artifact directory
 			handlerFile := filepath.Join(input.Out(), input.Handler+".py")
 			if _, err := os.Stat(handlerFile); err == nil {
-				bus.Publish(&events.FunctionBuildProgressEvent{
-					FunctionID: input.FunctionID,
-					Stage:      "FastBuild",
-					Message:    fmt.Sprintf("Fast build in %v", time.Since(buildStart)),
-				})
-
 				return &runtime.BuildOutput{
 					Out:     input.Out(),
 					Handler: input.Handler,
@@ -316,7 +301,11 @@ func (r *PythonRuntime) Build(ctx context.Context, input *runtime.BuildInput) (*
 
 	file, err := r.getFile(input)
 	if err != nil {
-
+		bus.Publish(&events.FunctionBuildProgressEvent{
+			FunctionID: input.FunctionID,
+			Stage:      "BuildFailed",
+			Message:    fmt.Sprintf("Handler not found: %s\n  Error: %v\n  Working dir: %s", input.Handler, err, path.ResolveRootDir(input.CfgPath)),
+		})
 		return nil, fmt.Errorf("python runtime - handler not found: %v", err)
 	}
 
@@ -324,6 +313,11 @@ func (r *PythonRuntime) Build(ctx context.Context, input *runtime.BuildInput) (*
 		// Development mode: Simple build without complex dependency management
 		result, err := r.CreateBuildAsset(ctx, input)
 		if err != nil {
+			bus.Publish(&events.FunctionBuildProgressEvent{
+				FunctionID: input.FunctionID,
+				Stage:      "BuildFailed",
+				Message:    fmt.Sprintf("Build failed: %s\n  Error: %v", input.Handler, err),
+			})
 			return nil, err
 		}
 
@@ -334,18 +328,6 @@ func (r *PythonRuntime) Build(ctx context.Context, input *runtime.BuildInput) (*
 		delete(r.pendingChanges, input.FunctionID)
 		delete(r.restartSignaled, input.FunctionID)
 		r.mutex.Unlock()
-
-		// Publish to dev screen
-		bus.Publish(&events.FunctionBuildProgressEvent{
-			FunctionID: input.FunctionID,
-			Stage:      "BuildComplete",
-			Message:    fmt.Sprintf("Build completed in %v", time.Since(buildStart)),
-		})
-		bus.Publish(&events.FunctionBuildProgressEvent{
-			FunctionID: input.FunctionID,
-			Stage:      "BuildComplete",
-			Message:    input.Handler,
-		})
 
 		return result, nil
 	} else {
@@ -415,13 +397,6 @@ type PyProject struct {
 func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runtime.Worker, error) {
 	runStart := time.Now()
 
-	// Publish RunStart event
-	bus.Publish(&events.FunctionBuildProgressEvent{
-		FunctionID: input.FunctionID,
-		Stage:      "RunStart",
-		Message:    fmt.Sprintf("Worker %s starting", input.WorkerID),
-	})
-
 	// Clear any pending state from ShouldRebuild
 	r.mutex.Lock()
 	delete(r.pendingChanges, input.FunctionID)
@@ -430,6 +405,11 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 
 	// Sync artifacts with source before starting the worker
 	if err := r.syncArtifactsIfNeeded(input); err != nil {
+		bus.Publish(&events.FunctionBuildProgressEvent{
+			FunctionID: input.FunctionID,
+			Stage:      "RunFailed",
+			Message:    fmt.Sprintf("Failed to sync artifacts: %v", err),
+		})
 		return nil, fmt.Errorf("failed to sync artifacts: %v", err)
 	}
 
@@ -460,6 +440,11 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 		// Copy the lambda bridge from the platform directory into the artifact directory
 		err := copyFile(sourceBridgePath, lambdaBridgePath)
 		if err != nil {
+			bus.Publish(&events.FunctionBuildProgressEvent{
+				FunctionID: input.FunctionID,
+				Stage:      "RunFailed",
+				Message:    fmt.Sprintf("Failed to copy lambda bridge: %v\n  Source: %s\n  Dest: %s", err, sourceBridgePath, lambdaBridgePath),
+			})
 			return nil, fmt.Errorf("failed to copy lambda bridge: %v", err)
 		}
 	}
@@ -475,18 +460,11 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 		adjustedHandler := r.adjustHandlerForFlattenedLayout(input.Build.Handler)
 		handlerPath = filepath.Join(input.Build.Out, adjustedHandler)
 		workingDir = input.Build.Out
-		slog.Info("Python runtime: legacy layout, running from artifact directory",
-			"dir", workingDir,
-			"handlerPath", handlerPath)
 	} else {
 		// Modern layout: run from source with PYTHONPATH
 		// Pass the relative handler path since PYTHONPATH is set to projectRoot
 		handlerPath = input.Build.Handler
 		workingDir = projectRoot
-		slog.Info("Python runtime: modern layout, running from project root",
-			"dir", workingDir,
-			"handlerPath", handlerPath,
-			"relative", true)
 	}
 
 	cmd := process.CommandContext(
@@ -511,7 +489,6 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 		srcDir := filepath.Join(projectRoot, "src")
 		if _, err := os.Stat(srcDir); err == nil {
 			pythonPaths = append(pythonPaths, srcDir)
-			slog.Info("Python runtime: adding src/ to PYTHONPATH", "srcDir", srcDir)
 		}
 
 		// Join paths with OS-specific separator (: on Unix, ; on Windows)
@@ -521,9 +498,6 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 		// Set SST_KEY_FILE to point to resource.enc in the artifact directory
 		resourceEncPath := filepath.Join(input.Build.Out, "resource.enc")
 		env = append(env, "SST_KEY_FILE="+resourceEncPath)
-		slog.Info("Python runtime: set PYTHONPATH and SST_KEY_FILE for modern layout",
-			"PYTHONPATH", pythonPath,
-			"SST_KEY_FILE", resourceEncPath)
 	}
 
 	cmd.Env = env
@@ -537,14 +511,13 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 		return nil, fmt.Errorf("failed to create stderr pipe: %v", err)
 	}
 
-	slog.Info("starting worker", "args", cmd.Args)
 	cmd.Start()
 
-	// Publish RunComplete event with timing
+	// Publish RunComplete event
 	bus.Publish(&events.FunctionBuildProgressEvent{
 		FunctionID: input.FunctionID,
 		Stage:      "RunComplete",
-		Message:    fmt.Sprintf("Worker %s started in %v", input.WorkerID, time.Since(runStart)),
+		Message:    fmt.Sprintf("Started %s in %v", input.Build.Handler, time.Since(runStart)),
 	})
 
 	return &Worker{
@@ -1228,13 +1201,17 @@ func (r *PythonRuntime) createBuildAssetIncremental(ctx context.Context, input *
 		// Create incremental builder with sensible defaults - only once
 		factory := NewRuntimeFactory()
 
-		// Progress callback - publish to dev screen so user can see what's happening
+		// Progress callback - only report errors to dev screen
 		progressCallback := func(event ProgressEvent) {
-			bus.Publish(&events.FunctionBuildProgressEvent{
-				FunctionID: "python-build",
-				Stage:      event.Stage,
-				Message:    event.Message,
-			})
+			// Only publish error/failure events, not progress
+			if strings.Contains(strings.ToLower(event.Stage), "error") ||
+				strings.Contains(strings.ToLower(event.Stage), "fail") {
+				bus.Publish(&events.FunctionBuildProgressEvent{
+					FunctionID: "python-build",
+					Stage:      event.Stage,
+					Message:    event.Message,
+				})
+			}
 		}
 
 		var err error
@@ -1247,15 +1224,9 @@ func (r *PythonRuntime) createBuildAssetIncremental(ctx context.Context, input *
 			r.mutex.Unlock()
 			return nil, fmt.Errorf("failed to create incremental builder: %w", err)
 		}
-		slog.Info("🔧 Created shared IncrementalBuilder for all Python functions")
 	}
 	incrementalBuilder := r.incrementalBuilder
 	r.mutex.Unlock()
-
-	slog.Info("📦 Building function",
-		"functionID", input.FunctionID,
-		"handler", input.Handler,
-		"arch", arch)
 
 	// Use the shared incremental builder
 	result, err := incrementalBuilder.Build(ctx, input)
@@ -1269,9 +1240,7 @@ func (r *PythonRuntime) createBuildAssetIncremental(ctx context.Context, input *
 		return nil, err
 	}
 
-	slog.Info("✅ Build completed",
-		"functionID", input.FunctionID,
-		"elapsed", elapsed)
+	slog.Info("✅ Built", "function", input.FunctionID, "elapsed", elapsed)
 
 	return result, nil
 }
