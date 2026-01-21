@@ -342,6 +342,10 @@ func (ur *UvCommandRunner) ExecuteSyncCommand(ctx context.Context, cmd *UvSyncCo
 		args = append(args, "--no-dev")
 	}
 
+	// Use non-editable installs for workspace packages
+	// This ensures sources mappings in pyproject.toml are applied correctly
+	args = append(args, "--no-editable")
+
 	// Add extra arguments
 	args = append(args, cmd.ExtraArgs...)
 

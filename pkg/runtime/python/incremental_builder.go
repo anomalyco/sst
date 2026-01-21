@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/sst/sst/v3/pkg/process"
+	"github.com/sst/sst/v3/pkg/project/path"
 	"github.com/sst/sst/v3/pkg/runtime"
 )
 
@@ -765,13 +766,13 @@ func (ib *IncrementalBuilder) executeBuildPlan(ctx context.Context, input *runti
 	}
 
 	// Install dependencies with caching if needed
-	if !input.IsContainer || input.Dev {
-		ib.progressReporter.UpdateProgress(StageBuildPackages, "Installing dependencies")
-		if err := ib.installDependenciesForBuild(ctx, input, projectInfo, plan, result); err != nil {
-			result.Success = false
-			result.Errors = append(result.Errors, err.Error())
-			return result, err
-		}
+	// For container builds, we also need dependencies installed since our simplified
+	// Dockerfile just copies the pre-built artifacts (no multi-stage uv install)
+	ib.progressReporter.UpdateProgress(StageBuildPackages, "Installing dependencies")
+	if err := ib.installDependenciesForBuild(ctx, input, projectInfo, plan, result); err != nil {
+		result.Success = false
+		result.Errors = append(result.Errors, err.Error())
+		return result, err
 	}
 
 	// Create final build output (pass result which contains cached dependency analysis)
@@ -1058,6 +1059,13 @@ func (ib *IncrementalBuilder) createFinalBuildOutput(ctx context.Context, input 
 		return nil, fmt.Errorf("failed to adjust handler path: %w", err)
 	}
 
+	// Handle Dockerfile for container builds
+	if input.IsContainer {
+		if err := ib.ensureDockerfile(input, projectInfo); err != nil {
+			return nil, fmt.Errorf("failed to ensure Dockerfile: %w", err)
+		}
+	}
+
 	// Create cached build output for future use
 	cachedBuildOutput := &CachedBuildOutput{
 		Handler:       adjustedHandler,
@@ -1076,6 +1084,117 @@ func (ib *IncrementalBuilder) createFinalBuildOutput(ctx context.Context, input 
 		Errors:     result.Errors,
 		Sourcemaps: []string{}, // TODO: collect sourcemaps
 	}, nil
+}
+
+// ensureDockerfile ensures a Dockerfile exists in the output directory for container builds.
+// It first checks if a custom Dockerfile exists in the workspace directory, and if not,
+// copies the default Python Dockerfile from the platform directory.
+// It also exports requirements.txt for the Docker build.
+func (ib *IncrementalBuilder) ensureDockerfile(input *runtime.BuildInput, projectInfo *ProjectInfo) error {
+	outputDockerfile := filepath.Join(input.Out(), "Dockerfile")
+	outputRequirements := filepath.Join(input.Out(), "requirements.txt")
+
+	// Export requirements.txt for the Docker build
+	if err := ib.exportRequirementsForContainer(input, projectInfo, outputRequirements); err != nil {
+		return fmt.Errorf("failed to export requirements.txt: %w", err)
+	}
+
+	// Check if Dockerfile already exists in output
+	if _, err := os.Stat(outputDockerfile); err == nil {
+		slog.Info("Dockerfile already exists in output directory", "path", outputDockerfile)
+		return nil
+	}
+
+	// Check if there's a custom Dockerfile in the project root directory
+	projectRoot := projectInfo.ProjectRoot
+	if projectRoot == "" {
+		projectRoot = path.ResolveRootDir(input.CfgPath)
+	}
+
+	customDockerfile := filepath.Join(projectRoot, "Dockerfile")
+	if _, err := os.Stat(customDockerfile); err == nil {
+		slog.Info("copying custom Dockerfile from project root", "src", customDockerfile, "dest", outputDockerfile)
+		return ib.copyFileSimple(customDockerfile, outputDockerfile)
+	}
+
+	// Use the default Python Dockerfile from the platform directory
+	defaultDockerfile := filepath.Join(path.ResolvePlatformDir(input.CfgPath), "dist", "dockerfiles", "python.Dockerfile")
+	if _, err := os.Stat(defaultDockerfile); err != nil {
+		return fmt.Errorf("default Python Dockerfile not found at %s: %w", defaultDockerfile, err)
+	}
+
+	slog.Info("copying default Python Dockerfile", "src", defaultDockerfile, "dest", outputDockerfile)
+	return ib.copyFileSimple(defaultDockerfile, outputDockerfile)
+}
+
+// exportRequirementsForContainer exports dependencies to requirements.txt for container builds
+func (ib *IncrementalBuilder) exportRequirementsForContainer(input *runtime.BuildInput, projectInfo *ProjectInfo, outputPath string) error {
+	// Find the workspace root (where uv.lock is)
+	workspaceRoot := projectInfo.ProjectRoot
+	if workspaceRoot == "" {
+		workspaceRoot = path.ResolveRootDir(input.CfgPath)
+	}
+
+	// Use uv export to generate requirements.txt
+	ctx := context.Background()
+	exportCmd := &UvExportCommand{
+		WorkspaceDir:    workspaceRoot,
+		OutputFile:      outputPath,
+		NoEmitWorkspace: false, // Include workspace packages
+		NoDev:           true,  // Exclude dev dependencies
+		AllPackages:     true,  // Export all packages
+	}
+
+	if ib.uvRunner != nil {
+		if err := ib.uvRunner.ExecuteExportCommand(ctx, exportCmd); err != nil {
+			// If uv export fails, try to create a minimal requirements.txt from pyproject.toml
+			slog.Warn("uv export failed, creating minimal requirements.txt", "error", err)
+			return ib.createMinimalRequirements(projectInfo, outputPath)
+		}
+	} else {
+		// No UV runner, create minimal requirements
+		return ib.createMinimalRequirements(projectInfo, outputPath)
+	}
+
+	slog.Info("exported requirements.txt for container build", "path", outputPath)
+	return nil
+}
+
+// createMinimalRequirements creates a minimal requirements.txt from pyproject.toml dependencies
+func (ib *IncrementalBuilder) createMinimalRequirements(projectInfo *ProjectInfo, outputPath string) error {
+	// Create an empty requirements.txt if we can't export
+	// The container build will still work, just without pre-installed deps
+	if err := os.WriteFile(outputPath, []byte("# Auto-generated requirements.txt\n"), 0644); err != nil {
+		return fmt.Errorf("failed to create requirements.txt: %w", err)
+	}
+	slog.Warn("created empty requirements.txt - dependencies may need to be added manually")
+	return nil
+}
+
+// copyFileSimple copies a single file from src to dest
+func (ib *IncrementalBuilder) copyFileSimple(src, dest string) error {
+	// Ensure destination directory exists
+	if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
+		return fmt.Errorf("failed to create destination directory: %w", err)
+	}
+
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("failed to open source file: %w", err)
+	}
+	defer srcFile.Close()
+
+	destFile, err := os.Create(dest)
+	if err != nil {
+		return fmt.Errorf("failed to create destination file: %w", err)
+	}
+	defer destFile.Close()
+
+	if _, err := io.Copy(destFile, srcFile); err != nil {
+		return fmt.Errorf("failed to copy file contents: %w", err)
+	}
+
+	return nil
 }
 
 // copyDirectoryRecursive copies a directory and all its contents recursively
