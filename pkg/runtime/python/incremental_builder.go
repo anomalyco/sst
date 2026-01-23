@@ -2493,6 +2493,10 @@ func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input 
 	}
 
 	// Get workspace root directory - find the UV workspace root (pyproject.toml with [tool.uv.workspace])
+	// We walk up the directory tree to find the UV workspace root, which may be above the SST project root.
+	// This supports multi-app monorepos where multiple SST apps share a common UV workspace.
+	// The requirements.txt tells us exactly which workspace packages are needed, so we only copy those.
+	sstProjectRoot := path.ResolveRootDir(input.CfgPath)
 	workspaceRoot := projectInfo.SourceRoot
 	if projectInfo.PyprojectPath != "" {
 		// Walk up from pyproject.toml to find the workspace root
@@ -2500,11 +2504,13 @@ func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input 
 		pyprojectDir := filepath.Dir(projectInfo.PyprojectPath)
 		workspaceRoot = pyprojectDir // Start with the current pyproject.toml location
 
+		slog.Debug("starting workspace root search", "pyprojectDir", pyprojectDir)
+
 		// Walk up the directory tree looking for pyproject.toml files
 		currentDir := pyprojectDir
 		for {
 			parentDir := filepath.Dir(currentDir)
-			// Stop if we've reached the root or haven't moved
+			// Stop if we've reached the filesystem root or haven't moved
 			if parentDir == currentDir || parentDir == "/" || parentDir == "." {
 				break
 			}
@@ -2523,7 +2529,7 @@ func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input 
 			currentDir = parentDir
 		}
 	}
-	slog.Info("determined workspace root for dependency installation", "workspaceRoot", workspaceRoot, "pyprojectPath", projectInfo.PyprojectPath)
+	slog.Debug("determined workspace root for dependency installation", "workspaceRoot", workspaceRoot, "sstProjectRoot", sstProjectRoot)
 
 	// Filter out workspace packages from requirements.txt BEFORE cache checks
 	// This allows us to copy handler workspace on all paths (including cache hits)
@@ -2548,9 +2554,6 @@ func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input 
 				}
 			}
 			if !alreadyIncluded {
-				slog.Info("adding handler's workspace package (not in requirements.txt)",
-					"handlerPkgPath", handlerPkgPath,
-					"handler", input.Handler)
 				workspacePackagePaths = append(workspacePackagePaths, handlerPkgPath)
 			}
 		}
@@ -2570,16 +2573,8 @@ func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input 
 
 		// If the handler path starts with this package's relative path, it's the handler's workspace
 		if strings.HasPrefix(handlerDir, pkgRelPath) || strings.HasPrefix(input.Handler, pkgRelPath) {
-			slog.Info("workspace package contains handler, will copy to artifact",
-				"pkgPath", pkgPath,
-				"pkgRelPath", pkgRelPath,
-				"handler", input.Handler)
 			handlerWorkspacePaths = append(handlerWorkspacePaths, pkgPath)
 		} else {
-			slog.Info("workspace package is a dependency, will copy to deps cache",
-				"pkgPath", pkgPath,
-				"pkgRelPath", pkgRelPath,
-				"handler", input.Handler)
 			dependencyWorkspacePaths = append(dependencyWorkspacePaths, pkgPath)
 		}
 	}
@@ -2679,7 +2674,8 @@ func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input 
 
 	// NOTE: The old ib.dependencyCache is no longer used here.
 	// We now use the .deps/{hash}/ directory cache which includes workspace packages.
-	// The old cache didn't include workspace packages and caused issues.	// Copy dependency workspace packages to deps cache (shared across functions)
+	// The old cache didn't include workspace packages and caused issues.
+	// Copy dependency workspace packages to deps cache (shared across functions)
 	// This only happens on cache miss - the deps cache will include these packages
 	if err := ib.copyWorkspacePackageSources(ctx, dependencyWorkspacePaths, workspaceRoot, depsCacheDir); err != nil {
 		return fmt.Errorf("failed to copy dependency workspace package sources: %w", err)

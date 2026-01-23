@@ -43,6 +43,11 @@ var (
 	// Global requirements.txt generation - generate once per workspace, reuse for all functions
 	globalRequirementsFiles      = make(map[string]string) // workspaceDir -> requirements.txt path
 	globalRequirementsFilesMutex sync.Mutex
+
+	// Global deps cache clear - clears .deps/ directory once per SST run
+	// This ensures workspace package changes are picked up between deploys
+	// The deps cache is only meant to be shared within a single deploy run
+	globalDepsCacheClearOnce sync.Once
 )
 
 type Worker struct {
@@ -252,6 +257,20 @@ func (r *PythonRuntime) DisableCaching() error {
 }
 
 func (r *PythonRuntime) Build(ctx context.Context, input *runtime.BuildInput) (*runtime.BuildOutput, error) {
+	// Clear the deps cache once per SST run (not per function build)
+	// This ensures workspace package changes are picked up between deploys
+	// The deps cache is only meant to be shared within a single deploy run
+	globalDepsCacheClearOnce.Do(func() {
+		artifactsDir := filepath.Dir(input.Out())
+		depsDir := filepath.Join(artifactsDir, ".deps")
+		if _, err := os.Stat(depsDir); err == nil {
+			slog.Info("clearing deps cache for new SST run", "depsDir", depsDir)
+			if err := os.RemoveAll(depsDir); err != nil {
+				slog.Warn("failed to clear deps cache", "error", err)
+			}
+		}
+	})
+
 	// Acquire semaphore to limit concurrent builds (prevents system overload)
 	// This is critical because Pulumi calls Build() for all functions in parallel
 	// Note: artifact directories are cleared by runtime.go's Collection.Build() before this is called
