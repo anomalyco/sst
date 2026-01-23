@@ -84,7 +84,7 @@ export class HttpsRedirect extends Component {
     }
 
     function createBucketWebsite() {
-      return new s3.BucketWebsiteConfigurationV2(
+      return new s3.BucketWebsiteConfiguration(
         `${name}BucketWebsite`,
         {
           bucket: bucket.name,

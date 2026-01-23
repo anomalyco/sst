@@ -165,7 +165,7 @@ export class CognitoIdentityPool extends Component implements Link.Linkable {
     this.unauthRole = unauthRole;
 
     function getRegion() {
-      return getRegionOutput(undefined, { parent }).name;
+      return getRegionOutput(undefined, { parent }).region;
     }
 
     function createIdentityPool() {

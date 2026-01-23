@@ -182,7 +182,7 @@ export class Cluster extends Component {
       const cluster = ecs.Cluster.get(`${name}Cluster`, ref.id, undefined, {
         parent: self,
       });
-      const clusterValidated = cluster.tags.apply((tags) => {
+      const clusterValidated = cluster.tagsAll.apply((tags) => {
         const refVersion = tags?.["sst:ref:version"]
           ? parseComponentVersion(tags["sst:ref:version"])
           : undefined;

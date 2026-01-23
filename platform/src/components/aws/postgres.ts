@@ -506,7 +506,7 @@ export class Postgres extends Component implements Link.Linkable {
         parent: self,
       });
 
-      const input = instance.tags.apply((tags) => {
+      const input = instance.tagsAll.apply((tags) => {
         registerVersion(
           tags?.["sst:component-version"]
             ? parseInt(tags["sst:component-version"])

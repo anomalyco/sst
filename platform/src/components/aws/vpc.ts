@@ -465,7 +465,7 @@ export class Vpc extends Component implements Link.Linkable {
         parent: self,
       });
 
-      const vpcId = vpc.tags.apply((tags) => {
+      const vpcId = vpc.tagsAll.apply((tags) => {
         registerVersion(
           tags?.["sst:component-version"]
             ? parseInt(tags["sst:component-version"])
@@ -982,7 +982,7 @@ export class Vpc extends Component implements Link.Linkable {
                 args.transform?.elasticIp,
                 `${name}ElasticIp${i + 1}`,
                 {
-                  vpc: true,
+                  domain: "vpc",
                 },
                 { parent: self },
               ),

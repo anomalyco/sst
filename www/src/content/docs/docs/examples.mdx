@@ -764,8 +764,8 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-bun-red
 ---
 ## AWS Cluster custom autoscaling
 
-In this example, we'll create a cluster that can autoscales based on a custom
-metric; in this case, the number of messages in a queue.
+In this example, we'll create a cluster that autoscales based on a custom
+metric. In this case, the number of messages in a queue.
 
 We'll create a queue, and two functions that'll seed and purge the queue. We'll
 also create two policies.
@@ -1843,13 +1843,13 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-hono-re
 
 An example on how to enable streaming for Lambda functions using Hono.
 
+While `sst dev` doesn't support streaming, we can conditionally enable it on deploy.
+
 ```ts title="sst.config.ts"
 {
-  streaming: true
+  streaming: $dev ? false : true
 }
 ```
-
-While `sst dev` doesn't support streaming, we can conditionally enable it on deploy.
 
 ```ts title="index.ts"
 export const handler = process.env.SST_LIVE ? handle(app) : streamHandle(app);
@@ -1871,7 +1871,7 @@ Here we are using a Function URL directly because API Gateway doesn't support st
 ```ts title="sst.config.ts"
 const hono = new sst.aws.Function("Hono", {
   url: true,
-  streaming: true,
+  streaming: $dev ? false : true,
   timeout: "15 minutes",
   handler: "index.handler",
 });
@@ -1880,7 +1880,7 @@ return {
 };
 ```
 
-View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-hono-steam).
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-hono-stream).
 
 
 ---
@@ -2531,6 +2531,82 @@ return {
 ```
 
 View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-lambda-vpc).
+
+
+---
+## AWS Load Balancer Web Application Firewall (WAF)
+
+Enable WAF for an AWS Load Balancer.
+
+The WAF is configured to enable a rate limit and enables AWS managed rules.
+```ts title="sst.config.ts"
+const vpc = new sst.aws.Vpc("MyVpc");
+const cluster = new sst.aws.Cluster("MyCluster", { vpc });
+const service = cluster.addService("MyAppService", {
+  image: {
+    context: "./",
+    dockerfile: "packages/server/Dockerfile",
+  },
+});
+
+const rateLimitRule = {
+  name: "RateLimitRule",
+  statement: {
+    rateBasedStatement: {
+      limit: 200,
+      aggregateKeyType: "IP",
+    },
+  },
+  priority: 1,
+  action: { block: {} },
+  visibilityConfig: {
+    cloudwatchMetricsEnabled: true,
+    sampledRequestsEnabled: true,
+    metricName: "MyAppRateLimitRule",
+  },
+};
+
+const awsManagedRules = {
+  name: "AWSManagedRules",
+  statement: {
+    managedRuleGroupStatement: {
+      name: "AWSManagedRulesCommonRuleSet",
+      vendorName: "AWS",
+    },
+  },
+  priority: 2,
+  overrideAction: {
+    none: {},
+  },
+  visibilityConfig: {
+    cloudwatchMetricsEnabled: true,
+    sampledRequestsEnabled: true,
+    metricName: "MyAppAWSManagedRules",
+  },
+};
+
+const webAcl = new aws.wafv2.WebAcl("AppAlbWebAcl", {
+  defaultAction: { allow: {} },
+  scope: "REGIONAL",
+  visibilityConfig: {
+    cloudwatchMetricsEnabled: true,
+    sampledRequestsEnabled: true,
+    metricName: "AppAlbWebAcl",
+  },
+  rules: [rateLimitRule, awsManagedRules],
+});
+
+service.nodes.loadBalancer.arn.apply((arn) => {
+  new aws.wafv2.WebAclAssociation("MyAppAlbWebAclAssociation", {
+    resourceArn: arn,
+    webAclArn: webAcl.arn,
+  });
+});
+
+return {};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-load-balancer-waf).
 
 
 ---
@@ -3666,6 +3742,7 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-python)
 ## Subscribe to queues
 
 Create an SQS queue, subscribe to it, and publish to it from a function.
+
 ```ts title="sst.config.ts"
 const queue = new sst.aws.Queue("MyQueue");
 queue.subscribe("subscriber.handler");
@@ -3729,6 +3806,25 @@ export const handler: SQSHandler = async (event: SQSEvent) => {
 
   // Failed items will be made visible in the queue again
   return { batchItemFailures };
+};
+```
+```ts title="sst.config.ts"
+const queue = new sst.aws.Queue("MyQueue");
+queue.subscribe("subscriber.handler", {
+  batch: {
+    partialResponses: true,
+  }
+});
+
+const app = new sst.aws.Function("MyApp", {
+  handler: "publisher.handler",
+  link: [queue],
+  url: true,
+});
+
+return {
+  app: app.url,
+  queue: queue.url,
 };
 ```
 

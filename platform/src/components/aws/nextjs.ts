@@ -655,10 +655,10 @@ export class Nextjs extends SsrSite {
           revalidationTable?.name,
           bucket.arn,
           bucket.name,
-          getRegionOutput(undefined, { parent: bucket }).name,
+          getRegionOutput(undefined, { parent: bucket }).region,
           revalidationQueue?.arn,
           revalidationQueue?.url,
-          getRegionOutput(undefined, { parent: revalidationQueue }).name,
+          getRegionOutput(undefined, { parent: revalidationQueue }).region,
         ]).apply(
           ([
             tableArn,

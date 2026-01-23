@@ -1180,7 +1180,7 @@ async function handler(event) {
 
     function normalizeRegions() {
       return output(
-        args.regions ?? [getRegionOutput(undefined, { parent: self }).name],
+        args.regions ?? [getRegionOutput(undefined, { parent: self }).region],
       ).apply((regions) => {
         if (regions.length === 0)
           throw new VisibleError(
@@ -1705,7 +1705,7 @@ async function handler(event) {
               bucketName: bucket.name,
               files: bucketFiles,
               purge,
-              region: getRegionOutput(undefined, { parent: self }).name,
+              region: getRegionOutput(undefined, { parent: self }).region,
             },
             { parent: self },
           );
@@ -1812,7 +1812,7 @@ async function handler(event) {
                   }
                 : undefined,
               servers: servers.map((s) => [
-                new URL(s.url).host,
+                new URL(s.url!).host,
                 supportedRegions[s.region as keyof typeof supportedRegions].lat,
                 supportedRegions[s.region as keyof typeof supportedRegions].lon,
               ]),
