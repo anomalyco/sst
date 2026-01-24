@@ -813,7 +813,6 @@ export class StaticSite extends Component implements Link.Linkable {
         environment,
         url: this.url,
       },
-      _dev: dev.outputs,
     });
 
     function validateDeprecatedProps() {

@@ -1,10 +1,12 @@
 {
-  "name": "base-ts",
+  "name": "aws-bus",
   "version": "0.0.0",
   "dependencies": {
     "@aws-sdk/client-eventbridge": "^3.582.0",
-    "aws4fetch": "^1.0.18",
-    "sst": "^3.0.19",
-    "zod": "^3.23.8"
+    "sst": "^3.17.25",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
   }
 }

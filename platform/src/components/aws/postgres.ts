@@ -23,11 +23,11 @@ export type { PostgresArgs as PostgresV1Args } from "./postgres-v1";
 export interface PostgresArgs {
   /**
    * The Postgres engine version. Check out the [available versions in your region](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/PostgreSQL.Concepts.General.DBVersions.html).
-   * @default `"16.4"`
+   * @default `"17"`
    * @example
    * ```js
    * {
-   *   version: "17.2"
+   *   version: "17.1"
    * }
    * ```
    */
@@ -137,53 +137,53 @@ export interface PostgresArgs {
   proxy?: Input<
     | boolean
     | {
-      /**
-       * Additional credentials the proxy can use to connect to the database. You don't
-       * need to specify the master user credentials as they are always added by default.
-       *
-       * :::note
-       * This component will not create the Postgres users listed here. You need to
-       * create them manually in the database.
-       * :::
-       *
-       * @example
-       * ```js
-       * {
-       *   credentials: [
-       *     {
-       *       username: "metabase",
-       *       password: "Passw0rd!"
-       *     }
-       *   ]
-       * }
-       * ```
-       *
-       * You can use a `Secret` to manage the password.
-       *
-       * ```js
-       * {
-       *   credentials: [
-       *     {
-       *       username: "metabase",
-       *       password: new sst.Secret("MyDBPassword").value
-       *     }
-       *   ]
-       * }
-       * ```
-       */
-      credentials?: Input<
-        Input<{
-          /**
-           * The username of the user.
-           */
-          username: Input<string>;
-          /**
-           * The password of the user.
-           */
-          password: Input<string>;
-        }>[]
-      >;
-    }
+        /**
+         * Additional credentials the proxy can use to connect to the database. You don't
+         * need to specify the master user credentials as they are always added by default.
+         *
+         * :::note
+         * This component will not create the Postgres users listed here. You need to
+         * create them manually in the database.
+         * :::
+         *
+         * @example
+         * ```js
+         * {
+         *   credentials: [
+         *     {
+         *       username: "metabase",
+         *       password: "Passw0rd!"
+         *     }
+         *   ]
+         * }
+         * ```
+         *
+         * You can use a `Secret` to manage the password.
+         *
+         * ```js
+         * {
+         *   credentials: [
+         *     {
+         *       username: "metabase",
+         *       password: new sst.Secret("MyDBPassword").value
+         *     }
+         *   ]
+         * }
+         * ```
+         */
+        credentials?: Input<
+          Input<{
+            /**
+             * The username of the user.
+             */
+            username: Input<string>;
+            /**
+             * The password of the user.
+             */
+            password: Input<string>;
+          }>[]
+        >;
+      }
   >;
   /**
    * Enable [Multi-AZ](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.MultiAZ.html)
@@ -239,13 +239,13 @@ export interface PostgresArgs {
    * ```
    */
   vpc:
-  | Vpc
-  | Input<{
-    /**
-     * A list of subnet IDs in the VPC.
-     */
-    subnets: Input<Input<string>[]>;
-  }>;
+    | Vpc
+    | Input<{
+        /**
+         * A list of subnet IDs in the VPC.
+         */
+        subnets: Input<Input<string>[]>;
+      }>;
   /**
    * Configure how this component works in `sst dev`.
    *
@@ -397,7 +397,7 @@ interface PostgresRef {
  *   -e POSTGRES_USER=postgres \
  *   -e POSTGRES_PASSWORD=password \
  *   -e POSTGRES_DB=local \
- *   postgres:16.4
+ *   postgres:18
  * ```
  *
  * You can connect to it in `sst dev` by configuring the `dev` prop.
@@ -473,7 +473,7 @@ export class Postgres extends Component implements Link.Linkable {
 
     registerVersion();
     const multiAz = output(args.multiAz).apply((v) => v ?? false);
-    const engineVersion = output(args.version).apply((v) => v ?? "16.4");
+    const engineVersion = output(args.version).apply((v) => v ?? "17");
     const instanceType = output(args.instance).apply((v) => v ?? "t4g.micro");
     const username = output(args.username).apply((v) => v ?? "postgres");
     const storage = normalizeStorage();
@@ -522,8 +522,8 @@ export class Postgres extends Component implements Link.Linkable {
       const proxy = input.proxyId.apply((proxyId) =>
         proxyId
           ? rds.Proxy.get(`${name}Proxy`, proxyId, undefined, {
-            parent: self,
-          })
+              parent: self,
+            })
           : undefined,
       );
 
@@ -639,13 +639,13 @@ Listening on "${dev.host}:${dev.port}"...`,
       return args.password
         ? output(args.password)
         : new RandomPassword(
-          `${name}Password`,
-          {
-            length: 32,
-            special: false,
-          },
-          { parent: self },
-        ).result;
+            `${name}Password`,
+            {
+              length: 32,
+              special: false,
+            },
+            { parent: self },
+          ).result;
     }
 
     function createSubnetGroup() {
@@ -680,7 +680,10 @@ Listening on "${dev.host}:${dev.port}"...`,
               },
             ],
           },
-          { parent: self },
+          {
+            parent: self,
+            ignoreChanges: args.version ? [] : ["family"],
+          },
         ),
       );
     }
@@ -736,7 +739,11 @@ Listening on "${dev.host}:${dev.port}"...`,
               "sst:lookup:password": secret.id,
             },
           },
-          { parent: self, deleteBeforeReplace: true },
+          {
+            parent: self,
+            deleteBeforeReplace: true,
+            ignoreChanges: args.version ? [] : ["engineVersion"],
+          },
         ),
       );
     }
@@ -766,7 +773,10 @@ Listening on "${dev.host}:${dev.port}"...`,
                   (v) => v!,
                 ),
               },
-              { parent: self },
+              {
+                parent: self,
+                ignoreChanges: args.version ? [] : ["engineVersion"],
+              },
             ),
         ),
       );

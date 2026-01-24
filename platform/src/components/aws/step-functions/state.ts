@@ -77,6 +77,40 @@ export interface RetryArgs {
    * @default `2`
    */
   backoffRate?: number;
+  /**
+   * The maximum delay between retry attempts. This limits the exponential growth
+   * of wait times when using `backoffRate`.
+   *
+   * Must be greater than `0` and less than `31622401 seconds`.
+   *
+   * For example, if the interval is `1 second`, the backoff rate is `2`, and the
+   * max delay is `5 seconds`, the retry attempts will be: `1s`, `2s`, `4s`, `5s`,
+   * `5s`, ... (capped at 5 seconds).
+   *
+   * @example
+   * ```ts
+   * {
+   *   maxDelay: "10 seconds"
+   * }
+   * ```
+   */
+  maxDelay?: Duration;
+  /**
+   * Whether to add jitter to the retry intervals. Jitter helps reduce simultaneous
+   * retries by adding randomness to the wait times.
+   *
+   * - `"FULL"` - Adds jitter to retry intervals
+   * - `"NONE"` - No jitter (default)
+   *
+   * @default `"NONE"`
+   * @example
+   * ```ts
+   * {
+   *   jitterStrategy: "FULL"
+   * }
+   * ```
+   */
+  jitterStrategy?: "FULL" | "NONE";
 }
 
 export interface CatchArgs {
@@ -330,6 +364,8 @@ export abstract class State {
         IntervalSeconds: toSeconds(r.interval!),
         MaxAttempts: r.maxAttempts,
         BackoffRate: r.backoffRate,
+        ...(r.maxDelay && { MaxDelaySeconds: toSeconds(r.maxDelay) }),
+        ...(r.jitterStrategy && { JitterStrategy: r.jitterStrategy }),
       })),
       Catch: this._catches?.map((c) => ({
         ErrorEquals: c.props.errors,

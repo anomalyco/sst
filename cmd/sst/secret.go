@@ -346,6 +346,9 @@ var CmdSecretSet = &cli.Command{
 				input, err := reader.ReadString('\n')
 				if err != nil {
 					if err == io.EOF {
+						if input != "" {
+						    value += input
+						}
 						break
 					}
 					return err

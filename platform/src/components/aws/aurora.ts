@@ -40,7 +40,7 @@ export interface AuroraArgs {
   /**
    * The version of the Aurora engine.
    *
-   * The default is `"16.4"` for Postgres and `"3.08.0"` for MySQL.
+   * The default is `"17"` for Postgres and `"3.08.0"` for MySQL.
    *
    * Check out the [available Postgres versions](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Concepts.Aurora_Fea_Regions_DB-eng.Feature.ServerlessV2.html#Concepts.Aurora_Fea_Regions_DB-eng.Feature.ServerlessV2.apg) and [available MySQL versions](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Concepts.Aurora_Fea_Regions_DB-eng.Feature.ServerlessV2.html#Concepts.Aurora_Fea_Regions_DB-eng.Feature.ServerlessV2.amy) in your region.
    *
@@ -55,11 +55,11 @@ export interface AuroraArgs {
    * - Aurora PostgresSQL 13.15 and higher
    * - Aurora MySQL 3.08.0 and higher
    *
-   * @default `"16.4"` for Postgres, `"3.08.0"` for MySQL
+   * @default `"17"` for Postgres, `"3.08.0"` for MySQL
    * @example
    * ```js
    * {
-   *   version: "16.3"
+   *   version: "17.3"
    * }
    * ```
    */
@@ -576,7 +576,7 @@ interface AuroraRef {
  *   -e POSTGRES_USER=postgres \
  *   -e POSTGRES_PASSWORD=password \
  *   -e POSTGRES_DB=local \
- *   postgres:16.4
+ *   postgres:17
  * ```
  *
  * You can connect to it in `sst dev` by configuring the `dev` prop.
@@ -667,7 +667,7 @@ export class Aurora extends Component implements Link.Linkable {
     const engine = output(args.engine);
     const version = all([args.version, engine]).apply(
       ([version, engine]) =>
-        version ?? { postgres: "16.4", mysql: "3.08.0" }[engine],
+        version ?? { postgres: "17", mysql: "3.08.0" }[engine],
     );
     const username = all([args.username, engine]).apply(
       ([username, engine]) =>
@@ -923,7 +923,10 @@ Listening on "${dev.host}:${dev.port}"...`,
             }),
             parameters: [],
           },
-          { parent: self },
+          {
+            parent: self,
+            ignoreChanges: args.version ? [] : ["family"],
+          },
         ),
       );
     }
@@ -943,7 +946,7 @@ Listening on "${dev.host}:${dev.port}"...`,
             }),
             parameters: [],
           },
-          { parent: self },
+          { parent: self, ignoreChanges: args.version ? [] : ["family"] },
         ),
       );
     }
@@ -989,7 +992,10 @@ Listening on "${dev.host}:${dev.port}"...`,
               ...(proxy ? { "sst:ref:proxy": proxy.id } : {}),
             })),
           },
-          { parent: self },
+          {
+            parent: self,
+            ignoreChanges: args.version ? [] : ["engineVersion"],
+          },
         ),
       );
     }
@@ -1022,7 +1028,10 @@ Listening on "${dev.host}:${dev.port}"...`,
                 ...props,
                 promotionTier: 15,
               },
-              { parent: self },
+              {
+                parent: self,
+                ignoreChanges: args.version ? [] : ["engineVersion"],
+              },
             ),
           );
         }

@@ -255,7 +255,7 @@ func (vt *VT) recover() {
 
 	vt.postEvent(&EventPanic{
 		EventTerminal: newEventTerminal(vt),
-		Error:         fmt.Errorf(ret.String()),
+		Error:         fmt.Errorf("%s", ret.String()),
 	})
 	vt.Close()
 }
