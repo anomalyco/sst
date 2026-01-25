@@ -81,13 +81,13 @@ var CmdSecretList = &cli.Command{
 		if len(fallback) > 0 {
 			color.White("# fallback")
 			for key, value := range fallback {
-				fmt.Println(key + "=" + value)
+				fmt.Println(ui.TEXT_HIGHLIGHT.Render(key) + "=" + ui.TEXT_DIM.Render(value))
 			}
 		}
 		if len(secrets) > 0 {
 			color.White("# %s/%s", p.App().Name, p.App().Stage)
 			for key, value := range secrets {
-				fmt.Println(key + "=" + value)
+				fmt.Println(ui.TEXT_HIGHLIGHT.Render(key) + "=" + ui.TEXT_DIM.Render(value))
 			}
 		}
 		return nil
