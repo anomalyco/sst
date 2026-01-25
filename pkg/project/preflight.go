@@ -19,7 +19,7 @@ var migrationNotices = []migrationNotice{
 		providerName: "aws",
 		fromVersion:  "6.0.0",
 		toVersion:    "7.0.0",
-		message:      "Detected AWS provider upgrade to v7.\n\nUpgrading from v6 to v7 introduces some breaking changes and requires state migration before deploying. Refer to the SST release notes and the pulumi migration guide to make the relevent changes before deploying: https://www.pulumi.com/registry/packages/aws/how-to-guides/7-0-migration \n\nThis notice will clear after migrating your state",
+		message:      "Detected AWS provider upgrade to v7.\n\nUpgrading from v6 to v7 introduces some breaking changes to AWS components and requires state migration before deploying. In order to migrate your state you will need to make updates to your AWS components that are affected by the breaking changes and then run `sst refresh`. It is then advisable to run `sst diff` to ensure there are no unexpected changes before deploying.\n\nRefer to the Pulumi migration guide for a breakdown of the changes: https://www.pulumi.com/registry/packages/aws/how-to-guides/7-0-migration \n\nThis notice will clear after successfully migrating your state through `sst refresh`",
 	},
 }
 
