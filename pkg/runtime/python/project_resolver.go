@@ -336,8 +336,17 @@ func (pr *ProjectResolver) findPyprojectToml(handlerFile string) (string, error)
 // setupSourceRoot determines the source root directory
 func (pr *ProjectResolver) setupSourceRoot(projectInfo *ProjectInfo) error {
 	// If we have a pyproject.toml, use its directory as a starting point
+	// BUT only if it's within the project root - for monorepo support,
+	// we may find a pyproject.toml above the project root, in which case
+	// we should still use the project root as source root
 	if projectInfo.PyprojectPath != "" {
 		pyprojectDir := filepath.Dir(projectInfo.PyprojectPath)
+
+		// If pyproject.toml is above project root (monorepo), use project root
+		if !strings.HasPrefix(pyprojectDir, pr.projectRoot) {
+			projectInfo.SourceRoot = pr.projectRoot
+			return nil
+		}
 
 		// Check for common source directories
 		srcDir := filepath.Join(pyprojectDir, "src")
