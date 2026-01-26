@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"log/slog"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -135,7 +134,7 @@ func task(ctx context.Context, input input) {
 				}
 				cmd := process.Command(fields[0], fields[1:]...)
 				cmd.Dir = task.Directory
-				cmd.Env = mergeEnvironment(body.Environment)
+				cmd.Env = append(os.Environ(), body.Environment...)
 				stdout, _ := cmd.StdoutPipe()
 				stderr, _ := cmd.StderrPipe()
 				go func() {
@@ -204,45 +203,4 @@ func task(ctx context.Context, input input) {
 			break
 		}
 	}
-}
-
-// mergeEnvironment merges task-specific environment variables with the current system environment.
-// System variables like PATH, HOME, and USER are preserved and not overridden by task variables.
-func mergeEnvironment(taskEnv []string) []string {
-	// Critical system variables that should not be overridden
-	protectedVars := map[string]bool{
-		"PATH": true,
-		"HOME": true,
-		"USER": true,
-	}
-
-	// Start with the current system environment
-	systemEnv := os.Environ()
-
-	// Build a map of existing environment variables
-	envMap := make(map[string]string)
-	for _, e := range systemEnv {
-		if idx := strings.Index(e, "="); idx > 0 {
-			key := e[:idx]
-			envMap[key] = e
-		}
-	}
-
-	// Add task-specific environment variables
-	for _, e := range taskEnv {
-		if idx := strings.Index(e, "="); idx > 0 {
-			key := e[:idx]
-			// Only add if it's not a protected variable or doesn't exist yet
-			if !protectedVars[key] && envMap[key] == "" {
-				envMap[key] = e
-			}
-		}
-	}
-
-	// Convert map back to slice
-	result := make([]string, 0, len(envMap))
-	for _, v := range envMap {
-		result = append(result, v)
-	}
-	return result
 }
