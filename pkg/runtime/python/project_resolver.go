@@ -296,8 +296,14 @@ func (pr *ProjectResolver) isValidPythonFile(path string) bool {
 }
 
 // findPyprojectToml searches for pyproject.toml starting from the handler file directory
+// It searches up to 3 levels above the project root to support monorepo structures
+// where the SST app is nested within a larger workspace (e.g., apps/main/ within a root workspace)
 func (pr *ProjectResolver) findPyprojectToml(handlerFile string) (string, error) {
 	currentDir := filepath.Dir(handlerFile)
+
+	// Allow searching up to 3 levels above project root for monorepo support
+	maxLevelsAboveRoot := 3
+	levelsAboveRoot := 0
 
 	for {
 		pyprojectPath := filepath.Join(currentDir, "pyproject.toml")
@@ -308,9 +314,17 @@ func (pr *ProjectResolver) findPyprojectToml(handlerFile string) (string, error)
 		// Move up one directory
 		parentDir := filepath.Dir(currentDir)
 
-		// Stop if we've reached the project root or can't go up further
-		if parentDir == currentDir || !strings.HasPrefix(currentDir, pr.projectRoot) {
+		// Stop if we can't go up further (reached filesystem root)
+		if parentDir == currentDir {
 			break
+		}
+
+		// Track levels above project root for monorepo support
+		if !strings.HasPrefix(currentDir, pr.projectRoot) {
+			levelsAboveRoot++
+			if levelsAboveRoot > maxLevelsAboveRoot {
+				break
+			}
 		}
 
 		currentDir = parentDir
