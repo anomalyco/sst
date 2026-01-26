@@ -2509,6 +2509,27 @@ export class Function extends Component implements Link.Linkable {
           },
           { parent },
         );
+
+        // Starting Oct 2025, public (auth NONE) Function URLs require an explicit
+        // lambda:InvokeFunction permission in addition to lambda:InvokeFunctionUrl.
+        //
+        // The lambda:InvokeFunctionUrl statement is added by Lambda or by the
+        // provider, but the lambda:InvokeFunction statement is not (for older
+        // deployments). This can be removed after migrating to @pulumi/aws v7
+        // (where Lambda/provider behavior matches the current AWS console policy).
+        //
+        // Note: The AWS console scopes this with lambda:InvokedViaFunctionUrl=true.
+        if (url.authorization === "none") {
+          new lambda.Permission(
+            `${name}UrlPublicInvokeFunction`,
+            {
+              action: "lambda:InvokeFunction",
+              function: fn.name,
+              principal: "*",
+            },
+            { parent, dependsOn: fnUrl },
+          );
+        }
         if (!url.route) return fnUrl.functionUrl;
 
         // add router route
