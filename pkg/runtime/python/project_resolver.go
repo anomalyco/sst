@@ -296,14 +296,8 @@ func (pr *ProjectResolver) isValidPythonFile(path string) bool {
 }
 
 // findPyprojectToml searches for pyproject.toml starting from the handler file directory
-// It searches up to 3 levels above the project root to support monorepo structures
-// where the SST app is nested within a larger workspace (e.g., apps/main/ within a root workspace)
 func (pr *ProjectResolver) findPyprojectToml(handlerFile string) (string, error) {
 	currentDir := filepath.Dir(handlerFile)
-
-	// Allow searching up to 3 levels above project root for monorepo support
-	maxLevelsAboveRoot := 3
-	levelsAboveRoot := 0
 
 	for {
 		pyprojectPath := filepath.Join(currentDir, "pyproject.toml")
@@ -314,17 +308,9 @@ func (pr *ProjectResolver) findPyprojectToml(handlerFile string) (string, error)
 		// Move up one directory
 		parentDir := filepath.Dir(currentDir)
 
-		// Stop if we can't go up further (reached filesystem root)
-		if parentDir == currentDir {
+		// Stop if we've reached the project root or can't go up further
+		if parentDir == currentDir || !strings.HasPrefix(currentDir, pr.projectRoot) {
 			break
-		}
-
-		// Track levels above project root for monorepo support
-		if !strings.HasPrefix(currentDir, pr.projectRoot) {
-			levelsAboveRoot++
-			if levelsAboveRoot > maxLevelsAboveRoot {
-				break
-			}
 		}
 
 		currentDir = parentDir
@@ -336,17 +322,8 @@ func (pr *ProjectResolver) findPyprojectToml(handlerFile string) (string, error)
 // setupSourceRoot determines the source root directory
 func (pr *ProjectResolver) setupSourceRoot(projectInfo *ProjectInfo) error {
 	// If we have a pyproject.toml, use its directory as a starting point
-	// BUT only if it's within the project root - for monorepo support,
-	// we may find a pyproject.toml above the project root, in which case
-	// we should still use the project root as source root
 	if projectInfo.PyprojectPath != "" {
 		pyprojectDir := filepath.Dir(projectInfo.PyprojectPath)
-
-		// If pyproject.toml is above project root (monorepo), use project root
-		if !strings.HasPrefix(pyprojectDir, pr.projectRoot) {
-			projectInfo.SourceRoot = pr.projectRoot
-			return nil
-		}
 
 		// Check for common source directories
 		srcDir := filepath.Join(pyprojectDir, "src")
