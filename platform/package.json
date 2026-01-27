@@ -52,7 +52,7 @@
     "@types/archiver": "6.0.2",
     "@types/aws-lambda": "8.10.133",
     "@types/bun": "1.2.1",
-    "vitest": "^4.0.18"
+    "vitest": "^1.2.2"
   },
   "overrides": {
     "string-width": "4.2.3",
