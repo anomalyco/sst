@@ -2817,12 +2817,17 @@ func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input 
 		slog.Error("uv pip install failed",
 			"command", strings.Join(installCmd.Args, " "),
 			"error", err,
-			"output", string(installOutput))
+			"output", string(installOutput),
+			"functionID", input.FunctionID,
+			"handler", input.Handler,
+			"workingDir", installWorkspaceDir,
+			"pyprojectPath", projectInfo.PyprojectPath)
 		// Remove partial cache on failure
 		if cacheKey != "" {
 			os.RemoveAll(depsCacheDir)
 		}
-		return fmt.Errorf("failed to run uv pip install: %v\n%s", err, string(installOutput))
+		return fmt.Errorf("failed to run uv pip install: %v\n%s\n\nFunction: %s\nHandler: %s\nWorking directory: %s\nPyproject path: %s",
+			err, string(installOutput), input.FunctionID, input.Handler, installWorkspaceDir, projectInfo.PyprojectPath)
 	}
 
 	slog.Info("uv pip install completed successfully", "output", string(installOutput))
