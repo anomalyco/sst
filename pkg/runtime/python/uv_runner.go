@@ -164,6 +164,13 @@ type UvExportCommand struct {
 	// NoDev excludes development dependencies
 	NoDev bool
 
+	// NoEditable exports workspace packages as non-editable (regular path refs instead of -e)
+	NoEditable bool
+
+	// NoEmitProject excludes the project itself from the export (only its dependencies)
+	// Use with PackageName to get only the package's dependencies without the package itself
+	NoEmitProject bool
+
 	// AllPackages exports dependencies for all packages in the workspace
 	AllPackages bool
 
@@ -418,6 +425,20 @@ func (ur *UvCommandRunner) ExecuteExportCommand(ctx context.Context, cmd *UvExpo
 	// Add workspace exclusion
 	if cmd.NoEmitWorkspace {
 		args = append(args, "--no-emit-workspace")
+	}
+
+	// Add non-editable flag for workspace packages
+	// This outputs workspace packages as regular path refs (./pkg) instead of editable (-e ./pkg)
+	// which allows uv pip install to install them properly into the target directory
+	if cmd.NoEditable {
+		args = append(args, "--no-editable")
+	}
+
+	// Add no-emit-project flag to exclude the project itself from export
+	// Use with PackageName to get only the package's dependencies (like backend_pkg)
+	// without including other handler packages that would fail to build
+	if cmd.NoEmitProject {
+		args = append(args, "--no-emit-project")
 	}
 
 	// Add dev dependency exclusion

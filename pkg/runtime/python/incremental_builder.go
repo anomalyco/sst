@@ -1374,9 +1374,31 @@ func (ib *IncrementalBuilder) extractAndProcessPackageArchive(outputDir string, 
 func (ib *IncrementalBuilder) processPackageArchive(archiveFile, outputDir string, projectInfo *ProjectInfo, packageInfo *PackageBuildInfo) error {
 	// Handle different archive types
 	if strings.HasSuffix(archiveFile, ".whl") {
-		// For wheel files, we can skip extraction since they're already built
-		// The wheel file itself is the final artifact
-		slog.Info("wheel file built successfully, skipping extraction", "wheel", archiveFile)
+		// Wheel files are zip archives containing the correctly structured package
+		// We need to extract them to get the package with source remapping applied
+		slog.Info("extracting wheel file to get correctly structured package", "wheel", archiveFile)
+
+		// Extract the wheel (it's a zip file)
+		extractCmd := []string{"unzip", "-o", "-q", archiveFile, "-d", outputDir}
+		if err := ib.executeCommand(extractCmd, outputDir); err != nil {
+			return fmt.Errorf("failed to extract wheel: %w", err)
+		}
+
+		// Remove the wheel file after extraction
+		if err := os.Remove(archiveFile); err != nil {
+			slog.Warn("failed to remove wheel file", "file", archiveFile, "error", err)
+		}
+
+		// Remove the .dist-info directory (not needed for Lambda)
+		distInfoPattern := filepath.Join(outputDir, "*.dist-info")
+		distInfoDirs, _ := filepath.Glob(distInfoPattern)
+		for _, distInfoDir := range distInfoDirs {
+			if err := os.RemoveAll(distInfoDir); err != nil {
+				slog.Warn("failed to remove dist-info directory", "dir", distInfoDir, "error", err)
+			}
+		}
+
+		slog.Info("wheel extracted successfully", "wheel", archiveFile)
 		return nil
 	}
 
@@ -1802,6 +1824,8 @@ func (ib *IncrementalBuilder) BuildWithRecovery(ctx context.Context, input *runt
 }
 
 // installDependenciesFresh installs dependencies without using cache
+// TODO: DEAD CODE - this function is never called. Consider removing.
+// The functionality is handled by copySyncedDependencies instead.
 func (ib *IncrementalBuilder) installDependenciesFresh(ctx context.Context, input *runtime.BuildInput, requirementsFile string, architecture string) error {
 	// Determine platform for installation
 	pythonPlatform := "x86_64-unknown-linux-gnu"
@@ -1918,6 +1942,7 @@ func (ib *IncrementalBuilder) generateOrCopyRequirementsFile(ctx context.Context
 	// If so, export only that package's dependencies for isolation
 	packageName := ""
 	useAllPackages := true
+	workspaceRoot := workspaceDir // Default to current workspaceDir
 
 	if projectInfo.PyprojectPath != "" {
 		slog.Info("checking for workspace member status", "pyprojectPath", projectInfo.PyprojectPath)
@@ -1947,10 +1972,12 @@ func (ib *IncrementalBuilder) generateOrCopyRequirementsFile(ctx context.Context
 						// Found a parent pyproject.toml - this is a workspace member
 						packageName = config.Project.Name
 						useAllPackages = false
+						workspaceRoot = currentDir // Use the workspace root for uv export
 						slog.Info("found parent pyproject.toml - using per-package dependency export",
 							"package", packageName,
 							"pyprojectPath", projectInfo.PyprojectPath,
-							"parentPyproject", parentPyproject)
+							"parentPyproject", parentPyproject,
+							"workspaceRoot", workspaceRoot)
 						break
 					}
 					currentDir = filepath.Dir(currentDir)
@@ -1972,20 +1999,30 @@ func (ib *IncrementalBuilder) generateOrCopyRequirementsFile(ctx context.Context
 	slog.Info("generateRequirementsFile decision",
 		"packageName", packageName,
 		"useAllPackages", useAllPackages,
-		"workspaceDir", workspaceDir)
+		"workspaceDir", workspaceDir,
+		"workspaceRoot", workspaceRoot)
 
 	exportCmd := &UvExportCommand{
-		WorkspaceDir:    workspaceDir,
+		WorkspaceDir:    workspaceRoot, // Use workspace root where uv.lock is
 		PackageName:     packageName,
 		OutputFile:      outputFile,
 		NoEmitWorkspace: false,
 		NoDev:           noDev,
 		AllPackages:     useAllPackages,
+		NoEmitProject:   !useAllPackages, // When exporting for a specific package, don't emit the project itself
+		NoEditable:      true,            // Export workspace packages as non-editable for proper installation
 	}
 
-	// Check if we've already generated requirements.txt for this workspace
+	// Create cache key that includes package name for per-package exports
+	// This ensures different handlers get their own requirements.txt
+	cacheKey := workspaceRoot
+	if packageName != "" {
+		cacheKey = workspaceRoot + ":" + packageName
+	}
+
+	// Check if we've already generated requirements.txt for this workspace/package
 	globalRequirementsFilesMutex.Lock()
-	sharedRequirementsFile, exists := globalRequirementsFiles[workspaceDir]
+	sharedRequirementsFile, exists := globalRequirementsFiles[cacheKey]
 	globalRequirementsFilesMutex.Unlock()
 
 	if exists {
@@ -2001,11 +2038,12 @@ func (ib *IncrementalBuilder) generateOrCopyRequirementsFile(ctx context.Context
 			"from", sharedRequirementsFile,
 			"to", outputFile,
 			"size", len(data),
-			"hash", fmt.Sprintf("%x", sha256.Sum256(data))[:16])
+			"hash", fmt.Sprintf("%x", sha256.Sum256(data))[:16],
+			"cacheKey", cacheKey)
 		return nil
 	}
 
-	// First function for this workspace - generate requirements.txt
+	// First function for this workspace/package - generate requirements.txt
 	if err := ib.uvRunner.ExecuteExportCommand(ctx, exportCmd); err != nil {
 		return err
 	}
@@ -2015,12 +2053,13 @@ func (ib *IncrementalBuilder) generateOrCopyRequirementsFile(ctx context.Context
 		slog.Info("generated shared requirements.txt",
 			"file", outputFile,
 			"size", len(data),
-			"hash", fmt.Sprintf("%x", sha256.Sum256(data))[:16])
+			"hash", fmt.Sprintf("%x", sha256.Sum256(data))[:16],
+			"cacheKey", cacheKey)
 	}
 
-	// Store this as the shared requirements.txt for this workspace
+	// Store this as the shared requirements.txt for this workspace/package
 	globalRequirementsFilesMutex.Lock()
-	globalRequirementsFiles[workspaceDir] = outputFile
+	globalRequirementsFiles[cacheKey] = outputFile
 	globalRequirementsFilesMutex.Unlock()
 
 	return nil
@@ -2120,101 +2159,11 @@ func (ib *IncrementalBuilder) installDependenciesForLambda(ctx context.Context, 
 		workspaceDir = filepath.Dir(projectInfo.PyprojectPath)
 	}
 
-	// Check if this is a source code project (not a buildable package)
-	// If so, include dev dependencies since they might contain runtime deps
-	noDev := true
-	if projectInfo.PyprojectPath != "" {
-		if content, err := os.ReadFile(projectInfo.PyprojectPath); err == nil {
-			contentStr := string(content)
-			if strings.Contains(contentStr, "NOT a buildable package") ||
-				strings.Contains(contentStr, "Development environment - not a buildable package") ||
-				strings.Contains(contentStr, "SST will treat this as source code") {
-				noDev = false // Include dev dependencies for source code projects
-				slog.Info("including dev dependencies for source code project in sync", "path", projectInfo.PyprojectPath)
-			}
-		}
-	}
-
-	// Check if this is a workspace member (has its own pyproject.toml in a subdirectory)
-	// If so, sync only that package's dependencies for isolation
-	packageName := ""
-	useAllPackages := true
-
-	if projectInfo.PyprojectPath != "" {
-		if config, err := ib.projectResolver.ParsePyprojectToml(projectInfo.PyprojectPath); err == nil {
-			if config.Project.Name != "" {
-				// Check if this pyproject.toml is in a subdirectory (workspace member)
-				// by walking up to find a parent pyproject.toml (workspace root)
-				pyprojectDir := filepath.Dir(projectInfo.PyprojectPath)
-				currentDir := filepath.Dir(pyprojectDir)
-
-				// Walk up to find any parent pyproject.toml
-				for currentDir != "/" && currentDir != "." && currentDir != projectInfo.SourceRoot {
-					parentPyproject := filepath.Join(currentDir, "pyproject.toml")
-					if _, err := os.Stat(parentPyproject); err == nil {
-						// Found a parent pyproject.toml - this is a workspace member
-						packageName = config.Project.Name
-						useAllPackages = false
-						slog.Info("using per-package sync for workspace member",
-							"package", packageName,
-							"pyprojectPath", projectInfo.PyprojectPath,
-							"parentPyproject", parentPyproject)
-						break
-					}
-					currentDir = filepath.Dir(currentDir)
-				}
-			}
-		}
-	}
-
-	// Build sync command with appropriate package targeting
-	packages := []string{}
-	if packageName != "" {
-		packages = []string{packageName}
-	}
-
-	// Only sync once per workspace directory to avoid redundant syncs across multiple functions
-	// Use global sync tracker so it's shared across all IncrementalBuilder instances
-	globalSyncMutex.Lock()
-	alreadySynced := globalSyncCompleted[workspaceDir]
-	if !alreadySynced {
-		globalSyncCompleted[workspaceDir] = true
-	}
-	globalSyncMutex.Unlock()
-
-	if !alreadySynced {
-		// Use a build-specific venv in .sst to avoid modifying the user's development .venv
-		// This prevents dev dependencies from being removed during deploy
-		buildVenvPath := filepath.Join(ib.config.CacheDir, "build-venv")
-		if err := os.MkdirAll(buildVenvPath, 0755); err != nil {
-			slog.Warn("failed to create build venv directory, falling back to project venv",
-				"error", err, "path", buildVenvPath)
-			buildVenvPath = "" // Fall back to default behavior
-		}
-
-		syncCmd := &UvSyncCommand{
-			WorkspaceDir: workspaceDir,
-			AllPackages:  useAllPackages,
-			NoDev:        noDev,
-			Packages:     packages,
-			TargetVenv:   buildVenvPath,
-		}
-
-		ib.progressReporter.UpdateProgress(StageBuildPackages, "Syncing workspace dependencies (first function)")
-
-		if err := ib.uvRunner.ExecuteSyncCommand(ctx, syncCmd); err != nil {
-			// Clear the sync flag on error so it can be retried
-			globalSyncMutex.Lock()
-			delete(globalSyncCompleted, workspaceDir)
-			globalSyncMutex.Unlock()
-			return fmt.Errorf("failed to sync workspace dependencies: %w", err)
-		}
-
-		slog.Info("uv sync completed, will be reused for remaining functions", "workspaceDir", workspaceDir)
-	} else {
-		ib.progressReporter.UpdateProgress(StageBuildPackages, "Reusing synced workspace dependencies")
-		slog.Info("skipping uv sync, already completed for this workspace", "workspaceDir", workspaceDir)
-	}
+	// Skip uv sync for deployment - we use uv export + uv pip install instead
+	// uv sync tries to build workspace packages as wheels, which fails for handler packages
+	// The export already resolves all dependencies including git deps
+	slog.Info("skipping uv sync for deployment (using export + pip install instead)",
+		"workspaceDir", workspaceDir)
 
 	// Simplified approach: copy source files based on handler path
 	ib.progressReporter.UpdateProgress(StageBuildPackages, "Copying source files")
@@ -2244,22 +2193,16 @@ func (ib *IncrementalBuilder) copySourceFilesSimple(ctx context.Context, input *
 		workspaceDir = filepath.Dir(projectInfo.PyprojectPath)
 	}
 
-	// If the handler is inside a UV workspace package, skip this function.
-	// The workspace package will be copied by copyWorkspacePackageSources instead.
-	// This prevents duplicate copying of directories like "functions" that exist
-	// both at root level (from this function) and inside "backend/" (from workspace copy).
-	if projectInfo.PyprojectPath != "" && projectInfo.ProjectRoot != "" {
-		// Check if workspaceDir is different from ProjectRoot (meaning we're in a workspace member)
-		if workspaceDir != projectInfo.ProjectRoot {
-			slog.Info("skipping copySourceFilesSimple - handler is inside a workspace package",
-				"handler", input.Handler,
-				"workspaceDir", workspaceDir,
-				"projectRoot", projectInfo.ProjectRoot)
-			return nil
-		}
-	}
+	// NOTE: We always copy handler source files here. Workspace packages (like backend/)
+	// are installed via uv pip install from the .deps cache, so there's no duplication.
+	// The handler source (functions/, etc.) must be copied separately.
 
-	slog.Info("copying source files with simple approach", "handler", input.Handler, "workspaceDir", workspaceDir)
+	slog.Info("copySourceFilesSimple ENTRY",
+		"handler", input.Handler,
+		"workspaceDir", workspaceDir,
+		"sourceRoot", projectInfo.SourceRoot,
+		"projectRoot", projectInfo.ProjectRoot,
+		"pyprojectPath", projectInfo.PyprojectPath)
 
 	// Parse the handler path to understand what directories we need
 	handlerPath := input.Handler
@@ -2426,12 +2369,38 @@ func (ib *IncrementalBuilder) copySourceFilesSimple(ctx context.Context, input *
 		}
 	}
 
+	// If we stripped a prefix from the handler path, we need to preserve that structure in the output
+	// so Lambda can find the handler at the expected path
+	var outputPrefix string
+	if projectInfo.ProjectRoot != "" && workspaceDir != projectInfo.ProjectRoot {
+		relWorkspacePath, err := filepath.Rel(projectInfo.ProjectRoot, workspaceDir)
+		if err == nil && relWorkspacePath != "." {
+			// Check if the original handler starts with this prefix
+			relWorkspacePath = filepath.ToSlash(relWorkspacePath)
+			prefix := relWorkspacePath + "/"
+			if strings.HasPrefix(input.Handler, prefix) {
+				outputPrefix = relWorkspacePath
+			}
+		}
+	}
+
 	// Copy directories
 	for _, dirName := range dirsToInclude {
 		srcPath := filepath.Join(workspaceDir, dirName)
-		destPath := filepath.Join(input.Out(), dirName)
+		var destPath string
+		if outputPrefix != "" {
+			// Preserve the directory structure that Lambda expects
+			destPath = filepath.Join(input.Out(), outputPrefix, dirName)
+		} else {
+			destPath = filepath.Join(input.Out(), dirName)
+		}
 
-		slog.Info("copying directory", "src", srcPath, "dest", destPath)
+		// Ensure destination directory exists
+		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+			return fmt.Errorf("failed to create directory for %s: %w", destPath, err)
+		}
+
+		slog.Info("copying directory", "src", srcPath, "dest", destPath, "outputPrefix", outputPrefix)
 
 		if err := ib.copyDirectoryRecursive(srcPath, destPath); err != nil {
 			return fmt.Errorf("failed to copy directory %s: %w", dirName, err)
@@ -2441,9 +2410,20 @@ func (ib *IncrementalBuilder) copySourceFilesSimple(ctx context.Context, input *
 	// Copy root Python files
 	for _, fileName := range rootFilesToInclude {
 		srcPath := filepath.Join(workspaceDir, fileName)
-		destPath := filepath.Join(input.Out(), fileName)
+		var destPath string
+		if outputPrefix != "" {
+			// Preserve the directory structure that Lambda expects
+			destPath = filepath.Join(input.Out(), outputPrefix, fileName)
+		} else {
+			destPath = filepath.Join(input.Out(), fileName)
+		}
 
-		slog.Info("copying root file", "src", srcPath, "dest", destPath)
+		// Ensure destination directory exists
+		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+			return fmt.Errorf("failed to create directory for %s: %w", destPath, err)
+		}
+
+		slog.Info("copying root file", "src", srcPath, "dest", destPath, "outputPrefix", outputPrefix)
 
 		if err := copyFile(srcPath, destPath); err != nil {
 			return fmt.Errorf("failed to copy file %s: %w", fileName, err)
@@ -2478,12 +2458,14 @@ func (ib *IncrementalBuilder) containsPythonContent(dirPath string) bool {
 	return false
 }
 
-// copySyncedDependencies installs external dependencies with correct platform targeting
+// copySyncedDependencies installs all dependencies (external + workspace packages) with correct platform targeting
 func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input *runtime.BuildInput, projectInfo *ProjectInfo, architecture string) error {
 	startTime := time.Now()
 	slog.Info("⏱️ copySyncedDependencies START", "functionID", input.FunctionID)
 
 	// Use the requirements.txt that was already exported by the export step
+	// With --no-editable, workspace packages appear as ./path instead of -e ./path
+	// and uv pip install handles them correctly
 	requirementsPath := filepath.Join(input.Out(), "requirements.txt")
 
 	// Check if requirements.txt exists
@@ -2493,103 +2475,44 @@ func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input 
 	}
 
 	// Get workspace root directory - find the UV workspace root (pyproject.toml with [tool.uv.workspace])
-	// We walk up the directory tree to find the UV workspace root, which may be above the SST project root.
-	// This supports multi-app monorepos where multiple SST apps share a common UV workspace.
-	// The requirements.txt tells us exactly which workspace packages are needed, so we only copy those.
-	sstProjectRoot := path.ResolveRootDir(input.CfgPath)
+	// This is needed because requirements.txt contains relative paths like ./backend_pkg
+	// that are relative to the workspace root
 	workspaceRoot := projectInfo.SourceRoot
 	if projectInfo.PyprojectPath != "" {
-		// Walk up from pyproject.toml to find the workspace root
-		// The workspace root is the FIRST parent directory containing a pyproject.toml with [tool.uv.workspace]
 		pyprojectDir := filepath.Dir(projectInfo.PyprojectPath)
-		workspaceRoot = pyprojectDir // Start with the current pyproject.toml location
+		workspaceRoot = pyprojectDir
 
-		slog.Debug("starting workspace root search", "pyprojectDir", pyprojectDir)
-
-		// Walk up the directory tree looking for pyproject.toml files
+		// Walk up the directory tree looking for UV workspace root
 		currentDir := pyprojectDir
 		for {
 			parentDir := filepath.Dir(currentDir)
-			// Stop if we've reached the filesystem root or haven't moved
 			if parentDir == currentDir || parentDir == "/" || parentDir == "." {
 				break
 			}
 			parentPyproject := filepath.Join(parentDir, "pyproject.toml")
 			if _, err := os.Stat(parentPyproject); err == nil {
-				// Found a pyproject.toml in parent - check if it defines a UV workspace
 				if config, parseErr := ib.projectResolver.ParsePyprojectToml(parentPyproject); parseErr == nil {
 					if len(config.Tool.UV.Workspace.Members) > 0 {
-						// This pyproject.toml defines a UV workspace - use it as workspace root and stop
 						workspaceRoot = parentDir
-						slog.Debug("found UV workspace root", "parentDir", parentDir, "members", config.Tool.UV.Workspace.Members)
-						break // Stop at the first UV workspace we find
+						slog.Debug("found UV workspace root", "parentDir", parentDir)
+						break
 					}
 				}
 			}
 			currentDir = parentDir
 		}
 	}
-	slog.Debug("determined workspace root for dependency installation", "workspaceRoot", workspaceRoot, "sstProjectRoot", sstProjectRoot)
+	slog.Debug("determined workspace root for dependency installation", "workspaceRoot", workspaceRoot)
 
-	// Filter out workspace packages from requirements.txt BEFORE cache checks
-	// This allows us to copy handler workspace on all paths (including cache hits)
+	// Filter only boto3/botocore (Lambda runtime packages), keep everything else including workspace packages
 	filteredRequirementsPath := filepath.Join(input.Out(), "requirements-filtered.txt")
-	workspacePackagePaths, err := ib.filterWorkspacePackagesFromRequirementsAndGetPaths(requirementsPath, filteredRequirementsPath, projectInfo, workspaceRoot)
+	_, err := ib.filterWorkspacePackagesFromRequirementsAndGetPaths(requirementsPath, filteredRequirementsPath, projectInfo, workspaceRoot)
 	if err != nil {
-		return fmt.Errorf("failed to filter workspace packages from requirements: %w", err)
+		return fmt.Errorf("failed to filter requirements: %w", err)
 	}
-
-	// The handler's own workspace package won't be in requirements.txt (it's the package being exported,
-	// not a dependency). We need to explicitly add it based on the pyproject.toml location.
-	if projectInfo.PyprojectPath != "" {
-		handlerPkgPath := filepath.Dir(projectInfo.PyprojectPath)
-		// Only add if it's different from workspace root (i.e., it's a workspace member, not the root)
-		if handlerPkgPath != workspaceRoot {
-			// Check if it's not already in the list
-			alreadyIncluded := false
-			for _, p := range workspacePackagePaths {
-				if p == handlerPkgPath {
-					alreadyIncluded = true
-					break
-				}
-			}
-			if !alreadyIncluded {
-				workspacePackagePaths = append(workspacePackagePaths, handlerPkgPath)
-			}
-		}
-	}
-
-	// Split workspace packages into:
-	// 1. Handler's workspace (contains the handler file) -> copy to input.Out() (function-specific)
-	// 2. Dependency workspaces (shared libraries) -> copy to depsCacheDir (cached)
-	var handlerWorkspacePaths []string
-	var dependencyWorkspacePaths []string
-
-	for _, pkgPath := range workspacePackagePaths {
-		// Check if this workspace contains the handler file
-		// The handler path is relative to workspace root, e.g., "packages/api/auth/login.handler"
-		handlerDir := filepath.Dir(input.Handler)
-		pkgRelPath, _ := filepath.Rel(workspaceRoot, pkgPath)
-
-		// If the handler path starts with this package's relative path, it's the handler's workspace
-		if strings.HasPrefix(handlerDir, pkgRelPath) || strings.HasPrefix(input.Handler, pkgRelPath) {
-			handlerWorkspacePaths = append(handlerWorkspacePaths, pkgPath)
-		} else {
-			dependencyWorkspacePaths = append(dependencyWorkspacePaths, pkgPath)
-		}
-	}
-
-	// Copy handler's workspace package to artifact BEFORE cache checks
-	// This ensures handler code is always present, even on cache hits
-	if err := ib.copyWorkspacePackageSources(ctx, handlerWorkspacePaths, workspaceRoot, input.Out()); err != nil {
-		return fmt.Errorf("failed to copy handler workspace package sources: %w", err)
-	}
-
-	// Use the filtered requirements file for cache key calculation
 	requirementsPath = filteredRequirementsPath
 
 	// Calculate cache key from requirements hash + architecture
-	// This allows sharing dependencies across functions with identical requirements
 	requirementsHash, err := ib.hashFile(requirementsPath)
 	var cacheKey string
 	var depsCacheDir string
@@ -2672,14 +2595,8 @@ func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input 
 		depsCacheDir = input.Out()
 	}
 
-	// NOTE: The old ib.dependencyCache is no longer used here.
-	// We now use the .deps/{hash}/ directory cache which includes workspace packages.
-	// The old cache didn't include workspace packages and caused issues.
-	// Copy dependency workspace packages to deps cache (shared across functions)
-	// This only happens on cache miss - the deps cache will include these packages
-	if err := ib.copyWorkspacePackageSources(ctx, dependencyWorkspacePaths, workspaceRoot, depsCacheDir); err != nil {
-		return fmt.Errorf("failed to copy dependency workspace package sources: %w", err)
-	}
+	// Workspace packages are now installed by uv pip install (with --no-editable export)
+	// No need to manually copy them anymore
 
 	slog.Info("installing dependencies using uv pip install",
 		"requirementsFile", requirementsPath,
@@ -3000,6 +2917,8 @@ func (ib *IncrementalBuilder) filterWorkspacePackagesFromRequirementsAndGetPaths
 }
 
 // copyWorkspacePackageSources copies workspace package source code to the artifact directory
+// TODO: DEAD CODE - this function is never called. Consider removing.
+// The functionality is handled by copySourceFilesSimple and copySyncedDependencies instead.
 func (ib *IncrementalBuilder) copyWorkspacePackageSources(ctx context.Context, packagePaths []string, workspaceRoot string, artifactDir string) error {
 	if len(packagePaths) == 0 {
 		return nil
@@ -3463,6 +3382,7 @@ func (ib *IncrementalBuilder) copyDependencyPackages(srcDir, destDir string) err
 
 	copiedCount := 0
 	copiedFiles := 0
+	copiedPthPackages := 0
 	for _, entry := range entries {
 		name := entry.Name()
 
@@ -3486,6 +3406,90 @@ func (ib *IncrementalBuilder) copyDependencyPackages(srcDir, destDir string) err
 				continue
 			}
 			copiedCount++
+		} else if strings.HasSuffix(name, ".pth") {
+			// Handle .pth files - these are path configuration files that UV creates
+			// for workspace packages. We need to read the path and copy the actual package.
+			pthContent, err := os.ReadFile(srcPath)
+			if err != nil {
+				slog.Warn("failed to read .pth file", "file", name, "error", err)
+				continue
+			}
+
+			// .pth file contains the path to the package source directory
+			packageSourcePath := strings.TrimSpace(string(pthContent))
+			if packageSourcePath == "" {
+				slog.Warn(".pth file is empty", "file", name)
+				continue
+			}
+
+			// The .pth file might be a symlink itself, resolve it first
+			if info, err := os.Lstat(srcPath); err == nil && info.Mode()&os.ModeSymlink != 0 {
+				// It's a symlink, read the actual .pth file content from the target
+				realPath, err := filepath.EvalSymlinks(srcPath)
+				if err != nil {
+					slog.Warn("failed to resolve .pth symlink", "file", name, "error", err)
+					continue
+				}
+				pthContent, err = os.ReadFile(realPath)
+				if err != nil {
+					slog.Warn("failed to read resolved .pth file", "file", name, "realPath", realPath, "error", err)
+					continue
+				}
+				packageSourcePath = strings.TrimSpace(string(pthContent))
+			}
+
+			// Extract package name from .pth filename (e.g., "_sst.pth" -> "sst")
+			pthBaseName := strings.TrimSuffix(name, ".pth")
+			packageName := strings.TrimPrefix(pthBaseName, "_")
+
+			// Find the actual package directory within the source path
+			// The .pth points to the workspace package root (e.g., /path/to/sst_sdk)
+			// We need to find the actual Python package inside (e.g., sst_sdk/sst/)
+			var packageDir string
+
+			// First, check if there's a directory matching the package name
+			candidatePath := filepath.Join(packageSourcePath, packageName)
+			if info, err := os.Stat(candidatePath); err == nil && info.IsDir() {
+				packageDir = candidatePath
+			} else {
+				// Try to find the package by looking for pyproject.toml and reading the package config
+				pyprojectPath := filepath.Join(packageSourcePath, "pyproject.toml")
+				if _, err := os.Stat(pyprojectPath); err == nil {
+					if config, err := ib.projectResolver.ParsePyprojectToml(pyprojectPath); err == nil {
+						// Check hatch build targets for package location
+						if len(config.Tool.Hatch.Build.Targets.Wheel.Packages) > 0 {
+							pkgName := config.Tool.Hatch.Build.Targets.Wheel.Packages[0]
+							candidatePath = filepath.Join(packageSourcePath, pkgName)
+							if info, err := os.Stat(candidatePath); err == nil && info.IsDir() {
+								packageDir = candidatePath
+								packageName = pkgName // Use the actual package name from config
+							}
+						}
+					}
+				}
+			}
+
+			if packageDir == "" {
+				slog.Warn("could not find package directory for .pth file",
+					"pthFile", name,
+					"packageSourcePath", packageSourcePath,
+					"packageName", packageName)
+				continue
+			}
+
+			// Copy the package directory to the destination
+			packageDestPath := filepath.Join(destDir, packageName)
+			slog.Info("copying package from .pth reference",
+				"pthFile", name,
+				"packageName", packageName,
+				"source", packageDir,
+				"dest", packageDestPath)
+
+			if err := ib.copyDirectory(packageDir, packageDestPath); err != nil {
+				slog.Warn("failed to copy package from .pth", "package", packageName, "error", err)
+				continue
+			}
+			copiedPthPackages++
 		} else if strings.HasSuffix(name, ".so") || strings.HasSuffix(name, ".py") {
 			// Copy root-level .so files (like _cffi_backend.cpython-313-aarch64-linux-gnu.so)
 			// and root-level .py files (like typing_extensions.py, six.py)
@@ -3499,6 +3503,6 @@ func (ib *IncrementalBuilder) copyDependencyPackages(srcDir, destDir string) err
 		}
 	}
 
-	slog.Info("copied dependency packages", "directories", copiedCount, "rootFiles", copiedFiles)
+	slog.Info("copied dependency packages", "directories", copiedCount, "rootFiles", copiedFiles, "pthPackages", copiedPthPackages)
 	return nil
 }
