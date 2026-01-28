@@ -1231,8 +1231,8 @@ async function handler(event) {
         if (seconds > 60) {
           getQuota("cloudfront-response-timeout").apply((quota) => {
             if (seconds > quota)
-              throw new VisibleError(
-                `Server timeout for "${name}" is longer than the allowed CloudFront response timeout of ${quota} seconds. You can contact AWS Support to increase the timeout - ${CONSOLE_URL}`,
+              console.warn(
+                `Server timeout for "${name}" (${seconds}s) exceeds the CloudFront response timeout quota (${quota}s) reported by the Service Quotas API. If you've increased your quota via AWS Support, this warning can be ignored. Otherwise, contact AWS Support to increase the timeout - ${CONSOLE_URL}`,
               );
           });
         }
