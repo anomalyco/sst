@@ -249,6 +249,13 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	}
 
 	env := os.Environ()
+	// Prepend SST's bin directory to PATH to ensure SST's Pulumi is used over system-installed versions
+	for i, e := range env {
+		if strings.HasPrefix(e, "PATH=") {
+			env[i] = "PATH=" + global.BinPath() + string(os.PathListSeparator) + strings.TrimPrefix(e, "PATH=")
+			break
+		}
+	}
 	for key, value := range p.Env() {
 		env = append(env, fmt.Sprintf("%v=%v", key, value))
 	}

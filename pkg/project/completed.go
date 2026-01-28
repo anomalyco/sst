@@ -151,6 +151,10 @@ func parsePlaintext(input interface{}) interface{} {
 		var parsed any
 		json.Unmarshal([]byte(cast.Plaintext), &parsed)
 		return parsed
+	case *apitype.SecretV1:
+		var parsed any
+		json.Unmarshal([]byte(cast.Plaintext), &parsed)
+		return parsed
 	case map[string]interface{}:
 		for key, value := range cast {
 			cast[key] = parsePlaintext(value)

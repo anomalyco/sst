@@ -21,7 +21,7 @@ cp ./functions/docker/python.Dockerfile ./dist/dockerfiles/python.Dockerfile
 cd ./support/bridge-task
 timestamp=$(date +%Y%m%d%H%M%S)
 docker buildx create --name multi --driver docker-container --use
-docker buildx build --platform linux/amd64,linux/arm64 -t ghcr.io/sst/sst/bridge-task:$timestamp -t ghcr.io/sst/sst/bridge-task:latest $([ "$DOCKER_PUSH" = "true" ] && echo "--push") .
+docker buildx build --platform linux/amd64,linux/arm64 -t ghcr.io/anomalyco/sst/bridge-task:$timestamp -t ghcr.io/anomalyco/sst/bridge-task:latest $([ "$DOCKER_PUSH" = "true" ] && echo "--push") .
 
 
 cd $ORIGINAL_DIR

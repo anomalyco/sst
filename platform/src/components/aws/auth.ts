@@ -3,9 +3,9 @@ import {
   jsonStringify,
   Output,
 } from "@pulumi/pulumi";
-import { Component } from "../component";
+import { Component, Transform, transform } from "../component";
 import { Link } from "../link";
-import { FunctionArgs, Function, Dynamo, CdnArgs, Router } from ".";
+import { FunctionArgs, Function, Dynamo, CdnArgs, Router, RouterArgs } from ".";
 import { functionBuilder } from "./helpers/function-builder";
 import { env } from "../linkable";
 import { Auth as AuthV1 } from "./auth-v1";
@@ -113,6 +113,40 @@ export interface AuthArgs {
    * ```
    */
   domain?: CdnArgs["domain"];
+  /**
+   * [Transform](/docs/components#transform) how this component creates its underlying
+   * resources.
+   */
+  transform?: {
+    /**
+     * Transform the Router resource created for the custom domain.
+     *
+     * @example
+     *
+     * Attach a WAF to the CloudFront distribution.
+     *
+     * ```ts
+     * new sst.aws.Auth("MyAuth", {
+     *   issuer: "src/auth.handler",
+     *   domain: "auth.example.com",
+     *   transform: {
+     *     router: (args) => {
+     *       args.transform = {
+     *         cdn: {
+     *           transform: {
+     *             distribution: {
+     *               webAclId: "arn:aws:wafv2:...",
+     *             },
+     *           },
+     *         },
+     *       };
+     *     },
+     *   },
+     * });
+     * ```
+     */
+    router?: Transform<RouterArgs>;
+  };
   /**
    * Force upgrade from `Auth.v1` to the latest `Auth` version. The only valid value
    * is `v2`, which is the version of the new `Auth`.
@@ -305,12 +339,15 @@ export class Auth extends Component implements Link.Linkable {
       if (!args.domain) return;
 
       const router = new Router(
-        `${name}Router`,
-        {
-          domain: args.domain,
-          _skipHint: true,
-        },
-        { parent: self },
+        ...transform(
+          args.transform?.router,
+          `${name}Router`,
+          {
+            domain: args.domain,
+            _skipHint: true,
+          },
+          { parent: self },
+        ),
       );
       router.route("/", issuer.url);
 

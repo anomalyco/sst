@@ -63,3 +63,4 @@ jobs:
           bun run release
         env:
           NPM_CONFIG_PROVENANCE: false
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
