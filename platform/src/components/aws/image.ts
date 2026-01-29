@@ -14,10 +14,85 @@ import {
 import path from "path";
 
 export interface ImageArgs {
+  /**
+   * Key-value pairs of [build args](https://docs.docker.com/build/guide/build-args/) to pass to the Docker build command.
+   * @example
+   * ```js
+   * {
+   *   args: {
+   *     MY_VAR: "value"
+   *   }
+   * }
+   * ```
+   */
+  args?: Input<Record<string, Input<string>>>;
+  /**
+   * The path to the [Docker build context](https://docs.docker.com/build/building/context/#local-context). The path is relative to your project's `sst.config.ts`.
+   * @default `"."`
+   * @example
+   *
+   * To change where the Docker build context is located.
+   *
+   * ```js
+   * {
+   *   context: "./app"
+   * }
+   * ```
+   */
   context?: Input<string>;
+  /**
+   * The path to the [Dockerfile](https://docs.docker.com/reference/cli/docker/image/build/#file).
+   * The path is relative to the build `context`.
+   * @default `"Dockerfile"`
+   * @example
+   * To use a different Dockerfile.
+   * ```js
+   * {
+   *   dockerfile: "Dockerfile.prod"
+   * }
+   * ```
+   */
   dockerfile?: Input<string>;
+  /**
+   * Set target platform(s) for the build. Defaults to the host's platform.
+   *
+   * Equivalent to Docker's `--platform` flag.
+   */
   platforms?: Input<Platform[]>;
+  /**
+   * A mapping of secret names to their corresponding values.
+   *
+   * Unlike the Docker CLI, these can be passed by value and do not need to
+   * exist on-disk or in environment variables.
+   *
+   * Build arguments and environment variables are persistent in the final
+   * image, so you should use this for sensitive values.
+   *
+   * Similar to Docker's `--secret` flag.
+   */
+  secrets?: Input<{
+    [k: string]: string;
+  }>;
+  /**
+   * Tags to apply to the Docker image.
+   * @example
+   * ```js
+   * {
+   *   tags: ["v1.0.0", "commit-613c1b2"]
+   * }
+   * ```
+   */
   tags?: Input<string[]>;
+  /**
+   * The stage to build up to in a [multi-stage Dockerfile](https://docs.docker.com/build/building/multi-stage/#stop-at-a-specific-build-stage).
+   * @example
+   * ```js
+   * {
+   *   target: "stage1"
+   * }
+   * ```
+   */
+  target?: Input<string>;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
@@ -78,10 +153,9 @@ export class Image extends Component implements Link.Linkable {
             {
               context: { location: contextPath },
               dockerfile: { location: dockerfilePath },
-              // TODO: supprot functionality
-              // buildArgs: args.args,
-              // secrets: args.linkEnvs,
-              // target: args.target,
+              buildArgs: args.args,
+              secrets: args.secrets,
+              target: args.target,
               platforms: args.platforms,
               tags: [name, ...(args.tags ?? [])].map(
                 (tag) => interpolate`${bootstrapData.assetEcrUrl}:${tag}`,
@@ -140,7 +214,7 @@ export class Image extends Component implements Link.Linkable {
   public get nodes() {
     return {
       /**
-       * The AWS Lambda function.
+       * The AWS ECR image.
        */
       image: this.image,
     };
