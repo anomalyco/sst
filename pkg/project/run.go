@@ -576,7 +576,7 @@ loop:
 	// Run deploy.after hook for deploy command only (not dev or diff)
 	if input.Command == "deploy" && !input.Dev && complete.Finished {
 		if err := p.RunDeployHook(complete); err != nil {
-			log.Error("deploy hook failed", "err", err)
+			return err
 		}
 	}
 

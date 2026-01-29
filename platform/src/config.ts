@@ -1360,9 +1360,9 @@ export interface Config {
    * The hook will not run if the deployment is interrupted (e.g., Ctrl+C).
    * :::
    *
-   * :::tip
-   * Hook errors do not cause the deployment to fail. The deployment is considered
-   * successful even if the hook fails. An error message will be displayed in the CLI output.
+   * :::caution
+   * Hook errors will cause the deployment to fail. If you want to handle errors
+   * gracefully and prevent deployment failure, wrap your hook logic in a try-catch block.
    * :::
    *
    * @example
