@@ -209,6 +209,13 @@ export class Image extends Component implements Link.Linkable {
   }
 
   /**
+   * SHA256 digest of the ECR image
+   */
+  public get digest() {
+    return this.image.digest;
+  }
+
+  /**
    * The underlying [resources](/docs/components/#nodes) this component creates.
    */
   public get nodes() {
