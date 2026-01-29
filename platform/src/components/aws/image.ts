@@ -1,20 +1,22 @@
-import fs from 'fs';
-import { all, Input, interpolate, output, Output, secret } from "@pulumi/pulumi";
+import fs from "fs";
+import { all, Input, interpolate, Output, secret } from "@pulumi/pulumi";
 import { Component, Transform, transform } from "../component.js";
 import { Link } from "../link.js";
 import { getRegionOutput } from "@pulumi/aws";
-import {
-  ecr,
-} from "@pulumi/aws";
+import { ecr } from "@pulumi/aws";
 import { Semaphore } from "../../util/semaphore.js";
 import { bootstrap } from "./helpers/bootstrap.js";
-import { Platform, Image as PulumiDockerImage, ImageArgs as PulumiDockerImageArgs, } from "@pulumi/docker-build";
+import {
+  Platform,
+  Image as PulumiDockerImage,
+  ImageArgs as PulumiDockerImageArgs,
+} from "@pulumi/docker-build";
 import path from "path";
 
 export interface ImageArgs {
   context?: Input<string>;
-  dockerfile?: Input<string>
-  platforms?: Input<Platform[]>
+  dockerfile?: Input<string>;
+  platforms?: Input<Platform[]>;
   tags?: Input<string[]>;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
@@ -36,11 +38,7 @@ export class Image extends Component implements Link.Linkable {
   private constructorName: string;
   private image: Output<PulumiDockerImage>;
 
-  constructor(
-    name: string,
-    args: ImageArgs,
-    opts?: any,
-  ) {
+  constructor(name: string, args: ImageArgs, opts?: any) {
     super(__pulumiType, name, args, opts);
     this.constructorName = name;
 
@@ -53,7 +51,7 @@ export class Image extends Component implements Link.Linkable {
         // Wait for the all args values to be resolved before acquiring the semaphore
         await limiter.acquire(name);
 
-        const contextPath = path.join($cli.paths.root, args.context ?? '.');
+        const contextPath = path.join($cli.paths.root, args.context ?? ".");
         const dockerfile = args.dockerfile ?? "Dockerfile";
         const dockerfilePath = path.join(contextPath, dockerfile);
 
@@ -80,6 +78,7 @@ export class Image extends Component implements Link.Linkable {
             {
               context: { location: contextPath },
               dockerfile: { location: dockerfilePath },
+              // TODO: supprot functionality
               // buildArgs: args.args,
               // secrets: args.linkEnvs,
               // target: args.target,
@@ -124,14 +123,14 @@ export class Image extends Component implements Link.Linkable {
                 : {}),
             },
             { parent },
-          )
-        )
+          ),
+        );
 
         image.urn.apply(() => {
           limiter.release();
-        })
-        return image
-      }
+        });
+        return image;
+      },
     );
   }
 
@@ -143,7 +142,7 @@ export class Image extends Component implements Link.Linkable {
       /**
        * The AWS Lambda function.
        */
-      image: this.image
+      image: this.image,
     };
   }
 
@@ -151,9 +150,7 @@ export class Image extends Component implements Link.Linkable {
    * The uri of the ECR container image.
    */
   public get uri() {
-    return this.image.ref.apply(
-      (ref) => ref?.replace(":latest", ""),
-    );
+    return this.image.ref.apply((ref) => ref?.replace(":latest", ""));
   }
 
   /** @internal */
