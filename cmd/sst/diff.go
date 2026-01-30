@@ -68,12 +68,25 @@ var CmdDiff = &cli.Command{
 				}, "\n"),
 			},
 		},
+		{
+			Name: "policy",
+			Description: cli.Description{
+				Short: "Path to policy pack",
+				Long:  "Run policy pack validation against the preview changes.",
+			},
+		},
 	},
 	Examples: []cli.Example{
 		{
 			Content: "sst diff --stage production",
 			Description: cli.Description{
 				Short: "See changes to production",
+			},
+		},
+		{
+			Content: "sst diff --stage production --policy ./policies/production",
+			Description: cli.Description{
+				Short: "See changes to production with policy validation",
 			},
 		},
 	},
@@ -122,6 +135,7 @@ var CmdDiff = &cli.Command{
 			Dev:        c.Bool("dev"),
 			Target:     target,
 			Verbose:    c.Bool("verbose"),
+			PolicyPath: c.String("policy"),
 		})
 		if err != nil {
 			return err

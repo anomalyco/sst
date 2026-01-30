@@ -321,18 +321,19 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	switch input.Command {
 	case "diff":
 		args = append([]string{"preview"}, args...)
-		if policyPath := p.resolvePolicyPath(input.PolicyPath); policyPath != "" {
-			args = append(args, "--policy-pack", policyPath)
-		}
 	case "refresh":
 		args = append([]string{"refresh", "--yes"}, args...)
 	case "deploy":
 		args = append([]string{"up", "--yes", "-f"}, args...)
-		if policyPath := p.resolvePolicyPath(input.PolicyPath); policyPath != "" {
-			args = append(args, "--policy-pack", policyPath)
-		}
 	case "remove":
 		args = append([]string{"destroy", "--yes", "-f"}, args...)
+	}
+
+	if (input.Command == "diff" || input.Command == "deploy") && input.PolicyPath != "" {
+		policyPath := p.resolvePath(input.PolicyPath)
+		if policyPath != "" {
+			args = append(args, "--policy-pack", policyPath)
+		}
 	}
 
 	if input.Target != nil {
@@ -459,6 +460,24 @@ loop:
 			continue
 		}
 
+		if event.PolicyEvent != nil {
+			if event.PolicyEvent.EnforcementLevel == "mandatory" {
+				log.Info("policy violation",
+					"policy", event.PolicyEvent.PolicyName,
+					"urn", event.PolicyEvent.ResourceURN)
+
+				message := fmt.Sprintf("Policy: %s\n%s",
+					event.PolicyEvent.PolicyName,
+					strings.TrimSpace(event.PolicyEvent.Message))
+
+				errors = append(errors, Error{
+					Message:         message,
+					URN:             event.PolicyEvent.ResourceURN,
+					PolicyViolation: true,
+				})
+			}
+		}
+
 		if event.DiagnosticEvent != nil && event.DiagnosticEvent.Severity == "error" {
 			if strings.HasPrefix(event.DiagnosticEvent.Message, "update failed") || strings.Contains(event.DiagnosticEvent.Message, "failed to register new resource") {
 				continue
@@ -487,10 +506,18 @@ loop:
 			}
 
 			if !exists {
+				msgLower := strings.ToLower(event.DiagnosticEvent.Message)
+				isPolicyViolation := strings.Contains(msgLower, "policy violation") ||
+					strings.Contains(msgLower, "mandatory policy")
+				isPolicyConfigError := strings.Contains(msgLower, "policy pack") ||
+					strings.Contains(msgLower, "failed to load policy")
+
 				errors = append(errors, Error{
-					Message: strings.TrimSpace(event.DiagnosticEvent.Message),
-					URN:     event.DiagnosticEvent.URN,
-					Help:    help,
+					Message:           strings.TrimSpace(event.DiagnosticEvent.Message),
+					URN:               event.DiagnosticEvent.URN,
+					Help:              help,
+					PolicyViolation:   isPolicyViolation,
+					PolicyConfigError: isPolicyConfigError,
 				})
 				log.Info("telemetry tracking error")
 				telemetry.Track("cli.resource.error", map[string]interface{}{
@@ -580,7 +607,29 @@ loop:
 	}
 
 	log.Info("done running stack command", "resources", len(complete.Resources))
+
 	if cmd.ProcessState.ExitCode() > 0 {
+		hasPolicyViolations := false
+		violations := []string{}
+
+		for _, err := range errors {
+			if err.PolicyViolation {
+				hasPolicyViolations = true
+				violations = append(violations, err.Message)
+			}
+			if err.PolicyConfigError {
+				return &PolicyConfigError{Message: err.Message}
+			}
+		}
+
+		if hasPolicyViolations {
+			log.Info("policy violations detected")
+			return &PolicyViolationError{
+				Message:    "Policy violations detected",
+				Violations: violations,
+			}
+		}
+
 		return ErrStackRunFailed
 	}
 	return nil

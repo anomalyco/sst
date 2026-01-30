@@ -2,6 +2,7 @@ package project
 
 import (
 	"fmt"
+	"path/filepath"
 	"reflect"
 
 	"github.com/pulumi/pulumi/sdk/v3/go/common/apitype"
@@ -21,6 +22,7 @@ type StackInput struct {
 	Verbose    bool
 	Continue   bool
 	SkipHash   string
+	PolicyPath string
 }
 
 type ConcurrentUpdateEvent struct{}
@@ -94,9 +96,11 @@ type StackCommandEvent struct {
 }
 
 type Error struct {
-	Message string   `json:"message"`
-	URN     string   `json:"urn"`
-	Help    []string `json:"help"`
+	Message           string   `json:"message"`
+	URN               string   `json:"urn"`
+	Help              []string `json:"help"`
+	PolicyViolation   bool     `json:"policyViolation"`
+	PolicyConfigError bool     `json:"policyConfigError"`
 }
 
 type CommonError struct {
@@ -145,6 +149,43 @@ var ErrStackRunFailed = fmt.Errorf("stack run had errors")
 var ErrStageNotFound = fmt.Errorf("stage not found")
 var ErrPassphraseInvalid = fmt.Errorf("passphrase invalid")
 var ErrProtectedStage = fmt.Errorf("cannot remove protected stage")
+var ErrPolicyViolation = fmt.Errorf("policy violations detected")
+var ErrPolicyConfigError = fmt.Errorf("policy configuration error")
+
+type PolicyViolationError struct {
+	Message    string
+	Violations []string
+}
+
+func (e *PolicyViolationError) Error() string {
+	return "policy violations detected"
+}
+
+func (e *PolicyViolationError) Is(target error) bool {
+	return target == ErrPolicyViolation
+}
+
+type PolicyConfigError struct {
+	Message string
+}
+
+func (e *PolicyConfigError) Error() string {
+	return "policy configuration error"
+}
+
+func (e *PolicyConfigError) Is(target error) bool {
+	return target == ErrPolicyConfigError
+}
+
+func (p *Project) resolvePath(policyPath string) string {
+	if policyPath == "" {
+		return ""
+	}
+	if filepath.IsAbs(policyPath) {
+		return policyPath
+	}
+	return filepath.Join(p.PathRoot(), policyPath)
+}
 
 func (p *Project) Lock(command string) (*provider.Update, error) {
 	return provider.Lock(p.home, p.Version(), command, p.app.Name, p.app.Stage)

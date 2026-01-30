@@ -1,0 +1,11 @@
+{
+  "name": "policy-pack",
+  "version": "0.0.1",
+  "dependencies": {
+    "@pulumi/aws": "^6.0.0",
+    "@pulumi/policy": "^1.20.0"
+  },
+  "devDependencies": {
+    "@types/node": "^10.0.0"
+  }
+}
