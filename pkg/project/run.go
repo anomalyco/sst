@@ -321,10 +321,16 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	switch input.Command {
 	case "diff":
 		args = append([]string{"preview"}, args...)
+		if policyPath := p.resolvePolicyPath(input.PolicyPath); policyPath != "" {
+			args = append(args, "--policy-pack", policyPath)
+		}
 	case "refresh":
 		args = append([]string{"refresh", "--yes"}, args...)
 	case "deploy":
 		args = append([]string{"up", "--yes", "-f"}, args...)
+		if policyPath := p.resolvePolicyPath(input.PolicyPath); policyPath != "" {
+			args = append(args, "--policy-pack", policyPath)
+		}
 	case "remove":
 		args = append([]string{"destroy", "--yes", "-f"}, args...)
 	}
