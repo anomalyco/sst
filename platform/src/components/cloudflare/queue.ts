@@ -6,6 +6,7 @@ import { binding } from "./binding";
 import { DEFAULT_ACCOUNT_ID } from "./account-id";
 import { WorkerBuilder, workerBuilder } from "./helpers/worker-builder";
 import { WorkerArgs } from "./worker";
+import { VisibleError } from "../error";
 
 export interface QueueArgs {
   /**
@@ -182,7 +183,7 @@ export class Queue extends Component implements Link.Linkable {
     opts?: ComponentResourceOptions,
   ) {
     if (this.isSubscribed) {
-      throw new Error(
+      throw new VisibleError(
         `Cannot subscribe to the "${this.constructorName}" queue multiple times. A Cloudflare Queue can only have one consumer.`,
       );
     }
