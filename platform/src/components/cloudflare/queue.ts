@@ -4,9 +4,9 @@ import { Component, Transform, transform } from "../component";
 import { Link } from "../link";
 import { binding } from "./binding";
 import { DEFAULT_ACCOUNT_ID } from "./account-id";
-import { WorkerBuilder, workerBuilder } from "./helpers/worker-builder";
 import { WorkerArgs } from "./worker";
 import { VisibleError } from "../error";
+import { QueueWorkerSubscriber } from "./queue-worker-subscriber";
 
 export interface QueueArgs {
   /**
@@ -192,32 +192,17 @@ export class Queue extends Component implements Link.Linkable {
     const parent = this;
     const name = this.constructorName;
 
-    return output(subscriber).apply((subscriber) => {
-      const worker = workerBuilder(
-        `${name}Subscriber`,
+    return new QueueWorkerSubscriber(
+      `${name}Subscriber`,
+      {
+        queue: { id: this.queue.id },
         subscriber,
-        args?.transform?.worker,
-        { parent, ...opts },
-      );
-
-      const consumer = new cloudflare.QueueConsumer(
-        ...transform(
-          args?.transform?.consumer,
-          `${name}Consumer`,
-          {
-            accountId: DEFAULT_ACCOUNT_ID,
-            deadLetterQueue: args?.deadLetterQueue,
-            queueId: this.queue.id,
-            scriptName: worker.script.scriptName,
-            settings: args?.settings,
-            type: "worker",
-          },
-          { parent, ...opts },
-        ),
-      );
-
-      return { worker, consumer };
-    });
+        deadLetterQueue: args?.deadLetterQueue,
+        settings: args?.settings,
+        transform: args?.transform,
+      },
+      { parent, ...opts },
+    );
   }
 
   getSSTLink() {
