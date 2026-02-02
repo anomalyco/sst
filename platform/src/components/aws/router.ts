@@ -10,7 +10,8 @@ import { Component, Transform, transform } from "../component";
 import { Link } from "../link";
 import type { Input } from "../input";
 import { Cdn, CdnArgs } from "./cdn";
-import { cloudfront } from "@pulumi/aws";
+import { cloudfront, wafv2 } from "@pulumi/aws";
+import { useProvider } from "./helpers/provider";
 import { hashStringToPrettyString, physicalName } from "../naming";
 import { Bucket } from "./bucket";
 import { OriginAccessControl } from "./providers/origin-access-control";
@@ -455,6 +456,59 @@ export interface RouterBucketRouteArgs extends RouteArgs {
   }>;
 }
 
+export interface WafArgs {
+  /**
+   * The rate limit per IP address. Requests from an IP that exceed this limit
+   * within a 5-minute window will be blocked.
+   *
+   * @default `2000`
+   * @example
+   * ```js
+   * {
+   *   waf: {
+   *     rateLimitPerIp: 1000
+   *   }
+   * }
+   * ```
+   */
+  rateLimitPerIp?: Input<number>;
+  /**
+   * Configure which AWS managed rule groups to enable.
+   *
+   * @default All managed rules enabled
+   * @example
+   * ```js
+   * {
+   *   waf: {
+   *     managedRules: {
+   *       coreRuleSet: true,
+   *       knownBadInputs: true,
+   *       sqlInjection: false
+   *     }
+   *   }
+   * }
+   * ```
+   */
+  managedRules?: Input<{
+    /**
+     * Enable the AWS Core Rule Set (CRS) which provides protection against common
+     * web vulnerabilities.
+     * @default `true`
+     */
+    coreRuleSet?: Input<boolean>;
+    /**
+     * Enable protection against known bad inputs, including Log4j vulnerabilities.
+     * @default `true`
+     */
+    knownBadInputs?: Input<boolean>;
+    /**
+     * Enable SQL injection protection.
+     * @default `true`
+     */
+    sqlInjection?: Input<boolean>;
+  }>;
+}
+
 export interface RouterArgs {
   /**
    * Set a custom domain for your Router.
@@ -815,6 +869,43 @@ export interface RouterArgs {
   >;
 
   /**
+   * Enable AWS WAF (Web Application Firewall) to protect your Router from common
+   * web exploits and bots.
+   *
+   * :::tip
+   * WAF provides protection against SQL injection, cross-site scripting (XSS),
+   * and other common attacks.
+   * :::
+   *
+   * @default WAF is disabled
+   * @example
+   *
+   * Enable with sensible defaults.
+   *
+   * ```js
+   * {
+   *   waf: true
+   * }
+   * ```
+   *
+   * Or customize the configuration.
+   *
+   * ```js
+   * {
+   *   waf: {
+   *     rateLimitPerIp: 1000,
+   *     managedRules: {
+   *       coreRuleSet: true,
+   *       knownBadInputs: true,
+   *       sqlInjection: true
+   *     }
+   *   }
+   * }
+   * ```
+   */
+  waf?: Input<boolean | WafArgs>;
+
+  /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
    */
@@ -827,6 +918,10 @@ export interface RouterArgs {
      * Transform the CloudFront CDN resource.
      */
     cdn?: Transform<CdnArgs>;
+    /**
+     * Transform the WAF WebACL resource.
+     */
+    waf?: Transform<wafv2.WebAclArgs>;
   };
   /**
    * @internal
@@ -1027,6 +1122,11 @@ export class Router extends Component implements Link.Linkable {
 
     const hasInlineRoutes = args.routes !== undefined;
 
+    const waf = createWaf();
+    // Extract the WAF ARN. When WAF is enabled, waf is WebAcl.
+    // When disabled, waf is undefined and we pass undefined to webAclArn.
+    const wafArn = waf?.arn;
+
     let cdn, kvStoreArn, kvNamespace;
     if (hasInlineRoutes) {
       cdn = handleInlineRoutes();
@@ -1069,6 +1169,145 @@ export class Router extends Component implements Link.Linkable {
         kvNamespace: tags.kvNamespace,
         hasInlineRoutes: tags.hasInlineRoutes,
       };
+    }
+
+    function createWaf(): wafv2.WebAcl | undefined {
+      // Return undefined if WAF is not configured
+      if (!args.waf) return undefined;
+
+      // Normalize the waf config - handle both boolean and object forms
+      const wafInput = output(args.waf);
+      const config = wafInput.apply((waf) =>
+        typeof waf === "boolean" || !waf ? {} : waf,
+      );
+      const rateLimitPerIp = config.apply((c) => c.rateLimitPerIp ?? 2000);
+      const managedRules = config.apply((c) => c.managedRules ?? {});
+      const enableCoreRuleSet = managedRules.apply(
+        (m) => m.coreRuleSet !== false,
+      );
+      const enableKnownBadInputs = managedRules.apply(
+        (m) => m.knownBadInputs !== false,
+      );
+      const enableSqlInjection = managedRules.apply(
+        (m) => m.sqlInjection !== false,
+      );
+
+      // Build rules array dynamically based on config
+      const rules = all([
+        rateLimitPerIp,
+        enableCoreRuleSet,
+        enableKnownBadInputs,
+        enableSqlInjection,
+      ]).apply(([rateLimit, coreRuleSet, knownBadInputs, sqlInjection]) => {
+        const r: wafv2.WebAclArgs["rules"] = [];
+        let priority = 0;
+
+        // Rate limiting rule
+        r.push({
+          name: "RateLimitPerIP",
+          priority: priority++,
+          action: { block: {} },
+          statement: {
+            rateBasedStatement: {
+              limit: rateLimit,
+              aggregateKeyType: "IP",
+            },
+          },
+          visibilityConfig: {
+            cloudwatchMetricsEnabled: true,
+            metricName: `${name}RateLimitPerIP`,
+            sampledRequestsEnabled: true,
+          },
+        });
+
+        // AWS Managed Rules - Core Rule Set (CRS)
+        if (coreRuleSet) {
+          r.push({
+            name: "AWSManagedRulesCommonRuleSet",
+            priority: priority++,
+            overrideAction: { none: {} },
+            statement: {
+              managedRuleGroupStatement: {
+                vendorName: "AWS",
+                name: "AWSManagedRulesCommonRuleSet",
+                // Set SizeRestrictions_BODY to COUNT to avoid blocking large request bodies
+                ruleActionOverrides: [
+                  {
+                    name: "SizeRestrictions_BODY",
+                    actionToUse: { count: {} },
+                  },
+                ],
+              },
+            },
+            visibilityConfig: {
+              cloudwatchMetricsEnabled: true,
+              metricName: `${name}AWSManagedRulesCommonRuleSet`,
+              sampledRequestsEnabled: true,
+            },
+          });
+        }
+
+        // AWS Managed Rules - Known Bad Inputs
+        if (knownBadInputs) {
+          r.push({
+            name: "AWSManagedRulesKnownBadInputsRuleSet",
+            priority: priority++,
+            overrideAction: { none: {} },
+            statement: {
+              managedRuleGroupStatement: {
+                vendorName: "AWS",
+                name: "AWSManagedRulesKnownBadInputsRuleSet",
+              },
+            },
+            visibilityConfig: {
+              cloudwatchMetricsEnabled: true,
+              metricName: `${name}AWSManagedRulesKnownBadInputsRuleSet`,
+              sampledRequestsEnabled: true,
+            },
+          });
+        }
+
+        // AWS Managed Rules - SQL Injection
+        if (sqlInjection) {
+          r.push({
+            name: "AWSManagedRulesSQLiRuleSet",
+            priority: priority++,
+            overrideAction: { none: {} },
+            statement: {
+              managedRuleGroupStatement: {
+                vendorName: "AWS",
+                name: "AWSManagedRulesSQLiRuleSet",
+              },
+            },
+            visibilityConfig: {
+              cloudwatchMetricsEnabled: true,
+              metricName: `${name}AWSManagedRulesSQLiRuleSet`,
+              sampledRequestsEnabled: true,
+            },
+          });
+        }
+
+        return r;
+      });
+
+      // WAF must be created in us-east-1 for CloudFront
+      return new wafv2.WebAcl(
+        ...transform(
+          args.transform?.waf,
+          `${name}Waf`,
+          {
+            scope: "CLOUDFRONT",
+            defaultAction: { allow: {} },
+            rules,
+            visibilityConfig: {
+              cloudwatchMetricsEnabled: true,
+              metricName: `${name}Waf`,
+              sampledRequestsEnabled: true,
+            },
+          },
+          { parent: self, provider: useProvider("us-east-1") },
+        ),
+      );
     }
 
     function registerOutputs() {
@@ -1394,6 +1633,7 @@ async function handler(event) {
                   .map((d) => d.behavior),
                 domain: args.domain,
                 wait: true,
+                webAclArn: wafArn,
               },
               { parent: self },
             ),
@@ -1658,6 +1898,7 @@ async function handler(event) {
                 "sst:ref:kv-namespace": kvNamespace,
                 "sst:ref:version": _refVersion.toString(),
               },
+              webAclArn: wafArn,
             },
             { parent: self },
           ),

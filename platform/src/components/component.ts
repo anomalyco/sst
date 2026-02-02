@@ -309,6 +309,7 @@ export class Component extends ComponentResource {
                   ),
               },
             ],
+            "aws:wafv2/webAcl:WebAcl": ["name", 64],
             "cloudflare:index/d1Database:D1Database": [
               "name",
               64,
