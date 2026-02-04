@@ -1452,7 +1452,7 @@ async function handler(event) {
                 headersConfig: {
                   headerBehavior: "whitelist",
                   headers: {
-                    items: ["x-open-next-cache-key"],
+                    items: ["x-open-next-cache-key", "x-forwarded-host"],
                   },
                 },
                 queryStringsConfig: {
