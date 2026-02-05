@@ -1,14 +1,81 @@
 package npm
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
 
 	"github.com/sst/sst/v3/internal/fs"
 )
+
+var envVarRegex = regexp.MustCompile(`\$\{([^}]+)\}`)
+var authTokenRegex = regexp.MustCompile(`^//([^/:]+).*:_authToken=(.+)$`)
+
+func expandEnvVars(s string) string {
+	return envVarRegex.ReplaceAllStringFunc(s, func(match string) string {
+		varName := envVarRegex.FindStringSubmatch(match)[1]
+		return os.Getenv(varName)
+	})
+}
+
+func parseNpmrc(path string) map[string]string {
+	tokens := make(map[string]string)
+	file, err := os.Open(path)
+	if err != nil {
+		return tokens
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		matches := authTokenRegex.FindStringSubmatch(line)
+		if matches != nil {
+			host := matches[1]
+			token := expandEnvVars(matches[2])
+			tokens[host] = token
+		}
+	}
+	return tokens
+}
+
+func loadAuthTokens() map[string]string {
+	tokens := make(map[string]string)
+
+	// Load from ~/.npmrc
+	if home, err := os.UserHomeDir(); err == nil {
+		for k, v := range parseNpmrc(filepath.Join(home, ".npmrc")) {
+			tokens[k] = v
+		}
+	}
+
+	// Load from project .npmrc (overrides home)
+	if npmrc, err := fs.FindUp(".", ".npmrc"); err == nil {
+		for k, v := range parseNpmrc(npmrc) {
+			tokens[k] = v
+		}
+	}
+
+	return tokens
+}
+
+func getAuthToken(registryURL string, tokens map[string]string) string {
+	parsed, err := url.Parse(registryURL)
+	if err != nil {
+		return ""
+	}
+	return tokens[parsed.Host]
+}
 
 type Package struct {
 	Name    string `json:"name"`
@@ -21,12 +88,23 @@ type Package struct {
 
 func Get(name string, version string) (*Package, error) {
 	slog.Info("getting package", "name", name, "version", version)
-	baseUrl := os.Getenv("NPM_REGISTRY")
-	if baseUrl == "" {
-		baseUrl = "https://registry.npmjs.org"
+	baseURL := os.Getenv("NPM_REGISTRY")
+	if baseURL == "" {
+		baseURL = "https://registry.npmjs.org"
 	}
-	url := fmt.Sprintf("%s/%s/%s", baseUrl, name, version)
-	resp, err := http.Get(url)
+	pkgURL := fmt.Sprintf("%s/%s/%s", baseURL, name, version)
+
+	req, err := http.NewRequest("GET", pkgURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	tokens := loadAuthTokens()
+	if token := getAuthToken(baseURL, tokens); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
