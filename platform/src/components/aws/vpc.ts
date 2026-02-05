@@ -162,7 +162,8 @@ export interface VpcArgs {
    *
    * When enabled, an EC2 instance of type `t4g.nano` with the bastion AMI will be launched
    * in a public subnet. The instance will have AWS SSM (AWS Session Manager) enabled for
-   * secure access without the need for SSH key.
+   * secure access without the need for SSH key. You can optionally provide an existing
+   * IAM instance profile by name for the bastion.
    *
    * It costs roughly $3 per month to run the `t4g.nano` instance.
    *
@@ -185,8 +186,27 @@ export interface VpcArgs {
    *   bastion: true
    * }
    * ```
+   *
+   * Use an existing instance profile by name.
+   * Bastion is automatically enabled when you provide an instance profile.
+   * @example
+   * ```ts
+   * {
+   *   bastion: {
+   *     instanceProfile: "my-bastion-profile"
+   *   }
+   * }
+   * ```
    */
-  bastion?: Input<boolean>;
+  bastion?: Input<
+    | boolean
+    | {
+        /**
+         * The name of an existing IAM instance profile to use for the bastion.
+         */
+        instanceProfile: Input<string>;
+      }
+  >;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
@@ -389,6 +409,7 @@ export class Vpc extends Component implements Link.Linkable {
     registerVersion();
     const zones = normalizeAz();
     const nat = normalizeNat();
+    const bastion = normalizeBastion();
     const partition = getPartitionOutput({}, opts).partition;
 
     const vpc = createVpc();
@@ -803,6 +824,19 @@ export class Vpc extends Component implements Link.Linkable {
       });
     }
 
+    function normalizeBastion() {
+      return output(args.bastion).apply((bastion) => {
+        if (!bastion) return { enabled: false, instanceProfileName: undefined };
+        if (typeof bastion === "boolean")
+          return { enabled: bastion, instanceProfileName: undefined };
+
+        return {
+          enabled: true,
+          instanceProfileName: bastion.instanceProfile,
+        };
+      });
+    }
+
     function createVpc() {
       return new ec2.Vpc(
         ...transform(
@@ -824,8 +858,8 @@ export class Vpc extends Component implements Link.Linkable {
     }
 
     function createKeyPair() {
-      const ret = output(args.bastion).apply((bastion) => {
-        if (!bastion) return {};
+      const ret = bastion.apply((bastion) => {
+        if (!bastion.enabled) return {};
 
         const tlsPrivateKey = new PrivateKey(
           `${name}TlsPrivateKey`,
@@ -1037,35 +1071,32 @@ export class Vpc extends Component implements Link.Linkable {
             { parent: self },
           ).id;
 
-        return all([
-          zones,
-          publicSubnets,
-          elasticIps,
-          keyPair,
-          args.bastion,
-        ]).apply(([zones, publicSubnets, elasticIps, keyPair, bastion]) =>
-          zones.map((_, i) => {
-            const instance = new ec2.Instance(
-              ...transform(
-                args.transform?.natInstance,
-                `${name}NatInstance${i + 1}`,
-                {
-                  instanceType: nat.ec2.instance,
-                  ami,
-                  subnetId: publicSubnets[i].id,
-                  vpcSecurityGroupIds: [sg.id],
-                  iamInstanceProfile: instanceProfile.name,
-                  sourceDestCheck: false,
-                  keyName: keyPair?.keyName,
-                  tags: {
-                    Name: `${name} NAT Instance`,
-                    "sst:is-nat": "true",
-                    ...(bastion && i === 0 ? { "sst:is-bastion": "true" } : {}),
+        return all([zones, publicSubnets, elasticIps, keyPair, bastion]).apply(
+          ([zones, publicSubnets, elasticIps, keyPair, bastion]) =>
+            zones.map((_, i) => {
+              const instance = new ec2.Instance(
+                ...transform(
+                  args.transform?.natInstance,
+                  `${name}NatInstance${i + 1}`,
+                  {
+                    instanceType: nat.ec2.instance,
+                    ami,
+                    subnetId: publicSubnets[i].id,
+                    vpcSecurityGroupIds: [sg.id],
+                    iamInstanceProfile: instanceProfile.name,
+                    sourceDestCheck: false,
+                    keyName: keyPair?.keyName,
+                    tags: {
+                      Name: `${name} NAT Instance`,
+                      "sst:is-nat": "true",
+                      ...(bastion.enabled && i === 0
+                        ? { "sst:is-bastion": "true" }
+                        : {}),
+                    },
                   },
-                },
-                { parent: self },
-              ),
-            );
+                  { parent: self },
+                ),
+              );
 
             new ec2.EipAssociation(
               `${name}NatInstanceEipAssociation${i + 1}`,
@@ -1206,9 +1237,9 @@ export class Vpc extends Component implements Link.Linkable {
     }
 
     function createBastion() {
-      return all([args.bastion, natInstances, keyPair]).apply(
+      return all([bastion, natInstances, keyPair]).apply(
         ([bastion, natInstances, keyPair]) => {
-          if (!bastion) return undefined;
+          if (!bastion.enabled) return undefined;
 
           if (natInstances.length) return natInstances[0];
 
@@ -1239,28 +1270,20 @@ export class Vpc extends Component implements Link.Linkable {
             ),
           );
 
-          // Check if iamInstanceProfile is provided via transform
-          const bastionTransform = args.transform?.bastionInstance;
-          const hasCustomInstanceProfile =
-            bastionTransform &&
-            typeof bastionTransform === "object" &&
-            "iamInstanceProfile" in bastionTransform;
-
-          const instanceProfile = hasCustomInstanceProfile
+          const instanceProfile = bastion.instanceProfileName
             ? (() => {
-                const profile = (
-                  bastionTransform as {
-                    iamInstanceProfile: Input<string> | iam.InstanceProfile;
-                  }
-                ).iamInstanceProfile;
-                // If it's already an InstanceProfile resource, use it directly
-                if (profile instanceof iam.InstanceProfile) {
-                  return profile;
+                if (
+                  typeof bastion.instanceProfileName === "string" &&
+                  bastion.instanceProfileName.startsWith("arn:")
+                ) {
+                  throw new VisibleError(
+                    "Bastion instance profile must be a name, not an ARN.",
+                  );
                 }
-                // Otherwise it's a string name, get the existing instance profile
+
                 return iam.InstanceProfile.get(
                   `${name}BastionProfile`,
-                  profile as Input<string>,
+                  bastion.instanceProfileName,
                   {},
                   { parent: self },
                 );
@@ -1386,7 +1409,7 @@ export class Vpc extends Component implements Link.Linkable {
     return this.bastionInstance.apply((v) => {
       if (!v) {
         throw new VisibleError(
-          `VPC bastion is not enabled. Enable it with "bastion: true".`,
+          `VPC bastion is not enabled. Enable it with "bastion: true" or "bastion: { instanceProfile: \"name\" }".`,
         );
       }
       return v.id;
