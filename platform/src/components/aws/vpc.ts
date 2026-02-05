@@ -155,7 +155,7 @@ export interface VpcArgs {
            */
           ami?: Input<string>;
           /**
-           * The ARN of an existing IAM role to use for the NAT instance.
+           * The Name of an existing IAM role to use for the NAT instance.
            *
            * By default, a new IAM role with SSM managed instance core permissions is created.
            * Use this to provide a custom role with additional permissions or to comply with
@@ -167,7 +167,7 @@ export interface VpcArgs {
            * {
            *   nat: {
            *     ec2: {
-           *       role: "arn:aws:iam::123456789012:role/my-nat-instance-role"
+           *       role: "my-nat-instance-role"
            *     }
            *   }
            * }
