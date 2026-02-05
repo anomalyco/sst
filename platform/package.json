@@ -27,7 +27,7 @@
     "@pulumi/aws": "6.66.2",
     "@pulumi/cloudflare": "6.10.0",
     "@pulumi/command": "1.0.1",
-    "@pulumi/docker-build": "0.0.8",
+    "@pulumi/docker-build": "0.0.14",
     "@pulumi/pulumi": "3.210.0",
     "@pulumi/random": "4.16.6",
     "@pulumi/tls": "5.0.1",
