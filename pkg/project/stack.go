@@ -2,6 +2,7 @@ package project
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"reflect"
 
@@ -177,14 +178,19 @@ func (e *PolicyConfigError) Is(target error) bool {
 	return target == ErrPolicyConfigError
 }
 
-func (p *Project) resolvePath(policyPath string) string {
-	if policyPath == "" {
-		return ""
-	}
+func (p *Project) resolvePolicyPackPath(policyPath string) (string, error) {
+	var resolvedPath string
 	if filepath.IsAbs(policyPath) {
-		return policyPath
+		resolvedPath = policyPath
+	} else {
+		resolvedPath = filepath.Join(p.PathRoot(), policyPath)
 	}
-	return filepath.Join(p.PathRoot(), policyPath)
+
+	if _, err := os.Stat(resolvedPath); err != nil {
+		return "", fmt.Errorf("Policy not found in path: %v", policyPath)
+	}
+
+	return resolvedPath, nil
 }
 
 func (p *Project) Lock(command string) (*provider.Update, error) {
