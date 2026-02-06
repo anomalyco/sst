@@ -363,6 +363,8 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	errors := []Error{}
 	finished := false
 	importDiffs := map[string][]ImportDiff{}
+	hasPolicyViolations := false
+	violations := []string{}
 
 	partial := make(chan int, 1000)
 	partialContext, partialCancel := context.WithCancel(ctx)
@@ -472,10 +474,11 @@ loop:
 					strings.TrimSpace(event.PolicyEvent.Message))
 
 				errors = append(errors, Error{
-					Message:         message,
-					URN:             event.PolicyEvent.ResourceURN,
-					PolicyViolation: true,
+					Message: message,
+					URN:     event.PolicyEvent.ResourceURN,
 				})
+				hasPolicyViolations = true
+				violations = append(violations, message)
 			}
 		}
 
@@ -507,18 +510,10 @@ loop:
 			}
 
 			if !exists {
-				msgLower := strings.ToLower(event.DiagnosticEvent.Message)
-				isPolicyViolation := strings.Contains(msgLower, "policy violation") ||
-					strings.Contains(msgLower, "mandatory policy")
-				isPolicyConfigError := strings.Contains(msgLower, "policy pack") ||
-					strings.Contains(msgLower, "failed to load policy")
-
 				errors = append(errors, Error{
-					Message:           strings.TrimSpace(event.DiagnosticEvent.Message),
-					URN:               event.DiagnosticEvent.URN,
-					Help:              help,
-					PolicyViolation:   isPolicyViolation,
-					PolicyConfigError: isPolicyConfigError,
+					Message: strings.TrimSpace(event.DiagnosticEvent.Message),
+					URN:     event.DiagnosticEvent.URN,
+					Help:    help,
 				})
 				log.Info("telemetry tracking error")
 				telemetry.Track("cli.resource.error", map[string]interface{}{
@@ -610,15 +605,11 @@ loop:
 	log.Info("done running stack command", "resources", len(complete.Resources))
 
 	if cmd.ProcessState.ExitCode() > 0 {
-		hasPolicyViolations := false
-		violations := []string{}
 
 		for _, err := range errors {
-			if err.PolicyViolation {
-				hasPolicyViolations = true
-				violations = append(violations, err.Message)
-			}
-			if err.PolicyConfigError {
+			msgLower := strings.ToLower(err.Message)
+			if strings.Contains(msgLower, "policy pack") ||
+				strings.Contains(msgLower, "failed to load policy") {
 				return &PolicyConfigError{Message: err.Message}
 			}
 		}

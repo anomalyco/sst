@@ -97,11 +97,9 @@ type StackCommandEvent struct {
 }
 
 type Error struct {
-	Message           string   `json:"message"`
-	URN               string   `json:"urn"`
-	Help              []string `json:"help"`
-	PolicyViolation   bool     `json:"policyViolation"`
-	PolicyConfigError bool     `json:"policyConfigError"`
+	Message string    `json:"message"`
+	URN     string    `json:"urn"`
+	Help    []string  `json:"help"`
 }
 
 type CommonError struct {
