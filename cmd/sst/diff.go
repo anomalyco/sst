@@ -70,6 +70,7 @@ var CmdDiff = &cli.Command{
 		},
 		{
 			Name: "policy",
+			Type: "string",
 			Description: cli.Description{
 				Short: "Path to policy pack",
 				Long:  "Run policy pack validation against the preview changes.",
