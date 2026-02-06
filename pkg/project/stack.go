@@ -187,7 +187,7 @@ func (p *Project) resolvePolicyPackPath(policyPath string) (string, error) {
 	}
 
 	if _, err := os.Stat(resolvedPath); err != nil {
-		return "", fmt.Errorf("Policy not found in path: %v", policyPath)
+		return "", fmt.Errorf("Policy pack not found in path: %v", policyPath)
 	}
 
 	return resolvedPath, nil
