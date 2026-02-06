@@ -330,10 +330,11 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	}
 
 	if (input.Command == "diff" || input.Command == "deploy") && input.PolicyPath != "" {
-		policyPath := p.resolvePath(input.PolicyPath)
-		if policyPath != "" {
-			args = append(args, "--policy-pack", policyPath)
+		policyPath, err := p.resolvePolicyPackPath(input.PolicyPath)
+		if err != nil {
+			return util.NewReadableError(nil, err.Error())
 		}
+		args = append(args, "--policy-pack", policyPath)
 	}
 
 	if input.Target != nil {
