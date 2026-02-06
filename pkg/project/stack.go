@@ -38,6 +38,12 @@ type BuildSuccessEvent struct {
 type SkipEvent struct {
 }
 
+type PolicyAdvisoryEvent struct {
+	Policy  string
+	Message string
+	URN     string
+}
+
 type Dev struct {
 	Name        string            `json:"name"`
 	Command     string            `json:"command"`
@@ -97,9 +103,9 @@ type StackCommandEvent struct {
 }
 
 type Error struct {
-	Message string    `json:"message"`
-	URN     string    `json:"urn"`
-	Help    []string  `json:"help"`
+	Message string   `json:"message"`
+	URN     string   `json:"urn"`
+	Help    []string `json:"help"`
 }
 
 type CommonError struct {
@@ -150,31 +156,6 @@ var ErrPassphraseInvalid = fmt.Errorf("passphrase invalid")
 var ErrProtectedStage = fmt.Errorf("cannot remove protected stage")
 var ErrPolicyViolation = fmt.Errorf("policy violations detected")
 var ErrPolicyConfigError = fmt.Errorf("policy configuration error")
-
-type PolicyViolationError struct {
-	Message    string
-	Violations []string
-}
-
-func (e *PolicyViolationError) Error() string {
-	return "policy violations detected"
-}
-
-func (e *PolicyViolationError) Is(target error) bool {
-	return target == ErrPolicyViolation
-}
-
-type PolicyConfigError struct {
-	Message string
-}
-
-func (e *PolicyConfigError) Error() string {
-	return "policy configuration error"
-}
-
-func (e *PolicyConfigError) Is(target error) bool {
-	return target == ErrPolicyConfigError
-}
 
 func (p *Project) resolvePolicyPackPath(policyPath string) (string, error) {
 	var resolvedPath string

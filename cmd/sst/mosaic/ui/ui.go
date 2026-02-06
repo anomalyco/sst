@@ -218,6 +218,10 @@ func (u *UI) Event(unknown interface{}) {
 			u.printEvent(TEXT_DANGER, "Error", evt.Error)
 		}
 
+	case *project.PolicyAdvisoryEvent:
+		message := strings.ReplaceAll(evt.Message, "\n", " ")
+		u.printEvent(TEXT_WARNING, "Warning", u.FormatURN(evt.URN)+" "+message)
+
 	case *project.StackCommandEvent:
 		u.reset()
 		u.header(evt.Version, evt.App, evt.Stage)

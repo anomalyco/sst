@@ -464,14 +464,14 @@ loop:
 		}
 
 		if event.PolicyEvent != nil {
+			message := fmt.Sprintf("Policy: %s\n%s",
+				event.PolicyEvent.PolicyName,
+				strings.TrimSpace(event.PolicyEvent.Message))
+
 			if event.PolicyEvent.EnforcementLevel == "mandatory" {
 				log.Info("policy violation",
 					"policy", event.PolicyEvent.PolicyName,
 					"urn", event.PolicyEvent.ResourceURN)
-
-				message := fmt.Sprintf("Policy: %s\n%s",
-					event.PolicyEvent.PolicyName,
-					strings.TrimSpace(event.PolicyEvent.Message))
 
 				errors = append(errors, Error{
 					Message: message,
@@ -479,6 +479,16 @@ loop:
 				})
 				hasPolicyViolations = true
 				violations = append(violations, message)
+			} else if event.PolicyEvent.EnforcementLevel == "advisory" {
+				log.Info("policy advisory",
+					"policy", event.PolicyEvent.PolicyName,
+					"urn", event.PolicyEvent.ResourceURN)
+
+				bus.Publish(&PolicyAdvisoryEvent{
+					Policy:  event.PolicyEvent.PolicyName,
+					Message: message,
+					URN:     event.PolicyEvent.ResourceURN,
+				})
 			}
 		}
 
@@ -610,16 +620,13 @@ loop:
 			msgLower := strings.ToLower(err.Message)
 			if strings.Contains(msgLower, "policy pack") ||
 				strings.Contains(msgLower, "failed to load policy") {
-				return &PolicyConfigError{Message: err.Message}
+				return ErrPolicyConfigError
 			}
 		}
 
 		if hasPolicyViolations {
 			log.Info("policy violations detected")
-			return &PolicyViolationError{
-				Message:    "Policy violations detected",
-				Violations: violations,
-			}
+			return ErrPolicyViolation
 		}
 
 		return ErrStackRunFailed
