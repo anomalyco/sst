@@ -38,6 +38,7 @@ import {
 } from "./fargate.js";
 import { Dns } from "../dns.js";
 import { hashStringToPrettyString } from "../naming.js";
+import { Alb } from "./alb.js";
 
 type Port = `${number}/${"http" | "https" | "tcp" | "udp" | "tcp_udp" | "tls"}`;
 
@@ -219,6 +220,89 @@ interface ServiceRules {
       values: Input<Input<string>>[];
     }>;
   }>;
+}
+
+type AlbPort = `${number}/${"http" | "https"}`;
+
+export interface ServiceAlbRule {
+  /**
+   * The listener to attach to, in `{port}/{protocol}` format. Must match a listener on the ALB.
+   *
+   * @example
+   * ```js
+   * {
+   *   listener: "443/https"
+   * }
+   * ```
+   */
+  listener: Input<AlbPort>;
+  /**
+   * The container port and protocol to forward traffic to. Uses the format `{port}/{protocol}`.
+   *
+   * The protocol must match what the container actually speaks — using `"3000/https"` when
+   * the container speaks HTTP will cause health check failures.
+   *
+   * @example
+   * ```js
+   * {
+   *   forward: "8080/http"
+   * }
+   * ```
+   */
+  forward: Input<AlbPort>;
+  /**
+   * The name of the container to forward the traffic to. Required when multiple containers
+   * are configured.
+   */
+  container?: Input<string>;
+  /**
+   * The conditions for the listener rule. At least one condition (path, query, or header)
+   * must be specified. The ALB owns the default action — services only add conditional rules.
+   *
+   * @example
+   * ```js
+   * {
+   *   conditions: {
+   *     path: "/api/*"
+   *   }
+   * }
+   * ```
+   */
+  conditions: Input<{
+    /**
+     * Path pattern to match. Supports wildcards (`*` and `?`).
+     */
+    path?: Input<string>;
+    /**
+     * Query string conditions.
+     */
+    query?: Input<
+      Input<{
+        key?: Input<string>;
+        value: Input<string>;
+      }>[]
+    >;
+    /**
+     * HTTP header condition.
+     */
+    header?: Input<{
+      name: Input<string>;
+      values: Input<Input<string>>[];
+    }>;
+  }>;
+  /**
+   * Explicit priority for the listener rule (1–50000).
+   * Must be unique per listener across ALL services sharing the ALB.
+   * Use non-overlapping ranges per service (e.g., Service A: 100-199, Service B: 200-299).
+   *
+   * @example
+   * ```js
+   * {
+   *   priority: 100
+   * }
+   * ```
+   */
+  priority: Input<number>;
 }
 
 interface ServiceContainerArgs extends FargateContainerArgs {
@@ -552,7 +636,8 @@ export interface ServiceArgs extends FargateBaseArgs {
    * }
    * ```
    */
-  loadBalancer?: Input<{
+  loadBalancer?: Input<
+    | {
     /**
      * Configure if the load balancer should be public or private.
      *
@@ -939,7 +1024,54 @@ export interface ServiceArgs extends FargateBaseArgs {
         }>
       >
     >;
-  }>;
+  }
+    | {
+    /**
+     * The `Alb` instance to attach this service to. When provided, the service creates
+     * target groups and listener rules on the shared ALB instead of creating its own
+     * load balancer.
+     *
+     * ECS tasks use the VPC's default security group, which allows all traffic within the
+     * VPC CIDR. For tighter security, add an explicit security group ingress rule from the
+     * ALB's security group using `transform`.
+     *
+     * @example
+     * ```js
+     * {
+     *   loadBalancer: {
+     *     instance: alb,
+     *     rules: [
+     *       { listener: "443/https", forward: "8080/http", conditions: { path: "/api/*" }, priority: 100 }
+     *     ]
+     *   }
+     * }
+     * ```
+     */
+    instance: Alb;
+    /**
+     * The rules for routing traffic from the ALB to this service's containers.
+     * Each rule must have explicit conditions and priority.
+     */
+    rules: Input<Input<Prettify<ServiceAlbRule>>[]>;
+    /**
+     * Configure health checks for the target groups. Uses the same format as the inline
+     * health check config, keyed by `{port}/{protocol}`.
+     */
+    health?: Input<
+      Record<
+        AlbPort,
+        Input<{
+          path?: Input<string>;
+          interval?: Input<DurationMinutes>;
+          timeout?: Input<DurationMinutes>;
+          healthyThreshold?: Input<number>;
+          unhealthyThreshold?: Input<number>;
+          successCodes?: Input<string>;
+        }>
+      >
+    >;
+  }
+  >;
   /**
    * Configure the CloudMap service registry for the service.
    *
@@ -1389,6 +1521,11 @@ export interface ServiceArgs extends FargateBaseArgs {
        * Transform the AWS Application Auto Scaling target resource.
        */
       autoScalingTarget?: Transform<appautoscaling.TargetArgs>;
+      /**
+       * Transform the AWS Load Balancer listener rule resource. Only applies when
+       * attaching to an external ALB via the `loadBalancer.instance` prop.
+       */
+      listenerRule?: Transform<lb.ListenerRuleArgs>;
     }
   >;
 }
@@ -1624,6 +1761,7 @@ export class Service extends Component implements Link.Linkable {
   private readonly taskDefinition?: Output<ecs.TaskDefinition>;
   private readonly loadBalancer?: lb.LoadBalancer;
   private readonly autoScalingTarget?: appautoscaling.Target;
+  private readonly _externalAlb?: Alb;
   private readonly domain?: Output<string | undefined>;
   private readonly _url?: Output<string>;
   private readonly devUrl?: Output<string>;
@@ -1648,7 +1786,8 @@ export class Service extends Component implements Link.Linkable {
     const memory = normalizeMemory(cpu, args);
     const storage = normalizeStorage(args);
     const containers = normalizeContainers("service", args, name, architecture);
-    const lbArgs = normalizeLoadBalancer();
+    const albAttachment = detectAlbAttachment();
+    const lbArgs = albAttachment ? undefined : normalizeLoadBalancer();
     const scaling = normalizeScaling();
     const capacity = normalizeCapacity();
     const vpc = normalizeVpc();
@@ -1660,7 +1799,7 @@ export class Service extends Component implements Link.Linkable {
     this.taskRole = taskRole;
 
     if (dev) {
-      this.devUrl = !lbArgs ? undefined : dev.url;
+      this.devUrl = (!lbArgs && !args.loadBalancer) ? undefined : dev.url;
       registerReceiver();
       return;
     }
@@ -1679,30 +1818,44 @@ export class Service extends Component implements Link.Linkable {
       taskRole,
       executionRole,
     );
-    const certificateArn = createSsl();
-    const loadBalancer = createLoadBalancer();
-    const targetGroups = createTargets();
-    createListeners();
+    let loadBalancer: lb.LoadBalancer | undefined;
+    let targetGroups: ReturnType<typeof createTargets>;
+    const certificateArn = albAttachment ? output(undefined) : createSsl();
+    if (albAttachment) {
+      // External ALB path — service attaches to an existing Alb component
+      targetGroups = createAlbTargets(albAttachment);
+      createAlbListenerRules(albAttachment, targetGroups!);
+    } else {
+      // Inline LB path — unchanged
+      loadBalancer = createLoadBalancer();
+      targetGroups = createTargets();
+      createListeners();
+      createDnsRecords();
+    }
     const cloudmapService = createCloudmapService();
     const service = createService();
     const autoScalingTarget = createAutoScaling();
-    createDnsRecords();
 
     this._service = service;
     this.cloudmapService = cloudmapService;
     this.executionRole = executionRole;
     this.taskDefinition = taskDefinition;
     this.loadBalancer = loadBalancer;
+    this._externalAlb = albAttachment?.instance;
     this.autoScalingTarget = autoScalingTarget;
-    this.domain = lbArgs?.domain
-      ? lbArgs.domain.apply((domain) => domain?.name)
-      : output(undefined);
-    this._url = !self.loadBalancer
-      ? undefined
-      : all([self.domain, self.loadBalancer?.dnsName]).apply(
-          ([domain, loadBalancer]) =>
-            domain ? `https://${domain}/` : `http://${loadBalancer}`,
-        );
+    this.domain = albAttachment
+      ? output(undefined)
+      : lbArgs?.domain
+        ? lbArgs.domain.apply((domain) => domain?.name)
+        : output(undefined);
+    this._url = albAttachment
+      ? albAttachment.instance.url
+      : !self.loadBalancer
+        ? undefined
+        : all([self.domain, self.loadBalancer?.dnsName]).apply(
+            ([domain, loadBalancer]) =>
+              domain ? `https://${domain}/` : `http://${loadBalancer}`,
+          );
 
     this.registerOutputs({ _hint: this._url });
     registerReceiver();
@@ -1741,7 +1894,9 @@ export class Service extends Component implements Link.Linkable {
     }
 
     function normalizeScaling() {
-      return all([lbArgs?.type, args.scaling]).apply(([type, v]) => {
+      // External ALB is always "application" type
+      const lbType = albAttachment ? output("application" as const) : lbArgs?.type;
+      return all([lbType, args.scaling]).apply(([type, v]) => {
         if (type !== "application" && v?.requestCount)
           throw new VisibleError(
             `Request count scaling is only supported for http/https protocols.`,
@@ -1774,8 +1929,19 @@ export class Service extends Component implements Link.Linkable {
         args.public) as typeof args.loadBalancer)!;
       if (!loadBalancer) return;
 
+      // This function is only called in the inline path (when albAttachment is undefined).
+      // Cast to the inline shape to satisfy TypeScript.
+      type InlineLbConfig = {
+        public?: Input<boolean>;
+        domain?: Input<string | { name: Input<string>; aliases?: Input<string[]>; cert?: Input<string>; dns?: Input<false | (Dns & {})> }>;
+        ports?: Input<Prettify<ServiceRules>[]>;
+        rules?: Input<Prettify<ServiceRules>[]>;
+        health?: Input<Record<Port, Input<any>>>;
+      };
+      const loadBalancerInline = loadBalancer as Input<InlineLbConfig>;
+
       // normalize rules
-      const rules = all([loadBalancer, containers]).apply(
+      const rules = all([loadBalancerInline, containers]).apply(
         ([lb, containers]) => {
           // validate rules
           const lbRules = lb.rules ?? lb.ports;
@@ -1873,7 +2039,7 @@ export class Service extends Component implements Link.Linkable {
       );
 
       // normalize domain
-      const domain = output(loadBalancer).apply((lb) => {
+      const domain = output(loadBalancerInline).apply((lb) => {
         if (!lb.domain) return undefined;
 
         // normalize domain
@@ -1893,10 +2059,10 @@ export class Service extends Component implements Link.Linkable {
       );
 
       // normalize public/private
-      const pub = output(loadBalancer).apply((lb) => lb?.public ?? true);
+      const pub = output(loadBalancerInline).apply((lb) => lb?.public ?? true);
 
       // normalize health check
-      const health = all([type, rules, loadBalancer]).apply(
+      const health = all([type, rules, loadBalancerInline]).apply(
         ([type, rules, lb]) =>
           Object.fromEntries(
             Object.entries(lb?.health ?? {}).map(([k, v]) => {
@@ -2230,18 +2396,41 @@ export class Service extends Component implements Link.Linkable {
                   enable: true,
                   rollback: true,
                 },
-                loadBalancers:
-                  lbArgs &&
-                  all([lbArgs.rules, targetGroups!]).apply(([rules, targets]) =>
-                    Object.values(targets).map((target) => ({
-                      targetGroupArn: target.arn,
-                      containerName: target.port.apply(
-                        (port) =>
-                          rules.find((r) => r.forwardPort === port)!.container!,
-                      ),
-                      containerPort: target.port.apply((port) => port!),
-                    })),
-                  ),
+                loadBalancers: albAttachment
+                  ? targetGroups &&
+                    all([albAttachment.rules, targetGroups, containers]).apply(
+                      ([rules, targets, ctrs]) =>
+                        Object.entries(targets).map(([targetId, target]) => {
+                          // targetId format: containerNamePROTOCOLport
+                          // We need to extract containerName from the rules
+                          const matchingRule = rules.find((r) => {
+                            const resolved = r as any;
+                            const fwd = (resolved.forward as string).split("/");
+                            const fwdPort = parseInt(fwd[0]);
+                            const fwdProto = fwd[1].toUpperCase();
+                            const cn = (resolved.container as string | undefined) ?? ctrs[0].name;
+                            return targetId === `${cn}${fwdProto}${fwdPort}`;
+                          }) as any;
+                          const fwd = (matchingRule.forward as string).split("/");
+                          const cn = (matchingRule.container as string | undefined) ?? ctrs[0].name;
+                          return {
+                            targetGroupArn: target.arn,
+                            containerName: cn,
+                            containerPort: parseInt(fwd[0]),
+                          };
+                        }),
+                    )
+                  : lbArgs &&
+                    all([lbArgs.rules, targetGroups!]).apply(([rules, targets]) =>
+                      Object.values(targets).map((target) => ({
+                        targetGroupArn: target.arn,
+                        containerName: target.port.apply(
+                          (port) =>
+                            rules.find((r) => r.forwardPort === port)!.container!,
+                        ),
+                        containerPort: target.port.apply((port) => port!),
+                      })),
+                    ),
                 enableExecuteCommand: true,
                 serviceRegistries: cloudmapService && {
                   registryArn: cloudmapService.arn,
@@ -2339,7 +2528,7 @@ export class Service extends Component implements Link.Linkable {
                 predefinedMetricSpecification: {
                   predefinedMetricType: "ALBRequestCountPerTarget",
                   resourceLabel: all([
-                    loadBalancer?.arn,
+                    loadBalancer?.arn ?? albAttachment?.instance.arn,
                     targetGroup.arn,
                   ]).apply(([loadBalancerArn, targetGroupArn]) => {
                     // arn:...:loadbalancer/app/frank-MyServiceLoadBalan/005af2ad12da1e52
@@ -2389,6 +2578,235 @@ export class Service extends Component implements Link.Linkable {
           );
         }
       });
+    }
+
+    function detectAlbAttachment() {
+      if (!args.loadBalancer) return undefined;
+      const raw = args.loadBalancer as any;
+      if (raw && typeof raw === "object" && "instance" in raw) {
+        const instance = raw.instance;
+        if (
+          instance instanceof Alb ||
+          (instance &&
+            typeof instance === "object" &&
+            "_loadBalancer" in instance &&
+            "_listeners" in instance &&
+            "getListener" in instance)
+        ) {
+          return raw as {
+            instance: Alb;
+            rules: Input<Input<ServiceAlbRule>[]>;
+            health?: Input<Record<AlbPort, Input<any>>>;
+          };
+        }
+      }
+      return undefined;
+    }
+
+    function createAlbTargets(
+      albAttachment: NonNullable<ReturnType<typeof detectAlbAttachment>>,
+    ) {
+      // Resolve the outer rules array, then resolve each individual rule and
+      // containers in a single all() so everything is available synchronously.
+      return output(albAttachment.rules)
+        .apply((rawRules) =>
+          all([
+            all(rawRules.map((r) => output(r))),
+            output(albAttachment.health ?? {}),
+            containers,
+          ]),
+        )
+        .apply(([rules, health, ctrs]) => {
+          // Fix 2: Validate rules are not empty
+          if (rules.length === 0) {
+            throw new VisibleError(
+              `You must provide at least one rule in "loadBalancer.rules" when using an external ALB in Service "${name}".`,
+            );
+          }
+
+          // Fix 3: Validate container names
+          const containerNames = new Set(ctrs.map((c) => c.name));
+          if (ctrs.length > 1) {
+            for (const rule of rules) {
+              if (!rule.container) {
+                throw new VisibleError(
+                  `You must provide a "container" name in each rule when there is more than one container in Service "${name}".`,
+                );
+              }
+            }
+          }
+          for (const rule of rules) {
+            const cn = (rule.container as string | undefined) ?? ctrs[0].name;
+            if (!containerNames.has(cn)) {
+              throw new VisibleError(
+                `Container "${cn}" in "loadBalancer.rules" does not match any container in Service "${name}". Available: ${[...containerNames].join(", ")}.`,
+              );
+            }
+          }
+
+          const targets: Record<string, lb.TargetGroup> = {};
+
+          for (const rule of rules) {
+            const parts = (rule.forward as string).split("/");
+            const forwardPort = parseInt(parts[0]);
+            const forwardProtocol = parts[1].toUpperCase();
+            const containerName =
+              (rule.container as string | undefined) ?? ctrs[0].name;
+            const targetId = `${containerName}${forwardProtocol}${forwardPort}`;
+
+            if (!targets[targetId]) {
+              const healthKey = `${forwardPort}/${parts[1]}`;
+              const healthCheck = health[healthKey as AlbPort];
+              const normalizedHealth = healthCheck
+                ? output(healthCheck).apply((h: any) => ({
+                    path: h.path ?? "/",
+                    interval: h.interval ? toSeconds(h.interval) : 30,
+                    timeout: h.timeout ? toSeconds(h.timeout) : 5,
+                    healthyThreshold: h.healthyThreshold ?? 5,
+                    unhealthyThreshold: h.unhealthyThreshold ?? 2,
+                    matcher: h.successCodes ?? "200",
+                  }))
+                : {
+                    path: "/",
+                    interval: 30,
+                    timeout: 5,
+                    healthyThreshold: 5,
+                    unhealthyThreshold: 2,
+                    matcher: "200",
+                  };
+
+              targets[targetId] = new lb.TargetGroup(
+                ...transform(
+                  args.transform?.target,
+                  `${name}Target${targetId}`,
+                  {
+                    namePrefix: forwardProtocol,
+                    port: forwardPort,
+                    protocol: forwardProtocol,
+                    targetType: "ip",
+                    vpcId: albAttachment.instance._vpc,
+                    healthCheck: normalizedHealth,
+                  },
+                  { parent: self },
+                ),
+              );
+            }
+          }
+          return targets;
+        });
+    }
+
+    function createAlbListenerRules(
+      albAttachment: NonNullable<ReturnType<typeof detectAlbAttachment>>,
+      albTargetGroups: ReturnType<typeof createAlbTargets>,
+    ) {
+      if (!albTargetGroups) return;
+
+      // Resolve the outer rules array, then resolve each individual rule,
+      // target groups, and containers together in a single all().
+      output(albAttachment.rules)
+        .apply((rawRules) =>
+          all([
+            all(rawRules.map((r) => output(r))),
+            albTargetGroups,
+            containers,
+          ]),
+        )
+        .apply(([rules, targets, ctrs]) => {
+          const prioritiesByListener = new Map<string, Set<number>>();
+
+          for (const rule of rules) {
+            const listenerStr = rule.listener as string;
+            const forwardStr = rule.forward as string;
+            const priorityNum = rule.priority as number;
+            const conditions = rule.conditions as any;
+            const container = rule.container as string | undefined;
+
+            // Validate priority range
+            if (priorityNum < 1 || priorityNum > 50000) {
+              throw new VisibleError(
+                `Priority ${priorityNum} must be between 1 and 50000 in Service "${name}". When sharing an ALB, ensure non-overlapping priority ranges across services.`,
+              );
+            }
+
+            // Validate priority uniqueness per listener
+            const seen =
+              prioritiesByListener.get(listenerStr) ?? new Set();
+            if (seen.has(priorityNum)) {
+              throw new VisibleError(
+                `Duplicate priority ${priorityNum} on listener "${listenerStr}" in Service "${name}".`,
+              );
+            }
+            seen.add(priorityNum);
+            prioritiesByListener.set(listenerStr, seen);
+
+            // Validate at least one condition is set
+            if (
+              !conditions?.path &&
+              !conditions?.query &&
+              !conditions?.header
+            ) {
+              throw new VisibleError(
+                `At least one condition (path, query, or header) must be set for rules on an external ALB in Service "${name}".`,
+              );
+            }
+
+            // Parse listener and forward
+            const listenerParts = listenerStr.split("/");
+            const listenerPort = parseInt(listenerParts[0]);
+            const listenerProtocol = listenerParts[1];
+
+            const forwardParts = forwardStr.split("/");
+            const forwardPort = parseInt(forwardParts[0]);
+            const forwardProtocol = forwardParts[1].toUpperCase();
+            const containerName = container ?? ctrs[0].name;
+            const targetId = `${containerName}${forwardProtocol}${forwardPort}`;
+
+            const targetGroup = targets[targetId];
+            if (!targetGroup) {
+              throw new VisibleError(
+                `Target group "${targetId}" not found. Ensure the forward port matches in Service "${name}".`,
+              );
+            }
+
+            const listenerResource = albAttachment.instance.getListener(
+              listenerProtocol,
+              listenerPort,
+            );
+
+            new lb.ListenerRule(
+              ...transform(
+                args.transform?.listenerRule,
+                `${name}AlbRule${listenerProtocol.toUpperCase()}${listenerPort}P${priorityNum}`,
+                {
+                  listenerArn: listenerResource.arn,
+                  priority: priorityNum,
+                  actions: [
+                    {
+                      type: "forward",
+                      targetGroupArn: targetGroup.arn,
+                    },
+                  ],
+                  conditions: [
+                    {
+                      pathPattern: conditions.path
+                        ? { values: [conditions.path] }
+                        : undefined,
+                      queryStrings: conditions.query,
+                      httpHeader: conditions.header
+                        ? {
+                            httpHeaderName: conditions.header.name,
+                            values: conditions.header.values,
+                          }
+                        : undefined,
+                    },
+                  ],
+                },
+                { parent: self },
+              ),
+            );
+          }
+        });
     }
 
     function registerReceiver() {
@@ -2497,11 +2915,12 @@ export class Service extends Component implements Link.Linkable {
           throw new VisibleError(
             "Cannot access `nodes.loadBalancer` in dev mode.",
           );
-        if (!self.loadBalancer)
+        const lb = self.loadBalancer ?? self._externalAlb?.nodes.loadBalancer;
+        if (!lb)
           throw new VisibleError(
             "Cannot access `nodes.loadBalancer` when no public ports are exposed.",
           );
-        return self.loadBalancer;
+        return lb;
       },
       /**
        * The Amazon Application Auto Scaling target.
