@@ -1064,6 +1064,16 @@ async function handler(event) {
               },
               { provider, parent: self },
             );
+            new lambda.Permission(
+              `${name}CloudFrontInvokeFunction${logicalName(region)}`,
+              {
+                action: "lambda:InvokeFunction",
+                function: server.nodes.function.name,
+                principal: "cloudfront.amazonaws.com",
+                sourceArn: dist.nodes.distribution.arn,
+              },
+              { provider, parent: self },
+            );
           }
         });
 
@@ -1088,6 +1098,16 @@ async function handler(event) {
               `${name}ImageOptimizerCloudFrontFunctionUrlAccess`,
               {
                 action: "lambda:InvokeFunctionUrl",
+                function: imgOptimizer.nodes.function.name,
+                principal: "cloudfront.amazonaws.com",
+                sourceArn: dist.nodes.distribution.arn,
+              },
+              { parent: self },
+            );
+            new lambda.Permission(
+              `${name}ImageOptimizerCloudFrontInvokeFunction`,
+              {
+                action: "lambda:InvokeFunction",
                 function: imgOptimizer.nodes.function.name,
                 principal: "cloudfront.amazonaws.com",
                 sourceArn: dist.nodes.distribution.arn,
