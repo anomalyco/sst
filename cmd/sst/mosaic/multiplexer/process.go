@@ -39,7 +39,7 @@ type EventProcess struct {
 }
 
 func (s *Multiplexer) AddProcess(key string, args []string, icon string, title string, cwd string, killable bool, autostart bool, env ...string) {
-	s.screen.PostEvent(&EventProcess{
+	s.screen.PostEventWait(&EventProcess{
 		Key:       key,
 		Args:      args,
 		Icon:      icon,
