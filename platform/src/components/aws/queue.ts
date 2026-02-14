@@ -289,6 +289,10 @@ export interface QueueSubscriberArgs {
      * Transform the Lambda Event Source Mapping resource.
      */
     eventSourceMapping?: Transform<lambda.EventSourceMappingArgs>;
+    /**
+     * Transform the subscriber Function resource.
+     */
+    function?: Transform<FunctionArgs>;
   };
 }
 
@@ -504,11 +508,7 @@ export class Queue extends Component implements Link.Linkable {
    */
   public subscribe(
     subscriber: Input<string | FunctionArgs | FunctionArn>,
-    args?: QueueSubscriberArgs & {
-      transform?: QueueSubscriberArgs["transform"] & {
-        function?: Transform<FunctionArgs>;
-      };
-    },
+    args?: QueueSubscriberArgs,
     opts?: ComponentResourceOptions,
   ) {
     if (this.isSubscribed)
@@ -573,11 +573,7 @@ export class Queue extends Component implements Link.Linkable {
   public static subscribe(
     queueArn: Input<string>,
     subscriber: Input<string | FunctionArgs | FunctionArn>,
-    args?: QueueSubscriberArgs & {
-      transform?: QueueSubscriberArgs["transform"] & {
-        function?: Transform<FunctionArgs>;
-      };
-    },
+    args?: QueueSubscriberArgs,
     opts?: ComponentResourceOptions,
   ) {
     return output(queueArn).apply((queueArn) =>
@@ -595,11 +591,7 @@ export class Queue extends Component implements Link.Linkable {
     name: string,
     queueArn: Input<string>,
     subscriber: Input<string | FunctionArgs | FunctionArn>,
-    args: QueueSubscriberArgs & {
-      transform?: QueueSubscriberArgs["transform"] & {
-        function?: Transform<FunctionArgs>;
-      };
-    } = {},
+    args: QueueSubscriberArgs = {},
     opts?: ComponentResourceOptions,
   ) {
     return output(queueArn).apply((queueArn) => {

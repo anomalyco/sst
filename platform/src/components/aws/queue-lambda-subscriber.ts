@@ -30,12 +30,7 @@ export interface Args extends QueueSubscriberArgs {
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
    */
-  transform?: QueueSubscriberArgs["transform"] & {
-    /**
-     * Transform the subscriber Function resource.
-     */
-    function?: Transform<FunctionArgs>;
-  };
+  transform?: QueueSubscriberArgs["transform"];
 }
 
 /**

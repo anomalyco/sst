@@ -9,7 +9,8 @@ import { Queue } from "./queue.js";
 import { dynamodb, getRegionOutput, lambda } from "@pulumi/aws";
 import { isALteB } from "../../util/compare-semver.js";
 import { Plan, SsrSite, SsrSiteArgs } from "./ssr-site.js";
-import { Bucket } from "./bucket.js";
+import { Bucket, BucketArgs } from "./bucket.js";
+import { CdnArgs } from "./cdn.js";
 import { transform, Transform } from "../component.js";
 
 const DEFAULT_OPEN_NEXT_VERSION = "3.9.8";
@@ -479,7 +480,23 @@ export interface NextjsArgs extends SsrSiteArgs {
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
    */
-  transform?: SsrSiteArgs["transform"] & {
+  transform?: {
+    /**
+     * Transform the Bucket resource used for uploading the assets.
+     */
+    assets?: Transform<BucketArgs>;
+    /**
+     * Transform the server Function resource.
+     */
+    server?: Transform<FunctionArgs>;
+    /**
+     * Transform the image optimizer Function resource.
+     */
+    imageOptimizer?: Transform<FunctionArgs>;
+    /**
+     * Transform the CloudFront CDN resource.
+     */
+    cdn?: Transform<CdnArgs>;
     /**
      * Transform the revalidation seeder Function resource used for ISR.
      */
