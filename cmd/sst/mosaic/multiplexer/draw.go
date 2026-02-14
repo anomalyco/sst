@@ -137,6 +137,9 @@ func (s *Multiplexer) sort() {
 	}
 	key := s.selectedProcess().key
 	sort.Slice(s.processes, func(i, j int) bool {
+		if !s.processes[i].killable && s.processes[j].killable {
+			return true
+		}
 		if s.processes[i].killable && !s.processes[j].killable {
 			return false
 		}
