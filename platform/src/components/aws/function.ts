@@ -2509,6 +2509,17 @@ export class Function extends Component implements Link.Linkable {
           },
           { parent },
         );
+        if (url.authorization !== "iam") {
+          new lambda.Permission(
+            `${name}InvokeFunction`,
+            {
+              action: "lambda:InvokeFunction",
+              function: fn.name,
+              principal: "*",
+            },
+            { parent },
+          );
+        }
         if (!url.route) return fnUrl.functionUrl;
 
         // add router route
