@@ -2509,7 +2509,7 @@ export class Function extends Component implements Link.Linkable {
           },
           { parent },
         );
-        if (url.authorization !== "iam") {
+        if (url.authorization === "none") {
           new lambda.Permission(
             `${name}InvokeFunction`,
             {
