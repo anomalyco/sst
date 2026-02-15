@@ -22,6 +22,10 @@ export default {
       name: "Jay",
       twitter: "https://x.com/jayair",
     },
+    "vimtor": {
+      name: "vimtor",
+      twitter: "https://x.com/vimtor",
+    },
   },
   email: "hello@sst.dev",
   sst: "https://sst.dev",
