@@ -1,0 +1,25 @@
+[project]
+name = "aws-agent-runtime-python"
+version = "0.1.0"
+description = "Python AI Agent with Strands and AWS Bedrock AgentCore Runtime"
+authors = [{ name = "SST Team" }]
+dependencies = [
+    "bedrock-agentcore",
+    "boto3",
+    "sst",
+    "strands-agents",
+    "strands-agents-tools",
+]
+
+# It is recommended to specify your python version to match your Docker base image otherwise you may
+# encounter issues with dependencies.
+requires-python = "==3.13.*"
+
+[tool.setuptools.packages.find]
+exclude = ["node_modules"]
+
+[tool.uv.workspace]
+members = ["agent"]
+
+[tool.uv.sources]
+sst = { git = "https://github.com/sst/sst.git", subdirectory = "sdk/python", branch = "dev" }

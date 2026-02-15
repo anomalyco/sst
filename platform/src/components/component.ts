@@ -103,6 +103,7 @@ export class Component extends ComponentResource {
               "aws:servicediscovery/privateDnsNamespace:PrivateDnsNamespace",
               "aws:servicediscovery/service:Service",
               // resources not prefixed
+              "pulumi:providers:aws-native",
               "pulumi-nodejs:dynamic:Resource",
               "random:index/randomId:RandomId",
               "random:index/randomPassword:RandomPassword",
@@ -155,6 +156,7 @@ export class Component extends ComponentResource {
               "aws:lambda/provisionedConcurrencyConfig:ProvisionedConcurrencyConfig",
               "aws:lb/listener:Listener",
               "aws:lb/listenerRule:ListenerRule",
+              "aws-native:bedrockagentcore:Runtime",
               "aws:opensearch/domainPolicy:DomainPolicy",
               "aws:rds/proxyDefaultTargetGroup:ProxyDefaultTargetGroup",
               "aws:rds/proxyTarget:ProxyTarget",
@@ -180,6 +182,7 @@ export class Component extends ComponentResource {
               "cloudflare:index/workersCronTrigger:WorkersCronTrigger",
               "cloudflare:index/workersCustomDomain:WorkersCustomDomain",
               "docker-build:index:Image",
+              "time:index/sleep:Sleep",
               "vercel:index/dnsRecord:DnsRecord",
             ].includes(args.type)
           )
