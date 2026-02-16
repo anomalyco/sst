@@ -18,9 +18,9 @@ export async function getStaticPaths() {
 export const GET: APIRoute = async ({ params }) => {
   const slug = params.slug!;
   const entry = await getEntry("docs", `docs/${slug}`);
-  if (!entry) return new Response("Not found", { status: 404 });
+  if (!entry?.body) return new Response("Not found", { status: 404 });
 
-  const cleaned = cleanMarkdown(entry.body!);
+  const cleaned = cleanMarkdown(entry.body);
   const markdown = `# ${entry.data.title}\n\n${entry.data.description || ""}\n\nSource: https://sst.dev/docs/${slug}\n\n---\n\n${cleaned}`;
 
   return new Response(markdown, {
