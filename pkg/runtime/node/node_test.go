@@ -20,7 +20,9 @@ func TestNodePropertiesUnmarshal(t *testing.T) {
 			"define": {"process.env.NODE_ENV": "\"production\""},
 			"banner": {"js": "// banner"},
 			"external": ["aws-sdk"],
-			"nodePaths": ["/custom/path"]
+			"nodePaths": ["/custom/path"],
+			"mainFields": ["main"],
+			"conditions": ["esbuild", "node"]
 		}
 	}`
 
@@ -50,6 +52,12 @@ func TestNodePropertiesUnmarshal(t *testing.T) {
 	if len(props.ESBuild.NodePaths) != 1 || props.ESBuild.NodePaths[0] != "/custom/path" {
 		t.Errorf("NodePaths = %v, want [/custom/path]", props.ESBuild.NodePaths)
 	}
+	if got := props.ESBuild.ResolveMainFields([]string{"module", "main"}); len(got) != 1 || got[0] != "main" {
+		t.Errorf("MainFields = %v, want [main]", got)
+	}
+	if got := props.ESBuild.ResolveConditions([]string{"workerd"}); len(got) != 2 || got[0] != "esbuild" || got[1] != "node" {
+		t.Errorf("Conditions = %v, want [esbuild node]", got)
+	}
 }
 
 func TestNodePropertiesUnmarshalBoolSourcemap(t *testing.T) {
@@ -75,6 +83,12 @@ func TestNodePropertiesUnmarshalEmpty(t *testing.T) {
 	}
 	if got := props.ESBuild.ResolveKeepNames(true); got != true {
 		t.Errorf("KeepNames = %v, want true fallback", got)
+	}
+	if got := props.ESBuild.ResolveMainFields([]string{"module", "main"}); len(got) != 2 {
+		t.Errorf("MainFields = %v, want fallback [module main]", got)
+	}
+	if got := props.ESBuild.ResolveConditions([]string{"workerd"}); len(got) != 1 || got[0] != "workerd" {
+		t.Errorf("Conditions = %v, want fallback [workerd]", got)
 	}
 }
 
@@ -150,6 +164,50 @@ func TestResolveKeepNames(t *testing.T) {
 			o := &ESBuildOptions{KeepNames: tt.keep}
 			if got := o.ResolveKeepNames(tt.fallback); got != tt.want {
 				t.Errorf("ResolveKeepNames() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveMainFields(t *testing.T) {
+	fallback := []string{"module", "main"}
+	tests := []struct {
+		name string
+		val  []string
+		want []string
+	}{
+		{"nil uses fallback", nil, fallback},
+		{"empty uses fallback", []string{}, fallback},
+		{"override", []string{"main"}, []string{"main"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			o := &ESBuildOptions{MainFields: tt.val}
+			got := o.ResolveMainFields(fallback)
+			if len(got) != len(tt.want) {
+				t.Errorf("ResolveMainFields() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveConditions(t *testing.T) {
+	fallback := []string{"workerd", "worker", "browser"}
+	tests := []struct {
+		name string
+		val  []string
+		want []string
+	}{
+		{"nil uses fallback", nil, fallback},
+		{"empty uses fallback", []string{}, fallback},
+		{"override", []string{"esbuild", "node"}, []string{"esbuild", "node"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			o := &ESBuildOptions{Conditions: tt.val}
+			got := o.ResolveConditions(fallback)
+			if len(got) != len(tt.want) {
+				t.Errorf("ResolveConditions() = %v, want %v", got, tt.want)
 			}
 		})
 	}

@@ -118,6 +118,8 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		"define", properties.ESBuild.Define,
 		"banner", properties.ESBuild.Banner,
 		"external", properties.ESBuild.External,
+		"mainFields", properties.ESBuild.MainFields,
+		"conditions", properties.ESBuild.Conditions,
 	)
 	options := esbuild.BuildOptions{
 		EntryPoints: []string{file},
@@ -134,7 +136,8 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		Write:       true,
 		Format:      esbuild.FormatESModule,
 		Target:      properties.ESBuild.ResolveTarget(targetMap[input.Runtime]),
-		MainFields:  []string{"module", "main"},
+		MainFields:  properties.ESBuild.ResolveMainFields([]string{"module", "main"}),
+		Conditions:  properties.ESBuild.ResolveConditions(nil),
 		Banner: map[string]string{
 			"js": strings.Join([]string{
 				`import { createRequire as topLevelCreateRequire } from 'module';`,
@@ -152,7 +155,7 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 	if !isESM {
 		options.Format = esbuild.FormatCommonJS
 		options.Banner["js"] = properties.Banner
-		options.MainFields = []string{"main"}
+		options.MainFields = properties.ESBuild.ResolveMainFields([]string{"main"})
 	}
 
 	if properties.Splitting {
@@ -181,6 +184,8 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		"sourcemap", options.Sourcemap,
 		"keepNames", options.KeepNames,
 		"define", options.Define,
+		"mainFields", options.MainFields,
+		"conditions", options.Conditions,
 	)
 	log.Info("running esbuild")
 	if !input.Dev {

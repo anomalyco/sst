@@ -126,13 +126,15 @@ type NodeProperties struct {
 }
 
 type ESBuildOptions struct {
-	Target    string            `json:"target"`
-	Sourcemap json.RawMessage   `json:"sourcemap"`
-	KeepNames *bool             `json:"keepNames"`
-	Define    map[string]string `json:"define"`
-	Banner    map[string]string `json:"banner"`
-	External  []string          `json:"external"`
-	NodePaths []string          `json:"nodePaths"`
+	Target     string            `json:"target"`
+	Sourcemap  json.RawMessage   `json:"sourcemap"`
+	KeepNames  *bool             `json:"keepNames"`
+	Define     map[string]string `json:"define"`
+	Banner     map[string]string `json:"banner"`
+	External   []string          `json:"external"`
+	NodePaths  []string          `json:"nodePaths"`
+	MainFields []string          `json:"mainFields"`
+	Conditions []string          `json:"conditions"`
 }
 
 
@@ -164,6 +166,20 @@ func (o *ESBuildOptions) ResolveSourcemap(fallback esbuild.SourceMap) esbuild.So
 func (o *ESBuildOptions) ResolveKeepNames(fallback bool) bool {
 	if o.KeepNames != nil {
 		return *o.KeepNames
+	}
+	return fallback
+}
+
+func (o *ESBuildOptions) ResolveMainFields(fallback []string) []string {
+	if len(o.MainFields) > 0 {
+		return o.MainFields
+	}
+	return fallback
+}
+
+func (o *ESBuildOptions) ResolveConditions(fallback []string) []string {
+	if len(o.Conditions) > 0 {
+		return o.Conditions
 	}
 	return fallback
 }

@@ -82,6 +82,8 @@ func (w *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		"define", build.ESBuild.Define,
 		"banner", build.ESBuild.Banner,
 		"external", build.ESBuild.External,
+		"mainFields", build.ESBuild.MainFields,
+		"conditions", build.ESBuild.Conditions,
 	)
 	options := esbuild.BuildOptions{
 		Platform: esbuild.PlatformNode,
@@ -101,7 +103,7 @@ func (w *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		Alias:             w.unenv.Alias,
 		Inject:            w.unenv.Polyfill,
 		External:          []string{"node:*", "cloudflare:workers"},
-		Conditions:        []string{"workerd", "worker", "browser"},
+		Conditions:        build.ESBuild.ResolveConditions([]string{"workerd", "worker", "browser"}),
 		Sourcemap:         build.ESBuild.ResolveSourcemap(esbuild.SourceMapNone),
 		Loader:            loader,
 		KeepNames:         build.ESBuild.ResolveKeepNames(true),
@@ -116,7 +118,7 @@ func (w *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		MinifyIdentifiers: build.Minify,
 		Target:            build.ESBuild.ResolveTarget(esbuild.ESNext),
 		Format:            esbuild.FormatESModule,
-		MainFields:        []string{"module", "main"},
+		MainFields:        build.ESBuild.ResolveMainFields([]string{"module", "main"}),
 		Banner: map[string]string{
 			"js": func() string {
 				defaultBanner := strings.Join([]string{
@@ -137,6 +139,8 @@ func (w *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		"sourcemap", options.Sourcemap,
 		"keepNames", options.KeepNames,
 		"define", options.Define,
+		"mainFields", options.MainFields,
+		"conditions", options.Conditions,
 	)
 	w.lock.RLock()
 	buildContext, ok := w.contexts[input.FunctionID]
