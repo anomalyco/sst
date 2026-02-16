@@ -795,12 +795,12 @@ export class Vpc extends Component implements Link.Linkable {
         if (nat) {
           if (nat.ec2 && nat.type === "managed")
             throw new VisibleError(
-              `"nat.type" cannot be "managed" when "nat.ec2" is specified`,
+              `The "nat.type" cannot be "managed" when "nat.ec2" is specified.`,
             );
 
-          if (!nat.type)
+          if (!nat.type && !nat.ec2)
             throw new VisibleError(
-              `Missing "nat.type" for the "${name}" VPC. It is required when "nat.ec2" is not specified`,
+              `Missing "nat.type" for the "${name}" VPC. It is required when "nat.ec2" is not specified.`,
             );
 
           if (nat.ip && nat.ip.length !== zones.length)
@@ -812,7 +812,11 @@ export class Vpc extends Component implements Link.Linkable {
             ? {
                 type: "ec2" as const,
                 ip: nat.ip,
-                ec2: nat.ec2 ?? { instance: "t4g.nano" },
+                ec2: {
+                  instance: nat.ec2?.instance ?? "t4g.nano",
+                  ami: nat.ec2?.ami,
+                  role: nat.ec2?.role,
+                },
               }
             : {
                 type: "managed" as const,
