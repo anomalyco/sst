@@ -1,9 +1,15 @@
 /// <reference path="./.sst/platform/config.d.ts" />
 
+/**
+ * ## AWS RDS MySQL public
+ *
+ * Create a publicly accessible MySQL RDS instance with a security group that
+ * allows external connections.
+ */
 export default $config({
   app(input) {
     return {
-      name: "aws-rds-instance-mysql-public-example",
+      name: "aws-rds-instance-mysql-public",
       removal: input?.stage === "production" ? "retain" : "remove",
       home: "aws",
     };
@@ -27,13 +33,14 @@ export default $config({
     );
 
     const identifier = 'my-db-instance';
-    const database: aws.rds.Instance = new aws.rds.Instance(
+
+    const database = new aws.rds.Instance(
       'MyDbInstanceMySQL',
       {
         identifier,
         engine: 'mysql',
         // free-tier
-        instanceClass: 'db.t3.micro', 
+        instanceClass: 'db.t3.micro',
         allocatedStorage: 20, // free-tier 20GB
         // credentials
         username: 'dev-user',

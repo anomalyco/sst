@@ -1,5 +1,11 @@
 /// <reference path="./.sst/platform/config.d.ts" />
 
+/**
+ * ## Monorepo
+ *
+ * Structure your app as a monorepo by importing infrastructure definitions from
+ * a separate file.
+ */
 export default $config({
   app(input) {
     return {

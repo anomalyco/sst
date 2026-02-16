@@ -1,5 +1,10 @@
 /// <reference path="./.sst/platform/config.d.ts" />
 
+/**
+ * ## FastAPI
+ *
+ * Deploy a Python FastAPI app as a Lambda function with a linked value.
+ */
 export default $config({
 	app(input) {
 		return {
