@@ -132,11 +132,9 @@ type ESBuildOptions struct {
 	Define     map[string]string `json:"define"`
 	Banner     map[string]string `json:"banner"`
 	External   []string          `json:"external"`
-	NodePaths  []string          `json:"nodePaths"`
 	MainFields []string          `json:"mainFields"`
 	Conditions []string          `json:"conditions"`
 }
-
 
 func (o *ESBuildOptions) ResolveTarget(fallback esbuild.Target) esbuild.Target {
 	if t, ok := esTargetMap[strings.ToLower(o.Target)]; ok {
@@ -157,8 +155,11 @@ func (o *ESBuildOptions) ResolveSourcemap(fallback esbuild.SourceMap) esbuild.So
 		return fallback
 	}
 	var b bool
-	if json.Unmarshal(o.Sourcemap, &b) == nil && b {
-		return esbuild.SourceMapLinked
+	if json.Unmarshal(o.Sourcemap, &b) == nil {
+		if b {
+			return esbuild.SourceMapLinked
+		}
+		return esbuild.SourceMapNone
 	}
 	return fallback
 }

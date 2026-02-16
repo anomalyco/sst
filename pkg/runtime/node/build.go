@@ -111,7 +111,7 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 	}
 	external := append(forceExternal, properties.Install...)
 	external = append(external, properties.ESBuild.External...)
-	slog.Info("esbuild options",
+	slog.Debug("esbuild options",
 		"target", properties.ESBuild.Target,
 		"sourcemap", strings.Trim(string(properties.ESBuild.Sourcemap), "\""),
 		"keepNames", properties.ESBuild.KeepNames != nil && *properties.ESBuild.KeepNames,
@@ -148,8 +148,7 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 				properties.Banner,
 			}, "\n"),
 		},
-		NodePaths: properties.ESBuild.NodePaths,
-		Define:    properties.ESBuild.Define,
+		Define: properties.ESBuild.Define,
 	}
 
 	if !isESM {
@@ -179,7 +178,7 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 
 	var result esbuild.BuildResult
 
-	slog.Info("esbuild resolved options",
+	slog.Debug("esbuild resolved options",
 		"target", options.Target,
 		"sourcemap", options.Sourcemap,
 		"keepNames", options.KeepNames,

@@ -17,7 +17,6 @@ import (
 	"github.com/sst/sst/v3/pkg/runtime/node"
 )
 
-
 type Runtime struct {
 	contexts map[string]esbuild.BuildContext
 	results  map[string]esbuild.BuildResult
@@ -75,7 +74,7 @@ func (w *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		loader[key] = mapped
 	}
 
-	slog.Info("esbuild options",
+	slog.Debug("esbuild options",
 		"target", build.ESBuild.Target,
 		"sourcemap", strings.Trim(string(build.ESBuild.Sourcemap), "\""),
 		"keepNames", build.ESBuild.KeepNames != nil && *build.ESBuild.KeepNames,
@@ -134,7 +133,7 @@ func (w *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		},
 	}
 
-	slog.Info("esbuild resolved options",
+	slog.Debug("esbuild resolved options",
 		"target", options.Target,
 		"sourcemap", options.Sourcemap,
 		"keepNames", options.KeepNames,
