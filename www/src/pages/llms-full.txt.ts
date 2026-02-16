@@ -1,6 +1,6 @@
 import { getCollection } from "astro:content";
 import type { APIRoute } from "astro";
-import { cleanMarkdown } from "../utils/markdown-clean";
+import { cleanMarkdown } from "../utils/markdown";
 
 export const GET: APIRoute = async () => {
   const docs = await getCollection("docs");
@@ -30,7 +30,7 @@ ${pages.join("\n\n---\n\n")}
   return new Response(body, {
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
-      "Cache-Control": "public, max-age=3600",
+      "Cache-Control": "public,max-age=0,s-maxage=86400,stale-while-revalidate=86400",
     },
   });
 };

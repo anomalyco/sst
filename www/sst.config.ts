@@ -185,6 +185,26 @@ export default $config({
               ],
             }
           : domain,
+      edge: {
+        viewerRequest: {
+          injection: [
+            `var uri = event.request.uri;`,
+            `var accept = (event.request.headers['accept'] || {}).value || '';`,
+            `if (uri.startsWith('/docs') && accept.includes('text/markdown') && !/\\.[a-z0-9]+$/i.test(uri)) {`,
+            `  event.request.uri = (uri === '/docs' || uri === '/docs/')`,
+            `    ? '/docs/index.md'`,
+            `    : uri.replace(/\\/$/, '') + '.md';`,
+            `}`,
+          ].join("\n"),
+        },
+        viewerResponse: {
+          injection: [
+            `if (event.request.uri.endsWith('.md')) {`,
+            `  event.response.headers['content-type'] = { value: 'text/markdown; charset=utf-8' };`,
+            `}`,
+          ].join("\n"),
+        },
+      },
       transform: {
         cdn: (args) => {
           args.origins = $output(args.origins).apply((origins) => [

@@ -1,6 +1,6 @@
 import { getEntry } from "astro:content";
 import type { APIRoute } from "astro";
-import { cleanMarkdown } from "../../utils/markdown-clean";
+import { cleanMarkdown } from "../../utils/markdown";
 
 export const GET: APIRoute = async () => {
   const entry = await getEntry("docs", "docs");
@@ -12,7 +12,7 @@ export const GET: APIRoute = async () => {
   return new Response(markdown, {
     headers: {
       "Content-Type": "text/markdown; charset=utf-8",
-      "Cache-Control": "public, max-age=3600",
+      "Cache-Control": "public,max-age=0,s-maxage=86400,stale-while-revalidate=86400",
     },
   });
 };
