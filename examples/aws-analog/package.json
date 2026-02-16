@@ -36,7 +36,7 @@
     "marked-mangle": "^1.1.7",
     "prismjs": "^1.29.0",
     "rxjs": "~7.8.0",
-    "sst": "latest",
+    "sst": "^3",
     "tslib": "^2.3.0",
     "zone.js": "~0.14.3"
   },

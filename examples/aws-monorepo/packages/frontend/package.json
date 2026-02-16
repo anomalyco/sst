@@ -8,6 +8,6 @@
   },
   "devDependencies": {
     "vite": "^5.2.8",
-    "sst": "0.1.17"
+    "sst": "^3"
   }
 }

@@ -14,6 +14,6 @@
   "license": "ISC",
   "dependencies": {
     "ioredis": "^5.4.1",
-    "sst": "latest"
+    "sst": "^3"
   }
 }

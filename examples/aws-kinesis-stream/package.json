@@ -13,7 +13,7 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "sst": "3.0.1-7"
+    "sst": "^3"
   },
   "dependencies": {
     "@aws-sdk/client-kinesis": "^3.598.0"

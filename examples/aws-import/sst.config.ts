@@ -1,5 +1,10 @@
 /// <reference path="./.sst/platform/config.d.ts" />
 
+/**
+ * ## Import existing resource
+ *
+ * Import an existing AWS resource using the `transform` option with `opts.import`.
+ */
 export default $config({
   app(input) {
     return {

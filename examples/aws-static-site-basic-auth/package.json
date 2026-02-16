@@ -10,6 +10,6 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "sst": "latest"
+    "sst": "^3"
   }
 }

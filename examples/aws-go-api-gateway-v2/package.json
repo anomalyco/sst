@@ -1,5 +1,5 @@
 {
-  "name": "sst-v3-go-api",
+  "name": "aws-go-api-gateway-v2",
   "module": "index.ts",
   "type": "module",
   "devDependencies": {
@@ -10,7 +10,7 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
-    "sst": "3.4.27"
+    "sst": "^3"
   },
   "scripts": {
     "dev": "bun sst dev"

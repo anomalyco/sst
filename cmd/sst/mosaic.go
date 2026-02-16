@@ -74,6 +74,8 @@ func CmdMosaic(c *cli.Cli) error {
 		var last *dev.EnvResponse
 		processExited := make(chan bool)
 		timeout := time.Minute * 50
+		timer := time.NewTimer(timeout)
+		defer timer.Stop()
 
 		for {
 			select {
@@ -82,12 +84,13 @@ func CmdMosaic(c *cli.Cli) error {
 			case <-processExited:
 				c.Cancel()
 				continue
-			case <-time.After(timeout):
+			case <-timer.C:
 				last = nil
 				go func() {
 					evts <- true
 				}()
 				fmt.Println("[timeout]")
+				timer.Reset(timeout)
 				continue
 			case _, ok := <-evts:
 				if !ok {
@@ -302,6 +305,7 @@ func CmdMosaic(c *cli.Cli) error {
 
 	if mode == "basic" {
 		wg.Go(func() error {
+			<-server.Ready
 			return CmdUI(c)
 		})
 	}

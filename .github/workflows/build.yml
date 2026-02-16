@@ -26,13 +26,6 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Setup npm auth
-        run: |
-          npm config set //registry.npmjs.org/:_authToken $NODE_AUTH_TOKEN
-          npm whoami
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
       - name: Fetch tags
         run: git fetch --force --tags
 

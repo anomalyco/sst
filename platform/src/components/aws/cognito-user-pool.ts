@@ -406,6 +406,10 @@ export interface CognitoUserPoolClientArgs {
    */
   providers?: Input<Input<string>[]>;
   /**
+   * List of allowed callback URLs for the identity providers.
+   */
+  callbackUrls?: Input<Input<string>[]>;
+  /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
    */

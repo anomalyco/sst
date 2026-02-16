@@ -1,5 +1,5 @@
 {
-  "name": "aws-api",
+  "name": "aws-apigv1",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
@@ -12,6 +12,6 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.540.0",
     "@aws-sdk/s3-request-presigner": "^3.540.0",
-    "sst": "^3.0.2"
+    "sst": "^3"
   }
 }

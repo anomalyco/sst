@@ -11,7 +11,7 @@
   "license": "ISC",
   "dependencies": {
     "@opensearch-project/opensearch": "^3.5.1",
-    "sst": "latest"
+    "sst": "^3"
   },
   "devDependencies": {
     "@types/aws-lambda": "8.10.145"

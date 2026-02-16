@@ -8,6 +8,6 @@
     ]
   },
   "devDependencies": {
-    "sst": "0.1.17"
+    "sst": "^3"
   }
 }

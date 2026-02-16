@@ -11,6 +11,6 @@
   "license": "ISC",
   "dependencies": {
     "postgres": "^3.4.5",
-    "sst": "latest"
+    "sst": "^3"
   }
 }

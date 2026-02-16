@@ -44,7 +44,7 @@
 export default $config({
   app(input) {
     return {
-      name: "aws-remix-remix",
+      name: "aws-remix-redis",
       removal: input?.stage === "production" ? "retain" : "remove",
       home: "aws",
     };

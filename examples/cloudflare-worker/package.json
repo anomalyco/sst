@@ -12,6 +12,6 @@
   "license": "ISC",
   "dependencies": {
     "@cloudflare/workers-types": "^4.20240403.0",
-    "sst": "latest"
+    "sst": "^3"
   }
 }

@@ -249,6 +249,13 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	}
 
 	env := os.Environ()
+	// Prepend SST's bin directory to PATH to ensure SST's Pulumi is used over system-installed versions
+	for i, e := range env {
+		if strings.HasPrefix(e, "PATH=") {
+			env[i] = "PATH=" + global.BinPath() + string(os.PathListSeparator) + strings.TrimPrefix(e, "PATH=")
+			break
+		}
+	}
 	for key, value := range p.Env() {
 		env = append(env, fmt.Sprintf("%v=%v", key, value))
 	}
@@ -334,6 +341,21 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 		}
 		if len(input.Target) > 0 {
 			args = append(args, "--target-dependents")
+		}
+	}
+
+	if input.Exclude != nil {
+		for _, item := range input.Exclude {
+			index := slices.IndexFunc(completed.Resources, func(res apitype.ResourceV3) bool {
+				return res.URN.Name() == item
+			})
+			if index == -1 {
+				return util.NewReadableError(nil, fmt.Sprintf("Exclude target not found: %v", item))
+			}
+			args = append(args, "--exclude", string(completed.Resources[index].URN))
+		}
+		if len(input.Exclude) > 0 {
+			args = append(args, "--exclude-dependents")
 		}
 	}
 

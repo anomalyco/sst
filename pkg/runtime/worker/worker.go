@@ -11,7 +11,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/evanw/esbuild/pkg/api"
 	esbuild "github.com/evanw/esbuild/pkg/api"
 	"github.com/sst/sst/v3/pkg/project/path"
 	"github.com/sst/sst/v3/pkg/runtime"
@@ -65,30 +64,26 @@ func (w *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 	slog.Info("loader info", "loader", build.Loader)
 
 	loader := map[string]esbuild.Loader{
-		".wasm": api.LoaderBinary,
+		".wasm": esbuild.LoaderBinary,
 	}
-	loaderMap := map[string]api.Loader{
-		"js":      api.LoaderJS,
-		"jsx":     api.LoaderJSX,
-		"ts":      api.LoaderTS,
-		"tsx":     api.LoaderTSX,
-		"css":     api.LoaderCSS,
-		"json":    api.LoaderJSON,
-		"text":    api.LoaderText,
-		"base64":  api.LoaderBase64,
-		"file":    api.LoaderFile,
-		"dataurl": api.LoaderDataURL,
-		"binary":  api.LoaderBinary,
-	}
-
 	for key, value := range build.Loader {
-		mapped, ok := loaderMap[value]
+		mapped, ok := node.LoaderMap[value]
 		if !ok {
 			continue
 		}
 		loader[key] = mapped
 	}
 
+	slog.Debug("esbuild options",
+		"target", build.ESBuild.Target,
+		"sourcemap", strings.Trim(string(build.ESBuild.Sourcemap), "\""),
+		"keepNames", build.ESBuild.KeepNames != nil && *build.ESBuild.KeepNames,
+		"define", build.ESBuild.Define,
+		"banner", build.ESBuild.Banner,
+		"external", build.ESBuild.External,
+		"mainFields", build.ESBuild.MainFields,
+		"conditions", build.ESBuild.Conditions,
+	)
 	options := esbuild.BuildOptions{
 		Platform: esbuild.PlatformNode,
 		Stdin: &esbuild.StdinOptions{
@@ -101,16 +96,16 @@ func (w *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 			ResolveDir: filepath.Dir(abs),
 			Loader:     esbuild.LoaderTS,
 		},
-		NodePaths: []string{
+		NodePaths: append([]string{
 			filepath.Join(path.ResolvePlatformDir(input.CfgPath), "node_modules"),
-		},
+		}, build.ESBuild.NodePaths...),
 		Alias:             w.unenv.Alias,
 		Inject:            w.unenv.Polyfill,
 		External:          []string{"node:*", "cloudflare:workers"},
-		Conditions:        []string{"workerd", "worker", "browser"},
-		Sourcemap:         esbuild.SourceMapNone,
+		Conditions:        build.ESBuild.ResolveConditions([]string{"workerd", "worker", "browser"}),
+		Sourcemap:         build.ESBuild.ResolveSourcemap(esbuild.SourceMapNone),
 		Loader:            loader,
-		KeepNames:         true,
+		KeepNames:         build.ESBuild.ResolveKeepNames(true),
 		Bundle:            true,
 		Define:            build.ESBuild.Define,
 		Splitting:         build.Splitting,
@@ -120,9 +115,9 @@ func (w *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		MinifyWhitespace:  build.Minify,
 		MinifySyntax:      build.Minify,
 		MinifyIdentifiers: build.Minify,
-		Target:            esbuild.ESNext,
+		Target:            build.ESBuild.ResolveTarget(esbuild.ESNext),
 		Format:            esbuild.FormatESModule,
-		MainFields:        []string{"module", "main"},
+		MainFields:        build.ESBuild.ResolveMainFields([]string{"module", "main"}),
 		Banner: map[string]string{
 			"js": func() string {
 				defaultBanner := strings.Join([]string{
@@ -138,6 +133,14 @@ func (w *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		},
 	}
 
+	slog.Debug("esbuild resolved options",
+		"target", options.Target,
+		"sourcemap", options.Sourcemap,
+		"keepNames", options.KeepNames,
+		"define", options.Define,
+		"mainFields", options.MainFields,
+		"conditions", options.Conditions,
+	)
 	w.lock.RLock()
 	buildContext, ok := w.contexts[input.FunctionID]
 	w.lock.RUnlock()
