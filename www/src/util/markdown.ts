@@ -22,6 +22,27 @@ export function cleanMarkdown(source: string): string {
       // Remove <div class="tsdoc"> and </div>
       .replace(/<div\s+class="tsdoc">/g, "")
       .replace(/^<\/div>\s*$/gm, "")
+      // Merge adjacent <code> tags into one (for type expressions like Input<string>)
+      .replace(/<\/code><code class="[^"]*">/g, "")
+      // Convert innermost <code class="...">content</code> → `content`
+      .replace(/<code class="[^"]*">([^<]*)<\/code>/g, "`$1`")
+      // Strip remaining outer <code class="..."> and </code> from nested structures
+      .replace(/<code class="[^"]*">/g, "")
+      // Convert plain <code>content</code> → `content`
+      .replace(/<code>([^<]*)<\/code>/g, "`$1`")
+      .replace(/<\/code>/g, "")
+      // Remove <p> and </p> wrapper tags
+      .replace(/<\/?p>/g, "")
+      // Decode common HTML entities
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&amp;/g, "&")
+      .replace(/&ldquo;/g, '"')
+      .replace(/&rdquo;/g, '"')
+      .replace(/&#123;/g, "{")
+      .replace(/&#125;/g, "}")
+      .replace(/&lcub;/g, "{")
+      .replace(/&rcub;/g, "}")
       // Convert <Tabs>/<TabItem> to labeled sections
       .replace(/<Tabs>/g, "")
       .replace(/<\/Tabs>/g, "")
