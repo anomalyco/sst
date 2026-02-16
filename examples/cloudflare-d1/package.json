@@ -2,7 +2,7 @@
   "name": "cloudflare-d1",
   "version": "0.0.0",
   "dependencies": {
-    "sst": "^3.0.4"
+    "sst": "^3"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240405.0"

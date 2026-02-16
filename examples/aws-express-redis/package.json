@@ -12,7 +12,7 @@
   "dependencies": {
     "express": "^4.21.0",
     "ioredis": "^5.4.1",
-    "sst": "3.1.65"
+    "sst": "^3"
   },
   "devDependencies": {
     "@types/aws-lambda": "8.10.145"

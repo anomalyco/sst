@@ -23,7 +23,7 @@
     "vite": "^7.1.7"
   },
   "dependencies": {
-    "sst": "latest",
+    "sst": "^3",
     "svelte-kit-sst": "latest"
   }
 }

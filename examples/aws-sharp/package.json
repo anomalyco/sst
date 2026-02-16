@@ -11,7 +11,7 @@
   "license": "ISC",
   "dependencies": {
     "sharp": "^0.33.5",
-    "sst": "latest"
+    "sst": "^3"
   },
   "devDependencies": {
     "@types/aws-lambda": "8.10.145"

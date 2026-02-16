@@ -2,6 +2,6 @@
   "name": "hetzner",
   "version": "0.0.0",
   "dependencies": {
-    "sst": "^0.1.54"
+    "sst": "^3"
   }
 }

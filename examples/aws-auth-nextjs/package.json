@@ -14,7 +14,7 @@
     "next": "15.1.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "sst": "latest",
+    "sst": "^3",
     "valibot": "^1.0.0-beta.11"
   },
   "devDependencies": {

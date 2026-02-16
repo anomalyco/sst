@@ -22,7 +22,7 @@
   "type": "module",
   "dependencies": {
     "ioredis": "^5.4.1",
-    "sst": "latest",
+    "sst": "^3",
     "svelte-kit-sst": "2.43.5"
   }
 }

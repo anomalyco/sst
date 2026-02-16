@@ -10,10 +10,10 @@
   "license": "ISC",
   "devDependencies": {
     "@types/aws-lambda": "8.10.145",
-    "sst": "^3.0.80",
+    "sst": "^3",
     "sst-linux-x64": "^3.0.80"
   },
   "dependencies": {
-    "sst": "3.0.80"
+    "sst": "^3"
   }
 }

@@ -10,7 +10,7 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
-    "sst": "^3.4.27"
+    "sst": "^3"
   },
   "scripts": {
     "dev": "bun sst dev"

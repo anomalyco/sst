@@ -11,7 +11,7 @@
   "license": "ISC",
   "dependencies": {
     "hono": "^4.2.3",
-    "sst": "latest"
+    "sst": "^3"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240405.0"
