@@ -1,10 +1,5 @@
 /// <reference path="./.sst/platform/config.d.ts" />
 
-/**
- * ## Deno container
- *
- * Deploy a Deno app in a container with a linked S3 bucket.
- */
 export default $config({
   app(input) {
     return {
