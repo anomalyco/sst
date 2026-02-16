@@ -20,6 +20,7 @@ func TestNodePropertiesUnmarshal(t *testing.T) {
 			"define": {"process.env.NODE_ENV": "\"production\""},
 			"banner": {"js": "// banner"},
 			"external": ["aws-sdk"],
+			"nodePaths": ["/custom/path"],
 			"mainFields": ["main"],
 			"conditions": ["esbuild", "node"]
 		}
@@ -47,6 +48,9 @@ func TestNodePropertiesUnmarshal(t *testing.T) {
 	}
 	if len(props.ESBuild.External) != 1 || props.ESBuild.External[0] != "aws-sdk" {
 		t.Errorf("External = %v, want [aws-sdk]", props.ESBuild.External)
+	}
+	if len(props.ESBuild.NodePaths) != 1 || props.ESBuild.NodePaths[0] != "/custom/path" {
+		t.Errorf("NodePaths = %v, want [/custom/path]", props.ESBuild.NodePaths)
 	}
 	if got := props.ESBuild.ResolveMainFields([]string{"module", "main"}); len(got) != 1 || got[0] != "main" {
 		t.Errorf("MainFields = %v, want [main]", got)
@@ -95,6 +99,7 @@ func TestResolveSourcemap(t *testing.T) {
 		{"case insensitive", `"Linked"`, esbuild.SourceMapNone, esbuild.SourceMapLinked},
 		{"bool true", `true`, esbuild.SourceMapNone, esbuild.SourceMapLinked},
 		{"bool false disables", `false`, esbuild.SourceMapLinked, esbuild.SourceMapNone},
+		{"bool false ignores fallback", `false`, esbuild.SourceMapNone, esbuild.SourceMapNone},
 		{"unknown string uses fallback", `"bogus"`, esbuild.SourceMapLinked, esbuild.SourceMapLinked},
 	}
 	for _, tt := range tests {
@@ -184,6 +189,16 @@ func TestNodePropertiesUnmarshalBoolSourcemap(t *testing.T) {
 
 	if got := props.ESBuild.ResolveSourcemap(esbuild.SourceMapNone); got != esbuild.SourceMapLinked {
 		t.Errorf("Sourcemap with bool true = %v, want SourceMapLinked", got)
+	}
+}
+
+func TestNodePropertiesUnmarshalBoolSourcemapFalse(t *testing.T) {
+	payload := `{"esbuild": {"sourcemap": false}}`
+	var props NodeProperties
+	json.Unmarshal([]byte(payload), &props)
+
+	if got := props.ESBuild.ResolveSourcemap(esbuild.SourceMapLinked); got != esbuild.SourceMapNone {
+		t.Errorf("Sourcemap with bool false = %v, want SourceMapNone", got)
 	}
 }
 
