@@ -7,13 +7,14 @@ import { VisibleError } from "../error.js";
 import type { Input } from "../input.js";
 import { Queue } from "./queue.js";
 import { dynamodb, getRegionOutput, lambda } from "@pulumi/aws";
-import { isALteB } from "../../util/compare-semver.js";
+import { isALteB, isALtB } from "../../util/compare-semver.js";
 import { Plan, SsrSite, SsrSiteArgs } from "./ssr-site.js";
 import { Bucket, BucketArgs } from "./bucket.js";
 import { CdnArgs } from "./cdn.js";
 import { transform, Transform } from "../component.js";
 
-const DEFAULT_OPEN_NEXT_VERSION = "3.9.8";
+const DEFAULT_OPEN_NEXT_VERSION = "3.9.14";
+const DEFAULT_OPEN_NEXT_VERSION_NEXT14 = "3.6.6";
 
 type BaseFunction = {
   handler: string;
@@ -401,13 +402,15 @@ export interface NextjsArgs extends SsrSiteArgs {
    * Configure the [OpenNext](https://opennext.js.org) version used to build the Next.js app.
    *
    * :::note
-   * This does not automatically update to the latest OpenNext version. It remains pinned to the version of SST you have.
+   * The default OpenNext version is auto-detected based on your Next.js version and pinned to the version of SST you have.
    * :::
    *
-   * By default, this is pinned to the version of OpenNext that was released with the SST version you are using. You can [find this in the source](https://github.com/sst/sst/blob/dev/platform/src/components/aws/nextjs.ts#L30) under `DEFAULT_OPEN_NEXT_VERSION`.
+   * By default, SST auto-detects the Next.js version from your `package.json` and picks a compatible OpenNext version. For Next.js 15+, it uses `3.9.14`. For Next.js 14, it uses `3.6.6` since newer versions of OpenNext dropped Next.js 14 support. If set, this overrides the auto-detection.
+   *
+   * You can [find the defaults in the source](https://github.com/sst/sst/blob/dev/platform/src/components/aws/nextjs.ts#L30) under `DEFAULT_OPEN_NEXT_VERSION`.
    * OpenNext changed its package name from `open-next` to `@opennextjs/aws` in version `3.1.4`. SST will choose the correct one based on the version you provide.
    *
-   * @default The latest version of OpenNext pinned to the version of SST you are using.
+   * @default Auto-detected based on your Next.js version.
    * @example
    * ```js
    * {
@@ -592,10 +595,26 @@ export class Nextjs extends SsrSite {
   }
 
   protected normalizeBuildCommand(args: NextjsArgs) {
-    return all([args?.buildCommand, args?.openNextVersion]).apply(
-      ([buildCommand, openNextVersion]) => {
+    return all([args?.buildCommand, args?.openNextVersion, args?.path]).apply(
+      ([buildCommand, openNextVersion, sitePath]) => {
         if (buildCommand) return buildCommand;
-        const version = openNextVersion ?? DEFAULT_OPEN_NEXT_VERSION;
+
+        function detectDefaultOpenNextVersion() {
+          try {
+            const pkgPath = path.join(sitePath ?? ".", "package.json");
+            const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+            const nextVersion =
+              pkg.dependencies?.next ?? pkg.devDependencies?.next;
+            if (nextVersion && isALtB(nextVersion, "15.0.0")) {
+              return DEFAULT_OPEN_NEXT_VERSION_NEXT14;
+            }
+          } catch {
+            console.warn(`Failed to detect Next.js version. Using OpenNext v${DEFAULT_OPEN_NEXT_VERSION} as default.`);
+          }
+          return DEFAULT_OPEN_NEXT_VERSION;
+        }
+
+        const version = openNextVersion ?? detectDefaultOpenNextVersion();
         const packageName = isALteB(version, "3.1.3")
           ? "open-next"
           : "@opennextjs/aws";
