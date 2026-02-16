@@ -56,38 +56,6 @@ func TestNodePropertiesUnmarshal(t *testing.T) {
 	}
 }
 
-func TestNodePropertiesUnmarshalBoolSourcemap(t *testing.T) {
-	payload := `{"esbuild": {"sourcemap": true}}`
-	var props NodeProperties
-	json.Unmarshal([]byte(payload), &props)
-
-	if got := props.ESBuild.ResolveSourcemap(esbuild.SourceMapNone); got != esbuild.SourceMapLinked {
-		t.Errorf("Sourcemap with bool true = %v, want SourceMapLinked", got)
-	}
-}
-
-func TestNodePropertiesUnmarshalEmpty(t *testing.T) {
-	payload := `{}`
-	var props NodeProperties
-	json.Unmarshal([]byte(payload), &props)
-
-	if got := props.ESBuild.ResolveTarget(esbuild.ESNext); got != esbuild.ESNext {
-		t.Errorf("Target = %v, want ESNext fallback", got)
-	}
-	if got := props.ESBuild.ResolveSourcemap(esbuild.SourceMapLinked); got != esbuild.SourceMapLinked {
-		t.Errorf("Sourcemap = %v, want SourceMapLinked fallback", got)
-	}
-	if got := props.ESBuild.ResolveKeepNames(true); got != true {
-		t.Errorf("KeepNames = %v, want true fallback", got)
-	}
-	if got := props.ESBuild.ResolveMainFields([]string{"module", "main"}); len(got) != 2 {
-		t.Errorf("MainFields = %v, want fallback [module main]", got)
-	}
-	if got := props.ESBuild.ResolveConditions([]string{"workerd"}); len(got) != 1 || got[0] != "workerd" {
-		t.Errorf("Conditions = %v, want fallback [workerd]", got)
-	}
-}
-
 func TestResolveTarget(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -206,5 +174,37 @@ func TestResolveConditions(t *testing.T) {
 				t.Errorf("ResolveConditions() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestNodePropertiesUnmarshalBoolSourcemap(t *testing.T) {
+	payload := `{"esbuild": {"sourcemap": true}}`
+	var props NodeProperties
+	json.Unmarshal([]byte(payload), &props)
+
+	if got := props.ESBuild.ResolveSourcemap(esbuild.SourceMapNone); got != esbuild.SourceMapLinked {
+		t.Errorf("Sourcemap with bool true = %v, want SourceMapLinked", got)
+	}
+}
+
+func TestNodePropertiesUnmarshalEmpty(t *testing.T) {
+	payload := `{}`
+	var props NodeProperties
+	json.Unmarshal([]byte(payload), &props)
+
+	if got := props.ESBuild.ResolveTarget(esbuild.ESNext); got != esbuild.ESNext {
+		t.Errorf("Target = %v, want ESNext fallback", got)
+	}
+	if got := props.ESBuild.ResolveSourcemap(esbuild.SourceMapLinked); got != esbuild.SourceMapLinked {
+		t.Errorf("Sourcemap = %v, want SourceMapLinked fallback", got)
+	}
+	if got := props.ESBuild.ResolveKeepNames(true); got != true {
+		t.Errorf("KeepNames = %v, want true fallback", got)
+	}
+	if got := props.ESBuild.ResolveMainFields([]string{"module", "main"}); len(got) != 2 {
+		t.Errorf("MainFields = %v, want fallback [module main]", got)
+	}
+	if got := props.ESBuild.ResolveConditions([]string{"workerd"}); len(got) != 1 || got[0] != "workerd" {
+		t.Errorf("Conditions = %v, want fallback [workerd]", got)
 	}
 }
