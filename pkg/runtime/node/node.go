@@ -135,6 +135,7 @@ type ESBuildOptions struct {
 	NodePaths []string          `json:"nodePaths"`
 }
 
+
 func (o *ESBuildOptions) ResolveTarget(fallback esbuild.Target) esbuild.Target {
 	if t, ok := esTargetMap[strings.ToLower(o.Target)]; ok {
 		return t

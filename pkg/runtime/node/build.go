@@ -111,6 +111,14 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 	}
 	external := append(forceExternal, properties.Install...)
 	external = append(external, properties.ESBuild.External...)
+	slog.Info("esbuild options",
+		"target", properties.ESBuild.Target,
+		"sourcemap", strings.Trim(string(properties.ESBuild.Sourcemap), "\""),
+		"keepNames", properties.ESBuild.KeepNames != nil && *properties.ESBuild.KeepNames,
+		"define", properties.ESBuild.Define,
+		"banner", properties.ESBuild.Banner,
+		"external", properties.ESBuild.External,
+	)
 	options := esbuild.BuildOptions{
 		EntryPoints: []string{file},
 		Platform:    esbuild.PlatformNode,
@@ -168,6 +176,12 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 
 	var result esbuild.BuildResult
 
+	slog.Info("esbuild resolved options",
+		"target", options.Target,
+		"sourcemap", options.Sourcemap,
+		"keepNames", options.KeepNames,
+		"define", options.Define,
+	)
 	log.Info("running esbuild")
 	if !input.Dev {
 		context, _ := esbuild.Context(options)

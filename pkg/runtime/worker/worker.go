@@ -75,6 +75,14 @@ func (w *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		loader[key] = mapped
 	}
 
+	slog.Info("esbuild options",
+		"target", build.ESBuild.Target,
+		"sourcemap", strings.Trim(string(build.ESBuild.Sourcemap), "\""),
+		"keepNames", build.ESBuild.KeepNames != nil && *build.ESBuild.KeepNames,
+		"define", build.ESBuild.Define,
+		"banner", build.ESBuild.Banner,
+		"external", build.ESBuild.External,
+	)
 	options := esbuild.BuildOptions{
 		Platform: esbuild.PlatformNode,
 		Stdin: &esbuild.StdinOptions{
@@ -124,6 +132,12 @@ func (w *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		},
 	}
 
+	slog.Info("esbuild resolved options",
+		"target", options.Target,
+		"sourcemap", options.Sourcemap,
+		"keepNames", options.KeepNames,
+		"define", options.Define,
+	)
 	w.lock.RLock()
 	buildContext, ok := w.contexts[input.FunctionID]
 	w.lock.RUnlock()
