@@ -7,7 +7,15 @@ export const GET: APIRoute = async () => {
   if (!entry?.body) return new Response("Not found", { status: 404 });
 
   const cleaned = cleanMarkdown(entry.body);
-  const markdown = `# ${entry.data.title}\n\n${entry.data.description || ""}\n\nSource: https://sst.dev/docs\n\n---\n\n${cleaned}`;
+  const markdown = `# ${entry.data.title}
+
+${entry.data.description || ""}
+
+Source: https://sst.dev/docs
+
+---
+
+${cleaned}`;
 
   return new Response(markdown, {
     headers: {
