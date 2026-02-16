@@ -67,6 +67,7 @@ try {
   }
   console.log(nextPkg);
   await Bun.write("package.json", JSON.stringify(nextPkg, null, 2));
+  await fs.cp("../../README.md", "README.md");
   await $`npm publish --access public --tag ${tag}`;
   if (!snapshot)
     await $`npm dist-tag add ${nextPkg.name}@${nextPkg.version} ion`;
