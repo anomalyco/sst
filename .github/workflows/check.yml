@@ -42,9 +42,6 @@ jobs:
       - name: Download Go modules
         run: go mod download
 
-      - name: Go tests
-        run: go test ./...
-
       - name: TypeScript check
         run: cd platform && bun tsc --noEmit
 
@@ -52,6 +49,9 @@ jobs:
         run: ./platform/scripts/build
         env:
           DOCKER_PUSH: false
+
+      - name: Go tests
+        run: go test ./...
 
       - name: Build CLI
         run: go build -o sst ./cmd/sst
