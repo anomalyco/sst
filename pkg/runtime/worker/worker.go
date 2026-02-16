@@ -11,12 +11,12 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/evanw/esbuild/pkg/api"
 	esbuild "github.com/evanw/esbuild/pkg/api"
 	"github.com/sst/sst/v3/pkg/project/path"
 	"github.com/sst/sst/v3/pkg/runtime"
 	"github.com/sst/sst/v3/pkg/runtime/node"
 )
+
 
 type Runtime struct {
 	contexts map[string]esbuild.BuildContext
@@ -65,24 +65,10 @@ func (w *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 	slog.Info("loader info", "loader", build.Loader)
 
 	loader := map[string]esbuild.Loader{
-		".wasm": api.LoaderBinary,
+		".wasm": esbuild.LoaderBinary,
 	}
-	loaderMap := map[string]api.Loader{
-		"js":      api.LoaderJS,
-		"jsx":     api.LoaderJSX,
-		"ts":      api.LoaderTS,
-		"tsx":     api.LoaderTSX,
-		"css":     api.LoaderCSS,
-		"json":    api.LoaderJSON,
-		"text":    api.LoaderText,
-		"base64":  api.LoaderBase64,
-		"file":    api.LoaderFile,
-		"dataurl": api.LoaderDataURL,
-		"binary":  api.LoaderBinary,
-	}
-
 	for key, value := range build.Loader {
-		mapped, ok := loaderMap[value]
+		mapped, ok := node.LoaderMap[value]
 		if !ok {
 			continue
 		}
@@ -108,9 +94,9 @@ func (w *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		Inject:            w.unenv.Polyfill,
 		External:          []string{"node:*", "cloudflare:workers"},
 		Conditions:        []string{"workerd", "worker", "browser"},
-		Sourcemap:         esbuild.SourceMapNone,
+		Sourcemap:         build.ESBuild.ResolveSourcemap(esbuild.SourceMapNone),
 		Loader:            loader,
-		KeepNames:         true,
+		KeepNames:         build.ESBuild.ResolveKeepNames(true),
 		Bundle:            true,
 		Define:            build.ESBuild.Define,
 		Splitting:         build.Splitting,
@@ -120,7 +106,7 @@ func (w *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		MinifyWhitespace:  build.Minify,
 		MinifySyntax:      build.Minify,
 		MinifyIdentifiers: build.Minify,
-		Target:            esbuild.ESNext,
+		Target:            build.ESBuild.ResolveTarget(esbuild.ESNext),
 		Format:            esbuild.FormatESModule,
 		MainFields:        []string{"module", "main"},
 		Banner: map[string]string{

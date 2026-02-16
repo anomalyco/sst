@@ -10,7 +10,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/evanw/esbuild/pkg/api"
 	esbuild "github.com/evanw/esbuild/pkg/api"
 	"github.com/sst/sst/v3/internal/fs"
 	"github.com/sst/sst/v3/pkg/js"
@@ -58,7 +57,7 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 
 	loader := map[string]esbuild.Loader{}
 	for key, value := range properties.Loader {
-		mapped, ok := loaderMap[value]
+		mapped, ok := LoaderMap[value]
 		if !ok {
 			continue
 		}
@@ -70,10 +69,10 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 			Name: "sst-version-check",
 			Setup: func(build esbuild.PluginBuild) {
 				skipResolve := struct{}{}
-				build.OnResolve(api.OnResolveOptions{Filter: `^sst$`}, func(args api.OnResolveArgs) (api.OnResolveResult, error) {
+				build.OnResolve(esbuild.OnResolveOptions{Filter: `^sst$`}, func(args esbuild.OnResolveArgs) (esbuild.OnResolveResult, error) {
 					// avoid recursion
 					if args.PluginData == skipResolve {
-						return api.OnResolveResult{}, nil
+						return esbuild.OnResolveResult{}, nil
 					}
 					pkg := build.Resolve("sst", esbuild.ResolveOptions{
 						ResolveDir: args.ResolveDir,
@@ -87,22 +86,22 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 					if pkg.Path != "" {
 						path, err := fs.FindUp(pkg.Path, "package.json")
 						if err != nil {
-							return api.OnResolveResult{}, err
+							return esbuild.OnResolveResult{}, err
 						}
 						var pkgjson js.PackageJson
 						data, err := os.Open(path)
 						if err != nil {
-							return api.OnResolveResult{}, err
+							return esbuild.OnResolveResult{}, err
 						}
 						err = json.NewDecoder(data).Decode(&pkgjson)
 						if err != nil {
-							return api.OnResolveResult{}, err
+							return esbuild.OnResolveResult{}, err
 						}
 						if r.version != "dev" && pkgjson.Version != r.version {
-							return api.OnResolveResult{}, fmt.Errorf("The sst package your application is importing (%v) does not match the sst cli version (%v). Make sure the version of sst in package.json is correct across your entire repo.", pkgjson.Version, r.version)
+							return esbuild.OnResolveResult{}, fmt.Errorf("The sst package your application is importing (%v) does not match the sst cli version (%v). Make sure the version of sst in package.json is correct across your entire repo.", pkgjson.Version, r.version)
 						}
 					}
-					return api.OnResolveResult{Path: pkg.Path}, nil
+					return esbuild.OnResolveResult{Path: pkg.Path}, nil
 				})
 			},
 		},
@@ -117,16 +116,16 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		Platform:    esbuild.PlatformNode,
 		External:    external,
 		Loader:      loader,
-		KeepNames:   true,
+		KeepNames:   properties.ESBuild.ResolveKeepNames(true),
 		Bundle:      true,
 		Splitting:   properties.Splitting,
 		Metafile:    true,
 		Outfile:     target,
 		Plugins:     plugins,
-		Sourcemap:   esbuild.SourceMapLinked,
+		Sourcemap:   properties.ESBuild.ResolveSourcemap(esbuild.SourceMapLinked),
 		Write:       true,
 		Format:      esbuild.FormatESModule,
-		Target:      targetMap[input.Runtime],
+		Target:      properties.ESBuild.ResolveTarget(targetMap[input.Runtime]),
 		MainFields:  []string{"module", "main"},
 		Banner: map[string]string{
 			"js": strings.Join([]string{
@@ -144,13 +143,8 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 
 	if !isESM {
 		options.Format = esbuild.FormatCommonJS
-		options.Target = targetMap[input.Runtime]
 		options.Banner["js"] = properties.Banner
 		options.MainFields = []string{"main"}
-	}
-
-	if properties.ESBuild.Target != 0 {
-		options.Target = properties.ESBuild.Target
 	}
 
 	if properties.Splitting {
@@ -170,10 +164,6 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		if properties.SourceMap != nil && *properties.SourceMap == false {
 			options.Sourcemap = esbuild.SourceMapLinked
 		}
-	}
-
-	if properties.ESBuild.Target != 0 {
-		options.Target = properties.ESBuild.Target
 	}
 
 	var result esbuild.BuildResult
