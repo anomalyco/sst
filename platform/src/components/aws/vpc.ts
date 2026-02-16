@@ -1270,53 +1270,53 @@ export class Vpc extends Component implements Link.Linkable {
             ),
           );
 
-          const instanceProfile = bastion.instanceProfileName
-            ? (() => {
-                if (
-                  typeof bastion.instanceProfileName === "string" &&
-                  bastion.instanceProfileName.startsWith("arn:")
-                ) {
-                  throw new VisibleError(
-                    "Bastion instance profile must be a name, not an ARN.",
-                  );
-                }
-
-                return iam.InstanceProfile.get(
-                  `${name}BastionProfile`,
-                  bastion.instanceProfileName,
-                  {},
-                  { parent: self },
+          const instanceProfile = output(
+            bastion.instanceProfileName,
+          ).apply((instanceProfileName) => {
+            if (instanceProfileName) {
+              if (instanceProfileName.startsWith("arn:")) {
+                throw new VisibleError(
+                  "Bastion instance profile must be a name, not an ARN.",
                 );
-              })()
-            : (() => {
-                const role = new iam.Role(
-                  `${name}BastionRole`,
-                  {
-                    assumeRolePolicy: iam.getPolicyDocumentOutput({
-                      statements: [
+              }
+
+              return iam.InstanceProfile.get(
+                `${name}BastionProfile`,
+                instanceProfileName,
+                {},
+                { parent: self },
+              );
+            }
+
+            const role = new iam.Role(
+              `${name}BastionRole`,
+              {
+                assumeRolePolicy: iam.getPolicyDocumentOutput({
+                  statements: [
+                    {
+                      actions: ["sts:AssumeRole"],
+                      principals: [
                         {
-                          actions: ["sts:AssumeRole"],
-                          principals: [
-                            {
-                              type: "Service",
-                              identifiers: ["ec2.amazonaws.com"],
-                            },
-                          ],
+                          type: "Service",
+                          identifiers: ["ec2.amazonaws.com"],
                         },
                       ],
-                    }).json,
-                    managedPolicyArns: [
-                      interpolate`arn:${partition}:iam::aws:policy/AmazonSSMManagedInstanceCore`,
-                    ],
-                  },
-                  { parent: self },
-                );
-                return new iam.InstanceProfile(
-                  `${name}BastionProfile`,
-                  { role: role.name },
-                  { parent: self },
-                );
-              })();
+                    },
+                  ],
+                }).json,
+                managedPolicyArns: [
+                  interpolate`arn:${partition}:iam::aws:policy/AmazonSSMManagedInstanceCore`,
+                ],
+              },
+              { parent: self },
+            );
+
+            return new iam.InstanceProfile(
+              `${name}BastionProfile`,
+              { role: role.name },
+              { parent: self },
+            );
+          });
 
           const ami = ec2.getAmiOutput(
             {
@@ -1345,7 +1345,9 @@ export class Vpc extends Component implements Link.Linkable {
                 ami: ami.id,
                 subnetId: publicSubnets.apply((v) => v[0].id),
                 vpcSecurityGroupIds: [sg.id],
-                iamInstanceProfile: instanceProfile.name,
+                iamInstanceProfile: instanceProfile.apply(
+                  (ip) => ip.name,
+                ),
                 keyName: keyPair?.keyName,
                 tags: {
                   "sst:is-bastion": "true",
