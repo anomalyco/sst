@@ -1,6 +1,6 @@
 import { getEntry } from "astro:content";
 import type { APIRoute } from "astro";
-import { cleanMarkdown } from "../../utils/markdown";
+import { cleanMarkdown } from "../../util/markdown";
 
 export const GET: APIRoute = async () => {
   const entry = await getEntry("docs", "docs");

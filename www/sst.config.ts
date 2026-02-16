@@ -186,6 +186,7 @@ export default $config({
             }
           : domain,
       edge: {
+        // Rewrite /docs/* to .md when Accept: text/markdown (for AI agents)
         viewerRequest: {
           injection: [
             `var uri = event.request.uri;`,
@@ -197,6 +198,7 @@ export default $config({
             `}`,
           ].join("\n"),
         },
+        // Fix Content-Type on .md responses (S3 serves them as octet-stream)
         viewerResponse: {
           injection: [
             `if (event.request.uri.endsWith('.md')) {`,
