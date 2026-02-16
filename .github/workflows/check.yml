@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  check:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -42,7 +42,7 @@ jobs:
       - name: Download Go modules
         run: go mod download
 
-      - name: TypeScript check
+      - name: Check types
         run: cd platform && bun tsc --noEmit
 
       - name: Build platform
@@ -50,11 +50,11 @@ jobs:
         env:
           DOCKER_PUSH: false
 
-      - name: Go tests
+      - name: Run Go tests
         run: go test ./...
 
       - name: Build CLI
         run: go build -o sst ./cmd/sst
 
-      - name: Build docs site
+      - name: Build docs
         run: cd www && bun run build
