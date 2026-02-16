@@ -39,7 +39,7 @@
     "acorn-walk": "8.3.2",
     "archiver": "6.0.1",
     "aws4fetch": "1.0.18",
-    "esbuild": "0.20.2",
+    "esbuild": "0.21.5",
     "glob": "10.3.10",
     "prettier": "3.1.1",
     "ts-node": "^10.9.2",

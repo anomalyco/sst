@@ -8,6 +8,7 @@ export type EsbuildOptions = Pick<
   | "define"
   | "banner"
   | "external"
+  | "inject"
   | "nodePaths"
   | "mainFields"
   | "conditions"
