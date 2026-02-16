@@ -96,9 +96,9 @@ func (w *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 			ResolveDir: filepath.Dir(abs),
 			Loader:     esbuild.LoaderTS,
 		},
-		NodePaths: []string{
+		NodePaths: append([]string{
 			filepath.Join(path.ResolvePlatformDir(input.CfgPath), "node_modules"),
-		},
+		}, build.ESBuild.NodePaths...),
 		Alias:             w.unenv.Alias,
 		Inject:            w.unenv.Polyfill,
 		External:          []string{"node:*", "cloudflare:workers"},

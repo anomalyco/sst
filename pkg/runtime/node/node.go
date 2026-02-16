@@ -132,6 +132,7 @@ type ESBuildOptions struct {
 	Define     map[string]string `json:"define"`
 	Banner     map[string]string `json:"banner"`
 	External   []string          `json:"external"`
+	NodePaths  []string          `json:"nodePaths"`
 	MainFields []string          `json:"mainFields"`
 	Conditions []string          `json:"conditions"`
 }

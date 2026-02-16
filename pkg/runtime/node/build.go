@@ -148,7 +148,8 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 				properties.Banner,
 			}, "\n"),
 		},
-		Define: properties.ESBuild.Define,
+		NodePaths: properties.ESBuild.NodePaths,
+		Define:    properties.ESBuild.Define,
 	}
 
 	if !isESM {
