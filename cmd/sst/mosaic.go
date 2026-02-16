@@ -278,7 +278,7 @@ func CmdMosaic(c *cli.Cli) error {
 							}
 							multi.AddProcess(
 								d.Name,
-								append([]string{currentExecutable, "dev"}),
+								[]string{currentExecutable, "dev"},
 								"→",
 								title,
 								dir,

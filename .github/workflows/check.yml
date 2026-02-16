@@ -50,6 +50,9 @@ jobs:
         env:
           DOCKER_PUSH: false
 
+      - name: Go vet
+        run: go vet ./...
+
       - name: Run Go tests
         run: go test ./...
 
