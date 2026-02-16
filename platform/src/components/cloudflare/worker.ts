@@ -9,7 +9,8 @@ import {
   interpolate,
 } from "@pulumi/pulumi";
 import * as cf from "@pulumi/cloudflare";
-import type { Loader, BuildOptions } from "esbuild";
+import type { Loader } from "esbuild";
+import type { EsbuildOptions } from "../esbuild.js";
 import { Component, Transform, transform } from "../component";
 import { WorkerUrl } from "./providers/worker-url.js";
 import { Link } from "../link.js";
@@ -108,7 +109,7 @@ export interface WorkerArgs {
      * :::
      *
      */
-    esbuild?: Input<BuildOptions>;
+    esbuild?: Input<EsbuildOptions>;
     /**
      * Disable if the worker code should be minified when bundled.
      *

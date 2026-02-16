@@ -2,7 +2,8 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import archiver from "archiver";
-import type { BuildOptions, Loader } from "esbuild";
+import type { Loader } from "esbuild";
+import type { EsbuildOptions } from "../esbuild.js";
 import { glob } from "glob";
 import {
   all,
@@ -1011,7 +1012,7 @@ export interface FunctionArgs {
      * [`BuildOptions`](https://esbuild.github.io/api/#build).
      * :::
      */
-    esbuild?: Input<BuildOptions>;
+    esbuild?: Input<EsbuildOptions>;
     /**
      * Disable if the function code is minified when bundled.
      *
