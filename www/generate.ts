@@ -972,8 +972,12 @@ function renderType(
       return `[<code class="type">${type.name}</code>](${docLink}${docHash})`;
     }
 
-    // types in different doc
-    if (type.name === "Resource" || type.name === "Constructor") {
+    // types in different doc without their own doc page
+    if (
+      type.name === "Resource" ||
+      type.name === "Constructor" ||
+      type.name === "EsbuildOptions"
+    ) {
       return `<code class="type">${type.name}</code>`;
     }
 
