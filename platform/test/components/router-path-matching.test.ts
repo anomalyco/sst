@@ -16,6 +16,7 @@ describe("Router path matching", () => {
     return (
       requestUri.startsWith(routePath) &&
       (requestUri === routePath ||
+        routePath.endsWith("/") ||
         requestUri[routePath.length] === "/" ||
         routePath === "/")
     );
@@ -120,6 +121,17 @@ describe("Router path matching", () => {
       // /api-docs/intro should only match /api-docs
       expect(pathMatches("/api-docs/intro", "/api")).toBe(false);
       expect(pathMatches("/api-docs/intro", "/api-docs")).toBe(true);
+    });
+  });
+
+  describe("trailing-slash routes", () => {
+    it("should match subpaths under trailing-slash route", () => {
+      expect(pathMatches("/public/2025-11/image.jpg", "/public/")).toBe(true);
+      expect(pathMatches("/public/", "/public/")).toBe(true);
+    });
+
+    it("should NOT match non-segment continuations", () => {
+      expect(pathMatches("/publicfile", "/public/")).toBe(false);
     });
   });
 
