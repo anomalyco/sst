@@ -1,5 +1,5 @@
 {
-  "name": "app",
+  "name": "aws-tanstack-start",
   "private": true,
   "type": "module",
   "scripts": {

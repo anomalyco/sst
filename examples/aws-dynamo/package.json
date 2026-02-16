@@ -1,5 +1,5 @@
 {
-  "name": "queue",
+  "name": "aws-dynamo",
   "version": "1.0.0",
   "description": "",
   "type": "module",

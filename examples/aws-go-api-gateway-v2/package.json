@@ -1,5 +1,5 @@
 {
-  "name": "sst-v3-go-api",
+  "name": "aws-go-api-gateway-v2",
   "module": "index.ts",
   "type": "module",
   "devDependencies": {

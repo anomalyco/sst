@@ -8,7 +8,7 @@
 export default $config({
   app(input) {
     return {
-      name: "aws-rust-lambda",
+      name: "aws-rust-api",
       removal: input?.stage === "production" ? "retain" : "remove",
       protect: ["production"].includes(input?.stage),
       home: "aws",

@@ -1,5 +1,5 @@
 {
-  "name": "base-ts",
+  "name": "aws-zero",
   "version": "0.0.0",
   "dependencies": {
     "@rocicorp/zero": "^0.7.2024120400",

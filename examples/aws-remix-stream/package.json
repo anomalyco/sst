@@ -1,5 +1,5 @@
 {
-  "name": "sst-stream-test",
+  "name": "aws-remix-stream",
   "private": true,
   "sideEffects": false,
   "type": "module",

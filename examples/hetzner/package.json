@@ -1,5 +1,5 @@
 {
-  "name": "base-ts",
+  "name": "hetzner",
   "version": "0.0.0",
   "dependencies": {
     "sst": "^0.1.54"

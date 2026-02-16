@@ -1,5 +1,5 @@
 {
-  "name": "aws-drizzle",
+  "name": "aws-drizzle-migrations",
   "version": "0.0.0",
   "type": "module",
   "scripts": {

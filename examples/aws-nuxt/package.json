@@ -1,5 +1,5 @@
 {
-  "name": "nuxt-app",
+  "name": "aws-nuxt",
   "private": true,
   "type": "module",
   "scripts": {

@@ -1,5 +1,5 @@
 {
-  "name": "aws-hono-container",
+  "name": "aws-hono-redis",
   "type": "module",
   "scripts": {
     "build": "tsc",

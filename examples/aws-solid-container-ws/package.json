@@ -1,5 +1,5 @@
 {
-  "name": "example-basic",
+  "name": "aws-solid-container-ws",
   "type": "module",
   "scripts": {
     "build": "vinxi build",

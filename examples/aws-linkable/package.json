@@ -1,5 +1,5 @@
 {
-  "name": "base-ts",
+  "name": "aws-linkable",
   "version": "0.0.0",
   "dependencies": {
     "sst": "^3.0.4"

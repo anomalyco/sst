@@ -1,5 +1,5 @@
 {
-  "name": "sst-go-lambda-dynamo",
+  "name": "aws-go-lambda-dynamo",
   "module": "index.ts",
   "type": "module",
   "devDependencies": {

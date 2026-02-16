@@ -1,5 +1,5 @@
 {
-  "name": "example-basic",
+  "name": "aws-solid",
   "type": "module",
   "scripts": {
     "build": "vinxi build",

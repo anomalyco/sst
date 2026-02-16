@@ -1,5 +1,5 @@
 {
-  "name": "queue",
+  "name": "aws-queue",
   "version": "1.0.0",
   "description": "",
   "type": "module",
