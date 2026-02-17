@@ -363,8 +363,9 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	errors := []Error{}
 	finished := false
 	importDiffs := map[string][]ImportDiff{}
+	hasPolicyFlag := input.PolicyPath != ""
+	hasPolicyEvents := false
 	hasPolicyViolations := false
-	violations := []string{}
 
 	partial := make(chan int, 1000)
 	partialContext, partialCancel := context.WithCancel(ctx)
@@ -464,6 +465,7 @@ loop:
 		}
 
 		if event.PolicyEvent != nil {
+			hasPolicyEvents = true
 			message := fmt.Sprintf("Policy: %s\n%s",
 				event.PolicyEvent.PolicyName,
 				strings.TrimSpace(event.PolicyEvent.Message))
@@ -478,7 +480,6 @@ loop:
 					URN:     event.PolicyEvent.ResourceURN,
 				})
 				hasPolicyViolations = true
-				violations = append(violations, message)
 			} else if event.PolicyEvent.EnforcementLevel == "advisory" {
 				log.Info("policy advisory",
 					"policy", event.PolicyEvent.PolicyName,
@@ -486,7 +487,7 @@ loop:
 
 				bus.Publish(&PolicyAdvisoryEvent{
 					Policy:  event.PolicyEvent.PolicyName,
-					Message: message,
+					Message: strings.TrimSpace(event.PolicyEvent.Message),
 					URN:     event.PolicyEvent.ResourceURN,
 				})
 			}
@@ -615,20 +616,12 @@ loop:
 	log.Info("done running stack command", "resources", len(complete.Resources))
 
 	if cmd.ProcessState.ExitCode() > 0 {
-
-		for _, err := range errors {
-			msgLower := strings.ToLower(err.Message)
-			if strings.Contains(msgLower, "policy pack") ||
-				strings.Contains(msgLower, "failed to load policy") {
-				return ErrPolicyConfigError
-			}
-		}
-
 		if hasPolicyViolations {
-			log.Info("policy violations detected")
 			return ErrPolicyViolation
 		}
-
+		if hasPolicyFlag && !hasPolicyEvents {
+			return ErrPolicyConfigError
+		}
 		return ErrStackRunFailed
 	}
 	return nil

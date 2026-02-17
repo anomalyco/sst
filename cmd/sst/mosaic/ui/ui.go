@@ -219,8 +219,7 @@ func (u *UI) Event(unknown interface{}) {
 		}
 
 	case *project.PolicyAdvisoryEvent:
-		message := strings.ReplaceAll(evt.Message, "\n", " ")
-		u.printEvent(TEXT_WARNING, "Warning", u.FormatURN(evt.URN)+" "+message)
+		u.printEvent(TEXT_WARNING, "Warning", u.FormatURN(evt.URN)+" "+evt.Policy+": "+evt.Message)
 
 	case *project.StackCommandEvent:
 		u.reset()
