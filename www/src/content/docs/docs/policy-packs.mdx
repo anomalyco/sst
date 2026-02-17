@@ -1,0 +1,106 @@
+---
+title: Policy Packs
+description: Enforce compliance and security rules on your infrastructure before deploying.
+---
+
+Policy packs let you enforce rules on your infrastructure before deploying. They use [Pulumi Policy Packs](https://www.pulumi.com/docs/iac/packages-and-automation/crossguard/) under the hood, and work with the `sst deploy`, `sst diff` and `sst dev` commands.
+
+---
+
+## Quick start
+
+Say you want to require permission boundaries on all IAM roles. Start by creating a policy pack.
+
+```bash frame="none"
+mkdir policy-pack && cd policy-pack
+pulumi policy new aws-typescript
+```
+
+This creates a `PulumiPolicy.yaml`, `index.ts`, and `package.json`. Update the `index.ts` with your policy.
+
+```ts title="policy-pack/index.ts"
+import * as aws from "@pulumi/aws";
+import { PolicyPack, validateResourceOfType } from "@pulumi/policy";
+
+new PolicyPack("aws-policies", {
+  policies: [
+    {
+      name: "iam-role-requires-permission-boundary",
+      description: "IAM roles must have a permission boundary.",
+      enforcementLevel: "mandatory",
+      validateResource: validateResourceOfType(
+        aws.iam.Role,
+        (role, _args, reportViolation) => {
+          if (!role.permissionsBoundary) {
+            reportViolation(
+              "IAM roles must have a permission boundary."
+            );
+          }
+        }
+      ),
+    },
+  ],
+});
+```
+
+Then deploy with the `--policy` flag.
+
+```bash frame="none"
+sst deploy --policy ./policy-pack
+```
+
+If any resource violates a mandatory policy, the deploy is blocked.
+
+---
+
+## Enforcement levels
+
+Each policy has an `enforcementLevel` that controls what happens when a resource violates it.
+
+- **`mandatory`** — blocks the deploy. The resource must be fixed before it can be deployed.
+- **`advisory`** — prints a warning but allows the deploy to continue.
+
+```ts title="policy-pack/index.ts"
+{
+  name: "no-wildcard-resources",
+  description: "Avoid wildcard resources in IAM policies.",
+  enforcementLevel: "advisory",
+  validateResource: validateResourceOfType(
+    aws.iam.RolePolicy,
+    (policy, _args, reportViolation) => {
+      // ...
+    }
+  ),
+}
+```
+
+---
+
+## Writing a policy pack
+
+A policy pack is a directory with three files:
+
+- `PulumiPolicy.yaml` — metadata and runtime config
+- `index.ts` — your policies
+- `package.json` — dependencies
+
+The `PulumiPolicy.yaml` looks like this.
+
+```yaml title="policy-pack/PulumiPolicy.yaml"
+description: A minimal Policy Pack for AWS using TypeScript.
+runtime: nodejs
+main: dist/index.js
+```
+
+And the `package.json` needs the `@pulumi/policy` package, plus any provider packages your policies check against.
+
+```json title="policy-pack/package.json"
+{
+  "dependencies": {
+    "@pulumi/aws": "^6.0.0",
+    "@pulumi/policy": "^1.20.0"
+  }
+}
+```
+
+You can check the [full example on GitHub](https://github.com/sst/sst/tree/dev/examples/aws-policy-pack) and the [Pulumi Policy Pack docs](https://www.pulumi.com/docs/iac/packages-and-automation/crossguard/) for more details.

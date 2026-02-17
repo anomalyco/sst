@@ -12,9 +12,7 @@ new PolicyPack("iam-roles-policies", {
         (role, _args, reportViolation) => {
           if (!role.permissionsBoundary) {
             reportViolation(
-              "IAM roles must have a permission boundary. " +
-                "Permission boundaries are important for limiting the maximum permissions " +
-                "that can be granted to an IAM role.",
+              "Permission boundaries are important for limiting the maximum permissions that can be granted to an IAM role."
             );
           }
         },
@@ -38,8 +36,7 @@ new PolicyPack("iam-roles-policies", {
                   : [statement.Resource];
                 if (resources.includes("*")) {
                   reportViolation(
-                    "IAM role policies should not use wildcard (*) for resources. " +
-                      "Specify explicit resource ARNs to follow the principle of least privilege.",
+                    "IAM role policies should not use wildcard (*) for resources. Specify explicit resource ARNs to follow the principle of least privilege."
                   );
                   break;
                 }

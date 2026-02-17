@@ -70,6 +70,7 @@ const sidebar = [
       { label: "Share Across Stages", slug: "docs/share-across-stages" },
       { label: "Reference Resources", slug: "docs/reference-resources" },
       { label: "Environment Variables", slug: "docs/environment-variables" },
+      { label: "Policy Packs", slug: "docs/policy-packs" },
     ],
   },
   {
