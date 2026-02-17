@@ -9,11 +9,10 @@ export default $config({
     };
   },
   async run() {
-    const accountId = "ACCOUNT_ID_HERE";
-    const dbId = "DB_ID_HERE";
+    const db = $app.stage !== "production"
+      ? sst.cloudflare.D1.get("MyDatabase", "a928590c-34cc-49fd-b3cf-db643db54e9c")
+      : new sst.cloudflare.D1("MyDatabase");
 
-    const db = $app.stage === "giorgio" ? sst.cloudflare.D1.get("MyDatabase", accountId, dbId) : new sst.cloudflare.D1("MyDatabase");
-    
     const worker = new sst.cloudflare.Worker("Worker", {
       link: [db],
       url: true,
@@ -21,8 +20,7 @@ export default $config({
     });
 
     return {
-      dbId: db["database"].id,
-      dbName: db["database"].name,
+      dbId: db.databaseId,
       url: worker.url,
     };
   },

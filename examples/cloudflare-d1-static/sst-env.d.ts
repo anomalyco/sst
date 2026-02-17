@@ -8,6 +8,14 @@ declare module "sst" {
   export interface Resource {
   }
 }
+// cloudflare 
+import * as cloudflare from "@cloudflare/workers-types";
+declare module "sst" {
+  export interface Resource {
+    "MyDatabase": cloudflare.D1Database
+    "Worker": cloudflare.Service
+  }
+}
 
 import "sst"
 export {}

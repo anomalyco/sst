@@ -141,7 +141,9 @@ export class D1 extends Component implements Link.Linkable {
    * The generated ID of the D1 database.
    */
   public get databaseId() {
-    return this.database.id;
+    return this.database.id.apply((id) =>
+      id.includes("/") ? id.split("/")[1] : id,
+    );
   }
 
   /**
@@ -156,18 +158,16 @@ export class D1 extends Component implements Link.Linkable {
     };
   }
 
-    /**
-   * Reference an existing D1 Database with the given account ID and database 
-   * ID. This is useful when you create a D1 in one stage and want to share 
-   * it in another. It avoids having to create a new D1 Database in the other 
-   * stage.
+  /**
+   * Reference an existing D1 Database with the given database ID. This is
+   * useful when you create a D1 in one stage and want to share it in another.
+   * It avoids having to create a new D1 Database in the other stage.
    *
    * :::tip
    * You can use the `static get` method to share D1 Databases across stages.
    * :::
    *
    * @param name The name of the component.
-   * @param accountId The account ID of the existing D1 Database.
    * @param databaseId The database ID of the existing D1 Database.
    *
    * @example
@@ -177,14 +177,12 @@ export class D1 extends Component implements Link.Linkable {
    *
    * ```ts title="sst.config.ts"
    * const d1 = $app.stage === "giorgio"
-   *   ? sst.cloudflare.D1.get("MyD1", "023e105f4ecef8ad9ca31a8372d0c353", "my-database")
+   *   ? sst.cloudflare.D1.get("MyD1", "my-database-id")
    *   : new sst.cloudflare.D1("MyD1");
    * ```
    *
-   * Here `023e105f4ecef8ad9ca31a8372d0c353` is the ID of the D1 Database 
-   * created in the `dev` stage and `my-database` is the name of the D1 
-   * Database.
-   * You can find these by outputting the D1 Database in the `dev` stage.
+   * Here `my-database-id` is the ID of the D1 Database created in the `dev`
+   * stage. You can find it by outputting the D1 Database in the `dev` stage.
    *
    * ```ts title="sst.config.ts"
    * return {
@@ -194,13 +192,12 @@ export class D1 extends Component implements Link.Linkable {
    */
   public static get(
     name: string,
-    accountId: string,
     databaseId: string,
     opts?: ComponentResourceOptions,
   ) {
     const database = cloudflare.D1Database.get(
       `${name}Database`,
-      `${accountId}/${databaseId}`,
+      `${DEFAULT_ACCOUNT_ID}/${databaseId}`,
       undefined,
       opts,
     );

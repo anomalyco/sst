@@ -1,13 +1,16 @@
 import { Resource } from "sst";
 
 export default {
-  async fetch(req: Request) {
-    const result = await Resource.MyDatabase.prepare(
-      "SELECT id FROM todo ORDER BY id DESC LIMIT 1",
-    ).first();
-    await Resource.MyDatabase.prepare("INSERT INTO todo (id) VALUES (?1)")
-      .bind((result.id as number) + 1)
-      .run();
-    return new Response(result.id.toString());
+  async fetch(request: Request) {
+    if (new URL(request.url).pathname === "/favicon.ico")
+      return new Response(null, { status: 404 });
+
+    await Resource.MyDatabase.prepare("CREATE TABLE IF NOT EXISTS todo (id INTEGER PRIMARY KEY AUTOINCREMENT)").run();
+
+    await Resource.MyDatabase.prepare("INSERT INTO todo DEFAULT VALUES").run();
+
+    const { count } = await Resource.MyDatabase.prepare("SELECT COUNT(*) as count FROM todo").first<{ count: number }>();
+
+    return new Response(`Total todos: ${count}`);
   },
 };
