@@ -1,0 +1,118 @@
+name: release-tarball
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ">=1.23.2"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Download Go modules
+        run: go mod download
+
+      - name: Install JS dependencies
+        run: bun i --frozen-lockfile
+
+      - name: Derive version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build platform
+        run: |
+          cd platform
+          bun build ./functions/cf-static-site-router-worker/index.ts --target=node --outdir ./dist/cf-static-site-router-worker/
+          bun build ./functions/cf-ssr-site-router-worker/index.ts --target=node --outdir ./dist/cf-ssr-site-router-worker/
+          bun build ./functions/nodejs-runtime/index.ts --target=node --outdir ./dist/nodejs-runtime/
+          bun build ./functions/nodejs-runtime/loop.ts --target=node --outdir ./dist/nodejs-runtime/
+          GOARCH=amd64 GOOS=linux go build -trimpath -mod=readonly -ldflags="-buildid=" -o ./dist/bridge/bootstrap ./functions/bridge
+          node ./scripts/build.mjs
+          mkdir -p ./dist/python-runtime/
+          cp ./functions/python-runtime/index.py ./dist/python-runtime/index.py
+          mkdir -p ./dist/dockerfiles/
+          cp ./functions/docker/python.Dockerfile ./dist/dockerfiles/python.Dockerfile
+
+      - name: Build sst CLI (darwin-arm64)
+        run: |
+          mkdir -p tmp/sst-darwin-arm64/bin
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build \
+            -ldflags "-s -w -X main.version=${{ steps.version.outputs.version }}" \
+            -o tmp/sst-darwin-arm64/bin/sst \
+            ./cmd/sst
+
+      - name: Build sst CLI (linux-arm64)
+        run: |
+          mkdir -p tmp/sst-linux-arm64/bin
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build \
+            -ldflags "-s -w -X main.version=${{ steps.version.outputs.version }}" \
+            -o tmp/sst-linux-arm64/bin/sst \
+            ./cmd/sst
+
+      - name: Create binary package manifests
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "{\"name\":\"sst-darwin-arm64\",\"version\":\"${VERSION}\",\"os\":[\"darwin\"],\"cpu\":[\"arm64\"]}" \
+            > tmp/sst-darwin-arm64/package.json
+          echo "{\"name\":\"sst-linux-arm64\",\"version\":\"${VERSION}\",\"os\":[\"linux\"],\"cpu\":[\"arm64\"]}" \
+            > tmp/sst-linux-arm64/package.json
+
+      - name: Pack binary tarballs
+        run: |
+          cd tmp/sst-darwin-arm64 && npm pack && mv *.tgz ../sst-darwin-arm64.tgz
+          cd ../sst-linux-arm64 && npm pack && mv *.tgz ../sst-linux-arm64.tgz
+
+      - name: Build and pack main sst package
+        run: |
+          cd sdk/js
+          bun run build
+          REPO="${{ github.repository }}"
+          TAG="${{ github.ref_name }}"
+          VERSION="${{ steps.version.outputs.version }}"
+          cp package.json package.json.bak
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            pkg.version = '${VERSION}';
+            pkg.optionalDependencies = {
+              'sst-darwin-arm64': 'https://github.com/${REPO}/releases/download/${TAG}/sst-darwin-arm64.tgz',
+              'sst-linux-arm64': 'https://github.com/${REPO}/releases/download/${TAG}/sst-linux-arm64.tgz'
+            };
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+          npm pack
+          mv *.tgz ../../tmp/sst.tgz
+          mv package.json.bak package.json
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          files: |
+            tmp/sst-darwin-arm64.tgz
+            tmp/sst-linux-arm64.tgz
+            tmp/sst.tgz
