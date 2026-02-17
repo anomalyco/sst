@@ -49,7 +49,7 @@ pulumi.runtime.setMocks(
           tags: {
             "sst:ref:version": "1",
             "sst:ref:sg": "sg-mock-id",
-            "sst:ref:vpc-id": "vpc-mock-id",
+            "sst:ref:vpc-id": "vpc-123",
           },
         },
       };
@@ -114,7 +114,7 @@ describe("Service with external ALB", function () {
           instance: alb,
           rules: [
             {
-              listener: "80/http",
+              listen: "80/http",
               forward: "3000/http",
               conditions: { path: "/api/*" },
               priority: 100,
@@ -142,38 +142,18 @@ describe("Service with external ALB", function () {
       expect(service).toBeDefined();
     });
 
-    it("detects ALB via duck-type fallback", async () => {
-      // Simulate a duck-typed ALB (e.g., from a different module instance)
-      const duckAlb = {
-        _loadBalancer: { arn: pulumi.output("arn:aws:mock:lb") },
-        _listeners: {},
-        _vpcId: pulumi.output("vpc-123"),
-        getListener: () => ({}),
-        get _vpc() {
-          return pulumi.output("vpc-123");
-        },
-        get url() {
-          return pulumi.output("http://duck.example.com");
-        },
-        get arn() {
-          return pulumi.output("arn:aws:mock:lb");
-        },
-      };
+    it("ignores non-Alb instance and falls through to standard loadBalancer", async () => {
+      // A plain object with `instance` that is NOT an Alb should not
+      // trigger the external ALB path — it falls through to the standard
+      // loadBalancer handling (which requires `ports`).
+      const fakeAlb = { instance: { notAnAlb: true } };
 
-      // This should not throw — duck-type detection catches it
-      const service = new Service("DuckService", {
+      const service = new Service("NonAlbService", {
         cluster,
         image: { context: "." },
         loadBalancer: {
-          instance: duckAlb as any,
-          rules: [
-            {
-              listener: "80/http",
-              forward: "3000/http",
-              conditions: { path: "/duck/*" },
-              priority: 100,
-            },
-          ],
+          ...(fakeAlb as any),
+          ports: [{ listen: "80/http", forward: "3000/http" }],
         },
       });
 
@@ -195,7 +175,7 @@ describe("Service with external ALB", function () {
           instance: alb,
           rules: [
             {
-              listener: "80/http",
+              listen: "80/http",
               forward: "3000/http",
               conditions: { path: "/valid/*" },
               priority: 100,
@@ -215,13 +195,13 @@ describe("Service with external ALB", function () {
           instance: alb,
           rules: [
             {
-              listener: "80/http",
+              listen: "80/http",
               forward: "3000/http",
               conditions: { path: "/api/*" },
               priority: 100,
             },
             {
-              listener: "80/http",
+              listen: "80/http",
               forward: "3000/http",
               conditions: { path: "/health" },
               priority: 200,
@@ -245,7 +225,7 @@ describe("Service with external ALB", function () {
           instance: alb,
           rules: [
             {
-              listener: "80/http",
+              listen: "80/http",
               forward: "3000/http",
               conditions: { path: "/no-health/*" },
               priority: 300,
@@ -272,7 +252,7 @@ describe("Service with external ALB", function () {
           instance: alb,
           rules: [
             {
-              listener: "80/http",
+              listen: "80/http",
               forward: "3000/http",
               conditions: { path: "/with-health/*" },
               priority: 400,
@@ -313,11 +293,60 @@ describe("Service with external ALB", function () {
           instance: alb,
           rules: [
             {
-              listener: "80/http",
+              listen: "80/http",
               forward: "3000/http",
               container: "api",
               conditions: { path: "/api/*" },
               priority: 500,
+            },
+          ],
+        },
+      });
+
+      expect(service).toBeDefined();
+    });
+  });
+
+  describe("VPC validation", () => {
+    it("verifies ALB and cluster VPCs can be compared", async () => {
+      const mismatchedAlb = new Alb("MismatchedAlb", {
+        vpc: {
+          id: "vpc-999",
+          publicSubnets: ["subnet-x"],
+          privateSubnets: ["subnet-y"],
+        },
+        listeners: [{ port: 80, protocol: "http" }],
+      });
+
+      // Verify the ALB and cluster expose different VPC IDs.
+      // The actual VisibleError is thrown inside .apply() at deploy time
+      // and cannot be caught synchronously in unit tests.
+      const [albVpcId, clusterVpcId] = await new Promise<[string, string]>(
+        (resolve) => {
+          pulumi
+            .all([mismatchedAlb._vpc, pulumi.output("vpc-123")])
+            .apply(([a, b]) => resolve([a, b]));
+        },
+      );
+
+      expect(albVpcId).toBe("vpc-999");
+      expect(clusterVpcId).toBe("vpc-123");
+      expect(albVpcId).not.toBe(clusterVpcId);
+    });
+
+    it("passes when ALB and cluster share the same VPC", async () => {
+      // alb fixture uses vpc-123, same as the cluster
+      const service = new Service("SameVpcService", {
+        cluster,
+        image: { context: "." },
+        loadBalancer: {
+          instance: alb,
+          rules: [
+            {
+              listen: "80/http",
+              forward: "3000/http",
+              conditions: { path: "/same-vpc/*" },
+              priority: 700,
             },
           ],
         },
@@ -341,7 +370,7 @@ describe("Service with external ALB", function () {
           instance: refAlb,
           rules: [
             {
-              listener: "80/http",
+              listen: "80/http",
               forward: "3000/http",
               conditions: { path: "/ref/*" },
               priority: 600,

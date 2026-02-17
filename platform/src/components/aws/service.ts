@@ -226,16 +226,16 @@ type AlbPort = `${number}/${"http" | "https"}`;
 
 export interface ServiceAlbRule {
   /**
-   * The listener to attach to, in `{port}/{protocol}` format. Must match a listener on the ALB.
+   * The port and protocol to listen on, in `{port}/{protocol}` format. Must match a listener on the ALB.
    *
    * @example
    * ```js
    * {
-   *   listener: "443/https"
+   *   listen: "443/https"
    * }
    * ```
    */
-  listener: Input<AlbPort>;
+  listen: Input<AlbPort>;
   /**
    * The container port and protocol to forward traffic to. Uses the format `{port}/{protocol}`.
    *
@@ -1041,7 +1041,7 @@ export interface ServiceArgs extends FargateBaseArgs {
      *   loadBalancer: {
      *     instance: alb,
      *     rules: [
-     *       { listener: "443/https", forward: "8080/http", conditions: { path: "/api/*" }, priority: 100 }
+     *       { listen: "443/https", forward: "8080/http", conditions: { path: "/api/*" }, priority: 100 }
      *     ]
      *   }
      * }
@@ -1822,6 +1822,16 @@ export class Service extends Component implements Link.Linkable {
     let targetGroups: ReturnType<typeof createTargets>;
     const certificateArn = albAttachment ? output(undefined) : createSsl();
     if (albAttachment) {
+      // Validate that the ALB's VPC matches the cluster's VPC
+      all([albAttachment.instance._vpc, vpc.id]).apply(
+        ([albVpcId, clusterVpcId]) => {
+          if (albVpcId !== clusterVpcId) {
+            throw new VisibleError(
+              `The ALB VPC "${albVpcId}" does not match the cluster VPC "${clusterVpcId}" in Service "${name}". The ALB and cluster must be in the same VPC.`,
+            );
+          }
+        },
+      );
       // External ALB path — service attaches to an existing Alb component
       targetGroups = createAlbTargets(albAttachment);
       createAlbListenerRules(albAttachment, targetGroups!);
@@ -2404,13 +2414,12 @@ export class Service extends Component implements Link.Linkable {
                           // targetId format: containerNamePROTOCOLport
                           // We need to extract containerName from the rules
                           const matchingRule = rules.find((r) => {
-                            const resolved = r as any;
-                            const fwd = (resolved.forward as string).split("/");
+                            const fwd = (r.forward as string).split("/");
                             const fwdPort = parseInt(fwd[0]);
                             const fwdProto = fwd[1].toUpperCase();
-                            const cn = (resolved.container as string | undefined) ?? ctrs[0].name;
+                            const cn = (r.container as string | undefined) ?? ctrs[0].name;
                             return targetId === `${cn}${fwdProto}${fwdPort}`;
-                          }) as any;
+                          })!;
                           const fwd = (matchingRule.forward as string).split("/");
                           const cn = (matchingRule.container as string | undefined) ?? ctrs[0].name;
                           return {
@@ -2528,9 +2537,11 @@ export class Service extends Component implements Link.Linkable {
                 predefinedMetricSpecification: {
                   predefinedMetricType: "ALBRequestCountPerTarget",
                   resourceLabel: all([
-                    loadBalancer?.arn ?? albAttachment?.instance.arn,
+                    loadBalancer?.arn,
+                    albAttachment?.instance.arn,
                     targetGroup.arn,
-                  ]).apply(([loadBalancerArn, targetGroupArn]) => {
+                  ]).apply(([ownLbArn, externalLbArn, targetGroupArn]) => {
+                    const loadBalancerArn = ownLbArn ?? externalLbArn;
                     // arn:...:loadbalancer/app/frank-MyServiceLoadBalan/005af2ad12da1e52
                     // => app/frank-MyServiceLoadBalan/005af2ad12da1e52
                     const lbPart = loadBalancerArn
@@ -2583,22 +2594,12 @@ export class Service extends Component implements Link.Linkable {
     function detectAlbAttachment() {
       if (!args.loadBalancer) return undefined;
       const raw = args.loadBalancer as any;
-      if (raw && typeof raw === "object" && "instance" in raw) {
-        const instance = raw.instance;
-        if (
-          instance instanceof Alb ||
-          (instance &&
-            typeof instance === "object" &&
-            "_loadBalancer" in instance &&
-            "_listeners" in instance &&
-            "getListener" in instance)
-        ) {
-          return raw as {
-            instance: Alb;
-            rules: Input<Input<ServiceAlbRule>[]>;
-            health?: Input<Record<AlbPort, Input<any>>>;
-          };
-        }
+      if (raw && typeof raw === "object" && "instance" in raw && raw.instance instanceof Alb) {
+        return raw as {
+          instance: Alb;
+          rules: Input<Input<ServiceAlbRule>[]>;
+          health?: Input<Record<AlbPort, Input<any>>>;
+        };
       }
       return undefined;
     }
@@ -2716,7 +2717,7 @@ export class Service extends Component implements Link.Linkable {
           const prioritiesByListener = new Map<string, Set<number>>();
 
           for (const rule of rules) {
-            const listenerStr = rule.listener as string;
+            const listenerStr = rule.listen as string;
             const forwardStr = rule.forward as string;
             const priorityNum = rule.priority as number;
             const conditions = rule.conditions as any;

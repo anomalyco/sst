@@ -29,7 +29,7 @@
  *     instance: alb,
  *     rules: [
  *       {
- *         listener: "443/https",
+ *         listen: "443/https",
  *         forward: "3000/http",
  *         conditions: { path: "/api/*" },
  *         priority: 100,
@@ -77,7 +77,7 @@ export default $config({
         instance: alb,
         rules: [
           {
-            listener: "80/http",
+            listen: "80/http",
             forward: "3000/http",
             conditions: { path: "/api/*" },
             priority: 100,
@@ -94,7 +94,7 @@ export default $config({
         instance: alb,
         rules: [
           {
-            listener: "80/http",
+            listen: "80/http",
             forward: "3000/http",
             conditions: { path: "/app/*" },
             priority: 200,

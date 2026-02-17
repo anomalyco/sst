@@ -62,6 +62,8 @@ export interface AlbListenerArgs {
   defaultAction?: Input<
     | "fixed-404"
     | "fixed-403"
+    | "fixed-500"
+    | "fixed-503"
     | { redirect: { port: Input<number>; protocol: Input<"http" | "https"> } }
   >;
 }
@@ -231,7 +233,7 @@ interface AlbRef {
  *   loadBalancer: {
  *     instance: alb,
  *     rules: [
- *       { listener: "443/https", forward: "8080/http", conditions: { path: "/api/*" }, priority: 100 },
+ *       { listen: "443/https", forward: "8080/http", conditions: { path: "/api/*" }, priority: 100 },
  *     ],
  *   },
  * });
@@ -277,12 +279,11 @@ export class Alb extends Component implements Link.Linkable {
     const securityGroup = createSecurityGroup();
     const certificateArn = createSsl();
     const loadBalancer = createLoadBalancer();
-    const listeners = createListeners();
+    createListeners();
     createDnsRecords();
 
     this._loadBalancer = loadBalancer;
     this._securityGroup = securityGroup;
-    this._listeners = listeners;
     this._certificateArn = certificateArn;
     this._vpcId = vpcId;
     this._domain = domain.apply((d) => d?.name);
@@ -297,11 +298,7 @@ export class Alb extends Component implements Link.Linkable {
       const ref = args as unknown as AlbRef;
       const loadBalancer = lb.LoadBalancer.get(
         `${name}LoadBalancer`,
-        output(ref.loadBalancerArn).apply((arn) => {
-          // Extract the ID from the ARN for the Pulumi get call
-          // ARN format: arn:aws:elasticloadbalancing:region:account:loadbalancer/app/name/id
-          return arn;
-        }),
+        output(ref.loadBalancerArn),
         {},
         { parent: self },
       );
@@ -333,9 +330,6 @@ export class Alb extends Component implements Link.Linkable {
         { parent: self },
       );
 
-      // Discover listeners via the load balancer's defaultActions
-      // Note: Listeners are discovered at deploy time via the LB ARN.
-      // For the reference pattern, users will need to access listeners by protocol:port key.
       const resolvedListeners: Record<string, lb.Listener> = {};
 
       self._isRef = true;
@@ -451,27 +445,25 @@ export class Alb extends Component implements Link.Linkable {
             subnets,
             securityGroups: [securityGroup.id],
             enableCrossZoneLoadBalancing: true,
-            tags: {
+            tags: all([domain]).apply(([d]) => ({
               "sst:ref:version": Alb._refVersion.toString(),
               "sst:ref:sg": securityGroup.id,
               "sst:ref:vpc-id": vpcId,
-              ...(domain.apply((d) =>
-                d ? { "sst:ref:domain": d.name } : {},
-              ) as any),
-            },
+              ...(d ? { "sst:ref:domain": d.name } : {}),
+            })),
           },
           { parent: self },
         ),
       );
     }
 
-    function createListeners(): Record<string, lb.Listener> {
-      const result: Record<string, lb.Listener> = {};
-
-      output(args.listeners).apply((listeners) => {
-        for (const listenerArgs of listeners) {
-          const resolved = output(listenerArgs);
-          resolved.apply((l) => {
+    function createListeners() {
+      // Unwrap Input<Input<AlbListenerArgs>[]> in two steps:
+      // first the outer array, then each element.
+      output(args.listeners)
+        .apply((rawListeners) => all(rawListeners.map((l) => output(l))))
+        .apply((listeners) => {
+          for (const l of listeners) {
             const protocol = l.protocol.toUpperCase();
             const port = l.port;
             const key = `${protocol}:${port}`;
@@ -496,49 +488,44 @@ export class Alb extends Component implements Link.Linkable {
               ),
             );
 
-            result[key] = listener;
-          });
-        }
-      });
-
-      return result;
+            self._listeners[key] = listener;
+          }
+        });
     }
 
     function buildDefaultActions(
-      defaultAction: "fixed-404" | "fixed-403" | { redirect: { port: number; protocol: string } },
+      defaultAction: "fixed-404" | "fixed-403" | "fixed-500" | "fixed-503" | { redirect: { port: number; protocol: string } },
       _protocol: string,
     ) {
-      if (defaultAction === "fixed-404") {
+      const fixedResponses: Record<string, { statusCode: string; messageBody: string }> = {
+        "fixed-403": { statusCode: "403", messageBody: "Forbidden" },
+        "fixed-404": { statusCode: "404", messageBody: "Not Found" },
+        "fixed-500": { statusCode: "500", messageBody: "Internal Server Error" },
+        "fixed-503": { statusCode: "503", messageBody: "Service Unavailable" },
+      };
+
+      if (typeof defaultAction === "string" && defaultAction in fixedResponses) {
+        const { statusCode, messageBody } = fixedResponses[defaultAction];
         return [
           {
             type: "fixed-response",
             fixedResponse: {
-              statusCode: "404",
+              statusCode,
               contentType: "text/plain",
-              messageBody: "Not Found",
+              messageBody,
             },
           },
         ];
       }
-      if (defaultAction === "fixed-403") {
-        return [
-          {
-            type: "fixed-response",
-            fixedResponse: {
-              statusCode: "403",
-              contentType: "text/plain",
-              messageBody: "Forbidden",
-            },
-          },
-        ];
-      }
+
       // redirect
+      const redirect = (defaultAction as { redirect: { port: number; protocol: string } }).redirect;
       return [
         {
           type: "redirect",
           redirect: {
-            port: defaultAction.redirect.port.toString(),
-            protocol: defaultAction.redirect.protocol.toUpperCase(),
+            port: redirect.port.toString(),
+            protocol: redirect.protocol.toUpperCase(),
             statusCode: "HTTP_301",
           },
         },
