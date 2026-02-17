@@ -157,7 +157,7 @@ var ErrProtectedStage = fmt.Errorf("cannot remove protected stage")
 var ErrPolicyViolation = fmt.Errorf("policy violations detected")
 var ErrPolicyConfigError = fmt.Errorf("policy configuration error")
 
-func (p *Project) resolvePolicyPackPath(policyPath string) (string, error) {
+func (p *Project) ResolvePolicyPackPath(policyPath string) (string, error) {
 	var resolvedPath string
 	if filepath.IsAbs(policyPath) {
 		resolvedPath = policyPath
@@ -166,7 +166,7 @@ func (p *Project) resolvePolicyPackPath(policyPath string) (string, error) {
 	}
 
 	if _, err := os.Stat(resolvedPath); err != nil {
-		return "", fmt.Errorf("Policy pack not found in path: %v", policyPath)
+		return "", fmt.Errorf("Policy pack not found in path: %v", resolvedPath)
 	}
 
 	return resolvedPath, nil

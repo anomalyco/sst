@@ -330,7 +330,7 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	}
 
 	if (input.Command == "diff" || input.Command == "deploy") && input.PolicyPath != "" {
-		policyPath, err := p.resolvePolicyPackPath(input.PolicyPath)
+		policyPath, err := p.ResolvePolicyPackPath(input.PolicyPath)
 		if err != nil {
 			return util.NewReadableError(nil, err.Error())
 		}
@@ -619,7 +619,7 @@ loop:
 		if hasPolicyViolations {
 			return ErrPolicyViolation
 		}
-		if hasPolicyFlag && !hasPolicyEvents {
+		if hasPolicyFlag && !hasPolicyEvents && len(errors) == 0 {
 			return ErrPolicyConfigError
 		}
 		return ErrStackRunFailed
