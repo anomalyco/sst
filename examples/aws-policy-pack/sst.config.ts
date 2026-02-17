@@ -34,7 +34,7 @@
 export default $config({
   app(input) {
     return {
-      name: "aws-policy-pack-example",
+      name: "aws-policy-pack",
       home: "aws",
       removal: input?.stage === "production" ? "retain" : "remove",
     };
