@@ -154,7 +154,8 @@ func CmdMosaic(c *cli.Cli) error {
 	if err != nil {
 		return err
 	}
-	if policyPath := c.String("policy"); policyPath != "" {
+	policyPath := c.String("policy")
+	if policyPath != "" {
 		if _, err := p.ResolvePolicyPackPath(policyPath); err != nil {
 			return util.NewReadableError(nil, err.Error())
 		}
@@ -227,7 +228,7 @@ func CmdMosaic(c *cli.Cli) error {
 
 	wg.Go(func() error {
 		defer c.Cancel()
-		return deployer.Start(c.Context, p, server, c.String("policy"))
+		return deployer.Start(c.Context, p, server, policyPath)
 	})
 
 	currentExecutable, _ := os.Executable()
