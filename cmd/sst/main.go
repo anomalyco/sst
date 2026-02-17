@@ -458,6 +458,14 @@ var root = &cli.Command{
 						Long:  "Defaults to using `multi` mode. Use `mono` to get a single stream of all child process logs or `basic` to not spawn any child processes.",
 					},
 				},
+				{
+					Name: "policy",
+					Type: "string",
+					Description: cli.Description{
+						Short: "Path to policy pack",
+						Long:  "Run policy pack validation against the preview changes.",
+					},
+				},
 			},
 			Args: []cli.Argument{
 				{

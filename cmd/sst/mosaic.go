@@ -222,7 +222,7 @@ func CmdMosaic(c *cli.Cli) error {
 
 	wg.Go(func() error {
 		defer c.Cancel()
-		return deployer.Start(c.Context, p, server)
+		return deployer.Start(c.Context, p, server, c.String("policy"))
 	})
 
 	currentExecutable, _ := os.Executable()
