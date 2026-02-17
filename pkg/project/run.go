@@ -352,6 +352,21 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 		}
 	}
 
+	if input.Exclude != nil {
+		for _, item := range input.Exclude {
+			index := slices.IndexFunc(completed.Resources, func(res apitype.ResourceV3) bool {
+				return res.URN.Name() == item
+			})
+			if index == -1 {
+				return util.NewReadableError(nil, fmt.Sprintf("Exclude target not found: %v", item))
+			}
+			args = append(args, "--exclude", string(completed.Resources[index].URN))
+		}
+		if len(input.Exclude) > 0 {
+			args = append(args, "--exclude-dependents")
+		}
+	}
+
 	cmd := process.Command(pulumiPath, args...)
 	process.Detach(cmd)
 	cmd.Env = env

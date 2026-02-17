@@ -18,7 +18,7 @@
     "isbot": "^4.1.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "sst": "latest"
+    "sst": "^3"
   },
   "devDependencies": {
     "@remix-run/dev": "^2.12.1",

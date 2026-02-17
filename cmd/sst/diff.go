@@ -39,6 +39,12 @@ var CmdDiff = &cli.Command{
 			"sst diff --target MyComponent",
 			"```",
 			"",
+			"Alternatively, exclude a specific component from the diff.",
+			"",
+			"```bash frame=\"none\"",
+			"sst diff --exclude MyComponent",
+			"```",
+			"",
 			"By default, this compares to the last deploy of the given stage as it would be",
 			"deployed using `sst deploy`. But if you are working in dev mode using `sst dev`,",
 			"you can use the `--dev` flag.",
@@ -56,6 +62,14 @@ var CmdDiff = &cli.Command{
 			Description: cli.Description{
 				Short: "Run it only for a component",
 				Long:  "Only run it for the given component.",
+			},
+		},
+		{
+			Name: "exclude",
+			Type: "string",
+			Description: cli.Description{
+				Short: "Exclude a component",
+				Long:  "Exclude the specified component from the operation.",
 			},
 		},
 		{
@@ -103,6 +117,11 @@ var CmdDiff = &cli.Command{
 			target = strings.Split(c.String("target"), ",")
 		}
 
+		exclude := []string{}
+		if c.String("exclude") != "" {
+			exclude = strings.Split(c.String("exclude"), ",")
+		}
+
 		var wg errgroup.Group
 		defer wg.Wait()
 		outputs := []*apitype.ResOutputsEvent{}
@@ -135,6 +154,7 @@ var CmdDiff = &cli.Command{
 			ServerPort: s.Port,
 			Dev:        c.Bool("dev"),
 			Target:     target,
+			Exclude:    exclude,
 			Verbose:    c.Bool("verbose"),
 			PolicyPath: c.String("policy"),
 		})

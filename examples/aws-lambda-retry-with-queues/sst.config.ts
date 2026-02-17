@@ -150,7 +150,7 @@
 export default $config({
   app(input) {
     return {
-      name: "sst-v3-lambda-retries",
+      name: "aws-lambda-retry-with-queues",
       removal: input?.stage === "production" ? "retain" : "remove",
       home: "aws",
     };

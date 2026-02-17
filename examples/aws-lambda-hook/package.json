@@ -11,7 +11,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "sst": "3"
+    "sst": "^3"
   },
   "devDependencies": {
     "@types/aws-lambda": "8.10.149"

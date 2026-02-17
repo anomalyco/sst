@@ -618,7 +618,7 @@ func (u *UI) header(version, app, stage string) {
 	}
 	u.println(
 		TEXT_HIGHLIGHT_BOLD.Render("SST "+version),
-		TEXT_DIM.Render("  ready!"),
+		TEXT_DIM.Render(" ready!"),
 	)
 	u.blank()
 	u.println(

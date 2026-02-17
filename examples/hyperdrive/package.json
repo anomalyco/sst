@@ -5,6 +5,6 @@
   "dependencies": {
     "@cloudflare/workers-types": "^4.20240919.0",
     "postgres": "^3.4.4",
-    "sst": "3.1.29"
+    "sst": "^3"
   }
 }

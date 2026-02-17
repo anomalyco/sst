@@ -74,6 +74,8 @@ func CmdMosaic(c *cli.Cli) error {
 		var last *dev.EnvResponse
 		processExited := make(chan bool)
 		timeout := time.Minute * 50
+		timer := time.NewTimer(timeout)
+		defer timer.Stop()
 
 		for {
 			select {
@@ -82,12 +84,13 @@ func CmdMosaic(c *cli.Cli) error {
 			case <-processExited:
 				c.Cancel()
 				continue
-			case <-time.After(timeout):
+			case <-timer.C:
 				last = nil
 				go func() {
 					evts <- true
 				}()
 				fmt.Println("[timeout]")
+				timer.Reset(timeout)
 				continue
 			case _, ok := <-evts:
 				if !ok {
@@ -226,11 +229,6 @@ func CmdMosaic(c *cli.Cli) error {
 		return server.Start(c.Context, p)
 	})
 
-	wg.Go(func() error {
-		defer c.Cancel()
-		return deployer.Start(c.Context, p, server, policyPath)
-	})
-
 	currentExecutable, _ := os.Executable()
 
 	mode := c.String("mode")
@@ -241,6 +239,13 @@ func CmdMosaic(c *cli.Cli) error {
 			mode = "mono"
 		}
 	}
+
+	evts := bus.Subscribe(&project.CompleteEvent{})
+
+	wg.Go(func() error {
+		defer c.Cancel()
+		return deployer.Start(c.Context, p, server, policyPath)
+	})
 
 	if mode == "multi" {
 		multi, err := multiplexer.New()
@@ -261,7 +266,6 @@ func CmdMosaic(c *cli.Cli) error {
 			multi.Start()
 		}()
 		wg.Go(func() error {
-			evts := bus.Subscribe(&project.CompleteEvent{})
 			defer c.Cancel()
 			for {
 				select {
@@ -270,6 +274,9 @@ func CmdMosaic(c *cli.Cli) error {
 				case unknown := <-evts:
 					switch evt := unknown.(type) {
 					case *project.CompleteEvent:
+						if evt.Old {
+							continue
+						}
 						for _, d := range evt.Devs {
 							if d.Command == "" {
 								continue
@@ -281,7 +288,7 @@ func CmdMosaic(c *cli.Cli) error {
 							}
 							multi.AddProcess(
 								d.Name,
-								append([]string{currentExecutable, "dev"}),
+								[]string{currentExecutable, "dev"},
 								"→",
 								title,
 								dir,
@@ -308,6 +315,7 @@ func CmdMosaic(c *cli.Cli) error {
 
 	if mode == "basic" {
 		wg.Go(func() error {
+			<-server.Ready
 			return CmdUI(c)
 		})
 	}
@@ -323,7 +331,6 @@ func CmdMosaic(c *cli.Cli) error {
 		})
 
 		wg.Go(func() error {
-			evts := bus.Subscribe(&project.CompleteEvent{})
 			defer c.Cancel()
 			for {
 				select {
@@ -332,6 +339,9 @@ func CmdMosaic(c *cli.Cli) error {
 				case unknown := <-evts:
 					switch evt := unknown.(type) {
 					case *project.CompleteEvent:
+						if evt.Old {
+							continue
+						}
 						for _, d := range evt.Devs {
 							if d.Command == "" {
 								continue

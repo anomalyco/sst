@@ -313,6 +313,12 @@ func (s *Multiplexer) Start() {
 						s.blur()
 						return
 					}
+				case tcell.KeyCtrlL:
+					if selected != nil {
+						selected.Clear()
+						s.draw()
+						return
+					}
 				}
 
 				if selected != nil && s.focused && !selected.isScrolling() {

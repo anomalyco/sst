@@ -1452,7 +1452,7 @@ async function handler(event) {
                 headersConfig: {
                   headerBehavior: "whitelist",
                   headers: {
-                    items: ["x-open-next-cache-key"],
+                    items: ["x-open-next-cache-key", "x-forwarded-host"],
                   },
                 },
                 queryStringsConfig: {
@@ -1485,9 +1485,8 @@ async function handler(event) {
   ${blockCloudfrontUrlInjection}
   ${CF_ROUTER_INJECTION}
 
-  const routerNS = "${kvNamespace}";
-
   async function getRoutes() {
+    const routerNS = "${kvNamespace}";
     let routes = [];
     try {
       const v = await cf.kvs().get(routerNS + ":routes");
@@ -1538,7 +1537,7 @@ async function handler(event) {
         || (host.includes("*") && new RegExp(host).test(requestHostRegexPattern));
       if (!hostMatches) return;
 
-      const pathMatches = event.request.uri.startsWith(path);
+      const pathMatches = event.request.uri.startsWith(path) && (event.request.uri === path || path.endsWith('/') || event.request.uri[path.length] === '/' || path === '/');
       if (!pathMatches) return;
 
       match = {

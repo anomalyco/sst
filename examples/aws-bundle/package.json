@@ -1,9 +1,9 @@
 {
-  "name": "base-ts",
+  "name": "aws-bundle",
   "version": "0.0.0",
   "type": "module",
   "dependencies": {
     "@types/node": "^22.13.2",
-    "sst": "3.8.8"
+    "sst": "^3"
   }
 }

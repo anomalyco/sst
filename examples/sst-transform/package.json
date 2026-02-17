@@ -1,7 +1,7 @@
 {
-  "name": "base-ts",
+  "name": "sst-transform",
   "version": "0.0.0",
   "dependencies": {
-    "sst": "^3.0.4"
+    "sst": "^3"
   }
 }

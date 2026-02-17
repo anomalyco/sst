@@ -16,28 +16,40 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v3
         with:
           fetch-depth: 0
-      - uses: oven-sh/setup-bun@v1
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
         with:
           bun-version: latest
 
-      - run: git fetch --force --tags
+      - name: Fetch tags
+        run: git fetch --force --tags
 
-      - uses: actions/setup-go@v5
+      - name: Setup Go
+        uses: actions/setup-go@v5
         with:
           go-version: ">=1.23.2"
 
-      - name: Go Mod
+      - name: Download Go modules
         run: go mod download
 
-      # TODO remove temporary workaround
-      - run: bun i --frozen-lockfile
-      - run: git reset --hard
-      - run: cd platform && bun tsc --noEmit
-      - run: ./platform/scripts/build
-      - uses: goreleaser/goreleaser-action@v6
+      - name: Install dependencies
+        run: bun i --frozen-lockfile
+
+      - name: TypeScript check
+        run: cd platform && bun tsc --noEmit
+
+      - name: Build platform
+        run: ./platform/scripts/build
+        env:
+          DOCKER_PUSH: false
+
+      - name: Build CLI
+        uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
           version: latest

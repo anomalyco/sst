@@ -11,6 +11,6 @@
   "description": "",
   "dependencies": {
     "pg": "^8.13.0",
-    "sst": "latest"
+    "sst": "^3"
   }
 }

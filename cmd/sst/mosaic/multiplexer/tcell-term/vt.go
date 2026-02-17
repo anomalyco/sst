@@ -507,6 +507,10 @@ func (vt *VT) ScrollReset() {
 	vt.scroll = -1
 }
 
+func (vt *VT) ClearScrollback() {
+	vt.primaryScrollback = [][]cell{}
+}
+
 func (vt *VT) Scrollable() bool {
 	return len(vt.primaryScrollback) > 0
 }

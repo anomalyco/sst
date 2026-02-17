@@ -1,5 +1,5 @@
 {
-  "name": "aws-cluster-internal",
+  "name": "aws-cluster-autoscaling",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
@@ -12,6 +12,6 @@
   "dependencies": {
     "@aws-sdk/client-sqs": "^3.682.0",
     "express": "^4.21.1",
-    "sst": "latest"
+    "sst": "^3"
   }
 }

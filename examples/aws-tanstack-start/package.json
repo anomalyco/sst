@@ -1,5 +1,5 @@
 {
-  "name": "app",
+  "name": "aws-tanstack-start",
   "private": true,
   "type": "module",
   "scripts": {
@@ -33,7 +33,7 @@
     "nitro": "latest",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "sst": "latest",
+    "sst": "^3",
     "tailwind-merge": "^3.0.2",
     "tailwindcss": "^4.0.6",
     "tw-animate-css": "^1.3.6",

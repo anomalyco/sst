@@ -1,5 +1,5 @@
 {
-  "name": "trpc",
+  "name": "cloudflare-trpc",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
@@ -12,7 +12,7 @@
   "dependencies": {
     "@trpc/client": "^11.0.0-rc.359",
     "@trpc/server": "^11.0.0-rc.359",
-    "sst": "latest",
+    "sst": "^3",
     "zod": "^3.23.5"
   },
   "devDependencies": {

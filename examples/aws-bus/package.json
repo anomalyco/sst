@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "dependencies": {
     "@aws-sdk/client-eventbridge": "^3.582.0",
-    "sst": "^3.17.25",
+    "sst": "^3",
     "zod": "^4.1.13"
   },
   "devDependencies": {

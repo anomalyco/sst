@@ -58,11 +58,16 @@ func getCompletedEvent(ctx context.Context, passphrase string, workdir *PulumiWo
 	complete.Resources = deployment.Resources
 
 	for _, resource := range complete.Resources {
-		outputs := parsePlaintext(resource.Outputs).(map[string]interface{})
+		outputs, ok := parsePlaintext(resource.Outputs).(map[string]interface{})
+		if !ok {
+			continue
+		}
 		if resource.URN.Type().Module().Package().Name() == "sst" {
 			if resource.Type == "sst:sst:Version" {
-				if outputs["target"] != nil && outputs["version"] != nil {
-					complete.Versions[outputs["target"].(string)] = int(outputs["version"].(float64))
+				target, targetOk := outputs["target"].(string)
+				version, versionOk := outputs["version"].(float64)
+				if targetOk && versionOk {
+					complete.Versions[target] = int(version)
 				}
 			}
 
@@ -91,16 +96,23 @@ func getCompletedEvent(ctx context.Context, passphrase string, workdir *PulumiWo
 		}
 
 		if match, ok := outputs["_tunnel"].(map[string]interface{}); ok {
+			ip, ipOk := match["ip"].(string)
+			username, usernameOk := match["username"].(string)
+			privateKey, privateKeyOk := match["privateKey"].(string)
+			if !ipOk || !usernameOk || !privateKeyOk {
+				continue
+			}
 			tunnel := Tunnel{
-				IP:         match["ip"].(string),
-				Username:   match["username"].(string),
-				PrivateKey: match["privateKey"].(string),
+				IP:         ip,
+				Username:   username,
+				PrivateKey: privateKey,
 				Subnets:    []string{},
 			}
-			subnets, ok := match["subnets"].([]interface{})
-			if ok {
+			if subnets, ok := match["subnets"].([]interface{}); ok {
 				for _, subnet := range subnets {
-					tunnel.Subnets = append(tunnel.Subnets, subnet.(string))
+					if s, ok := subnet.(string); ok {
+						tunnel.Subnets = append(tunnel.Subnets, s)
+					}
 				}
 				complete.Tunnels[resource.URN.Name()] = tunnel
 			}
@@ -110,36 +122,43 @@ func getCompletedEvent(ctx context.Context, passphrase string, workdir *PulumiWo
 			complete.Hints[string(resource.URN)] = hint
 		}
 
-		if resource.Type == "sst:sst:LinkRef" && outputs["target"] != nil && outputs["properties"] != nil {
-			properties, ok := outputs["properties"].(map[string]interface{})
-			if !ok {
+		if resource.Type == "sst:sst:LinkRef" {
+			target, targetOk := outputs["target"].(string)
+			properties, propertiesOk := outputs["properties"].(map[string]interface{})
+			if !targetOk || !propertiesOk {
 				continue
 			}
 			link := common.Link{
 				Properties: properties,
 				Include:    []common.LinkInclude{},
 			}
-			if outputs["include"] != nil {
-				include, ok := outputs["include"].([]interface{})
-				if ok {
-					for _, include := range include {
-						link.Include = append(link.Include, common.LinkInclude{
-							Type:  include.(map[string]interface{})["type"].(string),
-							Other: include.(map[string]interface{}),
-						})
+			if includeSlice, ok := outputs["include"].([]interface{}); ok {
+				for _, inc := range includeSlice {
+					incMap, ok := inc.(map[string]interface{})
+					if !ok {
+						continue
 					}
+					incType, ok := incMap["type"].(string)
+					if !ok {
+						continue
+					}
+					link.Include = append(link.Include, common.LinkInclude{
+						Type:  incType,
+						Other: incMap,
+					})
 				}
 			}
-			complete.Links[outputs["target"].(string)] = link
+			complete.Links[target] = link
 		}
 	}
 
-	outputs := parsePlaintext(deployment.Resources[0].Outputs).(map[string]interface{})
-	for key, value := range outputs {
-		if strings.HasPrefix(key, "_") {
-			continue
+	if outputs, ok := parsePlaintext(deployment.Resources[0].Outputs).(map[string]interface{}); ok {
+		for key, value := range outputs {
+			if strings.HasPrefix(key, "_") {
+				continue
+			}
+			complete.Outputs[key] = value
 		}
-		complete.Outputs[key] = value
 	}
 
 	return complete, nil

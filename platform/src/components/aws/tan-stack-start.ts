@@ -218,8 +218,24 @@ export interface TanStackStartArgs extends SsrSiteArgs {
    *   }
    * }
    * ```
+   * 
+   * Finally, to serve your TanStack Start app **from a combined pattern** like
+   * `dev.example.com/docs`, you'll need to configure the domain in your `Router` to
+   * match the subdomain, and set the `domain` and the `path`.
+   *
+   * ```ts {4,5}
+   * {
+   *   router: {
+   *     instance: router,
+   *     domain: "dev.example.com",
+   *     path: "/docs"
+   *   }
+   * }
+   * ```
+   *
+   * Also, make sure to set this as the `base` in your `vite.config.ts`, and in your Nitro plugin config.
    */
-  router?: Prettify<Omit<RouterRouteArgs, "path">>;
+  router?: SsrSiteArgs["router"];
   /**
    * The command used internally to build your TanStack Start app.
    *
@@ -375,14 +391,14 @@ export class TanStackStart extends SsrSite {
       // If basepath is configured, nitro.mjs will have a line that looks like this:
       // return createRouter$2({ routeTree: Nr, defaultPreload: "intent", defaultErrorComponent: ce, defaultNotFoundComponent: () => jsx(de, {}), scrollRestoration: true, basepath: "/tan" });
       let basepath;
-      // TanStack Start currently doesn't support basepaths.
-      //try {
-      //  const serverNitroChunk = fs.readFileSync(
-      //    path.join(serverOutputPath, "chunks", "nitro", "nitro.mjs"),
-      //    "utf-8",
-      //  );
-      //  basepath = serverNitroChunk.match(/basepath: "(.*)"/)?.[1];
-      //} catch (e) {}
+      
+      try {
+        const serverNitroChunk = fs.readFileSync(
+          path.join(serverOutputPath, "chunks", "_", "server.mjs"),
+          "utf-8",
+        );
+        basepath = serverNitroChunk.match(/ROUTER_BASEPATH = "(.*)"/)?.[1];
+      } catch (e) {}
 
       // Remove the .output/public/_server directory from the assets
       // b/c all `_server` requests should go to the server function. If this folder is

@@ -1,5 +1,5 @@
 {
-  "name": "aws-drizzle",
+  "name": "aws-drizzle-migrations",
   "version": "0.0.0",
   "type": "module",
   "scripts": {
@@ -11,6 +11,6 @@
     "drizzle-kit": "^0.26.2",
     "drizzle-orm": "^0.35.1",
     "pg": "^8.13.0",
-    "sst": "latest"
+    "sst": "^3"
   }
 }
