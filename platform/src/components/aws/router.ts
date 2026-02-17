@@ -10,7 +10,7 @@ import { Component, Transform, transform } from "../component";
 import { Link } from "../link";
 import type { Input } from "../input";
 import { Cdn, CdnArgs } from "./cdn";
-import { cloudfront, wafv2 } from "@pulumi/aws";
+import { cloudfront, cloudwatch, wafv2 } from "@pulumi/aws";
 import { useProvider } from "./helpers/provider";
 import { hashStringToPrettyString, physicalName } from "../naming";
 import { Bucket } from "./bucket";
@@ -19,6 +19,7 @@ import { VisibleError } from "../error";
 import { RouterUrlRoute } from "./router-url-route";
 import { RouterBucketRoute } from "./router-bucket-route";
 import { DurationSeconds } from "../duration";
+import { RETENTION } from "./logging";
 
 interface InlineUrlRouteArgs extends InlineBaseRouteArgs {
   /**
@@ -456,6 +457,119 @@ export interface RouterBucketRouteArgs extends RouteArgs {
   }>;
 }
 
+export interface WafLoggingArgs {
+  /**
+   * Filter which requests are logged.
+   *
+   * - `"all"` logs every request evaluated by the WAF.
+   * - `"blocked"` only logs requests that were blocked.
+   *
+   * @default `"all"`
+   * @example
+   * ```js
+   * {
+   *   waf: {
+   *     logging: {
+   *       include: "blocked"
+   *     }
+   *   }
+   * }
+   * ```
+   */
+  include?: Input<"all" | "blocked">;
+  /**
+   * The duration the WAF logs are kept in CloudWatch.
+   *
+   * @default `"1 month"`
+   * @example
+   * ```js
+   * {
+   *   waf: {
+   *     logging: {
+   *       retention: "3 months"
+   *     }
+   *   }
+   * }
+   * ```
+   */
+  retention?: Input<keyof typeof RETENTION>;
+  /**
+   * Configure which parts of the request are redacted from the logs. Redacted
+   * fields are replaced with `REDACTED` in the log output.
+   *
+   * By default, the query string and the `cookie` and `authorization` headers
+   * are redacted since they commonly contain PII or credentials.
+   *
+   * Set to `false` to disable all redaction.
+   *
+   * @default `{ queryString: true, headers: ["cookie", "authorization"] }`
+   * @example
+   *
+   * Disable all redaction.
+   *
+   * ```js
+   * {
+   *   waf: {
+   *     logging: {
+   *       redact: false
+   *     }
+   *   }
+   * }
+   * ```
+   *
+   * Redact everything.
+   *
+   * ```js
+   * {
+   *   waf: {
+   *     logging: {
+   *       redact: {
+   *         queryString: true,
+   *         uriPath: true,
+   *         method: true,
+   *         headers: ["cookie", "authorization"]
+   *       }
+   *     }
+   *   }
+   * }
+   * ```
+   */
+  redact?: Input<
+    | false
+    | {
+        /**
+         * Redact the query string from the logs. The query string is the
+         * part of a URL after the `?` and can contain tokens, user IDs,
+         * or other sensitive parameters.
+         * @default `true`
+         */
+        queryString?: Input<boolean>;
+        /**
+         * Redact the URI path from the logs. The URI path identifies the
+         * resource being accessed, like `/users/123/profile`.
+         * @default `false`
+         */
+        uriPath?: Input<boolean>;
+        /**
+         * Redact the HTTP method from the logs (GET, POST, etc.).
+         * @default `false`
+         */
+        method?: Input<boolean>;
+        /**
+         * A list of header names to redact from the logs. Must be lowercase.
+         * @default `["cookie", "authorization"]`
+         * @example
+         * ```js
+         * {
+         *   headers: ["cookie", "authorization", "x-api-key"]
+         * }
+         * ```
+         */
+        headers?: Input<Input<string>[]>;
+      }
+  >;
+}
+
 export interface WafArgs {
   /**
    * The rate limit per IP address. Requests from an IP that exceed this limit
@@ -507,6 +621,60 @@ export interface WafArgs {
      */
     sqlInjection?: Input<boolean>;
   }>;
+  /**
+   * Configure WAF logging to CloudWatch. When set to `true`, all WAF-evaluated
+   * requests are logged with a 1-month retention. Or pass in an object to
+   * customize what is logged, how long logs are retained, and which fields
+   * are redacted.
+   *
+   * :::tip
+   * WAF logging is off by default. Enabling it will incur additional
+   * [CloudWatch costs](https://aws.amazon.com/cloudwatch/pricing/) depending
+   * on log volume.
+   * :::
+   *
+   * @default Logging is disabled
+   * @example
+   *
+   * Enable with defaults.
+   *
+   * ```js
+   * {
+   *   waf: {
+   *     logging: true
+   *   }
+   * }
+   * ```
+   *
+   * Only log blocked requests.
+   *
+   * ```js
+   * {
+   *   waf: {
+   *     logging: {
+   *       include: "blocked",
+   *       retention: "3 months"
+   *     }
+   *   }
+   * }
+   * ```
+   *
+   * Redact sensitive fields.
+   *
+   * ```js
+   * {
+   *   waf: {
+   *     logging: {
+   *       redact: {
+   *         queryString: true,
+   *         headers: ["cookie"]
+   *       }
+   *     }
+   *   }
+   * }
+   * ```
+   */
+  logging?: Input<boolean | WafLoggingArgs>;
 }
 
 export interface RouterArgs {
@@ -922,6 +1090,14 @@ export interface RouterArgs {
      * Transform the WAF WebACL resource.
      */
     waf?: Transform<wafv2.WebAclArgs>;
+    /**
+     * Transform the CloudWatch LogGroup resource used for WAF logs.
+     */
+    wafLogGroup?: Transform<cloudwatch.LogGroupArgs>;
+    /**
+     * Transform the WAF WebACL logging configuration resource.
+     */
+    wafLogging?: Transform<wafv2.WebAclLoggingConfigurationArgs>;
   };
   /**
    * @internal
@@ -1291,7 +1467,7 @@ export class Router extends Component implements Link.Linkable {
       });
 
       // WAF must be created in us-east-1 for CloudFront
-      return new wafv2.WebAcl(
+      const webAcl = new wafv2.WebAcl(
         ...transform(
           args.transform?.waf,
           `${name}Waf`,
@@ -1308,6 +1484,107 @@ export class Router extends Component implements Link.Linkable {
           { parent: self, provider: useProvider("us-east-1") },
         ),
       );
+
+      // Create WAF logging resources if logging is configured
+      // Normalize directly from args.waf (not from `config`) to keep apply
+      // depth at 2 — matching the step-functions.ts pattern. Resources inside
+      // deeper apply chains can be empty during preview with unknown inputs.
+      const loggingInput = output(args.waf).apply((waf) => {
+        if (!waf || typeof waf === "boolean") return undefined;
+        if (!waf.logging) return undefined;
+        const l = typeof waf.logging === "boolean" ? {} : waf.logging;
+        // Default redact: query string + cookie/authorization headers (PII)
+        const defaultRedact: NonNullable<WafLoggingArgs["redact"]> = {
+          queryString: true,
+          headers: ["cookie", "authorization"],
+        };
+        return {
+          include: (l.include ?? "all") as "all" | "blocked",
+          retention: (l.retention ?? "1 month") as keyof typeof RETENTION,
+          redact: l.redact === false ? undefined : (l.redact ?? defaultRedact),
+        };
+      });
+
+      loggingInput.apply((logConfig) => {
+        if (!logConfig) return;
+
+        // CloudWatch Log Group - name MUST start with "aws-waf-logs-"
+        const logGroup = new cloudwatch.LogGroup(
+          ...transform(
+            args.transform?.wafLogGroup,
+            `${name}WafLogGroup`,
+            {
+              name: `aws-waf-logs-${physicalName(64, name)}`,
+              retentionInDays: RETENTION[logConfig.retention],
+            },
+            {
+              parent: self,
+              provider: useProvider("us-east-1"),
+              ignoreChanges: ["name"],
+            },
+          ),
+        );
+
+        // Build redacted fields from the redact config
+        const redactedFields = logConfig.redact
+          ? output(logConfig.redact).apply((redact) => {
+              const fields: wafv2.WebAclLoggingConfigurationArgs["redactedFields"] &
+                {}[] = [];
+              if (redact?.method) fields.push({ method: {} });
+              if (redact?.queryString) fields.push({ queryString: {} });
+              if (redact?.uriPath) fields.push({ uriPath: {} });
+              if (redact?.headers) {
+                for (const header of redact.headers ?? []) {
+                  fields.push({
+                    singleHeader: { name: header.toLowerCase() },
+                  });
+                }
+              }
+              return fields;
+            })
+          : undefined;
+
+        // Build logging filter: "blocked" -> only keep BLOCK actions
+        const loggingFilter =
+          logConfig.include === "blocked"
+            ? {
+                defaultBehavior: "DROP",
+                filters: [
+                  {
+                    behavior: "KEEP" as const,
+                    requirement: "MEETS_ANY" as const,
+                    conditions: [
+                      {
+                        actionCondition: {
+                          action: "BLOCK",
+                        },
+                      },
+                    ],
+                  },
+                ],
+              }
+            : undefined;
+
+        // WebACL Logging Configuration
+        new wafv2.WebAclLoggingConfiguration(
+          ...transform(
+            args.transform?.wafLogging,
+            `${name}WafLogging`,
+            {
+              resourceArn: webAcl.arn,
+              logDestinationConfigs: [logGroup.arn],
+              ...(redactedFields ? { redactedFields } : {}),
+              ...(loggingFilter ? { loggingFilter } : {}),
+            },
+            {
+              parent: self,
+              provider: useProvider("us-east-1"),
+            },
+          ),
+        );
+      });
+
+      return webAcl;
     }
 
     function registerOutputs() {

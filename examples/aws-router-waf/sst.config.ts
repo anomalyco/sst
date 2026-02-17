@@ -8,6 +8,8 @@
  *
  * WAF includes rate limiting per IP, and AWS managed rules for core rule set,
  * known bad inputs, and SQL injection protection.
+ *
+ * You can also enable WAF logging to CloudWatch to monitor requests.
  */
 export default $config({
   app(input) {
@@ -34,6 +36,7 @@ export default $config({
           knownBadInputs: true,
           sqlInjection: true,
         },
+        logging: true,
       },
     });
 
