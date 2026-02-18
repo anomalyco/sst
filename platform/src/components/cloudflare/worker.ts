@@ -407,7 +407,16 @@ export class Worker extends Component implements Link.Linkable {
                 })(),
                 Action: p.actions,
                 Resource: p.resources,
-                ...("conditions" in p ? { Conditions: p.conditions } : {}),
+                ...("conditions" in p && p.conditions
+                  ? {
+                      Condition: Object.fromEntries(
+                        p.conditions.map((c) => [
+                          c.test,
+                          { [c.variable]: c.values },
+                        ]),
+                      ),
+                    }
+                  : {}),
               })),
             }),
           },
