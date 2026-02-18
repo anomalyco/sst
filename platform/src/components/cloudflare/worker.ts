@@ -13,6 +13,7 @@ import type { Loader } from "esbuild";
 import type { EsbuildOptions } from "../esbuild.js";
 import { Component, Transform, transform } from "../component";
 import { WorkerUrl } from "./providers/worker-url.js";
+import { WorkerPlacement } from "./providers/worker-placement.js";
 import { Link } from "../link.js";
 import type { Input } from "../input.js";
 import { ZoneLookup } from "./providers/zone-lookup.js";
@@ -182,6 +183,36 @@ export interface WorkerArgs {
     directory: Input<string>;
   }>;
   /**
+   * Configure [placement](https://developers.cloudflare.com/workers/configuration/placement/)
+   * for your Worker.
+   *
+   * @example
+   *
+   * #### Smart Placement
+   * ```js
+   * {
+   *   placement: {
+   *     mode: "smart"
+   *   }
+   * }
+   * ```
+   *
+   * #### Explicit region
+   * ```js
+   * {
+   *   placement: {
+   *     region: "aws:us-east-1"
+   *   }
+   * }
+   * ```
+   */
+  placement?: Input<{
+    mode?: Input<string>;
+    region?: Input<string>;
+    host?: Input<string>;
+    hostname?: Input<string>;
+  }>;
+  /**
    * [Transform](/docs/components/#transform) how this component creates its underlying
    * resources.
    */
@@ -261,6 +292,7 @@ export interface WorkerArgs {
 export class Worker extends Component implements Link.Linkable {
   private script: cf.WorkersScript;
   private workerUrl: WorkerUrl;
+  private workerPlacement?: WorkerPlacement;
   private workerDomain?: cf.WorkerDomain;
 
   constructor(name: string, args: WorkerArgs, opts?: ComponentResourceOptions) {
@@ -290,10 +322,12 @@ export class Worker extends Component implements Link.Linkable {
     const build = buildHandler();
     const script = createScript();
     const workerUrl = createWorkersUrl();
+    const workerPlacement = createWorkerPlacement();
     const workerDomain = createWorkersDomain();
 
     this.script = script;
     this.workerUrl = workerUrl;
+    this.workerPlacement = workerPlacement;
     this.workerDomain = workerDomain;
 
     all([dev, buildInput, script.scriptName]).apply(
@@ -534,6 +568,22 @@ export class Worker extends Component implements Link.Linkable {
           accountId: DEFAULT_ACCOUNT_ID,
           scriptName: script.scriptName,
           enabled: urlEnabled,
+        },
+        { parent },
+      );
+    }
+
+    // workaround: pulumi cloudflare provider marks placement as read-only,
+    // so we use the CF API directly until upstream support lands
+    function createWorkerPlacement() {
+      if (!args.placement) return;
+
+      return new WorkerPlacement(
+        `${name}Placement`,
+        {
+          accountId: DEFAULT_ACCOUNT_ID,
+          scriptName: script.scriptName,
+          ...args.placement,
         },
         { parent },
       );
