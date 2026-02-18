@@ -1969,13 +1969,8 @@ export class Service extends Component implements Link.Linkable {
                 args.transform?.target,
                 `${name}Target${targetId}`,
                 {
-                  // TargetGroup names allow for 32 chars, but an 6 letter suffix
-                  // ie. "-12345" is automatically added.
-                  // - If we don't specify "name" or "namePrefix", we need to ensure
-                  //   the component name is less than 24 chars. Hard to guarantee.
-                  // - If we specify "name", we need to ensure the $app-$stage-$name
-                  //   if less than 32 chars. Hard to guarantee.
-                  // - Hence we will use "namePrefix".
+                  // AWS enforces a 6-char limit on namePrefix for target groups.
+                  // "TCP_UDP" is 7 chars, so strip the underscore to fit.
                   namePrefix: forwardProtocol.replace("_", ""),
                   port: forwardPort,
                   protocol: forwardProtocol,
