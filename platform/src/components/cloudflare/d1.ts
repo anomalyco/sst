@@ -106,31 +106,15 @@ export class D1 extends Component implements Link.Linkable {
    * @internal
    */
   getSSTLink() {
-    // This is a workaround to correctly get the database id from the pulumi 
-    // output, as it is merged with the account id in the `id` string when the 
-    // database is imported statically.
-
-    // This workaround could be edited in the newer version of the pulumi 
-    // cloudflare provider as there is a new field `uuid` which should 
-    // always be equal to the database id and should never be merged with the
-    // account id.
-
-    const dbId = this.database.id.apply(id => {
-      // If id contains a slash, it's in the format "accountId/databaseId"
-      // so we extract just the database ID part.
-      // Otherwise, it's just the database ID.
-      return id.includes("/") ? id.split("/")[1] : id;
-    });
-
     return {
       properties: {
-        databaseId: dbId,
+        databaseId: this.databaseId,
       },
       include: [
         binding({
           type: "d1DatabaseBindings",
           properties: {
-            id: dbId,
+            id: this.databaseId,
           },
         }),
       ],
@@ -141,6 +125,7 @@ export class D1 extends Component implements Link.Linkable {
    * The generated ID of the D1 database.
    */
   public get databaseId() {
+    // Pulumi returns "accountId/databaseId" for imported databases
     return this.database.id.apply((id) =>
       id.includes("/") ? id.split("/")[1] : id,
     );
