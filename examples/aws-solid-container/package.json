@@ -1,5 +1,5 @@
 {
-  "name": "example-basic",
+  "name": "aws-solid-container",
   "type": "module",
   "scripts": {
     "build": "vinxi build",
@@ -13,7 +13,7 @@
     "@solidjs/start": "^1.0.8",
     "ioredis": "^5.4.1",
     "solid-js": "^1.9.1",
-    "sst": "latest",
+    "sst": "^3",
     "vinxi": "^0.4.3"
   },
   "engines": {

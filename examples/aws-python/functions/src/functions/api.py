@@ -3,7 +3,6 @@ from functions.shared import foo
 from core.db import get_user
 from core.ping import ping
 
-
 def handler(event, context):
     print("Function invoked from Python")
 

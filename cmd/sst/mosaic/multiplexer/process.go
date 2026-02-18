@@ -39,7 +39,7 @@ type EventProcess struct {
 }
 
 func (s *Multiplexer) AddProcess(key string, args []string, icon string, title string, cwd string, killable bool, autostart bool, env ...string) {
-	s.screen.PostEvent(&EventProcess{
+	s.screen.PostEventWait(&EventProcess{
 		Key:       key,
 		Args:      args,
 		Icon:      icon,
@@ -88,4 +88,10 @@ func (s *pane) isScrolling() bool {
 
 func (s *pane) scrollable() bool {
 	return s.vt.Scrollable()
+}
+
+func (s *pane) Clear() {
+	s.vt.Clear()
+	s.vt.ScrollReset()
+	s.vt.ClearScrollback()
 }

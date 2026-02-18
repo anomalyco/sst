@@ -37,6 +37,7 @@ export default $config({
     //const bus = addBus();
     //const dynamo = addDynamo();
     //addOpenSearch();
+    //addStepFunction();
 
     return ret;
 
@@ -168,11 +169,24 @@ export default $config({
 
     function addApiV1() {
       const api = new sst.aws.ApiGatewayV1("MyApiV1");
-      api.route("GET /", {
-        handler: "functions/apiv2/index.handler",
-        link: [bucket],
-      });
+      api.route(
+        "GET /",
+        {
+          handler: "functions/apiv2/index.handler",
+          link: [bucket],
+        },
+        {
+          apiKey: true,
+        }
+      );
       api.deploy();
+      const plan = api.addUsagePlan("MyUsagePlan", {
+        quota: { limit: 1000, period: "day" },
+      });
+      plan.addApiKey("MyApiKey", {
+        value: "1234567890123456789012345678901234567890",
+      });
+
       return api;
     }
 
@@ -286,7 +300,7 @@ export default $config({
         url: {
           router: {
             instance: router,
-            domain: "api.router.playground.sst.sh/",
+            domain: "api.router.playground.sst.sh",
           },
         },
       });
@@ -592,6 +606,20 @@ export default $config({
       ret.osUsername = os.username;
       ret.osPassword = os.password;
       return os;
+    }
+
+    function addStepFunction() {
+      const runTask = sst.aws.StepFunctions.ecsRunTask({
+        name: "MyTask",
+        task,
+        environment: {
+          FOO: "hello",
+        },
+      });
+      const stepFunction = new sst.aws.StepFunctions("MyStepFunction", {
+        definition: runTask,
+      });
+      return stepFunction;
     }
   },
 });

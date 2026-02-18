@@ -37,6 +37,7 @@ import {
 import { DistributionInvalidation } from "./providers/distribution-invalidation.js";
 import { VisibleError } from "../error.js";
 import { KvRoutesUpdate } from "./providers/kv-routes-update.js";
+import { toPosix } from "../path.js";
 
 export interface StaticSiteArgs extends BaseStaticSiteArgs {
   /**
@@ -114,7 +115,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
      * {
      *   edge: {
      *     viewerRequest: {
-     *       injection: `event.request.headers["x-foo"] = "bar";`
+     *       injection: `event.request.headers["x-foo"] = { value: "bar" };`
      *     }
      *   }
      * }
@@ -133,7 +134,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
        * {
        *   edge: {
        *     viewerRequest: {
-       *       injection: `event.request.headers["x-foo"] = "bar";`
+       *       injection: `event.request.headers["x-foo"] = { value: "bar" };`
        *     }
        *   }
        * }
@@ -189,7 +190,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
      * {
      *   edge: {
      *     viewerResponse: {
-     *       injection: `event.response.headers["x-foo"] = "bar";`
+     *       injection: `event.response.headers["x-foo"] = { value: "bar" };`
      *     }
      *   }
      * }
@@ -206,7 +207,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
        * {
        *   edge: {
        *     viewerResponse: {
-       *       injection: `event.response.headers["x-foo"] = "bar";`
+       *       injection: `event.response.headers["x-foo"] = { value: "bar" };`
        *     }
        *   }
        * }
@@ -263,7 +264,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
    *     textEncoding: "utf-8",
    *     fileOptions: [
    *       {
-   *         files: ["**\/*.css", "**\/*.js"],
+   *         files: "**",
    *         cacheControl: "max-age=31536000,public,immutable"
    *       },
    *       {
@@ -440,7 +441,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
    *
    * For Vite, set the `base` option in your `vite.config.ts`. It should end with
    * a `/` to ensure asset paths like CSS and JS, are constructed correctly.
-   * 
+   *
    * ```js title="vite.config.ts" {2}
    * export default defineConfig({
    *   base: "/docs/"
@@ -812,7 +813,6 @@ export class StaticSite extends Component implements Link.Linkable {
         environment,
         url: this.url,
       },
-      _dev: dev.outputs,
     });
 
     function validateDeprecatedProps() {
@@ -960,10 +960,12 @@ export class StaticSite extends Component implements Link.Linkable {
                     .digest("hex");
                   return {
                     source,
-                    key: path.posix.join(
-                      assets.path ?? "",
-                      route?.pathPrefix?.replace(/^\//, "") ?? "",
-                      file,
+                    key: toPosix(
+                      path.join(
+                        assets.path ?? "",
+                        route?.pathPrefix?.replace(/^\//, "") ?? "",
+                        file,
+                      ),
                     ),
                     hash,
                     cacheControl: fileOption.cacheControl,
@@ -1009,14 +1011,32 @@ export class StaticSite extends Component implements Link.Linkable {
       ]).apply(async ([outputPath, assets, bucketDomain, errorPage, route]) => {
         const kvEntries: Record<string, string> = {};
         const dirs: string[] = [];
+        // Router append .html and index.html suffixes to requests to s3 routes:
+        // - `.well-known` contain files without suffix, hence will be appended .html
+        // - in the future, it might make sense for each dir to have props that controls
+        //   the suffixes ie. "handleTrailingSlashse"
+        const expandDirs = [".well-known"];
 
-        fs.readdirSync(outputPath, { withFileTypes: true }).forEach((item) => {
-          if (item.isDirectory()) {
-            dirs.push(path.posix.join("/", item.name));
-            return;
-          }
-          kvEntries[path.posix.join("/", item.name)] = "s3";
-        });
+        const processDir = (childPath = "", level = 0) => {
+          const currentPath = path.join(outputPath, childPath);
+          fs.readdirSync(currentPath, { withFileTypes: true }).forEach(
+            (item) => {
+              // File: add to kvEntries
+              if (item.isFile()) {
+                kvEntries[toPosix(path.join("/", childPath, item.name))] = "s3";
+                return;
+              }
+              // Directory + expand: recursively process it
+              if (level === 0 && expandDirs.includes(item.name)) {
+                processDir(path.join(childPath, item.name), level + 1);
+                return;
+              }
+              // Directory + NOT expand: add to route
+              dirs.push(toPosix(path.join("/", childPath, item.name)));
+            },
+          );
+        };
+        processDir();
 
         kvEntries["metadata"] = JSON.stringify({
           base: route?.pathPrefix === "/" ? undefined : route?.pathPrefix,

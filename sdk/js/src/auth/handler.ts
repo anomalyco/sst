@@ -25,16 +25,13 @@ export class MissingParameterError extends Error {
 export class UnknownStateError extends Error {
   constructor() {
     super(
-      "The browser was in an unknown state. This could be because certain cookies expired or the browser was switched in the middle of an authentication flow",
+      "The browser was in an unknown state. This could be because certain cookies expired or the browser was switched in the middle of an authentication flow"
     );
   }
 }
 
 export class UnauthorizedClientError extends Error {
-  constructor(
-    public client: string,
-    public redirect_uri: string,
-  ) {
+  constructor(public client: string, public redirect_uri: string) {
     super("Unauthorized client");
   }
 }
@@ -63,7 +60,7 @@ export function AuthHandler<
         provider: key;
       } & (Providers[key] extends Adapter<infer T> ? T : {})
     >;
-  }[keyof Providers],
+  }[keyof Providers]
 >(input: {
   basePath?: string;
   stream?: boolean;
@@ -73,7 +70,7 @@ export function AuthHandler<
     index?(req: Request): Promise<Response>;
     error?(
       error: UnknownStateError,
-      req: Request,
+      req: Request
     ): Promise<Response | undefined>;
     auth: {
       error?(
@@ -81,24 +78,24 @@ export function AuthHandler<
           | MissingParameterError
           | UnauthorizedClientError
           | UnknownProviderError,
-        req: Request,
+        req: Request
       ): Promise<Response>;
       start?(event: Request): Promise<void>;
       allowClient(
         clientID: string,
         redirect: string,
-        req: Request,
+        req: Request
       ): Promise<boolean>;
       success(
         response: OnSuccessResponder<Sessions["$typeValues"]>,
         input: Result,
-        req: Request,
+        req: Request
       ): Promise<Response>;
     };
     connect?: {
       error?(
         error: InvalidSessionError | UnknownProviderError,
-        req: Request,
+        req: Request
       ): Promise<Response | undefined>;
       start?(session: Sessions["$typeValues"], req: Request): Promise<void>;
       success?(session: Sessions["$typeValues"], input: {}): Promise<Response>;
@@ -124,13 +121,13 @@ export function AuthHandler<
         importPKCS8(
           // @ts-expect-error
           process.env.AUTH_PRIVATE_KEY || Resource.AUTH_PRIVATE_KEY,
-          "RS512",
+          "RS512"
         ),
       publicKey: () =>
         importSPKI(
           // @ts-expect-error
           process.env.AUTH_PUBLIC_KEY || Resource.AUTH_PUBLIC_KEY,
-          "RS512",
+          "RS512"
         ),
     },
     encryption: {
@@ -138,13 +135,13 @@ export function AuthHandler<
         importPKCS8(
           // @ts-expect-error
           process.env.AUTH_PRIVATE_KEY || Resource.AUTH_PRIVATE_KEY,
-          "RSA-OAEP-512",
+          "RSA-OAEP-512"
         ),
       publicKey: () =>
         importSPKI(
           // @ts-expect-error
           process.env.AUTH_PUBLIC_KEY || Resource.AUTH_PUBLIC_KEY,
-          "RSA-OAEP-512",
+          "RSA-OAEP-512"
         ),
     },
     algorithm: "RS512",
@@ -156,8 +153,8 @@ export function AuthHandler<
           ctx,
           await input.callbacks.auth.error!(
             new UnknownStateError(),
-            ctx.req.raw,
-          ),
+            ctx.req.raw
+          )
         );
       }
       return await input.callbacks.auth.success(
@@ -208,14 +205,14 @@ export function AuthHandler<
           provider: ctx.get("provider"),
           ...properties,
         },
-        ctx.req.raw,
+        ctx.req.raw
       );
     },
     forward(ctx: Context, response: Response) {
       return ctx.newResponse(
         response.body,
         response.status as any,
-        Object.fromEntries(response.headers.entries()),
+        Object.fromEntries((response.headers as any).entries())
       );
     },
     cookie(c, key, value, maxAge) {
@@ -244,7 +241,7 @@ export function AuthHandler<
 
     const { payload } = await jwtVerify(
       code as string,
-      await options.signing.publicKey(),
+      await options.signing.publicKey()
     );
     if (payload.redirect_uri !== form.get("redirect_uri")) {
       c.status(400);

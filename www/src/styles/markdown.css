@@ -28,7 +28,7 @@
   + hr:not(:where(.not-content *)),
 .sl-markdown-content hr:not(:where(.not-content *)) + :not(a, strong, em, del, span, input, code, :where(.not-content *))
 {
-  margin-top: 3.5rem;
+  margin-top: calc(var(--paragraph-spacing) + 2rem);
 }
 
 /**
@@ -334,4 +334,12 @@
 }
 .sl-markdown-content tr:nth-child(2n):not(:where(.not-content *)) {
   background-color: transparent;
+}
+
+/**
+ * Centered images
+ */
+.sl-markdown-content > :is(img, picture, video, canvas, svg, iframe):not(:where(.not-content *)) {
+  margin-left: auto;
+  margin-right: auto;
 }

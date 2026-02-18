@@ -130,7 +130,7 @@ export class D1 extends Component implements Link.Linkable {
         binding({
           type: "d1DatabaseBindings",
           properties: {
-            databaseId: dbId,
+            id: dbId,
           },
         }),
       ],

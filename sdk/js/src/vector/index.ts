@@ -248,7 +248,7 @@ export function VectorClient<
         ? never
         : key
       : never]: Resource[key];
-  },
+  }
 >(name: T): VectorClientResponse {
   return {
     put: async (event: PutEvent) => {
@@ -256,7 +256,7 @@ export function VectorClient<
         // @ts-expect-error
         Resource[name].putFunction,
         JSON.stringify(event),
-        "Failed to store into the vector db",
+        "Failed to store into the vector db"
       );
     },
 
@@ -265,7 +265,7 @@ export function VectorClient<
         // @ts-expect-error
         Resource[name].queryFunction,
         JSON.stringify(event),
-        "Failed to query the vector db",
+        "Failed to query the vector db"
       );
     },
 
@@ -274,7 +274,7 @@ export function VectorClient<
         // @ts-expect-error
         Resource[name].removeFunction,
         JSON.stringify(event),
-        "Failed to remove from the vector db",
+        "Failed to remove from the vector db"
       );
     },
   };
@@ -284,7 +284,7 @@ async function invokeFunction<T>(
   functionName: string,
   body: string,
   errorMessage: string,
-  attempts = 0,
+  attempts = 0
 ): Promise<T> {
   try {
     const c = await client();
@@ -295,7 +295,7 @@ async function invokeFunction<T>(
         method: "POST",
         headers: { Accept: "application/json" },
         body,
-      },
+      }
     );
 
     // success
@@ -346,13 +346,13 @@ async function invokeFunction<T>(
 
     // retry
     await new Promise((resolve) =>
-      setTimeout(resolve, 1.5 ** attempts * 100 * Math.random()),
+      setTimeout(resolve, 1.5 ** attempts * 100 * Math.random())
     );
     return await invokeFunction<T>(
       functionName,
       body,
       errorMessage,
-      attempts + 1,
+      attempts + 1
     );
   }
 }

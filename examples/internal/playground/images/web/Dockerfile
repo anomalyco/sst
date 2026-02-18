@@ -1,5 +1,4 @@
 FROM node:18-bullseye-slim
-ARG SST_RESOURCE_MyBucket
 
 WORKDIR /app/
 
@@ -8,7 +7,8 @@ RUN npm install
 
 # Ensure linked resources are available at build time
 COPY build.mjs /app
-RUN node build.mjs
+RUN --mount=type=secret,id=SST_RESOURCE_MyBucket,env=SST_RESOURCE_MyBucket \
+  node build.mjs
 
 COPY index.mjs /app
 

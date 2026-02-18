@@ -1,5 +1,10 @@
 /// <reference path="./.sst/platform/config.d.ts" />
 
+/**
+ * ## Rust container
+ *
+ * Deploy a Rust app in a container with a load balancer using a Dockerfile.
+ */
 export default $config({
   app(input) {
     return {

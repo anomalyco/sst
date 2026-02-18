@@ -13,7 +13,7 @@
     "@astrojs/check": "^0.9.3",
     "astro": "^4.15.9",
     "astro-sst": "2.43.5",
-    "sst": "latest",
+    "sst": "^3",
     "typescript": "^5.6.2"
   }
 }

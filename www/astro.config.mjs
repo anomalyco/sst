@@ -90,8 +90,8 @@ const sidebar = [
           "docs/component/aws/redis",
           "docs/component/aws/email",
           "docs/component/aws/react",
-          "docs/component/aws/remix",
           "docs/component/aws/mysql",
+          "docs/component/aws/remix",
           "docs/component/aws/nextjs",
           "docs/component/aws/queue",
           "docs/component/aws/vector",
@@ -116,6 +116,7 @@ const sidebar = [
           "docs/component/aws/kinesis-stream",
           "docs/component/aws/apigatewayv1",
           "docs/component/aws/apigatewayv2",
+          "docs/component/aws/step-functions",
           "docs/component/aws/cognito-user-pool",
           "docs/component/aws/cognito-identity-pool",
           "docs/component/aws/apigateway-websocket",
@@ -147,6 +148,48 @@ const sidebar = [
               "docs/component/aws/providers/function-environment-update",
               "docs/component/aws/apigatewayv1-integration-route",
               "docs/component/aws/kinesis-stream-lambda-subscriber",
+              {
+                label: "StepFunctions",
+                collapsed: true,
+                items: [
+                  {
+                    label: "Fail",
+                    slug: "docs/component/aws/step-functions/fail",
+                  },
+                  {
+                    label: "Map",
+                    slug: "docs/component/aws/step-functions/map",
+                  },
+                  {
+                    label: "Wait",
+                    slug: "docs/component/aws/step-functions/wait",
+                  },
+                  {
+                    label: "Task",
+                    slug: "docs/component/aws/step-functions/task",
+                  },
+                  {
+                    label: "Pass",
+                    slug: "docs/component/aws/step-functions/pass",
+                  },
+                  {
+                    label: "State",
+                    slug: "docs/component/aws/step-functions/state",
+                  },
+                  {
+                    label: "Choice",
+                    slug: "docs/component/aws/step-functions/choice",
+                  },
+                  {
+                    label: "Parallel",
+                    slug: "docs/component/aws/step-functions/parallel",
+                  },
+                  {
+                    label: "Succeed",
+                    slug: "docs/component/aws/step-functions/succeed",
+                  },
+                ],
+              },
             ],
           },
           {
@@ -155,6 +198,7 @@ const sidebar = [
             items: [
               { label: "Vpc.v1", slug: "docs/component/aws/vpc-v1" },
               { label: "Redis.v1", slug: "docs/component/aws/redis-v1" },
+              { label: "Service.v1", slug: "docs/component/aws/service-v1" },
               { label: "Cluster.v1", slug: "docs/component/aws/cluster-v1" },
               { label: "Postgres.v1", slug: "docs/component/aws/postgres-v1" },
             ],
@@ -226,6 +270,7 @@ export default defineConfig({
   server: {
     host: "0.0.0.0",
   },
+  prefetch: import.meta.env.DEV ? false : true,
   devToolbar: {
     enabled: false,
   },
@@ -249,6 +294,10 @@ export default defineConfig({
       lastUpdated: true,
       favicon: "/favicon.svg",
       pagination: false,
+      markdown: {
+        // Use custom heading links
+        headingLinks: false,
+      },
       customCss: [
         "@fontsource-variable/rubik",
         "@fontsource-variable/roboto-mono",
@@ -264,11 +313,11 @@ export default defineConfig({
         "./src/styles/tsdoc.css",
         "./src/styles/heading.css",
       ],
-      social: {
-        "x.com": config.twitter,
-        discord: config.discord,
-        github: config.github,
-      },
+      social: [
+        { icon: "discord", label: "Discord", href: config.discord },
+        { icon: "github", label: "GitHub", href: config.github },
+        { icon: "twitter", label: "X.com", href: config.twitter },
+      ],
       editLink: {
         baseUrl: "https://github.com/sst/sst/edit/dev/www",
       },

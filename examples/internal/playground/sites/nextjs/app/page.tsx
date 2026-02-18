@@ -19,12 +19,25 @@ export default async function Home() {
     <div className={styles.page}>
       <main className={styles.main}>
         <Form url={url} />
-        <div style={{ marginTop: '20px' }}>
-          <Link href="/image-test" style={{ textDecoration: 'underline' }}>
+        <div style={{ marginTop: "20px" }}>
+          <Link href="/image-test" style={{ textDecoration: "underline" }}>
             Image Optimization Test
           </Link>
         </div>
       </main>
+      <h1>Test Links</h1>
+      <ul>
+        <li>
+          <a href="./.well-known/assetlinks.json">
+            .well-known/assetlinks.json
+          </a>
+        </li>
+        <li>
+          <a href="./.well-known/apple-app-site-association">
+            .well-known/apple-app-site-association
+          </a>
+        </li>
+      </ul>
     </div>
   );
 }

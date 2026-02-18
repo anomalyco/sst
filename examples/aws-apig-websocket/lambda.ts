@@ -6,6 +6,20 @@ import {
 
 export async function connect(event) {
   console.log("!!! connect");
+
+  // If subprotocols are requested, return the allowed protocol. In this example, we only
+  // allow "MY_ALLOWED_PROTOCOL".
+  const protocolHeader = event.headers["Sec-WebSocket-Protocol"];
+  if (protocolHeader) {
+    const subprotocols = protocolHeader.split(",").map((p) => p.trim());
+    return subprotocols.includes("MY_ALLOWED_PROTOCOL")
+      ? {
+          statusCode: 200,
+          headers: { "Sec-WebSocket-Protocol": "MY_ALLOWED_PROTOCOL" },
+        }
+      : { statusCode: 400 };
+  }
+
   return { statusCode: 200 };
 }
 

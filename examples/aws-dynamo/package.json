@@ -1,5 +1,5 @@
 {
-  "name": "queue",
+  "name": "aws-dynamo",
   "version": "1.0.0",
   "description": "",
   "type": "module",
@@ -13,7 +13,7 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "sst": "3.0.1-7"
+    "sst": "^3"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.515.0"

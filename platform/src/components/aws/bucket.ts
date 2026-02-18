@@ -10,7 +10,7 @@ import { Component, Prettify, Transform, transform } from "../component";
 import { Link } from "../link";
 import type { Input } from "../input";
 import { FunctionArgs, FunctionArn } from "./function";
-import { Duration, toSeconds } from "../duration";
+import { Duration, DurationDays, toSeconds } from "../duration";
 import { VisibleError } from "../error";
 import { parseBucketArn } from "./helpers/arn";
 import { BucketLambdaSubscriber } from "./bucket-lambda-subscriber";
@@ -97,6 +97,70 @@ interface BucketCorsArgs {
    * ```
    */
   maxAge?: Input<Duration>;
+}
+
+interface BucketLifecycleArgs {
+  /**
+   * The unique identifier for the lifecycle rule.
+   *
+   * This ID must be unique across all lifecycle rules in the bucket and cannot exceed 255 characters.
+   * Whitespace-only values are not allowed.
+   *
+   * If not provided, SST will generate a unique ID based on the bucket component name and rule index.
+   *
+   * @example
+   * Use stable IDs to ensure rule identity is preserved when reordering rules.
+   * ```js
+   * {
+   *   id: "expire-tmp-files",
+   *   prefix: "/tmp",
+   *   expiresIn: "7 days"
+   * }
+   * ```
+   */
+  id?: Input<string>;
+  /**
+   * An S3 object key prefix that the lifecycle rule applies to.
+   * @example
+   * Applies to all the objects in the `images/` folder.
+   * ```js
+   * {
+   *   prefix: "images/"
+   * }
+   * ```
+   */
+  prefix?: Input<string>;
+  /**
+   * Whether the lifecycle rule is enabled.
+   * @example
+   * ```js
+   * {
+   *  enabled: true
+   * }
+   * ```
+   * @default `true`
+   */
+  enabled?: Input<boolean>;
+  /**
+   * Days after which the objects in the bucket should expire.
+   * @example
+   * ```js
+   * {
+   *  expiresIn: "30 days"
+   * }
+   * ```
+   */
+  expiresIn?: Input<DurationDays>;
+  /**
+   * Date after which the objects in the bucket should expire. Defaults to midnight UTC time.
+   * @example
+   * ```js
+   * {
+   *  expiresAt: "2023-08-22"
+   * }
+   * ```
+   */
+  expiresAt?: Input<string>;
 }
 
 export interface BucketArgs {
@@ -286,9 +350,9 @@ export interface BucketArgs {
       principals: Input<
         | "*"
         | Input<{
-          type: Input<"aws" | "service" | "federated" | "canonical">;
-          identifiers: Input<Input<string>[]>;
-        }>[]
+            type: Input<"aws" | "service" | "federated" | "canonical">;
+            identifiers: Input<Input<string>[]>;
+          }>[]
       >;
       /**
        * Configure specific conditions for when the policy is in effect.
@@ -321,6 +385,34 @@ export interface BucketArgs {
           values: Input<Input<string>[]>;
         }>[]
       >;
+      /**
+       * The S3 file paths that the policy is applied to. The paths are specified using
+       * the [S3 path format](https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-prefixes.html).
+       * The bucket arn will be prepended to the paths when constructing the policy.
+       * @default `["", "*"]`
+       * @example
+       * Apply the policy to the bucket itself.
+       * ```js
+       * {
+       *   paths: [""]
+       * }
+       * ```
+       *
+       * Apply to all files in the bucket.
+       * ```js
+       * {
+       *   paths: ["*"]
+       * }
+       * ```
+       *
+       * Apply to all files in the `images/` folder.
+       * ```js
+       * {
+       *   paths: ["images/*"]
+       * }
+       * ```
+       */
+      paths?: Input<Input<string>[]>;
     }>[]
   >;
   /**
@@ -357,6 +449,40 @@ export interface BucketArgs {
    */
   cors?: Input<false | Prettify<BucketCorsArgs>>;
   /**
+   * The lifecycle configuration for the bucket.
+   * @example
+   * Delete objects in the "/tmp" directory after 30 days.
+   * ```js
+   * {
+   *   lifecycle: [
+   *     {
+   *       prefix: "/tmp",
+   *       expiresIn: "30 days"
+   *     }
+   *   ]
+   * }
+   * ```
+   *
+   * Use stable IDs to preserve rule identity when reordering.
+   * ```js
+   * {
+   *   lifecycle: [
+   *     {
+   *       id: "expire-tmp-files",
+   *       prefix: "/tmp",
+   *       expiresIn: "7 days"
+   *     },
+   *     {
+   *       id: "archive-old-logs",
+   *       prefix: "/logs",
+   *       expiresIn: "90 days"
+   *     }
+   *   ]
+   * }
+   * ```
+   */
+  lifecycle?: Input<Input<Prettify<BucketLifecycleArgs>>[]>;
+  /**
    * Enable versioning for the bucket.
    *
    * Bucket versioning enables you to store multiple versions of an object, protecting
@@ -392,6 +518,10 @@ export interface BucketArgs {
      * Transform the S3 Bucket versioning resource.
      */
     versioning?: Transform<s3.BucketVersioningV2Args>;
+    /**
+     * Transform the S3 Bucket lifecycle resource.
+     * */
+    lifecycle?: Transform<s3.BucketLifecycleConfigurationV2Args>;
     /**
      * Transform the public access block resource that's attached to the Bucket.
      *
@@ -755,12 +885,13 @@ export class Bucket extends Component implements Link.Linkable {
     const publicAccessBlock = createPublicAccess();
     const policy = createBucketPolicy();
     createCorsRule();
+    createLifecycle();
 
     // Ensure the policy is created when the bucket is used in another component
     // (ie. bucket.name). Also, a bucket can only have one policy. We want to ensure
     // the policy created here is created first. And SST will throw an error if
     // another policy is created after this one.
-    this.bucket = policy.apply(() => bucket);
+    this.bucket = policy.urn.apply(() => bucket);
 
     function normalizeAccess() {
       return all([args.public, args.access]).apply(([pub, access]) =>
@@ -778,14 +909,17 @@ export class Bucket extends Component implements Link.Linkable {
             p.principals === "*"
               ? [{ type: "*", identifiers: ["*"] }]
               : p.principals.map((i) => ({
-                ...i,
-                type: {
-                  aws: "AWS",
-                  service: "Service",
-                  federated: "Federated",
-                  canonical: "Canonical",
-                }[i.type],
-              })),
+                  ...i,
+                  type: {
+                    aws: "AWS",
+                    service: "Service",
+                    federated: "Federated",
+                    canonical: "Canonical",
+                  }[i.type],
+                })),
+          paths: p.paths
+            ? p.paths.map((path) => path.replace(/^\//, ""))
+            : ["", "*"],
         })),
       );
     }
@@ -823,6 +957,68 @@ export class Bucket extends Component implements Link.Linkable {
       });
     }
 
+    function createLifecycle() {
+      return output(args.lifecycle).apply((lifecycleRules) => {
+        if (!lifecycleRules || lifecycleRules.length === 0) return;
+
+        const seenIds = new Map<string, number>();
+
+        const resolvedIds = lifecycleRules.map((rule, index) => {
+          const rawId = rule.id ?? `${name}LifecycleRule${index}`;
+          const resolvedId = rawId.trim();
+
+          if (resolvedId.length === 0) {
+            throw new VisibleError(
+              `Lifecycle rule at index ${index} has an empty or whitespace-only "id". Please provide a valid id or omit it to use the auto-generated id.`,
+            );
+          }
+
+          if (resolvedId.length > 255) {
+            throw new VisibleError(
+              `Lifecycle rule at index ${index} has an "id" that is ${resolvedId.length} characters long. AWS S3 lifecycle rule IDs cannot exceed 255 characters.`,
+            );
+          }
+
+          const existingIndex = seenIds.get(resolvedId);
+          if (existingIndex !== undefined) {
+            throw new VisibleError(
+              `Lifecycle rule "id" values must be unique. The id "${resolvedId}" is used by rules at indexes ${existingIndex} and ${index}.`,
+            );
+          }
+          seenIds.set(resolvedId, index);
+
+          return resolvedId;
+        });
+
+        return new s3.BucketLifecycleConfigurationV2(
+          ...transform(
+            args.transform?.lifecycle,
+            `${name}Lifecycle`,
+            {
+              bucket: bucket.bucket,
+              rules: lifecycleRules.map((rule, index) => ({
+                id: resolvedIds[index],
+                status: rule.enabled !== false ? "Enabled" : "Disabled",
+                expiration:
+                  rule.expiresIn || rule.expiresAt
+                    ? {
+                        days: rule.expiresIn
+                          ? toSeconds(rule.expiresIn) / 86400
+                          : undefined,
+                        date: rule.expiresAt
+                          ? `${rule.expiresAt}T00:00:00Z`
+                          : undefined,
+                      }
+                    : undefined,
+                filter: rule.prefix ? { prefix: rule.prefix } : undefined,
+              })),
+            },
+            { parent },
+          ),
+        );
+      });
+    }
+
     function createPublicAccess() {
       if (args.transform?.publicAccessBlock === false) return;
 
@@ -852,9 +1048,9 @@ export class Bucket extends Component implements Link.Linkable {
                 access === "public"
                   ? { type: "*", identifiers: ["*"] }
                   : {
-                    type: "Service",
-                    identifiers: ["cloudfront.amazonaws.com"],
-                  },
+                      type: "Service",
+                      identifiers: ["cloudfront.amazonaws.com"],
+                    },
               ],
               actions: ["s3:GetObject"],
               resources: [interpolate`${bucket.arn}/*`],
@@ -876,9 +1072,14 @@ export class Bucket extends Component implements Link.Linkable {
             });
           }
           statements.push(
-            ...policyArgs.map((p) => ({
-              ...p,
-              resources: [bucket.arn, interpolate`${bucket.arn}/*`],
+            ...policyArgs.map((policy) => ({
+              effect: policy.effect,
+              principals: policy.principals,
+              actions: policy.actions,
+              conditions: policy.conditions,
+              resources: policy.paths.map((path) =>
+                path === "" ? bucket.arn : interpolate`${bucket.arn}/${path}`,
+              ),
             })),
           );
 

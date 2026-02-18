@@ -1,7 +1,7 @@
 /// <reference path="./.sst/platform/config.d.ts" />
 
 /**
- * ## AWS Lamda Rust Multiple-Binaries
+ * ## AWS Lamda Rust multiple-binaries
  *
  * This example shows how to deploy multiple binary rust project to AWS Lambda.
  *
@@ -52,7 +52,7 @@
 export default $config({
   app(input) {
     return {
-      name: "aws-rust-lambda",
+      name: "aws-lambda-rust-multiple-binaries",
       removal: input?.stage === "production" ? "retain" : "remove",
       protect: ["production"].includes(input?.stage),
       home: "aws",

@@ -141,7 +141,7 @@ export interface OpenSearchArgs {
     /**
      * Transform the OpenSearch domain policy.
      */
-    policy?: Transform<iam.PolicyDocument>;
+    policy?: Transform<opensearch.DomainPolicyArgs>;
   };
 }
 
@@ -151,8 +151,8 @@ interface OpenSearchRef {
 }
 
 /**
- * The `OpenSearch` component lets you add an OpenSearch domain to your app using
- * [Amazon OpenSearch Service](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/what-is.html).
+ * The `OpenSearch` component lets you add a deployed instance of OpenSearch, or an
+ * OpenSearch _domain_ to your app using [Amazon OpenSearch Service](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/what-is.html).
  *
  * @example
  *
@@ -182,8 +182,8 @@ interface OpenSearchRef {
  *   node: Resource.MySearch.url,
  *   auth: {
  *     username: Resource.MySearch.username,
- *     password: Resource.MySearch.password,
- *   },
+ *     password: Resource.MySearch.password
+ *   }
  * });
  *
  * // Add a document
@@ -388,16 +388,16 @@ Listening on "${dev.url}"...`,
       return args.password
         ? output(args.password)
         : new RandomPassword(
-            `${name}Password`,
-            {
-              length: 32,
-              minLower: 1,
-              minUpper: 1,
-              minNumeric: 1,
-              minSpecial: 1,
-            },
-            { parent: self },
-          ).result;
+          `${name}Password`,
+          {
+            length: 32,
+            minLower: 1,
+            minUpper: 1,
+            minNumeric: 1,
+            minSpecial: 1,
+          },
+          { parent: self },
+        ).result;
     }
 
     function createSecret() {
@@ -472,20 +472,23 @@ Listening on "${dev.url}"...`,
 
     function createPolicy() {
       return new opensearch.DomainPolicy(
-        `${name}DomainPolicy`,
-        {
-          domainName: domain.domainName,
-          accessPolicies: iam.getPolicyDocumentOutput({
-            statements: [
-              {
-                principals: [{ type: "*", identifiers: ["*"] }],
-                actions: ["*"],
-                resources: ["*"],
-              },
-            ],
-          }).json,
-        },
-        { parent: self },
+        ...transform(
+          args.transform?.policy,
+          `${name}DomainPolicy`,
+          {
+            domainName: domain.domainName,
+            accessPolicies: iam.getPolicyDocumentOutput({
+              statements: [
+                {
+                  principals: [{ type: "*", identifiers: ["*"] }],
+                  actions: ["*"],
+                  resources: ["*"],
+                },
+              ],
+            }).json,
+          },
+          { parent: self },
+        ),
       );
     }
   }
@@ -554,17 +557,17 @@ Listening on "${dev.url}"...`,
    *
    * ```ts title="sst.config.ts"
    * const search = $app.stage === "frank"
-   *   ? sst.aws.OpenSearch.get("MyOpenSearch", "arn:aws:es:us-east-1:123456789012:domain/app-dev-myopensearch-efsmkrbt")
+   *   ? sst.aws.OpenSearch.get("MyOpenSearch", "app-dev-myopensearch-efsmkrbt")
    *   : new sst.aws.OpenSearch("MyOpenSearch");
    * ```
    *
-   * Here `arn:aws:es:us-east-1:123456789012:domain/app-dev-myopensearch-efsmkrbt` is the
+   * Here `app-dev-myopensearch-efsmkrbt` is the
    * ID of the OpenSearch component created in the `dev` stage.
    * You can find this by outputting the ID in the `dev` stage.
    *
    * ```ts title="sst.config.ts"
    * return {
-   *   id: search.id,
+   *   id: search.id
    * };
    * ```
    */

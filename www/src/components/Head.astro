@@ -4,8 +4,13 @@ import type { Props } from '@astrojs/starlight/props'
 import Default from '@astrojs/starlight/components/Head.astro'
 import config from '../../config';
 
-const  slug = Astro.props.entry.slug;
-const { cover, title } = Astro.props.entry.data;
+const slug = Astro.url.pathname.replace(/^\//, "").replace(/\/$/, "");
+const {
+  cover,
+  entry: {
+    data: { title },
+  },
+} = Astro.locals.starlightRoute;
 
 const encodedTitle = encodeURIComponent(
   Base64.encode(

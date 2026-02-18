@@ -1,5 +1,5 @@
 {
-  "name": "sst-v3-go-file-upload",
+  "name": "aws-go-lambda-bucket-presigned-url",
   "module": "index.ts",
   "type": "module",
   "devDependencies": {
@@ -10,6 +10,6 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
-    "sst": "3.4.27"
+    "sst": "^3"
   }
 }

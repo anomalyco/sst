@@ -27,7 +27,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "server-only": "^0.0.1",
-    "sst": "latest",
+    "sst": "^3",
     "superjson": "^2.2.1",
     "zod": "^3.23.3"
   },

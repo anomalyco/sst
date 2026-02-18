@@ -23,11 +23,11 @@ export type { PostgresArgs as PostgresV1Args } from "./postgres-v1";
 export interface PostgresArgs {
   /**
    * The Postgres engine version. Check out the [available versions in your region](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/PostgreSQL.Concepts.General.DBVersions.html).
-   * @default `"16.4"`
+   * @default `"17"`
    * @example
    * ```js
    * {
-   *   version: "17.2"
+   *   version: "17.1"
    * }
    * ```
    */
@@ -58,7 +58,8 @@ export interface PostgresArgs {
    * }
    * ```
    *
-   * Use [Secrets](/docs/component/secret) to manage the password.
+   * You can use a `Secret` to manage the password.
+   *
    * ```js
    * {
    *   password: new sst.Secret("MyDBPassword").value
@@ -109,8 +110,8 @@ export interface PostgresArgs {
    * :::
    *
    * By default, [gp3 storage volumes](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/CHAP_Storage.html#Concepts.Storage.GeneralSSD)
-   * are used without additional provisioned IOPS. This provides a good baseline performance
-   * for most use cases.
+   * are used without additional provisioned IOPS. This provides good baseline
+   * performance for most use cases.
    *
    * The minimum storage size is 20 GB. And the maximum storage size is 64 TB.
    *
@@ -151,19 +152,20 @@ export interface PostgresArgs {
          *   credentials: [
          *     {
          *       username: "metabase",
-         *       password: "Passw0rd!",
+         *       password: "Passw0rd!"
          *     }
          *   ]
          * }
          * ```
          *
-         * Use [Secrets](/docs/component/secret) to manage the password.
+         * You can use a `Secret` to manage the password.
+         *
          * ```js
          * {
          *   credentials: [
          *     {
          *       username: "metabase",
-         *       password: new sst.Secret("MyDBPassword").value,
+         *       password: new sst.Secret("MyDBPassword").value
          *     }
          *   ]
          * }
@@ -217,14 +219,14 @@ export interface PostgresArgs {
    * ```js
    * {
    *   vpc: {
-   *     subnets: ["subnet-0db7376a7ad4db5fd ", "subnet-06fc7ee8319b2c0ce"],
+   *     subnets: ["subnet-0db7376a7ad4db5fd ", "subnet-06fc7ee8319b2c0ce"]
    *   }
    * }
    * ```
    *
    * Or create a `Vpc` component.
    *
-   * ```js
+   * ```ts title="sst.config.ts"
    * const myVpc = new sst.aws.Vpc("MyVpc");
    * ```
    *
@@ -251,7 +253,7 @@ export interface PostgresArgs {
    * connect to a locally running Postgres database, you can configure the `dev` prop.
    *
    * :::note
-   * By default, this creates a new RDS database even in `sst dev`.
+   * This will not create an RDS database in `sst dev`.
    * :::
    *
    * This will skip deploying an RDS database and link to the locally running Postgres database
@@ -395,7 +397,7 @@ interface PostgresRef {
  *   -e POSTGRES_USER=postgres \
  *   -e POSTGRES_PASSWORD=password \
  *   -e POSTGRES_DB=local \
- *   postgres:16.4
+ *   postgres:18
  * ```
  *
  * You can connect to it in `sst dev` by configuring the `dev` prop.
@@ -435,7 +437,7 @@ interface PostgresRef {
  *
  * That works out to an **additional** $0.015 x 2 x 24 x 30 or **$22 per month**.
  *
- * The above are rough estimates for _us-east-1_, check out the
+ * This is a rough estimate for _us-east-1_, check out the
  * [RDS Proxy pricing](https://aws.amazon.com/rds/proxy/pricing/) for more details.
  */
 export class Postgres extends Component implements Link.Linkable {
@@ -471,7 +473,7 @@ export class Postgres extends Component implements Link.Linkable {
 
     registerVersion();
     const multiAz = output(args.multiAz).apply((v) => v ?? false);
-    const engineVersion = output(args.version).apply((v) => v ?? "16.4");
+    const engineVersion = output(args.version).apply((v) => v ?? "17");
     const instanceType = output(args.instance).apply((v) => v ?? "t4g.micro");
     const username = output(args.username).apply((v) => v ?? "postgres");
     const storage = normalizeStorage();
@@ -678,7 +680,10 @@ Listening on "${dev.host}:${dev.port}"...`,
               },
             ],
           },
-          { parent: self },
+          {
+            parent: self,
+            ignoreChanges: args.version ? [] : ["family"],
+          },
         ),
       );
     }
@@ -734,7 +739,11 @@ Listening on "${dev.host}:${dev.port}"...`,
               "sst:lookup:password": secret.id,
             },
           },
-          { parent: self, deleteBeforeReplace: true },
+          {
+            parent: self,
+            deleteBeforeReplace: true,
+            ignoreChanges: args.version ? [] : ["engineVersion"],
+          },
         ),
       );
     }
@@ -764,7 +773,10 @@ Listening on "${dev.host}:${dev.port}"...`,
                   (v) => v!,
                 ),
               },
-              { parent: self },
+              {
+                parent: self,
+                ignoreChanges: args.version ? [] : ["engineVersion"],
+              },
             ),
         ),
       );
@@ -980,10 +992,10 @@ Listening on "${dev.host}:${dev.port}"...`,
    * const database = $app.stage === "frank"
    *   ? sst.aws.Postgres.get("MyDatabase", {
    *       id: "app-dev-mydatabase",
-   *       proxyId: "app-dev-mydatabase-proxy",
+   *       proxyId: "app-dev-mydatabase-proxy"
    *     })
    *   : new sst.aws.Postgres("MyDatabase", {
-   *       proxy: true,
+   *       proxy: true
    *     });
    * ```
    *
@@ -994,7 +1006,7 @@ Listening on "${dev.host}:${dev.port}"...`,
    * ```ts title="sst.config.ts"
    * return {
    *   id: database.id,
-   *   proxyId: database.proxyId,
+   *   proxyId: database.proxyId
    * };
    * ```
    */

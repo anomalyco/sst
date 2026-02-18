@@ -19,7 +19,7 @@ export class SecretMissingError extends VisibleError {
  *
  * Secrets are encrypted and stored in an S3 Bucket in your AWS account. If used in
  * your app config, they'll be encrypted in your state file as well. If used in
- * your function code, they are encrypted and included in the bundle. They'll are
+ * your function code, they are encrypted and included in the bundle. They are
  * then decrypted synchronously when your function starts up by the SST SDK.
  *
  * @example
@@ -118,7 +118,7 @@ export class Secret extends Component implements Link.Linkable {
       {},
     );
     this._name = name;
-    this._placeholder = placeholder ? output(placeholder) : undefined;
+    this._placeholder = placeholder !== undefined ? output(placeholder) : undefined;
     this._value = output(
       process.env["SST_SECRET_" + this._name] ?? this._placeholder,
     ).apply((value) => {

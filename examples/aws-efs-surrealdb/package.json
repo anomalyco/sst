@@ -10,7 +10,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "sst": "latest",
+    "sst": "^3",
     "surrealdb": "^1.0.1"
   }
 }

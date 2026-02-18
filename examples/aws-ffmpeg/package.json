@@ -11,7 +11,7 @@
   "license": "ISC",
   "dependencies": {
     "ffmpeg-static": "^5.2.0",
-    "sst": "latest"
+    "sst": "^3"
   },
   "devDependencies": {
     "@types/aws-lambda": "8.10.145"

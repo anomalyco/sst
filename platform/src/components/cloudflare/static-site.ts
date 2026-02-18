@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
-import { ComponentResourceOptions, all } from "@pulumi/pulumi";
+import { ComponentResourceOptions, all, output } from "@pulumi/pulumi";
 import { Kv, KvArgs } from "./kv.js";
 import { Component, Transform, transform } from "../component.js";
 import { Link } from "../link.js";
@@ -330,7 +330,7 @@ export class StaticSite extends Component implements Link.Linkable {
               ...(await Promise.all(
                 files.map(async (file) => {
                   const source = path.resolve(outputPath, file);
-                  const content = await fs.promises.readFile(source, 'utf-8');
+                  const content = await fs.promises.readFile(source, "utf-8");
                   const hash = crypto
                     .createHash("sha256")
                     .update(content)
@@ -399,12 +399,16 @@ export class StaticSite extends Component implements Link.Linkable {
           },
           transform: {
             worker: (workerArgs) => {
-              workerArgs.kvNamespaceBindings = [
-                {
-                  name: "ASSETS",
-                  namespaceId: storage.id,
-                },
-              ];
+              workerArgs.bindings = output(workerArgs.bindings ?? []).apply(
+                (bindings) => [
+                  ...bindings,
+                  {
+                    type: "kv_namespace",
+                    name: "ASSETS",
+                    namespaceId: storage.id,
+                  },
+                ],
+              );
             },
           },
         },

@@ -11,7 +11,7 @@
   "license": "ISC",
   "dependencies": {
     "pg": "^8.13.1",
-    "sst": "latest"
+    "sst": "^3"
   },
   "devDependencies": {
     "@types/aws-lambda": "8.10.145",

@@ -10,6 +10,6 @@
     "typescript": "^5"
   },
   "dependencies": {
-    "sst": "latest"
+    "sst": "^3"
   }
 }

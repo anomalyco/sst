@@ -18,6 +18,7 @@ import (
 
 	"github.com/pulumi/pulumi/sdk/v3/go/auto/events"
 	"github.com/pulumi/pulumi/sdk/v3/go/common/apitype"
+	"github.com/sst/sst/v3/internal/util"
 	"github.com/sst/sst/v3/pkg/bus"
 	"github.com/sst/sst/v3/pkg/flag"
 	"github.com/sst/sst/v3/pkg/global"
@@ -248,6 +249,13 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	}
 
 	env := os.Environ()
+	// Prepend SST's bin directory to PATH to ensure SST's Pulumi is used over system-installed versions
+	for i, e := range env {
+		if strings.HasPrefix(e, "PATH=") {
+			env[i] = "PATH=" + global.BinPath() + string(os.PathListSeparator) + strings.TrimPrefix(e, "PATH=")
+			break
+		}
+	}
 	for key, value := range p.Env() {
 		env = append(env, fmt.Sprintf("%v=%v", key, value))
 	}
@@ -327,12 +335,27 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 				return res.URN.Name() == item
 			})
 			if index == -1 {
-				return fmt.Errorf("Target not found: %v", item)
+				return util.NewReadableError(nil, fmt.Sprintf("Target not found: %v", item))
 			}
 			args = append(args, "--target", string(completed.Resources[index].URN))
 		}
 		if len(input.Target) > 0 {
 			args = append(args, "--target-dependents")
+		}
+	}
+
+	if input.Exclude != nil {
+		for _, item := range input.Exclude {
+			index := slices.IndexFunc(completed.Resources, func(res apitype.ResourceV3) bool {
+				return res.URN.Name() == item
+			})
+			if index == -1 {
+				return util.NewReadableError(nil, fmt.Sprintf("Exclude target not found: %v", item))
+			}
+			args = append(args, "--exclude", string(completed.Resources[index].URN))
+		}
+		if len(input.Exclude) > 0 {
+			args = append(args, "--exclude-dependents")
 		}
 	}
 
@@ -505,7 +528,7 @@ loop:
 			}
 		}
 
-		if event.ResOutputsEvent != nil || event.CancelEvent != nil || event.SummaryEvent != nil {
+		if input.Command != "diff" && (event.ResOutputsEvent != nil || event.CancelEvent != nil || event.SummaryEvent != nil) {
 			partial <- 1
 		}
 
@@ -563,7 +586,6 @@ loop:
 
 	if input.Command == "remove" && len(complete.Resources) == 0 {
 		provider.Cleanup(p.home, p.app.Name, p.app.Stage)
-
 	}
 
 	log.Info("done running stack command", "resources", len(complete.Resources))

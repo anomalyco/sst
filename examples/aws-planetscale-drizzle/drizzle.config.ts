@@ -1,13 +1,13 @@
 import { defineConfig } from "drizzle-kit";
 import { Resource } from "sst";
+
 export default defineConfig({
-  driver: "aws-data-api",
-  dialect: "postgresql",
+  dialect: "mysql",
   dbCredentials: {
-    database: Resource.Postgres.database,
-    secretArn: Resource.Postgres.secretArn,
-    resourceArn: Resource.Postgres.clusterArn,
+    host: Resource.Database.host,
+    user: Resource.Database.username,
+    password: Resource.Database.password,
+    database: Resource.Database.database,
   },
-  schema: ["./src/**/*.sql.ts"],
-  out: "./migrations",
+  schema: ["./src/schema.ts"],
 });
