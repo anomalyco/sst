@@ -219,7 +219,7 @@ func (s *Multiplexer) Start() {
 							if y <= 0 && selected.scrollable() {
 								selected.scrollUp(1)
 								s.startScrollTimer(-1)
-							} else if y >= s.height-1 {
+							} else if y >= s.height-1 && selected.scrollable() {
 								selected.scrollDown(1)
 								s.startScrollTimer(1)
 							} else {
