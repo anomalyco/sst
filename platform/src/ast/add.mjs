@@ -52,6 +52,13 @@ if (!providersProperty) {
   returnStatement.expression.properties.push(providersProperty);
 }
 
+if (!ts.isObjectLiteralExpression(providersProperty.initializer)) {
+  console.error(
+    'The "providers" property must be a plain object, not a dynamic expression like a ternary or variable.'
+  );
+  process.exit(1);
+}
+
 if (
   providersProperty.initializer.properties.find(
     (property) => property.name.getText().replaceAll('"', "") === pkg,

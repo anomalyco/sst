@@ -587,7 +587,7 @@ var root = &cli.Command{
 				}
 				err = p.Add(entry.Name, entry.Version)
 				if err != nil {
-					return err
+					return util.NewReadableError(err, err.Error())
 				}
 				spin.Suffix = "  Downloading provider..."
 				p, err = project.New(&project.ProjectConfig{
