@@ -181,6 +181,67 @@ export interface WorkerArgs {
      * The directory containing the assets.
      */
     directory: Input<string>;
+    /**
+     * Determines how HTML files are handled.
+     *
+     * - `"auto-trailing-slash"` — Serves `/file` from `file.html` and `/folder/` from `folder/index.html`.
+     * - `"force-trailing-slash"` — Redirects to trailing slashes and serves from `.html` files.
+     * - `"drop-trailing-slash"` — Drops trailing slashes and serves from `.html` files.
+     * - `"none"` — No special HTML handling.
+     *
+     * @default `"auto-trailing-slash"`
+     * @example
+     * ```js
+     * {
+     *   assets: {
+     *     htmlHandling: "drop-trailing-slash"
+     *   }
+     * }
+     * ```
+     */
+    htmlHandling?: Input<
+      "auto-trailing-slash" | "force-trailing-slash" | "drop-trailing-slash" | "none"
+    >;
+    /**
+     * Determines how requests that don't match a static asset are handled.
+     *
+     * - `"single-page-application"` — Returns `index.html` with a 200 status for unmatched routes. Use this for SPAs.
+     * - `"404-page"` — Returns the nearest `404.html` with a 404 status.
+     * - `"none"` — No special handling.
+     *
+     * @default `"none"`
+     * @example
+     * ```js
+     * {
+     *   assets: {
+     *     notFoundHandling: "single-page-application"
+     *   }
+     * }
+     * ```
+     */
+    notFoundHandling?: Input<
+      "single-page-application" | "404-page" | "none"
+    >;
+    /**
+     * Controls whether the Worker script runs before serving static assets.
+     *
+     * Set to `true` to invoke the Worker script for all requests, or use an array
+     * of route patterns for selective Worker-first routing.
+     *
+     * @default `false`
+     * @example
+     *
+     * Run the Worker for API routes only.
+     *
+     * ```js
+     * {
+     *   assets: {
+     *     runWorkerFirst: ["/api/*"]
+     *   }
+     * }
+     * ```
+     */
+    runWorkerFirst?: Input<boolean | string[]>;
   }>;
   /**
    * Configure [placement](https://developers.cloudflare.com/workers/configuration/placement/)
@@ -519,7 +580,18 @@ export class Worker extends Component implements Link.Linkable {
                   } catch (e) {}
                   return {
                     directory,
-                    config: { headers },
+                    config: {
+                      headers,
+                      ...(assets.htmlHandling
+                        ? { htmlHandling: assets.htmlHandling }
+                        : {}),
+                      ...(assets.notFoundHandling
+                        ? { notFoundHandling: assets.notFoundHandling }
+                        : {}),
+                      ...(assets.runWorkerFirst !== undefined
+                        ? { runWorkerFirst: assets.runWorkerFirst }
+                        : {}),
+                    },
                   };
                 })
               : undefined,
