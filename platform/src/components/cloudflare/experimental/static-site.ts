@@ -314,7 +314,7 @@ export class StaticSite extends Component implements Link.Linkable {
           scriptName: physicalName(64, `${name}Script`).toLowerCase(),
           accountId: DEFAULT_ACCOUNT_ID,
           compatibilityDate: "2025-05-05",
-          content: "export default {};",
+          content: "export default { fetch: (request, env) => env.ASSETS.fetch(request) };",
           mainModule: "worker.js",
           assets: all([outputPath, args.assets]).apply(
             async ([dir, assets]) => {
@@ -340,13 +340,17 @@ export class StaticSite extends Component implements Link.Linkable {
               };
             },
           ),
-          bindings: environment.apply((env) =>
-            Object.entries(env).map(([key, value]) => ({
+          bindings: environment.apply((env) => [
+            {
+              type: "assets" as const,
+              name: "ASSETS",
+            },
+            ...Object.entries(env).map(([key, value]) => ({
               type: "plain_text" as const,
               name: key,
               text: value,
             })),
-          ),
+          ]),
         },
         { parent: self, ignoreChanges: ["scriptName"] },
       );
