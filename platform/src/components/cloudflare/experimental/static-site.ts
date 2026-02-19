@@ -1,9 +1,14 @@
+import fs from "fs/promises";
 import path from "path";
-import { ComponentResourceOptions } from "@pulumi/pulumi";
+import { ComponentResourceOptions, output, all, interpolate } from "@pulumi/pulumi";
+import * as cf from "@pulumi/cloudflare";
 import { Component } from "../../component.js";
 import { Link } from "../../link.js";
 import { Input } from "../../input.js";
-import { Worker } from "../worker.js";
+import { WorkerUrl } from "../providers/worker-url.js";
+import { ZoneLookup } from "../providers/zone-lookup.js";
+import { DEFAULT_ACCOUNT_ID } from "../account-id.js";
+import { physicalName } from "../../naming.js";
 import {
   BaseStaticSiteArgs,
   buildApp,
@@ -14,13 +19,13 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
   /**
    * Path to the directory where your static site is located. By default this assumes your static site is in the root of your SST app.
    *
-   * This directory will be uploaded to KV. The path is relative to your `sst.config.ts`.
+   * This directory will be uploaded as static assets. The path is relative to your `sst.config.ts`.
    *
    * :::note
-   * If the `build` options are specified, `build.output` will be uploaded to KV instead.
+   * If the `build` options are specified, `build.output` will be uploaded instead.
    * :::
    *
-   * If you are using a static site generator, like Vite, you'll need to configure the `build` options. When these are set, the `build.output` directory will be uploaded to KV instead.
+   * If you are using a static site generator, like Vite, you'll need to configure the `build` options. When these are set, the `build.output` directory will be uploaded instead.
    *
    * @default `"."`
    *
@@ -38,7 +43,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
   /**
    * Configure if your static site needs to be built. This is useful if you are using a static site generator.
    *
-   * The `build.output` directory will be uploaded to KV instead.
+   * The `build.output` directory will be uploaded instead.
    *
    * @example
    * For a Vite project using npm this might look like this.
@@ -70,12 +75,63 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
    * ```
    */
   domain?: Input<string>;
+  /**
+   * Configure how static assets are served. These map to
+   * [Cloudflare Workers static assets](https://developers.cloudflare.com/workers/static-assets/) routing options.
+   */
+  assets?: Input<{
+    /**
+     * Determines how HTML files are handled, including trailing slash behavior.
+     *
+     * - `"auto-trailing-slash"` — Serves `/file` from `file.html` and `/folder/` from `folder/index.html`.
+     * - `"force-trailing-slash"` — Redirects to trailing slashes and serves from `.html` files.
+     * - `"drop-trailing-slash"` — Drops trailing slashes and serves from `.html` files.
+     * - `"none"` — No special HTML handling.
+     *
+     * @default `"auto-trailing-slash"`
+     * @example
+     * ```js
+     * {
+     *   assets: {
+     *     htmlHandling: "drop-trailing-slash"
+     *   }
+     * }
+     * ```
+     */
+    htmlHandling?: Input<
+      | "auto-trailing-slash"
+      | "force-trailing-slash"
+      | "drop-trailing-slash"
+      | "none"
+    >;
+    /**
+     * Determines how requests that don't match a static asset are handled.
+     *
+     * - `"single-page-application"` — Returns `index.html` with a 200 status for unmatched routes. Use this for SPAs.
+     * - `"404-page"` — Returns the nearest `404.html` with a 404 status.
+     * - `"none"` — No special handling.
+     *
+     * @default `"none"`
+     * @example
+     *
+     * For a single-page application like React or Vue.
+     *
+     * ```js
+     * {
+     *   assets: {
+     *     notFoundHandling: "single-page-application"
+     *   }
+     * }
+     * ```
+     */
+    notFoundHandling?: Input<"single-page-application" | "404-page" | "none">;
+  }>;
 }
 
 /**
- * The `StaticSite` component lets you deploy a static website to Cloudflare. It uses [Cloudflare KV storage](https://developers.cloudflare.com/kv/) to store your files and [Cloudflare Workers](https://developers.cloudflare.com/workers/) to serve them.
+ * The `StaticSite` component lets you deploy a static website to Cloudflare. It uses [Cloudflare Workers static assets](https://developers.cloudflare.com/workers/static-assets/) to store and serve your files.
  *
- * It can also `build` your site by running your static site generator, like [Vite](https://vitejs.dev) and uploading the build output to Cloudflare KV.
+ * It can also `build` your site by running your static site generator, like [Vite](https://vitejs.dev) and uploading the build output to Cloudflare.
  *
  * @example
  *
@@ -84,7 +140,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
  * Simply uploads the current directory as a static site.
  *
  * ```js
- * new sst.aws.StaticSite("MyWeb");
+ * new sst.cloudflare.StaticSite("MyWeb");
  * ```
  *
  * #### Change the path
@@ -92,7 +148,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
  * Change the `path` that should be uploaded.
  *
  * ```js
- * new sst.aws.StaticSite("MyWeb", {
+ * new sst.cloudflare.StaticSite("MyWeb", {
  *   path: "path/to/site"
  * });
  * ```
@@ -102,10 +158,13 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
  * Use [Vite](https://vitejs.dev) to deploy a React/Vue/Svelte/etc. SPA by specifying the `build` config.
  *
  * ```js
- * new sst.aws.StaticSite("MyWeb", {
+ * new sst.cloudflare.StaticSite("MyWeb", {
  *   build: {
  *     command: "npm run build",
  *     output: "dist"
+ *   },
+ *   assets: {
+ *     notFoundHandling: "single-page-application"
  *   }
  * });
  * ```
@@ -115,11 +174,13 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
  * Use [Jekyll](https://jekyllrb.com) to deploy a static site.
  *
  * ```js
- * new sst.aws.StaticSite("MyWeb", {
- *   errorPage: "404.html",
+ * new sst.cloudflare.StaticSite("MyWeb", {
  *   build: {
  *     command: "bundle exec jekyll build",
  *     output: "_site"
+ *   },
+ *   assets: {
+ *     notFoundHandling: "404-page"
  *   }
  * });
  * ```
@@ -129,11 +190,13 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
  * Use [Gatsby](https://www.gatsbyjs.com) to deploy a static site.
  *
  * ```js
- * new sst.aws.StaticSite("MyWeb", {
- *   errorPage: "404.html",
+ * new sst.cloudflare.StaticSite("MyWeb", {
  *   build: {
  *     command: "npm run build",
  *     output: "public"
+ *   },
+ *   assets: {
+ *     notFoundHandling: "404-page"
  *   }
  * });
  * ```
@@ -143,10 +206,13 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
  * Use [Angular](https://angular.dev) to deploy a SPA.
  *
  * ```js
- * new sst.aws.StaticSite("MyWeb", {
+ * new sst.cloudflare.StaticSite("MyWeb", {
  *   build: {
  *     command: "ng build --output-path dist",
  *     output: "dist"
+ *   },
+ *   assets: {
+ *     notFoundHandling: "single-page-application"
  *   }
  * });
  * ```
@@ -156,7 +222,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
  * Set a custom domain for your site.
  *
  * ```js {2}
- * new sst.aws.StaticSite("MyWeb", {
+ * new sst.cloudflare.StaticSite("MyWeb", {
  *   domain: "my-app.com"
  * });
  * ```
@@ -166,7 +232,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
  * Redirect `www.my-app.com` to `my-app.com`.
  *
  * ```js {4}
- * new sst.aws.StaticSite("MyWeb", {
+ * new sst.cloudflare.StaticSite("MyWeb", {
  *   domain: {
  *     name: "my-app.com",
  *     redirects: ["www.my-app.com"]
@@ -187,7 +253,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
  * ```ts {5-7}
  * const bucket = new sst.aws.Bucket("MyBucket");
  *
- * new sst.aws.StaticSite("MyWeb", {
+ * new sst.cloudflare.StaticSite("MyWeb", {
  *   environment: {
  *     BUCKET_NAME: bucket.name,
  *     // Accessible in the browser
@@ -201,7 +267,9 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
  * ```
  */
 export class StaticSite extends Component implements Link.Linkable {
-  private server: Worker;
+  private script: cf.WorkersScript;
+  private workerUrl: WorkerUrl;
+  private workerDomain?: cf.WorkersCustomDomain;
 
   constructor(
     name: string,
@@ -211,13 +279,17 @@ export class StaticSite extends Component implements Link.Linkable {
     super(__pulumiType, name, args, opts);
 
     const self = this;
-    const { sitePath, environment, indexPage } = prepare(args);
+    const { sitePath, environment } = prepare(args);
     const outputPath = $dev
       ? path.join($cli.paths.platform, "functions", "empty-site")
       : buildApp(self, name, args.build, sitePath, environment);
-    const worker = createRouter();
+    const script = createScript();
+    const workerUrl = createWorkerUrl();
+    const workerDomain = createWorkerDomain();
 
-    this.server = worker;
+    this.script = script;
+    this.workerUrl = workerUrl;
+    this.workerDomain = workerDomain;
 
     this.registerOutputs({
       _hint: $dev ? undefined : this.url,
@@ -235,26 +307,83 @@ export class StaticSite extends Component implements Link.Linkable {
       },
     });
 
-    function createRouter() {
-      return new Worker(
-        `${name}Router`,
+    function createScript() {
+      return new cf.WorkersScript(
+        `${name}Script`,
         {
-          handler: path.join(
-            $cli.paths.platform,
-            "functions",
-            "cf-static-site-router-worker-experimental",
+          scriptName: physicalName(64, `${name}Script`).toLowerCase(),
+          accountId: DEFAULT_ACCOUNT_ID,
+          compatibilityDate: "2025-05-05",
+          content: "export default {};",
+          mainModule: "worker.js",
+          assets: all([outputPath, args.assets]).apply(
+            async ([dir, assets]) => {
+              const directory = path.join($cli.paths.root, dir);
+              let headers;
+              try {
+                headers = await fs.readFile(
+                  path.join(directory, "_headers"),
+                  "utf-8",
+                );
+              } catch (e) {}
+              return {
+                directory,
+                config: {
+                  headers,
+                  ...(assets?.htmlHandling
+                    ? { htmlHandling: assets.htmlHandling }
+                    : {}),
+                  ...(assets?.notFoundHandling
+                    ? { notFoundHandling: assets.notFoundHandling }
+                    : {}),
+                },
+              };
+            },
           ),
-          environment: environment.apply((e) => ({
-            ...e,
-            INDEX_PAGE: indexPage,
-            ...(args.errorPage ? { ERROR_PAGE: args.errorPage } : {}),
-          })),
-          url: true,
-          dev: false,
+          bindings: environment.apply((env) =>
+            Object.entries(env).map(([key, value]) => ({
+              type: "plain_text" as const,
+              name: key,
+              text: value,
+            })),
+          ),
+        },
+        { parent: self, ignoreChanges: ["scriptName"] },
+      );
+    }
+
+    function createWorkerUrl() {
+      return new WorkerUrl(
+        `${name}Url`,
+        {
+          accountId: DEFAULT_ACCOUNT_ID,
+          scriptName: script.scriptName,
+          enabled: true,
+        },
+        { parent: self },
+      );
+    }
+
+    function createWorkerDomain() {
+      if (!args.domain) return;
+
+      const zone = new ZoneLookup(
+        `${name}ZoneLookup`,
+        {
+          accountId: DEFAULT_ACCOUNT_ID,
           domain: args.domain,
-          assets: {
-            directory: outputPath,
-          },
+        },
+        { parent: self },
+      );
+
+      return new cf.WorkersCustomDomain(
+        `${name}Domain`,
+        {
+          accountId: DEFAULT_ACCOUNT_ID,
+          service: script.scriptName,
+          hostname: args.domain,
+          zoneId: zone.id,
+          environment: "production",
         },
         { parent: self },
       );
@@ -268,7 +397,9 @@ export class StaticSite extends Component implements Link.Linkable {
    * Otherwise, it's the auto-generated worker URL.
    */
   public get url() {
-    return this.server.url;
+    return this.workerDomain
+      ? interpolate`https://${this.workerDomain.hostname}`
+      : this.workerUrl.url.apply((url) => (url ? `https://${url}` : url));
   }
 
   /**
@@ -277,9 +408,9 @@ export class StaticSite extends Component implements Link.Linkable {
   public get nodes() {
     return {
       /**
-       * The worker that serves the requests.
+       * The Cloudflare Worker script.
        */
-      server: this.server,
+      script: this.script,
     };
   }
 
