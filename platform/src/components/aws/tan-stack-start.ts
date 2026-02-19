@@ -120,8 +120,8 @@ export interface TanStackStartArgs extends SsrSiteArgs {
   /**
    * Set in your TanStack Start app. These are made available:
    *
-   * 1. In `vinxi build`, they are loaded into `process.env`.
-   * 2. Locally while running `sst dev vinxi dev`.
+   * 1. In `vite build`, they are loaded into `process.env`.
+   * 2. Locally while running `sst dev`.
    *
    * :::tip
    * You can also `link` resources to your TanStack Start app and access them in a type-safe way with the [SDK](/docs/reference/sdk/). We recommend linking since it's more secure.
@@ -276,7 +276,8 @@ export interface TanStackStartArgs extends SsrSiteArgs {
  * The `TanStackStart` component lets you deploy a [TanStack Start](https://tanstack.com/start/latest) app to AWS.
  *
  * :::note
- * You need to make sure the `server.preset` value in the `app.config.ts` is set to `aws-lambda`.
+ * You need to make sure the `vite.config.ts` is configured with the `aws-lambda` preset
+ * in the `tanstackStart()` plugin, or via a separate `nitro.config.ts`.
  * :::
  *
  * @example
@@ -375,10 +376,22 @@ export class TanStackStart extends SsrSite {
             [
               "No AWS-Lambda preset detected for TanStack Start.",
               "",
-              "Create a `nitro.config.ts` file in your project root:",
+              "Add the preset to your `vite.config.ts`:",
+              "  // vite.config.ts",
+              "  export default defineConfig({",
+              "    plugins: [",
+              "      tanstackStart({",
+              "        nitro: {",
+              '          preset: "aws-lambda",',
+              "          awsLambda: { streaming: true }, // optional",
+              "        },",
+              "      }),",
+              "    ],",
+              "  });",
+              "",
+              "Or create a separate `nitro.config.ts`:",
               "  // nitro.config.ts",
               '  import { defineNitroConfig } from "nitropack/config";',
-              "",
               "  export default defineNitroConfig({",
               '    preset: "aws-lambda",',
               "    awsLambda: { streaming: true }, // optional",
