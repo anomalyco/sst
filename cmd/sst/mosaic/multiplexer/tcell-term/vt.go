@@ -599,6 +599,8 @@ func (vt *VT) Clear() {
 }
 
 func (vt *VT) Copy() string {
+	vt.mu.Lock()
+	defer vt.mu.Unlock()
 	if !vt.HasSelection() {
 		return ""
 	}
