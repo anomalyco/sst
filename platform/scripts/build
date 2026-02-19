@@ -23,9 +23,25 @@ mkdir -p ./dist/dockerfiles/
 cp ./functions/docker/python.Dockerfile ./dist/dockerfiles/python.Dockerfile
 
 cd ./support/bridge-task
-timestamp=$(date +%Y%m%d%H%M%S)
-docker buildx create --name multi --driver docker-container --use
-docker buildx build --platform linux/amd64,linux/arm64 -t ghcr.io/anomalyco/sst/bridge-task:$timestamp -t ghcr.io/anomalyco/sst/bridge-task:latest $([ "$DOCKER_PUSH" = "true" ] && echo "--push") .
+mkdir -p build/amd64 build/arm64
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -mod=readonly -ldflags="-buildid=" -o build/amd64/main .
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -mod=readonly -ldflags="-buildid=" -o build/arm64/main .
 
+timestamp=$(date +%Y%m%d%H%M%S)
+docker buildx inspect >/dev/null 2>&1 || docker buildx create --name multi --driver docker-container --use
+
+CACHE_ARGS=""
+if [ -n "$GITHUB_ACTIONS" ]; then
+  CACHE_ARGS="--cache-from type=gha,scope=bridge-task --cache-to type=gha,mode=max,scope=bridge-task"
+fi
+
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  -f Dockerfile \
+  $CACHE_ARGS \
+  -t ghcr.io/anomalyco/sst/bridge-task:$timestamp \
+  -t ghcr.io/anomalyco/sst/bridge-task:latest \
+  $([ "$DOCKER_PUSH" = "true" ] && echo "--push") \
+  build
 
 cd $ORIGINAL_DIR
