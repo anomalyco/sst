@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -76,6 +77,11 @@ func (p *darwinPlatform) start(routes ...string) error {
 		})
 	}
 	return runCommands(cmds)
+}
+
+func (p *darwinPlatform) isRunning() bool {
+	_, err := net.InterfaceByName("utun69")
+	return err == nil
 }
 
 func (p *darwinPlatform) destroy() error {

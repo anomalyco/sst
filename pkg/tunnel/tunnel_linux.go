@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -83,6 +84,11 @@ func (p *linuxPlatform) start(routes ...string) error {
 	}
 	tun2socks(name)
 	return nil
+}
+
+func (p *linuxPlatform) isRunning() bool {
+	_, err := net.InterfaceByName(resolveInterface())
+	return err == nil
 }
 
 func (p *linuxPlatform) destroy() error {
