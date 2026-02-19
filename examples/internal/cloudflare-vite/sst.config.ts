@@ -6,19 +6,17 @@ export default $config({
       name: "cloudflare-vite",
       removal: input?.stage === "production" ? "retain" : "remove",
       providers: {
-        aws: {},
         cloudflare: {},
       },
-      home: "aws",
+      home: "cloudflare",
     };
   },
   async run() {
-    new sst.cloudflare.StaticSite("Web", {
+    new sst.cloudflare.x.StaticSite("Web", {
       build: {
         command: "pnpm run build",
         output: "dist",
       },
-      domain: "vite.sstion.com",
     });
   },
 });
