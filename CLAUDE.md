@@ -1,35 +1,31 @@
-# CLAUDE.md
+SST is a framework for building full-stack apps on your own infrastructure. It uses Pulumi under the hood to deploy to AWS, Cloudflare, and other providers with a high-level component model, resource linking, and a live dev mode that runs Lambda functions locally.
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Build, Lint, and Test Commands
+## Commands
 
-- **Build**: Go - `go build`, TypeScript - `bun run build` (in respective directories)
-- **Test**: Go - `go test ./pkg/...`, TypeScript - `cd platform && bun run test`
-- **Single test**: Go - `go test ./pkg/path/file_test.go`, TS - `cd platform && bun run test path/to/test.test.ts`
-- **Type check**: `cd platform && bun run dev` (watches for changes)
+- **Setup**: `bun install && go mod tidy && cd platform && bun run build`
+- **Run CLI locally**: `cd examples/<app> && go run ../../cmd/sst <command>`
+- **Build CLI binary**: `go build ./cmd/sst`
+- **Go tests**: `go test ./pkg/...` (all), `go test ./pkg/project/...` (single package)
+- **Type check**: `cd platform && bun run dev` (tsc --watch --noEmit)
+- **Build platform**: `cd platform && bun run build` (runs `scripts/build` — bundles workers, runtime, bridge binary, types)
 - **Generate docs**: `cd www && bun run generate`
+- **Run docs locally**: `cd www && bun run dev`
 
-## Code Style Guidelines
+## Codebase
 
-### Go
-- Standard Go formatting
-- Error handling with `if err != nil` pattern
-- Packages use lowercase names
-- CamelCase for functions, ALL_CAPS for constants
-- Tests in separate `_test` packages
+- `cmd/sst/` — Go CLI entry, orchestrates everything. Commands as tree in `main.go`
+- `cmd/sst/mosaic/` — live dev TUI, Lambda stubs forward invocations to local runtimes
+- `pkg/server/` — JSON-RPC bridge, Go side (`rpc/rpc.ts` ↔ `pkg/server`)
+- `pkg/runtime/` — runtimes each implement `Match()`, `Build()`, `Run()`, `ShouldRebuild()`
+- `pkg/project/provider/` — pluggable state backend + encrypted secrets
+- `pkg/bus/` — pub/sub connecting watcher, deployer, runtimes, UI
+- `platform/` — TS Pulumi components by provider (`aws/`, `cloudflare/`, `vercel/`), embedded into Go binary via `//go:embed`
+- `sdk/js/` — runtime SDK for reading linked resources
+- `internal/` — shared Go utilities
+- `examples/` — sample apps (useful for testing CLI locally)
+- `www/` — docs site
 
-### TypeScript
-- Strict typing with TypeScript
-- camelCase for variables and functions, PascalCase for classes
-- ES modules with explicit imports/exports
-- Concise JSDoc comments for complex types
-- Error handling with proper type guards
+## Notes
 
-## Project Structure
-- Monorepo with Go and TypeScript code
-- Main directories: `cmd/`, `pkg/`, `platform/`, `sdk/`, `www/`
-- Tests placed alongside implementation files
-- Examples in the `examples/` directory
-
-Run linting and type checking before submitting changes. Follow existing patterns when adding new code.
+- This repo was renamed from `sst/sst` to `anomalyco/sst`
