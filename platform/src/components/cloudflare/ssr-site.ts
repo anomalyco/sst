@@ -28,7 +28,7 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
 }
 
 export abstract class SsrSite extends Component implements Link.Linkable {
-  private worker: Worker;
+  private server: Worker;
 
   protected abstract buildPlan(
     outputPath: Output<string>,
@@ -50,14 +50,18 @@ export abstract class SsrSite extends Component implements Link.Linkable {
     const plan = validatePlan(this.buildPlan(outputPath, name, args));
     const worker = createWorker();
 
-    this.worker = worker;
+    this.server = worker;
 
     this.registerOutputs({
       _hint: $dev ? undefined : this.url,
       _dev: {
+        environment: args.environment,
         command: "npm run dev",
         directory: sitePath,
         autostart: true,
+        links: output(args.link || [])
+          .apply(Link.build)
+          .apply((links) => links.map((link) => link.name)),
       },
       _metadata: {
         mode: $dev ? "placeholder" : "deployed",
@@ -103,7 +107,6 @@ export abstract class SsrSite extends Component implements Link.Linkable {
                 ([outputPath, assets]) => path.join(outputPath, assets),
               ),
             },
-            largePayload: true,
           },
           { parent: self },
         ),
@@ -118,7 +121,7 @@ export abstract class SsrSite extends Component implements Link.Linkable {
    * Otherwise, it's the auto-generated CloudFront URL.
    */
   public get url() {
-    return this.worker.url;
+    return this.server.url;
   }
 
   /**
@@ -129,7 +132,7 @@ export abstract class SsrSite extends Component implements Link.Linkable {
       /**
        * The Cloudflare Worker that renders the site.
        */
-      worker: this.worker,
+      server: this.server,
     };
   }
 

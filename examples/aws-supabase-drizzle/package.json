@@ -1,5 +1,5 @@
 {
-  "name": "aws-planetscale-drizzle",
+  "name": "aws-supabase-drizzle",
   "version": "0.0.0",
   "type": "module",
   "scripts": {
@@ -12,6 +12,6 @@
     "drizzle-kit": "0.20.17-679add7",
     "drizzle-orm": "^0.30.9",
     "postgres": "^3.4.4",
-    "sst": "^3.0.4"
+    "sst": "^3"
   }
 }

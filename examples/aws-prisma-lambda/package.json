@@ -19,6 +19,6 @@
   },
   "dependencies": {
     "@prisma/client": "^5.19.1",
-    "sst": "latest"
+    "sst": "^3"
   }
 }

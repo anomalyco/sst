@@ -40,7 +40,7 @@
 export default $config({
   app(input) {
     return {
-      name: "sst-go-lambda-dynamo",
+      name: "aws-go-lambda-dynamo",
       removal: "remove",
       home: "aws",
       providers: {

@@ -49,6 +49,8 @@ for (const artifact of artifacts) {
       {
         name,
         version: nextPkg.version,
+        license: nextPkg.license,
+        repository: nextPkg.repository,
         os: [os],
         cpu: [cpu],
       },
@@ -67,6 +69,7 @@ try {
   }
   console.log(nextPkg);
   await Bun.write("package.json", JSON.stringify(nextPkg, null, 2));
+  await fs.cp("../../README.md", "README.md");
   await $`npm publish --access public --tag ${tag}`;
   if (!snapshot)
     await $`npm dist-tag add ${nextPkg.name}@${nextPkg.version} ion`;

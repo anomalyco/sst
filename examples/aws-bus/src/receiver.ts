@@ -1,6 +1,6 @@
 import { bus } from "sst/aws/bus";
-import { MyEvent } from "./index";
+import { MyEvent } from "./events";
 
-export const handler = bus.handle(MyEvent, async (evt, raw) => {
-  console.log({ evt, raw });
+export const handler = bus.subscriber([MyEvent], async (event) => {
+  console.log({ event });
 });

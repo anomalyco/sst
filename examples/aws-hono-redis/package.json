@@ -1,5 +1,5 @@
 {
-  "name": "aws-hono-container",
+  "name": "aws-hono-redis",
   "type": "module",
   "scripts": {
     "build": "tsc",
@@ -9,7 +9,7 @@
     "@hono/node-server": "^1.13.2",
     "hono": "^4.6.5",
     "ioredis": "^5.4.1",
-    "sst": "latest"
+    "sst": "^3"
   },
   "devDependencies": {
     "@types/aws-lambda": "8.10.145",

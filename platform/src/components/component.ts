@@ -62,7 +62,7 @@ export class Component extends ComponentResource {
     for (const transform of transforms) {
       transform({ name, props: args, opts });
     }
-    super(type, name, args, {
+    super(type, name, {}, {
       transformations: [
         // Ensure logical and physical names are prefixed
         (args) => {
@@ -133,6 +133,7 @@ export class Component extends ComponentResource {
               "aws:appsync/function:Function",
               "aws:appsync/resolver:Resolver",
               "aws:ec2/routeTableAssociation:RouteTableAssociation",
+              "aws:ec2/eipAssociation:EipAssociation",
               "aws:ecs/clusterCapacityProviders:ClusterCapacityProviders",
               "aws:efs/fileSystem:FileSystem",
               "aws:efs/mountTarget:MountTarget",
@@ -165,6 +166,7 @@ export class Component extends ComponentResource {
               "aws:s3/bucketPolicy:BucketPolicy",
               "aws:s3/bucketPublicAccessBlock:BucketPublicAccessBlock",
               "aws:s3/bucketVersioningV2:BucketVersioningV2",
+              "aws:s3/bucketLifecycleConfigurationV2:BucketLifecycleConfigurationV2",
               "aws:s3/bucketWebsiteConfigurationV2:BucketWebsiteConfigurationV2",
               "aws:secretsmanager/secretVersion:SecretVersion",
               "aws:ses/domainIdentityVerification:DomainIdentityVerification",
@@ -231,7 +233,7 @@ export class Component extends ComponentResource {
             "aws:elasticache/replicationGroup:ReplicationGroup": [
               "replicationGroupId",
               40,
-              { lower: true },
+              { lower: true, replace: (name) => name.replaceAll(/-+/g, "-") },
             ],
             "aws:elasticache/subnetGroup:SubnetGroup": [
               "name",

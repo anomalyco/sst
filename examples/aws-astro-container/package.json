@@ -15,7 +15,7 @@
     "@aws-sdk/s3-request-presigner": "^3.701.0",
     "astro": "^4.16.16",
     "astro-sst": "2.43.5",
-    "sst": "latest",
+    "sst": "^3",
     "typescript": "^5.7.2"
   }
 }

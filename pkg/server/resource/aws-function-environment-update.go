@@ -16,9 +16,7 @@ type FunctionEnvironmentUpdateInputs struct {
 	Region       string            `json:"region"`
 }
 
-type FunctionEnvironmentUpdateOutputs struct {
-	Updated bool `json:"updated"`
-}
+type FunctionEnvironmentUpdateOutputs struct{}
 
 func (r *FunctionEnvironmentUpdate) Create(input *FunctionEnvironmentUpdateInputs, output *CreateResult[FunctionEnvironmentUpdateOutputs]) error {
 	if err := r.updateEnvironment(input); err != nil {
@@ -27,9 +25,6 @@ func (r *FunctionEnvironmentUpdate) Create(input *FunctionEnvironmentUpdateInput
 
 	*output = CreateResult[FunctionEnvironmentUpdateOutputs]{
 		ID: input.FunctionName,
-		Outs: FunctionEnvironmentUpdateOutputs{
-			Updated: true,
-		},
 	}
 	return nil
 }
@@ -39,27 +34,13 @@ func (r *FunctionEnvironmentUpdate) Update(input *UpdateInput[FunctionEnvironmen
 		return err
 	}
 
-	*output = UpdateResult[FunctionEnvironmentUpdateOutputs]{
-		Outs: FunctionEnvironmentUpdateOutputs{
-			Updated: true,
-		},
-	}
+	*output = UpdateResult[FunctionEnvironmentUpdateOutputs]{}
 	return nil
 }
 
 func (r *FunctionEnvironmentUpdate) Read(input *ReadInput[FunctionEnvironmentUpdateInputs], output *ReadResult[FunctionEnvironmentUpdateOutputs]) error {
 	*output = ReadResult[FunctionEnvironmentUpdateOutputs]{
 		ID: input.ID,
-		Outs: FunctionEnvironmentUpdateOutputs{
-			Updated: false,
-		},
-	}
-	return nil
-}
-
-func (r *FunctionEnvironmentUpdate) Diff(input *DiffInput[FunctionEnvironmentUpdateInputs, FunctionEnvironmentUpdateOutputs], output *DiffResult) error {
-	*output = DiffResult{
-		Changes: input.Olds.Updated != true,
 	}
 	return nil
 }
@@ -74,7 +55,7 @@ func (r *FunctionEnvironmentUpdate) updateEnvironment(input *FunctionEnvironment
 	if input.Region != "" {
 		cfg.Region = input.Region
 	}
-	
+
 	client := lambda.NewFromConfig(cfg)
 
 	// Get the current function configuration to preserve other settings
@@ -87,14 +68,14 @@ func (r *FunctionEnvironmentUpdate) updateEnvironment(input *FunctionEnvironment
 
 	// Create environment variables map
 	envVars := make(map[string]string)
-	
+
 	// If the function already has environment variables, preserve them
 	if functionConfig.Environment != nil && functionConfig.Environment.Variables != nil {
 		for k, v := range functionConfig.Environment.Variables {
 			envVars[k] = v
 		}
 	}
-	
+
 	// Add or update with the new environment variables
 	for k, v := range input.Environment {
 		envVars[k] = v
@@ -107,6 +88,6 @@ func (r *FunctionEnvironmentUpdate) updateEnvironment(input *FunctionEnvironment
 			Variables: envVars,
 		},
 	})
-	
+
 	return err
-} 
+}

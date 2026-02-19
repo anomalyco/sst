@@ -61,9 +61,8 @@ func InstallBun(ctx context.Context) error {
 			isMusl = true
 		} else {
 			cmd := exec.Command("ldd", "--version")
-			if output, err := cmd.CombinedOutput(); err == nil {
-				isMusl = strings.Contains(strings.ToLower(string(output)), "musl")
-			}
+			output, _ := cmd.CombinedOutput()
+			isMusl = strings.Contains(strings.ToLower(string(output)), "musl")
 		}
 	}
 
@@ -72,31 +71,31 @@ func InstallBun(ctx context.Context) error {
 	case goos == "darwin" && arch == "arm64":
 		filename = "bun-darwin-aarch64.zip"
 	case goos == "darwin" && arch == "amd64":
+		filename = "bun-darwin-x64-baseline.zip"
 		if cpuid.CPU.Has(cpuid.AVX2) {
 			filename = "bun-darwin-x64.zip"
 		}
-		filename = "bun-darwin-x64-baseline.zip"
 	case goos == "linux" && arch == "arm64":
+		filename = "bun-linux-aarch64.zip"
 		if isMusl {
 			filename = "bun-linux-aarch64-musl.zip"
 		}
-		filename = "bun-linux-aarch64.zip"
 	case goos == "linux" && arch == "amd64":
+		filename = "bun-linux-x64-baseline.zip"
+		if cpuid.CPU.Has(cpuid.AVX2) {
+			filename = "bun-linux-x64.zip"
+		}
 		if isMusl {
 			if cpuid.CPU.Has(cpuid.AVX2) {
 				filename = "bun-linux-x64-musl.zip"
 			}
 			filename = "bun-linux-x64-musl-baseline.zip"
 		}
-		if cpuid.CPU.Has(cpuid.AVX2) {
-			filename = "bun-linux-x64.zip"
-		}
-		filename = "bun-linux-x64-baseline.zip"
 	case goos == "windows" && arch == "amd64":
+		filename = "bun-windows-x64-baseline.zip"
 		if cpuid.CPU.Has(cpuid.AVX2) {
 			filename = "bun-windows-x64.zip"
 		}
-		filename = "bun-windows-x64-baseline.zip"
 	default:
 	}
 	if filename == "" {

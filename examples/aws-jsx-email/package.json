@@ -11,7 +11,7 @@
   "dependencies": {
     "@aws-sdk/client-sesv2": "^3.651.1",
     "jsx-email": "^1.10.11",
-    "sst": "latest"
+    "sst": "^3"
   },
   "devDependencies": {
     "@types/aws-lambda": "8.10.145",

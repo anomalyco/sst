@@ -4,7 +4,7 @@
   "version": "0.0.1",
   "scripts": {
     "dev": "astro dev",
-    "use:cf": "sed -i '' 's/adapter: .*/adapter: cloudflare(),/' astro.config.mjs",
+    "use:cf": "sed -i '' 's/adapter: .*/adapter: undefined,/' astro.config.mjs",
     "use:aws": "sed -i '' 's/adapter: .*/adapter: aws(),/' astro.config.mjs",
     "build:cf": "npm run use:cf && astro build",
     "build": "npm run use:aws && astro build",

@@ -19,6 +19,6 @@
   "dependencies": {
     "@prisma/client": "^5.21.1",
     "express": "^4.21.1",
-    "sst": "3.2.46"
+    "sst": "^3"
   }
 }

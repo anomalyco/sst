@@ -210,7 +210,7 @@ interface InlineBaseRouteArgs {
        *       url: "https://example.com"
        *       edge: {
        *         viewerRequest: {
-       *           injection: `event.request.headers["x-foo"] = "bar";`
+       *           injection: `event.request.headers["x-foo"] = { value: "bar" };`
        *         }
        *       }
        *     }
@@ -263,7 +263,7 @@ interface InlineBaseRouteArgs {
      *       url: "https://example.com"
      *       edge: {
      *         viewerResponse: {
-     *           injection: `event.response.headers["x-foo"] = "bar";`
+     *           injection: `event.response.headers["x-foo"] = { value: "bar" };`
      *         }
      *       }
      *     }
@@ -296,7 +296,7 @@ interface InlineBaseRouteArgs {
        *       url: "https://example.com"
        *       edge: {
        *         viewerResponse: {
-       *           injection: `event.response.headers["x-foo"] = "bar";`
+       *           injection: `event.response.headers["x-foo"] = { value: "bar" };`
        *         }
        *       }
        *     }
@@ -590,7 +590,7 @@ export interface RouterArgs {
    *       url: "https://example.com",
    *       edge: {
    *         viewerRequest: {
-   *           injection: `event.request.headers["x-foo"] = "bar";`
+   *           injection: `event.request.headers["x-foo"] = { value: "bar" };`
    *         }
    *       }
    *     }
@@ -659,7 +659,7 @@ export interface RouterArgs {
        * {
        *   edge: {
        *     viewerRequest: {
-       *       injection: `event.request.headers["x-foo"] = "bar";`
+       *       injection: `event.request.headers["x-foo"] = { value: "bar" };`
        *     }
        *   }
        * }
@@ -711,7 +711,7 @@ export interface RouterArgs {
        * {
        *   edge: {
        *     viewerResponse: {
-       *       injection: `event.response.headers["x-foo"] = "bar";`
+       *       injection: `event.response.headers["x-foo"] = { value: "bar" };`
        *     }
        *   }
        * }
@@ -1452,7 +1452,7 @@ async function handler(event) {
                 headersConfig: {
                   headerBehavior: "whitelist",
                   headers: {
-                    items: ["x-open-next-cache-key"],
+                    items: ["x-open-next-cache-key", "x-forwarded-host"],
                   },
                 },
                 queryStringsConfig: {
@@ -1485,9 +1485,8 @@ async function handler(event) {
   ${blockCloudfrontUrlInjection}
   ${CF_ROUTER_INJECTION}
 
-  const routerNS = "${kvNamespace}";
-
   async function getRoutes() {
+    const routerNS = "${kvNamespace}";
     let routes = [];
     try {
       const v = await cf.kvs().get(routerNS + ":routes");
@@ -1538,7 +1537,7 @@ async function handler(event) {
         || (host.includes("*") && new RegExp(host).test(requestHostRegexPattern));
       if (!hostMatches) return;
 
-      const pathMatches = event.request.uri.startsWith(path);
+      const pathMatches = event.request.uri.startsWith(path) && (event.request.uri === path || path.endsWith('/') || event.request.uri[path.length] === '/' || path === '/');
       if (!pathMatches) return;
 
       match = {
@@ -2010,7 +2009,7 @@ async function routeSite(kvNamespace, metadata) {
 
   // Route to image optimizer
   if (metadata.image && baselessUri.startsWith(metadata.image.route)) {
-    setUrlOrigin(metadata.image.host);
+    setUrlOrigin(metadata.image.host, metadata.image.originAccessControlConfig ? { originAccessControlConfig: metadata.image.originAccessControlConfig } : undefined);
     return;
   }
 
@@ -2149,6 +2148,9 @@ function setUrlOrigin(urlHost, override) {
   if (override.timeouts) {
     origin.timeouts = override.timeouts;
   }
+  if (override.originAccessControlConfig) {
+    origin.originAccessControlConfig = override.originAccessControlConfig;
+  }
   cf.updateRequestOrigin(origin);
 }
 
@@ -2187,6 +2189,12 @@ export type KV_SITE_METADATA = {
   image?: {
     host: string;
     route: string;
+    originAccessControlConfig?: {
+      enabled: boolean;
+      signingBehavior: string;
+      signingProtocol: string;
+      originType: string;
+    };
   };
   servers?: [string, number, number][];
   origin?: {

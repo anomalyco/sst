@@ -115,7 +115,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
      * {
      *   edge: {
      *     viewerRequest: {
-     *       injection: `event.request.headers["x-foo"] = "bar";`
+     *       injection: `event.request.headers["x-foo"] = { value: "bar" };`
      *     }
      *   }
      * }
@@ -134,7 +134,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
        * {
        *   edge: {
        *     viewerRequest: {
-       *       injection: `event.request.headers["x-foo"] = "bar";`
+       *       injection: `event.request.headers["x-foo"] = { value: "bar" };`
        *     }
        *   }
        * }
@@ -190,7 +190,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
      * {
      *   edge: {
      *     viewerResponse: {
-     *       injection: `event.response.headers["x-foo"] = "bar";`
+     *       injection: `event.response.headers["x-foo"] = { value: "bar" };`
      *     }
      *   }
      * }
@@ -207,7 +207,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
        * {
        *   edge: {
        *     viewerResponse: {
-       *       injection: `event.response.headers["x-foo"] = "bar";`
+       *       injection: `event.response.headers["x-foo"] = { value: "bar" };`
        *     }
        *   }
        * }
@@ -264,7 +264,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
    *     textEncoding: "utf-8",
    *     fileOptions: [
    *       {
-   *         files: ["**\/*.css", "**\/*.js"],
+   *         files: "**",
    *         cacheControl: "max-age=31536000,public,immutable"
    *       },
    *       {
@@ -526,46 +526,46 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
   invalidation?: Input<
     | false
     | {
-        /**
-         * Configure if `sst deploy` should wait for the CloudFront cache invalidation to finish.
-         *
-         * :::tip
-         * For non-prod environments it might make sense to pass in `false`.
-         * :::
-         *
-         * Waiting for the CloudFront cache invalidation process to finish ensures that the new content will be served once the deploy finishes. However, this process can sometimes take more than 5 mins.
-         * @default `false`
-         * @example
-         * ```js
-         * {
-         *   invalidation: {
-         *     wait: true
-         *   }
-         * }
-         * ```
-         */
-        wait?: Input<boolean>;
-        /**
-         * The paths to invalidate.
-         *
-         * You can either pass in an array of glob patterns to invalidate specific files. Or you can use the built-in option `all` to invalidation all files when any file changes.
-         *
-         * :::note
-         * Invalidating `all` counts as one invalidation, while each glob pattern counts as a single invalidation path.
-         * :::
-         * @default `"all"`
-         * @example
-         * Invalidate the `index.html` and all files under the `products/` route.
-         * ```js
-         * {
-         *   invalidation: {
-         *     paths: ["/index.html", "/products/*"]
-         *   }
-         * }
-         * ```
-         */
-        paths?: Input<"all" | string[]>;
-      }
+      /**
+       * Configure if `sst deploy` should wait for the CloudFront cache invalidation to finish.
+       *
+       * :::tip
+       * For non-prod environments it might make sense to pass in `false`.
+       * :::
+       *
+       * Waiting for the CloudFront cache invalidation process to finish ensures that the new content will be served once the deploy finishes. However, this process can sometimes take more than 5 mins.
+       * @default `false`
+       * @example
+       * ```js
+       * {
+       *   invalidation: {
+       *     wait: true
+       *   }
+       * }
+       * ```
+       */
+      wait?: Input<boolean>;
+      /**
+       * The paths to invalidate.
+       *
+       * You can either pass in an array of glob patterns to invalidate specific files. Or you can use the built-in option `all` to invalidation all files when any file changes.
+       *
+       * :::note
+       * Invalidating `all` counts as one invalidation, while each glob pattern counts as a single invalidation path.
+       * :::
+       * @default `"all"`
+       * @example
+       * Invalidate the `index.html` and all files under the `products/` route.
+       * ```js
+       * {
+       *   invalidation: {
+       *     paths: ["/index.html", "/products/*"]
+       *   }
+       * }
+       * ```
+       */
+      paths?: Input<"all" | string[]>;
+    }
   >;
   /**
    * @deprecated The `route.path` prop is now the recommended way to configure the base
@@ -813,7 +813,6 @@ export class StaticSite extends Component implements Link.Linkable {
         environment,
         url: this.url,
       },
-      _dev: dev.outputs,
     });
 
     function validateDeprecatedProps() {
@@ -877,17 +876,17 @@ export class StaticSite extends Component implements Link.Linkable {
         // remove leading and trailing slashes from the path
         path: args.assets?.path
           ? output(args.assets?.path).apply((v) =>
-              v.replace(/^\//, "").replace(/\/$/, ""),
-            )
+            v.replace(/^\//, "").replace(/\/$/, ""),
+          )
           : undefined,
         purge: output(args.assets?.purge ?? true),
         // normalize to /path format
         routes: args.assets?.routes
           ? output(args.assets?.routes).apply((v) =>
-              v.map(
-                (route) => "/" + route.replace(/^\//, "").replace(/\/$/, ""),
-              ),
-            )
+            v.map(
+              (route) => "/" + route.replace(/^\//, "").replace(/\/$/, ""),
+            ),
+          )
           : [],
       };
     }
@@ -909,8 +908,8 @@ export class StaticSite extends Component implements Link.Linkable {
       const s3Bucket = bucket
         ? bucket.nodes.bucket
         : s3.BucketV2.get(`${name}Assets`, assets.bucket!, undefined, {
-            parent: self,
-          });
+          parent: self,
+        });
 
       return {
         bucketName: s3Bucket.bucket,

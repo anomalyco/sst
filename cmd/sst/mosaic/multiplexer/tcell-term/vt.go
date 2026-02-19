@@ -255,7 +255,7 @@ func (vt *VT) recover() {
 
 	vt.postEvent(&EventPanic{
 		EventTerminal: newEventTerminal(vt),
-		Error:         fmt.Errorf(ret.String()),
+		Error:         fmt.Errorf("%s", ret.String()),
 	})
 	vt.Close()
 }
@@ -505,6 +505,10 @@ func (vt *VT) ScrollDown(offset int) {
 
 func (vt *VT) ScrollReset() {
 	vt.scroll = -1
+}
+
+func (vt *VT) ClearScrollback() {
+	vt.primaryScrollback = [][]cell{}
 }
 
 func (vt *VT) Scrollable() bool {

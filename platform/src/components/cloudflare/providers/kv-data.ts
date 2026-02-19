@@ -50,44 +50,53 @@ class Provider implements dynamic.ResourceProvider {
   ) {
     const oldFilesMap = new Map(oldEntries.map((f) => [f.key, f]));
 
-    await Promise.all(
-      entries
-        .filter((entry) => {
-          const old = oldFilesMap.get(entry.key);
-          return (
-            old?.hash !== entry.hash ||
-            old?.contentType !== entry.contentType ||
-            old?.cacheControl !== entry.cacheControl
-          );
-        })
-        .map(async (entry) => {
-          const formData = new FormData();
-          formData.append(
-            "metadata",
-            JSON.stringify({
-              contentType: entry.contentType,
-              cacheControl: entry.cacheControl,
-            }),
-          );
-          //formData.append("value", fs.createReadStream(entry.source));
-          formData.append(
-            "value",
-            await fs.promises.readFile(entry.source, "base64"),
-          );
-          try {
-            await cfFetch(
-              `/accounts/${accountId}/storage/kv/namespaces/${namespaceId}/values/${entry.key}`,
-              {
-                method: "PUT",
-                body: formData,
-              },
-            );
-          } catch (error: any) {
-            console.log(error);
-            throw error;
-          }
-        }),
+    const changedEntries = entries.filter((entry) => {
+      const old = oldFilesMap.get(entry.key);
+      return (
+        old?.hash !== entry.hash ||
+        old?.contentType !== entry.contentType ||
+        old?.cacheControl !== entry.cacheControl
+      );
+    });
+
+    // Split into HTML and non-HTML to upload non-HTML first.
+    // This avoids a race condition where the CDN serves new HTML
+    // referencing assets that haven't been uploaded yet.
+    const htmlEntries = changedEntries.filter((e) => e.key.endsWith(".html"));
+    const nonHtmlEntries = changedEntries.filter(
+      (e) => !e.key.endsWith(".html"),
     );
+
+    const uploadEntry = async (entry: KvDataEntry) => {
+      const formData = new FormData();
+      formData.append(
+        "metadata",
+        JSON.stringify({
+          contentType: entry.contentType,
+          cacheControl: entry.cacheControl,
+        }),
+      );
+      //formData.append("value", fs.createReadStream(entry.source));
+      formData.append(
+        "value",
+        await fs.promises.readFile(entry.source, "base64"),
+      );
+      try {
+        await cfFetch(
+          `/accounts/${accountId}/storage/kv/namespaces/${namespaceId}/values/${entry.key}`,
+          {
+            method: "PUT",
+            body: formData,
+          },
+        );
+      } catch (error: any) {
+        console.log(error);
+        throw error;
+      }
+    };
+
+    await Promise.all(nonHtmlEntries.map(uploadEntry));
+    await Promise.all(htmlEntries.map(uploadEntry));
   }
 }
 

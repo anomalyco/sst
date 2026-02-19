@@ -45,7 +45,7 @@ export interface PlainTextBinding {
 export interface QueueBinding {
   type: "queueBindings";
   properties: {
-    queue: Input<string>;
+    queueName: Input<string>;
   };
 }
 export interface R2BucketBinding {

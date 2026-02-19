@@ -1,5 +1,4 @@
 import { AwsOptions, client } from "./client.js";
-
 /**
  * The `task` client SDK is available through the following.
  *
@@ -78,6 +77,18 @@ export module task {
      * @default `"fargate"`
      */
     capacity?: "fargate" | "spot";
+    /**
+     * Overrides the memory allocated for this task in the task definition.
+     */
+    memory?: `${number} GB`;
+    /**
+     * Overrides the CPU allocated for this task in the task definition.
+     */
+    cpu?: `${number} vCPU`;
+    /**
+     * Overrides the ephemeral storage allocated for this task in the task definition.
+     */
+    storage?: `${number} GB`;
   }
 
   interface Task {
@@ -247,6 +258,10 @@ export module task {
           },
         },
         overrides: {
+          ...(options?.cpu ? { cpu: (parseFloat(options.cpu.replace(" vCPU", "")) * 1024).toString() } : {}),
+          ...(options?.memory ? { memory: (parseFloat(options.memory.replace(" GB", "")) * 1024).toString() } : {}),
+          ...(options?.storage ? { ephemeralStorage: { sizeInGiB: parseInt(options.storage.replace(" GB", "")) } } : {}),
+
           containerOverrides: resource.containers.map((name) => ({
             name,
             environment: Object.entries(environment ?? {}).map(

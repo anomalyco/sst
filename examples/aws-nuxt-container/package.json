@@ -1,5 +1,5 @@
 {
-  "name": "nuxt-app",
+  "name": "aws-nuxt-container",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,7 +12,7 @@
   "dependencies": {
     "ioredis": "^5.4.1",
     "nuxt": "^3.13.0",
-    "sst": "latest",
+    "sst": "^3",
     "vue": "latest",
     "vue-router": "latest"
   },
