@@ -49,6 +49,11 @@ for (const artifact of artifacts) {
       {
         name,
         version: nextPkg.version,
+        license: "MIT",
+        repository: {
+          "type": "git",
+          "url": "git+https://github.com/sst/sst.git"
+        },
         os: [os],
         cpu: [cpu],
       },
