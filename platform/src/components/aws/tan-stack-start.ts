@@ -292,8 +292,7 @@ export interface TanStackStartArgs extends SsrSiteArgs {
  * The `TanStackStart` component lets you deploy a [TanStack Start](https://tanstack.com/start/latest) app to AWS.
  *
  * :::note
- * You need to make sure the `vite.config.ts` is configured with the `aws-lambda` preset
- * in the `tanstackStart()` plugin, or via a separate `nitro.config.ts`.
+ * You need to make sure the `vite.config.ts` is configured with the `aws-lambda` nitro preset.
  * :::
  *
  * @example
@@ -392,25 +391,16 @@ export class TanStackStart extends SsrSite {
             [
               "No AWS-Lambda preset detected for TanStack Start.",
               "",
-              "Add the preset to your `vite.config.ts`:",
+              "Add the nitro preset to your `vite.config.ts`:",
               "  // vite.config.ts",
-              "  export default defineConfig({",
-              "    plugins: [",
-              "      tanstackStart({",
-              "        nitro: {",
-              '          preset: "aws-lambda",',
-              "          awsLambda: { streaming: true }, // optional",
-              "        },",
-              "      }),",
-              "    ],",
-              "  });",
+              '  import { nitro } from "nitro/vite"',
               "",
-              "Or create a separate `nitro.config.ts`:",
-              "  // nitro.config.ts",
-              '  import { defineNitroConfig } from "nitropack/config";',
-              "  export default defineNitroConfig({",
-              '    preset: "aws-lambda",',
-              "    awsLambda: { streaming: true }, // optional",
+              "  export default defineConfig({",
+              "    plugins: [nitro(), tanstackStart(), ...],",
+              "    nitro: {",
+              '      preset: "aws-lambda",',
+              "      awsLambda: { streaming: true }, // optional",
+              "    },",
               "  });",
               "",
               `Detected preset: "${nitro.preset ?? "undefined"}"`,
