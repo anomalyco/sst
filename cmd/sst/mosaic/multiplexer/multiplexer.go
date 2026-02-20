@@ -13,6 +13,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/gdamore/tcell/v2/views"
 	tcellterm "github.com/sst/sst/v3/cmd/sst/mosaic/multiplexer/tcell-term"
+	"github.com/sst/sst/v3/cmd/sst/mosaic/ui"
 	"github.com/sst/sst/v3/pkg/process"
 )
 
@@ -132,7 +133,7 @@ func (s *Multiplexer) Start() {
 					proc.start()
 				}
 				if !evt.Autostart {
-					proc.vt.Start(process.Command("echo", evt.Key+" has auto-start disabled, press enter to start."))
+					proc.vt.Start(process.Command("echo", ui.TEXT_DIM.Render(evt.Key+" has auto-start disabled, press enter to start.")))
 					proc.dead = true
 				}
 				s.processes = append(s.processes, proc)
@@ -224,7 +225,7 @@ func (s *Multiplexer) Start() {
 				for index, proc := range s.processes {
 					if proc.vt == evt.VT() {
 						if !proc.dead {
-							proc.vt.Start(process.Command("echo", "\n[process exited]"))
+							proc.vt.Start(process.Command("echo", "\n"+ui.TEXT_DIM.Render("[process exited]")))
 							proc.dead = true
 							s.sort()
 							if index == s.selected {

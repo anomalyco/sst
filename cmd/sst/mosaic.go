@@ -20,6 +20,7 @@ import (
 	"github.com/sst/sst/v3/cmd/sst/mosaic/monoplexer"
 	"github.com/sst/sst/v3/cmd/sst/mosaic/multiplexer"
 	"github.com/sst/sst/v3/cmd/sst/mosaic/socket"
+	"github.com/sst/sst/v3/cmd/sst/mosaic/ui"
 	"github.com/sst/sst/v3/cmd/sst/mosaic/watcher"
 	"github.com/sst/sst/v3/internal/util"
 	"github.com/sst/sst/v3/pkg/bus"
@@ -89,7 +90,7 @@ func CmdMosaic(c *cli.Cli) error {
 				go func() {
 					evts <- true
 				}()
-				fmt.Println("[timeout]")
+				fmt.Println(ui.TEXT_DIM.Render("[timeout]"))
 				timer.Reset(timeout)
 				continue
 			case _, ok := <-evts:
