@@ -891,7 +891,7 @@ export class Bucket extends Component implements Link.Linkable {
     // (ie. bucket.name). Also, a bucket can only have one policy. We want to ensure
     // the policy created here is created first. And SST will throw an error if
     // another policy is created after this one.
-    this.bucket = policy.urn.apply(() => bucket);
+    this.bucket = policy.apply(() => bucket);
 
     function normalizeAccess() {
       return all([args.public, args.access]).apply(([pub, access]) =>
