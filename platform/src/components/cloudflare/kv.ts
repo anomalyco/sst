@@ -16,11 +16,13 @@ export interface KvArgs {
      */
     namespace?: Transform<cloudflare.WorkersKvNamespaceArgs>;
   };
+}
 
+export interface KvGetArgs {
   /**
-   * If instead of creating a new namespace, we want to reference an existing one.
+   * The ID of the existing KV namespace.
    */
-  existingNamespaceId?: string;
+  namespaceId: string;
 }
 
 /**
@@ -63,9 +65,20 @@ export class Kv extends Component implements Link.Linkable {
 
     const parent = this;
 
-    const namespace = args?.existingNamespaceId
-      ? getNameSpace(args.existingNamespaceId)
-      : createNamespace();
+    if (args && "ref" in args) {
+      const ref = args as unknown as { ref: boolean; namespaceId: string };
+      this.namespace = cloudflare.WorkersKvNamespace.get(
+        `${name}Namespace`,
+        ref.namespaceId,
+        {
+          title: "",
+          accountId: DEFAULT_ACCOUNT_ID,
+        },
+      );
+      return;
+    }
+
+    const namespace = createNamespace();
 
     this.namespace = namespace;
 
@@ -82,13 +95,45 @@ export class Kv extends Component implements Link.Linkable {
         ),
       );
     }
+  }
 
-    function getNameSpace(namespaceId: string) {
-      return cloudflare.WorkersKvNamespace.get(`${name}Namespace`, namespaceId, {
-        title: "",
-        accountId: DEFAULT_ACCOUNT_ID,
-      });
-    }
+  /**
+   * Reference an existing KV namespace with the given name. This is useful when you
+   * create a KV namespace in one stage and want to share it in another.
+   *
+   * :::tip
+   * You can use the `static get` method to share KV namespaces across stages.
+   * :::
+   *
+   * @param name The name of the component.
+   * @param args The arguments to get the KV namespace.
+   * @param opts? Resource options.
+   *
+   * @example
+   * Imagine you create a KV namespace in the `dev` stage. And in your personal stage `frank`,
+   * instead of creating a new namespace, you want to share the same one from `dev`.
+   *
+   * ```ts title="sst.config.ts"
+   * const storage = $app.stage === "frank"
+   *   ? sst.cloudflare.Kv.get("MyStorage", {
+   *       namespaceId: "a1b2c3d4e5f6",
+   *     })
+   *   : new sst.cloudflare.Kv("MyStorage");
+   * ```
+   */
+  public static get(
+    name: string,
+    args: KvGetArgs,
+    opts?: ComponentResourceOptions,
+  ) {
+    return new Kv(
+      name,
+      {
+        ref: true,
+        namespaceId: args.namespaceId,
+      } as unknown as KvArgs,
+      opts,
+    );
   }
 
   /**
