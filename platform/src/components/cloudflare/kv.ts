@@ -25,6 +25,11 @@ export interface KvGetArgs {
   namespaceId: string;
 }
 
+interface KvRef {
+  ref: true;
+  namespace: cloudflare.WorkersKvNamespace;
+}
+
 /**
  * The `Kv` component lets you add a [Cloudflare KV storage namespace](https://developers.cloudflare.com/kv/) to
  * your app.
@@ -66,15 +71,8 @@ export class Kv extends Component implements Link.Linkable {
     const parent = this;
 
     if (args && "ref" in args) {
-      const ref = args as unknown as { ref: boolean; namespaceId: string };
-      this.namespace = cloudflare.WorkersKvNamespace.get(
-        `${name}Namespace`,
-        ref.namespaceId,
-        {
-          title: "",
-          accountId: DEFAULT_ACCOUNT_ID,
-        },
-      );
+      const ref = args as unknown as KvRef;
+      this.namespace = ref.namespace;
       return;
     }
 
@@ -126,11 +124,17 @@ export class Kv extends Component implements Link.Linkable {
     args: KvGetArgs,
     opts?: ComponentResourceOptions,
   ) {
+    const namespace = cloudflare.WorkersKvNamespace.get(
+      `${name}Namespace`,
+      `${DEFAULT_ACCOUNT_ID}/${args.namespaceId}`,
+      undefined,
+      opts,
+    );
     return new Kv(
       name,
       {
         ref: true,
-        namespaceId: args.namespaceId,
+        namespace,
       } as unknown as KvArgs,
       opts,
     );
@@ -152,13 +156,13 @@ export class Kv extends Component implements Link.Linkable {
   getSSTLink() {
     return {
       properties: {
-        namespaceId: this.namespace.id,
+        namespaceId: this.id,
       },
       include: [
         binding({
           type: "kvNamespaceBindings",
           properties: {
-            namespaceId: this.namespace.id,
+            namespaceId: this.id,
           },
         }),
       ],
@@ -169,14 +173,10 @@ export class Kv extends Component implements Link.Linkable {
    * The generated ID of the KV namespace.
    */
   public get id() {
-    return this.namespace.id;
-  }
-
-  /**
-   * The generated ID of the KV namespace.
-   */
-  public get namespaceId() {
-    return this.namespace.id;
+    // Pulumi returns "accountId/namespaceId" for imported namespaces
+    return this.namespace.id.apply((id) =>
+      id.includes("/") ? id.split("/")[1] : id,
+    );
   }
 
   /**
