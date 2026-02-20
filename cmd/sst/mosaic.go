@@ -90,7 +90,7 @@ func CmdMosaic(c *cli.Cli) error {
 				go func() {
 					evts <- true
 				}()
-				fmt.Println(ui.TEXT_DIM.Render("[timeout]"))
+				fmt.Println("\n"+ui.TEXT_DIM.Render("[timeout]"))
 				timer.Reset(timeout)
 				continue
 			case _, ok := <-evts:
