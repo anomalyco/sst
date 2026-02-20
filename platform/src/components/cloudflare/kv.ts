@@ -156,13 +156,13 @@ export class Kv extends Component implements Link.Linkable {
   getSSTLink() {
     return {
       properties: {
-        namespaceId: this.id,
+        namespaceId: this.namespaceId,
       },
       include: [
         binding({
           type: "kvNamespaceBindings",
           properties: {
-            namespaceId: this.id,
+            namespaceId: this.namespaceId,
           },
         }),
       ],
@@ -171,8 +171,16 @@ export class Kv extends Component implements Link.Linkable {
 
   /**
    * The generated ID of the KV namespace.
+   * @deprecated Use `namespaceId` instead.
    */
   public get id() {
+    return this.namespaceId;
+  }
+
+  /**
+   * The generated ID of the KV namespace.
+   */
+  public get namespaceId() {
     // Pulumi returns "accountId/namespaceId" for imported namespaces
     return this.namespace.id.apply((id) =>
       id.includes("/") ? id.split("/")[1] : id,
