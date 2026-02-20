@@ -598,6 +598,17 @@ func (vt *VT) Clear() {
 	vt.ris()
 }
 
+func (vt *VT) rowAt(y int) []cell {
+	if y < len(vt.primaryScrollback) {
+		return vt.primaryScrollback[y]
+	}
+	screenY := y - len(vt.primaryScrollback)
+	if screenY < len(vt.activeScreen) {
+		return vt.activeScreen[screenY]
+	}
+	return nil
+}
+
 func (vt *VT) Copy() string {
 	vt.mu.Lock()
 	defer vt.mu.Unlock()
@@ -605,36 +616,19 @@ func (vt *VT) Copy() string {
 		return ""
 	}
 
-	// Normalize selection coordinates
 	startX, startY, endX, endY := vt.selection.startX, vt.selection.startY, vt.selection.endX, vt.selection.endY
 	if endY < startY || (endY == startY && endX < startX) {
 		startX, startY, endX, endY = endX, endY, startX, startY
 	}
 
-	var builder strings.Builder
-
-	// Determine which rows to iterate through
-	totalScrollback := len(vt.primaryScrollback)
-
+	lines := make([]string, 0, endY-startY+1)
 	for y := startY; y <= endY; y++ {
-		var row []cell
-
-		// Get the row from either scrollback or active screen
-		if y < totalScrollback {
-			row = vt.primaryScrollback[y]
-		} else {
-			screenY := y - totalScrollback
-			if screenY < len(vt.activeScreen) {
-				row = vt.activeScreen[screenY]
-			} else {
-				continue
-			}
+		row := vt.rowAt(y)
+		if row == nil {
+			continue
 		}
 
-		// Determine the column range for this row
-		colStart := 0
-		colEnd := len(row) - 1
-
+		colStart, colEnd := 0, len(row)-1
 		if y == startY {
 			colStart = startX
 		}
@@ -642,31 +636,21 @@ func (vt *VT) Copy() string {
 			colEnd = endX
 		}
 
-		// Extract text from this row
-		rowBuilder := strings.Builder{}
+		var b strings.Builder
 		for x := colStart; x <= colEnd && x < len(row); x++ {
-			cell := row[x]
-			content := cell.content
+			content := row[x].content
 			if content == '\x00' {
 				content = ' '
 			}
-			rowBuilder.WriteRune(content)
-			for _, comb := range cell.combining {
-				rowBuilder.WriteRune(comb)
+			b.WriteRune(content)
+			for _, comb := range row[x].combining {
+				b.WriteRune(comb)
 			}
 		}
-
-		// Add the row text, trimming trailing spaces
-		rowText := strings.TrimRight(rowBuilder.String(), " ")
-		if rowText != "" || y < endY {
-			builder.WriteString(rowText)
-			if y < endY {
-				builder.WriteRune('\n')
-			}
-		}
+		lines = append(lines, strings.TrimRight(b.String(), " "))
 	}
 
-	return strings.TrimRightFunc(builder.String(), unicode.IsSpace)
+	return strings.TrimRightFunc(strings.Join(lines, "\n"), unicode.IsSpace)
 }
 
 func (vt *VT) SelectStart(x int, y int) {
