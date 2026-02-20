@@ -80,6 +80,7 @@ func (s *Multiplexer) resize(width int, height int) {
 
 func (s *Multiplexer) Start() {
 	defer func() {
+		s.stopScrollTimer()
 		s.screen.Fini()
 	}()
 
@@ -364,19 +365,11 @@ func (s *Multiplexer) Start() {
 }
 
 type EventExit struct {
-	when time.Time
-}
-
-func (e *EventExit) When() time.Time {
-	return e.when
+	tcell.EventTime
 }
 
 type EventScrollTick struct {
-	when time.Time
-}
-
-func (e *EventScrollTick) When() time.Time {
-	return e.when
+	tcell.EventTime
 }
 
 func (s *Multiplexer) Exit() {
@@ -399,7 +392,7 @@ func (s *Multiplexer) startScrollTimer(direction int) {
 			case <-s.scrollStop:
 				return
 			case <-ticker.C:
-				s.screen.PostEvent(&EventScrollTick{when: time.Now()})
+				s.screen.PostEvent(&EventScrollTick{})
 			}
 		}
 	}()

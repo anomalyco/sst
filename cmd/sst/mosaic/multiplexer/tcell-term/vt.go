@@ -638,6 +638,9 @@ func (vt *VT) Copy() string {
 
 		var b strings.Builder
 		for x := colStart; x <= colEnd && x < len(row); x++ {
+			if row[x].width == 0 {
+				continue
+			}
 			content := row[x].content
 			if content == '\x00' {
 				content = ' '
