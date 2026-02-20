@@ -4,7 +4,6 @@
 package process
 
 import (
-	"fmt"
 	"os"
 	"syscall"
 	"testing"
@@ -68,31 +67,17 @@ func TestSendSignalAlreadyExited(t *testing.T) {
 // findChildInGroup looks for a process whose pgid matches the parent pid.
 func findChildInGroup(t *testing.T, parentPid int) int {
 	t.Helper()
-	// read /proc or use ps to find children
-	// fallback: just check the group is killable
-	entries, err := os.ReadDir("/proc")
-	if err != nil {
-		// not on linux (e.g. macOS), skip child check
-		return 0
-	}
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		var pid int
-		if _, err := fmt.Sscanf(e.Name(), "%d", &pid); err != nil {
-			continue
-		}
-		if pid == parentPid {
-			continue
-		}
+	// use syscall.Getpgid to scan for children in the same group
+	// check pids near the parent (children are typically allocated sequentially)
+	for pid := parentPid + 1; pid < parentPid+50; pid++ {
 		pgid, err := syscall.Getpgid(pid)
 		if err != nil {
 			continue
 		}
-		if pgid == parentPid {
+		if pgid == parentPid && pid != parentPid {
 			return pid
 		}
 	}
+	t.Fatal("could not find child process in group")
 	return 0
 }

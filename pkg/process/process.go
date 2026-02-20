@@ -148,5 +148,5 @@ func untrack(pid int) {
 			return
 		}
 	}
-	slog.Info("untracked process", "pid", pid)
+	slog.Info("process not found in tracked list", "pid", pid)
 }
