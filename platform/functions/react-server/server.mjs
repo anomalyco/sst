@@ -13,10 +13,6 @@ function convertLambdaRequestToNode(event) {
 
   const search = event.rawQueryString.length ? `?${event.rawQueryString}` : "";
   const url = new URL(event.rawPath + search, `https://${event.headers.host}`);
-  const isFormData = event.headers["content-type"]?.includes(
-    "multipart/form-data",
-  );
-
   // Build headers
   const headers = new Headers();
   for (let [header, value] of Object.entries(event.headers)) {
@@ -30,9 +26,7 @@ function convertLambdaRequestToNode(event) {
     headers,
     body:
       event.body && event.isBase64Encoded
-        ? isFormData
-          ? Buffer.from(event.body, "base64")
-          : Buffer.from(event.body, "base64").toString()
+        ? Buffer.from(event.body, "base64")
         : event.body,
   });
 }
