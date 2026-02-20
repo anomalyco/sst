@@ -81,6 +81,7 @@ func (s *Multiplexer) resize(width int, height int) {
 
 func (s *Multiplexer) Start() {
 	defer func() {
+		s.stopAutoScroll()
 		s.screen.Fini()
 	}()
 
