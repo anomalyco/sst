@@ -177,6 +177,24 @@ func (s *Multiplexer) Start() {
 				}
 				if evt.Buttons()&tcell.ButtonPrimary != 0 {
 					x, y := evt.Position()
+					if x <= SIDEBAR_WIDTH && s.dragging && selected != nil {
+						if y <= 0 {
+							s.scrollUp(1)
+							s.startAutoScroll(-1)
+							selected.vt.SelectEnd(0, 0)
+							s.draw()
+						} else if y >= s.height-1 {
+							s.scrollDown(1)
+							s.startAutoScroll(1)
+							selected.vt.SelectEnd(0, s.height-1)
+							s.draw()
+						} else {
+							s.stopAutoScroll()
+							selected.vt.SelectEnd(0, y)
+							s.draw()
+						}
+						return
+					}
 					if x < SIDEBAR_WIDTH && !s.dragging {
 						alive := 0
 						for _, p := range s.processes {
