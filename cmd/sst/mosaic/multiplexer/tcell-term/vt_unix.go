@@ -8,7 +8,6 @@ import "syscall"
 func getPtyAttr() *syscall.SysProcAttr {
 	return &syscall.SysProcAttr{
 		Setsid:  true,
-		Setpgid: true,
 		Setctty: true,
 		Ctty:    1,
 	}

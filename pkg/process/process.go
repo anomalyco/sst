@@ -103,52 +103,50 @@ func Kill(process *os.Process) error {
 		close(done)
 	}()
 
-	var killErr error
+	killErr := escalatingKill(process, done)
+	untrack(process.Pid)
+	return killErr
+}
 
+func escalatingKill(process *os.Process, done <-chan struct{}) error {
 	if err := sendTermSignal(process); err != nil {
-		slog.Error("failed to send term signal, escalating", "pid", process.Pid, "err", err)
-	} else {
-		select {
-		case <-done:
-			slog.Info("process killed with term", "pid", process.Pid)
-			goto cleanup
-		case <-time.After(killWait):
-			slog.Info("process not responding to term, sending kill", "pid", process.Pid)
-		}
+		slog.Error("term signal failed, escalating", "pid", process.Pid, "err", err)
+		return forceKill(process, done)
 	}
-
 	select {
 	case <-done:
-		slog.Info("process killed before kill escalation", "pid", process.Pid)
+		slog.Info("process killed with term", "pid", process.Pid)
+		return nil
 	case <-time.After(killWait):
-		slog.Info("process not responding, sending kill signal", "pid", process.Pid)
-		if err := sendKillSignal(process); err != nil {
-			slog.Error("failed to send kill signal", "pid", process.Pid, "err", err)
-			killErr = err
-			goto cleanup
-		}
-
-		select {
-		case <-done:
-			slog.Info("process killed with kill", "pid", process.Pid)
-		case <-time.After(killWait):
-			slog.Info("timed out waiting for kill signal", "pid", process.Pid)
-			killErr = syscall.ETIMEDOUT
-		}
+		slog.Info("term timeout, escalating", "pid", process.Pid)
+		return forceKill(process, done)
 	}
+}
 
-cleanup:
+func forceKill(process *os.Process, done <-chan struct{}) error {
+	if err := sendKillSignal(process); err != nil {
+		slog.Error("kill signal failed", "pid", process.Pid, "err", err)
+		return err
+	}
+	select {
+	case <-done:
+		slog.Info("process killed with kill", "pid", process.Pid)
+		return nil
+	case <-time.After(killWait):
+		slog.Info("timed out waiting for kill", "pid", process.Pid)
+		return syscall.ETIMEDOUT
+	}
+}
+
+func untrack(pid int) {
 	lock.Lock()
 	defer lock.Unlock()
 	for i := len(cmds) - 1; i >= 0; i-- {
-		if cmds[i].Process != nil && cmds[i].Process.Pid == process.Pid {
+		if cmds[i].Process != nil && cmds[i].Process.Pid == pid {
 			cmds[i] = cmds[len(cmds)-1]
 			cmds = cmds[:len(cmds)-1]
-
-			return killErr
+			return
 		}
 	}
-	slog.Info("untracked process", "pid", process.Pid)
-
-	return killErr
+	slog.Info("untracked process", "pid", pid)
 }
