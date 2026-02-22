@@ -1757,6 +1757,7 @@ async function handler(event) {
               undefined,
               `${name}EdgeFunctionRole`,
               {
+                name: physicalName(64, `${name}EdgeRole`),
                 assumeRolePolicy: JSON.stringify({
                   Version: "2012-10-17",
                   Statement: [
@@ -1776,7 +1777,7 @@ async function handler(event) {
                   "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
                 ],
               },
-              { parent: self },
+              { parent: self, ignoreChanges: ["name"] },
             ),
           );
 
@@ -1785,6 +1786,7 @@ async function handler(event) {
               undefined,
               `${name}EdgeFunction`,
               {
+                name: physicalName(64, `${name}EdgeFn`),
                 runtime: "nodejs22.x",
                 handler: "index.handler",
                 role: edgeRole.arn,
@@ -1799,6 +1801,7 @@ async function handler(event) {
               {
                 parent: self,
                 provider: useProvider("us-east-1"),
+                ignoreChanges: ["name"],
               },
             ),
           );

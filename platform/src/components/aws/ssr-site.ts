@@ -18,7 +18,7 @@ import { Function, FunctionArgs, FunctionArn } from "./function.js";
 import { parseLambdaEdgeArn } from "./helpers/arn.js";
 import { Bucket, BucketArgs } from "./bucket.js";
 import { BucketFile, BucketFiles } from "./providers/bucket-files.js";
-import { logicalName } from "../naming.js";
+import { logicalName, physicalName } from "../naming.js";
 import { Input } from "../input.js";
 import {
   Component,
@@ -1283,12 +1283,12 @@ async function handler(event) {
         const memory = edgeConfig?.memory ? toMBs(edgeConfig.memory) : 128;
         const timeout = edgeConfig?.timeout ? toSeconds(edgeConfig.timeout) : 5;
 
-        // Create IAM role for Lambda@Edge using SST transform pattern
         const edgeRole = new iam.Role(
           ...transform(
             undefined,
             `${name}EdgeFunctionRole`,
             {
+              name: physicalName(64, `${name}EdgeRole`),
               assumeRolePolicy: JSON.stringify({
                 Version: "2012-10-17",
                 Statement: [
@@ -1308,31 +1308,31 @@ async function handler(event) {
                 "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
               ],
             },
-            { parent: self },
+            { parent: self, ignoreChanges: ["name"] },
           ),
         );
 
-        // Create the Lambda@Edge function using SST transform pattern
         const edgeFunction = new lambda.Function(
           ...transform(
             undefined,
             `${name}EdgeFunction`,
             {
+              name: physicalName(64, `${name}EdgeFn`),
               runtime: "nodejs22.x",
               handler: "index.handler",
               role: edgeRole.arn,
               code: new pulumiAsset.FileArchive(
                 path.join($cli.paths.platform, "dist", "oac-edge-signer"),
               ),
-              publish: true, // Required for Lambda@Edge
+              publish: true,
               timeout: timeout,
               memorySize: memory,
               description: `${name} Lambda@Edge function for OAC request signing`,
             },
             {
               parent: self,
-              // Lambda@Edge functions must be created in us-east-1
               provider: useProvider("us-east-1"),
+              ignoreChanges: ["name"],
             },
           ),
         );
