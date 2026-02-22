@@ -39,6 +39,7 @@ import {
   CF_ROUTER_INJECTION,
   CF_BLOCK_CLOUDFRONT_URL_INJECTION,
   KV_SITE_METADATA,
+  ProtectionConfig,
   RouterRouteArgsDeprecated,
   normalizeRouteArgs,
   RouterRouteArgs,
@@ -984,11 +985,7 @@ async function handler(event) {
                     return [];
                   }
 
-                  // Use provided ARN if available
-                  if (
-                    "edgeFunction" in protectionConfig &&
-                    protectionConfig.edgeFunction?.arn
-                  ) {
+                  if (protectionConfig.edgeFunction?.arn) {
                     return [
                       {
                         eventType: "origin-request",
@@ -998,7 +995,6 @@ async function handler(event) {
                     ];
                   }
 
-                  // Use auto-created function if available
                   if (autoEdgeFunction) {
                     return [
                       {
@@ -1023,16 +1019,18 @@ async function handler(event) {
     createInvalidation();
 
     // Create Lambda permissions based on protection mode
-    all([distribution, servers, imageOptimizer, protection]).apply(
-      ([dist, servers, imgOptimizer, protection]) => {
-        if (!dist) return;
+    all([distribution, route, servers, imageOptimizer, protection]).apply(
+      ([dist, routeVal, servers, imgOptimizer, protection]) => {
+        const distributionArn = dist
+          ? dist.nodes.distribution.arn
+          : routeVal?.routerDistributionArn;
+        if (!distributionArn) return;
 
         // Server functions
         servers.forEach(({ region, server }) => {
           const provider = useProvider(region);
 
           if (protection.mode === "none") {
-            // Create explicit public access permission for none mode
             new lambda.Permission(
               `${name}PublicFunctionUrlAccess${logicalName(region)}`,
               {
@@ -1047,14 +1045,13 @@ async function handler(event) {
             protection.mode === "oac" ||
             protection.mode === "oac-with-edge-signing"
           ) {
-            // Create CloudFront-specific permission for OAC modes
             new lambda.Permission(
               `${name}CloudFrontFunctionUrlAccess${logicalName(region)}`,
               {
                 action: "lambda:InvokeFunctionUrl",
                 function: server.nodes.function.name,
                 principal: "cloudfront.amazonaws.com",
-                sourceArn: dist.nodes.distribution.arn,
+                sourceArn: distributionArn,
               },
               { provider, parent: self },
             );
@@ -1064,7 +1061,7 @@ async function handler(event) {
                 action: "lambda:InvokeFunction",
                 function: server.nodes.function.name,
                 principal: "cloudfront.amazonaws.com",
-                sourceArn: dist.nodes.distribution.arn,
+                sourceArn: distributionArn,
               },
               { provider, parent: self },
             );
@@ -1094,7 +1091,7 @@ async function handler(event) {
                 action: "lambda:InvokeFunctionUrl",
                 function: imgOptimizer.nodes.function.name,
                 principal: "cloudfront.amazonaws.com",
-                sourceArn: dist.nodes.distribution.arn,
+                sourceArn: distributionArn,
               },
               { parent: self },
             );
@@ -1104,7 +1101,7 @@ async function handler(event) {
                 action: "lambda:InvokeFunction",
                 function: imgOptimizer.nodes.function.name,
                 principal: "cloudfront.amazonaws.com",
-                sourceArn: dist.nodes.distribution.arn,
+                sourceArn: distributionArn,
               },
               { parent: self },
             );
@@ -1220,6 +1217,11 @@ async function handler(event) {
           throw new VisibleError(
             `Cannot provide both "edge" and "route". Use the "edge" prop on the "Router" component when serving your site through a Router.`,
           );
+
+        if (args.protection)
+          throw new VisibleError(
+            `Cannot set "protection" when routing through a Router. Set "protection" on the Router component instead.`,
+          );
       }
 
       return route;
@@ -1239,17 +1241,18 @@ async function handler(event) {
       );
     }
 
-    function normalizeProtection() {
+    function normalizeProtection(): Output<ProtectionConfig> {
+      if (route) {
+        return route.apply((r) => r.routerProtection);
+      }
+
       return output(args.protection).apply((protection) => {
-        // Default to "none" if not specified
         if (!protection) return { mode: "none" as const };
 
-        // Handle string values
         if (typeof protection === "string") {
           return { mode: protection };
         }
 
-        // Handle object form - validate ARN if provided
         if (
           protection.mode === "oac-with-edge-signing" &&
           "edgeFunction" in protection &&
@@ -1266,20 +1269,17 @@ async function handler(event) {
     }
 
     function createLambdaEdgeFunction() {
+      if (route) return output(undefined);
+
       return protection.apply((protectionConfig) => {
-        // Only create function if mode is oac-with-edge-signing and no ARN is provided
         if (
           protectionConfig.mode !== "oac-with-edge-signing" ||
-          ("edgeFunction" in protectionConfig &&
-            protectionConfig.edgeFunction?.arn)
+          protectionConfig.edgeFunction?.arn
         ) {
           return undefined;
         }
 
-        const edgeConfig =
-          "edgeFunction" in protectionConfig
-            ? protectionConfig.edgeFunction
-            : {};
+        const edgeConfig = protectionConfig.edgeFunction;
         const memory = edgeConfig?.memory ? toMBs(edgeConfig.memory) : 128;
         const timeout = edgeConfig?.timeout ? toSeconds(edgeConfig.timeout) : 5;
 

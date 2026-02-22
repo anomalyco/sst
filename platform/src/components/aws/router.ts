@@ -1,3 +1,4 @@
+import path from "path";
 import {
   ComponentResourceOptions,
   Output,
@@ -5,6 +6,8 @@ import {
   interpolate,
   output,
 } from "@pulumi/pulumi";
+import * as pulumi from "@pulumi/pulumi";
+import * as aws from "@pulumi/aws";
 import crypto from "crypto";
 import { Component, Transform, transform } from "../component";
 import { Link } from "../link";
@@ -17,7 +20,11 @@ import { OriginAccessControl } from "./providers/origin-access-control";
 import { VisibleError } from "../error";
 import { RouterUrlRoute } from "./router-url-route";
 import { RouterBucketRoute } from "./router-bucket-route";
-import { DurationSeconds } from "../duration";
+import { DurationSeconds, toSeconds } from "../duration";
+import { FunctionArn } from "./function";
+import { parseLambdaEdgeArn } from "./helpers/arn";
+import { Size, toMBs } from "../size";
+import { useProvider } from "./helpers/provider";
 
 interface InlineUrlRouteArgs extends InlineBaseRouteArgs {
   /**
@@ -815,6 +822,97 @@ export interface RouterArgs {
   >;
 
   /**
+   * Configure Lambda function URL protection through CloudFront Origin Access Control.
+   *
+   * When set, all Functions and SSR sites routing through this Router automatically
+   * inherit the protection mode.
+   *
+   * @default `"none"`
+   *
+   * The available options are:
+   * - `"none"`: Lambda URLs are publicly accessible.
+   * - `"oac"`: Lambda URLs protected by CloudFront Origin Access Control. Requires
+   *   manual `x-amz-content-sha256` header for POST requests.
+   * - `"oac-with-edge-signing"`: Full protection with automatic header signing via
+   *   Lambda@Edge. Works with external webhooks and callbacks. Higher cost and latency
+   *   but works out of the box.
+   *
+   * :::note
+   * Switching from `"none"` to `"oac"` or `"oac-with-edge-signing"` may cause brief
+   * 403 errors (~10-60s) during deployment while CloudFront edge nodes pick up the new
+   * signing configuration. For zero-disruption upgrades, set `protection` when first
+   * creating the Router.
+   * :::
+   *
+   * :::note
+   * When using `"oac-with-edge-signing"`, request bodies are limited to 1MB due to
+   * Lambda@Edge payload limits. For file uploads larger than 1MB, consider using
+   * presigned S3 URLs or the `"oac"` mode with manual header signing.
+   * :::
+   *
+   * :::note
+   * When removing a stage that uses `"oac-with-edge-signing"`, deletion may take
+   * 5-10 minutes while AWS removes the Lambda@Edge replicated functions from all
+   * edge locations.
+   * :::
+   *
+   * @example
+   * ```js
+   * {
+   *   protection: "oac"
+   * }
+   * ```
+   *
+   * @example
+   * ```js
+   * {
+   *   protection: "oac-with-edge-signing"
+   * }
+   * ```
+   *
+   * @example
+   * ```js
+   * // Custom Lambda@Edge configuration
+   * {
+   *   protection: {
+   *     mode: "oac-with-edge-signing",
+   *     edgeFunction: {
+   *       memory: "256 MB",
+   *       timeout: "10 seconds"
+   *     }
+   *   }
+   * }
+   * ```
+   */
+  protection?: Input<
+    | "none"
+    | "oac"
+    | "oac-with-edge-signing"
+    | {
+        mode: "oac-with-edge-signing";
+        edgeFunction?: {
+          /**
+           * Custom Lambda@Edge function ARN to use for request signing.
+           * If provided, this function will be used instead of creating a new one.
+           * Must be a qualified ARN (with version) and deployed in us-east-1.
+           */
+          arn?: Input<FunctionArn>;
+          /**
+           * Memory size for the auto-created Lambda@Edge function.
+           * Only used when arn is not provided.
+           * @default `"128 MB"`
+           */
+          memory?: Input<Size>;
+          /**
+           * Timeout for the auto-created Lambda@Edge function.
+           * Only used when arn is not provided.
+           * @default `"5 seconds"`
+           */
+          timeout?: Input<DurationSeconds>;
+        };
+      }
+  >;
+  /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
    */
@@ -1003,6 +1101,7 @@ export class Router extends Component implements Link.Linkable {
   private kvStoreArn?: Output<string>;
   private kvNamespace?: Output<string>;
   private hasInlineRoutes: Output<boolean>;
+  private _protectionMode: Output<ProtectionConfig>;
 
   constructor(
     name: string,
@@ -1021,11 +1120,13 @@ export class Router extends Component implements Link.Linkable {
       this.kvStoreArn = ref.kvStoreArn;
       this.kvNamespace = ref.kvNamespace;
       this.hasInlineRoutes = ref.hasInlineRoutes;
+      this._protectionMode = ref.protection;
       registerOutputs();
       return;
     }
 
     const hasInlineRoutes = args.routes !== undefined;
+    const protection = normalizeProtection();
 
     let cdn, kvStoreArn, kvNamespace;
     if (hasInlineRoutes) {
@@ -1041,6 +1142,7 @@ export class Router extends Component implements Link.Linkable {
     this.kvStoreArn = kvStoreArn;
     this.kvNamespace = kvNamespace;
     this.hasInlineRoutes = output(hasInlineRoutes);
+    this._protectionMode = protection;
     registerOutputs();
 
     function reference() {
@@ -1060,6 +1162,7 @@ export class Router extends Component implements Link.Linkable {
           kvStoreArn: tags?.["sst:ref:kv"],
           kvNamespace: tags?.["sst:ref:kv-namespace"],
           hasInlineRoutes: tags?.["sst:ref:kv"] === undefined,
+          protection: tags?.["sst:ref:protection"] ?? "none",
         };
       });
 
@@ -1068,12 +1171,36 @@ export class Router extends Component implements Link.Linkable {
         kvStoreArn: tags.kvStoreArn,
         kvNamespace: tags.kvNamespace,
         hasInlineRoutes: tags.hasInlineRoutes,
+        protection: tags.protection.apply((p) => ({ mode: p })),
       };
     }
 
     function registerOutputs() {
       self.registerOutputs({
         _hint: args._skipHint ? undefined : self.url,
+      });
+    }
+
+    function normalizeProtection() {
+      return output(args.protection).apply((protection) => {
+        if (!protection) return { mode: "none" as const };
+
+        if (typeof protection === "string") {
+          return { mode: protection };
+        }
+
+        if (
+          protection.mode === "oac-with-edge-signing" &&
+          "edgeFunction" in protection &&
+          protection.edgeFunction?.arn
+        ) {
+          const arn = protection.edgeFunction.arn;
+          if (typeof arn === "string") {
+            parseLambdaEdgeArn(arn);
+          }
+        }
+
+        return protection;
       });
     }
 
@@ -1408,6 +1535,7 @@ async function handler(event) {
       const requestFunction = createRequestFunction();
       const responseFunction = createResponseFunction();
       const cachePolicyId = createCachePolicy().id;
+      const edgeFunction = createLambdaEdgeFunction();
       const distribution = createDistribution();
 
       return { kvNamespace, kvStoreArn, distribution };
@@ -1605,6 +1733,80 @@ async function handler(event) {
         });
       }
 
+      function createLambdaEdgeFunction() {
+        return protection.apply((protectionConfig) => {
+          if (
+            protectionConfig.mode !== "oac-with-edge-signing" ||
+            ("edgeFunction" in protectionConfig &&
+              protectionConfig.edgeFunction?.arn)
+          ) {
+            return undefined;
+          }
+
+          const edgeConfig =
+            "edgeFunction" in protectionConfig
+              ? protectionConfig.edgeFunction
+              : {};
+          const memory = edgeConfig?.memory ? toMBs(edgeConfig.memory) : 128;
+          const timeout = edgeConfig?.timeout
+            ? toSeconds(edgeConfig.timeout)
+            : 5;
+
+          const edgeRole = new aws.iam.Role(
+            ...transform(
+              undefined,
+              `${name}EdgeFunctionRole`,
+              {
+                assumeRolePolicy: JSON.stringify({
+                  Version: "2012-10-17",
+                  Statement: [
+                    {
+                      Action: "sts:AssumeRole",
+                      Effect: "Allow",
+                      Principal: {
+                        Service: [
+                          "lambda.amazonaws.com",
+                          "edgelambda.amazonaws.com",
+                        ],
+                      },
+                    },
+                  ],
+                }),
+                managedPolicyArns: [
+                  "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+                ],
+              },
+              { parent: self },
+            ),
+          );
+
+          const edgeFn = new aws.lambda.Function(
+            ...transform(
+              undefined,
+              `${name}EdgeFunction`,
+              {
+                runtime: "nodejs22.x",
+                handler: "index.handler",
+                role: edgeRole.arn,
+                code: new pulumi.asset.FileArchive(
+                  path.join($cli.paths.platform, "dist", "oac-edge-signer"),
+                ),
+                publish: true,
+                timeout: timeout,
+                memorySize: memory,
+                description: `${name} Lambda@Edge function for OAC request signing`,
+              },
+              {
+                parent: self,
+                provider: useProvider("us-east-1"),
+              },
+            ),
+          );
+
+          return edgeFn;
+        });
+      }
+
       function createDistribution() {
         return new Cdn(
           ...transform(
@@ -1652,11 +1854,45 @@ async function handler(event) {
                     ? [{ eventType: "viewer-response", functionArn: resFn.arn }]
                     : []),
                 ]),
+                lambdaFunctionAssociations: all([
+                  protection,
+                  edgeFunction,
+                ]).apply(([protectionConfig, autoEdgeFunction]) => {
+                  if (protectionConfig.mode !== "oac-with-edge-signing") {
+                    return [];
+                  }
+
+                  if (
+                    "edgeFunction" in protectionConfig &&
+                    protectionConfig.edgeFunction?.arn
+                  ) {
+                    return [
+                      {
+                        eventType: "origin-request",
+                        lambdaArn: protectionConfig.edgeFunction.arn,
+                        includeBody: true,
+                      },
+                    ];
+                  }
+
+                  if (autoEdgeFunction) {
+                    return [
+                      {
+                        eventType: "origin-request",
+                        lambdaArn: autoEdgeFunction.qualifiedArn,
+                        includeBody: true,
+                      },
+                    ];
+                  }
+
+                  return [];
+                }),
               },
               tags: {
                 "sst:ref:kv": kvStoreArn,
                 "sst:ref:kv-namespace": kvNamespace,
                 "sst:ref:version": _refVersion.toString(),
+                "sst:ref:protection": protection.apply((p) => p.mode),
               },
             },
             { parent: self },
@@ -1698,6 +1934,16 @@ async function handler(event) {
   /** @internal */
   public get _hasInlineRoutes() {
     return this.hasInlineRoutes;
+  }
+
+  /** @internal */
+  public get _protection() {
+    return this._protectionMode;
+  }
+
+  /** @internal */
+  public get _distributionArn() {
+    return this.cdn.apply((cdn) => cdn.nodes.distribution.arn);
   }
 
   /**
@@ -2202,6 +2448,21 @@ export type KV_SITE_METADATA = {
     timeouts: {
       readTimeout: number;
     };
+    originAccessControlConfig?: {
+      enabled: boolean;
+      signingBehavior: string;
+      signingProtocol: string;
+      originType: string;
+    };
+  };
+};
+
+export type ProtectionConfig = {
+  mode: string;
+  edgeFunction?: {
+    arn?: string;
+    memory?: Size;
+    timeout?: DurationSeconds;
   };
 };
 
@@ -2320,6 +2581,8 @@ export function normalizeRouteArgs(
         ),
         routerKvNamespace: v.instance._kvNamespace!,
         routerKvStoreArn: v.instance._kvStoreArn!,
+        routerProtection: v.instance._protection,
+        routerDistributionArn: v.instance._distributionArn,
       };
     });
   });
