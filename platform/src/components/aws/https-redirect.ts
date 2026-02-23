@@ -2,6 +2,7 @@ import { ComponentResourceOptions, all, output } from "@pulumi/pulumi";
 import { DnsValidatedCertificate } from "./dns-validated-certificate.js";
 import { Bucket } from "./bucket.js";
 import { Component } from "../component.js";
+import { logicalName } from "../naming.js";
 import { useProvider } from "./helpers/provider.js";
 import { Input } from "../input.js";
 import { Dns } from "../dns.js";
@@ -172,9 +173,14 @@ async function handler(event) {
       if (!args.dns) return;
 
       all([args.dns, args.sourceDomains]).apply(([dns, sourceDomains]) => {
-        for (const recordName of sourceDomains) {
+        const existing: string[] = [];
+        for (const [i, recordName] of sourceDomains.entries()) {
+          const key = logicalName(recordName);
+          const namePrefix = existing.includes(key) ? `${name}${i}` : name;
+          existing.push(key);
+
           dns.createAlias(
-            name,
+            namePrefix,
             {
               name: recordName,
               aliasName: distribution.domainName,
