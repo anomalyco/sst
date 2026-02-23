@@ -188,7 +188,7 @@ async function handler(event) {
           //
           // Ideally, we don't sanitize the logical name. But that's a breaking change.
           //
-          // As a workaround, starting v3.0.79, we prefix the logical name with a unique
+          // As a workaround, starting v3.19.2, we prefix the logical name with a unique
           // index for records with logical names that will trash.
           const key = logicalName(recordName);
           const namePrefix = existing.includes(key) ? `${name}${i}` : name;
