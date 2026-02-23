@@ -5,6 +5,10 @@
  *
  * Use the Pulumi AWS provider to request an increase to an AWS service quota.
  * In this example, we increase the Lambda concurrent executions quota.
+ *
+ * You can find service and quota codes in the
+ * [AWS Service Quotas console](https://console.aws.amazon.com/servicequotas) or by running
+ * `aws service-quotas list-service-quotas --service-code <service>`.
  */
 export default $config({
   app(input) {
