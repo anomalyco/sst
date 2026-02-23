@@ -64,6 +64,12 @@ type VT struct {
 	mouseBtn tcell.ButtonMask
 
 	selection *selection
+
+	// logWriter, if set, will receive a copy of all raw bytes read from the
+	// underlying PTY. This allows callers (ie. the SST multiplexer) to persist
+	// the exact output of the process to a log file under .sst/logs while still
+	// rendering it interactively in the TUI.
+	logWriter io.Writer
 }
 
 type selection struct {
@@ -170,8 +176,16 @@ func (vt *VT) Start(cmd *exec.Cmd) error {
 		return err
 	}
 
+	// If a log writer has been configured, tee the PTY output so that the raw
+	// stream is written both to the parser (for on-screen rendering) and to the
+	// log file.
+	var reader io.Reader = vt.pty
+	if vt.logWriter != nil {
+		reader = io.TeeReader(vt.pty, vt.logWriter)
+	}
+
 	vt.Resize(w, h)
-	vt.parser = NewParser(vt.pty)
+	vt.parser = NewParser(reader)
 	go func() {
 		defer vt.recover()
 		for {
@@ -456,6 +470,9 @@ func (vt *VT) Close() {
 	vt.mu.Lock()
 	defer vt.mu.Unlock()
 	vt.pty.Close()
+	if closer, ok := vt.logWriter.(io.Closer); ok {
+		closer.Close()
+	}
 }
 
 func (vt *VT) Attach(fn func(ev tcell.Event)) {
@@ -670,4 +687,11 @@ func isCellSelected(x, y, startX, startY, endX, endY int) bool {
 		return x <= maxX // Last line of multi-line selection
 	}
 	return false
+}
+
+// SetLog assigns an io.Writer that will receive a copy of everything written
+// to the terminal. Callers should close the writer themselves if they need to
+// flush or release resources.
+func (vt *VT) SetLog(w io.Writer) {
+	vt.logWriter = w
 }

@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	goruntime "runtime"
+	"regexp"
 	"strings"
 	"time"
 
@@ -296,7 +297,13 @@ func CmdMosaic(c *cli.Cli) error {
 								dir,
 								true,
 								d.Autostart,
-								append([]string{"SST_CHILD=" + d.Name}, multiEnv...)...,
+								append(
+									[]string{
+										"SST_CHILD=" + d.Name,
+										"SST_LOG=" + p.PathLog(logFileName(d.Name, d.Command)),
+									},
+									multiEnv...,
+								)...,
 							)
 						}
 						for name := range evt.Tunnels {
@@ -389,4 +396,35 @@ func diff(a map[string]string, b map[string]string) bool {
 		}
 	}
 	return false
+}
+
+// logFileName returns a filesystem-friendly log filename (without extension)
+// derived from the dev entry name and the command being executed.
+func logFileName(name, cmd string) string {
+	tokens := []string{}
+	for _, part := range strings.Fields(cmd) {
+		if strings.HasPrefix(part, "-") {
+			break // stop at first flag
+		}
+		// ignore empty
+		if part == "" {
+			continue
+		}
+		tokens = append(tokens, part)
+		if len(tokens) == 3 {
+			break
+		}
+	}
+	if len(tokens) == 0 {
+		tokens = []string{name}
+	}
+	re := regexp.MustCompile(`[^a-zA-Z0-9]+`)
+	for i, t := range tokens {
+		tokens[i] = strings.Trim(re.ReplaceAllString(t, "-"), "-")
+	}
+	slug := strings.ToLower(strings.Join(tokens, "-"))
+	if slug == "" {
+		slug = strings.ToLower(name)
+	}
+	return slug
 }

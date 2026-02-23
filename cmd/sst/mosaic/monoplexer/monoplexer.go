@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"os/exec"
 
 	"github.com/sst/sst/v3/pkg/process"
@@ -66,11 +68,22 @@ func (m *Monoplexer) AddProcess(name string, command []string, directory string,
 		delete(m.processes, name)
 	}
 
-	r, w := io.Pipe()
+	r, pipeWriter := io.Pipe()
+
+	var logWriter io.Writer = pipeWriter
+	if directory != "" {
+		logDir := filepath.Join(directory, ".sst", "log")
+		os.MkdirAll(logDir, 0o755)
+		file, err := os.Create(filepath.Join(logDir, name+".log"))
+		if err == nil {
+			logWriter = io.MultiWriter(pipeWriter, file)
+		}
+	}
+
 	cmd := process.Command(command[0], command[1:]...)
 	cmd.SysProcAttr = getProcAttr()
-	cmd.Stdout = w
-	cmd.Stderr = w
+	cmd.Stdout = logWriter
+	cmd.Stderr = logWriter
 	if directory != "" {
 		cmd.Dir = directory
 	}
