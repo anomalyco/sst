@@ -175,6 +175,21 @@ async function handler(event) {
       all([args.dns, args.sourceDomains]).apply(([dns, sourceDomains]) => {
         const existing: string[] = [];
         for (const [i, recordName] of sourceDomains.entries()) {
+          // Note: The way `dns` is implemented, the logical name for the DNS record is
+          // based on the sanitized version of the record name (ie. logicalName()). This
+          // means the logical name for `*.sst.sh` and `sst.sh` will trash b/c `*.` is
+          // stripped out.
+          // ```
+          // domain: {
+          //   name: "*.sst.sh",
+          //   aliases: ['sst.sh'],
+          // },
+          // ```
+          //
+          // Ideally, we don't sanitize the logical name. But that's a breaking change.
+          //
+          // As a workaround, starting v3.0.79, we prefix the logical name with a unique
+          // index for records with logical names that will trash.
           const key = logicalName(recordName);
           const namePrefix = existing.includes(key) ? `${name}${i}` : name;
           existing.push(key);
