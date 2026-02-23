@@ -27,6 +27,7 @@ import {
 } from "../duration";
 import { ApiGatewayV2PrivateRoute } from "./apigatewayv2-private-route";
 import { Vpc } from "./vpc";
+import { setupApiGatewayAccount } from "./helpers/apigateway-account";
 
 interface ApiGatewayV2CorsArgs {
   /**
@@ -695,6 +696,7 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
     const cors = normalizeCors();
     const vpc = normalizeVpc();
 
+    const apigAccount = setupApiGatewayAccount(name, opts);
     const vpcLink = createVpcLink();
     const api = createApi();
     const logGroup = createLogGroup();
@@ -870,7 +872,7 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
               }),
             },
           },
-          { parent },
+          { parent, dependsOn: apigAccount },
         ),
       );
     }
