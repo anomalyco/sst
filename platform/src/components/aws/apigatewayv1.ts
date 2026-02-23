@@ -828,7 +828,7 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
         ([domain, key]) =>
           key ? `https://${domain}/${key}/` : `https://${domain}`,
       )
-      : interpolate`https://${this.api.id}.execute-api.${this.region}.amazonaws.com/${$app.stage}/`;
+      : interpolate`https://${this.api.id}.execute-api.${this.region}.amazonaws.com/${this.stage?.stageName ?? $app.stage}/`;
   }
 
   /**
