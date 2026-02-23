@@ -48,7 +48,6 @@ import { DistributionInvalidation } from "./providers/distribution-invalidation.
 import { toSeconds, DurationSeconds } from "../duration.js";
 import { Size, toMBs } from "../size.js";
 import { KvRoutesUpdate } from "./providers/kv-routes-update.js";
-import { CONSOLE_URL, getQuota } from "./helpers/quota.js";
 import { toPosix } from "../path.js";
 
 const supportedRegions = {
@@ -342,10 +341,6 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
      *
      * While Lambda supports timeouts up to 900 seconds, your requests are served
      * through AWS CloudFront. And it has a default limit of 60 seconds.
-     *
-     * If you set a timeout that's longer than 60 seconds, this component will
-     * check if your account can allow for that timeout. If not, it'll throw an
-     * error.
      *
      * :::tip
      * If you need a timeout longer than 60 seconds, you'll need to request a
@@ -767,7 +762,7 @@ export abstract class SsrSite extends Component implements Link.Linkable {
     const regions = normalizeRegions();
     const route = normalizeRoute();
     const edge = normalizeEdge();
-    const serverTimeout = normalizeServerTimeout();
+    const serverTimeout = output(args.server?.timeout);
     const buildCommand = this.normalizeBuildCommand(args);
     const sitePath = regions.apply(() => normalizeSitePath());
     const dev = normalizeDev();
@@ -1221,23 +1216,6 @@ async function handler(event) {
           return edge;
         },
       );
-    }
-
-    function normalizeServerTimeout() {
-      return output(args.server?.timeout).apply((v) => {
-        if (!v) return v;
-
-        const seconds = toSeconds(v);
-        if (seconds > 60) {
-          getQuota("cloudfront-response-timeout").apply((quota) => {
-            if (seconds > quota)
-              console.warn(
-                `Server timeout for "${name}" (${seconds}s) exceeds the CloudFront response timeout quota (${quota}s) reported by the Service Quotas API. If you've increased your quota via AWS Support, this warning can be ignored. Otherwise, contact AWS Support to increase the timeout - ${CONSOLE_URL}`,
-              );
-          });
-        }
-        return v;
-      });
     }
 
     function normalizeProtection() {
