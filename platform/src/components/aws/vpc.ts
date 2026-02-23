@@ -338,8 +338,8 @@ interface VpcRef {
  *
  * ### Cost
  *
- * By default, this component is **free**. Following is the cost to enable the `nat` or `bastion`
- * options.
+ * By default, this component costs **$0.50 per month** for the CloudMap hosted zone used for
+ * service discovery. Following is the cost to enable the `nat` or `bastion` options.
  *
  * #### Managed NAT
  *
