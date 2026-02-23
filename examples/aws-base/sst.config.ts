@@ -8,7 +8,5 @@ export default $config({
       home: "aws",
     };
   },
-  async run() {
-    console.log("NODE_OPTIONS:", process.env.NODE_OPTIONS);
-  },
+  async run() {},
 });
