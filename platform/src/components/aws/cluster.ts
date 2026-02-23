@@ -91,7 +91,61 @@ export interface ClusterArgs {
    * ```
    */
   vpc: Vpc | Input<Prettify<ClusterVpcArgs>>;
-  /** @internal */
+  /**
+   * Force upgrade from `Cluster.v1` to the latest `Cluster` version. The only valid value
+   * is `v2`, which is the version of the new `Cluster`.
+   *
+   * In `Cluster.v1`, load balancers are deployed in public subnets, and services are
+   * deployed in private subnets. The VPC is required to have NAT gateways.
+   *
+   * In the latest `Cluster`, both the load balancer and the services are deployed in
+   * public subnets. The VPC is not required to have NAT gateways. So the new default makes
+   * this cheaper to run.
+   *
+   * To upgrade, add the prop.
+   *
+   * ```ts
+   * {
+   *   forceUpgrade: "v2"
+   * }
+   * ```
+   *
+   * Run `sst deploy`.
+   *
+   * :::tip
+   * You can remove this prop after you upgrade.
+   * :::
+   *
+   * This upgrades your component and the resources it created. You can now optionally
+   * remove the prop.
+   *
+   * After the upgrade, new services will be deployed in public subnets.
+   *
+   * :::caution
+   * New service will be deployed in public subnets.
+   * :::
+   *
+   * To continue deploying in private subnets, set `vpc.serviceSubnets` to a list of
+   * private subnets.
+   *
+   * ```js title="sst.config.ts" {4,8}
+   * const myVpc = new sst.aws.Vpc("MyVpc", { nat: "managed" });
+   *
+   * const cluster = new sst.aws.Cluster("MyCluster", {
+   *   forceUpgrade: "v2",
+   *   vpc: {
+   *     id: myVpc.id,
+   *     loadBalancerSubnets: myVpc.publicSubnets,
+   *     serviceSubnets: myVpc.privateSubnets,
+   *     securityGroups: myVpc.securityGroups,
+   *     cloudmapNamespaceId: myVpc.nodes.cloudmapNamespace.id,
+   *     cloudmapNamespaceName: myVpc.nodes.cloudmapNamespace.name,
+   *   }
+   * });
+   * ```
+   *
+   * @internal
+   */
   forceUpgrade?: "v2";
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
