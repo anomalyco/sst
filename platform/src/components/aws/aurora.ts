@@ -44,6 +44,10 @@ export interface AuroraArgs {
    *
    * Check out the [available Postgres versions](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Concepts.Aurora_Fea_Regions_DB-eng.Feature.ServerlessV2.html#Concepts.Aurora_Fea_Regions_DB-eng.Feature.ServerlessV2.apg) and [available MySQL versions](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Concepts.Aurora_Fea_Regions_DB-eng.Feature.ServerlessV2.html#Concepts.Aurora_Fea_Regions_DB-eng.Feature.ServerlessV2.amy) in your region.
    *
+   * :::note
+   * Changing the version will **immediately** apply the update on the next `sst deploy`.
+   * :::
+   *
    * :::tip
    * Not all versions support scaling to 0 with auto-pause and resume.
    * :::
@@ -982,6 +986,8 @@ Listening on "${dev.host}:${dev.port}"...`,
                 ? toSeconds(scaling.pauseAfter)
                 : undefined,
             })),
+            allowMajorVersionUpgrade: true,
+            applyImmediately: true,
             skipFinalSnapshot: true,
             storageEncrypted: true,
             enableHttpEndpoint: dataApi,
@@ -1008,6 +1014,7 @@ Listening on "${dev.host}:${dev.port}"...`,
         engineVersion: cluster.engineVersion,
         dbSubnetGroupName: cluster.dbSubnetGroupName,
         dbParameterGroupName: instanceParameterGroup.name,
+        autoMinorVersionUpgrade: false,
       };
 
       // Create primary instance
