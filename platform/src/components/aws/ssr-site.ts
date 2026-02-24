@@ -48,7 +48,6 @@ import { DistributionInvalidation } from "./providers/distribution-invalidation.
 import { toSeconds, DurationSeconds } from "../duration.js";
 import { Size, toMBs } from "../size.js";
 import { KvRoutesUpdate } from "./providers/kv-routes-update.js";
-import { CONSOLE_URL, getQuota } from "./helpers/quota.js";
 import { toPosix } from "../path.js";
 
 const supportedRegions = {
@@ -331,21 +330,17 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
      * ```js
      * {
      *   server: {
-     *     runtime: "nodejs22.x"
+     *     runtime: "nodejs24.x"
      *   }
      * }
      * ```
      */
-    runtime?: Input<"nodejs18.x" | "nodejs20.x" | "nodejs22.x">;
+    runtime?: Input<"nodejs18.x" | "nodejs20.x" | "nodejs22.x" | "nodejs24.x">;
     /**
      * The maximum amount of time the server function can run.
      *
      * While Lambda supports timeouts up to 900 seconds, your requests are served
      * through AWS CloudFront. And it has a default limit of 60 seconds.
-     *
-     * If you set a timeout that's longer than 60 seconds, this component will
-     * check if your account can allow for that timeout. If not, it'll throw an
-     * error.
      *
      * :::tip
      * If you need a timeout longer than 60 seconds, you'll need to request a
@@ -771,7 +766,7 @@ export abstract class SsrSite extends Component implements Link.Linkable {
     const regions = normalizeRegions();
     const route = normalizeRoute();
     const edge = normalizeEdge();
-    const serverTimeout = normalizeServerTimeout();
+    const serverTimeout = output(args.server?.timeout);
     const buildCommand = this.normalizeBuildCommand(args);
     const sitePath = regions.apply(() => normalizeSitePath());
     const dev = normalizeDev();
@@ -1180,7 +1175,7 @@ async function handler(event) {
 
     function normalizeRegions() {
       return output(
-        args.regions ?? [getRegionOutput(undefined, { parent: self }).name],
+        args.regions ?? [getRegionOutput(undefined, { parent: self }).region],
       ).apply((regions) => {
         if (regions.length === 0)
           throw new VisibleError(
@@ -1243,23 +1238,6 @@ async function handler(event) {
           return edge;
         },
       );
-    }
-
-    function normalizeServerTimeout() {
-      return output(args.server?.timeout).apply((v) => {
-        if (!v) return v;
-
-        const seconds = toSeconds(v);
-        if (seconds > 60) {
-          getQuota("cloudfront-response-timeout").apply((quota) => {
-            if (seconds > quota)
-              throw new VisibleError(
-                `Server timeout for "${name}" is longer than the allowed CloudFront response timeout of ${quota} seconds. You can contact AWS Support to increase the timeout - ${CONSOLE_URL}`,
-              );
-          });
-        }
-        return v;
-      });
     }
 
     function normalizeProtection() {
@@ -1705,7 +1683,7 @@ async function handler(event) {
               bucketName: bucket.name,
               files: bucketFiles,
               purge,
-              region: getRegionOutput(undefined, { parent: self }).name,
+              region: getRegionOutput(undefined, { parent: self }).region,
             },
             { parent: self },
           );
@@ -1812,7 +1790,7 @@ async function handler(event) {
                   }
                 : undefined,
               servers: servers.map((s) => [
-                new URL(s.url).host,
+                new URL(s.url!).host,
                 supportedRegions[s.region as keyof typeof supportedRegions].lat,
                 supportedRegions[s.region as keyof typeof supportedRegions].lon,
               ]),

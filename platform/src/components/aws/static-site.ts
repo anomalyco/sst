@@ -907,7 +907,7 @@ export class StaticSite extends Component implements Link.Linkable {
     function getBucketDetails() {
       const s3Bucket = bucket
         ? bucket.nodes.bucket
-        : s3.BucketV2.get(`${name}Assets`, assets.bucket!, undefined, {
+        : s3.Bucket.get(`${name}Assets`, assets.bucket!, undefined, {
           parent: self,
         });
 
@@ -984,7 +984,7 @@ export class StaticSite extends Component implements Link.Linkable {
               bucketName,
               files: bucketFiles,
               purge: assets.purge,
-              region: getRegionOutput(undefined, { parent: self }).name,
+              region: getRegionOutput(undefined, { parent: self }).region,
             },
             { parent: self },
           );

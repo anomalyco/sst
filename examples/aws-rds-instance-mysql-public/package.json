@@ -9,7 +9,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "sst": "^3"
+    "sst": "^4"
   },
   "devDependencies": {
   }

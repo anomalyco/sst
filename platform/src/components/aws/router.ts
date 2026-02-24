@@ -1046,7 +1046,7 @@ export class Router extends Component implements Link.Linkable {
     function reference() {
       const ref = args as unknown as RouterRef;
       const cdn = Cdn.get(`${name}Cdn`, ref.distributionID, { parent: self });
-      const tags = cdn.nodes.distribution.tags.apply((tags) => {
+      const tags = cdn.nodes.distribution.tagsAll.apply((tags) => {
         if (tags?.["sst:ref:version"] !== _refVersion.toString()) {
           throw new VisibleError(
             [

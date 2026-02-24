@@ -1640,7 +1640,7 @@ export class Service extends Component implements Link.Linkable {
     const self = this;
     const clusterArn = args.cluster.nodes.cluster.arn;
     const clusterName = args.cluster.nodes.cluster.name;
-    const region = getRegionOutput({}, opts).name;
+    const region = getRegionOutput({}, opts).region;
     const dev = normalizeDev();
     const wait = output(args.wait ?? false);
     const architecture = normalizeArchitecture(args);

@@ -349,7 +349,7 @@ export interface FunctionArgs {
    * @example
    * ```js
    * {
-   *   runtime: "nodejs22.x"
+   *   runtime: "nodejs24.x"
    * }
    * ```
    */
@@ -357,6 +357,7 @@ export interface FunctionArgs {
     | "nodejs18.x"
     | "nodejs20.x"
     | "nodejs22.x"
+    | "nodejs24.x"
     | "go"
     | "rust"
     | "provided.al2023"
@@ -1685,7 +1686,7 @@ export class Function extends Component implements Link.Linkable {
       ([python, dev]) => !dev && (python?.container ?? false),
     );
     const partition = getPartitionOutput({}, opts).partition;
-    const region = getRegionOutput({}, opts).name;
+    const region = getRegionOutput({}, opts).region;
     const bootstrapData = region.apply((region) => bootstrap.forRegion(region));
     const injections = normalizeInjections();
     const runtime = output(args.runtime ?? "nodejs20.x");
@@ -2724,7 +2725,7 @@ export class Function extends Component implements Link.Linkable {
       {
         functionName: this.name,
         environment,
-        region: getRegionOutput(undefined, { parent: this }).name,
+        region: getRegionOutput(undefined, { parent: this }).region,
       },
       { parent: this },
     );

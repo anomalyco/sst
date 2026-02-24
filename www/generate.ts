@@ -1080,6 +1080,7 @@ function renderType(
         DistributionCustomErrorResponse: "cloudfront/distribution",
         DistributionDefaultCacheBehavior: "cloudfront/distribution",
         DistributionOrderedCacheBehavior: "cloudfront/distribution",
+        PolicyDocument: "iam/getpolicydocument",
       }[type.name];
       if (!link) {
         // @ts-expect-error

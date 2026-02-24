@@ -265,7 +265,13 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 		"PULUMI_DEBUG_COMMANDS=true",
 		"PULUMI_IGNORE_AMBIENT_PLUGINS=true",
 		// "PULUMI_DISABLE_AUTOMATIC_PLUGIN_ACQUISITION=true",
-		"NODE_OPTIONS=--enable-source-maps --no-deprecation",
+		"NODE_OPTIONS="+func() string {
+			nodeOptions := "--enable-source-maps --no-deprecation"
+			if existing := os.Getenv("NODE_OPTIONS"); existing != "" {
+				nodeOptions = existing + " " + nodeOptions
+			}
+			return nodeOptions
+		}(),
 		"PULUMI_HOME="+global.ConfigDir(),
 	)
 	if input.ServerPort != 0 {
@@ -287,6 +293,13 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 		"--stack", fmt.Sprintf("organization/%v/%v", p.app.Name, p.app.Stage),
 		"--non-interactive",
 		"--event-log", eventlogPath,
+	}
+
+	if input.Command == "deploy" {
+		upgradeMsgs := p.checkProviderUpgrade(completed.Resources)
+		if len(upgradeMsgs) > 0 {
+			return util.NewReadableError(nil, strings.Join(upgradeMsgs, "\n\n"))
+		}
 	}
 
 	if input.Command == "deploy" || input.Command == "diff" {
@@ -316,7 +329,7 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	case "diff":
 		args = append([]string{"preview"}, args...)
 	case "refresh":
-		args = append([]string{"refresh", "--yes"}, args...)
+		args = append([]string{"refresh", "--yes", "--run-program"}, args...)
 	case "deploy":
 		args = append([]string{"up", "--yes", "-f"}, args...)
 	case "remove":
