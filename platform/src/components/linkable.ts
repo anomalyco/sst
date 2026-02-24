@@ -174,8 +174,9 @@ export interface Definition<
  *
  * #### Exposing links as env vars
  *
- * If you want to pass link env vars to compute not managed by SST, use `Linkable.env()`.
- * It returns an `Output` of `SST_RESOURCE_*` env vars that you can pass to any provider.
+ * If you want to pass link env vars to compute not managed by SST, like an ECS task
+ * definition or a Kubernetes pod, use `Linkable.env()`. It returns an `Output` of
+ * `SST_RESOURCE_*` env vars that you can pass to any provider.
  * [Check out an example](/docs/examples/#aws-linkable-env).
  */
 export class Linkable<T extends Record<string, any>>
