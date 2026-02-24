@@ -171,6 +171,12 @@ export interface Definition<
  * ```
  *
  * This overrides the built-in link and lets you create your own.
+ *
+ * #### Exposing links as env vars
+ *
+ * If you want to pass link env vars to compute not managed by SST, use `Linkable.env()`.
+ * It returns an `Output` of `SST_RESOURCE_*` env vars that you can pass to any provider.
+ * [Check out an example](/docs/examples/#aws-linkable-env).
  */
 export class Linkable<T extends Record<string, any>>
   extends Component
@@ -286,16 +292,51 @@ export class Linkable<T extends Record<string, any>>
    * that `Resource.MyResource` works at runtime inside containers or functions
    * deployed through an external provider.
    *
+   * Returns an `Output<Record<string, string>>` where keys are `SST_RESOURCE_*`
+   * and values are JSON-encoded resource properties.
+   *
    * @param links Array of linkable resources.
    * @returns An `Output` of env vars with `SST_RESOURCE_*` keys.
    *
    * @example
+   *
+   * #### Flat env object
+   *
+   * If the provider accepts a flat `Record<string, string>`, you can pass the
+   * output directly.
    *
    * ```ts title="sst.config.ts"
    * const bucket = new sst.aws.Bucket("MyBucket");
    *
    * new externalProvider.Container("MyContainer", {
    *   environment: sst.Linkable.env([bucket]),
+   * });
+   * ```
+   *
+   * #### ECS task definition
+   *
+   * For AWS ECS, container environment is an array of `{ name, value }` objects.
+   * You can transform the output with `.apply()`.
+   *
+   * ```ts title="sst.config.ts"
+   * const bucket = new sst.aws.Bucket("MyBucket");
+   * const linkable = new sst.Linkable("MyLinkable", {
+   *   properties: { foo: "bar" },
+   * });
+   *
+   * const environment = sst.Linkable.env([bucket, linkable]).apply((env) =>
+   *   Object.entries(env).map(([name, value]) => ({ name, value })),
+   * );
+   *
+   * new aws.ecs.TaskDefinition("TaskDefinition", {
+   *   family: "my-task",
+   *   containerDefinitions: $jsonStringify([
+   *     {
+   *       name: "app",
+   *       image: "my-image",
+   *       environment,
+   *     },
+   *   ]),
    * });
    * ```
    */
