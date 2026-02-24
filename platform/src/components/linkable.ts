@@ -280,6 +280,28 @@ export class Linkable<T extends Record<string, any>>
       return cb(this);
     };
   }
+
+  /**
+   * Convert linked resources into `SST_RESOURCE_*` environment variables so
+   * that `Resource.MyResource` works at runtime inside containers or functions
+   * deployed through an external provider.
+   *
+   * @param links Array of linkable resources.
+   * @returns An `Output` of env vars with `SST_RESOURCE_*` keys.
+   *
+   * @example
+   *
+   * ```ts title="sst.config.ts"
+   * const bucket = new sst.aws.Bucket("MyBucket");
+   *
+   * new externalProvider.Container("MyContainer", {
+   *   environment: sst.Linkable.env([bucket]),
+   * });
+   * ```
+   */
+  public static env(links: Input<any[]>) {
+    return Link.propertiesToEnv(Link.getProperties(links));
+  }
 }
 
 /**
