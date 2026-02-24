@@ -51,6 +51,8 @@ When you update SST and the AWS provider version changes, `sst deploy` will be b
    npx sst refresh --stage production
    ```
 
+   If you [share resources across stages](/docs/share-across-stages), run `sst refresh` on the stage where the resource is created first — not the stage that references it via `.get()`.
+
 4. **Deploy**
 
    Once refreshed, deploy as usual.

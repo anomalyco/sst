@@ -19,7 +19,7 @@ var migrationNotices = []migrationNotice{
 		providerName: "aws",
 		fromVersion:  "6.0.0",
 		toVersion:    "7.0.0",
-		message:      "Detected AWS provider upgrade from v6 to v7\n\nA one-time state migration is required before you can deploy.\nSST components are already updated — you may be affected if you\nuse transforms or the AWS provider directly.\n\n1. Run `sst diff` to preview changes\n2. Run `sst refresh` to migrate state (repeat for each stage)\n3. Run `sst deploy`\n\nMigration guide: https://sst.dev/docs/migrate-from-v3",
+		message:      "Detected AWS provider upgrade from v6 to v7\n\nA one-time state migration is required before you can deploy.\nSST components are already updated — you may be affected if you\nuse transforms or the AWS provider directly.\n\n1. Run `sst diff` to preview changes\n2. Run `sst refresh` to migrate state (repeat for each stage)\n3. Run `sst deploy`\n\nIf you share resources across stages, refresh the stage where the\nresource is created first, not the one referencing it via get().\n\nMigration guide: https://sst.dev/docs/migrate-from-v3",
 	},
 }
 
