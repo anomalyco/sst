@@ -300,8 +300,6 @@ export class Linkable<T extends Record<string, any>>
    *
    * @example
    *
-   * #### Flat env object
-   *
    * If the provider accepts a flat `Record<string, string>`, you can pass the
    * output directly.
    *
@@ -310,33 +308,6 @@ export class Linkable<T extends Record<string, any>>
    *
    * new externalProvider.Container("MyContainer", {
    *   environment: sst.Linkable.env([bucket]),
-   * });
-   * ```
-   *
-   * #### ECS task definition
-   *
-   * For AWS ECS, container environment is an array of `{ name, value }` objects.
-   * You can transform the output with `.apply()`.
-   *
-   * ```ts title="sst.config.ts"
-   * const bucket = new sst.aws.Bucket("MyBucket");
-   * const linkable = new sst.Linkable("MyLinkable", {
-   *   properties: { foo: "bar" },
-   * });
-   *
-   * const environment = sst.Linkable.env([bucket, linkable]).apply((env) =>
-   *   Object.entries(env).map(([name, value]) => ({ name, value })),
-   * );
-   *
-   * new aws.ecs.TaskDefinition("TaskDefinition", {
-   *   family: "my-task",
-   *   containerDefinitions: $jsonStringify([
-   *     {
-   *       name: "app",
-   *       image: "my-image",
-   *       environment,
-   *     },
-   *   ]),
    * });
    * ```
    */
