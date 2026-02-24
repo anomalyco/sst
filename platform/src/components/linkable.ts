@@ -292,9 +292,6 @@ export class Linkable<T extends Record<string, any>>
    * that `Resource.MyResource` works at runtime inside containers or functions
    * deployed through an external provider.
    *
-   * Returns an `Output<Record<string, string>>` where keys are `SST_RESOURCE_*`
-   * and values are JSON-encoded resource properties.
-   *
    * @param links Array of linkable resources.
    *
    * @example
