@@ -281,9 +281,9 @@ Read more about [`sst.Linkable.wrap`](/docs/component/linkable/#static-wrap).
 
 ---
 
-### Link to external providers
+### Link integration with external providers
 
-If you want to pass links to compute not managed by SST, like a native ECS task definition or a Kubernetes pod, use `Linkable.env()`. It converts your linked resources into `SST_RESOURCE_*` environment variables so `Resource.XXX` works at runtime.
+If you want to pass links to compute not managed by SST, like a native ECS task definition or a Kubernetes pod, use `Linkable.env()`. It converts your linked resources into `SST_RESOURCE_*` environment variables so `Resource.MyResource` works at runtime.
 
 ```ts title="sst.config.ts"
 const bucket = new sst.aws.Bucket("MyBucket");
@@ -302,7 +302,8 @@ new kubernetes.apps.v1.Deployment("MyDeployment", {
           name: "app",
           image: "my-image",
           env: sst.Linkable.env([bucket]).apply((env) =>
-            Object.entries(env).map(([name, value]) => ({ name, value })),
+            // Kubernetes requires environment variables to be an array of objects
+            Object.entries(env).map(([name, value]) => ({ name, value: String(value) })),
           ),
         }],
       },

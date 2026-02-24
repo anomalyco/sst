@@ -289,7 +289,7 @@ export class Linkable<T extends Record<string, any>>
   }
 
   /**
-   * Convert linked resources into `SST_RESOURCE_*` environment variables so
+   * Convert an array of resources into `SST_RESOURCE_*` environment variables so
    * that `Resource.MyResource` works at runtime inside containers or functions
    * deployed through an external provider.
    *
@@ -303,7 +303,8 @@ export class Linkable<T extends Record<string, any>>
    * ```ts title="sst.config.ts"
    * const bucket = new sst.aws.Bucket("MyBucket");
    *
-   * new externalProvider.Container("MyContainer", {
+   * new vercel.Project("BadDecision", {
+   *   name: "bad-decision",
    *   environment: sst.Linkable.env([bucket]),
    * });
    * ```

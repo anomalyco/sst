@@ -4,8 +4,8 @@
  * ## Linkable env vars
  *
  * Pass SST link env vars to a native `aws.ecs.TaskDefinition` container using
- * `sst.Linkable.env()`. This lets `Resource.XXX` work at runtime in compute
- * not managed by SST.
+ * `sst.Linkable.env()`. This lets `Resource.MyResource` work at runtime
+ * in compute not managed by SST.
  *
  */
 export default $config({
