@@ -1668,7 +1668,7 @@ export class Function extends Component implements Link.Linkable {
       }),
   );
 
-  private static readonly liveBridgeCode = lazy(
+  private static readonly devBridgeCode = lazy(
     () => new Map<string, Promise<s3.BucketObjectv2>>(),
   );
 
@@ -2299,7 +2299,7 @@ export class Function extends Component implements Link.Linkable {
 
           if (dev) {
             const cacheKey = `${regionName}:${bundle}`;
-            const cache = Function.liveBridgeCode();
+            const cache = Function.devBridgeCode();
             const existing = cache.get(cacheKey);
             if (existing) return existing;
 
@@ -2353,9 +2353,9 @@ export class Function extends Component implements Link.Linkable {
               const assetBucket = (await bootstrap.forRegion(regionName)).asset;
 
               return new s3.BucketObjectv2(
-                `LiveBridgeCode${regionName.replace(/[^a-zA-Z0-9]/g, "")}`,
+                `DevBridgeCode${regionName.replace(/[^a-zA-Z0-9]/g, "")}`,
                 {
-                  key: `assets/live-bridge-code-${hashValue}.zip`,
+                  key: `assets/dev-bridge-code-${hashValue}.zip`,
                   bucket: assetBucket,
                   source: new asset.FileArchive(zipPath),
                 },
