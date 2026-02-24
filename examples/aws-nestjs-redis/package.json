@@ -26,7 +26,7 @@
     "ioredis": "^5.4.1",
     "reflect-metadata": "^0.2.0",
     "rxjs": "^7.8.1",
-    "sst": "^3"
+    "sst": "^4"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.0.0",

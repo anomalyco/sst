@@ -13,7 +13,7 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "sst": "^3"
+    "sst": "^4"
   },
   "dependencies": {
   }

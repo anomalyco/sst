@@ -10,6 +10,6 @@
     "@planetscale/database": "^1.19.0",
     "drizzle-kit": "^0.30.4",
     "drizzle-orm": "^0.38.4",
-    "sst": "^3"
+    "sst": "^4"
   }
 }
