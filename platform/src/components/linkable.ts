@@ -296,7 +296,6 @@ export class Linkable<T extends Record<string, any>>
    * and values are JSON-encoded resource properties.
    *
    * @param links Array of linkable resources.
-   * @returns An `Output` of env vars with `SST_RESOURCE_*` keys.
    *
    * @example
    *
