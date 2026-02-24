@@ -1,4 +1,4 @@
-import { output } from "@pulumi/pulumi";
+import { Output, output } from "@pulumi/pulumi";
 import { Link } from "./link";
 import { Component } from "./component";
 import { Input } from "./input";
@@ -307,7 +307,7 @@ export class Linkable<T extends Record<string, any>>
    * });
    * ```
    */
-  public static env(links: Input<any[]>) {
+  public static env(links: Input<any[]>): Output<Record<string, string>> {
     return Link.propertiesToEnv(Link.getProperties(links));
   }
 }
