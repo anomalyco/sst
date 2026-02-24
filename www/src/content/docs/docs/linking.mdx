@@ -294,8 +294,20 @@ const environment = sst.Linkable.env([bucket]);
 This returns an `Output<Record<string, string>>` that you can pass to any provider that accepts environment variables.
 
 ```ts title="sst.config.ts"
-new externalProvider.Container("MyContainer", {
-  environment: sst.Linkable.env([bucket]),
+new kubernetes.apps.v1.Deployment("MyDeployment", {
+  spec: {
+    template: {
+      spec: {
+        containers: [{
+          name: "app",
+          image: "my-image",
+          env: sst.Linkable.env([bucket]).apply((env) =>
+            Object.entries(env).map(([name, value]) => ({ name, value })),
+          ),
+        }],
+      },
+    },
+  },
 });
 ```
 
