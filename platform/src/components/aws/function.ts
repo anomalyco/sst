@@ -15,6 +15,7 @@ import {
   secret,
   unsecret,
 } from "@pulumi/pulumi";
+import * as pulumi from "@pulumi/pulumi";
 import { bootstrap } from "./helpers/bootstrap.js";
 import { Duration, DurationMinutes, toSeconds } from "../duration.js";
 import { Size, toMBs } from "../size.js";
@@ -2352,13 +2353,13 @@ export class Function extends Component implements Link.Linkable {
               const assetBucket = (await bootstrap.forRegion(regionName)).asset;
 
               return new s3.BucketObjectv2(
-                `${name}LiveBridgeCode${regionName.replace(/[^a-zA-Z0-9]/g, "")}`,
+                `LiveBridgeCode${regionName.replace(/[^a-zA-Z0-9]/g, "")}`,
                 {
                   key: `assets/live-bridge-code-${hashValue}.zip`,
                   bucket: assetBucket,
                   source: new asset.FileArchive(zipPath),
                 },
-                { parent },
+                { parent: pulumi.rootStackResource, provider: opts?.provider },
               );
             })();
 
