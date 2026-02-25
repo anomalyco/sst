@@ -250,14 +250,10 @@ export class Bus extends Component implements Link.Linkable {
           args.transform?.bus,
           `${name}Bus`,
           {
-            logConfig: args.logging && {
-              level: output(args.logging).apply(
-                (l) => l.level?.toUpperCase() ?? "OFF",
-              ),
-              includeDetail: output(args.logging).apply((l) =>
-                l.detail ? "FULL" : "NONE",
-              ),
-            },
+            logConfig: args.logging && output(args.logging).apply((l) => ({
+              level: l.level?.toUpperCase() ?? "OFF",
+              includeDetail: l.detail ? "FULL" : "NONE",
+            })),
           },
           { parent: self },
         ),
