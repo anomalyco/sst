@@ -13,6 +13,7 @@ export type FunctionBuilder = Output<{
   getFunction: () => Function;
   arn: Output<string>;
   invokeArn: Output<string>;
+  responseStreamingInvokeArn: Output<string>;
 }>;
 
 export function functionBuilder(
@@ -20,7 +21,13 @@ export function functionBuilder(
   definition: Input<string | FunctionArn | FunctionArgs>,
   defaultArgs: Pick<
     FunctionArgs,
-    "description" | "link" | "environment" | "permissions" | "url" | "_skipHint"
+    | "description"
+    | "link"
+    | "environment"
+    | "permissions"
+    | "url"
+    | "streaming"
+    | "_skipHint"
   >,
   argsTransform?: Transform<FunctionArgs>,
   opts?: ComponentResourceOptions,
@@ -40,6 +47,9 @@ export function functionBuilder(
           invokeArn: output(
             `arn:${parts[1]}:apigateway:${parts[3]}:lambda:path/2015-03-31/functions/${definition}/invocations`,
           ),
+          responseStreamingInvokeArn: output(
+            `arn:${parts[1]}:apigateway:${parts[3]}:lambda:path/2015-03-31/functions/${definition}:*/response-streaming-invocations`,
+          ),
         };
       }
 
@@ -56,6 +66,8 @@ export function functionBuilder(
         getFunction: () => fn,
         arn: fn.arn,
         invokeArn: fn.nodes.function.invokeArn,
+        responseStreamingInvokeArn:
+          fn.nodes.function.responseStreamingInvokeArn,
       };
     }
 
@@ -96,6 +108,8 @@ export function functionBuilder(
         getFunction: () => fn,
         arn: fn.arn,
         invokeArn: fn.nodes.function.invokeArn,
+        responseStreamingInvokeArn:
+          fn.nodes.function.responseStreamingInvokeArn,
       };
     }
     throw new Error(`Invalid function definition for the "${name}" Function`);
