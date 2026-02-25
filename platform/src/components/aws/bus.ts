@@ -28,9 +28,9 @@ export interface BusArgs {
   logging?: Input<{
     /**
      * The level of logging.
-     * @default `"off"`
+     * @default `"error"`
      */
-    level?: Input<"off" | "error" | "info" | "trace">;
+    level?: Input<"error" | "info" | "trace">;
     /**
      * Whether to include the event detail in the log.
      * @default `false`
@@ -251,7 +251,7 @@ export class Bus extends Component implements Link.Linkable {
           `${name}Bus`,
           {
             logConfig: args.logging && output(args.logging).apply((l) => ({
-              level: l.level?.toUpperCase() ?? "OFF",
+              level: l.level?.toUpperCase() ?? "ERROR",
               includeDetail: l.detail ? "FULL" : "NONE",
             })),
           },
