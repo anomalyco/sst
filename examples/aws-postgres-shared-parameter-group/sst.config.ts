@@ -11,45 +11,36 @@ export default $config({
   async run() {
     const vpc = new sst.aws.Vpc("MyVpc");
 
-    // Create a shared parameter group using Pulumi directly
-    const sharedParameterGroup = new aws.rds.ParameterGroup(
-      "SharedParameterGroup",
-      {
-        name: "shared-parameter-group",
-        family: "postgres17",
-        parameters: [
-          {
-            name: "rds.force_ssl",
-            value: "0",
-          },
-          {
-            name: "rds.logical_replication",
-            value: "1",
-            applyMethod: "pending-reboot",
-          },
-          {
-            name: "log_min_duration_statement",
-            value: "1000",
-          },
-        ],
-      },
-    );
-
-    // Both databases reuse the same parameter group
+    // First database with custom parameters
     const db1 = new sst.aws.Postgres("Database1", {
       vpc,
       transform: {
-        instance: {
-          parameterGroupName: sharedParameterGroup.name,
+        parameterGroup: {
+          parameters: [
+            {
+              name: "rds.force_ssl",
+              value: "0",
+            },
+            {
+              name: "rds.logical_replication",
+              value: "1",
+              applyMethod: "pending-reboot",
+            },
+            {
+              name: "log_min_duration_statement",
+              value: "1000",
+            },
+          ],
         },
       },
     });
 
+    // Second database reuses db1's parameter group
     const db2 = new sst.aws.Postgres("Database2", {
       vpc,
       transform: {
         instance: {
-          parameterGroupName: sharedParameterGroup.name,
+          parameterGroupName: db1.nodes.instance.parameterGroupName,
         },
       },
     });
