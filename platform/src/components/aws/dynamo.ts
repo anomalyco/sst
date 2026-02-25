@@ -26,6 +26,10 @@ export interface DynamoArgs {
    *
    * While you can have fields field types other than `string`, `number`, and `binary`; you can only use these types for your indexes.
    *
+   * :::caution
+   * Field types cannot be changed after table creation. Any changes to field types will be ignored.
+   * :::
+   *
    * @example
    * ```js
    * {
@@ -412,7 +416,6 @@ export class Dynamo extends Component implements Link.Linkable {
   private constructorName: string;
   private constructorOpts: ComponentResourceOptions;
   private table: Output<dynamodb.Table>;
-  private isStreamEnabled: boolean = false;
 
   constructor(
     name: string,
@@ -434,7 +437,6 @@ export class Dynamo extends Component implements Link.Linkable {
     const table = createTable();
 
     this.table = table;
-    this.isStreamEnabled = Boolean(args.stream);
 
     function createTable() {
       return all([
@@ -611,14 +613,17 @@ export class Dynamo extends Component implements Link.Linkable {
   public subscribe(nameOrSubscriber: any, subscriberOrArgs?: any, args?: any) {
     const sourceName = this.constructorName;
 
-    // Validate stream is enabled
-    if (!this.isStreamEnabled)
-      throw new Error(
-        `Cannot subscribe to "${sourceName}" because stream is not enabled.`,
-      );
+    return all([
+      this.nodes.table.streamEnabled,
+      isFunctionSubscriber(subscriberOrArgs),
+    ]).apply(([streamEnabled, isFunctionSubscriber]) => {
+      if (!streamEnabled) {
+        throw new Error(
+          `Cannot subscribe to "${sourceName}" because stream is not enabled.`,
+        );
+      }
 
-    return isFunctionSubscriber(subscriberOrArgs).apply((v) =>
-      v
+      return isFunctionSubscriber
         ? Dynamo._subscribe(
             nameOrSubscriber, // name
             this.constructorName,
@@ -633,8 +638,8 @@ export class Dynamo extends Component implements Link.Linkable {
             nameOrSubscriber, // subscriber
             subscriberOrArgs, // args
             { provider: this.constructorOpts.provider },
-          ),
-    );
+          );
+    });
   }
 
   /**

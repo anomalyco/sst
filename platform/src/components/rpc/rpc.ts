@@ -99,5 +99,12 @@ export module rpc {
         throw ex;
       });
     }
+
+    async diff(id: string, olds: any, news: any): Promise<dynamic.DiffResult> {
+      return call(this.name("Diff"), { id, olds, news }).catch((ex) => {
+        if (ex instanceof MethodNotFoundError) return { id, olds, news };
+        throw ex;
+      });
+    }
   }
 }

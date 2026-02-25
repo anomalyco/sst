@@ -82,6 +82,7 @@ var CmdState = &cli.Command{
 					Type: "bool",
 					Description: cli.Description{
 						Short: "Decrypt the state",
+						Long:  "Decrypt the state before printing it out.",
 					},
 				},
 			},
@@ -140,20 +141,30 @@ var CmdState = &cli.Command{
 		},
 		{
 			Name: "list",
+			// TODO: Fix https://github.com/sst/sst/issues/5566 before enabling
+			Hidden: true,
 			Description: cli.Description{
 				Short: "List all deployed stages",
-				Long:  `List all deployed stages for your application.`,
+				Long: strings.Join([]string{
+					"Lists all the deployed stages of your app for the current set of credentials.",
+					"",
+					":::note",
+					"This does not list stages that are deployed in other accounts.",
+					":::",
+					"",
+					"This pull the state of your app from the cloud provider and then prints out all the stages that are listed in the state.",
+				}, "\n"),
 			},
-			Flags: []cli.Flag{
-				{
-					Name: "simple",
-					Type: "bool",
-					Description: cli.Description{
-						Short: "Output a basic list of stages",
-						Long:  "Output a basic list of stages without additional information about the provider.",
-					},
-				},
-			},
+			// Flags: []cli.Flag{
+			// 	{
+			// 		Name: "simple",
+			// 		Type: "bool",
+			// 		Description: cli.Description{
+			// 			Short: "Output a basic list of stages",
+			// 			Long:  "Output a basic list of stages without additional information about the provider.",
+			// 		},
+			// 	},
+			// },
 			Run: func(c *cli.Cli) error {
 				p, err := c.InitProject()
 				if err != nil {
@@ -167,12 +178,13 @@ var CmdState = &cli.Command{
 					return err
 				}
 
-				if c.Bool("simple") {
-					for _, stage := range stages {
-						fmt.Println(stage)
-					}
-					return nil
-				}
+				// Not sure if we need to enable this yet
+				// if c.Bool("simple") {
+				// 	for _, stage := range stages {
+				// 		fmt.Println(stage)
+				// 	}
+				// 	return nil
+				// }
 
 				lines, err := provider.Info(backend)
 				if err != nil {

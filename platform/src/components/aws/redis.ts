@@ -14,6 +14,7 @@ import { elasticache, secretsmanager } from "@pulumi/aws";
 import { Vpc } from "./vpc.js";
 import { VisibleError } from "../error.js";
 import { DevCommand } from "../experimental/dev-command.js";
+import { Redis as RedisV1 } from "./redis-v1";
 
 export interface RedisArgs {
   /**
@@ -42,7 +43,7 @@ export interface RedisArgs {
    */
   version?: Input<string>;
   /**
-   * The type of instance to use for the nodes of the Redis cluster. Check out the [supported instance types](https://docs.aws.amazon.com/AmazonElastiCache/latest/red-ug/CacheNodes.SupportedTypes.html).
+   * The type of instance to use for the nodes of the Redis instance. Check out the [supported instance types](https://docs.aws.amazon.com/AmazonElastiCache/latest/red-ug/CacheNodes.SupportedTypes.html).
    *
    * @default `"t4g.micro"`
    * @example
@@ -54,19 +55,55 @@ export interface RedisArgs {
    */
   instance?: Input<string>;
   /**
-   * The number of nodes to use for the Redis cluster.
-   *
-   * @default `1`
-   * @example
-   * ```js
-   * {
-   *   nodes: 4
-   * }
-   * ```
+   * @deprecated The `cluster.nodes` prop is now the recommended way to configure the
+   * number of nodes in the cluster.
    */
   nodes?: Input<number>;
   /**
-   * The VPC to use for the Redis cluster.
+   * Configure cluster mode for Redis.
+   *
+   * @default `{ nodes: 1 }`
+   * @example
+   * Disable cluster mode.
+   * ```js
+   * {
+   *   cluster: false
+   * }
+   * ```
+   */
+  cluster?: Input<
+    | boolean
+    | {
+        /**
+         * The number of nodes to use for the Redis cluster.
+         *
+         * @default `1`
+         * @example
+         * ```js
+         * {
+         *   nodes: 4
+         * }
+         * ```
+         */
+        nodes: Input<number>;
+      }
+  >;
+  /**
+   * Key-value pairs that define custom parameters for the Redis's parameter group.
+   * These values override the defaults set by AWS.
+   *
+   * @example
+   * ```js
+   * {
+   *   parameters: {
+   *     "maxmemory-policy": "noeviction"
+   *   }
+   * }
+   * ```
+   */
+  parameters?: Input<Record<string, Input<string>>>;
+  /**
+   * The VPC to use for the Redis instance.
    *
    * @example
    * Create a VPC component.
@@ -98,7 +135,7 @@ export interface RedisArgs {
     | Vpc
     | Input<{
         /**
-         * A list of subnet IDs in the VPC to deploy the Redis cluster in.
+         * A list of subnet IDs in the VPC to deploy the Redis instance in.
          */
         subnets: Input<Input<string>[]>;
         /**
@@ -109,15 +146,15 @@ export interface RedisArgs {
   /**
    * Configure how this component works in `sst dev`.
    *
-   * By default, your Redis cluster is deployed in `sst dev`. But if you want to instead
+   * By default, your Redis instance is deployed in `sst dev`. But if you want to instead
    * connect to a locally running Redis server, you can configure the `dev` prop.
    *
    * :::note
-   * By default, this creates a new Redis ElastiCache cluster even in `sst dev`.
+   * By default, this creates a new Redis ElastiCache instance even in `sst dev`.
    * :::
    *
-   * This will skip deploying a Redis ElastiCache cluster and link to the locally running Redis
-   * server instead.
+   * This will skip deploying a Redis ElastiCache instance and link to the locally running
+   * Redis server instead.
    *
    * @example
    *
@@ -165,6 +202,10 @@ export interface RedisArgs {
      */
     subnetGroup?: Transform<elasticache.SubnetGroupArgs>;
     /**
+     * Transform the Redis parameter group.
+     */
+    parameterGroup?: Transform<elasticache.ParameterGroupArgs>;
+    /**
      * Transform the Redis cluster.
      */
     cluster?: Transform<elasticache.ReplicationGroupArgs>;
@@ -173,8 +214,7 @@ export interface RedisArgs {
 
 interface RedisRef {
   ref: boolean;
-  cluster: elasticache.ReplicationGroup;
-  authToken: Output<string>;
+  clusterId: Input<string>;
 }
 
 /**
@@ -266,7 +306,7 @@ interface RedisRef {
  * [ElastiCache pricing](https://aws.amazon.com/elasticache/pricing/) for more details.
  */
 export class Redis extends Component implements Link.Linkable {
-  private cluster?: elasticache.ReplicationGroup;
+  private cluster?: Output<elasticache.ReplicationGroup>;
   private _authToken?: Output<string>;
   private dev?: {
     enabled: boolean;
@@ -275,24 +315,27 @@ export class Redis extends Component implements Link.Linkable {
     username: Output<string>;
     password?: Output<string>;
   };
+  public static v1 = RedisV1;
 
   constructor(name: string, args: RedisArgs, opts?: ComponentResourceOptions) {
     super(__pulumiType, name, args, opts);
+    const _version = 2;
+    const self = this;
 
     if (args && "ref" in args) {
-      const ref = args as unknown as RedisRef;
-      this.cluster = ref.cluster;
+      const ref = reference();
+      this.cluster = output(ref.cluster);
       this._authToken = ref.authToken;
       return;
     }
 
-    const parent = this;
+    registerVersion();
     const engine = output(args.engine).apply((v) => v ?? "redis");
     const version = all([engine, args.version]).apply(
       ([engine, v]) => v ?? (engine === "redis" ? "7.1" : "7.2"),
     );
     const instance = output(args.instance).apply((v) => v ?? "t4g.micro");
-    const nodes = output(args.nodes).apply((v) => v ?? 1);
+    const argsCluster = normalizeCluster();
     const vpc = normalizeVpc();
 
     const dev = registerDev();
@@ -303,10 +346,62 @@ export class Redis extends Component implements Link.Linkable {
 
     const { authToken, secret } = createAuthToken();
     const subnetGroup = createSubnetGroup();
+    const parameterGroup = createParameterGroup();
     const cluster = createCluster();
 
     this.cluster = cluster;
     this._authToken = authToken;
+
+    function reference() {
+      const ref = args as unknown as RedisRef;
+      const cluster = elasticache.ReplicationGroup.get(
+        `${name}Cluster`,
+        ref.clusterId,
+        undefined,
+        { parent: self },
+      );
+
+      const input = cluster.tagsAll.apply((tags) => {
+        registerVersion(
+          tags?.["sst:component-version"]
+            ? parseInt(tags["sst:component-version"])
+            : undefined,
+        );
+
+        if (!tags?.["sst:ref:secret"])
+          throw new VisibleError(
+            `Failed to lookup secret for Redis cluster "${name}".`,
+          );
+
+        return {
+          secretRef: tags?.["sst:ref:secret"],
+        };
+      });
+
+      const secret = secretsmanager.getSecretVersionOutput(
+        { secretId: input.secretRef },
+        { parent: self },
+      );
+      const authToken = secret.secretString.apply((v) => {
+        return JSON.parse(v).authToken as string;
+      });
+
+      return { cluster, authToken };
+    }
+
+    function registerVersion(overrideVersion?: number) {
+      const oldVersion = overrideVersion ?? $cli.state.version[name];
+      self.registerVersion({
+        new: _version,
+        old: oldVersion,
+        message: [
+          `There is a new version of "Redis" that has breaking changes.`,
+          ``,
+          `To continue using the previous version, rename "Redis" to "Redis.v${oldVersion}".`,
+          `Or recreate this component to update - https://sst.dev/docs/components/#versioning`,
+        ].join("\n"),
+      });
+    }
 
     function registerDev() {
       if (!args.dev) return undefined;
@@ -329,9 +424,7 @@ export class Redis extends Component implements Link.Linkable {
           SST_DEV_COMMAND_MESSAGE: interpolate`Make sure your local Redis server is using:
 
   username: "${dev.username}"
-  password: ${
-    dev.password ? `"${dev.password}"` : "\x1b[38;5;8m[no password]\x1b[0m"
-  }
+  password: "${dev.password ?? "\x1b[38;5;8m[no password]\x1b[0m"}"
 
 Listening on "${dev.host}:${dev.port}"...`,
         },
@@ -353,6 +446,18 @@ Listening on "${dev.host}:${dev.port}"...`,
       return output(args.vpc);
     }
 
+    function normalizeCluster() {
+      return all([args.cluster, args.nodes]).apply(([v, nodes]) => {
+        if (v === false) return undefined;
+        if (v === true) return { nodes: 1 };
+        if (v === undefined) {
+          if (nodes) return { nodes };
+          return { nodes: 1 };
+        }
+        return v;
+      });
+    }
+
     function createAuthToken() {
       const authToken = new RandomPassword(
         `${name}AuthToken`,
@@ -361,7 +466,7 @@ Listening on "${dev.host}:${dev.port}"...`,
           special: true,
           overrideSpecial: "!&#$^<>-",
         },
-        { parent },
+        { parent: self },
       ).result;
 
       const secret = new secretsmanager.Secret(
@@ -369,7 +474,7 @@ Listening on "${dev.host}:${dev.port}"...`,
         {
           recoveryWindowInDays: 0,
         },
-        { parent },
+        { parent: self },
       );
 
       new secretsmanager.SecretVersion(
@@ -378,7 +483,7 @@ Listening on "${dev.host}:${dev.port}"...`,
           secretId: secret.id,
           secretString: jsonStringify({ authToken }),
         },
-        { parent },
+        { parent: self },
       );
 
       return { secret, authToken };
@@ -393,40 +498,90 @@ Listening on "${dev.host}:${dev.port}"...`,
             description: "Managed by SST",
             subnetIds: vpc.subnets,
           },
-          { parent },
+          { parent: self },
+        ),
+      );
+    }
+
+    function createParameterGroup() {
+      return new elasticache.ParameterGroup(
+        ...transform(
+          args.transform?.parameterGroup,
+          `${name}ParameterGroup`,
+          {
+            description: "Managed by SST",
+            family: all([engine, version]).apply(([engine, version]) => {
+              const majorVersion = version.split(".")[0];
+              const defaultFamily = `${engine}${majorVersion}`;
+              return (
+                {
+                  redis4: "redis4.0",
+                  redis5: "redis5.0",
+                  redis6: "redis6.x",
+                }[defaultFamily] ?? defaultFamily
+              );
+            }),
+            parameters: all([args.parameters ?? {}, argsCluster]).apply(
+              ([parameters, argsCluster]) => [
+                {
+                  name: "cluster-enabled",
+                  value: argsCluster ? "yes" : "no",
+                },
+                ...Object.entries(parameters).map(([name, value]) => ({
+                  name,
+                  value,
+                })),
+              ],
+            ),
+          },
+          { parent: self },
         ),
       );
     }
 
     function createCluster() {
-      return new elasticache.ReplicationGroup(
-        ...transform(
-          args.transform?.cluster,
-          `${name}Cluster`,
-          {
-            description: "Managed by SST",
-            engine,
-            engineVersion: version,
-            nodeType: interpolate`cache.${instance}`,
-            dataTieringEnabled: instance.apply((v) => v.startsWith("r6gd.")),
-            port: 6379,
-            automaticFailoverEnabled: true,
-            clusterMode: "enabled",
-            numNodeGroups: nodes,
-            replicasPerNodeGroup: 0,
-            multiAzEnabled: false,
-            atRestEncryptionEnabled: true,
-            transitEncryptionEnabled: true,
-            transitEncryptionMode: "required",
-            authToken,
-            subnetGroupName: subnetGroup.name,
-            securityGroupIds: vpc.securityGroups,
-            tags: {
-              "sst:auth-token-ref": secret.id,
-            },
-          },
-          { parent },
-        ),
+      return argsCluster.apply(
+        (argsCluster) =>
+          new elasticache.ReplicationGroup(
+            ...transform(
+              args.transform?.cluster,
+              `${name}Cluster`,
+              {
+                description: "Managed by SST",
+                engine,
+                engineVersion: version,
+                nodeType: interpolate`cache.${instance}`,
+                dataTieringEnabled: instance.apply((v) =>
+                  v.startsWith("r6gd."),
+                ),
+                port: 6379,
+                ...(argsCluster
+                  ? {
+                      clusterMode: "enabled",
+                      numNodeGroups: argsCluster.nodes,
+                      replicasPerNodeGroup: 0,
+                      automaticFailoverEnabled: true,
+                    }
+                  : {
+                      clusterMode: "disabled",
+                    }),
+                multiAzEnabled: false,
+                atRestEncryptionEnabled: true,
+                transitEncryptionEnabled: true,
+                transitEncryptionMode: "required",
+                authTokenUpdateStrategy: "ROTATE",
+                authToken,
+                subnetGroupName: subnetGroup.name,
+                parameterGroupName: parameterGroup.name,
+                securityGroupIds: vpc.securityGroups,
+                tags: {
+                  "sst:component-version": _version.toString(),
+                  "sst:ref:secret": secret.id,
+                },
+              },
+              { parent: self },
+            ),
+          ),
       );
     }
   }
@@ -434,7 +589,7 @@ Listening on "${dev.host}:${dev.port}"...`,
   /**
    * The ID of the Redis cluster.
    */
-  public get clusterID() {
+  public get clusterId() {
     return this.dev ? output("placeholder") : this.cluster!.id;
   }
 
@@ -458,7 +613,11 @@ Listening on "${dev.host}:${dev.port}"...`,
   public get host() {
     return this.dev
       ? this.dev.host
-      : this.cluster!.configurationEndpointAddress;
+      : this.cluster!.clusterEnabled.apply((enabled) =>
+          enabled
+            ? this.cluster!.configurationEndpointAddress
+            : this.cluster!.primaryEndpointAddress,
+        );
   }
 
   /**
@@ -507,7 +666,7 @@ Listening on "${dev.host}:${dev.port}"...`,
    * :::
    *
    * @param name The name of the component.
-   * @param clusterID The id of the existing Redis cluster.
+   * @param clusterId The id of the existing Redis cluster.
    * @param opts? Resource options.
    *
    * @example
@@ -525,42 +684,23 @@ Listening on "${dev.host}:${dev.port}"...`,
    *
    * ```ts title="sst.config.ts"
    * return {
-   *   cluster: redis.clusterID
+   *   cluster: redis.clusterId
    * };
    * ```
    */
   public static get(
     name: string,
-    clusterID: Input<string>,
+    clusterId: Input<string>,
     opts?: ComponentResourceOptions,
   ) {
-    const cluster = elasticache.ReplicationGroup.get(
-      `${name}Cluster`,
-      clusterID,
-      undefined,
+    return new Redis(
+      name,
+      {
+        ref: true,
+        clusterId,
+      } as unknown as RedisArgs,
       opts,
     );
-    const secret = cluster.tags.apply((tags) =>
-      tags?.["sst:auth-token-ref"]
-        ? secretsmanager.getSecretVersionOutput(
-            {
-              secretId: tags["sst:auth-token-ref"],
-            },
-            opts,
-          )
-        : output(undefined),
-    );
-    const authToken = secret.apply((v) => {
-      if (!v)
-        throw new VisibleError(`Failed to get auth token for Redis ${name}.`);
-      return JSON.parse(v.secretString).authToken as string;
-    });
-
-    return new Redis(name, {
-      ref: true,
-      cluster,
-      authToken,
-    } as unknown as RedisArgs);
   }
 }
 

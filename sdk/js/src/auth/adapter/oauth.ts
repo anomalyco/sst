@@ -40,7 +40,7 @@ export const OauthAdapter =
         const callback = new URL(c.req.url);
         callback.pathname = callback.pathname.replace(
           /authorize.*$/,
-          "callback",
+          "callback"
         );
         callback.search = "";
         callback.host = c.req.header("x-forwarded-host") || callback.host;
@@ -108,7 +108,7 @@ export const OauthAdapter =
           config.issuer.metadata.userinfo_endpoint
             ? "callback"
             : "oauthCallback"
-        ](callback.toString(), Object.fromEntries(form), {
+        ](callback.toString(), Object.fromEntries(form as any), {
           code_verifier,
           state,
         });

@@ -1,20 +1,9 @@
 import fs from "fs";
 import path from "path";
-import type { BuildMetaConfig, BuildMetaFileName } from "astro-sst/build-meta";
-import { ComponentResourceOptions, Output, all } from "@pulumi/pulumi";
-import { Function } from "./function.js";
-import {
-  SsrSiteArgs,
-  createDevResources,
-  createResources,
-  prepare,
-  validatePlan,
-} from "./ssr-site-new.js";
-import { Cdn } from "./cdn.js";
-import { Bucket } from "./bucket.js";
-import { Component } from "./../component.js";
-import { Link } from "../link.js";
-import { buildApp } from "../base/base-ssr-site.js";
+import { ComponentResourceOptions, Output } from "@pulumi/pulumi";
+import { isALtB } from "../../util/compare-semver.js";
+import { VisibleError } from "../error.js";
+import { Plan, SsrSite, SsrSiteArgs } from "./ssr-site.js";
 
 export interface AstroArgs extends SsrSiteArgs {
   /**
@@ -47,7 +36,7 @@ export interface AstroArgs extends SsrSiteArgs {
    *     {
    *       actions: ["s3:GetObject", "s3:PutObject"],
    *       resources: ["arn:aws:s3:::my-bucket/*"]
-   *     },
+   *     }
    *   ]
    * }
    * ```
@@ -60,7 +49,7 @@ export interface AstroArgs extends SsrSiteArgs {
    *     {
    *       actions: ["s3:*"],
    *       resources: ["arn:aws:s3:::my-bucket/*"]
-   *     },
+   *     }
    *   ]
    * }
    * ```
@@ -73,25 +62,12 @@ export interface AstroArgs extends SsrSiteArgs {
    *     {
    *       actions: ["*"],
    *       resources: ["*"]
-   *     },
+   *     }
    *   ]
    * }
    * ```
    */
   permissions?: SsrSiteArgs["permissions"];
-  /**
-   * The regions that the [server function](#nodes-server) in your Astro site will be
-   * deployed to. Requests will be routed to the nearest region based on the user's location.
-   *
-   * @default The default region of the SST app
-   * @example
-   * ```js
-   * {
-   *   regions: ["us-east-1", "eu-west-1"]
-   * }
-   * ```
-   */
-  regions?: SsrSiteArgs["regions"];
   /**
    * Path to the directory where your Astro site is located.  This path is relative to your `sst.config.ts`.
    *
@@ -214,6 +190,107 @@ export interface AstroArgs extends SsrSiteArgs {
    */
   domain?: SsrSiteArgs["domain"];
   /**
+   * Serve your Astro site through a `Router` instead of a standalone CloudFront
+   * distribution.
+   *
+   * By default, this component creates a new CloudFront distribution. But you might
+   * want to serve it through the distribution of your `Router` as a:
+   *
+   * - A path like `/docs`
+   * - A subdomain like `docs.example.com`
+   * - Or a combined pattern like `dev.example.com/docs`
+   *
+   * @example
+   *
+   * To serve your Astro site **from a path**, you'll need to configure the root domain
+   * in your `Router` component.
+   *
+   * ```ts title="sst.config.ts" {2}
+   * const router = new sst.aws.Router("Router", {
+   *   domain: "example.com"
+   * });
+   * ```
+   *
+   * Now set the `router` and the `path`.
+   *
+   * ```ts {3,4}
+   * {
+   *   router: {
+   *     instance: router,
+   *     path: "/docs"
+   *   }
+   * }
+   * ```
+   *
+   * You also need to set the
+   * [`base`](https://docs.astro.build/en/reference/configuration-reference/#base)
+   * in your `astro.config.mjs`.
+   *
+   * :::caution
+   * If routing to a path, you need to set that as the base path in your Astro
+   * site as well.
+   * :::
+   *
+   * ```js title="astro.config.mjs" {3}
+   * export default defineConfig({
+   *   adapter: sst(),
+   *   base: "/docs"
+   * });
+   * ```
+   *
+   * To serve your Astro site **from a subdomain**, you'll need to configure the
+   * domain in your `Router` component to match both the root and the subdomain.
+   *
+   * ```ts title="sst.config.ts" {3,4}
+   * const router = new sst.aws.Router("Router", {
+   *   domain: {
+   *     name: "example.com",
+   *     aliases: ["*.example.com"]
+   *   }
+   * });
+   * ```
+   *
+   * Now set the `domain` in the `router` prop.
+   *
+   * ```ts {4}
+   * {
+   *   router: {
+   *     instance: router,
+   *     domain: "docs.example.com"
+   *   }
+   * }
+   * ```
+   *
+   * Finally, to serve your Astro site **from a combined pattern** like
+   * `dev.example.com/docs`, you'll need to configure the domain in your `Router` to
+   * match the subdomain.
+   *
+   * ```ts title="sst.config.ts" {3,4}
+   * const router = new sst.aws.Router("Router", {
+   *   domain: {
+   *     name: "example.com",
+   *     aliases: ["*.example.com"]
+   *   }
+   * });
+   * ```
+   *
+   * And set the `domain` and the `path`.
+   *
+   * ```ts {4,5}
+   * {
+   *   router: {
+   *     instance: router,
+   *     domain: "dev.example.com",
+   *     path: "/docs"
+   *   }
+   * }
+   * ```
+   *
+   * Also, make sure to set this as the `base` in your `astro.config.mjs`, like
+   * above.
+   */
+  router?: SsrSiteArgs["router"];
+  /**
    * The command used internally to build your Astro site.
    *
    * @default `"npm run build"`
@@ -244,22 +321,6 @@ export interface AstroArgs extends SsrSiteArgs {
    */
   assets?: SsrSiteArgs["assets"];
   /**
-   * Configure the [server function](#nodes-server) in your Astro site to connect
-   * to private subnets in a virtual private cloud or VPC. This allows your site to
-   * access private resources.
-   *
-   * @example
-   * ```js
-   * {
-   *   vpc: {
-   *     securityGroups: ["sg-0399348378a4c256c"],
-   *     subnets: ["subnet-0b6a2b73896dc8c4c", "subnet-021389ebee680c2f0"]
-   *   }
-   * }
-   * ```
-   */
-  vpc?: SsrSiteArgs["vpc"];
-  /**
    * Configure the Astro site to use an existing CloudFront cache policy.
    *
    * :::note
@@ -280,8 +341,6 @@ export interface AstroArgs extends SsrSiteArgs {
    */
   cachePolicy?: SsrSiteArgs["cachePolicy"];
 }
-
-const BUILD_META_FILE_NAME: BuildMetaFileName = "sst.buildMeta.json";
 
 /**
  * The `Astro` component lets you deploy an [Astro](https://astro.build) site to AWS.
@@ -353,320 +412,108 @@ const BUILD_META_FILE_NAME: BuildMetaFileName = "sst.buildMeta.json";
  * ---
  * ```
  */
-export class Astro extends Component implements Link.Linkable {
-  private cdn?: Output<Cdn>;
-  private assets?: Bucket;
-  private server?: Output<Function>;
-  private devUrl?: Output<string>;
-
+export class Astro extends SsrSite {
   constructor(
     name: string,
     args: AstroArgs = {},
     opts: ComponentResourceOptions = {},
   ) {
     super(__pulumiType, name, args, opts);
+  }
 
-    const parent = this;
-    const { dev, sitePath, regions } = prepare(parent, args);
+  protected normalizeBuildCommand() { }
 
-    if (dev.enabled) {
-      const { server } = createDevResources(parent, name, args);
-      this.devUrl = dev.url;
-      this.registerOutputs({
-        _metadata: {
-          mode: "placeholder",
-          path: sitePath,
-          server: server.arn,
-        },
-        _dev: {
-          ...dev.outputs,
-          aws: { role: server.nodes.role.arn },
-        },
-      });
-      return;
-    }
+  protected buildPlan(outputPath: Output<string>): Output<Plan> {
+    return outputPath.apply((outputPath) => {
+      const BUILD_META_FILE_NAME = "sst.buildMeta.json";
+      const filePath = path.join(outputPath, "dist", BUILD_META_FILE_NAME);
+      if (!fs.existsSync(filePath)) {
+        throw new VisibleError(
+          `Build metadata file not found at "${filePath}". Update your "astro-sst" adapter and rebuild your Astro site.`,
+        );
+      }
+      const buildMeta = JSON.parse(fs.readFileSync(filePath, "utf-8")) as {
+        base: string;
+        pluginVersion: string;
+        outputMode: "server" | "static";
+        responseMode: "stream" | "buffer";
+        clientBuildOutputDir: string;
+        clientBuildVersionedSubDir: string;
+      };
+      const serverOutputPath = path.join(outputPath, "dist", "server");
 
-    const outputPath = buildApp(parent, name, args, sitePath);
-    const buildMeta = loadBuildMetadata();
-    const plan = buildPlan();
-    const { distribution, bucket, servers } = createResources(
-      parent,
-      name,
-      args,
-      outputPath,
-      plan,
-      regions,
-    );
-    const server = servers.apply((servers) => servers[0]);
+      if (
+        buildMeta.pluginVersion === undefined ||
+        isALtB(buildMeta.pluginVersion, "3.1.2")
+      ) {
+        throw new VisibleError(
+          `Incompatible "astro-sst" adapter version detected. The Astro component requires "astro-sst" adapter version 3.1.2 or later.`,
+        );
+      }
 
-    this.assets = bucket;
-    this.cdn = distribution;
-    this.server = server;
-    this.registerOutputs({
-      _hint: all([this.cdn.domainUrl, this.cdn.url]).apply(
-        ([domainUrl, url]) => domainUrl ?? url,
-      ),
-      _metadata: {
-        mode: "deployed",
-        path: sitePath,
-        url: distribution.apply((d) => d.domainUrl ?? d.url),
-        edge: false,
-        server: server.arn,
-      },
-      _dev: {
-        ...dev.outputs,
-        aws: { role: server.nodes.role.arn },
-      },
+      // Note about handling 404 pages. Here is Astro's behavior:
+      // - when static/prerendered, Astro builds a /404.html file in the client build output dir
+      // - when SSR, Astro server handles /404 route
+      //
+      // We could handle the /404.html with CloudFront's custom error response feature, but that will not work when routing the Astro through the `Router` component. It does not make sense for `Router` to have a custom error response shared across all routes (ie. API). Each route's 404 behavior are different.
+      //
+      // So here is what we do when a request comes in for ie. /garbage:
+      //
+      // - Case 1: static (no server) => In CF function S3 look up will fail, and uri will rewrite to /404.html
+      //   x that's why we set `plan.custom404` to `/404.html`
+      //
+      // - Case 2: prerendered (has server) => In CF function S3 look up will fail, and request will be sent to the server function. Server fails to serve /garbage, and cannot find the route. Server tries to serve /404, and cannot find the route. Server finally serves the 404.html file manually bundled into it.
+      //   x that's why we configure `plan.server.copyFiles` include /404.html
+      //
+      // - Case 3: SSR (has server) => In CF function S3 look up will fail, and request is sent to the server function. Server fails to serve /garbage, and cannot find the route. Server tries to serve /404.
+      const isStatic = buildMeta.outputMode === "static";
+      const base = buildMeta.base === "/" ? undefined : buildMeta.base;
+      return {
+        base,
+        server: isStatic
+          ? undefined
+          : {
+            handler: path.join(serverOutputPath, "entry.handler"),
+            nodejs: { install: ["sharp"] },
+            streaming: buildMeta.responseMode === "stream",
+            copyFiles: fs.existsSync(path.join(serverOutputPath, "404.html"))
+              ? [
+                {
+                  from: path.join(serverOutputPath, "404.html"),
+                  to: "404.html",
+                },
+              ]
+              : [],
+          },
+        assets: [
+          {
+            from: buildMeta.clientBuildOutputDir,
+            to: "",
+            cached: true,
+            versionedSubDir: buildMeta.clientBuildVersionedSubDir,
+          },
+        ],
+        custom404:
+          isStatic &&
+            fs.existsSync(
+              path.join(outputPath, buildMeta.clientBuildOutputDir, "404.html"),
+            )
+            ? "/404.html"
+            : undefined,
+      };
     });
-
-    function loadBuildMetadata() {
-      return outputPath.apply((outputPath) => {
-        const filePath = path.join(outputPath, "dist", BUILD_META_FILE_NAME);
-        if (!fs.existsSync(filePath)) {
-          throw new Error(
-            `Could not find build meta file at ${filePath}. Update your 'astro-sst' package version and rebuild your Astro site.`,
-          );
-        }
-        return JSON.parse(
-          fs.readFileSync(filePath, "utf-8"),
-        ) as BuildMetaConfig;
-      });
-    }
-
-    function buildPlan() {
-      return all([outputPath, buildMeta]).apply(([outputPath, buildMeta]) => {
-        if (buildMeta.deploymentStrategy === "edge") {
-          throw new Error(
-            `The "edge" deployment strategy is deprecated. Please update your Astro config to use the "regional" deployment strategy instead. You can then deploy to multiple regions by using the "regions" option in your Astro component.`,
-          );
-        }
-
-        const isStatic = buildMeta.outputMode === "static";
-        return validatePlan({
-          cloudFrontFunction: {
-            injection: useCloudFrontRoutingInjection(buildMeta),
-          },
-          server: isStatic
-            ? undefined
-            : {
-                handler: path.join(
-                  outputPath,
-                  "dist",
-                  "server",
-                  "entry.handler",
-                ),
-                nodejs: { install: ["sharp"] },
-                streaming: buildMeta.responseMode === "stream",
-              },
-          s3: {
-            copy: [
-              {
-                from: buildMeta.clientBuildOutputDir,
-                to: "",
-                cached: true,
-                versionedSubDir: buildMeta.clientBuildVersionedSubDir,
-              },
-            ],
-          },
-          errorResponses: buildMeta.routes.flatMap(
-            ({ type, route, prerender }) => {
-              if (type === "page" && ["/404", "/404/"].includes(route)) {
-                return [
-                  {
-                    errorCode: 404,
-                    responsePagePath: prerender ? "/404.html" : "/404",
-                    responseCode: 404,
-                  },
-                  ...(isStatic
-                    ? [
-                        {
-                          errorCode: 403,
-                          responsePagePath: "/404.html",
-                          responseCode: 404,
-                        },
-                      ]
-                    : []),
-                ];
-              }
-              if (type === "page" && ["/500", "/500/"].includes(route)) {
-                return [
-                  {
-                    errorCode: 500,
-                    responsePagePath: prerender ? "/500.html" : "/500",
-                    responseCode: 500,
-                  },
-                ];
-              }
-              return [];
-            },
-          ),
-        });
-      });
-    }
   }
 
   /**
    * The URL of the Astro site.
    *
    * If the `domain` is set, this is the URL with the custom domain.
-   * Otherwise, it's the autogenerated CloudFront URL.
+   * Otherwise, it's the auto-generated CloudFront URL.
    */
   public get url() {
-    return all([this.cdn?.domainUrl, this.cdn?.url, this.devUrl]).apply(
-      ([domainUrl, url, dev]) => domainUrl ?? url ?? dev!,
-    );
-  }
-
-  /**
-   * The underlying [resources](/docs/components/#nodes) this component creates.
-   */
-  public get nodes() {
-    return {
-      /**
-       * The AWS Lambda server function that renders the site.
-       */
-      server: this.server,
-      /**
-       * The Amazon S3 Bucket that stores the assets.
-       */
-      assets: this.assets,
-      /**
-       * The Amazon CloudFront CDN that serves the site.
-       */
-      cdn: this.cdn,
-    };
-  }
-
-  /** @internal */
-  public getSSTLink() {
-    return {
-      properties: {
-        url: this.url,
-      },
-    };
+    return super.url;
   }
 }
 const __pulumiType = "sst:aws:Astro";
 // @ts-expect-error
 Astro.__pulumiType = __pulumiType;
-
-type TreeNode = {
-  branches: Record<string, TreeNode>;
-  nodes: BuildMetaConfig["routes"][number][];
-};
-
-type FlattenedRoute =
-  | [string] // Page with prerendering
-  | [string, 1] // Endpoint with prerendering
-  | [string, 2, string | undefined, number | undefined]; // Redirect
-type FlattenedRouteTree = Array<FlattenedRoute | [string, FlattenedRouteTree]>;
-
-function useCloudFrontRoutingInjection(buildMetadata: BuildMetaConfig) {
-  const tree = buildRouteTree(buildMetadata.routes);
-  const flatTree = flattenRouteTree(tree);
-  const stringifiedTree = stringifyFlattenedRouteTree(flatTree);
-  return `
-    var routeData = ${stringifiedTree};
-    var findFirstMatch = (matches) => Array.isArray(matches[0]) ? findFirstMatch(matches[0]) : matches;
-    var findMatches = (path, routeData) => routeData.map((route) => route[0].test(path) ? Array.isArray(route[1]) ? findMatches(path, route[1]) : route : null).filter(route => route !== null && route.length > 0);
-    var matchedRoute = findFirstMatch(findMatches(event.request.uri, routeData));
-    if (matchedRoute[0]) {
-      if (!matchedRoute[1] && !/^.*\\.[^\\/]+$/.test(event.request.uri)) {
-        ${
-          buildMetadata.pageResolution === "file"
-            ? `event.request.uri = event.request.uri === "/" ? "/index.html" : event.request.uri.replace(/\\/?$/, ".html");`
-            : `event.request.uri = event.request.uri.replace(/\\/?$/, "/index.html");`
-        }
-      } else if (matchedRoute[1] === 2) {
-        var redirectPath = matchedRoute[2];
-        matchedRoute[0].exec(event.request.uri).forEach((match, index) => {
-          redirectPath = redirectPath.replace(\`\\\${\${index}}\`, match);
-        });
-        return {
-          statusCode: matchedRoute[3] || 308,
-          headers: { location: { value: redirectPath } },
-        };
-      }
-    }`;
-}
-
-function buildRouteTree(routes: BuildMetaConfig["routes"], level = 0) {
-  const routeTree = routes.reduce<TreeNode>(
-    (tree, route) => {
-      const routePatternWithoutCaptureGroups = route.pattern
-        .replace(/\((?:\?:)?(.*?[^\\])\)/g, (_, content) => content.trim())
-        .replace(/\/\^/g, "")
-        .replace(/\$\//g, "");
-      const routeParts = routePatternWithoutCaptureGroups
-        .split(/(?=\\\/)/g)
-        .filter((part) => part !== "/^" && part !== "/$/");
-
-      tree.branches[routeParts[level]] = tree.branches[routeParts[level]] || {
-        branches: {},
-        nodes: [],
-      };
-      tree.branches[routeParts[level]].nodes.push(route);
-      return tree;
-    },
-    { branches: {}, nodes: [] },
-  );
-
-  for (const [key, branch] of Object.entries(routeTree.branches)) {
-    if (
-      !branch.nodes.some((node) => node.prerender || node.type === "redirect")
-    ) {
-      delete routeTree.branches[key];
-    } else if (branch.nodes.length > 1) {
-      const deduplicatedNodes = branch.nodes.filter(
-        (node, index, arr) =>
-          arr.findIndex((n) => n.pattern === node.pattern) === index,
-      );
-      routeTree.branches[key] = buildRouteTree(deduplicatedNodes, level + 1);
-      branch.nodes = [];
-    }
-  }
-
-  return routeTree;
-}
-
-function flattenRouteTree(tree: TreeNode, parentKey = "") {
-  const flatTree: FlattenedRouteTree = [];
-  for (const [key, branch] of Object.entries(tree.branches)) {
-    if (branch.nodes.length === 1) {
-      const node = branch.nodes[0];
-      if (node.type === "page") {
-        flatTree.push([node.pattern]);
-      }
-      if (node.type === "endpoint") {
-        flatTree.push([node.pattern, 1]);
-      } else if (node.type === "redirect") {
-        flatTree.push([
-          node.pattern,
-          2,
-          node.redirectPath,
-          node.redirectStatus,
-        ]);
-      }
-    } else {
-      const flatKey = parentKey + key;
-      flatTree.push([flatKey, flattenRouteTree(branch, flatKey)]);
-    }
-  }
-  return flatTree;
-}
-
-function stringifyFlattenedRouteTree(tree: FlattenedRouteTree): string {
-  return `[${tree
-    .map((tuple) => {
-      if (Array.isArray(tuple[1])) {
-        return `[/^${tuple[0]}/,${stringifyFlattenedRouteTree(tuple[1])}]`;
-      }
-      if (typeof tuple[1] === "undefined") {
-        return `[${tuple[0]}]`;
-      } else if (tuple[1] === 1) {
-        return `[${tuple[0]},1]`;
-      }
-      return `[${tuple[0]},2,"${tuple[2]}"${tuple[3] ? `,${tuple[3]}` : ""}]`;
-    })
-    .join(",")}]`;
-}

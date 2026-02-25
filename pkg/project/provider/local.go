@@ -23,6 +23,10 @@ func (l *LocalHome) Bootstrap() error {
 	return nil
 }
 
+func (l *LocalHome) cleanup(key, app, stage string) error {
+	return nil
+}
+
 func (l *LocalHome) getData(key, app, stage string) (io.Reader, error) {
 	p := l.pathForData(key, app, stage)
 	result, err := os.Open(p)

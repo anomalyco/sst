@@ -25,7 +25,7 @@ var CmdDiagnostic = &cli.Command{
 		}, "\n"),
 	},
 	Run: func(c *cli.Cli) error {
-		cfg, err := project.Discover()
+		cfg, err := c.Discover()
 		if err != nil {
 			return err
 		}

@@ -5,25 +5,28 @@ import { z } from "zod";
 import AWS from "aws-sdk";
 
 /**
- * A list of OpenControl tools provided by SST. Currently, it includes tools that can
+ * A list of OpenControl tools provided by SST. Currently, it includes tools that
+ * can:
+ *
  * - Lists the resources in your SST app.
  * - Access the resources in your AWS account.
  *
- * You can add this tool to your OpenControl app by passing it to the `tools` option when
- * creating an OpenControl app.
+ * You can add this tool to your OpenControl server by passing it to the `tools`
+ * option when creating it.
  *
  * @example
- * ```js title="src/app.ts"
+ * ```js title="src/server.ts"
  * import { create } from "opencontrol";
  * import { tools } from "sst/opencontrol";
  *
  * const app = create({
- *   key: process.env.OPENCONTROL_KEY,
- *   tools: [...tools],
+ *   model: // ...
+ *   tools: [...tools]
  * });
  * ```
  */
 export const tools = [
+  /*
   tool({
     name: "sst",
     description: "Get the resources in the current SST app",
@@ -88,23 +91,44 @@ export const tools = [
       }
     },
   }),
+  */
   tool({
     name: "aws",
-    description: "Make a call to the AWS SDK for JavaScript v2",
+    description: `This uses aws sdk v2 in javascript to execute aws commands
+    this is roughly how it works
+    \`\`\`js
+    import aws from "aws-sdk";
+    aws[service][method](params)
+    \`\`\`
+  `,
     args: z.object({
-      client: z.string().describe("Class name of the client to use"),
-      command: z.string().describe("Command to call on the client"),
-      args: z
-        .record(z.string(), z.any())
-        .optional()
-        .describe("Arguments to pass to the command"),
+      service: z
+        .string()
+        .describe(
+          "name of the aws service in the format aws sdk v2 uses, like S3 or EC2",
+        ),
+      method: z
+        .string()
+        .describe("name of the aws method in the format aws sdk v2 uses"),
+      params: z.string().describe("params for the aws method in json format"),
     }),
     async run(input) {
-      // @ts-ignore
-      const client = new AWS[input.client]();
-      return await client[input.command](input.args).promise();
+      const aws = await import("aws-sdk");
+      /* @ts-expect-error */
+      const service = aws.default[input.service];
+      if (!service) {
+        throw new Error(`service aws[${input.service}] not found`);
+      }
+      const instance = new service();
+      if (!instance[input.method]) {
+        throw new Error(
+          `method aws.${input.service}.${input.method} not found`,
+        );
+      }
+      return await instance[input.method](JSON.parse(input.params)).promise();
     },
   }),
+  /*
   tool({
     name: "aws_batch",
     description:
@@ -117,18 +141,19 @@ export const tools = [
           z
             .record(z.string(), z.any())
             .optional()
-            .describe("Arguments to pass to the command")
+            .describe("Arguments to pass to the command"),
         )
         .describe(
-          "An array of arguments. Each argument will be passed to the command in parallel."
+          "An array of arguments. Each argument will be passed to the command in parallel.",
         ),
     }),
     async run(input) {
       // @ts-ignore
       const client = new AWS[input.client]();
       return await Promise.all(
-        input.args.map((arg: any) => client[input.command](arg).promise())
+        input.args.map((arg: any) => client[input.command](arg).promise()),
       );
     },
   }),
+  */
 ];

@@ -40,15 +40,16 @@ export interface OpenControlArgs {
    * export const handler = handle(app);
    * ```
    *
-   * Learn more on the [OpenControl docs](https://opencontrol.js.org/docs/server/) on how to
+   * Learn more in the [OpenControl docs](https://opencontrol.ai) on how to
    * configure the `server` function.
    */
   server: Input<string | FunctionArgs>;
 }
 
 /**
- * The `OpenControl` component lets you create centralized OpenControl servers on AWS. It
- * deploys [OpenControl](https://opencontrol.js.org) to [AWS Lambda](https://aws.amazon.com/lambda/).
+ * The `OpenControl` component lets you deploy your
+ * [OpenControl](https://opencontrol.ai) server to
+ * [AWS Lambda](https://aws.amazon.com/lambda/).
  *
  * :::note
  * OpenControl is currently in beta.
@@ -64,31 +65,84 @@ export interface OpenControlArgs {
  * });
  * ```
  *
- * Where the `server` function might look like this.
+ * #### Link your AI API keys
+ *
+ * ```ts title="sst.config.ts" {6}
+ * const anthropicKey = new sst.Secret("AnthropicKey");
+ *
+ * const server = new sst.aws.OpenControl("MyServer", {
+ *   server: {
+ *     handler: "src/server.handler",
+ *     link: [anthropicKey]
+ *   }
+ * });
+ * ```
+ *
+ * #### Link your resources
+ *
+ * If your tools are need access to specific resources, you can link them to the
+ * OpenControl server.
+ *
+ * ```ts title="sst.config.ts" {6}
+ * const bucket = new sst.aws.Bucket("MyBucket");
+ *
+ * new sst.aws.OpenControl("MyServer", {
+ *   server: {
+ *     handler: "src/server.handler",
+ *     link: [bucket]
+ *   }
+ * });
+ * ```
+ *
+ * #### Give AWS permissions
+ *
+ * If you are using the AWS tool within OpenControl, you will need to give
+ * your OpenControl server permissions to access your AWS account.
+ *
+ * ```ts title="sst.config.ts" {4-6}
+ * new sst.aws.OpenControl("OpenControl", {
+ *   server: {
+ *     handler: "src/server.handler",
+ *     policies: $dev
+ *       ? ["arn:aws:iam::aws:policy/AdministratorAccess"]
+ *       : ["arn:aws:iam::aws:policy/ReadOnlyAccess"]
+ *   }
+ * });
+ * ```
+ *
+ * Here we are giving it admin access in dev but read-only access in prod.
+ *
+ * #### Define your server
+ *
+ * Your `server` function might look like this.
  *
  * ```ts title="src/server.ts"
- * import { handle } from "hono/aws-lambda";
+ * import { Resource } from "sst";
  * import { create } from "opencontrol";
  * import { tool } from "opencontrol/tool";
+ * import { handle } from "hono/aws-lambda";
+ * import { createAnthropic } from "@ai-sdk/anthropic";
  *
  * const myTool = tool({
  *   name: "my_tool",
  *   description: "Get the most popular greeting",
  *   async run() {
  *     return "Hello, world!";
- *   },
+ *   }
  * });
  *
  * const app = create({
- *   key: process.env.OPENCONTROL_KEY,
+ *   model: createAnthropic({
+ *     apiKey: Resource.AnthropicKey.value,
+ *   })("claude-3-7-sonnet-20250219"),
  *   tools: [myTool],
  * });
  *
  * export const handler = handle(app);
  * ```
  *
- * Learn more on the [OpenControl docs](https://opencontrol.js.org/docs/server/) on how to
- * configure the `server` function.
+ * Learn more in the [OpenControl docs](https://opencontrol.ai) on how to configure
+ * the `server` function.
  */
 export class OpenControl extends Component {
   private readonly _server: Output<Function>;
@@ -135,14 +189,12 @@ export class OpenControl extends Component {
           environment: {
             OPENCONTROL_KEY: key,
           },
-          url: true,
+          url: {
+            cors: false,
+          },
           _skipHint: true,
         },
-        (args) => {
-          args.url = {
-            cors: false,
-          };
-        },
+        undefined,
         { parent: self },
       ).apply((v) => v.getFunction());
     }
@@ -152,9 +204,14 @@ export class OpenControl extends Component {
    * The URL of the OpenControl server.
    */
   public get url() {
-    return all([this._server.url, this._key]).apply(
-      ([url, key]) => `${url}${key}`,
-    );
+    return this._server.url;
+  }
+
+  /**
+   * The password for the OpenControl server.
+   */
+  public get password() {
+    return this._key;
   }
 
   /**

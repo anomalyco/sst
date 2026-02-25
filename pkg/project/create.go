@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -81,7 +82,7 @@ func Create(templateName string, home string) ([]string, error) {
 	directoryName := strings.ToLower(filepath.Base(currentDirectory))
 	slog.Info("creating project", "name", directoryName)
 
-	presetBytes, err := platform.Templates.ReadFile(filepath.Join("templates", templateName, "preset.json"))
+	presetBytes, err := platform.Templates.ReadFile(path.Join("templates", templateName, "preset.json"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read preset.json: %w", err)
 	}
@@ -234,8 +235,11 @@ func Create(templateName string, home string) ([]string, error) {
 			break
 
 		case "copy":
-			templateFilesPath := filepath.Join("templates", templateName, "files")
+			templateFilesPath := path.Join("templates", templateName, "files")
 			err = fs.WalkDir(platform.Templates, templateFilesPath, func(path string, d fs.DirEntry, err error) error {
+				if err != nil {
+					return err
+				}
 				if d.IsDir() {
 					// Create the directory if it doesn't exist
 					dir := filepath.Join(".", strings.TrimPrefix(path, templateFilesPath))

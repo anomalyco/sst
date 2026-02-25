@@ -42,11 +42,11 @@ type ClusterVpcArgs = {
   /**
    * The ID of the Cloud Map namespace to use for the service.
    */
-  cloudmapNamespaceId: Input<string>;
+  cloudmapNamespaceId?: Input<string>;
   /**
    * The name of the Cloud Map namespace to use for the service.
    */
-  cloudmapNamespaceName: Input<string>;
+  cloudmapNamespaceName?: Input<string>;
 };
 
 export interface ClusterArgs {
@@ -58,6 +58,12 @@ export interface ClusterArgs {
    *
    * ```js title="sst.config.ts"
    * const myVpc = new sst.aws.Vpc("MyVpc");
+   * ```
+   *
+   * Or reference an existing VPC.
+   *
+   * ```js title="sst.config.ts"
+   * const myVpc = sst.aws.Vpc.get("MyVpc", "vpc-12345678901234567");
    * ```
    *
    * And pass it in.
@@ -85,7 +91,61 @@ export interface ClusterArgs {
    * ```
    */
   vpc: Vpc | Input<Prettify<ClusterVpcArgs>>;
-  /** @internal */
+  /**
+   * Force upgrade from `Cluster.v1` to the latest `Cluster` version. The only valid value
+   * is `v2`, which is the version of the new `Cluster`.
+   *
+   * In `Cluster.v1`, load balancers are deployed in public subnets, and services are
+   * deployed in private subnets. The VPC is required to have NAT gateways.
+   *
+   * In the latest `Cluster`, both the load balancer and the services are deployed in
+   * public subnets. The VPC is not required to have NAT gateways. So the new default makes
+   * this cheaper to run.
+   *
+   * To upgrade, add the prop.
+   *
+   * ```ts
+   * {
+   *   forceUpgrade: "v2"
+   * }
+   * ```
+   *
+   * Run `sst deploy`.
+   *
+   * :::tip
+   * You can remove this prop after you upgrade.
+   * :::
+   *
+   * This upgrades your component and the resources it created. You can now optionally
+   * remove the prop.
+   *
+   * After the upgrade, new services will be deployed in public subnets.
+   *
+   * :::caution
+   * New service will be deployed in public subnets.
+   * :::
+   *
+   * To continue deploying in private subnets, set `vpc.serviceSubnets` to a list of
+   * private subnets.
+   *
+   * ```js title="sst.config.ts" {4,8}
+   * const myVpc = new sst.aws.Vpc("MyVpc", { nat: "managed" });
+   *
+   * const cluster = new sst.aws.Cluster("MyCluster", {
+   *   forceUpgrade: "v2",
+   *   vpc: {
+   *     id: myVpc.id,
+   *     loadBalancerSubnets: myVpc.publicSubnets,
+   *     serviceSubnets: myVpc.privateSubnets,
+   *     securityGroups: myVpc.securityGroups,
+   *     cloudmapNamespaceId: myVpc.nodes.cloudmapNamespace.id,
+   *     cloudmapNamespaceName: myVpc.nodes.cloudmapNamespace.name,
+   *   }
+   * });
+   * ```
+   *
+   * @internal
+   */
   forceUpgrade?: "v2";
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
@@ -117,24 +177,22 @@ interface ClusterRef {
 }
 
 /**
- * The `Cluster` component lets you create a cluster of containers to your app. It uses
- * [Amazon ECS](https://aws.amazon.com/ecs/).
+ * The `Cluster` component lets you create an [ECS cluster](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/clusters.html) for your app.
+ * add `Service` and `Task` components to it.
  *
  * @example
- *
- * #### Create a Cluster
  *
  * ```ts title="sst.config.ts"
  * const vpc = new sst.aws.Vpc("MyVpc");
  * const cluster = new sst.aws.Cluster("MyCluster", { vpc });
  * ```
  *
- * Once created, you can add the following to your cluster:
+ * Once created, you can add the following to it:
  *
- * - Services: These are containers that are always running, like web or application servers.
- *   They automatically restart if they fail.
- * - Tasks: These are containers that are used for long running asynchronous work, like data
- *   processing.
+ * 1. `Service`: These are containers that are always running, like web or
+ *   application servers. They automatically restart if they fail.
+ * 2. `Task`: These are containers that are used for long running asynchronous work,
+ *   like data processing.
  */
 export class Cluster extends Component {
   private constructorOpts: ComponentResourceOptions;
@@ -178,7 +236,7 @@ export class Cluster extends Component {
       const cluster = ecs.Cluster.get(`${name}Cluster`, ref.id, undefined, {
         parent: self,
       });
-      const clusterValidated = cluster.tags.apply((tags) => {
+      const clusterValidated = cluster.tagsAll.apply((tags) => {
         const refVersion = tags?.["sst:ref:version"]
           ? parseComponentVersion(tags["sst:ref:version"])
           : undefined;
@@ -222,6 +280,14 @@ export class Cluster extends Component {
         if (!vpc.containerSubnets && !vpc.serviceSubnets)
           throw new VisibleError(
             `Missing "vpc.containerSubnets" for the "${name}" Cluster component.`,
+          );
+
+        if (
+          (vpc.cloudmapNamespaceId && !vpc.cloudmapNamespaceName) ||
+          (!vpc.cloudmapNamespaceId && vpc.cloudmapNamespaceName)
+        )
+          throw new VisibleError(
+            `You must provide both "vpc.cloudmapNamespaceId" and "vpc.cloudmapNamespaceName" for the "${name}" Cluster component.`,
           );
 
         return {

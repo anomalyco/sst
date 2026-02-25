@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -18,7 +19,7 @@ import (
 var logFile = (func() *os.File {
 	tmpPath := flag.SST_LOG
 	if tmpPath == "" {
-		tmpPath = filepath.Join(os.TempDir(), "sst-"+time.Now().Format("2006-01-02-15-04-05-*")+".log")
+		tmpPath = filepath.Join(os.TempDir(), fmt.Sprintf("sst-%s.log", time.Now().Format("2006-01-02-15-04-05")))
 	}
 	logFile, err := os.Create(tmpPath)
 	if err != nil {
@@ -27,12 +28,32 @@ var logFile = (func() *os.File {
 	return logFile
 })()
 
+func (c *Cli) Discover() (string, error) {
+	cfgPath := c.String("config")
+	if cfgPath != "" {
+		abs, err := filepath.Abs(cfgPath)
+		if err != nil {
+			return "", util.NewReadableError(err, "Could not find "+cfgPath)
+		}
+		if _, err := os.Stat(abs); os.IsNotExist(err) {
+			return "", util.NewReadableError(err, "Could not find "+abs)
+		}
+		return abs, nil
+	}
+
+	match, err := project.Discover()
+	if err != nil {
+		return "", util.NewReadableError(err, "Could not find sst.config.ts")
+	}
+	return match, nil
+}
+
 func (c *Cli) InitProject() (*project.Project, error) {
 	slog.Info("initializing project", "version", c.version)
 
-	cfgPath, err := project.Discover()
+	cfgPath, err := c.Discover()
 	if err != nil {
-		return nil, util.NewReadableError(err, "Could not find sst.config.ts")
+		return nil, err
 	}
 
 	stage, err := c.Stage(cfgPath)
@@ -67,10 +88,12 @@ func (c *Cli) InitProject() (*project.Project, error) {
 			return nil, util.NewReadableError(err, "Could not copy log file")
 		}
 		logFile.Close()
-		err = os.RemoveAll(filepath.Join(os.TempDir(), logFile.Name()))
-		if err != nil {
-			return nil, err
-		}
+		defer func() {
+			err = os.RemoveAll(filepath.Join(os.TempDir(), logFile.Name()))
+			if err != nil {
+				slog.Error("failed to remove temp log file", "err", err)
+			}
+		}()
 		logFile = nextLogFile
 	}
 	c.configureLog()

@@ -93,7 +93,10 @@ func Start(ctx context.Context, p *project.Project, server *server.Server) error
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 					return
 				}
-				body, err := json.Marshal(env)
+				body, err := json.Marshal(map[string]interface{}{
+					"env":     env,
+					"command": d.Command,
+				})
 				if err != nil {
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 					return
@@ -172,7 +175,12 @@ func Stream(ctx context.Context, url string, types ...interface{}) (chan any, er
 	return out, nil
 }
 
-func Env(ctx context.Context, query string, url string) (map[string]string, error) {
+type EnvResponse struct {
+	Env     map[string]string `json:"env"`
+	Command string            `json:"command"`
+}
+
+func Env(ctx context.Context, query string, url string) (*EnvResponse, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", url+"/api/env?"+query, nil)
 	if err != nil {
 		return nil, err
@@ -182,12 +190,12 @@ func Env(ctx context.Context, query string, url string) (map[string]string, erro
 		return nil, err
 	}
 	defer resp.Body.Close()
-	var result map[string]string
+	var result EnvResponse
 	err = json.NewDecoder(resp.Body).Decode(&result)
 	if err != nil {
 		return nil, err
 	}
-	return result, nil
+	return &result, nil
 }
 
 func Deploy(ctx context.Context, url string) error {

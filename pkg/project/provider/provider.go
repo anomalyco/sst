@@ -26,6 +26,7 @@ type Home interface {
 	setPassphrase(app, stage string, passphrase string) error
 	getPassphrase(app, stage string) (string, error)
 	listStages(app string) ([]string, error)
+	cleanup(key, app, stage string) error
 	info() (util.KeyValuePairs[string], error)
 }
 
@@ -155,6 +156,16 @@ func PutUpdate(backend Home, app, stage string, update *Update) error {
 	return putData(backend, "update", app, stage+"/"+update.ID, false, update)
 }
 
+func Cleanup(backend Home, app, stage string) error {
+	if err := backend.cleanup("eventlog", app, stage); err != nil {
+		return err
+	}
+	if err := backend.cleanup("snapshot", app, stage); err != nil {
+		return err
+	}
+	return nil
+}
+
 func GetSecrets(backend Home, app, stage string) (map[string]string, error) {
 	if stage == "" {
 		stage = "_fallback"
@@ -181,7 +192,7 @@ func PutSecrets(backend Home, app, stage string, data map[string]string) error {
 func PushPartialState(backend Home, updateID, app, stage string, data []byte) error {
 	slog.Info("pushing partial state", "updateID", updateID)
 	err := json.Unmarshal(data, &map[string]interface{}{})
-	if err != nil {
+	if err != nil || len(data) == 0 {
 		return fmt.Errorf("something has corrupted the state file - refusing to upload: %w", err)
 	}
 	return backend.putData("app", app, stage, bytes.NewReader(data))

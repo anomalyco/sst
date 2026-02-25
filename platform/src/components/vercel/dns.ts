@@ -37,6 +37,7 @@
  */
 
 import { DnsRecord, DnsRecordArgs } from "@pulumiverse/vercel";
+import { DnsRecord as OverridableDnsRecord } from "./providers/dns-record";
 import { AliasRecord, Dns, Record } from "../dns";
 import { logicalName } from "../naming";
 import { ComponentResourceOptions, all } from "@pulumi/pulumi";
@@ -72,6 +73,7 @@ export function dns(args: DnsArgs) {
   return {
     provider: "vercel",
     createAlias,
+    createCaa,
     createRecord,
   } satisfies Dns;
 
@@ -92,6 +94,38 @@ export function dns(args: DnsArgs) {
       },
       opts,
     );
+  }
+
+  function createCaa(
+    namePrefix: string,
+    recordName: string,
+    opts: ComponentResourceOptions,
+  ) {
+    // Need to use the OverridableDnsRecord instead of the vercel.DnsRecord to
+    // ignore existing CAA records. This is because the CAA records are not
+    // removed.
+    return [
+      new OverridableDnsRecord(
+        `${namePrefix}CaaRecord`,
+        {
+          domain: args.domain,
+          name: args.domain,
+          type: "CAA",
+          value: `0 issue "amazonaws.com"`,
+        },
+        opts,
+      ),
+      new OverridableDnsRecord(
+        `${namePrefix}CaaWildcardRecord`,
+        {
+          domain: args.domain,
+          name: args.domain,
+          type: "CAA",
+          value: `0 issuewild "amazonaws.com"`,
+        },
+        opts,
+      ),
+    ];
   }
 
   function createRecord(

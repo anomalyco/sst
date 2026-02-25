@@ -11,3 +11,5 @@ Pulumi.yaml
 .netlify
 .env
 tmp
+.termai
+.opencode

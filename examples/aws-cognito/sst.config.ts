@@ -1,5 +1,10 @@
 /// <reference path="./.sst/platform/config.d.ts" />
-
+/**
+ * ## AWS Cognito User Pool
+ *
+ * Create a Cognito user pool with triggers and identity pool.
+ *
+ */
 export default $config({
   app(input) {
     return {
@@ -16,7 +21,11 @@ export default $config({
         },
       },
     });
-    const client = userPool.addClient("Web");
+
+    const client = userPool.addClient("Web", {
+      callbackUrls: ['https://example.com/auth/callback']
+    });
+
     const identityPool = new sst.aws.CognitoIdentityPool("MyIdentityPool", {
       userPools: [
         {

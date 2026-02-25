@@ -456,6 +456,7 @@ async function generateExamplesDocs() {
     const lines = fs
       .readFileSync(path.join(`../examples`, module.sources![0].fileName))
       .toString()
+      .replace(/\t/g, "  ")
       .split("\n");
     const start = lines.indexOf("  async run() {");
     const end = lines.lastIndexOf("  },");
@@ -600,6 +601,7 @@ async function generateComponentDoc(
   sdk?: TypeDoc.DeclarationReflection
 ) {
   console.info(`Generating ${component.name}...`);
+
   const sourceFile = component.sources![0].fileName;
   const className = useClassName(component);
   const fullClassName = `${useClassProviderNamespace(component)}.${className}`;
@@ -642,9 +644,20 @@ async function generateComponentDoc(
           ...(["realtime", "task"].includes(sdk?.name!)
             ? renderAbout(useModuleComment(sdk!))
             : []),
-          ...(["opencontrol"].includes(sdk?.name!)
-            ? renderVariables(sdk!)
-            : []),
+          ...(() => {
+            if (!["opencontrol"].includes(sdk?.name!)) return [];
+            for (const variable of sdk!.children!) {
+              if (variable.name === "tools") {
+                // @ts-expect-error
+                variable.type = {
+                  type: "reference",
+                  name: "Tools",
+                  package: "opencontrol",
+                };
+              }
+            }
+            return renderVariables(sdk!);
+          })(),
           ...(sdk
             ? renderFunctions(
                 sdk,
@@ -846,7 +859,9 @@ function renderType(
       console.error(type);
       throw new Error(`Unsupported templateLiteral type`);
     }
-    return `<code class="symbol">&ldquo;</code><code class="primitive">${type.head}$\\{${type.tail[0][0].name}\\}${type.tail[0][1]}</code><code class="symbol">&rdquo;</code>`;
+    const head = type.head.replace("{", "\\{").replace("}", "\\}");
+    const tail = type.tail[0][1].replace("{", "\\{").replace("}", "\\}");
+    return `<code class="symbol">&ldquo;</code><code class="primitive">${head}$\\{${type.tail[0][0].name}\\}${tail}</code><code class="symbol">&rdquo;</code>`;
   }
   function renderUnionType(type: TypeDoc.UnionType) {
     return type.types
@@ -929,6 +944,9 @@ function renderType(
         '<code class="primitive">"arn:aws:lambda:$&#123;string&#125;"</code>',
       ].join("");
     }
+    if (type.name === "SsrSite") {
+      return ['<code class="primitive">All SSR sites</code>'].join("");
+    }
     // types in the same doc (links to the class ie. `subscribe()` return type)
     if (isModuleComponent(module) && type.name === useClassName(module)) {
       return `[<code class="type">${type.name}</code>](.)`;
@@ -939,61 +957,27 @@ function renderType(
         type.name
       }</code>](#${type.name.toLowerCase()})`;
     }
+
     // types in different doc
-    const externalModule = {
-      ApiGatewayV1ApiKey: "apigatewayv1-api-key",
-      ApiGatewayV1ApiKeyArgs: "apigatewayv1-api-key",
-      ApiGatewayV1Authorizer: "apigatewayv1-authorizer",
-      ApiGatewayV1IntegrationArgs: "apigatewayv1",
-      ApiGatewayV1IntegrationRoute: "apigatewayv1-integration-route",
-      ApiGatewayV1LambdaRoute: "apigatewayv1-lambda-route",
-      ApiGatewayV1UsagePlan: "apigatewayv1-usage-plan",
-      ApiGatewayV2Authorizer: "apigatewayv2-authorizer",
-      ApiGatewayV2LambdaRoute: "apigatewayv2-lambda-route",
-      ApiGatewayV2PrivateRoute: "apigatewayv2-private-route",
-      ApiGatewayV2UrlRoute: "apigatewayv2-url-route",
-      ApiGatewayWebSocketRoute: "apigateway-websocket-route",
-      AppSyncDataSource: "app-sync-data-source",
-      AppSyncFunction: "app-sync-function",
-      AppSyncResolver: "app-sync-resolver",
-      Bucket: "bucket",
-      BucketArgs: "bucket",
-      BucketNotification: "bucket-notification",
-      Bus: "bus",
-      BusLambdaSubscriber: "bus-lambda-subscriber",
-      BusQueueSubscriber: "bus-queue-subscriber",
-      Cdn: "cdn",
-      CdnArgs: "cdn",
-      Cluster: "cluster",
-      CognitoIdentityProvider: "cognito-identity-provider",
-      CognitoUserPoolClient: "cognito-user-pool-client",
-      Dynamo: "dynamo",
-      DynamoLambdaSubscriber: "dynamo-lambda-subscriber",
-      Efs: "efs",
-      Function: "function",
-      FunctionArgs: "function",
-      FunctionPermissionArgs: "function",
-      Postgres: "postgres",
-      PostgresArgs: "postgres",
-      Router: "router",
-      Queue: "queue",
-      QueueLambdaSubscriber: "queue-lambda-subscriber",
-      KinesisStreamLambdaSubscriber: "kinesis-stream-lambda-subscriber",
-      RealtimeLambdaSubscriber: "realtime-lambda-subscriber",
-      Service: "service",
-      SnsTopic: "sns-topic",
-      SnsTopicLambdaSubscriber: "sns-topic-lambda-subscriber",
-      SnsTopicQueueSubscriber: "sns-topic-queue-subscriber",
-      Task: "task",
-      Vpc: "vpc",
-    }[type.name];
-    if (externalModule) {
-      const hash = type.name.endsWith("Args")
+    const fileName = (type.reflection as TypeDoc.DeclarationReflection)
+      ?.sources?.[0].fileName;
+    if (fileName?.startsWith("platform/src/components/")) {
+      const docHash = type.name.endsWith("Args")
         ? `#${type.name.toLowerCase()}`
         : "";
-      return `[<code class="type">${type.name}</code>](/docs/component/aws/${externalModule}/${hash})`;
+      const docLink = fileName.replace(
+        /platform\/src\/components\/(.*)\.ts/,
+        "/docs/component/$1"
+      );
+      return `[<code class="type">${type.name}</code>](${docLink}${docHash})`;
     }
-    if (type.name === "Resource" || type.name === "Constructor") {
+
+    // types in different doc without their own doc page
+    if (
+      type.name === "Resource" ||
+      type.name === "Constructor" ||
+      type.name === "EsbuildOptions"
+    ) {
       return `<code class="type">${type.name}</code>`;
     }
 
@@ -1037,11 +1021,18 @@ function renderType(
             `<code class="symbol">&gt;</code>`,
           ].join("");
     }
-    if (type.name === "UnwrappedObject" || type.name === "Unwrap") {
+    if (
+      type.name === "UnwrappedObject" ||
+      type.name === "UnwrappedArray" ||
+      type.name === "Unwrap"
+    ) {
       return renderSomeType(type.typeArguments?.[0]!);
     }
     if (type.name === "ComponentResourceOptions") {
       return `[<code class="type">${type.name}</code>](https://www.pulumi.com/docs/concepts/options/)`;
+    }
+    if (type.name === "CustomResourceOptions") {
+      return `[<code class="type">${type.name}</code>](https://www.pulumi.com/docs/iac/concepts/resources/dynamic-providers/)`;
     }
     if (type.name === "FileAsset") {
       return `[<code class="type">${type.name}</code>](https://www.pulumi.com/docs/iac/concepts/assets-archives/#assets)`;
@@ -1089,6 +1080,7 @@ function renderType(
         DistributionCustomErrorResponse: "cloudfront/distribution",
         DistributionDefaultCacheBehavior: "cloudfront/distribution",
         DistributionOrderedCacheBehavior: "cloudfront/distribution",
+        PolicyDocument: "iam/getpolicydocument",
       }[type.name];
       if (!link) {
         // @ts-expect-error
@@ -1174,7 +1166,7 @@ function renderType(
     return `[<code class="type">${type.name}</code>](https://esbuild.github.io/api/${hash})`;
   }
   function renderOpencontrolType(type: TypeDoc.ReferenceType) {
-    return `[<code class="type">${type.name}</code>](https://opencontrol.js.org/docs/api/opencontrol)`;
+    return `[<code class="type">${type.name}</code>](https://opencontrol.ai/)`;
   }
   function renderBunShellType(type: TypeDoc.ReferenceType) {
     return `[<code class="type">Bun Shell</code>](https://bun.sh/docs/runtime/shell)`;
@@ -1198,7 +1190,6 @@ function renderType(
 
 function renderVariables(
   module: TypeDoc.DeclarationReflection,
-
   opts?: { title?: string }
 ) {
   const lines: string[] = [];
@@ -1968,6 +1959,7 @@ function useClassMethods(module: TypeDoc.DeclarationReflection) {
       (c) =>
         !c.flags.isExternal &&
         !c.flags.isPrivate &&
+        !c.flags.isProtected &&
         c.signatures &&
         !c.signatures[0].comment?.modifierTags.has("@internal") &&
         !c.signatures[0].comment?.blockTags.find((t) => t.tag === "@deprecated")
@@ -2106,6 +2098,24 @@ function patchCode() {
       "\ntype AwsPermission = {};\n" +
       "\ntype CloudflareBinding = {};\n"
   );
+  // patch StepFunctions
+  ["map.ts", "parallel.ts", "pass.ts", "task.ts", "wait.ts"].forEach((file) => {
+    fs.cpSync(
+      `../platform/src/components/aws/step-functions/${file}`,
+      `../platform/src/components/aws/step-functions/${file}.bk`
+    );
+    fs.writeFileSync(
+      `../platform/src/components/aws/step-functions/${file}`,
+      fs
+        .readFileSync(`../platform/src/components/aws/step-functions/${file}`)
+        .toString()
+        .trim()
+        .replace(
+          "public next<T extends State>(state: T): T {",
+          "public next(state: State): State {"
+        )
+    );
+  });
 }
 
 function restoreCode() {
@@ -2121,6 +2131,13 @@ function restoreCode() {
     "../platform/src/components/linkable.ts.bk",
     "../platform/src/components/linkable.ts"
   );
+  // restore StepFunctions
+  ["map.ts", "parallel.ts", "pass.ts", "task.ts", "wait.ts"].forEach((file) => {
+    fs.renameSync(
+      `../platform/src/components/aws/step-functions/${file}.bk`,
+      `../platform/src/components/aws/step-functions/${file}`
+    );
+  });
 }
 
 async function buildComponents() {
@@ -2175,8 +2192,10 @@ async function buildComponents() {
       "../platform/src/components/aws/efs.ts",
       "../platform/src/components/aws/email.ts",
       "../platform/src/components/aws/function.ts",
+      "../platform/src/components/aws/mysql.ts",
       "../platform/src/components/aws/postgres.ts",
       "../platform/src/components/aws/postgres-v1.ts",
+      "../platform/src/components/aws/step-functions.ts",
       "../platform/src/components/aws/vector.ts",
       "../platform/src/components/aws/astro.ts",
       "../platform/src/components/aws/nextjs.ts",
@@ -2185,21 +2204,24 @@ async function buildComponents() {
       "../platform/src/components/aws/realtime-lambda-subscriber.ts",
       "../platform/src/components/aws/react.ts",
       "../platform/src/components/aws/redis.ts",
+      "../platform/src/components/aws/redis-v1.ts",
       "../platform/src/components/aws/remix.ts",
       "../platform/src/components/aws/queue.ts",
       "../platform/src/components/aws/queue-lambda-subscriber.ts",
       "../platform/src/components/aws/kinesis-stream.ts",
       "../platform/src/components/aws/kinesis-stream-lambda-subscriber.ts",
       "../platform/src/components/aws/opencontrol.ts",
+      "../platform/src/components/aws/open-search.ts",
       "../platform/src/components/aws/router.ts",
       "../platform/src/components/aws/service.ts",
+      "../platform/src/components/aws/service-v1.ts",
       "../platform/src/components/aws/sns-topic.ts",
       "../platform/src/components/aws/sns-topic-lambda-subscriber.ts",
       "../platform/src/components/aws/sns-topic-queue-subscriber.ts",
       "../platform/src/components/aws/solid-start.ts",
       "../platform/src/components/aws/static-site.ts",
       "../platform/src/components/aws/svelte-kit.ts",
-      "../platform/src/components/aws/tanstack-start.ts",
+      "../platform/src/components/aws/tan-stack-start.ts",
       "../platform/src/components/aws/task.ts",
       "../platform/src/components/aws/vpc.ts",
       "../platform/src/components/aws/vpc-v1.ts",
@@ -2208,19 +2230,55 @@ async function buildComponents() {
       "../platform/src/components/cloudflare/d1.ts",
       "../platform/src/components/cloudflare/kv.ts",
       // internal
-      "../platform/src/components/aws/dns.ts",
-      "../platform/src/components/cloudflare/dns.ts",
-      "../platform/src/components/vercel/dns.ts",
       "../platform/src/components/aws/cdn.ts",
+      "../platform/src/components/aws/dns.ts",
       "../platform/src/components/aws/iam-edit.ts",
       "../platform/src/components/aws/permission.ts",
+      "../platform/src/components/aws/providers/function-environment-update.ts",
+      "../platform/src/components/aws/step-functions/choice.ts",
+      "../platform/src/components/aws/step-functions/fail.ts",
+      "../platform/src/components/aws/step-functions/map.ts",
+      "../platform/src/components/aws/step-functions/parallel.ts",
+      "../platform/src/components/aws/step-functions/pass.ts",
+      "../platform/src/components/aws/step-functions/state.ts",
+      "../platform/src/components/aws/step-functions/succeed.ts",
+      "../platform/src/components/aws/step-functions/task.ts",
+      "../platform/src/components/aws/step-functions/wait.ts",
       "../platform/src/components/cloudflare/binding.ts",
+      "../platform/src/components/cloudflare/dns.ts",
+      "../platform/src/components/vercel/dns.ts",
     ],
     tsconfig: "../platform/tsconfig.json",
   });
 
   const project = await app.convert();
   if (!project) throw new Error("Failed to convert project");
+
+  // sort StepFunctions methods
+  (() => {
+    const c = project
+      .getChildrenByKind(TypeDoc.ReflectionKind.Module)
+      .find((c) => c.name === "components/aws/step-functions")
+      ?.getChildByName("StepFunctions") as TypeDoc.DeclarationReflection;
+    const taskChildren: TypeDoc.DeclarationReflection[] = [];
+    const otherChildren: TypeDoc.DeclarationReflection[] = [];
+    c.children?.forEach((c) =>
+      c.kind === TypeDoc.ReflectionKind.Method &&
+      [
+        "task",
+        "choice",
+        "parallel",
+        "map",
+        "pass",
+        "succeed",
+        "fail",
+        "wait",
+      ].includes(c.name)
+        ? taskChildren.push(c)
+        : otherChildren.push(c)
+    );
+    c.children = [...taskChildren, ...otherChildren];
+  })();
 
   // Generate JSON (generated for debugging purposes)
   await app.generateJson(project, "components-doc.json");

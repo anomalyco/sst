@@ -29,33 +29,51 @@ export async function cfFetch<ResultType>(
   resource: string,
   init: RequestInit = {},
 ) {
-  const ret = await fetch(`${CLOUDFLARE_API_BASE_URL}${resource}`, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${CLOUDFLARE_API_TOKEN}`,
-      ...init.headers,
-    },
-  });
-  const json = (await ret.json()) as FetchResult<ResultType>;
-  // ie.
-  // {
-  //   "result": {
-  //     "subdomain": "wangfanjie"
-  //   },
-  //   "success": true,
-  //   "errors": [],
-  //   "messages": []
-  // }
-  if (json.success) {
-    return json;
+  const maxRetries = 3;
+  let lastError: Error | undefined;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const ret = await fetch(`${CLOUDFLARE_API_BASE_URL}${resource}`, {
+        ...init,
+        headers: {
+          Authorization: `Bearer ${CLOUDFLARE_API_TOKEN}`,
+          ...init.headers,
+        },
+      });
+
+      const json = (await ret.json()) as FetchResult<ResultType>;
+      // ie.
+      // {
+      //   "result": {
+      //     "subdomain": "wangfanjie"
+      //   },
+      //   "success": true,
+      //   "errors": [],
+      //   "messages": []
+      // }
+      if (json.success) {
+        return json;
+      }
+
+      lastError = new Error(
+        `A request to the Cloudflare API (${resource}) failed.`,
+      );
+      // @ts-expect-error attach the errors to the error object
+      lastError.errors = json.errors;
+      // @ts-expect-error attach the messages to the error object
+      lastError.messages = json.messages;
+    } catch (error: any) {
+      lastError = error;
+    }
+
+    // Retry with exponential backoff
+    if (attempt < maxRetries) {
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.pow(2, attempt) * 200),
+      );
+    }
   }
 
-  const error = new Error(
-    `A request to the Cloudflare API (${resource}) failed.`,
-  );
-  // @ts-expect-error attach the errors to the error object
-  error.errors = json.errors;
-  // @ts-expect-error attach the messages to the error object
-  error.messages = json.messages;
-  throw error;
+  throw lastError;
 }

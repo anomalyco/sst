@@ -16,44 +16,44 @@ export default function Home() {
       <nav style={{ marginTop: "2rem" }}>
         <ul>
           <li>
-            <a
+            <NavLink
+              to="/server-rendered"
               className="group flex items-center gap-3 self-stretch p-3 leading-normal text-blue-700 hover:underline dark:text-blue-500"
-              href="/server-rendered"
             >
               Server Rendered
-            </a>
+            </NavLink>
           </li>
           <li>
-            <a
+            <NavLink
               className="group flex items-center gap-3 self-stretch p-3 leading-normal text-blue-700 hover:underline dark:text-blue-500"
-              href="/client-rendered"
+              to="/client-rendered"
             >
               Client Rendered
-            </a>
+            </NavLink>
           </li>
           <li>
-            <a
+            <NavLink
               className="group flex items-center gap-3 self-stretch p-3 leading-normal text-blue-700 hover:underline dark:text-blue-500"
-              href="/prerendered"
+              to="/prerendered"
             >
               Prerendered
-            </a>
+            </NavLink>
           </li>
           <li>
-            <a
+            <NavLink
               className="group flex items-center gap-3 self-stretch p-3 leading-normal text-blue-700 hover:underline dark:text-blue-500"
-              href="/plus+sign-in-path"
+              to="/plus+sign-in-path"
             >
               Plus Sign in Path
-            </a>
+            </NavLink>
           </li>
           <li>
-            <a
+            <NavLink
               className="group flex items-center gap-3 self-stretch p-3 leading-normal text-blue-700 hover:underline dark:text-blue-500"
-              href="/error"
+              to="/error"
             >
               Error
-            </a>
+            </NavLink>
           </li>
         </ul>
       </nav>

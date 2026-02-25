@@ -7,4 +7,5 @@ export default {
   async prerender() {
     return ["/client-rendered", "/prerendered"];
   },
+  basename: "/rr7",
 } satisfies Config;

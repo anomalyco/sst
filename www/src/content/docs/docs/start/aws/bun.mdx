@@ -249,7 +249,7 @@ To deploy our app we'll first add a `Dockerfile`.
 ```dockerfile title="Dockerfile"
 FROM oven/bun
 
-COPY bun.lockb . 
+COPY bun.lock . 
 COPY package.json . 
 
 RUN bun install --frozen-lockfile

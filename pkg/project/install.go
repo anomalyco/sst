@@ -35,7 +35,11 @@ func (p *Project) NeedsInstall() bool {
 		return true
 	}
 	for _, entry := range p.lock {
-		config := p.app.Providers[entry.Name].(map[string]interface{})
+		match, ok := p.app.Providers[entry.Name]
+		if !ok {
+			return false
+		}
+		config := match.(map[string]interface{})
 		version := config["version"]
 		if version == nil || version == "" {
 			continue
@@ -158,7 +162,7 @@ func (p *Project) writeTypes() error {
 	file.WriteString(`  }` + "\n")
 	file.WriteString(`  export const $config: (` + "\n")
 	file.WriteString(`    input: Omit<Config, "app"> & {` + "\n")
-	file.WriteString(`      app(input: AppInput): Omit<App, "providers"> & Providers;` + "\n")
+	file.WriteString(`      app(input: AppInput): Promise<Omit<App, "providers"> & Providers> | (Omit<App, "providers"> & Providers);` + "\n")
 	file.WriteString(`    },` + "\n")
 	file.WriteString(`  ) => Config;` + "\n")
 	file.WriteString(`}` + "\n")

@@ -62,7 +62,7 @@ export class Component extends ComponentResource {
     for (const transform of transforms) {
       transform({ name, props: args, opts });
     }
-    super(type, name, args, {
+    super(type, name, {}, {
       transformations: [
         // Ensure logical and physical names are prefixed
         (args) => {
@@ -133,6 +133,7 @@ export class Component extends ComponentResource {
               "aws:appsync/function:Function",
               "aws:appsync/resolver:Resolver",
               "aws:ec2/routeTableAssociation:RouteTableAssociation",
+              "aws:ec2/eipAssociation:EipAssociation",
               "aws:ecs/clusterCapacityProviders:ClusterCapacityProviders",
               "aws:efs/fileSystem:FileSystem",
               "aws:efs/mountTarget:MountTarget",
@@ -143,28 +144,34 @@ export class Component extends ComponentResource {
               "aws:iam/userPolicy:UserPolicy",
               "aws:cloudfront/cachePolicy:CachePolicy",
               "aws:cloudfront/distribution:Distribution",
-              "aws:cloudfront/keyvaluestoreKey:KeyvaluestoreKey",
               "aws:cognito/identityPoolRoleAttachment:IdentityPoolRoleAttachment",
               "aws:cognito/identityProvider:IdentityProvider",
               "aws:cognito/userPoolClient:UserPoolClient",
               "aws:lambda/eventSourceMapping:EventSourceMapping",
+              "aws:lambda/functionEventInvokeConfig:FunctionEventInvokeConfig",
               "aws:lambda/functionUrl:FunctionUrl",
               "aws:lambda/invocation:Invocation",
               "aws:lambda/permission:Permission",
               "aws:lambda/provisionedConcurrencyConfig:ProvisionedConcurrencyConfig",
               "aws:lb/listener:Listener",
               "aws:lb/listenerRule:ListenerRule",
+              "aws:opensearch/domainPolicy:DomainPolicy",
               "aws:rds/proxyDefaultTargetGroup:ProxyDefaultTargetGroup",
               "aws:rds/proxyTarget:ProxyTarget",
               "aws:route53/record:Record",
               "aws:s3/bucketCorsConfigurationV2:BucketCorsConfigurationV2",
+              "aws:s3/bucketCorsConfiguration:BucketCorsConfiguration",
               "aws:s3/bucketNotification:BucketNotification",
               "aws:s3/bucketObject:BucketObject",
               "aws:s3/bucketObjectv2:BucketObjectv2",
               "aws:s3/bucketPolicy:BucketPolicy",
               "aws:s3/bucketPublicAccessBlock:BucketPublicAccessBlock",
               "aws:s3/bucketVersioningV2:BucketVersioningV2",
+              "aws:s3/bucketLifecycleConfigurationV2:BucketLifecycleConfigurationV2",
+              "aws:s3/bucketLifecycleConfiguration:BucketLifecycleConfiguration",
               "aws:s3/bucketWebsiteConfigurationV2:BucketWebsiteConfigurationV2",
+              "aws:s3/bucketVersioning:BucketVersioning",
+              "aws:s3/bucketWebsiteConfiguration:BucketWebsiteConfiguration",
               "aws:secretsmanager/secretVersion:SecretVersion",
               "aws:ses/domainIdentityVerification:DomainIdentityVerification",
               "aws:sesv2/configurationSetEventDestination:ConfigurationSetEventDestination",
@@ -173,9 +180,9 @@ export class Component extends ComponentResource {
               "aws:sns/topicSubscription:TopicSubscription",
               "aws:sqs/queuePolicy:QueuePolicy",
               "aws:ssm/parameter:Parameter",
-              "cloudflare:index/record:Record",
-              "cloudflare:index/workerCronTrigger:WorkerCronTrigger",
-              "cloudflare:index/workerDomain:WorkerDomain",
+              "cloudflare:index/dnsRecord:DnsRecord",
+              "cloudflare:index/workersCronTrigger:WorkersCronTrigger",
+              "cloudflare:index/workersCustomDomain:WorkersCustomDomain",
               "docker-build:index:Image",
               "vercel:index/dnsRecord:DnsRecord",
             ].includes(args.type)
@@ -222,10 +229,15 @@ export class Component extends ComponentResource {
             "aws:ec2/subnet:Subnet": ["tags", 255],
             "aws:ec2/vpc:Vpc": ["tags", 255],
             "aws:ecs/cluster:Cluster": ["name", 255],
+            "aws:elasticache/parameterGroup:ParameterGroup": [
+              "name",
+              255,
+              { lower: true },
+            ],
             "aws:elasticache/replicationGroup:ReplicationGroup": [
               "replicationGroupId",
               40,
-              { lower: true },
+              { lower: true, replace: (name) => name.replaceAll(/-+/g, "-") },
             ],
             "aws:elasticache/subnetGroup:SubnetGroup": [
               "name",
@@ -245,6 +257,7 @@ export class Component extends ComponentResource {
             // ie. "-1234567" is automatically added
             "aws:lb/loadBalancer:LoadBalancer": ["name", 24],
             "aws:lambda/function:Function": ["name", 64],
+            "aws:opensearch/domain:Domain": ["domainName", 28, { lower: true }],
             "aws:rds/cluster:Cluster": [
               "clusterIdentifier",
               63,
@@ -268,13 +281,14 @@ export class Component extends ComponentResource {
               { lower: true },
             ],
             "aws:rds/subnetGroup:SubnetGroup": ["name", 255, { lower: true }],
-            "aws:s3/bucketV2:BucketV2": ["bucket", 63, { lower: true }],
+            "aws:s3/bucket:Bucket": ["bucket", 63, { lower: true }],
             "aws:secretsmanager/secret:Secret": ["name", 512],
             "aws:sesv2/configurationSet:ConfigurationSet": [
               "configurationSetName",
               64,
               { lower: true },
             ],
+            "aws:sfn/stateMachine:StateMachine": ["name", 80],
             "aws:sns/topic:Topic": [
               "name",
               256,
@@ -301,12 +315,12 @@ export class Component extends ComponentResource {
               { lower: true },
             ],
             "cloudflare:index/r2Bucket:R2Bucket": ["name", 64, { lower: true }],
-            "cloudflare:index/workerScript:WorkerScript": [
-              "name",
+            "cloudflare:index/workersScript:WorkersScript": [
+              "scriptName",
               64,
               { lower: true },
             ],
-            "cloudflare:index/queue:Queue": ["name", 64, { lower: true }],
+            "cloudflare:index/queue:Queue": ["queueName", 64, { lower: true }],
             "cloudflare:index/workersKvNamespace:WorkersKvNamespace": [
               "title",
               64,

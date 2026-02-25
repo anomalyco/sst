@@ -72,6 +72,23 @@ export interface TaskArgs extends FargateBaseArgs {
    */
   containers?: Input<Prettify<FargateContainerArgs>>[];
   /**
+   * Assign a public IP address to the task.
+   *
+   * Defaults:
+   * - If an SST VPC component is passed to the `vpc` property, tasks run in public subnets
+   * by default and `publicIp` defaults to `true`.
+   * - If a non-SST VPC is used, tasks run in the specified subnets and `publicIp` defaults
+   * to `false`.
+   *
+   * @example
+   * ```ts
+   * {
+   *   publicIp: true
+   * }
+   * ```
+   */
+  publicIp?: Input<boolean>;
+  /**
    * Configure how this component works in `sst dev`.
    *
    * :::note
@@ -129,17 +146,22 @@ export interface TaskArgs extends FargateBaseArgs {
  *
  * #### Create a Task
  *
- * Add a task to your cluster.
+ * Tasks are run inside an ECS Cluster. If you haven't already, create one.
  *
  * ```ts title="sst.config.ts"
  * const vpc = new sst.aws.Vpc("MyVpc");
  * const cluster = new sst.aws.Cluster("MyCluster", { vpc });
+ * ```
+ *
+ * Add the task to it.
+ *
+ * ```ts title="sst.config.ts"
  * const task = new sst.aws.Task("MyTask", { cluster });
  * ```
  *
  * #### Configure the container image
  *
- * By default, the task will look for a Dockerfile in the root directory. Optionally
+ * By default, the task will look for a Dockerfile in the root directory. Optionally,
  * configure the image context and dockerfile.
  *
  * ```ts title="sst.config.ts"
@@ -211,7 +233,7 @@ export interface TaskArgs extends FargateBaseArgs {
  * });
  * ```
  *
- * Then from your function start the task.
+ * Then from your function run the task.
  *
  * ```ts title="src/lambda.ts"
  * import { Resource } from "sst";
@@ -253,6 +275,7 @@ export class Task extends Component implements Link.Linkable {
   private readonly executionRole: iam.Role;
   private readonly taskRole: iam.Role;
   private readonly _taskDefinition: Output<ecs.TaskDefinition>;
+  private readonly _publicIp: Output<boolean>;
   private readonly containerNames: Output<Output<string>[]>;
   private readonly dev: boolean;
 
@@ -271,6 +294,7 @@ export class Task extends Component implements Link.Linkable {
     const storage = normalizeStorage(args);
     const containers = normalizeContainers("task", args, name, architecture);
     const vpc = normalizeVpc();
+    const publicIp = normalizePublicIp();
 
     const taskRole = createTaskRole(
       name,
@@ -302,7 +326,7 @@ export class Task extends Component implements Link.Linkable {
             return [
               {
                 ...v[0],
-                image: output("ghcr.io/sst/sst/bridge-task:20241224005724"),
+                image: output("ghcr.io/anomalyco/sst/bridge-task:latest"),
                 environment: {
                   ...v[0].environment,
                   SST_TASK_ID: name,
@@ -328,6 +352,7 @@ export class Task extends Component implements Link.Linkable {
     this.vpc = vpc;
     this.executionRole = executionRole;
     this._taskDefinition = taskDefinition;
+    this._publicIp = publicIp;
     this.containerNames = containers.apply((v) => v.map((v) => output(v.name)));
     this.registerOutputs({
       _task: all([args.dev, containers]).apply(([v, containers]) => ({
@@ -368,6 +393,12 @@ export class Task extends Component implements Link.Linkable {
           v.securityGroups.map((v) => output(v)),
         ),
       };
+    }
+
+    function normalizePublicIp() {
+      return all([args.publicIp, vpc.isSstVpc]).apply(
+        ([publicIp, isSstVpc]) => publicIp ?? isSstVpc,
+      );
     }
   }
 
@@ -415,7 +446,7 @@ export class Task extends Component implements Link.Linkable {
    * @internal
    */
   public get assignPublicIp() {
-    return this.vpc.isSstVpc;
+    return this._publicIp;
   }
 
   /**

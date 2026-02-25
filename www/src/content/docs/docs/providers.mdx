@@ -193,7 +193,7 @@ new sst.aws.Function("MyFunction, {
   handler: "src/lambda.handler",
   environment: {
     ACCOUNT: aws.getCallerIdentityOutput({}).accountId,
-    REGION: aws.getRegionOutput().name
+    REGION: aws.getRegionOutput().region
   }
 }
 ```

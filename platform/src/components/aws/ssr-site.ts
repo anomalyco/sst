@@ -9,101 +9,291 @@ import {
   output,
   all,
   interpolate,
-  ComponentResource,
+  ComponentResourceOptions,
+  Resource,
 } from "@pulumi/pulumi";
+import * as pulumi from "@pulumi/pulumi";
+import * as aws from "@pulumi/aws";
 import { Cdn, CdnArgs } from "./cdn.js";
-import { Function, FunctionArgs } from "./function.js";
-import { useProvider } from "./helpers/provider.js";
+import { Function, FunctionArgs, FunctionArn } from "./function.js";
+import { parseLambdaEdgeArn } from "./helpers/arn.js";
 import { Bucket, BucketArgs } from "./bucket.js";
 import { BucketFile, BucketFiles } from "./providers/bucket-files.js";
-import { logicalName, physicalName } from "../naming.js";
+import { logicalName } from "../naming.js";
 import { Input } from "../input.js";
-import { transform, type Prettify, type Transform } from "../component.js";
+import {
+  Component,
+  Prettify,
+  transform,
+  type Transform,
+} from "../component.js";
 import { VisibleError } from "../error.js";
 import { Cron } from "./cron.js";
 import { BaseSiteFileOptions, getContentType } from "../base/base-site.js";
-import { BaseSsrSiteArgs } from "../base/base-ssr-site.js";
+import { BaseSsrSiteArgs, buildApp } from "../base/base-ssr-site.js";
+import { cloudfront, getRegionOutput, lambda, Region, iam } from "@pulumi/aws";
+import { KvKeys } from "./providers/kv-keys.js";
+import { useProvider } from "./helpers/provider.js";
+import { Link } from "../link.js";
+import { URL_UNAVAILABLE } from "./linkable.js";
 import {
-  cloudfront,
-  getPartitionOutput,
-  getRegionOutput,
-  lambda,
-  types,
-} from "@pulumi/aws";
-import { OriginAccessControl } from "./providers/origin-access-control.js";
+  CF_ROUTER_INJECTION,
+  CF_BLOCK_CLOUDFRONT_URL_INJECTION,
+  KV_SITE_METADATA,
+  RouterRouteArgsDeprecated,
+  normalizeRouteArgs,
+  RouterRouteArgs,
+} from "./router.js";
+import { DistributionInvalidation } from "./providers/distribution-invalidation.js";
+import { toSeconds, DurationSeconds } from "../duration.js";
+import { Size, toMBs } from "../size.js";
+import { KvRoutesUpdate } from "./providers/kv-routes-update.js";
+import { toPosix } from "../path.js";
 
-type CloudFrontFunctionConfig = { injections: string[] };
-type EdgeFunctionConfig = { function: Unwrap<FunctionArgs> };
-type ServerOriginConfig = { function: Unwrap<FunctionArgs> };
-type ImageOptimizationOriginConfig = {
-  function: Unwrap<FunctionArgs>;
+const supportedRegions = {
+  "af-south-1": { lat: -33.9249, lon: 18.4241 }, // Cape Town, South Africa
+  "ap-east-1": { lat: 22.3193, lon: 114.1694 }, // Hong Kong
+  "ap-northeast-1": { lat: 35.6895, lon: 139.6917 }, // Tokyo, Japan
+  "ap-northeast-2": { lat: 37.5665, lon: 126.978 }, // Seoul, South Korea
+  "ap-northeast-3": { lat: 34.6937, lon: 135.5023 }, // Osaka, Japan
+  "ap-southeast-1": { lat: 1.3521, lon: 103.8198 }, // Singapore
+  "ap-southeast-2": { lat: -33.8688, lon: 151.2093 }, // Sydney, Australia
+  "ap-southeast-3": { lat: -6.2088, lon: 106.8456 }, // Jakarta, Indonesia
+  "ap-southeast-4": { lat: -37.8136, lon: 144.9631 }, // Melbourne, Australia
+  "ap-southeast-5": { lat: 3.139, lon: 101.6869 }, // Kuala Lumpur, Malaysia
+  "ap-southeast-7": { lat: 13.7563, lon: 100.5018 }, // Bangkok, Thailand
+  "ap-south-1": { lat: 19.076, lon: 72.8777 }, // Mumbai, India
+  "ap-south-2": { lat: 17.385, lon: 78.4867 }, // Hyderabad, India
+  "ca-central-1": { lat: 45.5017, lon: -73.5673 }, // Montreal, Canada
+  "ca-west-1": { lat: 51.0447, lon: -114.0719 }, // Calgary, Canada
+  "cn-north-1": { lat: 39.9042, lon: 116.4074 }, // Beijing, China
+  "cn-northwest-1": { lat: 38.4872, lon: 106.2309 }, // Yinchuan, Ningxia
+  "eu-central-1": { lat: 50.1109, lon: 8.6821 }, // Frankfurt, Germany
+  "eu-central-2": { lat: 47.3769, lon: 8.5417 }, // Zurich, Switzerland
+  "eu-north-1": { lat: 59.3293, lon: 18.0686 }, // Stockholm, Sweden
+  "eu-south-1": { lat: 45.4642, lon: 9.19 }, // Milan, Italy
+  "eu-south-2": { lat: 40.4168, lon: -3.7038 }, // Madrid, Spain
+  "eu-west-1": { lat: 53.3498, lon: -6.2603 }, // Dublin, Ireland
+  "eu-west-2": { lat: 51.5074, lon: -0.1278 }, // London, UK
+  "eu-west-3": { lat: 48.8566, lon: 2.3522 }, // Paris, France
+  "il-central-1": { lat: 32.0853, lon: 34.7818 }, // Tel Aviv, Israel
+  "me-central-1": { lat: 25.2048, lon: 55.2708 }, // Dubai, UAE
+  "me-south-1": { lat: 26.0667, lon: 50.5577 }, // Manama, Bahrain
+  "mx-central-1": { lat: 19.4326, lon: -99.1332 }, // Mexico City, Mexico
+  "sa-east-1": { lat: -23.5505, lon: -46.6333 }, // São Paulo, Brazil
+  "us-east-1": { lat: 39.0438, lon: -77.4874 }, // Ashburn, VA
+  "us-east-2": { lat: 39.9612, lon: -82.9988 }, // Columbus, OH
+  "us-gov-east-1": { lat: 38.9696, lon: -77.3861 }, // Herndon, VA
+  "us-gov-west-1": { lat: 34.0522, lon: -118.2437 }, // Los Angeles, CA
+  "us-west-1": { lat: 37.7749, lon: -122.4194 }, // San Francisco, CA
+  "us-west-2": { lat: 45.5122, lon: -122.6587 }, // Portland, OR
 };
-type S3OriginConfig = {
-  originPath?: string;
-  copy: {
+
+export type Plan = {
+  // The base path of the site (ie. /docs). Note that S3 assets are not stored inside a
+  // folder with this name. The CF router will stripe the base path from the request URI
+  // when routing to S3.
+  base?: string;
+  server?: Unwrap<FunctionArgs>;
+  imageOptimizer?: {
+    function: Unwrap<FunctionArgs>;
+    prefix: string;
+  };
+  assets: {
     from: string;
+    // KV asset entries do not include the `to` value in their keys. The CF router will
+    // add the `to` value to the request URI when routing to S3.
     to: string;
     cached: boolean;
     versionedSubDir?: string;
+    deepRoute?: string;
   }[];
-};
-type OriginGroupConfig = {
-  primaryOriginName: string;
-  fallbackOriginName: string;
-  fallbackStatusCodes: number[];
+  isrCache?: {
+    from: string;
+    to: string;
+  };
+  custom404?: string;
+  buildId?: string;
 };
 
-export type Plan = ReturnType<typeof validatePlan>;
 export interface SsrSiteArgs extends BaseSsrSiteArgs {
   domain?: CdnArgs["domain"];
-  permissions?: FunctionArgs["permissions"];
+  /**
+   * @deprecated Use `router` instead.
+   */
+  route?: Prettify<RouterRouteArgsDeprecated>;
+  router?: Prettify<RouterRouteArgs>;
   cachePolicy?: Input<string>;
+  /**
+   * Configure Lambda function protection through CloudFront.
+   *
+   * @default `"none"`
+   *
+   * The available options are:
+   * - `"none"`: Lambda URLs are publicly accessible.
+   * - `"oac"`: Lambda URLs protected by CloudFront Origin Access Control. Requires manual `x-amz-content-sha256` header for POST requests. Use when you control all POST requests.
+   * - `"oac-with-edge-signing"`: Full protection with automatic header signing via Lambda@Edge. Works with external webhooks and callbacks. Higher cost and latency but works out of the box.
+   *
+   * :::note
+   * When using `"oac-with-edge-signing"`, request bodies are limited to 1MB due to Lambda@Edge payload limits. For file uploads larger than 1MB, consider using presigned S3 URLs or the `"oac"` mode with manual header signing.
+   * :::
+   *
+   * :::note
+   * When removing a stage that uses `"oac-with-edge-signing"`, deletion may take 5-10 minutes while AWS removes the Lambda@Edge replicated functions from all edge locations.
+   * :::
+   *
+   * @example
+   * ```js
+   * // No protection (default)
+   * {
+   *   protection: "none"
+   * }
+   * ```
+   *
+   * @example
+   * ```js
+   * // OAC protection, manual header signing required
+   * {
+   *   protection: "oac"
+   * }
+   * ```
+   *
+   * @example
+   * ```js
+   * // Full protection with automatic Lambda@Edge
+   * {
+   *   protection: "oac-with-edge-signing"
+   * }
+   * ```
+   *
+   * @example
+   * ```js
+   * // Custom Lambda@Edge configuration
+   * {
+   *   protection: {
+   *     mode: "oac-with-edge-signing",
+   *     edgeFunction: {
+   *       memory: "256 MB",
+   *       timeout: "10 seconds"
+   *     }
+   *   }
+   * }
+   * ```
+   *
+   * @example
+   * ```js
+   * // Use existing Lambda@Edge function
+   * {
+   *   protection: {
+   *     mode: "oac-with-edge-signing",
+   *     edgeFunction: {
+   *       arn: "arn:aws:lambda:us-east-1:123456789012:function:my-signing-function:1"
+   *     }
+   *   }
+   * }
+   * ```
+   */
+  protection?: Input<
+    | "none"
+    | "oac"
+    | "oac-with-edge-signing"
+    | {
+        mode: "oac-with-edge-signing";
+        edgeFunction?: {
+          /**
+           * Custom Lambda@Edge function ARN to use for request signing.
+           * If provided, this function will be used instead of creating a new one.
+           * Must be a qualified ARN (with version) and deployed in us-east-1.
+           */
+          arn?: Input<FunctionArn>;
+          /**
+           * Memory size for the auto-created Lambda@Edge function.
+           * Only used when arn is not provided.
+           * @default `"128 MB"`
+           */
+          memory?: Input<Size>;
+          /**
+           * Timeout for the auto-created Lambda@Edge function.
+           * Only used when arn is not provided.
+           * @default `"5 seconds"`
+           */
+          timeout?: Input<DurationSeconds>;
+        };
+      }
+  >;
   invalidation?: Input<
     | false
     | {
-        /**
-         * Configure if `sst deploy` should wait for the CloudFront cache invalidation to finish.
-         *
-         * :::tip
-         * For non-prod environments it might make sense to pass in `false`.
-         * :::
-         *
-         * Waiting for this process to finish ensures that new content will be available after the deploy finishes. However, this process can sometimes take more than 5 mins.
-         * @default `false`
-         * @example
-         * ```js
-         * {
-         *   invalidation: {
-         *     wait: true
-         *   }
-         * }
-         * ```
-         */
-        wait?: Input<boolean>;
-        /**
-         * The paths to invalidate.
-         *
-         * You can either pass in an array of glob patterns to invalidate specific files. Or you can use one of these built-in options:
-         * - `all`: All files will be invalidated when any file changes
-         * - `versioned`: Only versioned files will be invalidated when versioned files change
-         *
-         * :::note
-         * Each glob pattern counts as a single invalidation. However, invalidating `all` counts as a single invalidation as well.
-         * :::
-         * @default `"all"`
-         * @example
-         * Invalidate the `index.html` and all files under the `products/` route. This counts as two invalidations.
-         * ```js
-         * {
-         *   invalidation: {
-         *     paths: ["/index.html", "/products/*"]
-         *   }
-         * }
-         * ```
-         */
-        paths?: Input<"all" | "versioned" | string[]>;
-      }
+      /**
+       * Configure if `sst deploy` should wait for the CloudFront cache invalidation to finish.
+       *
+       * :::tip
+       * For non-prod environments it might make sense to pass in `false`.
+       * :::
+       *
+       * Waiting for this process to finish ensures that new content will be available after the deploy finishes. However, this process can sometimes take more than 5 mins.
+       * @default `false`
+       * @example
+       * ```js
+       * {
+       *   invalidation: {
+       *     wait: true
+       *   }
+       * }
+       * ```
+       */
+      wait?: Input<boolean>;
+      /**
+       * The paths to invalidate.
+       *
+       * You can either pass in an array of glob patterns to invalidate specific files. Or you can use one of these built-in options:
+       * - `all`: All files will be invalidated when any file changes
+       * - `versioned`: Only versioned files will be invalidated when versioned files change
+       *
+       * :::note
+       * Each glob pattern counts as a single invalidation. Whereas, invalidating
+       * `/*` counts as a single invalidation.
+       * :::
+       * @default `"all"`
+       * @example
+       * Invalidate the `index.html` and all files under the `products/` route.
+       * ```js
+       * {
+       *   invalidation: {
+       *     paths: ["/index.html", "/products/*"]
+       *   }
+       * }
+       * ```
+       * This counts as two invalidations.
+       */
+      paths?: Input<"all" | "versioned" | string[]>;
+    }
   >;
+  /**
+   * Regions that the server function will be deployed to.
+   *
+   * By default, the server function is deployed to a single region, this is the
+   * default region of your SST app.
+   *
+   * :::note
+   * This does not use Lambda@Edge, it deploys multiple Lambda functions instead.
+   * :::
+   *
+   * To deploy it to multiple regions, you can pass in a list of regions. And
+   * any requests made will be routed to the nearest region based on the user's
+   * location.
+   *
+   * @default The default region of the SST app
+   *
+   * @example
+   * ```js
+   * {
+   *   regions: ["us-east-1", "eu-west-1"]
+   * }
+   * ```
+   */
+  regions?: Input<string[]>;
+  permissions?: FunctionArgs["permissions"];
   /**
    * The number of instances of the [server function](#nodes-server) to keep warm. This is useful for cases where you are experiencing long cold starts. The default is to not keep any instances warm.
    *
@@ -135,17 +325,45 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
     /**
      * The runtime environment for the server function.
      *
-     * @default `"nodejs20.x"`
+     * @default `"nodejs24.x"`
      * @example
      * ```js
      * {
      *   server: {
-     *     runtime: "nodejs22.x"
+     *     runtime: "nodejs24.x"
      *   }
      * }
      * ```
      */
-    runtime?: Input<"nodejs18.x" | "nodejs20.x" | "nodejs22.x">;
+    runtime?: Input<"nodejs18.x" | "nodejs20.x" | "nodejs22.x" | "nodejs24.x">;
+    /**
+     * The maximum amount of time the server function can run.
+     *
+     * While Lambda supports timeouts up to 900 seconds, your requests are served
+     * through AWS CloudFront. And it has a default limit of 60 seconds.
+     *
+     * :::tip
+     * If you need a timeout longer than 60 seconds, you'll need to request a
+     * limit increase.
+     * :::
+     *
+     * You can increase this to 180 seconds for your account by contacting AWS
+     * Support and [requesting a limit increase](https://console.aws.amazon.com/support/home#/case/create?issueType=service-limit-increase).
+     *
+     * @default `"20 seconds"`
+     * @example
+     * ```js
+     * {
+     *   server: {
+     *     timeout: "50 seconds"
+     *   }
+     * }
+     * ```
+     *
+     * If you need a timeout longer than what CloudFront supports, we recommend
+     * using a separate Lambda `Function` with the `url` enabled instead.
+     */
+    timeout?: FunctionArgs["timeout"];
     /**
      * The [architecture](https://docs.aws.amazon.com/lambda/latest/dg/foundation-arch.html)
      * of the server function.
@@ -223,135 +441,276 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
      */
     layers?: Input<Input<string>[]>;
     /**
-     * Configure CloudFront Functions to customize the behavior of HTTP requests and responses at the edge.
+     * @deprecated The `server.edge` prop has been moved to the top level `edge` prop on the component.
      */
     edge?: Input<{
-      /**
-       * Configure the viewer request function.
-       *
-       * The viewer request function can be used to modify incoming requests before they
-       * reach your origin server. For example, you can redirect users, rewrite URLs,
-       * or add headers.
-       */
       viewerRequest?: Input<{
-        /**
-         * The code to inject into the viewer request function.
-         *
-         * By default, a viewer request function is created to:
-         * - Disable CloudFront default URL if custom domain is set.
-         * - Add the `x-forwarded-host` header.
-         *
-         * The given code will be injected at the end of this function.
-         *
-         * ```js
-         * async function handler(event) {
-         *   // Default behavior code
-         *
-         *   // User injected code
-         *
-         *   return event.request;
-         * }
-         * ```
-         *
-         * @example
-         * To add a custom header to all requests.
-         *
-         * ```js
-         * {
-         *   server: {
-         *     edge: {
-         *       viewerRequest: {
-         *         injection: `event.request.headers["x-foo"] = "bar";`
-         *       }
-         *     }
-         *   }
-         * }
-         * ```
-         *
-         * You can use this add basic auth, [check out an example](/docs/examples/#aws-nextjs-basic-auth).
-         */
         injection: Input<string>;
-        /**
-         * The KV stores to associate with the viewer request function.
-         *
-         * Takes a list of CloudFront KeyValueStore ARNs.
-         *
-         * @example
-         * ```js
-         * {
-         *   server: {
-         *     edge: {
-         *       viewerRequest: {
-         *         kvStores: ["arn:aws:cloudfront::123456789012:key-value-store/my-store"]
-         *       }
-         *     }
-         *   }
-         * }
-         * ```
-         */
+        kvStore?: Input<string>;
         kvStores?: Input<Input<string>[]>;
       }>;
-      /**
-       * Configure the viewer response function.
-       *
-       * The viewer response function can be used to modify outgoing responses before they are
-       * sent to the client. For example, you can add security headers or change the response
-       * status code.
-       */
       viewerResponse?: Input<{
-        /**
-         * The code to inject into the viewer response function.
-         *
-         * By default, no viewer response function is set. A new function will be created with
-         * the provided code.
-         *
-         * ```js
-         * async function handler(event) {
-         *   // User injected code
-         *
-         *   return event.response;
-         * }
-         * ```
-         *
-         * @example
-         * To add a custom header to all responses.
-         *
-         * ```js
-         * {
-         *   server: {
-         *     edge: {
-         *       viewerResponse: {
-         *         injection: `event.response.headers["x-foo"] = {value: "bar"};`
-         *       }
-         *     }
-         *   }
-         * }
-         * ```
-         */
         injection: Input<string>;
-        /**
-         * The KV stores to associate with the viewer response function.
-         *
-         * Takes a list of CloudFront KeyValueStore ARNs.
-         *
-         * @example
-         * ```js
-         * {
-         *   server: {
-         *     edge: {
-         *       viewerResponse: {
-         *         kvStores: ["arn:aws:cloudfront::123456789012:key-value-store/my-store"]
-         *       }
-         *     }
-         *   }
-         * }
-         * ```
-         */
+        kvStore?: Input<string>;
         kvStores?: Input<Input<string>[]>;
       }>;
     }>;
   };
+  /**
+   * Configure CloudFront Functions to customize the behavior of HTTP requests and responses at the edge.
+   */
+  edge?: Input<{
+    /**
+     * Configure the viewer request function.
+     *
+     * The viewer request function can be used to modify incoming requests before they
+     * reach your origin server. For example, you can redirect users, rewrite URLs,
+     * or add headers.
+     */
+    viewerRequest?: Input<{
+      /**
+       * The code to inject into the viewer request function.
+       *
+       * By default, a viewer request function is created to:
+       * - Disable CloudFront default URL if custom domain is set
+       * - Add the `x-forwarded-host` header
+       * - Route assets requests to S3 (static files stored in the bucket)
+       * - Route server requests to server functions (dynamic rendering)
+       *
+       * The function manages routing by:
+       * 1. First checking if the requested path exists in S3 (with variations like adding index.html)
+       * 2. Serving a custom 404 page from S3 if configured and the path isn't found
+       * 3. Routing image optimization requests to the image optimizer function
+       * 4. Routing all other requests to the nearest server function
+       *
+       * The given code will be injected at the beginning of this function.
+       *
+       * ```js
+       * async function handler(event) {
+       *   // User injected code
+       *
+       *   // Default behavior code
+       *
+       *   return event.request;
+       * }
+       * ```
+       *
+       * @example
+       * To add a custom header to all requests.
+       *
+       * ```js
+       * {
+       *   edge: {
+       *     viewerRequest: {
+       *       injection: `event.request.headers["x-foo"] = { value: "bar" };`
+       *     }
+       *   }
+       * }
+       * ```
+       *
+       * You can use this to add basic auth, [check out an example](/docs/examples/#aws-nextjs-basic-auth).
+       */
+      injection: Input<string>;
+      /**
+       * The KV store to associate with the viewer request function.
+       *
+       * @example
+       * ```js
+       * {
+       *   edge: {
+       *     viewerRequest: {
+       *       kvStore: "arn:aws:cloudfront::123456789012:key-value-store/my-store"
+       *     }
+       *   }
+       * }
+       * ```
+       */
+      kvStore?: Input<string>;
+    }>;
+    /**
+     * Configure the viewer response function.
+     *
+     * The viewer response function can be used to modify outgoing responses before they are
+     * sent to the client. For example, you can add security headers or change the response
+     * status code.
+     *
+     * By default, no viewer response function is set. A new function will be created
+     * with the provided code.
+     */
+    viewerResponse?: Input<{
+      /**
+       * The code to inject into the viewer response function.
+       *
+       * ```js
+       * async function handler(event) {
+       *   // User injected code
+       *
+       *   return event.response;
+       * }
+       * ```
+       *
+       * @example
+       * To add a custom header to all responses.
+       *
+       * ```js
+       * {
+       *   edge: {
+       *     viewerResponse: {
+       *       injection: `event.response.headers["x-foo"] = { value: "bar" };`
+       *     }
+       *   }
+       * }
+       * ```
+       */
+      injection: Input<string>;
+      /**
+       * The KV store to associate with the viewer response function.
+       *
+       * @example
+       * ```js
+       * {
+       *   edge: {
+       *     viewerResponse: {
+       *       kvStore: "arn:aws:cloudfront::123456789012:key-value-store/my-store"
+       *     }
+       *   }
+       * }
+       * ```
+       */
+      kvStore?: Input<string>;
+    }>;
+  }>;
+  /**
+   * Configure the server function to connect to private subnets in a virtual private cloud or VPC. This allows it to access private resources.
+   *
+   * @example
+   * Create a `Vpc` component.
+   *
+   * ```js title="sst.config.ts"
+   * const myVpc = new sst.aws.Vpc("MyVpc");
+   * ```
+   *
+   * Or reference an existing VPC.
+   *
+   * ```js title="sst.config.ts"
+   * const myVpc = sst.aws.Vpc.get("MyVpc", "vpc-12345678901234567");
+   * ```
+   *
+   * And pass it in.
+   *
+   * ```js
+   * {
+   *   vpc: myVpc
+   * }
+   * ```
+   */
   vpc?: FunctionArgs["vpc"];
+  assets?: Input<{
+    /**
+     * Character encoding for text based assets, like HTML, CSS, JS. This is
+     * used to set the `Content-Type` header when these files are served out.
+     *
+     * If set to `"none"`, then no charset will be returned in header.
+     * @default `"utf-8"`
+     * @example
+     * ```js
+     * {
+     *   assets: {
+     *     textEncoding: "iso-8859-1"
+     *   }
+     * }
+     * ```
+     */
+    textEncoding?: Input<
+      "utf-8" | "iso-8859-1" | "windows-1252" | "ascii" | "none"
+    >;
+    /**
+     * The `Cache-Control` header used for versioned files, like `main-1234.css`. This is
+     * used by both CloudFront and the browser cache.
+     *
+     * The default `max-age` is set to 1 year.
+     * @default `"public,max-age=31536000,immutable"`
+     * @example
+     * ```js
+     * {
+     *   assets: {
+     *     versionedFilesCacheHeader: "public,max-age=31536000,immutable"
+     *   }
+     * }
+     * ```
+     */
+    versionedFilesCacheHeader?: Input<string>;
+    /**
+     * The `Cache-Control` header used for non-versioned files, like `index.html`. This is used by both CloudFront and the browser cache.
+     *
+     * The default is set to not cache on browsers, and cache for 1 day on CloudFront.
+     * @default `"public,max-age=0,s-maxage=86400,stale-while-revalidate=8640"`
+     * @example
+     * ```js
+     * {
+     *   assets: {
+     *     nonVersionedFilesCacheHeader: "public,max-age=0,no-cache"
+     *   }
+     * }
+     * ```
+     */
+    nonVersionedFilesCacheHeader?: Input<string>;
+    /**
+     * Specify the `Content-Type` and `Cache-Control` headers for specific files. This allows
+     * you to override the default behavior for specific files using glob patterns.
+     *
+     * @example
+     * Apply `Cache-Control` and `Content-Type` to all zip files.
+     * ```js
+     * {
+     *   assets: {
+     *     fileOptions: [
+     *       {
+     *         files: "**\/*.zip",
+     *         contentType: "application/zip",
+     *         cacheControl: "private,no-cache,no-store,must-revalidate"
+     *       }
+     *     ]
+     *   }
+     * }
+     * ```
+     * Apply `Cache-Control` to all CSS and JS files except for CSS files with `index-`
+     * prefix in the `main/` directory.
+     * ```js
+     * {
+     *   assets: {
+     *     fileOptions: [
+     *       {
+     *         files: ["**\/*.css", "**\/*.js"],
+     *         ignore: "main\/index-*.css",
+     *         cacheControl: "private,no-cache,no-store,must-revalidate"
+     *       }
+     *     ]
+     *   }
+     * }
+     * ```
+     */
+    fileOptions?: Input<Prettify<BaseSiteFileOptions>[]>;
+    /**
+     * Configure if files from previous deployments should be purged from the bucket.
+     * @default `false`
+     * @example
+     * ```js
+     * {
+     *   assets: {
+     *     purge: false
+     *   }
+     * }
+     * ```
+     */
+    purge?: Input<boolean>;
+  }>;
+  /**
+   * @deprecated The `route` prop is now the recommended way to use the `Router` component
+   * to serve your site. Setting `route` will not create a standalone CloudFront
+   * distribution.
+   */
+  cdn?: Input<boolean>;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
@@ -366,9 +725,9 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
      */
     server?: Transform<FunctionArgs>;
     /**
-     * Transform the image optimization Function resource.
+     * Transform the image optimizer Function resource.
      */
-    imageOptimization?: Transform<FunctionArgs>;
+    imageOptimizer?: Transform<FunctionArgs>;
     /**
      * Transform the CloudFront CDN resource.
      */
@@ -376,154 +735,889 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
   };
 }
 
-export function prepare(parent: ComponentResource, args: SsrSiteArgs) {
-  const sitePath = normalizeSitePath();
-  const partition = getPartitionOutput(undefined, { parent }).partition;
-  const region = getRegionOutput(undefined, { parent }).name;
-  checkSupportedRegion();
+export abstract class SsrSite extends Component implements Link.Linkable {
+  private cdn?: Cdn;
+  private bucket?: Bucket;
+  private server?: Output<Function>;
+  private devUrl?: Output<string>;
+  private prodUrl?: Output<string | undefined>;
 
-  return {
-    sitePath,
-    partition,
-    region,
-  };
+  protected abstract normalizeBuildCommand(
+    args: SsrSiteArgs,
+  ): Output<string> | void;
 
-  function normalizeSitePath() {
-    return output(args.path).apply((sitePath) => {
-      if (!sitePath) return ".";
+  protected abstract buildPlan(
+    outputPath: Output<string>,
+    name: string,
+    args: SsrSiteArgs,
+    { bucket }: { bucket: Bucket },
+  ): Output<Plan>;
 
-      if (!fs.existsSync(sitePath)) {
-        throw new VisibleError(`No site found at "${path.resolve(sitePath)}"`);
-      }
-      return sitePath;
-    });
-  }
+  constructor(
+    type: string,
+    name: string,
+    args: SsrSiteArgs = {},
+    opts: ComponentResourceOptions = {},
+  ) {
+    super(type, name, args, opts);
+    const self = this;
 
-  function checkSupportedRegion() {
-    region.apply((region) => {
-      if (
-        ![
-          "ap-south-2",
-          "ap-southeast-4",
-          "eu-south-2",
-          "eu-central-2",
-          "il-central-1",
-          "me-central-1",
-        ].includes(region)
-      )
-        return;
-      throw new VisibleError(
-        `Region ${region} is not currently supported. Please use a different region.`,
+    validateDeprecatedProps();
+    const regions = normalizeRegions();
+    const route = normalizeRoute();
+    const edge = normalizeEdge();
+    const serverTimeout = output(args.server?.timeout);
+    const buildCommand = this.normalizeBuildCommand(args);
+    const sitePath = regions.apply(() => normalizeSitePath());
+    const dev = normalizeDev();
+    const purge = output(args.assets).apply((assets) => assets?.purge ?? false);
+    const protection = normalizeProtection();
+
+    if (dev.enabled) {
+      const server = createDevServer();
+      this.devUrl = dev.url;
+      this.registerOutputs({
+        _metadata: {
+          mode: "placeholder",
+          path: sitePath,
+          server: server.arn,
+        },
+        _dev: {
+          ...dev.outputs,
+          aws: { role: server.nodes.role.arn },
+        },
+      });
+      return;
+    }
+
+    const outputPath = buildApp(
+      self,
+      name,
+      args,
+      sitePath,
+      buildCommand ?? undefined,
+    );
+    const bucket = createS3Bucket();
+    const plan = validatePlan(
+      this.buildPlan(outputPath, name, args, { bucket }),
+    );
+    const timeout = all([serverTimeout, plan.server]).apply(
+      ([argsTimeout, plan]) => argsTimeout ?? plan?.timeout ?? "20 seconds",
+    );
+    const servers = createServers();
+    const imageOptimizer = createImageOptimizer();
+    const assetsUploaded = uploadAssets();
+    const kvNamespace = buildKvNamespace();
+    const edgeFunction = createLambdaEdgeFunction();
+
+    let distribution: Cdn | undefined;
+    let distributionId: Output<string>;
+    let kvStoreArn: Output<string>;
+    let invalidationDependsOn: Resource[] = [];
+    let prodUrl: Output<string | undefined>;
+    if (route) {
+      kvStoreArn = route.routerKvStoreArn;
+      distributionId = route.routerDistributionId;
+      invalidationDependsOn = [updateRouterKvRoutes()];
+      prodUrl = route.routerUrl;
+    } else {
+      kvStoreArn = createRequestKvStore();
+      distribution = createDistribution();
+      distributionId = distribution.nodes.distribution.id;
+      prodUrl = distribution.domainUrl.apply((domainUrl) =>
+        output(domainUrl ?? distribution!.url),
       );
-    });
-  }
-}
+    }
 
-export function createBucket(
-  parent: ComponentResource,
-  name: string,
-  partition: Output<string>,
-  args: SsrSiteArgs,
-) {
-  const access = createCloudFrontOriginAccessControl();
-  const bucket = createS3Bucket();
-  return { access, bucket };
+    function createCachePolicy() {
+      return new cloudfront.CachePolicy(
+        `${name}ServerCachePolicy`,
+        {
+          comment: "SST server response cache policy",
+          defaultTtl: 0,
+          maxTtl: 31536000, // 1 year
+          minTtl: 0,
+          parametersInCacheKeyAndForwardedToOrigin: {
+            cookiesConfig: {
+              cookieBehavior: "none",
+            },
+            headersConfig: {
+              headerBehavior: "whitelist",
+              headers: {
+                items: ["x-open-next-cache-key"],
+              },
+            },
+            queryStringsConfig: {
+              queryStringBehavior: "all",
+            },
+            enableAcceptEncodingBrotli: true,
+            enableAcceptEncodingGzip: true,
+          },
+        },
+        { parent: self },
+      );
+    }
 
-  function createCloudFrontOriginAccessControl() {
-    return new OriginAccessControl(
-      `${name}S3AccessControl`,
-      { name: physicalName(64, name) },
-      { parent, ignoreChanges: ["name"] },
-    );
-  }
+    function createRequestKvStore() {
+      return edge.apply((edge) => {
+        const viewerRequest = edge?.viewerRequest;
+        if (viewerRequest?.kvStore) return output(viewerRequest?.kvStore);
 
-  function createS3Bucket() {
-    return new Bucket(
-      ...transform(
-        args.transform?.assets,
-        `${name}Assets`,
-        { access: "cloudfront" },
-        { parent, retainOnDelete: false },
-      ),
-    );
-  }
-}
+        return new cloudfront.KeyValueStore(
+          `${name}KvStore`,
+          {},
+          { parent: self },
+        ).arn;
+      });
+    }
 
-export function createDevServer(
-  parent: ComponentResource,
-  name: string,
-  args: SsrSiteArgs,
-) {
-  return new Function(
-    ...transform(
-      args.transform?.server,
-      `${name}DevServer`,
-      {
-        description: `${name} dev server`,
-        runtime: "nodejs20.x",
-        timeout: "20 seconds",
-        memory: "128 MB",
-        bundle: path.join($cli.paths.platform, "functions", "empty-function"),
-        handler: "index.handler",
-        environment: args.environment,
-        permissions: args.permissions,
-        link: args.link,
-        dev: false,
+    function createRequestFunction() {
+      return edge.apply((edge) => {
+        const userInjection = edge?.viewerRequest?.injection ?? "";
+        const blockCloudfrontUrlInjection = args.domain
+          ? CF_BLOCK_CLOUDFRONT_URL_INJECTION
+          : "";
+        return new cloudfront.Function(
+          `${name}CloudfrontFunctionRequest`,
+          {
+            runtime: "cloudfront-js-2.0",
+            keyValueStoreAssociations: kvStoreArn ? [kvStoreArn] : [],
+            code: interpolate`
+import cf from "cloudfront";
+async function handler(event) {
+  ${userInjection}
+  ${blockCloudfrontUrlInjection}
+  ${CF_ROUTER_INJECTION}
+
+  const kvNamespace = "${kvNamespace}";
+
+  // Load metadata
+  let metadata;
+  try {
+    const v = await cf.kvs().get(kvNamespace + ":metadata");
+    metadata = JSON.parse(v);
+  } catch (e) {}
+
+  await routeSite(kvNamespace, metadata);
+  return event.request;
+}`,
+          },
+          { parent: self },
+        );
+      });
+    }
+
+    function createResponseFunction() {
+      return edge.apply((edge) => {
+        const userConfig = edge?.viewerResponse;
+        const userInjection = userConfig?.injection;
+        const kvStoreArn = userConfig?.kvStore;
+
+        if (!userInjection) return;
+
+        return new cloudfront.Function(
+          `${name}CloudfrontFunctionResponse`,
+          {
+            runtime: "cloudfront-js-2.0",
+            keyValueStoreAssociations: kvStoreArn ? [kvStoreArn] : [],
+            code: `
+import cf from "cloudfront";
+async function handler(event) {
+  ${userInjection}
+  return event.response;
+}`,
+          },
+          { parent: self },
+        );
+      });
+    }
+
+    function createDistribution() {
+      return new Cdn(
+        ...transform(
+          args.transform?.cdn,
+          `${name}Cdn`,
+          {
+            comment: `${name} app`,
+            domain: args.domain,
+            origins: [
+              {
+                originId: "default",
+                domainName: "placeholder.sst.dev",
+                customOriginConfig: {
+                  httpPort: 80,
+                  httpsPort: 443,
+                  originProtocolPolicy: "http-only",
+                  originReadTimeout: 20,
+                  originSslProtocols: ["TLSv1.2"],
+                },
+              },
+            ],
+            defaultCacheBehavior: {
+              targetOriginId: "default",
+              viewerProtocolPolicy: "redirect-to-https",
+              allowedMethods: [
+                "DELETE",
+                "GET",
+                "HEAD",
+                "OPTIONS",
+                "PATCH",
+                "POST",
+                "PUT",
+              ],
+              cachedMethods: ["GET", "HEAD"],
+              compress: true,
+              cachePolicyId: args.cachePolicy ?? createCachePolicy().id,
+              // CloudFront's Managed-AllViewerExceptHostHeader policy
+              originRequestPolicyId: "b689b0a8-53d0-40ab-baf2-68738e2966ac",
+              functionAssociations: all([
+                createRequestFunction(),
+                createResponseFunction(),
+              ]).apply(([reqFn, resFn]) => [
+                { eventType: "viewer-request", functionArn: reqFn.arn },
+                ...(resFn
+                  ? [{ eventType: "viewer-response", functionArn: resFn.arn }]
+                  : []),
+              ]),
+              lambdaFunctionAssociations: all([protection, edgeFunction]).apply(
+                ([protectionConfig, autoEdgeFunction]) => {
+                  if (protectionConfig.mode !== "oac-with-edge-signing") {
+                    return [];
+                  }
+
+                  // Use provided ARN if available
+                  if (
+                    "edgeFunction" in protectionConfig &&
+                    protectionConfig.edgeFunction?.arn
+                  ) {
+                    return [
+                      {
+                        eventType: "origin-request",
+                        lambdaArn: protectionConfig.edgeFunction.arn,
+                        includeBody: true,
+                      },
+                    ];
+                  }
+
+                  // Use auto-created function if available
+                  if (autoEdgeFunction) {
+                    return [
+                      {
+                        eventType: "origin-request",
+                        lambdaArn: autoEdgeFunction.qualifiedArn,
+                        includeBody: true,
+                      },
+                    ];
+                  }
+
+                  return [];
+                },
+              ),
+            },
+          },
+          { parent: self },
+        ),
+      );
+    }
+
+    const kvUpdated = createKvEntries();
+    createInvalidation();
+
+    // Create Lambda permissions based on protection mode
+    all([distribution, servers, imageOptimizer, protection]).apply(
+      ([dist, servers, imgOptimizer, protection]) => {
+        if (!dist) return;
+
+        // Server functions
+        servers.forEach(({ region, server }) => {
+          const provider = useProvider(region);
+
+          if (protection.mode === "none") {
+            // Create explicit public access permission for none mode
+            new lambda.Permission(
+              `${name}PublicFunctionUrlAccess${logicalName(region)}`,
+              {
+                action: "lambda:InvokeFunctionUrl",
+                function: server.nodes.function.name,
+                principal: "*",
+                functionUrlAuthType: "NONE",
+              },
+              { provider, parent: self },
+            );
+          } else if (
+            protection.mode === "oac" ||
+            protection.mode === "oac-with-edge-signing"
+          ) {
+            // Create CloudFront-specific permission for OAC modes
+            new lambda.Permission(
+              `${name}CloudFrontFunctionUrlAccess${logicalName(region)}`,
+              {
+                action: "lambda:InvokeFunctionUrl",
+                function: server.nodes.function.name,
+                principal: "cloudfront.amazonaws.com",
+                sourceArn: dist.nodes.distribution.arn,
+              },
+              { provider, parent: self },
+            );
+            new lambda.Permission(
+              `${name}CloudFrontInvokeFunction${logicalName(region)}`,
+              {
+                action: "lambda:InvokeFunction",
+                function: server.nodes.function.name,
+                principal: "cloudfront.amazonaws.com",
+                sourceArn: dist.nodes.distribution.arn,
+              },
+              { provider, parent: self },
+            );
+          }
+        });
+
+        // Image optimizer
+        if (imgOptimizer) {
+          if (protection.mode === "none") {
+            new lambda.Permission(
+              `${name}ImageOptimizerPublicFunctionUrlAccess`,
+              {
+                action: "lambda:InvokeFunctionUrl",
+                function: imgOptimizer.nodes.function.name,
+                principal: "*",
+                functionUrlAuthType: "NONE",
+              },
+              { parent: self },
+            );
+          } else if (
+            protection.mode === "oac" ||
+            protection.mode === "oac-with-edge-signing"
+          ) {
+            new lambda.Permission(
+              `${name}ImageOptimizerCloudFrontFunctionUrlAccess`,
+              {
+                action: "lambda:InvokeFunctionUrl",
+                function: imgOptimizer.nodes.function.name,
+                principal: "cloudfront.amazonaws.com",
+                sourceArn: dist.nodes.distribution.arn,
+              },
+              { parent: self },
+            );
+            new lambda.Permission(
+              `${name}ImageOptimizerCloudFrontInvokeFunction`,
+              {
+                action: "lambda:InvokeFunction",
+                function: imgOptimizer.nodes.function.name,
+                principal: "cloudfront.amazonaws.com",
+                sourceArn: dist.nodes.distribution.arn,
+              },
+              { parent: self },
+            );
+          }
+        }
       },
-      { parent },
-    ),
-  );
-}
+    );
 
-export function createServersAndDistribution(
-  parent: ComponentResource,
-  name: string,
-  args: SsrSiteArgs,
-  outputPath: Output<string>,
-  access: OriginAccessControl,
-  bucket: Bucket,
-  plan: Input<Plan>,
-) {
-  return all([outputPath, plan]).apply(([outputPath, plan]) => {
-    const ssrFunctions: Function[] = [];
-    const cfFunctions: Record<string, cloudfront.Function> = {};
-    let singletonCachePolicy: cloudfront.CachePolicy;
+    const server = servers.apply((servers) => servers[0]?.server);
+    this.bucket = bucket;
+    this.cdn = distribution;
+    this.server = server;
+    this.prodUrl = prodUrl;
 
-    const bucketFile = uploadAssets();
-    const edgeFunctions = createEdgeFunctions();
-    const origins = buildOrigins();
-    const originGroups = buildOriginGroups();
-    const invalidation = buildInvalidation();
-    const distribution = createDistribution();
-    createWarmer();
+    this.registerOutputs({
+      _hint: this.url,
+      _metadata: {
+        mode: "deployed",
+        path: sitePath,
+        url: this.url,
+        edge: false,
+        server: server.arn,
+      },
+    });
 
-    return {
-      distribution,
-      ssrFunctions,
-      edgeFunctions,
-    };
+    function validateDeprecatedProps() {
+      if (args.cdn !== undefined)
+        throw new VisibleError(
+          `"cdn" prop is deprecated. Use the "route.router" prop instead to use an existing "Router" component to serve your site.`,
+        );
+    }
+
+    function normalizeDev() {
+      const enabled = $dev && args.dev !== false;
+      const devArgs = args.dev || {};
+
+      return {
+        enabled,
+        url: output(devArgs.url ?? URL_UNAVAILABLE),
+        outputs: {
+          title: devArgs.title,
+          command: output(devArgs.command ?? "npm run dev"),
+          autostart: output(devArgs.autostart ?? true),
+          directory: output(devArgs.directory ?? sitePath),
+          environment: args.environment,
+          links: output(args.link || [])
+            .apply(Link.build)
+            .apply((links) => links.map((link) => link.name)),
+        },
+      };
+    }
+
+    function normalizeSitePath() {
+      return output(args.path).apply((sitePath) => {
+        if (!sitePath) return ".";
+
+        if (!fs.existsSync(sitePath)) {
+          throw new VisibleError(
+            `Site directory not found at "${path.resolve(
+              sitePath,
+            )}". Please check the path setting in your configuration.`,
+          );
+        }
+        return sitePath;
+      });
+    }
+
+    function normalizeRegions() {
+      return output(
+        args.regions ?? [getRegionOutput(undefined, { parent: self }).region],
+      ).apply((regions) => {
+        if (regions.length === 0)
+          throw new VisibleError(
+            "No deployment regions specified. Please specify at least one region in the 'regions' property.",
+          );
+
+        return regions.map((region) => {
+          if (
+            [
+              "ap-south-2",
+              "ap-southeast-4",
+              "ap-southeast-5",
+              "ca-west-1",
+              "eu-south-2",
+              "eu-central-2",
+              "il-central-1",
+              "me-central-1",
+            ].includes(region)
+          )
+            throw new VisibleError(
+              `Region ${region} is not supported by this component. Please select a different AWS region.`,
+            );
+
+          if (!Object.values(Region).includes(region as Region))
+            throw new VisibleError(
+              `Invalid AWS region: "${region}". Please specify a valid AWS region.`,
+            );
+          return region as Region;
+        });
+      });
+    }
+
+    function normalizeRoute() {
+      const route = normalizeRouteArgs(args.router, args.route);
+
+      if (route) {
+        if (args.domain)
+          throw new VisibleError(
+            `Cannot provide both "domain" and "route". Use the "domain" prop on the "Router" component when serving your site through a Router.`,
+          );
+
+        if (args.edge)
+          throw new VisibleError(
+            `Cannot provide both "edge" and "route". Use the "edge" prop on the "Router" component when serving your site through a Router.`,
+          );
+      }
+
+      return route;
+    }
+
+    function normalizeEdge() {
+      return output([args.edge, args.server?.edge]).apply(
+        ([edge, serverEdge]) => {
+          if (serverEdge)
+            throw new VisibleError(
+              `The "server.edge" prop is deprecated. Use the "edge" prop on the top level instead.`,
+            );
+
+          if (!edge) return edge;
+          return edge;
+        },
+      );
+    }
+
+    function normalizeProtection() {
+      return output(args.protection).apply((protection) => {
+        // Default to "none" if not specified
+        if (!protection) return { mode: "none" as const };
+
+        // Handle string values
+        if (typeof protection === "string") {
+          return { mode: protection };
+        }
+
+        // Handle object form - validate ARN if provided
+        if (
+          protection.mode === "oac-with-edge-signing" &&
+          "edgeFunction" in protection &&
+          protection.edgeFunction?.arn
+        ) {
+          const arn = protection.edgeFunction.arn;
+          if (typeof arn === "string") {
+            parseLambdaEdgeArn(arn);
+          }
+        }
+
+        return protection;
+      });
+    }
+
+    function createLambdaEdgeFunction() {
+      return protection.apply((protectionConfig) => {
+        // Only create function if mode is oac-with-edge-signing and no ARN is provided
+        if (
+          protectionConfig.mode !== "oac-with-edge-signing" ||
+          ("edgeFunction" in protectionConfig &&
+            protectionConfig.edgeFunction?.arn)
+        ) {
+          return undefined;
+        }
+
+        const edgeConfig =
+          "edgeFunction" in protectionConfig
+            ? protectionConfig.edgeFunction
+            : {};
+        const memory = edgeConfig?.memory ? toMBs(edgeConfig.memory) : 128;
+        const timeout = edgeConfig?.timeout ? toSeconds(edgeConfig.timeout) : 5;
+
+        // Create IAM role for Lambda@Edge using SST transform pattern
+        const edgeRole = new aws.iam.Role(
+          ...transform(
+            undefined,
+            `${name}EdgeFunctionRole`,
+            {
+              assumeRolePolicy: JSON.stringify({
+                Version: "2012-10-17",
+                Statement: [
+                  {
+                    Action: "sts:AssumeRole",
+                    Effect: "Allow",
+                    Principal: {
+                      Service: [
+                        "lambda.amazonaws.com",
+                        "edgelambda.amazonaws.com",
+                      ],
+                    },
+                  },
+                ],
+              }),
+              managedPolicyArns: [
+                "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+              ],
+            },
+            { parent: self },
+          ),
+        );
+
+        // Create the Lambda@Edge function using SST transform pattern
+        const edgeFunction = new aws.lambda.Function(
+          ...transform(
+            undefined,
+            `${name}EdgeFunction`,
+            {
+              runtime: "nodejs22.x",
+              handler: "index.handler",
+              role: edgeRole.arn,
+              code: new pulumi.asset.FileArchive(
+                path.join($cli.paths.platform, "dist", "oac-edge-signer"),
+              ),
+              publish: true, // Required for Lambda@Edge
+              timeout: timeout,
+              memorySize: memory,
+              description: `${name} Lambda@Edge function for OAC request signing`,
+            },
+            {
+              parent: self,
+              // Lambda@Edge functions must be created in us-east-1
+              provider: useProvider("us-east-1"),
+            },
+          ),
+        );
+
+        return edgeFunction;
+      });
+    }
+
+    function createDevServer() {
+      return new Function(
+        ...transform(
+          args.transform?.server,
+          `${name}DevServer`,
+          {
+            description: `${name} dev server`,
+            runtime: "nodejs24.x",
+            timeout: "20 seconds",
+            memory: "128 MB",
+            bundle: path.join(
+              $cli.paths.platform,
+              "functions",
+              "empty-function",
+            ),
+            handler: "index.handler",
+            environment: args.environment,
+            permissions: args.permissions,
+            link: args.link,
+            dev: false,
+          },
+          { parent: self },
+        ),
+      );
+    }
+
+    function validatePlan(plan: Output<Plan>) {
+      return all([plan, route]).apply(([plan, route]) => {
+        if (plan.base) {
+          // starts with /
+          plan.base = !plan.base.startsWith("/") ? `/${plan.base}` : plan.base;
+          // does not end with /
+          plan.base = plan.base.replace(/\/$/, "");
+        }
+
+        if (route?.pathPrefix && route.pathPrefix !== "/") {
+          if (!plan.base)
+            throw new VisibleError(
+              `No base path found for site. You must configure the base path to match the route path prefix "${route.pathPrefix}".`,
+            );
+
+          if (!plan.base.startsWith(route.pathPrefix))
+            throw new VisibleError(
+              `The site base path "${plan.base}" must start with the route path prefix "${route.pathPrefix}".`,
+            );
+        }
+
+        // if copy.to has a leading slash, files will be uploaded to `/` folder in bucket
+        plan.assets.forEach((copy) => {
+          copy.to = copy.to.replace(/^\/|\/$/g, "");
+        });
+        if (plan.isrCache) {
+          plan.isrCache.to = plan.isrCache.to.replace(/^\/|\/$/g, "");
+        }
+
+        return plan;
+      });
+    }
+
+    function createS3Bucket() {
+      return new Bucket(
+        ...transform(
+          args.transform?.assets,
+          `${name}Assets`,
+          { access: "cloudfront" },
+          { parent: self, retainOnDelete: false },
+        ),
+      );
+    }
+
+    function createServers() {
+      return all([regions, plan.server]).apply(([regions, planServer]) => {
+        if (!planServer) return [];
+
+        return regions.map((region) => {
+          const provider = useProvider(region);
+          const server = new Function(
+            ...transform(
+              args.transform?.server,
+              `${name}Server${logicalName(region)}`,
+              {
+                ...planServer,
+                description: planServer.description ?? `${name} server`,
+                runtime: output(args.server?.runtime).apply(
+                  (v) => v ?? planServer.runtime ?? "nodejs24.x",
+                ),
+                timeout,
+                memory: output(args.server?.memory).apply(
+                  (v) => v ?? planServer.memory ?? "1024 MB",
+                ),
+                architecture: output(args.server?.architecture).apply(
+                  (v) => v ?? planServer.architecture ?? "x86_64",
+                ),
+                vpc: args.vpc,
+                nodejs: {
+                  ...planServer.nodejs,
+                  format: "esm" as const,
+                  install: output(args.server?.install).apply((install) => [
+                    ...(install ?? []),
+                    ...(planServer.nodejs?.install ?? []),
+                  ]),
+                  loader: args.server?.loader ?? planServer.nodejs?.loader,
+                },
+                environment: output(args.environment).apply((environment) => ({
+                  ...environment,
+                  ...planServer.environment,
+                })),
+                permissions: output(args.permissions).apply((permissions) => [
+                  {
+                    actions: ["cloudfront:CreateInvalidation"],
+                    resources: ["*"],
+                  },
+                  ...(permissions ?? []),
+                  ...(planServer.permissions ?? []),
+                ]),
+                injections: [
+                  ...(args.warm
+                    ? [useServerWarmingInjection(planServer.streaming)]
+                    : []),
+                  ...(planServer.injections || []),
+                ],
+                link: output(args.link).apply((link) => [
+                  ...(planServer.link ?? []),
+                  ...(link ?? []),
+                ]),
+                layers: output(args.server?.layers).apply((layers) => [
+                  ...(planServer.layers ?? []),
+                  ...(layers ?? []),
+                ]),
+                url: {
+                  authorization: protection.apply((p) =>
+                    p.mode === "oac" || p.mode === "oac-with-edge-signing"
+                      ? "iam"
+                      : "none",
+                  ),
+                },
+                dev: false,
+                _skipHint: true,
+              },
+              { provider, parent: self },
+            ),
+          );
+
+          if (args.warm) {
+            // Create cron job
+            const cron = new Cron(
+              `${name}Warmer${logicalName(region)}`,
+              {
+                schedule: "rate(5 minutes)",
+                job: {
+                  description: `${name} warmer`,
+                  bundle: path.join($cli.paths.platform, "dist", "ssr-warmer"),
+                  runtime: "nodejs24.x",
+                  handler: "index.handler",
+                  timeout: "900 seconds",
+                  memory: "128 MB",
+                  dev: false,
+                  environment: {
+                    FUNCTION_NAME: server.nodes.function.name,
+                    CONCURRENCY: output(args.warm).apply((warm) =>
+                      warm.toString(),
+                    ),
+                  },
+                  link: [server],
+                  _skipMetadata: true,
+                },
+                transform: {
+                  target: (args) => {
+                    args.retryPolicy = {
+                      maximumRetryAttempts: 0,
+                      maximumEventAgeInSeconds: 60,
+                    };
+                  },
+                },
+              },
+              { provider, parent: self },
+            );
+
+            // Prewarm on deploy
+            new lambda.Invocation(
+              `${name}Prewarm${logicalName(region)}`,
+              {
+                functionName: cron.nodes.job.name,
+                triggers: {
+                  version: Date.now().toString(),
+                },
+                input: JSON.stringify({}),
+              },
+              { provider, parent: self },
+            );
+          }
+
+          return { region, server };
+        });
+      });
+    }
+
+    function createImageOptimizer() {
+      return output(plan.imageOptimizer).apply((imageOptimizer) => {
+        if (!imageOptimizer) return;
+        return new Function(
+          ...transform(
+            args.transform?.imageOptimizer,
+            `${name}ImageOptimizer`,
+            {
+              timeout: "25 seconds",
+              logging: {
+                retention: "3 days",
+              },
+              permissions: [
+                {
+                  actions: ["s3:GetObject"],
+                  resources: [interpolate`${bucket.arn}/*`],
+                },
+              ],
+              ...imageOptimizer.function,
+              url: {
+                authorization: protection.apply((p) =>
+                  p.mode === "oac" || p.mode === "oac-with-edge-signing"
+                    ? "iam"
+                    : "none",
+                ),
+              },
+              dev: false,
+              _skipMetadata: true,
+              _skipHint: true,
+            },
+            { parent: self },
+          ),
+        );
+      });
+    }
+
+    function useServerWarmingInjection(streaming?: boolean) {
+      return [
+        `if (event.type === "warmer") {`,
+        `  const p = new Promise((resolve) => {`,
+        `    setTimeout(() => {`,
+        `      resolve({ serverId: "server-" + Math.random().toString(36).slice(2, 8) });`,
+        `    }, event.delay);`,
+        `  });`,
+        ...(streaming
+          ? [
+            `  const response = await p;`,
+            `  responseStream.write(JSON.stringify(response));`,
+            `  responseStream.end();`,
+            `  return;`,
+          ]
+          : [`  return p;`]),
+        `}`,
+      ].join("\n");
+    }
 
     function uploadAssets() {
-      return output(args.assets).apply(async (assets) => {
-        // Define content headers
-        const versionedFilesTTL = 31536000; // 1 year
-        const nonVersionedFilesTTL = 86400; // 1 day
+      return all([args.assets, route, plan, outputPath]).apply(
+        async ([assets, route, plan, outputPath]) => {
+          // Define content headers
+          const versionedFilesTTL = 31536000; // 1 year
+          const nonVersionedFilesTTL = 86400; // 1 day
 
-        const bucketFiles: BucketFile[] = [];
-
-        // Handle each S3 origin
-        for (const origin of Object.values(plan.origins)) {
-          if (!origin.s3) continue;
+          const bucketFiles: BucketFile[] = [];
 
           // Handle each copy source
-          for (const copy of origin.s3.copy) {
+          for (const copy of [
+            ...plan.assets,
+            ...(plan.isrCache
+              ? [{ ...plan.isrCache, versionedSubDir: undefined }]
+              : []),
+          ]) {
             // Build fileOptions
             const fileOptions: BaseSiteFileOptions[] = [
               // unversioned files
               {
                 files: "**",
                 ignore: copy.versionedSubDir
-                  ? path.posix.join(copy.versionedSubDir, "**")
+                  ? toPosix(path.join(copy.versionedSubDir, "**"))
                   : undefined,
                 cacheControl:
                   assets?.nonVersionedFilesCacheHeader ??
@@ -532,13 +1626,13 @@ export function createServersAndDistribution(
               // versioned files
               ...(copy.versionedSubDir
                 ? [
-                    {
-                      files: path.posix.join(copy.versionedSubDir, "**"),
-                      cacheControl:
-                        assets?.versionedFilesCacheHeader ??
-                        `public,max-age=${versionedFilesTTL},immutable`,
-                    },
-                  ]
+                  {
+                    files: toPosix(path.join(copy.versionedSubDir, "**")),
+                    cacheControl:
+                      assets?.versionedFilesCacheHeader ??
+                      `public,max-age=${versionedFilesTTL},immutable`,
+                  },
+                ]
                 : []),
               ...(assets?.fileOptions ?? []),
             ];
@@ -564,7 +1658,13 @@ export function createServersAndDistribution(
                       .digest("hex");
                     return {
                       source,
-                      key: path.posix.join(copy.to, file),
+                      key: toPosix(
+                        path.join(
+                          copy.to,
+                          route?.pathPrefix?.replace(/^\//, "") ?? "",
+                          file,
+                        ),
+                      ),
                       hash,
                       cacheControl: fileOption.cacheControl,
                       contentType:
@@ -576,448 +1676,179 @@ export function createServersAndDistribution(
               filesUploaded.push(...files);
             }
           }
-        }
 
-        return new BucketFiles(
-          `${name}AssetFiles`,
-          {
-            bucketName: bucket.name,
-            files: bucketFiles,
-            purge: false,
-            region: getRegionOutput(undefined, { parent }).name,
-          },
-          { parent },
-        );
-      });
-    }
-
-    function createEdgeFunctions() {
-      const functions: Record<string, Function> = {};
-
-      Object.entries(plan.edgeFunctions ?? {}).forEach(
-        ([fnName, { function: props }]) => {
-          // Edge functions don't support linking
-          output(args.link).apply((link) => {
-            if (link?.length)
-              throw new VisibleError(
-                `Resource linking is not currently supported when deploying to the edge.`,
-              );
-          });
-
-          const fn = new Function(
-            `${name}Edge${logicalName(fnName)}`,
+          return new BucketFiles(
+            `${name}AssetFiles`,
             {
-              runtime: "nodejs20.x",
-              timeout: "20 seconds",
-              memory: "1024 MB",
-              ...props,
-              nodejs: {
-                format: "esm" as const,
-                ...props.nodejs,
-              },
-              environment: output(args.environment).apply((environment) => ({
-                ...environment,
-                ...props.environment,
-              })),
-              permissions: output(args.permissions).apply((permissions) => [
-                {
-                  actions: ["cloudfront:CreateInvalidation"],
-                  resources: ["*"],
-                },
-                ...(permissions ?? []),
-                ...(props.permissions ?? []),
-              ]),
-              link: output(args.link).apply((link) => [
-                ...(props.link ?? []),
-                ...(link ?? []),
-              ]),
-              transform: {
-                function: (args) => {
-                  args.publish = true;
-                },
-              },
-              dev: false,
+              bucketName: bucket.name,
+              files: bucketFiles,
+              purge,
+              region: getRegionOutput(undefined, { parent: self }).region,
             },
-            { provider: useProvider("us-east-1"), parent },
+            { parent: self },
           );
-
-          functions[fnName] = fn;
         },
       );
-      return functions;
     }
 
-    function buildOrigins() {
-      const origins: Record<string, types.input.cloudfront.DistributionOrigin> =
-        {};
-
-      Object.entries(plan.origins ?? {}).forEach(([name, props]) => {
-        if (props.s3) {
-          origins[name] = buildS3Origin(name, props.s3);
-        } else if (props.server) {
-          origins[name] = buildServerOrigin(name, props.server);
-        } else if (props.imageOptimization) {
-          origins[name] = buildImageOptimizationOrigin(
-            name,
-            props.imageOptimization,
-          );
-        }
-      });
-
-      return origins;
+    function buildKvNamespace() {
+      // In the case multiple sites use the same kv store, we need to namespace the keys
+      return crypto
+        .createHash("md5")
+        .update(`${$app.name}-${$app.stage}-${name}`)
+        .digest("hex")
+        .substring(0, 4);
     }
 
-    function buildOriginGroups() {
-      const originGroups: Record<
-        string,
-        types.input.cloudfront.DistributionOriginGroup
-      > = {};
+    function createKvEntries() {
+      const entries = all([
+        servers,
+        imageOptimizer,
+        outputPath,
+        plan,
+        bucket.nodes.bucket.bucketRegionalDomainName,
+        timeout,
+        protection,
+      ]).apply(
+        ([
+          servers,
+          imageOptimizer,
+          outputPath,
+          plan,
+          bucketDomain,
+          timeout,
+          protectionConfig,
+        ]) =>
+          all([
+            servers.map((s) => ({ region: s.region, url: s.server!.url })),
+            imageOptimizer?.url,
+          ]).apply(([servers, imageOptimizerUrl]) => {
+            const kvEntries: Record<string, string> = {};
+            const dirs: string[] = [];
+            // Router append .html and index.html suffixes to requests to s3 routes:
+            // - `.well-known` contain files without suffix, hence will be appended .html
+            // - in the future, it might make sense for each dir to have props that controls
+            //   the suffixes ie. "handleTrailingSlashse"
+            const expandDirs = [".well-known"];
 
-      Object.entries(plan.origins ?? {}).forEach(([name, props]) => {
-        if (props.group) {
-          originGroups[name] = {
-            originId: name,
-            failoverCriteria: {
-              statusCodes: props.group.fallbackStatusCodes,
-            },
-            members: [
-              { originId: props.group.primaryOriginName },
-              { originId: props.group.fallbackOriginName },
-            ],
-          };
-        }
-      });
-
-      return originGroups;
-    }
-
-    function buildS3Origin(name: string, props: S3OriginConfig) {
-      return {
-        originId: name,
-        domainName: bucket.nodes.bucket.bucketRegionalDomainName,
-        originPath: props.originPath ? `/${props.originPath}` : "",
-        originAccessControlId: access.id,
-      };
-    }
-
-    function buildServerOrigin(fnName: string, props: ServerOriginConfig) {
-      const fn = new Function(
-        ...transform(
-          args.transform?.server,
-          `${name}${logicalName(fnName)}`,
-          {
-            ...props.function,
-            description: props.function.description ?? `${name} server`,
-            runtime: output(args.server?.runtime).apply(
-              (v) => v ?? props.function.runtime ?? "nodejs20.x",
-            ),
-            timeout: props.function.timeout ?? "20 seconds",
-            memory: output(args.server?.memory).apply(
-              (v) => v ?? props.function.memory ?? "1024 MB",
-            ),
-            architecture: output(args.server?.architecture).apply(
-              (v) => v ?? props.function.architecture ?? "x86_64",
-            ),
-            vpc: args.vpc,
-            nodejs: {
-              format: "esm" as const,
-              install: args.server?.install,
-              loader: args.server?.loader,
-              ...props.function.nodejs,
-            },
-            environment: output(args.environment).apply((environment) => ({
-              ...environment,
-              ...props.function.environment,
-            })),
-            permissions: output(args.permissions).apply((permissions) => [
-              {
-                actions: ["cloudfront:CreateInvalidation"],
-                resources: ["*"],
-              },
-              ...(permissions ?? []),
-              ...(props.function.permissions ?? []),
-            ]),
-            injections: [
-              ...(args.warm
-                ? [useServerFunctionWarmingInjection(props.function.streaming)]
-                : []),
-              ...(props.function.injections || []),
-            ],
-            link: output(args.link).apply((link) => [
-              ...(props.function.link ?? []),
-              ...(link ?? []),
-            ]),
-            layers: output(args.server?.layers).apply((layers) => [
-              ...(props.function.layers ?? []),
-              ...(layers ?? []),
-            ]),
-            url: true,
-            dev: false,
-            _skipHint: true,
-          },
-          { parent },
-        ),
-      );
-      ssrFunctions.push(fn);
-
-      return {
-        originId: fnName,
-        domainName: fn.url.apply((url) => new URL(url!).host),
-        customOriginConfig: {
-          httpPort: 80,
-          httpsPort: 443,
-          originProtocolPolicy: "https-only",
-          originReadTimeout: 20,
-          originSslProtocols: ["TLSv1.2"],
-        },
-      };
-    }
-
-    function buildImageOptimizationOrigin(
-      fnName: string,
-      props: ImageOptimizationOriginConfig,
-    ) {
-      const fn = new Function(
-        ...transform(
-          args.transform?.imageOptimization,
-          `${name}${logicalName(fnName)}`,
-          {
-            timeout: "25 seconds",
-            logging: {
-              retention: "3 days",
-            },
-            permissions: [
-              {
-                actions: ["s3:GetObject"],
-                resources: [interpolate`${bucket.arn}/*`],
-              },
-            ],
-            ...props.function,
-            url: true,
-            dev: false,
-            _skipMetadata: true,
-            _skipHint: true,
-          },
-          { parent },
-        ),
-      );
-
-      return {
-        originId: fnName,
-        domainName: fn.url.apply((url) => new URL(url!).host),
-        customOriginConfig: {
-          httpPort: 80,
-          httpsPort: 443,
-          originProtocolPolicy: "https-only",
-          originReadTimeout: 20,
-          originSslProtocols: ["TLSv1.2"],
-        },
-      };
-    }
-
-    function buildBehavior(behavior: Plan["behaviors"][number]) {
-      const edgeFunction = edgeFunctions[behavior.edgeFunction || ""];
-
-      if (behavior.cacheType === "static") {
-        const requestFunction = useCfFunction(
-          "assets",
-          "request",
-          behavior.cfFunction ?? "assetsRequestCfFunction",
-        );
-        return {
-          targetOriginId: behavior.origin,
-          viewerProtocolPolicy: "redirect-to-https",
-          allowedMethods: behavior.allowedMethods ?? ["GET", "HEAD", "OPTIONS"],
-          cachedMethods: ["GET", "HEAD"],
-          compress: true,
-          // CloudFront's managed CachingOptimized policy
-          cachePolicyId: "658327ea-f89d-4fab-a63d-7e88639e58f6",
-          functionAssociations: requestFunction.apply((fn) => [
-            ...(fn
-              ? [
-                  {
-                    eventType: "viewer-request",
-                    functionArn: fn.arn,
+            plan.assets.forEach((copy) => {
+              const processDir = (childPath = "", level = 0) => {
+                const currentPath = path.join(outputPath, copy.from, childPath);
+                fs.readdirSync(currentPath, { withFileTypes: true }).forEach(
+                  (item) => {
+                    // File: add to kvEntries
+                    if (item.isFile()) {
+                      kvEntries[toPosix(path.join("/", childPath, item.name))] =
+                        "s3";
+                      return;
+                    }
+                    // Directory + deep routes: recursively process it
+                    //   In Next.js, asset requests are prefixed with is /_next/static,
+                    //   and image optimization requests are prefixed with /_next/image.
+                    //   We cannot route by 1 level of subdirs (ie. /_next/`), so we need
+                    //   to route by 2 levels of subdirs.
+                    // Directory + expand: recursively process it
+                    if (
+                      level === 0 &&
+                      (expandDirs.includes(item.name) ||
+                        item.name === copy.deepRoute)
+                    ) {
+                      processDir(path.join(childPath, item.name), level + 1);
+                      return;
+                    }
+                    // Directory + NOT expand: add to route
+                    dirs.push(toPosix(path.join("/", childPath, item.name)));
                   },
-                ]
-              : []),
-          ]),
-        };
-      } else if (behavior.cacheType === "server") {
-        const requestFunction = useCfFunction(
-          "server",
-          "request",
-          behavior.cfFunction ?? "serverRequestCfFunction",
-        );
-        const responseFunction = useCfFunction(
-          "server",
-          "response",
-          "serverResponseCfFunction",
-        );
-        return {
-          targetOriginId: behavior.origin,
-          viewerProtocolPolicy: "redirect-to-https",
-          allowedMethods: behavior.allowedMethods ?? [
-            "DELETE",
-            "GET",
-            "HEAD",
-            "OPTIONS",
-            "PATCH",
-            "POST",
-            "PUT",
-          ],
-          cachedMethods: ["GET", "HEAD"],
-          compress: true,
-          cachePolicyId: args.cachePolicy ?? useServerBehaviorCachePolicy().id,
-          // CloudFront's Managed-AllViewerExceptHostHeader policy
-          originRequestPolicyId: "b689b0a8-53d0-40ab-baf2-68738e2966ac",
-          functionAssociations: all([requestFunction, responseFunction]).apply(
-            ([requestFn, responseFn]) => [
-              ...(requestFn
-                ? [
-                    {
-                      eventType: "viewer-request",
-                      functionArn: requestFn.arn,
-                    },
-                  ]
-                : []),
-              ...(responseFn
-                ? [
-                    {
-                      eventType: "viewer-response",
-                      functionArn: responseFn.arn,
-                    },
-                  ]
-                : []),
-            ],
-          ),
-          lambdaFunctionAssociations: edgeFunction
-            ? [
-                {
-                  includeBody: true,
-                  eventType: "origin-request",
-                  lambdaArn: edgeFunction.nodes.function.qualifiedArn,
-                },
-              ]
-            : [],
-        };
-      }
+                );
+              };
+              processDir();
+            });
 
-      throw new VisibleError(`Invalid behavior type in the "${name}" site.`);
-    }
-
-    function useCfFunction(
-      origin: "assets" | "server",
-      type: "request" | "response",
-      fnName: string,
-    ) {
-      return output(args.server).apply((server) => {
-        const frameworkConfig = plan.cloudFrontFunctions?.[fnName];
-        const customConfig =
-          origin === "server"
-            ? type === "request"
-              ? server?.edge?.viewerRequest
-              : server?.edge?.viewerResponse
-            : undefined;
-        const builtInConfig =
-          type === "request" && args.domain
-            ? `
-if (event.request.headers.host.value.includes('cloudfront.net')) {
-  return {
-    statusCode: 403,
-    statusDescription: 'Forbidden',
-    body: {
-      encoding: "text",
-      data: '<html><head><title>403 Forbidden</title></head><body><center><h1>403 Forbidden</h1></center></body></html>'
-    }
-  };
-}`
-            : undefined;
-        if (!frameworkConfig && !customConfig && !builtInConfig) return;
-
-        cfFunctions[fnName] =
-          cfFunctions[fnName] ??
-          new cloudfront.Function(
-            `${name}CloudfrontFunction${logicalName(fnName)}`,
-            {
-              runtime: "cloudfront-js-2.0",
-              keyValueStoreAssociations: customConfig?.kvStores ?? [],
-              code: interpolate`
-async function handler(event) {
-  ${builtInConfig ?? ""}
-  ${frameworkConfig?.injections?.join("\n") ?? ""}
-  ${customConfig?.injection ?? ""}
-  return ${type === "request" ? "event.request" : "event.response"};
-}`,
-            },
-            { parent },
-          );
-        return cfFunctions[fnName];
-      });
-    }
-
-    function useServerBehaviorCachePolicy() {
-      singletonCachePolicy =
-        singletonCachePolicy ??
-        new cloudfront.CachePolicy(
-          `${name}ServerCachePolicy`,
-          {
-            comment: "SST server response cache policy",
-            defaultTtl: 0,
-            maxTtl: 31536000, // 1 year
-            minTtl: 0,
-            parametersInCacheKeyAndForwardedToOrigin: {
-              cookiesConfig: {
-                cookieBehavior: "none",
+            kvEntries["metadata"] = JSON.stringify({
+              base: plan.base,
+              custom404: plan.custom404,
+              s3: {
+                domain: bucketDomain,
+                dir: plan.assets[0].to ? "/" + plan.assets[0].to : "",
+                routes: dirs,
               },
-              headersConfig:
-                (plan.serverCachePolicy?.allowedHeaders ?? []).length > 0
+              image: imageOptimizerUrl
+                ? {
+                    host: new URL(imageOptimizerUrl!).host,
+                    route: plan.imageOptimizer!.prefix,
+                    ...(protectionConfig.mode === "oac" ||
+                    protectionConfig.mode === "oac-with-edge-signing"
+                      ? {
+                          originAccessControlConfig: {
+                            enabled: true,
+                            signingBehavior: "always",
+                            signingProtocol: "sigv4",
+                            originType: "lambda",
+                          },
+                        }
+                      : {}),
+                  }
+                : undefined,
+              servers: servers.map((s) => [
+                new URL(s.url!).host,
+                supportedRegions[s.region as keyof typeof supportedRegions].lat,
+                supportedRegions[s.region as keyof typeof supportedRegions].lon,
+              ]),
+              origin: {
+                timeouts: {
+                  readTimeout: toSeconds(timeout),
+                },
+                ...(protectionConfig.mode === "oac" ||
+                protectionConfig.mode === "oac-with-edge-signing"
                   ? {
-                      headerBehavior: "whitelist",
-                      headers: {
-                        items: plan.serverCachePolicy?.allowedHeaders,
+                      originAccessControlConfig: {
+                        enabled: true,
+                        signingBehavior: "always",
+                        signingProtocol: "sigv4",
+                        originType: "lambda",
                       },
                     }
-                  : {
-                      headerBehavior: "none",
-                    },
-              queryStringsConfig: {
-                queryStringBehavior: "all",
+                  : {}),
               },
-              enableAcceptEncodingBrotli: true,
-              enableAcceptEncodingGzip: true,
-            },
-          },
-          { parent },
-        );
-      return singletonCachePolicy;
+            } satisfies KV_SITE_METADATA);
+            return kvEntries;
+          }),
+      );
+
+      return new KvKeys(
+        `${name}KvKeys`,
+        {
+          store: kvStoreArn!,
+          namespace: kvNamespace,
+          entries,
+          purge,
+        },
+        { parent: self },
+      );
     }
 
-    function useServerFunctionWarmingInjection(streaming?: boolean) {
-      return [
-        `if (event.type === "warmer") {`,
-        `  const p = new Promise((resolve) => {`,
-        `    setTimeout(() => {`,
-        `      resolve({ serverId: "server-" + Math.random().toString(36).slice(2, 8) });`,
-        `    }, event.delay);`,
-        `  });`,
-        ...(streaming
-          ? [
-              `  const response = await p;`,
-              `  responseStream.write(JSON.stringify(response));`,
-              `  responseStream.end();`,
-              `  return;`,
-            ]
-          : [`  return p;`]),
-        `}`,
-      ].join("\n");
+    function updateRouterKvRoutes() {
+      return new KvRoutesUpdate(
+        `${name}RoutesUpdate`,
+        {
+          store: route!.routerKvStoreArn,
+          namespace: route!.routerKvNamespace,
+          key: "routes",
+          entry: route!.apply((route) =>
+            ["site", kvNamespace, route!.hostPattern, route!.pathPrefix].join(
+              ",",
+            ),
+          ),
+        },
+        { parent: self },
+      );
     }
 
-    function buildInvalidation() {
-      return all([outputPath, args.invalidation]).apply(
-        ([outputPath, invalidationRaw]) => {
+    function createInvalidation() {
+      all([args.invalidation, outputPath, plan]).apply(
+        ([invalidationRaw, outputPath, plan]) => {
           // Normalize invalidation
-          if (invalidationRaw === false) return false;
+          if (invalidationRaw === false) return;
           const invalidation = {
             wait: false,
             paths: "all",
@@ -1026,12 +1857,9 @@ async function handler(event) {
 
           // We will generate a hash based on the contents of the S3 files with cache enabled.
           // This will be used to determine if we need to invalidate our CloudFront cache.
-          const s3Origin = Object.values(plan.origins).find(
-            (origin) => origin.s3,
-          )?.s3;
-          if (!s3Origin) return false;
-          const cachedS3Files = s3Origin.copy.filter((file) => file.cached);
-          if (cachedS3Files.length === 0) return false;
+          const s3Origin = plan.assets;
+          const cachedS3Files = s3Origin.filter((file) => file.cached);
+          if (cachedS3Files.length === 0) return;
 
           // Build invalidation paths
           const invalidationPaths: string[] = [];
@@ -1039,15 +1867,15 @@ async function handler(event) {
             invalidationPaths.push("/*");
           } else if (invalidation.paths === "versioned") {
             cachedS3Files.forEach((item) => {
-              if (!item.versionedSubDir) return false;
+              if (!item.versionedSubDir) return;
               invalidationPaths.push(
-                path.posix.join("/", item.to, item.versionedSubDir, "*"),
+                toPosix(path.join("/", item.to, item.versionedSubDir, "*")),
               );
             });
           } else {
             invalidationPaths.push(...(invalidation?.paths || []));
           }
-          if (invalidationPaths.length === 0) return false;
+          if (invalidationPaths.length === 0) return;
 
           // Build build ID
           let invalidationBuildId: string;
@@ -1079,7 +1907,7 @@ async function handler(event) {
               if (invalidation.paths !== "versioned") {
                 globSync("**", {
                   ignore: item.versionedSubDir
-                    ? [path.posix.join(item.versionedSubDir, "**")]
+                    ? [toPosix(path.join(item.versionedSubDir, "**"))]
                     : undefined,
                   dot: true,
                   nodir: true,
@@ -1098,167 +1926,62 @@ async function handler(event) {
             invalidationBuildId = hash.digest("hex");
           }
 
-          return {
-            paths: invalidationPaths,
-            token: invalidationBuildId,
-            wait: invalidation.wait,
-          };
-        },
-      );
-    }
-
-    function createDistribution() {
-      return new Cdn(
-        ...transform(
-          args.transform?.cdn,
-          `${name}Cdn`,
-          {
-            comment: `${name} app`,
-            origins: Object.values(origins),
-            originGroups: Object.values(originGroups),
-            defaultRootObject: plan.defaultRootObject ?? "",
-            defaultCacheBehavior: buildBehavior(
-              plan.behaviors.find((behavior) => !behavior.pattern)!,
-            ),
-            orderedCacheBehaviors: plan.behaviors
-              .filter((behavior) => behavior.pattern)
-              .map((behavior) => ({
-                pathPattern: behavior.pattern!,
-                ...buildBehavior(behavior),
-              })),
-            customErrorResponses: plan.errorResponses,
-            domain: args.domain,
-            invalidation,
-          },
-          // create distribution after assets are uploaded
-          { dependsOn: bucketFile, parent },
-        ),
-      );
-    }
-
-    function createWarmer() {
-      // note: Currently all sites have a single server function. When we add
-      //       support for multiple server functions (ie. route splitting), we
-      //       need to handle warming multiple functions.
-      if (!args.warm) return;
-
-      if (args.warm && plan.edge) {
-        throw new VisibleError(
-          `In the "${name}" Site, warming is currently supported only for the regional mode.`,
-        );
-      }
-
-      if (ssrFunctions.length === 0) return;
-
-      // Create cron job
-      const cron = new Cron(
-        `${name}Warmer`,
-        {
-          schedule: "rate(5 minutes)",
-          job: {
-            description: `${name} warmer`,
-            bundle: path.join($cli.paths.platform, "dist", "ssr-warmer"),
-            runtime: "nodejs20.x",
-            handler: "index.handler",
-            timeout: "900 seconds",
-            memory: "128 MB",
-            dev: false,
-            environment: {
-              FUNCTION_NAME: ssrFunctions[0].nodes.function.name,
-              CONCURRENCY: output(args.warm).apply((warm) => warm.toString()),
+          new DistributionInvalidation(
+            `${name}Invalidation`,
+            {
+              distributionId,
+              paths: invalidationPaths,
+              version: invalidationBuildId,
+              wait: invalidation.wait,
             },
-            link: [ssrFunctions[0]],
-            _skipMetadata: true,
-          },
-          transform: {
-            target: (args) => {
-              args.retryPolicy = {
-                maximumRetryAttempts: 0,
-                maximumEventAgeInSeconds: 60,
-              };
+            {
+              parent: self,
+              dependsOn: [assetsUploaded, kvUpdated, ...invalidationDependsOn],
             },
-          },
+          );
         },
-        { parent },
-      );
-
-      // Prewarm on deploy
-      new lambda.Invocation(
-        `${name}Prewarm`,
-        {
-          functionName: cron.nodes.job.name,
-          triggers: {
-            version: Date.now().toString(),
-          },
-          input: JSON.stringify({}),
-        },
-        { parent },
       );
     }
-  });
-}
+  }
 
-export function useCloudFrontFunctionHostHeaderInjection() {
-  return `event.request.headers["x-forwarded-host"] = event.request.headers.host;`;
-}
-
-export function validatePlan<
-  CloudFrontFunctions extends Record<
-    string,
-    Prettify<CloudFrontFunctionConfig>
-  >,
-  EdgeFunctions extends Record<string, Prettify<EdgeFunctionConfig>>,
-  Origins extends Record<
-    string,
-    {
-      server?: Prettify<ServerOriginConfig>;
-      imageOptimization?: Prettify<ImageOptimizationOriginConfig>;
-      s3?: Prettify<S3OriginConfig>;
-      group?: Prettify<OriginGroupConfig>;
-    }
-  >,
->(input: {
-  cloudFrontFunctions?: CloudFrontFunctions;
-  edgeFunctions?: EdgeFunctions;
   /**
-   * Each origin can be either an S3, server, image optimization, or group origin.
+   * The URL of the Astro site.
+   *
+   * If the `domain` is set, this is the URL with the custom domain.
+   * Otherwise, it's the auto-generated CloudFront URL.
    */
-  origins: Origins;
-  edge: boolean;
-  behaviors: {
-    cacheType: "server" | "static";
-    pattern?: string;
-    origin: keyof Origins;
-    allowedMethods?: (
-      | "DELETE"
-      | "GET"
-      | "HEAD"
-      | "OPTIONS"
-      | "PATCH"
-      | "POST"
-      | "PUT"
-    )[];
-    cfFunction?: keyof CloudFrontFunctions;
-    edgeFunction?: keyof EdgeFunctions;
-  }[];
-  defaultRootObject?: cloudfront.DistributionArgs["defaultRootObject"];
-  errorResponses?: types.input.cloudfront.DistributionCustomErrorResponse[];
-  serverCachePolicy?: {
-    allowedHeaders?: string[];
-  };
-  buildId?: string;
-}) {
-  Object.entries(input.origins).forEach(([originName, origin]) => {
-    if (
-      !origin.s3 &&
-      !origin.server &&
-      !origin.imageOptimization &&
-      !origin.group
-    ) {
-      throw new VisibleError(
-        `Invalid origin "${originName}" definition. Each origin must be an S3, server, image optimization, or group origin.`,
-      );
-    }
-  });
-  return input;
+  public get url() {
+    return all([this.prodUrl, this.devUrl]).apply(
+      ([prodUrl, devUrl]) => (prodUrl ?? devUrl)!,
+    );
+  }
+
+  /**
+   * The underlying [resources](/docs/components/#nodes) this component creates.
+   */
+  public get nodes() {
+    return {
+      /**
+       * The AWS Lambda server function that renders the site.
+       */
+      server: this.server,
+      /**
+       * The Amazon S3 Bucket that stores the assets.
+       */
+      assets: this.bucket,
+      /**
+       * The Amazon CloudFront CDN that serves the site.
+       */
+      cdn: this.cdn,
+    };
+  }
+
+  /** @internal */
+  public getSSTLink() {
+    return {
+      properties: {
+        url: this.url,
+      },
+    };
+  }
 }

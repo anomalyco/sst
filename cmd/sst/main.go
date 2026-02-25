@@ -149,7 +149,7 @@ var root = &cli.Command{
 			"```",
 			"",
 			":::note",
-			"The CLI currently supports macOS, Linux, and WSL. Windows support is coming soon.",
+			"The CLI currently supports macOS, Linux, and WSL. Windows support is in beta.",
 			":::",
 			"",
 			"To install a specific version.",
@@ -164,7 +164,7 @@ var root = &cli.Command{
 			"",
 			"- **macOS**",
 			"",
-			"  The CLI is available via a Homebrew Tap, and as downloadable binary in the [releases](https://github.com/sst/sst/v3/releases/latest).",
+			"  The CLI is available via a Homebrew Tap, and as downloadable binary in the [releases](https://github.com/sst/sst/releases/latest).",
 			"",
 			"  ```bash",
 			"  brew install sst/tap/sst",
@@ -177,7 +177,7 @@ var root = &cli.Command{
 			"",
 			"- **Linux**",
 			"",
-			"  The CLI is available as downloadable binaries in the [releases](https://github.com/sst/sst/v3/releases/latest). Download the `.deb` or `.rpm` and install with `sudo dpkg -i` and `sudo rpm -i`.",
+			"  The CLI is available as downloadable binaries in the [releases](https://github.com/sst/sst/releases/latest). Download the `.deb` or `.rpm` and install with `sudo dpkg -i` and `sudo rpm -i`.",
 			"",
 			"  For Arch Linux, it's available in the [aur](https://aur.archlinux.org/packages/sst-bin).",
 			"---",
@@ -282,6 +282,26 @@ var root = &cli.Command{
 			},
 		},
 		{
+			Name: "config",
+			Type: "string",
+			Description: cli.Description{
+				Short: "Path to the config file",
+				Long: strings.Join([]string{
+					"",
+					"Optionally, pass in a path to the SST config file. This default to",
+					"`sst.config.ts` in the current directory.",
+					"",
+					"```bash",
+					"sst --config path/to/config.ts [command]",
+					"```",
+					"",
+					"This is useful when your monorepo has multiple SST apps in it.",
+					"You can run the SST CLI for a specific app by passing in the path to",
+					"its config file.",
+				}, "\n"),
+			},
+		},
+		{
 			Name: "help",
 			Type: "bool",
 			Description: cli.Description{
@@ -354,9 +374,9 @@ var root = &cli.Command{
 					"Run your app in dev mode. By default, this starts a multiplexer with processes that",
 					" deploy your app, run your functions, and start your frontend.",
 					"",
-					"```bash frame=\"none\"",
-					"sst dev",
-					"```",
+					":::note",
+					"The tabbed terminal UI is only available on Linux/macOS and WSL.",
+					":::",
 					"",
 					"Each process is run in a separate tab that you can click on in the sidebar.",
 					"",
@@ -390,7 +410,8 @@ var root = &cli.Command{
 					"deployed by `sst dev`.",
 					":::",
 					"",
-					"Optionally, you can disable the multiplexer and run `sst dev` in basic mode.",
+					"Optionally, you can disable the multiplexer and not spawn any child",
+					"processes by running `sst dev` in basic mode.",
 					"",
 					"```bash frame=\"none\"",
 					"sst dev --mode=basic",
@@ -414,6 +435,18 @@ var root = &cli.Command{
 					"```bash frame=\"none\"",
 					"sst dev -- next dev --turbo",
 					"```",
+					"",
+					"You can also disable the tabbed terminal UI by running `sst dev` in",
+					"mono mode.",
+					"",
+					"```bash frame=\"none\"",
+					"sst dev --mode=mono",
+					"```",
+					"",
+					"Unlike `basic` mode, this'll spawn child processes. But instead of",
+					"a tabbed UI it'll show their outputs in a single stream.",
+					"",
+					"This is used by default in Windows.",
 				}, "\n"),
 			},
 			Flags: []cli.Flag{
@@ -421,8 +454,16 @@ var root = &cli.Command{
 					Name: "mode",
 					Type: "string",
 					Description: cli.Description{
-						Short: "Use mode=basic to turn off multiplexer",
-						Long:  "Defaults to using the multiplexer or `mosaic` mode. Use `basic` to turn it off.",
+						Short: "mode=mono to turn off multiplexer. mode=basic to not spawn any child processes",
+						Long:  "Defaults to using `multi` mode. Use `mono` to get a single stream of all child process logs or `basic` to not spawn any child processes.",
+					},
+				},
+				{
+					Name: "policy",
+					Type: "string",
+					Description: cli.Description{
+						Short: "Path to policy pack",
+						Long:  "Run policy pack validation against the preview changes.",
 					},
 				},
 			},
@@ -457,69 +498,7 @@ var root = &cli.Command{
 			Run: CmdMosaic,
 		},
 		CmdDeploy,
-		{
-			Name: "diff",
-			Description: cli.Description{
-				Short: "See what changes will be made",
-				Long: strings.Join([]string{
-					"Builds your app to see what changes will be made when you deploy it.",
-					"",
-					"It displays a list of resources that will be created, updated, or deleted.",
-					"For each of these resources, it'll also show the properties that are changing.",
-					"",
-					":::tip",
-					"Run a `sst diff` to see what changes will be made when you deploy your app.",
-					":::",
-					"",
-					"This is useful for cases when you pull some changes from a teammate and want to",
-					"see what will be deployed; before doing the actual deploy.",
-					"",
-					"Optionally, you can diff a specific component by passing in the name of the component from your `sst.config.ts`.",
-					"",
-					"```bash frame=\"none\"",
-					"sst diff --target MyComponent",
-					"```",
-					"",
-					"By default, this compares to the last deploy of the given stage as it would be",
-					"deployed using `sst deploy`. But if you are working in dev mode using `sst dev`,",
-					"you can use the `--dev` flag.",
-					"",
-					"```bash frame=\"none\"",
-					"sst diff --dev",
-					"```",
-					"",
-					"This is useful because in dev mode, you app is deployed a little differently.",
-				}, "\n"),
-			},
-			Flags: []cli.Flag{
-				{
-					Name: "target",
-					Description: cli.Description{
-						Short: "Run it only for a component",
-						Long:  "Only run it for the given component.",
-					},
-				},
-				{
-					Name: "dev",
-					Type: "bool",
-					Description: cli.Description{
-						Short: "Compare to sst dev",
-						Long: strings.Join([]string{
-							"Compare to the dev version of this stage.",
-						}, "\n"),
-					},
-				},
-			},
-			Examples: []cli.Example{
-				{
-					Content: "sst diff --stage production",
-					Description: cli.Description{
-						Short: "See changes to production",
-					},
-				},
-			},
-			Run: CmdDiff,
-		},
+		CmdDiff,
 		{
 			Name: "add",
 			Description: cli.Description{
@@ -588,7 +567,7 @@ var root = &cli.Command{
 				spin.Suffix = "  Adding provider..."
 				spin.Start()
 				defer spin.Stop()
-				cfgPath, err := project.Discover()
+				cfgPath, err := cli.Discover()
 				if err != nil {
 					return err
 				}
@@ -616,7 +595,7 @@ var root = &cli.Command{
 				}
 				err = p.Add(entry.Name, entry.Version)
 				if err != nil {
-					return err
+					return util.NewReadableError(err, err.Error())
 				}
 				spin.Suffix = "  Downloading provider..."
 				p, err = project.New(&project.ProjectConfig{
@@ -656,7 +635,7 @@ var root = &cli.Command{
 				}, "\n"),
 			},
 			Run: func(cli *cli.Cli) error {
-				cfgPath, err := project.Discover()
+				cfgPath, err := cli.Discover()
 				if err != nil {
 					return err
 				}
@@ -822,7 +801,7 @@ var root = &cli.Command{
 					"The resources in your app are removed based on the `removal` setting in your `sst.config.ts`.",
 					":::",
 					"",
-					"This does not remove the SST _state_ and _bootstrap_ resources in your account as these might still be in use by other apps. You can remove them manually if you want to reset your account, [learn more](docs/providers/#state).",
+					"This does not remove the SST _state_ and _bootstrap_ resources in your account as these might still be in use by other apps. You can remove them manually if you want to reset your account, [learn more](/docs/state/#reset).",
 					"",
 					"Optionally, remove your app from a specific stage.",
 					"",
@@ -997,6 +976,12 @@ var root = &cli.Command{
 					"sst refresh --target MyComponent",
 					"```",
 					"",
+					"Alternatively, exclude a specific component from the refresh.",
+					"",
+					"```bash frame=\"none\"",
+					"sst refresh --exclude MyComponent",
+					"```",
+					"",
 					"This is useful for cases where you want to ensure that your local state is in sync with your cloud provider. [Learn more about how state works](/docs/providers/#how-state-works).",
 				}, "\n"),
 			},
@@ -1007,6 +992,14 @@ var root = &cli.Command{
 					Description: cli.Description{
 						Short: "Run it only for a component",
 						Long:  "Only run it for the given component.",
+					},
+				},
+				{
+					Name: "exclude",
+					Type: "string",
+					Description: cli.Description{
+						Short: "Exclude a component",
+						Long:  "Exclude the specified component from the operation.",
 					},
 				},
 			},

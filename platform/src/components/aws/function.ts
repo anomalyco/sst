@@ -2,7 +2,8 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import archiver from "archiver";
-import type { BuildOptions, Loader } from "esbuild";
+import type { Loader } from "esbuild";
+import type { EsbuildOptions } from "../esbuild.js";
 import { glob } from "glob";
 import {
   all,
@@ -43,6 +44,14 @@ import { RandomBytes } from "@pulumi/random";
 import { lazy } from "../../util/lazy.js";
 import { Efs } from "./efs.js";
 import { FunctionEnvironmentUpdate } from "./providers/function-environment-update.js";
+import { warnOnce } from "../../util/warn.js";
+import {
+  normalizeRouteArgs,
+  RouterRouteArgs,
+  RouterRouteArgsDeprecated,
+} from "./router.js";
+import { KvRoutesUpdate } from "./providers/kv-routes-update.js";
+import { KvKeys } from "./providers/kv-keys.js";
 
 /**
  * Helper type to define function ARN type
@@ -80,10 +89,45 @@ export type FunctionPermissionArgs = {
    * }
    * ```
    */
-  resources: Input<string>[];
+  resources: Input<Input<string>[]>;
+  /**
+   * Configure specific conditions for when the policy is in effect.
+   *
+   * @example
+   * ```js
+   * {
+   *   conditions: [
+   *     {
+   *       test: "StringEquals",
+   *       variable: "s3:x-amz-server-side-encryption",
+   *       values: ["AES256"]
+   *     },
+   *     {
+   *       test: "IpAddress",
+   *       variable: "aws:SourceIp",
+   *       values: ["10.0.0.0/16"]
+   *     }
+   *   ]
+   * }
+   * ```
+   */
+  conditions?: Input<
+    Input<{
+      /**
+       * Name of the [IAM condition operator](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_condition_operators.html) to evaluate.
+       */
+      test: Input<string>;
+      /**
+       * Name of a [Context Variable](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements.html#AvailableKeys) to apply the condition to. Context variables may either be standard AWS variables starting with `aws:` or service-specific variables prefixed with the service name.
+       */
+      variable: Input<string>;
+      /**
+       * The values to evaluate the condition against. If multiple values are provided, the condition matches if at least one of them applies. That is, AWS evaluates multiple values as though using an "OR" boolean operation.
+       */
+      values: Input<Input<string>[]>;
+    }>[]
+  >;
 };
-
-export type FunctionEnvironmentArgs = Record<string, Input<string>>;
 
 interface FunctionUrlCorsArgs {
   /**
@@ -241,6 +285,24 @@ export interface FunctionArgs {
    */
   dev?: Input<false>;
   /**
+   * Configure the maximum number of retry attempts for this function when invoked
+   * asynchronously.
+   *
+   * This only affects asynchronous invocations of the function, ie. when subscribed to
+   * Topics, EventBuses, or Buckets. And not when directly invoking the function.
+   *
+   * Valid values are between 0 and 2.
+   *
+   * @default `2`
+   * @example
+   * ```js
+   * {
+   *   retries: 0
+   * }
+   * ```
+   */
+  retries?: Input<number>;
+  /**
    * The name for the function.
    *
    * By default, the name is generated from the app name, stage name, and component name. This
@@ -279,19 +341,15 @@ export interface FunctionArgs {
   /**
    * The language runtime for the function.
    *
-   * :::tip
-   * Currently supports Node.js and Golang functions.
-   * :::
+   * Node.js and Golang are officially supported. While, Python and Rust are
+   * community supported. Support for other runtimes are on the roadmap.
    *
-   * Currently supports **Node.js**, and **Golang** functions. Python and Rust are community
-   * supported and currently are a work in progress. Other runtimes are on the roadmap.
-   *
-   * @default `"nodejs20.x"`
+   * @default `"nodejs24.x"`
    *
    * @example
    * ```js
    * {
-   *   runtime: "nodejs22.x"
+   *   runtime: "nodejs24.x"
    * }
    * ```
    */
@@ -299,6 +357,7 @@ export interface FunctionArgs {
     | "nodejs18.x"
     | "nodejs20.x"
     | "nodejs22.x"
+    | "nodejs24.x"
     | "go"
     | "rust"
     | "provided.al2023"
@@ -334,10 +393,13 @@ export interface FunctionArgs {
    * Path to the handler for the function.
    *
    * - For Node.js this is in the format `{path}/{file}.{method}`.
+   * - For Python this is also `{path}/{file}.{method}`.
    * - For Golang this is `{path}` to the Go module.
    * - For Rust this is `{path}` to the Rust crate.
    *
    * @example
+   *
+   * ##### Node.js
    *
    * For example with Node.js you might have.
    *
@@ -363,7 +425,50 @@ export interface FunctionArgs {
    * }
    * ```
    *
-   * For Golang it might look like this.
+   * ##### Python
+   *
+   * For Python, [uv](https://docs.astral.sh/uv/) is used to package the function.
+   * You need to have it installed.
+   *
+   * :::note
+   * You need uv installed for Python functions.
+   * :::
+   *
+   * The functions need to be in a [uv workspace](https://docs.astral.sh/uv/concepts/projects/workspaces/#workspace-sources).
+   *
+   * ```js
+   * {
+   *   handler: "functions/src/functions/api.handler"
+   * }
+   * ```
+   *
+   * The project structure might look something like this. Where there is a
+   * `pyproject.toml` file in the root and the `functions/` directory is a uv
+   * workspace with its own `pyproject.toml`.
+   *
+   * ```txt
+   * ├── sst.config.ts
+   * ├── pyproject.toml
+   * └── functions
+   *     ├── pyproject.toml
+   *     └── src
+   *         └── functions
+   *             ├── __init__.py
+   *             └── api.py
+   * ```
+   *
+   * To make sure that the right runtime is used in `sst dev`, make sure to set the
+   * version of Python in your `pyproject.toml` to match the runtime you are using.
+   *
+   * ```toml title="functions/pyproject.toml"
+   * requires-python = "==3.11.*"
+   * ```
+   *
+   * You can refer to [this example of deploying a Python function](/docs/examples/#aws-lambda-python).
+   *
+   * ##### Golang
+   *
+   * For Golang the handler looks like.
    *
    * ```js
    * {
@@ -376,7 +481,11 @@ export interface FunctionArgs {
    * might be in `packages/functions/go` and `some_module` is the name of the
    * module.
    *
-   * For Rust, it might look like this.
+   * You can refer to [this example of deploying a Go function](/docs/examples/#aws-lambda-go).
+   *
+   * ##### Rust
+   *
+   * For Rust, the handler looks like.
    *
    * ```js
    * {
@@ -395,7 +504,13 @@ export interface FunctionArgs {
    * If a function is connected to another service, the request will time out based on the service's limits.
    * :::
    *
-   * While the maximum timeout is 15 minutes, if a function is connected to other services, it'll time out based on those limits. API Gateway for example has a timeout of 30 seconds. So even if the function has a timeout of 15 minutes, the API request will time out after 30 seconds.
+   * While the maximum timeout is 15 minutes, if a function is connected to other
+   * services, it'll time out based on those limits.
+   *
+   * - API Gateway has a timeout of 30 seconds. So even if the function has a
+   *   timeout of 15 minutes, the API request will time out after 30 seconds.
+   * - CloudFront has a default timeout of 60 seconds. You can have this limit
+   *   increased by [contacting AWS Support](https://console.aws.amazon.com/support/home#/case/create?issueType=service-limit-increase).
    *
    * @default `"20 seconds"`
    * @example
@@ -480,7 +595,7 @@ export interface FunctionArgs {
    *     {
    *       actions: ["s3:GetObject", "s3:PutObject"],
    *       resources: ["arn:aws:s3:::my-bucket/*"]
-   *     },
+   *     }
    *   ]
    * }
    * ```
@@ -493,7 +608,7 @@ export interface FunctionArgs {
    *     {
    *       actions: ["s3:*"],
    *       resources: ["arn:aws:s3:::my-bucket/*"]
-   *     },
+   *     }
    *   ]
    * }
    * ```
@@ -506,21 +621,21 @@ export interface FunctionArgs {
    *     {
    *       actions: ["*"],
    *       resources: ["*"]
-   *     },
+   *     }
    *   ]
    * }
    * ```
    */
   permissions?: Input<Prettify<FunctionPermissionArgs>[]>;
   /**
-   * Policies to attach to the function. These policies will be added to the function's IAM
-   * role.
+   * Policies to attach to the function. These policies will be added to the
+   * function's IAM role.
    *
-   * Attaching policies lets you grant a set of predefined permissions to the function without
-   * having to specify the permissions in the `permissions` prop.
+   * Attaching policies lets you grant a set of predefined permissions to the
+   * function without having to specify the permissions in the `permissions` prop.
    *
    * @example
-   * Allow the function to have read-only access to all resources.
+   * For example, allow the function to have read-only access to all resources.
    * ```js
    * {
    *   policies: ["arn:aws:iam::aws:policy/ReadOnlyAccess"]
@@ -591,53 +706,53 @@ export interface FunctionArgs {
   logging?: Input<
     | false
     | {
-        /**
-         * The duration the function logs are kept in CloudWatch.
-         *
-         * Not application when an existing log group is provided.
-         *
-         * @default `1 month`
-         * @example
-         * ```js
-         * {
-         *   logging: {
-         *     retention: "forever"
-         *   }
-         * }
-         * ```
-         */
-        retention?: Input<keyof typeof RETENTION>;
-        /**
-         * Assigns the given CloudWatch log group name to the function. This allows you to pass in a previously created log group.
-         *
-         * By default, the function creates a new log group when it's created.
-         *
-         * @default Creates a log group
-         * @example
-         * ```js
-         * {
-         *   logging: {
-         *     logGroup: "/existing/log-group"
-         *   }
-         * }
-         * ```
-         */
-        logGroup?: Input<string>;
-        /**
-         * The [log format](https://docs.aws.amazon.com/lambda/latest/dg/monitoring-cloudwatchlogs-advanced.html)
-         * of the Lambda function.
-         * @default `"text"`
-         * @example
-         * ```js
-         * {
-         *   logging: {
-         *     format: "json"
-         *   }
-         * }
-         * ```
-         */
-        format?: Input<"text" | "json">;
-      }
+      /**
+       * The duration the function logs are kept in CloudWatch.
+       *
+       * Not application when an existing log group is provided.
+       *
+       * @default `1 month`
+       * @example
+       * ```js
+       * {
+       *   logging: {
+       *     retention: "forever"
+       *   }
+       * }
+       * ```
+       */
+      retention?: Input<keyof typeof RETENTION>;
+      /**
+       * Assigns the given CloudWatch log group name to the function. This allows you to pass in a previously created log group.
+       *
+       * By default, the function creates a new log group when it's created.
+       *
+       * @default Creates a log group
+       * @example
+       * ```js
+       * {
+       *   logging: {
+       *     logGroup: "/existing/log-group"
+       *   }
+       * }
+       * ```
+       */
+      logGroup?: Input<string>;
+      /**
+       * The [log format](https://docs.aws.amazon.com/lambda/latest/dg/monitoring-cloudwatchlogs-advanced.html)
+       * of the Lambda function.
+       * @default `"text"`
+       * @example
+       * ```js
+       * {
+       *   logging: {
+       *     format: "json"
+       *   }
+       * }
+       * ```
+       */
+      format?: Input<"text" | "json">;
+    }
   >;
   /**
    * The [architecture](https://docs.aws.amazon.com/lambda/latest/dg/foundation-arch.html)
@@ -699,45 +814,137 @@ export interface FunctionArgs {
   url?: Input<
     | boolean
     | {
-        /**
-         * The authorization used for the function URL. Supports [IAM authorization](https://docs.aws.amazon.com/lambda/latest/dg/urls-auth.html).
-         * @default `"none"`
-         * @example
-         * ```js
-         * {
-         *   url: {
-         *     authorization: "iam"
-         *   }
-         * }
-         * ```
-         */
-        authorization?: Input<"none" | "iam">;
-        /**
-         * Customize the CORS (Cross-origin resource sharing) settings for the function URL.
-         * @default `true`
-         * @example
-         * Disable CORS.
-         * ```js
-         * {
-         *   url: {
-         *     cors: false
-         *   }
-         * }
-         * ```
-         * Only enable the `GET` and `POST` methods for `https://example.com`.
-         * ```js
-         * {
-         *   url: {
-         *     cors: {
-         *       allowMethods: ["GET", "POST"],
-         *       allowOrigins: ["https://example.com"]
-         *     }
-         *   }
-         * }
-         * ```
-         */
-        cors?: Input<boolean | Prettify<FunctionUrlCorsArgs>>;
-      }
+      /**
+       * @deprecated The `url.router` prop is now the recommended way to serve your
+       * function URL through a `Router` component.
+       */
+      route?: Prettify<RouterRouteArgsDeprecated>;
+      /**
+       * Serve your function URL through a `Router` instead of a standalone Function URL.
+       *
+       * By default, this component creates a direct function URL endpoint. But you might
+       * want to serve it through the distribution of your `Router` as a:
+       *
+       * - A path like `/api/users`
+       * - A subdomain like `api.example.com`
+       * - Or a combined pattern like `dev.example.com/api`
+       *
+       * @example
+       *
+       * To serve your function **from a path**, you'll need to configure the root domain
+       * in your `Router` component.
+       *
+       * ```ts title="sst.config.ts" {2}
+       * const router = new sst.aws.Router("Router", {
+       *   domain: "example.com"
+       * });
+       * ```
+       *
+       * Now set the `router` and the `path` in the `url` prop.
+       *
+       * ```ts {4,5}
+       * {
+       *   url: {
+       *     router: {
+       *       instance: router,
+       *       path: "/api/users"
+       *     }
+       *   }
+       * }
+       * ```
+       *
+       * To serve your function **from a subdomain**, you'll need to configure the
+       * domain in your `Router` component to match both the root and the subdomain.
+       *
+       * ```ts title="sst.config.ts" {3,4}
+       * const router = new sst.aws.Router("Router", {
+       *   domain: {
+       *     name: "example.com",
+       *     aliases: ["*.example.com"]
+       *   }
+       * });
+       * ```
+       *
+       * Now set the `domain` in the `router` prop.
+       *
+       * ```ts {5}
+       * {
+       *   url: {
+       *     router: {
+       *       instance: router,
+       *       domain: "api.example.com"
+       *     }
+       *   }
+       * }
+       * ```
+       *
+       * Finally, to serve your function **from a combined pattern** like
+       * `dev.example.com/api`, you'll need to configure the domain in your `Router` to
+       * match the subdomain.
+       *
+       * ```ts title="sst.config.ts" {3,4}
+       * const router = new sst.aws.Router("Router", {
+       *   domain: {
+       *     name: "example.com",
+       *     aliases: ["*.example.com"]
+       *   }
+       * });
+       * ```
+       *
+       * And set the `domain` and the `path`.
+       *
+       * ```ts {5,6}
+       * {
+       *   url: {
+       *     router: {
+       *       instance: router,
+       *       domain: "dev.example.com",
+       *       path: "/api/users"
+       *     }
+       *   }
+       * }
+       * ```
+       */
+      router?: Prettify<RouterRouteArgs>;
+      /**
+       * The authorization used for the function URL. Supports [IAM authorization](https://docs.aws.amazon.com/lambda/latest/dg/urls-auth.html).
+       * @default `"none"`
+       * @example
+       * ```js
+       * {
+       *   url: {
+       *     authorization: "iam"
+       *   }
+       * }
+       * ```
+       */
+      authorization?: Input<"none" | "iam">;
+      /**
+       * Customize the CORS (Cross-origin resource sharing) settings for the function URL.
+       * @default `true`
+       * @example
+       * Disable CORS.
+       * ```js
+       * {
+       *   url: {
+       *     cors: false
+       *   }
+       * }
+       * ```
+       * Only enable the `GET` and `POST` methods for `https://example.com`.
+       * ```js
+       * {
+       *   url: {
+       *     cors: {
+       *       allowMethods: ["GET", "POST"],
+       *       allowOrigins: ["https://example.com"]
+       *     }
+       *   }
+       * }
+       * ```
+       */
+      cors?: Input<boolean | Prettify<FunctionUrlCorsArgs>>;
+    }
   >;
   /**
    * Configure how your function is bundled.
@@ -749,6 +956,7 @@ export interface FunctionArgs {
    */
   nodejs?: Input<{
     /**
+     * @internal
      * Point to a file that exports a list of esbuild plugins to use.
      *
      * @example
@@ -842,7 +1050,7 @@ export interface FunctionArgs {
      * [`BuildOptions`](https://esbuild.github.io/api/#build).
      * :::
      */
-    esbuild?: Input<BuildOptions>;
+    esbuild?: Input<EsbuildOptions>;
     /**
      * Disable if the function code is minified when bundled.
      *
@@ -915,29 +1123,19 @@ export interface FunctionArgs {
     splitting?: Input<boolean>;
   }>;
   /**
-   * Configure your python function.
-   *
-   * By default, SST will package all files in the same directory as the `handler` file.
-   * This means that you need to your handler file be the root of all files that need to be
-   * included in the function package. The only exception to this is a parent `pyproject.toml`
-   * file. SST will look for this file by finding the closest parent directory that contains
-   * a `pyproject.toml` file.
-   *
-   * @example
-   * ```markdown
-   * project-root/
-   * ├── functions/
-   * │   ├── pyproject.toml
-   * │   ├── handler.py
-   * │   └── utils.py
-   * └── sst.config.ts
-   * ```
+   * Configure how your Python function is packaged.
    */
   python?: Input<{
     /**
-     * Whether to deploy the function to the container runtime. You should use this
-     * if you are deploying a function that needs native dependencies, is large,
-     * or if you need to customize some runtime configuration.
+     * Set this to `true` if you want to deploy this function as a container image.
+     * There are a couple of reasons why you might want to do this.
+     *
+     * 1. The Lambda package size has an unzipped limit of 250MB. Whereas the
+     *    container image size has a limit of 10GB.
+     * 2. Even if you are below the 250MB limit, larger Lambda function packages
+     *    have longer cold starts when compared to container image.
+     * 3. You might want to use a custom Dockerfile to handle complex builds.
+     *
      * @default `false`
      * @example
      * ```ts
@@ -947,8 +1145,53 @@ export interface FunctionArgs {
      *   }
      * }
      * ```
+     *
+     * When you run `sst deploy`, it uses a built-in Dockerfile. It also needs
+     * the Docker daemon to be running.
+     *
+     * :::note
+     * This needs the Docker daemon to be running.
+     * :::
+     *
+     * To use a custom Dockerfile, add one to the rooot of the uv workspace
+     * of the function.
+     *
+     *
+     * ```txt {5}
+     * ├── sst.config.ts
+     * ├── pyproject.toml
+     * └── function
+     *     ├── pyproject.toml
+     *     ├── Dockerfile
+     *     └── src
+     *         └── function
+     *             └── api.py
+     * ```
+     *
+     * You can refer to [this example of using a container image](/docs/examples/#aws-lambda-python-container).
      */
-    container?: Input<boolean>;
+    container?: Input<
+      | boolean
+      | {
+          /**
+           * Controls whether Docker build cache is enabled.
+           * @default `true`
+           * @example
+           * Disable Docker build caching, useful for environments like Localstack where
+           * ECR cache export is not supported.
+           * ```js
+           * {
+           *   python: {
+           *     container: {
+           *       cache: false
+           *     }
+           *   }
+           * }
+           * ```
+           */
+          cache?: Input<boolean>;
+        }
+    >;
   }>;
   /**
    * Add additional files to copy into the function package. Takes a list of objects
@@ -1161,34 +1404,61 @@ export interface FunctionArgs {
    * Configure the function to connect to private subnets in a virtual private cloud or VPC. This allows your function to access private resources.
    *
    * @example
+   * Create a `Vpc` component.
+   *
+   * ```js title="sst.config.ts"
+   * const myVpc = new sst.aws.Vpc("MyVpc");
+   * ```
+   *
+   * Or reference an existing VPC.
+   *
+   * ```js title="sst.config.ts"
+   * const myVpc = sst.aws.Vpc.get("MyVpc", "vpc-12345678901234567");
+   * ```
+   *
+   * And pass it in.
+   *
    * ```js
    * {
-   *   vpc: {
-   *     privateSubnets: ["subnet-0b6a2b73896dc8c4c", "subnet-021389ebee680c2f0"]
-   *     securityGroups: ["sg-0399348378a4c256c"],
-   *   }
+   *   vpc: myVpc
    * }
    * ```
    */
   vpc?:
-    | Vpc
-    | Input<{
-        /**
-         * A list of VPC security group IDs.
-         */
-        securityGroups: Input<Input<string>[]>;
-        /**
-         * A list of VPC subnet IDs.
-         */
-        privateSubnets: Input<Input<string>[]>;
-        /**
-         * A list of VPC subnet IDs.
-         * @deprecated Use `privateSubnets` instead.
-         */
-        subnets?: Input<Input<string>[]>;
-      }>;
+  | Vpc
+  | Input<{
+    /**
+     * A list of VPC security group IDs.
+     */
+    securityGroups: Input<Input<string>[]>;
+    /**
+     * A list of VPC subnet IDs.
+     */
+    privateSubnets: Input<Input<string>[]>;
+    /**
+     * A list of VPC subnet IDs.
+     * @deprecated Use `privateSubnets` instead.
+     */
+    subnets?: Input<Input<string>[]>;
+  }>;
 
+  /**
+   * Hook into the Lambda function build process.
+   */
   hook?: {
+    /**
+     * Specify a callback that'll be run after the Lambda function is built.
+     *
+     * :::note
+     * This is not called in `sst dev`.
+     * :::
+     *
+     * Useful for modifying the generated Lambda function code before it's
+     * deployed to AWS. It can also be used for uploading the generated sourcemaps
+     * to a service like Sentry.
+     *
+     * @param dir The directory where the function code is generated.
+     */
     postbuild(dir: string): Promise<void>;
   };
   /**
@@ -1208,6 +1478,11 @@ export interface FunctionArgs {
      * Transform the CloudWatch LogGroup resource.
      */
     logGroup?: Transform<cloudwatch.LogGroupArgs>;
+    /**
+     * Transform the Function Event Invoke Config resource. This is only created
+     * when the `retries` property is set.
+     */
+    eventInvokeConfig?: Transform<lambda.FunctionEventInvokeConfigArgs>;
   };
   /**
    * @internal
@@ -1225,8 +1500,8 @@ export interface FunctionArgs {
  *
  * #### Supported runtimes
  *
- * Currently supports **Node.js** and **Golang** functions. Python and Rust are community 
- * supported and are currently a work in progress. Other runtimes are on the roadmap.
+ * Currently supports **Node.js** and **Golang** functions. **Python** and **Rust**
+ * are community supported. Other runtimes are on the roadmap.
  *
  * @example
  *
@@ -1242,9 +1517,23 @@ export interface FunctionArgs {
  *     handler: "src/lambda.handler"
  *   });
  *   ```
+ *
+ *   [Learn more below](#handler).
+ *   </TabItem>
+ *   <TabItem label="Python">
+ *   Pass in the path to your handler function.
+ *
+ *   ```ts title="sst.config.ts"
+ *   new sst.aws.Function("MyFunction", {
+ *     runtime: "python3.11",
+ *     handler: "functions/src/functions/api.handler"
+ *   });
+ *   ```
+ *
+ *   You need to have uv installed and your handler function needs to be in a uv workspace. [Learn more below](#handler).
  *   </TabItem>
  *   <TabItem label="Go">
- *   Pass in the directory to your Go app.
+ *   Pass in the directory to your Go module.
  *
  *   ```ts title="sst.config.ts"
  *   new sst.aws.Function("MyFunction", {
@@ -1252,16 +1541,20 @@ export interface FunctionArgs {
  *     handler: "./src"
  *   });
  *   ```
+ *
+ *   [Learn more below](#handler).
  *   </TabItem>
  *   <TabItem label="Rust">
  *   Pass in the directory where your Cargo.toml lives.
  *
  *   ```ts title="sst.config.ts"
  *   new sst.aws.Function("MyFunction", {
- *     runtime: "runtime",
+ *     runtime: "rust",
  *     handler: "./crates/api/"
  *   });
  *   ```
+ *
+ *   [Learn more below](#handler).
  *   </TabItem>
  * </Tabs>
  *
@@ -1300,6 +1593,21 @@ export interface FunctionArgs {
  *   import { Resource } from "sst";
  *
  *   console.log(Resource.MyBucket.name);
+ *   ```
+ *   </TabItem>
+ *   <TabItem label="Python">
+ *   ```ts title="functions/src/functions/api.py"
+ *   from sst import Resource
+ *
+ *   def handler(event, context):
+ *       print(Resource.MyBucket.name)
+ *   ```
+ *
+ *   Where the `sst` package can be added to your `pyproject.toml`.
+ *
+ *   ```toml title="functions/pyproject.toml"
+ *   [tool.uv.sources]
+ *   sst = { git = "https://github.com/sst/sst.git", subdirectory = "sdk/python", branch = "dev" }
  *   ```
  *   </TabItem>
  *   <TabItem label="Go">
@@ -1371,8 +1679,8 @@ export class Function extends Component implements Link.Linkable {
   private function: Output<lambda.Function>;
   private role: iam.Role;
   private logGroup: Output<cloudwatch.LogGroup | undefined>;
-  private fnUrl: Output<lambda.FunctionUrl | undefined>;
-  private missingSourcemap?: boolean;
+  private urlEndpoint: Output<string | undefined>;
+  private eventInvokeConfig?: lambda.FunctionEventInvokeConfig;
 
   private static readonly encryptionKey = lazy(
     () =>
@@ -1396,13 +1704,18 @@ export class Function extends Component implements Link.Linkable {
     const parent = this;
     const dev = normalizeDev();
     const isContainer = all([args.python, dev]).apply(
-      ([python, dev]) => !dev && (python?.container ?? false),
+      ([python, dev]) => !dev && !!python?.container,
+    );
+    const containerCache = all([args.python]).apply(([python]) =>
+      typeof python?.container === "object"
+        ? (python.container.cache ?? true)
+        : true,
     );
     const partition = getPartitionOutput({}, opts).partition;
-    const region = getRegionOutput({}, opts).name;
+    const region = getRegionOutput({}, opts).region;
     const bootstrapData = region.apply((region) => bootstrap.forRegion(region));
     const injections = normalizeInjections();
-    const runtime = output(args.runtime ?? "nodejs20.x");
+    const runtime = output(args.runtime ?? "nodejs24.x");
     const timeout = normalizeTimeout();
     const memory = normalizeMemory();
     const storage = output(args.storage).apply((v) => v ?? "512 MB");
@@ -1425,15 +1738,17 @@ export class Function extends Component implements Link.Linkable {
     const logGroup = createLogGroup();
     const zipAsset = createZipAsset();
     const fn = createFunction();
-    const fnUrl = createUrl();
+    const urlEndpoint = createUrl();
     createProvisioned();
+    const eventInvokeConfig = createEventInvokeConfig();
 
     const links = linkData.apply((input) => input.map((item) => item.name));
 
     this.function = fn;
     this.role = role;
     this.logGroup = logGroup;
-    this.fnUrl = fnUrl;
+    this.urlEndpoint = urlEndpoint;
+    this.eventInvokeConfig = eventInvokeConfig;
 
     const buildInput = output({
       functionID: name,
@@ -1479,7 +1794,7 @@ export class Function extends Component implements Link.Linkable {
                 links,
                 handler: handler,
                 bundle: bundle,
-                runtime: runtime || "nodejs20.x",
+                runtime: runtime || "nodejs24.x",
                 copyFiles,
                 properties: nodejs,
               };
@@ -1492,9 +1807,7 @@ export class Function extends Component implements Link.Linkable {
         internal: args._skipMetadata,
         dev: dev,
       },
-      _hint: args._skipHint
-        ? undefined
-        : fnUrl.apply((fnUrl) => fnUrl?.functionUrl),
+      _hint: args._skipHint ? undefined : urlEndpoint,
     });
 
     function normalizeDev() {
@@ -1611,12 +1924,16 @@ export class Function extends Component implements Link.Linkable {
             : url.cors === true || url.cors === undefined
               ? defaultCors
               : {
-                  ...defaultCors,
-                  ...url.cors,
-                  maxAge: url.cors.maxAge && toSeconds(url.cors.maxAge),
-                };
+                ...defaultCors,
+                ...url.cors,
+                maxAge: url.cors.maxAge && toSeconds(url.cors.maxAge),
+              };
 
-        return { authorization, cors };
+        return {
+          authorization,
+          cors,
+          route: normalizeRouteArgs(url.router, url.route),
+        };
       });
     }
 
@@ -1652,12 +1969,13 @@ export class Function extends Component implements Link.Linkable {
           securityGroups: args.vpc.securityGroups,
         };
         return all([
+          args.vpc.id,
           args.vpc.nodes.natGateways,
           args.vpc.nodes.natInstances,
-        ]).apply(([natGateways, natInstances]) => {
+        ]).apply(([id, natGateways, natInstances]) => {
           if (natGateways.length === 0 && natInstances.length === 0) {
-            throw new VisibleError(
-              `Functions that are running in a VPC need a NAT gateway. Enable it by setting "nat" on the "sst.aws.Vpc" component.`,
+            warnOnce(
+              `\nWarning: One or more functions are deployed in the "${id}" VPC, which does not have a NAT gateway. As a result, these functions cannot access the internet. If your functions need internet access, enable it by setting the "nat" prop on the "Vpc" component.\n`,
             );
           }
           return result;
@@ -1785,21 +2103,21 @@ export class Function extends Component implements Link.Linkable {
               name: path.posix.join(handlerDir, `${newHandlerFileName}.mjs`),
               content: streaming
                 ? [
-                    ...split.outer,
-                    `export const ${newHandlerFunction} = awslambda.streamifyResponse(async (event, responseStream, context) => {`,
-                    ...split.inner,
-                    `  const { ${oldHandlerFunction}: rawHandler} = await import("./${oldHandlerFileName}${newHandlerFileExt}");`,
-                    `  return rawHandler(event, responseStream, context);`,
-                    `});`,
-                  ].join("\n")
+                  ...split.outer,
+                  `export const ${newHandlerFunction} = awslambda.streamifyResponse(async (event, responseStream, context) => {`,
+                  ...split.inner,
+                  `  const { ${oldHandlerFunction}: rawHandler} = await import("./${oldHandlerFileName}${newHandlerFileExt}");`,
+                  `  return rawHandler(event, responseStream, context);`,
+                  `});`,
+                ].join("\n")
                 : [
-                    ...split.outer,
-                    `export const ${newHandlerFunction} = async (event, context) => {`,
-                    ...split.inner,
-                    `  const { ${oldHandlerFunction}: rawHandler} = await import("./${oldHandlerFileName}${newHandlerFileExt}");`,
-                    `  return rawHandler(event, context);`,
-                    `};`,
-                  ].join("\n"),
+                  ...split.outer,
+                  `export const ${newHandlerFunction} = async (event, context) => {`,
+                  ...split.inner,
+                  `  const { ${oldHandlerFunction}: rawHandler} = await import("./${oldHandlerFileName}${newHandlerFileExt}");`,
+                  `  return rawHandler(event, context);`,
+                  `};`,
+                ].join("\n"),
             },
           };
         },
@@ -1828,25 +2146,20 @@ export class Function extends Component implements Link.Linkable {
               ...linkPermissions,
               ...(dev
                 ? [
-                    {
-                      effect: "allow",
-                      actions: ["appsync:*"],
-                      resources: ["*"],
-                    },
-                    {
-                      effect: "allow",
-                      actions: ["iot:*"],
-                      resources: ["*"],
-                    },
-                    {
-                      effect: "allow",
-                      actions: ["s3:*"],
-                      resources: [
-                        interpolate`arn:${partition}:s3:::${bootstrapData.asset}`,
-                        interpolate`arn:${partition}:s3:::${bootstrapData.asset}/*`,
-                      ],
-                    },
-                  ]
+                  {
+                    effect: "allow",
+                    actions: ["appsync:*"],
+                    resources: ["*"],
+                  },
+                  {
+                    effect: "allow",
+                    actions: ["s3:*"],
+                    resources: [
+                      interpolate`arn:${partition}:s3:::${bootstrapData.asset}`,
+                      interpolate`arn:${partition}:s3:::${bootstrapData.asset}/*`,
+                    ],
+                  },
+                ]
                 : []),
             ].map((item) => ({
               effect: (() => {
@@ -1855,6 +2168,7 @@ export class Function extends Component implements Link.Linkable {
               })(),
               actions: item.actions,
               resources: item.resources,
+              conditions: "conditions" in item ? item.conditions : undefined,
             })),
           }),
       );
@@ -1866,29 +2180,28 @@ export class Function extends Component implements Link.Linkable {
           {
             assumeRolePolicy: !dev
               ? iam.assumeRolePolicyForPrincipal({
-                  Service: "lambda.amazonaws.com",
-                })
+                Service: "lambda.amazonaws.com",
+              })
               : iam.getPolicyDocumentOutput({
-                  statements: [
-                    {
-                      actions: ["sts:AssumeRole"],
-                      principals: [
-                        {
-                          type: "Service",
-                          identifiers: ["lambda.amazonaws.com"],
-                        },
-                        {
-                          type: "AWS",
-                          identifiers: [
-                            interpolate`arn:${partition}:iam::${
-                              getCallerIdentityOutput({}, opts).accountId
+                statements: [
+                  {
+                    actions: ["sts:AssumeRole"],
+                    principals: [
+                      {
+                        type: "Service",
+                        identifiers: ["lambda.amazonaws.com"],
+                      },
+                      {
+                        type: "AWS",
+                        identifiers: [
+                          interpolate`arn:${partition}:iam::${getCallerIdentityOutput({}, opts).accountId
                             }:root`,
-                          ],
-                        },
-                      ],
-                    },
-                  ],
-                }).json,
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              }).json,
             // if there are no statements, do not add an inline policy.
             // adding an inline policy with no statements will cause an error.
             inlinePolicies: policy.apply(({ statements }) =>
@@ -1899,13 +2212,13 @@ export class Function extends Component implements Link.Linkable {
                 ...policies,
                 ...(logging
                   ? [
-                      interpolate`arn:${partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole`,
-                    ]
+                    interpolate`arn:${partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole`,
+                  ]
                   : []),
                 ...(vpc
                   ? [
-                      interpolate`arn:${partition}:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole`,
-                    ]
+                    interpolate`arn:${partition}:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole`,
+                  ]
                   : []),
               ],
             ),
@@ -1919,11 +2232,12 @@ export class Function extends Component implements Link.Linkable {
       // The build artifact directory already exists, with all the user code and
       // config files. It also has the dockerfile, we need to now just build and push to
       // the container registry.
-      return all([isContainer, dev, bundle]).apply(
+      return all([isContainer, dev, bundle, containerCache]).apply(
         ([
           isContainer,
           dev,
           bundle, // We need the bundle to be resolved because of implicit dockerfiles even though we don't use it here
+          containerCache,
         ]) => {
           if (!isContainer || dev) return;
 
@@ -1942,23 +2256,27 @@ export class Function extends Component implements Link.Linkable {
                   `${name}-src`,
                 ),
               },
-              cacheFrom: [
-                {
-                  registry: {
-                    ref: $interpolate`${bootstrapData.assetEcrUrl}:${name}-cache`,
-                  },
-                },
-              ],
-              cacheTo: [
-                {
-                  registry: {
-                    ref: $interpolate`${bootstrapData.assetEcrUrl}:${name}-cache`,
-                    imageManifest: true,
-                    ociMediaTypes: true,
-                    mode: "max",
-                  },
-                },
-              ],
+              ...(containerCache !== false
+                ? {
+                    cacheFrom: [
+                      {
+                        registry: {
+                          ref: $interpolate`${bootstrapData.assetEcrUrl}:${name}-cache`,
+                        },
+                      },
+                    ],
+                    cacheTo: [
+                      {
+                        registry: {
+                          ref: $interpolate`${bootstrapData.assetEcrUrl}:${name}-cache`,
+                          imageManifest: true,
+                          ociMediaTypes: true,
+                          mode: "max",
+                        },
+                      },
+                    ],
+                  }
+                : {}),
               platforms: [
                 architecture.apply((v) =>
                   v === "arm64" ? "linux/arm64" : "linux/amd64",
@@ -2127,9 +2445,8 @@ export class Function extends Component implements Link.Linkable {
             args.transform?.logGroup,
             `${name}LogGroup`,
             {
-              name: interpolate`/aws/lambda/${
-                args.name ?? physicalName(64, `${name}Function`)
-              }`,
+              name: interpolate`/aws/lambda/${args.name ?? physicalName(64, `${name}Function`)
+                }`,
               retentionInDays: RETENTION[logging.retention],
             },
             { parent, ignoreChanges: ["name"] },
@@ -2193,36 +2510,36 @@ export class Function extends Component implements Link.Linkable {
               reservedConcurrentExecutions: concurrency?.reserved,
               ...(isContainer
                 ? {
-                    packageType: "Image",
-                    imageUri: imageAsset!.ref.apply(
-                      (ref) => ref?.replace(":latest", ""),
-                    ),
-                    imageConfig: {
-                      commands: [
-                        all([handler, runtime]).apply(([handler, runtime]) => {
-                          // If a python container image we have to rewrite the handler path so lambdaric is happy
-                          // This means no leading . and replace all / with .
-                          if (isContainer && runtime.includes("python")) {
-                            return handler
-                              .replace(/\.\//g, "")
-                              .replace(/\//g, ".");
-                          }
-                          return handler;
-                        }),
-                      ],
-                    },
-                  }
+                  packageType: "Image",
+                  imageUri: imageAsset!.ref.apply(
+                    (ref) => ref?.replace(":latest", ""),
+                  ),
+                  imageConfig: {
+                    commands: [
+                      all([handler, runtime]).apply(([handler, runtime]) => {
+                        // If a python container image we have to rewrite the handler path so lambdaric is happy
+                        // This means no leading . and replace all / with .
+                        if (isContainer && runtime.includes("python")) {
+                          return handler
+                            .replace(/\.\//g, "")
+                            .replace(/\//g, ".");
+                        }
+                        return handler;
+                      }),
+                    ],
+                  },
+                }
                 : {
-                    packageType: "Zip",
-                    s3Bucket: zipAsset!.bucket,
-                    s3Key: zipAsset!.key,
-                    handler: unsecret(handler),
-                    runtime: runtime.apply((v) =>
-                      v === "go" || v === "rust" ? "provided.al2023" : v,
-                    ),
-                  }),
+                  packageType: "Zip",
+                  s3Bucket: zipAsset!.bucket,
+                  s3Key: zipAsset!.key,
+                  handler: unsecret(handler),
+                  runtime: runtime.apply((v) =>
+                    v === "go" || v === "rust" ? "provided.al2023" : v,
+                  ),
+                }),
             },
-            { parent },
+            { parent, ignoreChanges: args.runtime ? [] : ["runtime"] },
           );
           return new lambda.Function(
             transformed[0],
@@ -2230,14 +2547,14 @@ export class Function extends Component implements Link.Linkable {
               ...transformed[1],
               ...(dev
                 ? {
-                    description: transformed[1].description
-                      ? output(transformed[1].description).apply(
-                          (v) => `${v.substring(0, 240)} (live)`,
-                        )
-                      : "live",
-                    runtime: "provided.al2023",
-                    architectures: ["x86_64"],
-                  }
+                  description: transformed[1].description
+                    ? output(transformed[1].description).apply(
+                      (v) => `${v.substring(0, 240)} (live)`,
+                    )
+                    : "live",
+                  runtime: "provided.al2023",
+                  architectures: ["x86_64"],
+                }
                 : {}),
             },
             transformed[2],
@@ -2248,9 +2565,10 @@ export class Function extends Component implements Link.Linkable {
 
     function createUrl() {
       return url.apply((url) => {
-        if (url === undefined) return;
+        if (url === undefined) return output(undefined);
 
-        return new lambda.FunctionUrl(
+        // create the function url
+        const fnUrl = new lambda.FunctionUrl(
           `${name}Url`,
           {
             functionName: fn.name,
@@ -2262,6 +2580,54 @@ export class Function extends Component implements Link.Linkable {
           },
           { parent },
         );
+        if (url.authorization === "none") {
+          new lambda.Permission(
+            `${name}InvokeFunction`,
+            {
+              action: "lambda:InvokeFunction",
+              function: fn.name,
+              principal: "*",
+            },
+            { parent },
+          );
+        }
+        if (!url.route) return fnUrl.functionUrl;
+
+        // add router route
+        const routeNamespace = crypto
+          .createHash("md5")
+          .update(`${$app.name}-${$app.stage}-${name}`)
+          .digest("hex")
+          .substring(0, 4);
+        new KvKeys(
+          `${name}RouteKey`,
+          {
+            store: url.route.routerKvStoreArn,
+            namespace: routeNamespace,
+            entries: fnUrl.functionUrl.apply((fnUrl) => ({
+              metadata: JSON.stringify({
+                host: new URL(fnUrl).host,
+              }),
+            })),
+            purge: false,
+          },
+          { parent },
+        );
+        new KvRoutesUpdate(
+          `${name}RoutesUpdate`,
+          {
+            store: url.route.routerKvStoreArn,
+            namespace: url.route.routerKvNamespace,
+            key: "routes",
+            entry: url.route.apply((route) =>
+              ["url", routeNamespace, route.hostPattern, route.pathPrefix].join(
+                ",",
+              ),
+            ),
+          },
+          { parent },
+        );
+        return url.route.routerUrl;
       });
     }
 
@@ -2290,6 +2656,24 @@ export class Function extends Component implements Link.Linkable {
         },
       );
     }
+
+    function createEventInvokeConfig() {
+      if (args.retries === undefined) {
+        return undefined;
+      }
+
+      return new lambda.FunctionEventInvokeConfig(
+        ...transform(
+          args.transform?.eventInvokeConfig,
+          `${name}EventInvokeConfig`,
+          {
+            functionName: fn.name,
+            maximumRetryAttempts: args.retries,
+          },
+          { parent },
+        ),
+      );
+    }
   }
 
   /**
@@ -2309,6 +2693,10 @@ export class Function extends Component implements Link.Linkable {
        * The CloudWatch Log Group the function logs are stored.
        */
       logGroup: this.logGroup,
+      /**
+       * The Function Event Invoke Config resource if retries are configured.
+       */
+      eventInvokeConfig: this.eventInvokeConfig,
     };
   }
 
@@ -2316,13 +2704,13 @@ export class Function extends Component implements Link.Linkable {
    * The Lambda function URL if `url` is enabled.
    */
   public get url() {
-    return this.fnUrl.apply((url) => {
+    return this.urlEndpoint.apply((url) => {
       if (!url) {
         throw new VisibleError(
           `Function URL is not enabled. Enable it with "url: true".`,
         );
       }
-      return url.functionUrl;
+      return url;
     });
   }
 
@@ -2362,13 +2750,13 @@ export class Function extends Component implements Link.Linkable {
    * });
    * ```
    */
-  public addEnvironment(environment: FunctionEnvironmentArgs) {
+  public addEnvironment(environment: Input<Record<string, Input<string>>>) {
     return new FunctionEnvironmentUpdate(
       `${this.constructorName}EnvironmentUpdate`,
       {
         functionName: this.name,
         environment,
-        region: getRegionOutput(undefined, { parent: this }).name,
+        region: getRegionOutput(undefined, { parent: this }).region,
       },
       { parent: this },
     );
@@ -2421,7 +2809,7 @@ export class Function extends Component implements Link.Linkable {
     return {
       properties: {
         name: this.name,
-        url: this.fnUrl.apply((url) => url?.functionUrl ?? output(undefined)),
+        url: this.urlEndpoint,
       },
       include: [
         permission({

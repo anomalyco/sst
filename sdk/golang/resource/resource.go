@@ -19,7 +19,9 @@ func init() {
 	}
 	encryptedData, err := os.ReadFile(os.Getenv("SST_KEY_FILE"))
 	if err != nil {
-		panic(err)
+		resources = make(map[string]any)
+		keys()
+		return
 	}
 	nonce := make([]byte, 12)
 	block, err := aes.NewCipher(key)
@@ -50,19 +52,7 @@ func init() {
 		panic(err)
 	}
 
-	for _, item := range os.Environ() {
-		pair := strings.SplitN(item, "=", 2)
-		key := pair[0]
-		value := pair[1]
-		if strings.HasPrefix(key, "SST_RESOURCE_") {
-			var result map[string]interface{}
-			err := json.Unmarshal([]byte(value), &result)
-			if err != nil {
-				panic(err)
-			}
-			resources[strings.TrimPrefix(key, "SST_RESOURCE_")] = result
-		}
-	}
+	keys()
 }
 
 var ErrNotFound = errors.New("not found")
@@ -88,4 +78,20 @@ func get(input any, path ...string) (any, error) {
 		return nil, ErrNotFound
 	}
 	return get(next, path[1:]...)
+}
+
+func keys() {
+	for _, item := range os.Environ() {
+		pair := strings.SplitN(item, "=", 2)
+		key := pair[0]
+		value := pair[1]
+		if strings.HasPrefix(key, "SST_RESOURCE_") {
+			var result map[string]interface{}
+			err := json.Unmarshal([]byte(value), &result)
+			if err != nil {
+				panic(err)
+			}
+			resources[strings.TrimPrefix(key, "SST_RESOURCE_")] = result
+		}
+	}
 }

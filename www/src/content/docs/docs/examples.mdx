@@ -762,6 +762,173 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-bun-red
 
 
 ---
+## AWS Cluster custom autoscaling
+
+In this example, we'll create a cluster that can autoscales based on a custom
+metric; in this case, the number of messages in a queue.
+
+We'll create a queue, and two functions that'll seed and purge the queue. We'll
+also create two policies.
+
+One that scales it up.
+
+```ts title="sst.config.ts"
+const scaleUpPolicy = new aws.appautoscaling.Policy("ScaleUpPolicy", {
+  serviceNamespace: service.nodes.autoScalingTarget.serviceNamespace,
+  scalableDimension: service.nodes.autoScalingTarget.scalableDimension,
+  resourceId: service.nodes.autoScalingTarget.resourceId,
+  policyType: "StepScaling",
+  stepScalingPolicyConfiguration: {
+    adjustmentType: "ChangeInCapacity",
+    cooldown: 5,
+    stepAdjustments: [
+      {
+        metricIntervalLowerBound: "0",
+        scalingAdjustment: 1,
+      },
+    ],
+  },
+});
+```
+
+And one that scales it down.
+
+```ts title="sst.config.ts"
+const scaleDownPolicy = new aws.appautoscaling.Policy("ScaleDownPolicy", {
+  serviceNamespace: service.nodes.autoScalingTarget.serviceNamespace,
+  scalableDimension: service.nodes.autoScalingTarget.scalableDimension,
+  resourceId: service.nodes.autoScalingTarget.resourceId,
+  policyType: "StepScaling",
+  stepScalingPolicyConfiguration: {
+    adjustmentType: "ChangeInCapacity",
+    cooldown: 5,
+    stepAdjustments: [
+      {
+        metricIntervalUpperBound: "0",
+        scalingAdjustment: -1,
+      },
+    ],
+  },
+});
+```
+
+We'll add a CloudWatch metric alarm that triggers the scaling policies if the
+queue depth exceeds 3 messages.
+
+```ts title="sst.config.ts"
+new aws.cloudwatch.MetricAlarm("QueueDepthAlarm", {
+  comparisonOperator: "GreaterThanThreshold",
+  evaluationPeriods: 1,
+  metricName: "ApproximateNumberOfMessagesVisible",
+  namespace: "AWS/SQS",
+  period: 10,
+  statistic: "Average",
+  threshold: 3,
+  dimensions: {
+    QueueName: queue.nodes.queue.name,
+  },
+  alarmDescription: "Scale up when queue depth exceeds 3 messages",
+  alarmActions: [scaleUpPolicy.arn],
+  okActions: [scaleDownPolicy.arn],
+});
+```
+
+To test this example, first deploy your app then:
+
+1. Invoke the `MyQueueSeeder` URL. This will cause the service to scale up to 5
+   instances in a few minutes.
+2. Then invoke the `MyQueuePurger` URL. This will cause the service to scale
+   down to 1 instance in a few minutes.
+```ts title="sst.config.ts"
+const vpc = new sst.aws.Vpc("MyVpc");
+
+// Create a queue and two functions to seed and purge the queue
+const queue = new sst.aws.Queue("MyQueue");
+new sst.aws.Function("MyQueueSeeder", {
+  handler: "queue.seeder",
+  link: [queue],
+  url: true,
+});
+new sst.aws.Function("MyQueuePurger", {
+  handler: "queue.purger",
+  link: [queue],
+  url: true,
+});
+
+// Create a cluster and disable default scaling on CPU and memory utilization
+const cluster = new sst.aws.Cluster("MyCluster", { vpc });
+const service = new sst.aws.Service("MyService", {
+  cluster,
+  loadBalancer: {
+    ports: [{ listen: "80/http" }],
+  },
+  scaling: {
+    min: 1,
+    max: 5,
+    cpuUtilization: false,
+    memoryUtilization: false,
+  },
+});
+
+// Create a scale up policy that scales up by 1 instance at a time
+const scaleUpPolicy = new aws.appautoscaling.Policy("ScaleUpPolicy", {
+  serviceNamespace: service.nodes.autoScalingTarget.serviceNamespace,
+  scalableDimension: service.nodes.autoScalingTarget.scalableDimension,
+  resourceId: service.nodes.autoScalingTarget.resourceId,
+  policyType: "StepScaling",
+  stepScalingPolicyConfiguration: {
+    adjustmentType: "ChangeInCapacity",
+    cooldown: 5,
+    stepAdjustments: [
+      {
+        metricIntervalLowerBound: "0",
+        scalingAdjustment: 1,
+      },
+    ],
+  },
+});
+
+// Create a scale down policy that scales down by 1 instance at a time
+const scaleDownPolicy = new aws.appautoscaling.Policy("ScaleDownPolicy", {
+  serviceNamespace: service.nodes.autoScalingTarget.serviceNamespace,
+  scalableDimension: service.nodes.autoScalingTarget.scalableDimension,
+  resourceId: service.nodes.autoScalingTarget.resourceId,
+  policyType: "StepScaling",
+  stepScalingPolicyConfiguration: {
+    adjustmentType: "ChangeInCapacity",
+    cooldown: 5,
+    stepAdjustments: [
+      {
+        metricIntervalUpperBound: "0",
+        scalingAdjustment: -1,
+      },
+    ],
+  },
+});
+
+// Create an alarm that scales up when the queue depth exceeds 3 messages
+// and scales down when the queue depth is less than 3 messages
+new aws.cloudwatch.MetricAlarm("QueueDepthAlarm", {
+  comparisonOperator: "GreaterThanThreshold",
+  evaluationPeriods: 1,
+  metricName: "ApproximateNumberOfMessagesVisible",
+  namespace: "AWS/SQS",
+  period: 10,
+  statistic: "Average",
+  threshold: 3,
+  dimensions: {
+    QueueName: queue.nodes.queue.name,
+  },
+  alarmDescription: "Scale up when queue depth exceeds 3 messages",
+  alarmActions: [scaleUpPolicy.arn],
+  okActions: [scaleDownPolicy.arn],
+});
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-cluster-autoscaling).
+
+
+---
 ## AWS Cluster private service
 
 Adds a private load balancer to a service by setting the `loadBalancer.public` prop to
@@ -826,9 +993,32 @@ const service = new sst.aws.Service("MyService", {
 });
 ```
 
-Your API Gateway HTTP API also needs to be in the same VPC as the service.
+A couple of things to note:
+
+1. Your API Gateway HTTP API also needs to be in the **same VPC** as the service.
+
+2. You also need to verify that your VPC's [**availability zones support VPC link**](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-vpc-links.html#http-api-vpc-link-availability).
+
+3. Run `aws ec2 describe-availability-zones` to get a list of AZs for your
+   account.
+
+4. Only list the AZ ID's that support VPC link.
+   ```ts title="sst.config.ts" {4}
+   vpc: {
+     az: ["eu-west-3a", "eu-west-3c"]
+   }
+   ```
+   If the VPC picks an AZ automatically that doesn't support VPC link, you'll get
+   the following error:
+   ```
+   operation error ApiGatewayV2: BadRequestException: Subnet is in Availability
+   Zone 'euw3-az2' where service is not available
+   ```
 ```ts title="sst.config.ts"
-const vpc = new sst.aws.Vpc("MyVpc");
+const vpc = new sst.aws.Vpc("MyVpc", {
+  // Pick at least two AZs that support VPC link
+  // az: ["eu-west-3a", "eu-west-3c"],
+});
 const cluster = new sst.aws.Cluster("MyCluster", { vpc });
 const service = new sst.aws.Service("MyService", {
   cluster,
@@ -845,9 +1035,9 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-cluster
 
 
 ---
-## Subscribe to queues
+## Subscribe to queues with dead-letter queue
 
-Create an SQS queue, subscribe to it, and publish to it from a function.
+Messages not processed successfully by the primary subscriber function will be sent to the dead-letter queue after the retry limit is reached.
 ```ts title="sst.config.ts"
 // create dead letter queue
 const dlq = new sst.aws.Queue("DeadLetterQueue");
@@ -933,6 +1123,93 @@ new sst.aws.Service("MyService", {
 ```
 
 View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-deno-redis).
+
+
+---
+## Drizzle migrations in CI/CD
+
+An example on how to run Drizzle migrations as a part of your CI/CD.
+
+Start by creating a function that runs migrations.
+
+```ts title="sst.config.ts"
+const migrator = new sst.aws.Function("DatabaseMigrator", {
+  handler: "src/migrator.handler",
+  link: [rds],
+  vpc,
+  copyFiles: [
+    {
+      from: "migrations",
+      to: "./migrations",
+    },
+  ],
+});
+```
+
+Where `src/migrator.ts` looks like.
+
+```ts title="src/migrator.ts"
+import { db } from "./drizzle";
+import { migrate } from "drizzle-orm/postgres-js/migrator";
+
+export const handler = async (event: any) => {
+  await migrate(db, {
+    migrationsFolder: "./migrations",
+  });
+};
+```
+
+And we can set it up to run on every deploy.
+
+```ts title="sst.config.ts"
+if (!$dev){
+  new aws.lambda.Invocation("DatabaseMigratorInvocation", {
+    input: Date.now().toString(),
+    functionName: migrator.name,
+  });
+}
+```
+
+We use the current time to make sure the function runs on every deploy.
+```ts title="sst.config.ts"
+const vpc = new sst.aws.Vpc("MyVpc", { bastion: true, nat: "ec2" });
+const rds = new sst.aws.Postgres("MyPostgres", { vpc, proxy: true });
+
+new sst.aws.Function("MyApi", {
+  vpc,
+  url: true,
+  link: [rds],
+  handler: "src/api.handler",
+});
+
+const migrator = new sst.aws.Function("DatabaseMigrator", {
+  handler: "src/migrator.handler",
+  link: [rds],
+  vpc,
+  copyFiles: [
+    {
+      from: "migrations",
+      to: "./migrations",
+    },
+  ],
+});
+
+if (!$dev) {
+  new aws.lambda.Invocation("DatabaseMigratorInvocation", {
+    input: Date.now().toString(),
+    functionName: migrator.name,
+  });
+}
+
+new sst.x.DevCommand("Studio", {
+  link: [rds],
+  dev: {
+    command: "npx drizzle-kit studio",
+  },
+});
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-drizzle-migrations).
 
 
 ---
@@ -1819,6 +2096,30 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-lambda-
 
 
 ---
+## AWS Lambda build hook
+
+In this example we hook into the Lambda function build process with
+`hook.postbuild`.
+
+This is useful for modifying the generated Lambda function code before it's
+uploaded to AWS. It can also be used for uploading the generated sourcemaps
+to a service like Sentry.
+```ts title="sst.config.ts"
+new sst.aws.Function("MyFunction", {
+  url: true,
+  handler: "index.handler",
+  hook: {
+    async postbuild(dir) {
+      console.log(`postbuild ------- ${dir}`);
+    },
+  },
+});
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-lambda-hook).
+
+
+---
 ## AWS Lambda retry with queues
 
 An example on how to retry Lambda invocations using SQS queues.
@@ -2034,6 +2335,76 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-lambda-
 
 
 ---
+## AWS Lamda Rust multiple-binaries
+
+This example shows how to deploy multiple binary rust project to AWS Lambda.
+
+SST relies on the work of [cargo lambda](https://cargo-lambda) to build and deploy Rust Lambda functions.
+
+What is special about the following file is that we are defining multiple binaries using the `[[bin]]` section in the `Cargo.toml` file.
+
+```toml title="Cargo.toml" {13,14,15,17,18,19}
+[package]
+name = "aws-lambda-rust-multi-bin"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+lambda_runtime = "0.13.0"
+serde = { version = "1.0.217", features = ["derive"] }
+serde_json = "1.0.138"
+tokio = { version = "1", features = ["macros"] }
+# -- please note ommited dependencies --
+
+[[bin]]
+name = "push"
+path = "src/push.rs"
+
+[[bin]]
+name = "pop"
+path = "src/pop.rs"
+```
+
+We then utilise the . syntax to specify the handler binary
+
+```ts title="sst.config.ts" {5,11}
+new sst.aws.Function("push", {
+  url: true,
+  runtime: "rust",
+  link: [bucket],
+  handler: "./.push",
+});
+new sst.aws.Function("pop", {
+  url: true,
+  runtime: "rust",
+  link: [bucket],
+  handler: "./.pop",
+});
+```
+```ts title="sst.config.ts"
+const bucket = new sst.aws.Bucket("Bucket");
+const push = new sst.aws.Function("push", {
+  runtime: "rust",
+  handler: "./.push",
+  url: true,
+  architecture: "arm64",
+  link: [bucket],
+});
+const pop = new sst.aws.Function("pop", {
+  runtime: "rust",
+  handler: "./.pop",
+  url: true,
+  architecture: "arm64",
+  link: [bucket],
+});
+
+return { push_url: push.url, pop_url: pop.url };
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-lambda-rust-multiple-binaries).
+
+
+---
 ## AWS Lambda streaming
 
 An example on how to enable streaming for Lambda functions.
@@ -2203,6 +2574,154 @@ return {
 ```
 
 View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-multi-region).
+
+
+---
+## AWS MySQL local
+
+In this example, we connect to a locally running MySQL instance for dev. While
+on deploy, we use RDS.
+
+We use the [`docker run`](https://docs.docker.com/reference/cli/docker/container/run/) CLI
+to start a local container with MySQL. You don't have to use Docker, you can use
+any other way to run MySQL locally.
+
+```bash
+docker run \
+  --rm \
+  -p 3306:3306 \
+  -v $(pwd)/.sst/storage/mysql:/var/lib/mysql/data \
+  -e MYSQL_ROOT_PASSWORD=password \
+  -e MYSQL_DATABASE=local \
+  mysql:8.0
+```
+
+The data is saved to the `.sst/storage` directory. So if you restart the dev server, the
+data will still be there.
+
+We then configure the `dev` property of the `Mysql` component with the settings for the
+local MySQL instance.
+
+```ts title="sst.config.ts"
+dev: {
+  username: "root",
+  password: "password",
+  database: "local",
+  host: "localhost",
+  port: 3306,
+}
+```
+
+By providing the `dev` prop for Mysql, SST will use the local MySQL instance and
+not deploy a new RDS database when running `sst dev`.
+
+It also allows us to access the database through a Resource `link` without having to
+conditionally check if we are running locally.
+
+```ts title="index.ts"
+const pool = new Pool({
+  host: Resource.MyDatabase.host,
+  port: Resource.MyDatabase.port,
+  user: Resource.MyDatabase.username,
+  password: Resource.MyDatabase.password,
+  database: Resource.MyDatabase.database,
+});
+```
+
+The above will work in both `sst dev` and `sst deploy`.
+```ts title="sst.config.ts"
+const vpc = new sst.aws.Vpc("MyVpc", { nat: "ec2" });
+
+const mysql = new sst.aws.Mysql("MyDatabase", {
+  dev: {
+    username: "root",
+    password: "password",
+    database: "local",
+    host: "localhost",
+    port: 3306,
+  },
+  vpc,
+});
+
+new sst.aws.Function("MyFunction", {
+  vpc,
+  url: true,
+  link: [mysql],
+  handler: "index.handler",
+});
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-mysql-local).
+
+
+---
+## AWS MySQL
+
+In this example, we deploy an RDS MySQL database.
+
+```ts title="sst.config.ts"
+const mysql = new sst.aws.Mysql("MyDatabase", {
+  vpc,
+});
+```
+
+And link it to a Lambda function.
+
+```ts title="sst.config.ts" {3}
+new sst.aws.Function("MyApp", {
+  handler: "index.handler",
+  link: [mysql],
+  url: true,
+  vpc,
+});
+```
+
+Now in the function we can access the database.
+
+```ts title="index.ts"
+const connection = await mysql.createConnection({
+  database: Resource.MyDatabase.database,
+  host: Resource.MyDatabase.host,
+  port: Resource.MyDatabase.port,
+  user: Resource.MyDatabase.username,
+  password: Resource.MyDatabase.password,
+});
+```
+
+We also enable the `bastion` option for the VPC. This allows us to connect to
+the database from our local machine with the `sst tunnel` CLI.
+
+```bash "sudo"
+sudo npx sst tunnel install
+```
+
+This needs _sudo_ to create a network interface on your machine. You’ll only
+need to do this once on your machine.
+
+Now you can run `npx sst dev` and you can connect to the database from your local machine.
+```ts title="sst.config.ts"
+const vpc = new sst.aws.Vpc("MyVpc", { nat: "ec2", bastion: true });
+const mysql = new sst.aws.Mysql("MyDatabase", {
+  vpc,
+});
+const app = new sst.aws.Function("MyApp", {
+  handler: "index.handler",
+  link: [mysql],
+  url: true,
+  vpc,
+});
+
+return {
+  app: app.url,
+  host: mysql.host,
+  port: mysql.port,
+  username: mysql.username,
+  password: mysql.password,
+  database: mysql.database,
+};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-mysql).
 
 
 ---
@@ -2523,6 +3042,124 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-nextjs-
 
 
 ---
+## AWS OpenSearch local
+
+In this example, we connect to a locally running OpenSearch process for dev. While
+on deploy, we use AWS' OpenSearch Service.
+
+We use the [`docker run`](https://docs.docker.com/reference/cli/docker/container/run/)
+CLI to start a local container with OpenSearch. You don't have to use Docker, you can use
+any other way to run OpenSearch locally.
+
+```bash
+docker run \
+  --rm \
+  -p 9200:9200 \
+  -v $(pwd)/.sst/storage/opensearch:/usr/share/opensearch/data \
+  -e discovery.type=single-node \
+  -e plugins.security.disabled=true \
+  -e OPENSEARCH_INITIAL_ADMIN_PASSWORD=^Passw0rd^ \
+  opensearchproject/opensearch:2.17.0
+```
+
+The data is saved to the `.sst/storage` directory. So if you restart the dev server, the
+data will still be there.
+
+We then configure the `dev` property of the `OpenSearch` component with the settings for
+the local OpenSearch instance.
+
+```ts title="sst.config.ts"
+dev: {
+  url: "http://localhost:9200",
+  username: "admin",
+  password: "^Passw0rd^"
+}
+```
+
+By providing the `dev` prop for OpenSearch, SST will use the local OpenSearch process and
+not deploy a new OpenSearch domain when running `sst dev`.
+
+It also allows us to access the local process through a Resource `link` without having
+to conditionally check if we are running locally.
+
+```ts title="index.ts"
+const client = new Client({
+  node: Resource.MySearch.url,
+  auth: {
+    username: Resource.MySearch.username,
+    password: Resource.MySearch.password,
+  },
+});
+```
+
+The above will work in both `sst dev` and `sst deploy`.
+```ts title="sst.config.ts"
+const search = new sst.aws.OpenSearch("MySearch", {
+  dev: {
+    url: "http://localhost:9200",
+    username: "admin",
+    password: "^Passw0rd^",
+  },
+});
+
+new sst.aws.Function("MyApp", {
+  handler: "index.handler",
+  url: true,
+  link: [search],
+});
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-open-search-local).
+
+
+---
+## AWS OpenSearch
+
+In this example we create a new OpenSearch domain, link it to a function, and
+then query it.
+
+Start by creating a new OpenSearch domain.
+
+```ts title="sst.config.ts"
+const search = new sst.aws.OpenSearch("MySearch");
+```
+
+Once linked to a function, we can connect to it.
+
+```ts title="index.ts"
+import { Resource } from "sst";
+import { Client } from "@opensearch-project/opensearch";
+
+const client = new Client({
+  node: Resource.MySearch.url,
+  auth: {
+    username: Resource.MySearch.username,
+    password: Resource.MySearch.password
+  }
+});
+```
+
+This is using the [OpenSearch JS SDK](https://docs.opensearch.org/docs/latest/clients/javascript/index) to connect to the OpenSearch domain..
+```ts title="sst.config.ts"
+const search = new sst.aws.OpenSearch("MySearch");
+const app = new sst.aws.Function("MyApp", {
+  handler: "index.handler",
+  url: true,
+  link: [search],
+});
+
+return {
+  app: app.url,
+  url: search.url,
+  username: search.username,
+  password: search.password,
+};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-open-search).
+
+
+---
 ## AWS Postgres local
 
 In this example, we connect to a locally running Postgres instance for dev. While
@@ -2791,6 +3428,241 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-puppete
 
 
 ---
+## AWS Lambda Python container
+
+Python Lambda function that use large dependencies like `numpy` and `pandas`, can
+hit the 250MB Lambda package limit. To work around this, you can deploy them
+as a container image to Lambda.
+
+:::tip
+Container images on Lambda have a limit of 10GB.
+:::
+
+In this example, we deploy two functions as container image.
+
+```ts title="sst.config.ts" {2-4}
+const base = new sst.aws.Function("PythonFn", {
+  python: {
+    container: true,
+  },
+  handler: "./functions/src/functions/api.handler",
+  runtime: "python3.11",
+  link: [linkableValue],
+  url: true,
+});
+```
+
+Now when you run `sst deploy`, it uses a built-in Dockerfile to build the image
+and deploy it. You'll need to have the Docker daemon running.
+
+:::note
+You need to have the Docker daemon running locally.
+:::
+
+To use a custom Dockerfile, you can place a `Dockerfile` in the root of the
+uv workspace for your function.
+
+```ts title="sst.config.ts" {5}
+const custom = new sst.aws.Function("PythonFnCustom", {
+  python: {
+    container: true,
+  },
+  handler: "./custom_dockerfile/src/custom_dockerfile/api.handler",
+  runtime: "python3.11",
+  link: [linkableValue],
+  url: true,
+});
+```
+
+Here we have a `Dockerfile` in the `custom_dockerfile/` directory.
+
+```dockerfile title="custom_dockerfile/Dockerfile"
+# The python version to use is supplied as an arg from SST
+ARG PYTHON_VERSION=3.11
+
+# Use an official AWS Lambda base image for Python
+FROM public.ecr.aws/lambda/python:${PYTHON_VERSION}
+
+# ...
+```
+
+The project structure looks something like this.
+
+```txt {5}
+├── sst.config.ts
+├── pyproject.toml
+└── custom_dockerfile
+    ├── pyproject.toml
+    ├── Dockerfile
+    └── src
+        └── custom_dockerfile
+            └── api.py
+```
+
+Locally, you want to set the Python version in your `pyproject.toml` to make sure
+that `sst dev` uses the same version as `sst deploy`.
+```ts title="sst.config.ts"
+const linkableValue = new sst.Linkable("MyLinkableValue", {
+  properties: {
+    foo: "Hello World",
+  },
+});
+
+const base = new sst.aws.Function("PythonFn", {
+  python: {
+    container: true,
+  },
+  handler: "./functions/src/functions/api.handler",
+  runtime: "python3.11",
+  link: [linkableValue],
+  url: true,
+});
+
+const custom = new sst.aws.Function("PythonFnCustom", {
+  python: {
+    container: true,
+  },
+  handler: "./custom_dockerfile/src/custom_dockerfile/api.handler",
+  runtime: "python3.11",
+  link: [linkableValue],
+  url: true,
+});
+
+return {
+  base: base.url,
+  custom: custom.url,
+};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-python-container).
+
+
+---
+## AWS Lambda Python Hugging Face
+
+Uses a Python Lambda container image to deploy a lightweight
+[Hugging Face](https://huggingface.co/) model.
+
+Uses the [transformers](https://github.com/huggingface/transformers) library to
+generate text using the
+[TinyStories-33M](https://huggingface.co/roneneldan/TinyStories-33M) model. The
+backend is the pytorch cpu runtime.
+
+:::note
+This is not a production ready example.
+:::
+
+This example also shows how it is possible to use custom index resolution to get
+dependencies from a private pypi server such as the pytorch cpu link. This
+example also shows how to use a custom Dockerfile to handle complex builds such
+as installing pytorch and pruning the build size.
+```ts title="sst.config.ts"
+new sst.aws.Function("MyPythonFunction", {
+  python: {
+    container: true,
+  },
+  handler: "functions/src/functions/api.handler",
+  runtime: "python3.12",
+  timeout: "60 seconds",
+  url: true,
+});
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-python-huggingface).
+
+
+---
+## AWS Lambda Python
+
+SST uses [uv](https://docs.astral.sh/uv/) to manage your Python runtime, make
+sure you have it [installed](https://docs.astral.sh/uv/getting-started/installation/).
+
+Any [uv workspace](https://docs.astral.sh/uv/concepts/projects/workspaces/#workspace-sources)
+package can be built and deployed as a Lambda function using SST. Drop-in mode
+is currently not supported.
+
+:::note
+Builds currently do not tree shake so lots of workspaces can make the build
+larger than necessary.
+:::
+
+In this example we deploy a handler from the `functions/` directory. It depends
+on shared code from another uv workspace in the `core/` directory.
+
+```txt
+├── sst.config.ts
+├── pyproject.toml
+├── core
+│   ├── pyproject.toml
+│   └── src
+│       └── core
+│           └── __init__.py
+└── functions
+    ├── pyproject.toml
+    └── src
+        └── functions
+            ├── __init__.py
+            └── api.py
+```
+
+The `handler` is the path to the handler file and the name of the handler function
+in it.
+
+```ts title="sst.config.ts" {2}
+new sst.aws.Function("MyPythonFunction", {
+  handler: "functions/src/functions/api.handler",
+  runtime: "python3.11",
+  link: [linkableValue],
+  url: true,
+});
+```
+
+SST will traverse up from the handler path and look for the nearest
+`pyproject.toml`. And will throw an error if it can't find one.
+
+To access linked resources, you can use the SST SDK.
+
+```py title="functions/src/functions/api.py" {1}
+from sst import Resource
+
+def handler(event, context):
+    print(Resource.MyLinkableValue.foo)
+```
+
+Where the `sst` package can be added to your `pyproject.toml`.
+
+```toml title="functions/pyproject.toml"
+[tool.uv.sources]
+sst = { git = "https://github.com/sst/sst.git", subdirectory = "sdk/python", branch = "dev" }
+```
+
+You also want to set the Python version in your `pyproject.toml` to the same
+version as the one in Lambda.
+
+```toml title="functions/pyproject.toml"
+requires-python = "==3.11.*"
+```
+
+This makes sure that your functions work the same in `sst dev` as `sst deploy`.
+```ts title="sst.config.ts"
+const linkableValue = new sst.Linkable("MyLinkableValue", {
+  properties: {
+    foo: "Hello World",
+  },
+});
+
+new sst.aws.Function("MyPythonFunction", {
+  handler: "functions/src/functions/api.handler",
+  runtime: "python3.11",
+  link: [linkableValue],
+  url: true,
+});
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-python).
+
+
+---
 ## Subscribe to queues
 
 Create an SQS queue, subscribe to it, and publish to it from a function.
@@ -2807,6 +3679,56 @@ const app = new sst.aws.Function("MyApp", {
 return {
   app: app.url,
   queue: queue.url,
+};
+```
+
+The subscriber will read messages from the queue in batches. This array of messages exists on the `Records` property of the `SQSEvent`.
+
+```ts title="subscriber.ts"
+import type { SQSEvent, SQSHandler } from "aws-lambda";
+
+export const handler: SQSHandler = async (event: SQSEvent) => {
+  for (const record of event.Records){
+    // Message bodies are always strings
+    console.log(record.body) 
+  }
+  return;
+};
+```
+
+By default, all messages in the batch become visible in the queue again if an error occurs. This can lead to unnecessary extra processing and messages being processed more than once. The solution is to enable [partial batch responsese](https://docs.aws.amazon.com/lambda/latest/dg/services-sqs-errorhandling.html#services-sqs-batchfailurereporting) and return which specific messages within the batch should be made visible again in the queue.
+
+Update the queue subscriber.
+
+```ts title="sst.config.ts"
+queue.subscribe("subscriber.handler", {
+  batch: {
+    partialResponses: true,
+  }
+});
+```
+
+Then update the handler to return the failed items.
+
+```ts title="subscriber.ts"
+import type { SQSEvent, SQSHandler } from "aws-lambda";
+
+export const handler: SQSHandler = async (event: SQSEvent) => {
+  const batchItemFailures = []
+  for (const record of event.Records){
+    try {
+      console.log(record.body)
+      if (Math.random() < 0.1){
+        throw new Error("An error occurred")
+      }
+    }
+    catch (e) {
+      batchItemFailures.push({ itemIdentifier: record.messageId });
+    }
+  }
+
+  // Failed items will be made visible in the queue again
+  return { batchItemFailures };
 };
 ```
 

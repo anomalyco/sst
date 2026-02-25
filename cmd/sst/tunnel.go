@@ -64,7 +64,11 @@ var CmdTunnel = &cli.Command{
 			return util.NewReadableError(nil, "The sst tunnel needs to be installed or upgraded. Run `sudo sst tunnel install`")
 		}
 
-		cfgPath, err := project.Discover()
+		if tunnel.IsRunning() {
+			return util.NewReadableError(nil, "Another tunnel process is already running. Stop it before starting a new one.")
+		}
+
+		cfgPath, err := c.Discover()
 		if err != nil {
 			return err
 		}
@@ -126,8 +130,11 @@ var CmdTunnel = &cli.Command{
 		slog.Info("starting tunnel", "cmd", tunnelCmd.Args)
 		fmt.Println(ui.TEXT_HIGHLIGHT_BOLD.Render("Tunnel"))
 		fmt.Println()
-		fmt.Print(ui.TEXT_HIGHLIGHT_BOLD.Render("➜"))
-		fmt.Println(ui.TEXT_NORMAL.Render("  Forwarding ranges"))
+		fmt.Print(ui.TEXT_HIGHLIGHT_BOLD.Render("▤"))
+		fmt.Println(ui.TEXT_NORMAL.Render("  " + tun.IP))
+		fmt.Println()
+		fmt.Print(ui.TEXT_SUCCESS_BOLD.Render("➜"))
+		fmt.Println(ui.TEXT_NORMAL.Render("  Ranges"))
 		for _, subnet := range tun.Subnets {
 			fmt.Println(ui.TEXT_DIM.Render("   " + subnet))
 		}

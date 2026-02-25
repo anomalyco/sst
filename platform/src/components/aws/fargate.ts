@@ -27,6 +27,7 @@ import { imageBuilder } from "./helpers/container-builder";
 import { toNumber } from "../cpu";
 import { toSeconds } from "../duration";
 import { Cluster } from "./cluster";
+import { physicalName } from "../naming";
 
 export const supportedCpus = {
   "0.25 vCPU": 256,
@@ -194,6 +195,12 @@ export interface FargateContainerArgs {
          * The stage to build up to. Same as the top-level [`image.target`](#image-target).
          */
         target?: Input<string>;
+        /**
+         * Controls whether Docker build cache is enabled. Same as the top-level
+         * [`image.cache`](#image-cache).
+         * @default `true`
+         */
+        cache?: Input<boolean>;
       }
   >;
   /**
@@ -211,6 +218,11 @@ export interface FargateContainerArgs {
    * top-level [`environment`](#environment).
    */
   environment?: FunctionArgs["environment"];
+  /**
+   * A list of Amazon S3 file paths of environment files to load environment variables
+   * from. Same as the top-level [`environmentFiles`](#environmentFiles).
+   */
+  environmentFiles?: Input<Input<string>[]>;
   /**
    * Configure the logs in CloudWatch. Same as the top-level [`logging`](#logging).
    */
@@ -239,10 +251,7 @@ export interface FargateContainerArgs {
 
 export interface FargateBaseArgs {
   /**
-   * The cluster to use for the service.
-   *
-   * @example
-   * Create a `Cluster` component.
+   * The ECS Cluster to use. Create a new `Cluster` in your app, if you haven't already.
    *
    * ```js title="sst.config.ts"
    * const vpc = new sst.aws.Vpc("MyVpc");
@@ -477,6 +486,21 @@ export interface FargateBaseArgs {
          * ```
          */
         target?: Input<string>;
+        /**
+         * Controls whether Docker build cache is enabled.
+         * @default `true`
+         * @example
+         * Disable Docker build caching, useful for environments like Localstack where
+         * ECR cache export is not supported.
+         * ```js
+         * {
+         *   image: {
+         *     cache: false
+         *   }
+         * }
+         * ```
+         */
+        cache?: Input<boolean>;
       }
   >;
   /**
@@ -518,6 +542,33 @@ export interface FargateBaseArgs {
    * ```
    */
   environment?: FunctionArgs["environment"];
+  /**
+   * A list of Amazon S3 object ARNs pointing to [environment files](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/use-environment-file.html)
+   * used to load environment variables into the container.
+   *
+   * Each file must be a plain text file in `.env` format.
+   *
+   * @example
+   * Create an S3 bucket and upload an environment file.
+   *
+   * ```ts title="sst.config.ts"
+   * const bucket = new sst.aws.Bucket("EnvBucket");
+   * const file = new aws.s3.BucketObjectv2("EnvFile", {
+   *   bucket: bucket.name,
+   *   key: "test.env",
+   *   content: ["FOO=hello", "BAR=world"].join("\n"),
+   * });
+   * ```
+   *
+   * And pass in the ARN of the environment file.
+   *
+   * ```js title="sst.config.ts"
+   * {
+   *   environmentFiles: [file.arn]
+   * }
+   * ```
+   */
+  environmentFiles?: Input<Input<string>[]>;
   /**
    * Key-value pairs of AWS Systems Manager Parameter Store parameter ARNs or AWS Secrets
    * Manager secret ARNs. The values will be loaded into the container as environment
@@ -740,14 +791,15 @@ export function normalizeContainers(
     (args.image ||
       args.logging ||
       args.environment ||
+      args.environmentFiles ||
       args.volumes ||
       args.health ||
       args.ssm)
   ) {
     throw new VisibleError(
       type === "service"
-        ? `You cannot provide both "containers" and "image", "logging", "environment", "volumes", "health" or "ssm".`
-        : `You cannot provide both "containers" and "image", "logging", "environment", "volumes" or "ssm".`,
+        ? `You cannot provide both "containers" and "image", "logging", "environment", "environmentFiles", "volumes", "health" or "ssm".`
+        : `You cannot provide both "containers" and "image", "logging", "environment", "environmentFiles", "volumes" or "ssm".`,
     );
   }
 
@@ -760,6 +812,7 @@ export function normalizeContainers(
       image: args.image,
       logging: args.logging,
       environment: args.environment,
+      environmentFiles: args.environmentFiles,
       ssm: args.ssm,
       volumes: args.volumes,
       command: args.command,
@@ -816,7 +869,10 @@ export function normalizeContainers(
             ...logging,
             retention: logging?.retention ?? "1 month",
             name:
-              logging?.name ?? `/sst/cluster/${clusterName}/${name}/${v.name}`,
+              logging?.name ??
+              // In the case of shared Cluster across stage, log group name can thrash
+              // if Task name is the same. Need to suffix the task name with random hash.
+              `/sst/cluster/${clusterName}/${physicalName(64, name)}/${v.name}`,
           }),
         );
       }
@@ -836,15 +892,15 @@ export function createTaskRole(
     return iam.Role.get(`${name}TaskRole`, args.taskRole, {}, { parent });
 
   const policy = all([
-    args.permissions || [],
+    args.permissions ?? [],
     Link.getInclude<Permission>("aws.permission", args.link),
-    additionalPermissions,
+    additionalPermissions ?? [],
   ]).apply(([argsPermissions, linkPermissions, additionalPermissions]) =>
     iam.getPolicyDocumentOutput({
       statements: [
         ...argsPermissions,
         ...linkPermissions,
-        ...(additionalPermissions ?? []),
+        ...additionalPermissions,
         {
           actions: [
             "ssmmessages:CreateControlChannel",
@@ -861,6 +917,7 @@ export function createTaskRole(
         })(),
         actions: item.actions,
         resources: item.resources,
+        conditions: "conditions" in item ? item.conditions : undefined,
       })),
     }),
   );
@@ -925,6 +982,15 @@ export function createExecutionRole(
                   ],
                   resources: ["*"],
                 },
+                ...(args.environmentFiles
+                  ? [
+                      {
+                        sid: "ReadEnvironmentFiles",
+                        actions: ["s3:GetObject"],
+                        resources: args.environmentFiles,
+                      },
+                    ]
+                  : []),
               ],
             }).json,
           },
@@ -949,7 +1015,7 @@ export function createTaskDefinition(
   executionRole: ReturnType<typeof createExecutionRole>,
 ) {
   const clusterName = args.cluster.nodes.cluster.name;
-  const region = getRegionOutput({}, opts).name;
+  const region = getRegionOutput({}, opts).region;
   const bootstrapData = region.apply((region) => bootstrap.forRegion(region));
   const linkEnvs = Link.propertiesToEnv(Link.getProperties(args.link));
   const containerDefinitions = output(containers).apply((containers) =>
@@ -961,9 +1027,7 @@ export function createTaskDefinition(
         const containerImage = container.image;
         const contextPath = path.join($cli.paths.root, container.image.context);
         const dockerfile = container.image.dockerfile ?? "Dockerfile";
-        const dockerfilePath = container.image.dockerfile
-          ? path.join($cli.paths.root, container.image.dockerfile)
-          : path.join($cli.paths.root, container.image.context, "Dockerfile");
+        const dockerfilePath = path.join(contextPath, dockerfile);
         const dockerIgnorePath = fs.existsSync(
           path.join(contextPath, `${dockerfile}.dockerignore`),
         )
@@ -989,10 +1053,8 @@ export function createTaskDefinition(
             {
               context: { location: contextPath },
               dockerfile: { location: dockerfilePath },
-              buildArgs: linkEnvs.apply((linkEnvs) => ({
-                ...containerImage.args,
-                ...linkEnvs,
-              })),
+              buildArgs: containerImage.args,
+              secrets: linkEnvs,
               target: container.image.target,
               platforms: [container.image.platform],
               tags: [container.name, ...(container.image.tags ?? [])].map(
@@ -1012,23 +1074,27 @@ export function createTaskDefinition(
                     username: authToken.userName,
                   })),
               ],
-              cacheFrom: [
-                {
-                  registry: {
-                    ref: interpolate`${bootstrapData.assetEcrUrl}:${container.name}-cache`,
-                  },
-                },
-              ],
-              cacheTo: [
-                {
-                  registry: {
-                    ref: interpolate`${bootstrapData.assetEcrUrl}:${container.name}-cache`,
-                    imageManifest: true,
-                    ociMediaTypes: true,
-                    mode: "max",
-                  },
-                },
-              ],
+              ...(container.image.cache !== false
+                ? {
+                    cacheFrom: [
+                      {
+                        registry: {
+                          ref: interpolate`${bootstrapData.assetEcrUrl}:${container.name}-cache`,
+                        },
+                      },
+                    ],
+                    cacheTo: [
+                      {
+                        registry: {
+                          ref: interpolate`${bootstrapData.assetEcrUrl}:${container.name}-cache`,
+                          imageManifest: true,
+                          ociMediaTypes: true,
+                          mode: "max",
+                        },
+                      },
+                    ],
+                  }
+                : {}),
               push: true,
             },
             { parent },
@@ -1076,6 +1142,10 @@ export function createTaskDefinition(
           ...linkEnvs,
         }).map(([name, value]) => ({ name, value })),
       ),
+      environmentFiles: container.environmentFiles?.map((file) => ({
+        type: "s3",
+        value: file,
+      })),
       linuxParameters: {
         initProcessEnabled: true,
       },

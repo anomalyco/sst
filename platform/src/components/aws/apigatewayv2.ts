@@ -232,6 +232,12 @@ export interface ApiGatewayV2Args {
    * const myVpc = new sst.aws.Vpc("MyVpc");
    * ```
    *
+   * Or reference an existing VPC.
+   *
+   * ```js title="sst.config.ts"
+   * const myVpc = sst.aws.Vpc.get("MyVpc", "vpc-12345678901234567");
+   * ```
+   *
    * And pass it in. The VPC link will be placed in the public subnets.
    *
    * ```js
@@ -252,17 +258,17 @@ export interface ApiGatewayV2Args {
    * ```
    */
   vpc?:
-    | Vpc
-    | Input<{
-        /**
-         * A list of VPC security group IDs.
-         */
-        securityGroups: Input<Input<string>[]>;
-        /**
-         * A list of VPC subnet IDs.
-         */
-        subnets: Input<Input<string>[]>;
-      }>;
+  | Vpc
+  | Input<{
+    /**
+     * A list of VPC security group IDs.
+     */
+    securityGroups: Input<Input<string>[]>;
+    /**
+     * A list of VPC subnet IDs.
+     */
+    subnets: Input<Input<string>[]>;
+  }>;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
@@ -521,56 +527,56 @@ export interface ApiGatewayV2RouteArgs {
   auth?: Input<
     | false
     | {
+      /**
+       * Enable IAM authorization for a given API route. When IAM auth is enabled, clients
+       * need to use Signature Version 4 to sign their requests with their AWS credentials.
+       */
+      iam?: Input<boolean>;
+      /**
+       * Enable JWT or JSON Web Token authorization for a given API route. When JWT auth is enabled, clients need to include a valid JWT in their requests.
+       *
+       * @example
+       * You can configure JWT auth.
+       *
+       * ```js
+       * {
+       *   auth: {
+       *     jwt: {
+       *       authorizer: myAuthorizer.id,
+       *       scopes: ["read:profile", "write:profile"]
+       *     }
+       *   }
+       * }
+       * ```
+       *
+       * Where `myAuthorizer` is created by calling the `addAuthorizer` method.
+       */
+      jwt?: Input<{
         /**
-         * Enable IAM authorization for a given API route. When IAM auth is enabled, clients
-         * need to use Signature Version 4 to sign their requests with their AWS credentials.
+         * Authorizer ID of the JWT authorizer.
          */
-        iam?: Input<boolean>;
+        authorizer: Input<string>;
         /**
-         * Enable JWT or JSON Web Token authorization for a given API route. When JWT auth is enabled, clients need to include a valid JWT in their requests.
-         *
-         * @example
-         * You can configure JWT auth.
-         *
-         * ```js
-         * {
-         *   auth: {
-         *     jwt: {
-         *       authorizer: myAuthorizer.id,
-         *       scopes: ["read:profile", "write:profile"]
-         *     }
-         *   }
-         * }
-         * ```
-         *
-         * Where `myAuthorizer` is created by calling the `addAuthorizer` method.
+         * Defines the permissions or access levels that the JWT grants. If the JWT does not have the required scope, the request is rejected. By default it does not require any scopes.
          */
-        jwt?: Input<{
-          /**
-           * Authorizer ID of the JWT authorizer.
-           */
-          authorizer: Input<string>;
-          /**
-           * Defines the permissions or access levels that the JWT grants. If the JWT does not have the required scope, the request is rejected. By default it does not require any scopes.
-           */
-          scopes?: Input<Input<string>[]>;
-        }>;
-        /**
-         * Enable custom Lambda authorization for a given API route. Pass in the authorizer ID.
-         *
-         * @example
-         * ```js
-         * {
-         *   auth: {
-         *     lambda: myAuthorizer.id
-         *   }
-         * }
-         * ```
-         *
-         * Where `myAuthorizer` is created by calling the `addAuthorizer` method.
-         */
-        lambda?: Input<string>;
-      }
+        scopes?: Input<Input<string>[]>;
+      }>;
+      /**
+       * Enable custom Lambda authorization for a given API route. Pass in the authorizer ID.
+       *
+       * @example
+       * ```js
+       * {
+       *   auth: {
+       *     lambda: myAuthorizer.id
+       *   }
+       * }
+       * ```
+       *
+       * Where `myAuthorizer` is created by calling the `addAuthorizer` method.
+       */
+      lambda?: Input<string>;
+    }
   >;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
@@ -763,10 +769,10 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
         return cors === true || cors === undefined
           ? defaultCors
           : {
-              ...defaultCors,
-              ...cors,
-              maxAge: cors.maxAge && toSeconds(cors.maxAge),
-            };
+            ...defaultCors,
+            ...cors,
+            maxAge: cors.maxAge && toSeconds(cors.maxAge),
+          };
       });
     }
 
@@ -890,29 +896,31 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
     function createDomainName() {
       if (!domain || !certificateArn) return;
 
-      return all([domain, certificateArn]).apply(([domain, certificateArn]) => {
+      return output(domain).apply((domain) => {
         return domain.nameId
           ? apigatewayv2.DomainName.get(
-              `${name}DomainName`,
-              domain.nameId,
-              {},
-              { parent },
-            )
+            `${name}DomainName`,
+            domain.nameId,
+            {},
+            { parent },
+          )
           : new apigatewayv2.DomainName(
-              ...transform(
-                args.transform?.domainName,
-                `${name}DomainName`,
-                {
-                  domainName: domain.name!,
-                  domainNameConfiguration: {
+            ...transform(
+              args.transform?.domainName,
+              `${name}DomainName`,
+              {
+                domainName: domain.name!,
+                domainNameConfiguration: certificateArn.apply(
+                  (certificateArn) => ({
                     certificateArn: certificateArn!,
                     endpointType: "REGIONAL",
                     securityPolicy: "TLS_1_2",
-                  },
-                },
-                { parent },
-              ),
-            );
+                  }),
+                ),
+              },
+              { parent },
+            ),
+          );
       });
     }
 
@@ -958,16 +966,16 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
    * The URL of the API.
    *
    * If the `domain` is set, this is the URL with the custom domain.
-   * Otherwise, it's the autogenerated API Gateway URL.
+   * Otherwise, it's the auto-generated API Gateway URL.
    */
   public get url() {
     // Note: If mapping key is set, the URL needs a trailing slash. Without the
     //       trailing slash, the API fails with the error {"message":"Not Found"}
     return this.apigDomain && this.apiMapping
       ? all([this.apigDomain.domainName, this.apiMapping.apiMappingKey]).apply(
-          ([domain, key]) =>
-            key ? `https://${domain}/${key}/` : `https://${domain}`,
-        )
+        ([domain, key]) =>
+          key ? `https://${domain}/${key}/` : `https://${domain}`,
+      )
       : this.api.apiEndpoint;
   }
 
@@ -1022,13 +1030,14 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
    * The `{proxy+}` is a greedy segment, it matches all its child paths.
    * :::
    *
-   * The `$default` is a reserved keyword for the default route. It'll be matched if no other route matches.
+   * The `$default` is a reserved keyword for the default route. It'll be matched
+   * if no other route matches. When a request comes in, the API Gateway will look
+   * for the most specific match. If no route matches, the `$default` route will
+   * be invoked.
    *
    * :::note
    * You cannot have duplicate routes.
    * :::
-   *
-   * When a request comes in, the API Gateway will look for the most specific match. If no route matches, the `$default` route will be invoked.
    *
    * @param rawRoute The path for the route.
    * @param handler The function that'll be invoked.
@@ -1047,10 +1056,12 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
    * api.route("ANY /", "src/route.handler");
    * ```
    *
-   * Add a default route.
+   * Add a default or fallback route. Here for every request other than `GET /`,
+   * the `$default` route will be invoked.
    *
    * ```js title="sst.config.ts"
-   * api.route("GET /", "src/get.handler")
+   * api.route("GET /", "src/get.handler");
+   *
    * api.route("$default", "src/default.handler");
    * ```
    *
@@ -1184,12 +1195,34 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
    * You need to pass `vpc` to add a private route.
    * :::
    *
+   * A couple of things to note:
+   *
+   * 1. Your API Gateway HTTP API also needs to be in the **same VPC** as the service.
+   *
+   * 2. You also need to verify that your VPC's [**availability zones support VPC link**](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-vpc-links.html#http-api-vpc-link-availability).
+   *
+   * 3. Run `aws ec2 describe-availability-zones` to get a list of AZs for your
+   *    account.
+   *
+   * 4. Only list the AZ ID's that support VPC link.
+   *    ```ts title="sst.config.ts" {4}
+   *    vpc: {
+   *      az: ["eu-west-3a", "eu-west-3c"]
+   *    }
+   *    ```
+   *    If the VPC picks an AZ automatically that doesn't support VPC link, you'll get
+   *    the following error:
+   *    ```
+   *    operation error ApiGatewayV2: BadRequestException: Subnet is in Availability
+   *    Zone 'euw3-az2' where service is not available
+   *    ```
+   *
    * @param rawRoute The path for the route.
    * @param arn The ARN of the AWS Load Balancer or Cloud Map service.
    * @param args Configure the route.
    *
    * @example
-   * Add a route to Application Load Balancer.
+   * Here are a few examples using the private route. Add a route to Application Load Balancer.
    *
    * ```js title="sst.config.ts"
    * const loadBalancerArn = "arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/my-load-balancer/50dc6c495c0c9188";
@@ -1327,7 +1360,7 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
    * const authorizer = api.addAuthorizer({
    *   name: "myCognitoAuthorizer",
    *   jwt: {
-   *     issuer: $interpolate`https://cognito-idp.${aws.getRegionOutput().name}.amazonaws.com/${pool.id}`,
+   *     issuer: $interpolate`https://cognito-idp.${aws.getRegionOutput().region}.amazonaws.com/${pool.id}`,
    *     audiences: [poolClient.id]
    *   }
    * });

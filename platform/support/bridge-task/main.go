@@ -24,7 +24,9 @@ var SST_REGION = os.Getenv("SST_REGION")
 var SST_APPSYNC_HTTP = os.Getenv("SST_APPSYNC_HTTP")
 var SST_APPSYNC_REALTIME = os.Getenv("SST_APPSYNC_REALTIME")
 
-var ENV_BLACKLIST = map[string]bool{}
+var ENV_BLACKLIST = map[string]bool{
+	"PATH": true,
+}
 
 func main() {
 	if err := run(); err != nil {

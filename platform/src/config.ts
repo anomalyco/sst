@@ -270,6 +270,22 @@ export interface App {
    * `sst dev`, it'll still get removed. To avoid this, check out the `removal` prop.
    */
   protect?: boolean;
+
+  /**
+   * Configure which directories should be watched for changes when running `sst dev`.
+   * By default, all directories are watched (except node_modules and hidden directories).
+   *
+   * @example
+   * ```ts
+   * {
+   *   watch: ["packages/www", "packages/api"]
+   * }
+   * ```
+   *
+   * This will only watch the `packages/www` and `packages/api` directories.
+   * The paths are relative to the project root.
+   */
+  watch?: string[];
 }
 
 export interface AppInput {
@@ -846,7 +862,7 @@ export interface Config {
    * },
    * ```
    */
-  app(input: AppInput): App;
+  app(input: AppInput): App | Promise<App>;
   /**
    * Configure how your app works with the SST Console.
    */
@@ -1246,10 +1262,10 @@ export interface Config {
    * bucket: bucket-jOaikGu4rla
    * ```
    *
-   * These outputs are also written to a `.sst/output.json` file after every successful deploy.
+   * These outputs are also written to a `.sst/outputs.json` file after every successful deploy.
    * It contains the above outputs in JSON.
    *
-   * ```json title=".sst/output.json"
+   * ```json title=".sst/outputs.json"
    * {"bucket": "bucket-jOaikGu4rla"}
    * ```
    */
