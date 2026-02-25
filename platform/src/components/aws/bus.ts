@@ -12,6 +12,32 @@ import { BusQueueSubscriber } from "./bus-queue-subscriber";
 
 export interface BusArgs {
   /**
+   * Configure logging for the EventBus.
+   *
+   * @example
+   *
+   * ```js
+   * new sst.aws.Bus("MyBus", {
+   *   logging: {
+   *     level: "error",
+   *     detail: true,
+   *   },
+   * });
+   * ```
+   */
+  logging?: Input<{
+    /**
+     * The level of logging.
+     * @default `"off"`
+     */
+    level?: Input<"off" | "error" | "info" | "trace">;
+    /**
+     * Whether to include the event detail in the log.
+     * @default `false`
+     */
+    detail?: Input<boolean>;
+  }>;
+  /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
    */
@@ -220,7 +246,21 @@ export class Bus extends Component implements Link.Linkable {
 
     function createBus() {
       return new cloudwatch.EventBus(
-        ...transform(args.transform?.bus, `${name}Bus`, {}, { parent: self }),
+        ...transform(
+          args.transform?.bus,
+          `${name}Bus`,
+          {
+            logConfig: args.logging && {
+              level: output(args.logging).apply(
+                (l) => l.level?.toUpperCase() ?? "OFF",
+              ),
+              includeDetail: output(args.logging).apply((l) =>
+                l.detail ? "FULL" : "NONE",
+              ),
+            },
+          },
+          { parent: self },
+        ),
       );
     }
   }
