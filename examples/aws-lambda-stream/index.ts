@@ -1,13 +1,19 @@
-export const handler = awslambda.streamifyResponse(
-  async (_event: unknown, responseStream: any) => {
-    responseStream = awslambda.HttpResponseStream.from(responseStream, {
-      statusCode: 200,
-      headers: { "Content-Type": "text/plain" },
-    });
+import { APIGatewayProxyEventV2 } from "aws-lambda";
+import { streamifyResponse, ResponseStream } from "lambda-stream";
 
-    responseStream.write("Hello");
-    await new Promise((resolve) => setTimeout(resolve, 3000));
-    responseStream.write(" World");
-    responseStream.end();
-  },
-);
+export const handler = streamifyResponse(myHandler);
+
+async function myHandler(
+  _event: APIGatewayProxyEventV2,
+  responseStream: ResponseStream
+): Promise<void> {
+  return new Promise((resolve, _reject) => {
+    responseStream.setContentType('text/plain')
+    responseStream.write('Hello')
+    setTimeout(() => {
+      responseStream.write(' World')
+      responseStream.end()
+      resolve()
+    }, 3000)
+  })
+}

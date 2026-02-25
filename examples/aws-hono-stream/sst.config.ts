@@ -29,7 +29,7 @@
  * curl --no-buffer https://u3dyblk457ghskwbmzrbylpxoi0ayrbb.lambda-url.us-east-1.on.aws
  * ```
  *
- * Streaming is also supported through API Gateway REST API.
+ * Here we are using a Function URL directly because API Gateway doesn't support streaming.
  *
  */
 export default $config({
