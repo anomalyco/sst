@@ -17,10 +17,10 @@ import (
 )
 
 var envVarRegex = regexp.MustCompile(`\$\{([^}]+)\}`)
-var authTokenRegex = regexp.MustCompile(`^//([^/:]+).*:_authToken\s*=\s*(.+)$`)
-var authRegex = regexp.MustCompile(`^//([^/:]+).*:_auth\s*=\s*(.+)$`)
-var usernameRegex = regexp.MustCompile(`^//([^/:]+).*:username\s*=\s*(.+)$`)
-var passwordRegex = regexp.MustCompile(`^//([^/:]+).*:_password\s*=\s*(.+)$`)
+var authTokenRegex = regexp.MustCompile(`^(//.+?):_authToken\s*=\s*(.+)$`)
+var authRegex = regexp.MustCompile(`^(//.+?):_auth\s*=\s*(.+)$`)
+var usernameRegex = regexp.MustCompile(`^(//.+?):username\s*=\s*(.+)$`)
+var passwordRegex = regexp.MustCompile(`^(//.+?):_password\s*=\s*(.+)$`)
 var registryRegex = regexp.MustCompile(`^registry\s*=\s*(.+)$`)
 
 type npmAuth struct {
@@ -139,12 +139,47 @@ func loadNpmRegistry() npmRegistry {
 		registry = "https://registry.npmjs.org"
 	}
 
-	var auth npmAuth
-	if parsed, err := url.Parse(registry); err == nil {
-		auth = merged.auths[parsed.Host]
-	}
+	auth := findAuth(registry, merged.auths)
 
 	return npmRegistry{url: registry, auth: auth}
+}
+
+// findAuth walks up the registry URL path to find the longest matching
+// auth key, mirroring npm's regFromURI behavior.
+// e.g. for https://registry.example.com/some/path it checks:
+//
+//	//registry.example.com/some/path
+//	//registry.example.com/some/
+//	//registry.example.com/some
+//	//registry.example.com/
+//	//registry.example.com
+func findAuth(registryURL string, auths map[string]npmAuth) npmAuth {
+	parsed, err := url.Parse(registryURL)
+	if err != nil {
+		return npmAuth{}
+	}
+	path := parsed.Path
+	if !strings.HasSuffix(path, "/") {
+		path += "/"
+	}
+	regKey := "//" + parsed.Host + path
+	for len(regKey) > len("//") {
+		if auth, ok := auths[regKey]; ok {
+			return auth
+		}
+		if regKey[len(regKey)-1] == '/' {
+			// remove trailing slash: //host/path/ -> //host/path
+			regKey = regKey[:len(regKey)-1]
+		} else {
+			// remove last segment: //host/path -> //host/
+			i := strings.LastIndex(regKey, "/")
+			if i <= 1 {
+				break
+			}
+			regKey = regKey[:i+1]
+		}
+	}
+	return npmAuth{}
 }
 
 type Package struct {

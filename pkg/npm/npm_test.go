@@ -23,14 +23,14 @@ not-a-token-line=value
 	}
 
 	wantAuths := map[string]npmAuth{
-		"registry.npmjs.org":  {token: "hardcoded-token", scheme: "Bearer"},
-		"custom.registry.com": {token: "env-token", scheme: "Bearer"},
-		"another.host":        {token: "plain", scheme: "Bearer"},
+		"//registry.npmjs.org/":  {token: "hardcoded-token", scheme: "Bearer"},
+		"//custom.registry.com/": {token: "env-token", scheme: "Bearer"},
+		"//another.host/":        {token: "plain", scheme: "Bearer"},
 	}
-	for host, want := range wantAuths {
-		got := rc.auths[host]
+	for key, want := range wantAuths {
+		got := rc.auths[key]
 		if got.token != want.token || got.scheme != want.scheme {
-			t.Errorf("auths[%q] = %+v, want %+v", host, got, want)
+			t.Errorf("auths[%q] = %+v, want %+v", key, got, want)
 		}
 	}
 	if len(rc.auths) != len(wantAuths) {
@@ -44,10 +44,10 @@ func TestParseNpmrcBasicAuth(t *testing.T) {
 `
 	rc := parseNpmrc(input)
 
-	if got := rc.auths["private.registry.com"]; got.token != "dXNlcjpwYXNz" || got.scheme != "Basic" {
+	if got := rc.auths["//private.registry.com/"]; got.token != "dXNlcjpwYXNz" || got.scheme != "Basic" {
 		t.Errorf("basic auth = %+v, want {token: dXNlcjpwYXNz, scheme: Basic}", got)
 	}
-	if got := rc.auths["token.registry.com"]; got.token != "my-bearer-token" || got.scheme != "Bearer" {
+	if got := rc.auths["//token.registry.com/"]; got.token != "my-bearer-token" || got.scheme != "Bearer" {
 		t.Errorf("bearer auth = %+v, want {token: my-bearer-token, scheme: Bearer}", got)
 	}
 }
@@ -58,10 +58,10 @@ func TestParseNpmrcWhitespaceAroundEquals(t *testing.T) {
 `
 	rc := parseNpmrc(input)
 
-	if got := rc.auths["registry.example.com"]; got.token != "spaced-token" || got.scheme != "Bearer" {
+	if got := rc.auths["//registry.example.com/"]; got.token != "spaced-token" || got.scheme != "Bearer" {
 		t.Errorf("spaced bearer = %+v, want {token: spaced-token, scheme: Bearer}", got)
 	}
-	if got := rc.auths["basic.example.com"]; got.token != "base64value" || got.scheme != "Basic" {
+	if got := rc.auths["//basic.example.com/"]; got.token != "base64value" || got.scheme != "Basic" {
 		t.Errorf("spaced basic = %+v, want {token: base64value, scheme: Basic}", got)
 	}
 }
@@ -78,18 +78,17 @@ func TestParseNpmrcEmpty(t *testing.T) {
 
 func TestParseNpmrcUnsetEnvVar(t *testing.T) {
 	rc := parseNpmrc("//host/:_authToken=${UNSET_VAR_99999}")
-	if got := rc.auths["host"]; got.token != "" {
+	if got := rc.auths["//host/"]; got.token != "" {
 		t.Errorf("unset env var token = %q, want empty", got.token)
 	}
 }
 
 func TestParseNpmrcUsernamePassword(t *testing.T) {
-	// _password in .npmrc is base64-encoded
 	b64Pass := base64.StdEncoding.EncodeToString([]byte("s3cret"))
 	input := "//private.registry.com/:username=myuser\n//private.registry.com/:_password=" + b64Pass + "\n"
 	rc := parseNpmrc(input)
 
-	got := rc.auths["private.registry.com"]
+	got := rc.auths["//private.registry.com/"]
 	wantToken := base64.StdEncoding.EncodeToString([]byte("myuser:s3cret"))
 	if got.token != wantToken || got.scheme != "Basic" {
 		t.Errorf("username/password auth = %+v, want {token: %s, scheme: Basic}", got, wantToken)
@@ -101,7 +100,7 @@ func TestParseNpmrcUsernamePasswordSkippedWhenAuthTokenExists(t *testing.T) {
 	input := "//host.com/:_authToken=my-token\n//host.com/:username=user\n//host.com/:_password=" + b64Pass + "\n"
 	rc := parseNpmrc(input)
 
-	got := rc.auths["host.com"]
+	got := rc.auths["//host.com/"]
 	if got.token != "my-token" || got.scheme != "Bearer" {
 		t.Errorf("should prefer _authToken, got %+v", got)
 	}
@@ -114,5 +113,42 @@ func TestParseNpmrcRegistryOnly(t *testing.T) {
 	}
 	if len(rc.auths) != 0 {
 		t.Errorf("expected no auths, got %v", rc.auths)
+	}
+}
+
+func TestFindAuth(t *testing.T) {
+	auths := map[string]npmAuth{
+		"//registry.example.com/": {token: "host-token", scheme: "Bearer"},
+	}
+	got := findAuth("https://registry.example.com", auths)
+	if got.token != "host-token" || got.scheme != "Bearer" {
+		t.Errorf("host match = %+v, want {token: host-token, scheme: Bearer}", got)
+	}
+}
+
+func TestFindAuthPathMatch(t *testing.T) {
+	auths := map[string]npmAuth{
+		"//registry.example.com/custom/path/": {token: "path-token", scheme: "Bearer"},
+		"//registry.example.com/":             {token: "host-token", scheme: "Bearer"},
+	}
+	// should match the longer path first
+	got := findAuth("https://registry.example.com/custom/path", auths)
+	if got.token != "path-token" {
+		t.Errorf("path match = %+v, want path-token", got)
+	}
+	// different path should fall back to host
+	got = findAuth("https://registry.example.com/other", auths)
+	if got.token != "host-token" {
+		t.Errorf("fallback match = %+v, want host-token", got)
+	}
+}
+
+func TestFindAuthNoMatch(t *testing.T) {
+	auths := map[string]npmAuth{
+		"//other.host/": {token: "other-token", scheme: "Bearer"},
+	}
+	got := findAuth("https://registry.example.com", auths)
+	if got.token != "" {
+		t.Errorf("no match should return empty, got %+v", got)
 	}
 }
