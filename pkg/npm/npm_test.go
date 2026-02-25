@@ -1,6 +1,7 @@
 package npm
 
 import (
+	"encoding/base64"
 	"testing"
 )
 
@@ -21,25 +22,54 @@ not-a-token-line=value
 		t.Errorf("registry = %q, want %q", rc.registry, "https://custom.registry.com")
 	}
 
-	wantTokens := map[string]string{
-		"registry.npmjs.org":  "hardcoded-token",
-		"custom.registry.com": "env-token",
-		"another.host":        "plain",
+	wantAuths := map[string]npmAuth{
+		"registry.npmjs.org":  {token: "hardcoded-token", scheme: "Bearer"},
+		"custom.registry.com": {token: "env-token", scheme: "Bearer"},
+		"another.host":        {token: "plain", scheme: "Bearer"},
 	}
-	for host, want := range wantTokens {
-		if got := rc.tokens[host]; got != want {
-			t.Errorf("tokens[%q] = %q, want %q", host, got, want)
+	for host, want := range wantAuths {
+		got := rc.auths[host]
+		if got.token != want.token || got.scheme != want.scheme {
+			t.Errorf("auths[%q] = %+v, want %+v", host, got, want)
 		}
 	}
-	if len(rc.tokens) != len(wantTokens) {
-		t.Errorf("len(tokens) = %d, want %d", len(rc.tokens), len(wantTokens))
+	if len(rc.auths) != len(wantAuths) {
+		t.Errorf("len(auths) = %d, want %d", len(rc.auths), len(wantAuths))
+	}
+}
+
+func TestParseNpmrcBasicAuth(t *testing.T) {
+	input := `//private.registry.com/:_auth=dXNlcjpwYXNz
+//token.registry.com/:_authToken=my-bearer-token
+`
+	rc := parseNpmrc(input)
+
+	if got := rc.auths["private.registry.com"]; got.token != "dXNlcjpwYXNz" || got.scheme != "Basic" {
+		t.Errorf("basic auth = %+v, want {token: dXNlcjpwYXNz, scheme: Basic}", got)
+	}
+	if got := rc.auths["token.registry.com"]; got.token != "my-bearer-token" || got.scheme != "Bearer" {
+		t.Errorf("bearer auth = %+v, want {token: my-bearer-token, scheme: Bearer}", got)
+	}
+}
+
+func TestParseNpmrcWhitespaceAroundEquals(t *testing.T) {
+	input := `//registry.example.com/:_authToken = spaced-token
+//basic.example.com/:_auth = base64value
+`
+	rc := parseNpmrc(input)
+
+	if got := rc.auths["registry.example.com"]; got.token != "spaced-token" || got.scheme != "Bearer" {
+		t.Errorf("spaced bearer = %+v, want {token: spaced-token, scheme: Bearer}", got)
+	}
+	if got := rc.auths["basic.example.com"]; got.token != "base64value" || got.scheme != "Basic" {
+		t.Errorf("spaced basic = %+v, want {token: base64value, scheme: Basic}", got)
 	}
 }
 
 func TestParseNpmrcEmpty(t *testing.T) {
 	rc := parseNpmrc("")
-	if len(rc.tokens) != 0 {
-		t.Errorf("expected no tokens, got %v", rc.tokens)
+	if len(rc.auths) != 0 {
+		t.Errorf("expected no auths, got %v", rc.auths)
 	}
 	if rc.registry != "" {
 		t.Errorf("expected empty registry, got %q", rc.registry)
@@ -48,8 +78,32 @@ func TestParseNpmrcEmpty(t *testing.T) {
 
 func TestParseNpmrcUnsetEnvVar(t *testing.T) {
 	rc := parseNpmrc("//host/:_authToken=${UNSET_VAR_99999}")
-	if got := rc.tokens["host"]; got != "" {
-		t.Errorf("unset env var token = %q, want empty", got)
+	if got := rc.auths["host"]; got.token != "" {
+		t.Errorf("unset env var token = %q, want empty", got.token)
+	}
+}
+
+func TestParseNpmrcUsernamePassword(t *testing.T) {
+	// _password in .npmrc is base64-encoded
+	b64Pass := base64.StdEncoding.EncodeToString([]byte("s3cret"))
+	input := "//private.registry.com/:username=myuser\n//private.registry.com/:_password=" + b64Pass + "\n"
+	rc := parseNpmrc(input)
+
+	got := rc.auths["private.registry.com"]
+	wantToken := base64.StdEncoding.EncodeToString([]byte("myuser:s3cret"))
+	if got.token != wantToken || got.scheme != "Basic" {
+		t.Errorf("username/password auth = %+v, want {token: %s, scheme: Basic}", got, wantToken)
+	}
+}
+
+func TestParseNpmrcUsernamePasswordSkippedWhenAuthTokenExists(t *testing.T) {
+	b64Pass := base64.StdEncoding.EncodeToString([]byte("pass"))
+	input := "//host.com/:_authToken=my-token\n//host.com/:username=user\n//host.com/:_password=" + b64Pass + "\n"
+	rc := parseNpmrc(input)
+
+	got := rc.auths["host.com"]
+	if got.token != "my-token" || got.scheme != "Bearer" {
+		t.Errorf("should prefer _authToken, got %+v", got)
 	}
 }
 
@@ -58,7 +112,7 @@ func TestParseNpmrcRegistryOnly(t *testing.T) {
 	if rc.registry != "https://my.registry.io" {
 		t.Errorf("registry = %q, want %q", rc.registry, "https://my.registry.io")
 	}
-	if len(rc.tokens) != 0 {
-		t.Errorf("expected no tokens, got %v", rc.tokens)
+	if len(rc.auths) != 0 {
+		t.Errorf("expected no auths, got %v", rc.auths)
 	}
 }

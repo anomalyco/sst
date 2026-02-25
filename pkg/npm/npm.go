@@ -2,6 +2,7 @@ package npm
 
 import (
 	"bufio"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -16,16 +17,33 @@ import (
 )
 
 var envVarRegex = regexp.MustCompile(`\$\{([^}]+)\}`)
-var authTokenRegex = regexp.MustCompile(`^//([^/:]+).*:_authToken=(.+)$`)
+var authTokenRegex = regexp.MustCompile(`^//([^/:]+).*:_authToken\s*=\s*(.+)$`)
+var authRegex = regexp.MustCompile(`^//([^/:]+).*:_auth\s*=\s*(.+)$`)
+var usernameRegex = regexp.MustCompile(`^//([^/:]+).*:username\s*=\s*(.+)$`)
+var passwordRegex = regexp.MustCompile(`^//([^/:]+).*:_password\s*=\s*(.+)$`)
 var registryRegex = regexp.MustCompile(`^registry\s*=\s*(.+)$`)
+
+type npmAuth struct {
+	token  string
+	scheme string // "Bearer" or "Basic"
+}
 
 type npmrc struct {
 	registry string
-	tokens   map[string]string
+	auths    map[string]npmAuth
+}
+
+func expandEnvVars(s string) string {
+	return envVarRegex.ReplaceAllStringFunc(s, func(match string) string {
+		return os.Getenv(envVarRegex.FindStringSubmatch(match)[1])
+	})
 }
 
 func parseNpmrc(content string) npmrc {
-	result := npmrc{tokens: make(map[string]string)}
+	result := npmrc{auths: make(map[string]npmAuth)}
+	usernames := make(map[string]string)
+	passwords := make(map[string]string)
+
 	scanner := bufio.NewScanner(strings.NewReader(content))
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -33,27 +51,60 @@ func parseNpmrc(content string) npmrc {
 			continue
 		}
 		if matches := authTokenRegex.FindStringSubmatch(line); matches != nil {
-			token := envVarRegex.ReplaceAllStringFunc(matches[2], func(match string) string {
-				return os.Getenv(envVarRegex.FindStringSubmatch(match)[1])
-			})
-			result.tokens[matches[1]] = token
+			result.auths[matches[1]] = npmAuth{
+				token:  strings.TrimSpace(expandEnvVars(matches[2])),
+				scheme: "Bearer",
+			}
+			continue
+		}
+		if matches := authRegex.FindStringSubmatch(line); matches != nil {
+			result.auths[matches[1]] = npmAuth{
+				token:  strings.TrimSpace(expandEnvVars(matches[2])),
+				scheme: "Basic",
+			}
+			continue
+		}
+		if matches := usernameRegex.FindStringSubmatch(line); matches != nil {
+			usernames[matches[1]] = strings.TrimSpace(expandEnvVars(matches[2]))
+			continue
+		}
+		if matches := passwordRegex.FindStringSubmatch(line); matches != nil {
+			passwords[matches[1]] = strings.TrimSpace(expandEnvVars(matches[2]))
 			continue
 		}
 		if matches := registryRegex.FindStringSubmatch(line); matches != nil {
 			result.registry = strings.TrimSpace(matches[1])
 		}
 	}
+
+	// username + _password produces Basic auth (password is base64-encoded in .npmrc)
+	for host, username := range usernames {
+		if _, exists := result.auths[host]; exists {
+			continue
+		}
+		if password, ok := passwords[host]; ok {
+			decoded, err := base64.StdEncoding.DecodeString(password)
+			if err != nil {
+				continue
+			}
+			result.auths[host] = npmAuth{
+				token:  base64.StdEncoding.EncodeToString([]byte(username + ":" + string(decoded))),
+				scheme: "Basic",
+			}
+		}
+	}
+
 	return result
 }
 
 type npmRegistry struct {
-	url   string
-	token string
+	url  string
+	auth npmAuth
 }
 
 func loadNpmRegistry() npmRegistry {
 	var merged npmrc
-	merged.tokens = make(map[string]string)
+	merged.auths = make(map[string]npmAuth)
 
 	merge := func(path string) {
 		data, err := os.ReadFile(path)
@@ -64,8 +115,8 @@ func loadNpmRegistry() npmRegistry {
 		if rc.registry != "" {
 			merged.registry = rc.registry
 		}
-		for k, v := range rc.tokens {
-			merged.tokens[k] = v
+		for k, v := range rc.auths {
+			merged.auths[k] = v
 		}
 	}
 
@@ -88,12 +139,12 @@ func loadNpmRegistry() npmRegistry {
 		registry = "https://registry.npmjs.org"
 	}
 
-	var token string
+	var auth npmAuth
 	if parsed, err := url.Parse(registry); err == nil {
-		token = merged.tokens[parsed.Host]
+		auth = merged.auths[parsed.Host]
 	}
 
-	return npmRegistry{url: registry, token: token}
+	return npmRegistry{url: registry, auth: auth}
 }
 
 type Package struct {
@@ -115,8 +166,8 @@ func Get(name string, version string) (*Package, error) {
 		return nil, err
 	}
 
-	if registry.token != "" {
-		req.Header.Set("Authorization", "Bearer "+registry.token)
+	if registry.auth.token != "" {
+		req.Header.Set("Authorization", registry.auth.scheme+" "+registry.auth.token)
 	}
 
 	resp, err := http.DefaultClient.Do(req)
