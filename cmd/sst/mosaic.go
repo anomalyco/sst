@@ -359,6 +359,7 @@ func CmdMosaic(c *cli.Cli) error {
 								append([]string{currentExecutable, "dev", "--"}, words...),
 								dir,
 								title,
+								"SST_CHILD="+d.Name,
 							)
 						}
 						for range evt.Tunnels {
