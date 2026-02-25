@@ -325,7 +325,7 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
     /**
      * The runtime environment for the server function.
      *
-     * @default `"nodejs20.x"`
+     * @default `"nodejs24.x"`
      * @example
      * ```js
      * {
@@ -1349,7 +1349,7 @@ async function handler(event) {
           `${name}DevServer`,
           {
             description: `${name} dev server`,
-            runtime: "nodejs20.x",
+            runtime: "nodejs24.x",
             timeout: "20 seconds",
             memory: "128 MB",
             bundle: path.join(
@@ -1426,7 +1426,7 @@ async function handler(event) {
                 ...planServer,
                 description: planServer.description ?? `${name} server`,
                 runtime: output(args.server?.runtime).apply(
-                  (v) => v ?? planServer.runtime ?? "nodejs20.x",
+                  (v) => v ?? planServer.runtime ?? "nodejs24.x",
                 ),
                 timeout,
                 memory: output(args.server?.memory).apply(
@@ -1494,7 +1494,7 @@ async function handler(event) {
                 job: {
                   description: `${name} warmer`,
                   bundle: path.join($cli.paths.platform, "dist", "ssr-warmer"),
-                  runtime: "nodejs20.x",
+                  runtime: "nodejs24.x",
                   handler: "index.handler",
                   timeout: "900 seconds",
                   memory: "128 MB",

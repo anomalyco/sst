@@ -344,7 +344,7 @@ export interface FunctionArgs {
    * Node.js and Golang are officially supported. While, Python and Rust are
    * community supported. Support for other runtimes are on the roadmap.
    *
-   * @default `"nodejs20.x"`
+   * @default `"nodejs24.x"`
    *
    * @example
    * ```js
@@ -1689,7 +1689,7 @@ export class Function extends Component implements Link.Linkable {
     const region = getRegionOutput({}, opts).region;
     const bootstrapData = region.apply((region) => bootstrap.forRegion(region));
     const injections = normalizeInjections();
-    const runtime = output(args.runtime ?? "nodejs20.x");
+    const runtime = output(args.runtime ?? "nodejs24.x");
     const timeout = normalizeTimeout();
     const memory = normalizeMemory();
     const storage = output(args.storage).apply((v) => v ?? "512 MB");
@@ -1768,7 +1768,7 @@ export class Function extends Component implements Link.Linkable {
                 links,
                 handler: handler,
                 bundle: bundle,
-                runtime: runtime || "nodejs20.x",
+                runtime: runtime || "nodejs24.x",
                 copyFiles,
                 properties: nodejs,
               };
@@ -2508,7 +2508,7 @@ export class Function extends Component implements Link.Linkable {
                   ),
                 }),
             },
-            { parent },
+            { parent, ignoreChanges: args.runtime ? [] : ["runtime"] },
           );
           return new lambda.Function(
             transformed[0],
