@@ -970,6 +970,13 @@ var root = &cli.Command{
 					":::note",
 					"The `sst refresh` does not make changes to the resources in the cloud provider.",
 					":::",
+					"",
+					"By default, this refreshes the stage as it would be deployed using `sst deploy`. If the stage was deployed using `sst dev`, use the `--dev` flag.",
+					"",
+					"```bash frame=\"none\"",
+					"sst refresh --dev",
+					"```",
+					"",
 					"You can also refresh a specific component by passing in the name of the component.",
 					"",
 					"```bash frame=\"none\"",
@@ -1000,6 +1007,14 @@ var root = &cli.Command{
 					Description: cli.Description{
 						Short: "Exclude a component",
 						Long:  "Exclude the specified component from the operation.",
+					},
+				},
+				{
+					Name: "dev",
+					Type: "bool",
+					Description: cli.Description{
+						Short: "Refresh in dev mode",
+						Long:  "Refresh the dev version of this stage.",
 					},
 				},
 			},
