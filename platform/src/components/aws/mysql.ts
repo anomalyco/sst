@@ -497,7 +497,7 @@ export class Mysql extends Component implements Link.Linkable {
         parent: self,
       });
 
-      const input = instance.tags.apply((tags) => {
+      const input = instance.tagsAll.apply((tags) => {
         return {
           proxyId: output(ref.proxyId),
           passwordTag: tags?.["sst:ref:password"],

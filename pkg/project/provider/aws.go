@@ -58,6 +58,9 @@ func (a *AwsProvider) Env() (map[string]string, error) {
 	if a.profile != "" {
 		env["AWS_PROFILE"] = a.profile
 	}
+	if a.config.Region != "" {
+		env["AWS_REGION"] = a.config.Region
+	}
 	return env, nil
 }
 

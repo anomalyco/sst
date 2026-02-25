@@ -17,7 +17,7 @@ export default $config({
   },
   async run() {
     return {
-      region: aws.getRegionOutput().name,
+      region: aws.getRegionOutput().region,
       account: aws.getCallerIdentityOutput({}).accountId,
     };
   },

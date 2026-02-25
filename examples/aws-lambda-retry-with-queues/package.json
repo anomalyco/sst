@@ -7,7 +7,7 @@
     "@types/aws-lambda": "8.10.146"
   },
   "dependencies": {
-    "sst": "^3",
+    "sst": "^4",
     "@aws-sdk/client-lambda": "^3.714.0",
     "@aws-sdk/client-sqs": "^3.714.0",
     "zod": "^3.24.1"

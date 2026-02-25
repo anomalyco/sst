@@ -2,7 +2,7 @@
   "name": "cloudflare-kv-static",
   "version": "0.0.0",
   "dependencies": {
-    "sst": "^3"
+    "sst": "^4"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240405.0"

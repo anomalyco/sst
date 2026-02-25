@@ -12,7 +12,7 @@
   "dependencies": {
     "@trpc/client": "^11.0.0-rc.528",
     "@trpc/server": "^11.0.0-rc.528",
-    "sst": "^3",
+    "sst": "^4",
     "zod": "^3.22.4"
   },
   "devDependencies": {

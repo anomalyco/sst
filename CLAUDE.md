@@ -5,12 +5,13 @@ SST is a framework for building full-stack apps on your own infrastructure. It u
 
 - **Setup**: `bun install && go mod tidy && cd platform && bun run build`
 - **Run CLI locally**: `cd examples/<app> && go run ../../cmd/sst <command>`
-- **Build CLI binary**: `go build ./cmd/sst`
-- **Go tests**: `go test ./pkg/...` (all), `go test ./pkg/project/...` (single package)
-- **Type check**: `cd platform && bun run dev` (tsc --watch --noEmit)
+- **Build CLI binary**: `go build ./cmd/sst` (useful when testing things outside of the repo)
+- **Go tests**: `go test ./...`
+- **Type check**: `cd platform && bun tsc --noEmit`
 - **Build platform**: `cd platform && bun run build` (runs `scripts/build` — bundles workers, runtime, bridge binary, types)
 - **Generate docs**: `cd www && bun run generate`
 - **Run docs locally**: `cd www && bun run dev`
+- **Deploy example**: `cd examples/<app> && go run ../../cmd/sst deploy`
 
 ## Codebase
 
@@ -29,3 +30,6 @@ SST is a framework for building full-stack apps on your own infrastructure. It u
 ## Notes
 
 - This repo was renamed from `sst/sst` to `anomalyco/sst`
+- When modifying SST components, verify changes by deploying a relevant example
+- Always build the platform before running `go run ../../cmd/sst <command>`
+- Docs are auto-generated from JSDoc comments in platform and extracted from the Go CLI
