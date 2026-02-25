@@ -14,8 +14,8 @@ import {
   output,
   secret,
   unsecret,
+  rootStackResource
 } from "@pulumi/pulumi";
-import * as pulumi from "@pulumi/pulumi";
 import { bootstrap } from "./helpers/bootstrap.js";
 import { Duration, DurationMinutes, toSeconds } from "../duration.js";
 import { Size, toMBs } from "../size.js";
@@ -1717,7 +1717,7 @@ export class Function extends Component implements Link.Linkable {
         : true,
     );
     const partition = getPartitionOutput({}, opts).partition;
-    const region = getRegionOutput({}, opts).region;
+    const region = getRegionOutput({}, opts).name;
     const bootstrapData = region.apply((region) => bootstrap.forRegion(region));
     const injections = normalizeInjections();
     const runtime = output(args.runtime ?? "nodejs24.x");
@@ -2391,7 +2391,7 @@ export class Function extends Component implements Link.Linkable {
                   bucket: assetBucket,
                   source: new asset.FileArchive(zipPath),
                 },
-                { parent: pulumi.rootStackResource, provider: opts?.provider },
+                { parent: rootStackResource, provider: opts?.provider },
               );
             })();
 
@@ -2834,7 +2834,7 @@ export class Function extends Component implements Link.Linkable {
       {
         functionName: this.name,
         environment,
-        region: getRegionOutput(undefined, { parent: this }).region,
+        region: getRegionOutput(undefined, { parent: this }).name,
       },
       { parent: this },
     );
