@@ -23,14 +23,14 @@ var usernameRegex = regexp.MustCompile(`^(//.+?):username\s*=\s*(.+)$`)
 var passwordRegex = regexp.MustCompile(`^(//.+?):_password\s*=\s*(.+)$`)
 var registryRegex = regexp.MustCompile(`^registry\s*=\s*(.+)$`)
 
-type NpmAuth struct {
+type Auth struct {
 	token  string
 	scheme string // "Bearer" or "Basic"
 }
 
 type npmrc struct {
 	registry string
-	auths    map[string]NpmAuth
+	auths    map[string]Auth
 }
 
 func expandEnvVars(s string) string {
@@ -40,7 +40,7 @@ func expandEnvVars(s string) string {
 }
 
 func parseNpmrc(content string) npmrc {
-	result := npmrc{auths: make(map[string]NpmAuth)}
+	result := npmrc{auths: make(map[string]Auth)}
 	usernames := make(map[string]string)
 	passwords := make(map[string]string)
 
@@ -51,14 +51,14 @@ func parseNpmrc(content string) npmrc {
 			continue
 		}
 		if matches := authTokenRegex.FindStringSubmatch(line); matches != nil {
-			result.auths[matches[1]] = NpmAuth{
+			result.auths[matches[1]] = Auth{
 				token:  strings.TrimSpace(expandEnvVars(matches[2])),
 				scheme: "Bearer",
 			}
 			continue
 		}
 		if matches := authRegex.FindStringSubmatch(line); matches != nil {
-			result.auths[matches[1]] = NpmAuth{
+			result.auths[matches[1]] = Auth{
 				token:  strings.TrimSpace(expandEnvVars(matches[2])),
 				scheme: "Basic",
 			}
@@ -87,7 +87,7 @@ func parseNpmrc(content string) npmrc {
 			if err != nil {
 				continue
 			}
-			result.auths[host] = NpmAuth{
+			result.auths[host] = Auth{
 				token:  base64.StdEncoding.EncodeToString([]byte(username + ":" + string(decoded))),
 				scheme: "Basic",
 			}
@@ -97,14 +97,14 @@ func parseNpmrc(content string) npmrc {
 	return result
 }
 
-type NpmRegistry struct {
+type Registry struct {
 	url  string
-	auth NpmAuth
+	auth Auth
 }
 
-func LoadNpmRegistry() NpmRegistry {
+func LoadRegistry() Registry {
 	var merged npmrc
-	merged.auths = make(map[string]NpmAuth)
+	merged.auths = make(map[string]Auth)
 
 	merge := func(path string) {
 		data, err := os.ReadFile(path)
@@ -141,7 +141,7 @@ func LoadNpmRegistry() NpmRegistry {
 
 	auth := findAuth(registry, merged.auths)
 
-	return NpmRegistry{url: registry, auth: auth}
+	return Registry{url: registry, auth: auth}
 }
 
 // findAuth walks up the registry URL path to find the longest matching
@@ -153,10 +153,10 @@ func LoadNpmRegistry() NpmRegistry {
 //	//registry.example.com/some
 //	//registry.example.com/
 //	//registry.example.com
-func findAuth(registryURL string, auths map[string]NpmAuth) NpmAuth {
+func findAuth(registryURL string, auths map[string]Auth) Auth {
 	parsed, err := url.Parse(registryURL)
 	if err != nil {
-		return NpmAuth{}
+		return Auth{}
 	}
 	path := parsed.Path
 	if !strings.HasSuffix(path, "/") {
@@ -179,7 +179,7 @@ func findAuth(registryURL string, auths map[string]NpmAuth) NpmAuth {
 			regKey = regKey[:i+1]
 		}
 	}
-	return NpmAuth{}
+	return Auth{}
 }
 
 type Package struct {
@@ -191,7 +191,7 @@ type Package struct {
 	}
 }
 
-func Get(registry NpmRegistry, name string, version string) (*Package, error) {
+func Get(registry Registry, name string, version string) (*Package, error) {
 	slog.Info("getting package", "name", name, "version", version)
 	pkgURL := fmt.Sprintf("%s/%s/%s", registry.url, name, version)
 

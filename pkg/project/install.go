@@ -258,7 +258,7 @@ func (p *Project) generateProviderLock() error {
 }
 
 func FindProvider(name string, version string) (*ProviderLockEntry, error) {
-	registry := npm.LoadNpmRegistry()
+	registry := npm.LoadRegistry()
 	for _, prefix := range []string{"@sst-provider/", "@pulumi/", "@pulumiverse/", "pulumi-", "@", ""} {
 		pkg, err := npm.Get(registry, prefix+name, version)
 		if err != nil {
