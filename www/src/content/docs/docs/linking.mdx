@@ -278,3 +278,38 @@ You can also modify the links SST creates. For example, you might want to change
  This overrides the existing link and lets you create your own.
 
 Read more about [`sst.Linkable.wrap`](/docs/component/linkable/#static-wrap).
+
+---
+
+### Link integration with external providers
+
+If you want to pass links to compute not managed by SST, like a native ECS task definition or a Kubernetes pod, use `Linkable.env()`. It converts your linked resources into `SST_RESOURCE_*` environment variables so `Resource.MyResource` works at runtime.
+
+```ts title="sst.config.ts"
+const bucket = new sst.aws.Bucket("MyBucket");
+
+const environment = sst.Linkable.env([bucket]);
+```
+
+This returns an `Output<Record<string, string>>` that you can pass to any provider that accepts environment variables.
+
+```ts title="sst.config.ts"
+new kubernetes.apps.v1.Deployment("MyDeployment", {
+  spec: {
+    template: {
+      spec: {
+        containers: [{
+          name: "app",
+          image: "my-image",
+          env: sst.Linkable.env([bucket]).apply((env) =>
+            // Kubernetes requires environment variables to be an array of objects
+            Object.entries(env).map(([name, value]) => ({ name, value: String(value) })),
+          ),
+        }],
+      },
+    },
+  },
+});
+```
+
+Read more about [`sst.Linkable.env`](/docs/component/linkable/#static-env). [Check out an example](/docs/examples/#aws-linkable-env).

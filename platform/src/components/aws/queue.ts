@@ -47,14 +47,14 @@ export interface QueueArgs {
   fifo?: Input<
     | boolean
     | {
-        /**
-         * Content-based deduplication automatically generates a deduplication ID by hashing
-         * the message body to prevent duplicate message delivery.
-         *
-         * @default `false`
-         */
-        contentBasedDeduplication?: Input<boolean>;
-      }
+      /**
+       * Content-based deduplication automatically generates a deduplication ID by hashing
+       * the message body to prevent duplicate message delivery.
+       *
+       * @default `false`
+       */
+      contentBasedDeduplication?: Input<boolean>;
+    }
   >;
   /**
    * The period of time which the delivery of all messages in the queue is delayed.
@@ -121,16 +121,16 @@ export interface QueueArgs {
   dlq?: Input<
     | string
     | {
-        /**
-         * The ARN of the dead-letter queue.
-         */
-        queue: Input<string>;
-        /**
-         * The number of times the main queue will retry the message before sending it to the dead-letter queue.
-         * @default `3`
-         */
-        retry: Input<number>;
-      }
+      /**
+       * The ARN of the dead-letter queue.
+       */
+      queue: Input<string>;
+      /**
+       * The number of times the main queue will retry the message before sending it to the dead-letter queue.
+       * @default `3`
+       */
+      retry: Input<number>;
+    }
   >;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
@@ -289,6 +289,10 @@ export interface QueueSubscriberArgs {
      * Transform the Lambda Event Source Mapping resource.
      */
     eventSourceMapping?: Transform<lambda.EventSourceMappingArgs>;
+    /**
+     * Transform the subscriber Function resource.
+     */
+    function?: Transform<FunctionArgs>;
   };
 }
 

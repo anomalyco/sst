@@ -141,7 +141,7 @@ export interface OpenSearchArgs {
     /**
      * Transform the OpenSearch domain policy.
      */
-    policy?: Transform<iam.PolicyDocument>;
+    policy?: Transform<opensearch.DomainPolicyArgs>;
   };
 }
 
@@ -306,7 +306,7 @@ export class OpenSearch extends Component implements Link.Linkable {
       //});
       const domain = opensearch.Domain.get(`${name}Domain`, ref.id);
 
-      const input = domain.tags.apply((tags) => {
+      const input = domain.tagsAll.apply((tags) => {
         if (!tags?.["sst:ref:username"])
           throw new VisibleError(
             `Failed to get username for OpenSearch ${name}.`,
@@ -472,20 +472,23 @@ Listening on "${dev.url}"...`,
 
     function createPolicy() {
       return new opensearch.DomainPolicy(
-        `${name}DomainPolicy`,
-        {
-          domainName: domain.domainName,
-          accessPolicies: iam.getPolicyDocumentOutput({
-            statements: [
-              {
-                principals: [{ type: "*", identifiers: ["*"] }],
-                actions: ["*"],
-                resources: ["*"],
-              },
-            ],
-          }).json,
-        },
-        { parent: self },
+        ...transform(
+          args.transform?.policy,
+          `${name}DomainPolicy`,
+          {
+            domainName: domain.domainName,
+            accessPolicies: iam.getPolicyDocumentOutput({
+              statements: [
+                {
+                  principals: [{ type: "*", identifiers: ["*"] }],
+                  actions: ["*"],
+                  resources: ["*"],
+                },
+              ],
+            }).json,
+          },
+          { parent: self },
+        ),
       );
     }
   }

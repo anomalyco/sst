@@ -37,6 +37,7 @@ func Generate(root string, links common.Links) error {
 		"/* tslint:disable */",
 		"/* eslint-disable */",
 		"/* deno-fmt-ignore-file */",
+		"/* biome-ignore-all lint: auto-generated */",
 		"",
 		"",
 	}, "\n"))

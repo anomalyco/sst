@@ -2,6 +2,7 @@ import { ComponentResourceOptions, all, output } from "@pulumi/pulumi";
 import { DnsValidatedCertificate } from "./dns-validated-certificate.js";
 import { Bucket } from "./bucket.js";
 import { Component } from "../component.js";
+import { logicalName } from "../naming.js";
 import { useProvider } from "./helpers/provider.js";
 import { Input } from "../input.js";
 import { Dns } from "../dns.js";
@@ -84,7 +85,7 @@ export class HttpsRedirect extends Component {
     }
 
     function createBucketWebsite() {
-      return new s3.BucketWebsiteConfigurationV2(
+      return new s3.BucketWebsiteConfiguration(
         `${name}BucketWebsite`,
         {
           bucket: bucket.name,
@@ -172,9 +173,29 @@ async function handler(event) {
       if (!args.dns) return;
 
       all([args.dns, args.sourceDomains]).apply(([dns, sourceDomains]) => {
-        for (const recordName of sourceDomains) {
+        const existing: string[] = [];
+        for (const [i, recordName] of sourceDomains.entries()) {
+          // Note: The way `dns` is implemented, the logical name for the DNS record is
+          // based on the sanitized version of the record name (ie. logicalName()). This
+          // means the logical name for `*.sst.sh` and `sst.sh` will trash b/c `*.` is
+          // stripped out.
+          // ```
+          // domain: {
+          //   name: "*.sst.sh",
+          //   aliases: ['sst.sh'],
+          // },
+          // ```
+          //
+          // Ideally, we don't sanitize the logical name. But that's a breaking change.
+          //
+          // As a workaround, starting v3.19.2, we prefix the logical name with a unique
+          // index for records with logical names that will trash.
+          const key = logicalName(recordName);
+          const namePrefix = existing.includes(key) ? `${name}${i}` : name;
+          existing.push(key);
+
           dns.createAlias(
-            name,
+            namePrefix,
             {
               name: recordName,
               aliasName: distribution.domainName,

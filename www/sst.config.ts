@@ -185,6 +185,28 @@ export default $config({
               ],
             }
           : domain,
+      edge: {
+        // Rewrite /docs/* to .md when Accept: text/markdown (for AI agents)
+        viewerRequest: {
+          injection: [
+            `var uri = event.request.uri;`,
+            `var accept = (event.request.headers['accept'] || {}).value || '';`,
+            `if (uri.startsWith('/docs') && accept.includes('text/markdown') && !/\\.[a-z0-9]+$/i.test(uri)) {`,
+            `  event.request.uri = (uri === '/docs' || uri === '/docs/')`,
+            `    ? '/docs/index.md'`,
+            `    : uri.replace(/\\/$/, '') + '.md';`,
+            `}`,
+          ].join("\n"),
+        },
+        // Fix Content-Type on .md responses (S3 serves them as octet-stream)
+        viewerResponse: {
+          injection: [
+            `if (event.request.uri.endsWith('.md')) {`,
+            `  event.response.headers['content-type'] = { value: 'text/markdown; charset=utf-8' };`,
+            `}`,
+          ].join("\n"),
+        },
+      },
       transform: {
         cdn: (args) => {
           args.origins = $output(args.origins).apply((origins) => [

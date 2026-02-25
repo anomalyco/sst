@@ -195,6 +195,12 @@ export interface FargateContainerArgs {
          * The stage to build up to. Same as the top-level [`image.target`](#image-target).
          */
         target?: Input<string>;
+        /**
+         * Controls whether Docker build cache is enabled. Same as the top-level
+         * [`image.cache`](#image-cache).
+         * @default `true`
+         */
+        cache?: Input<boolean>;
       }
   >;
   /**
@@ -480,6 +486,21 @@ export interface FargateBaseArgs {
          * ```
          */
         target?: Input<string>;
+        /**
+         * Controls whether Docker build cache is enabled.
+         * @default `true`
+         * @example
+         * Disable Docker build caching, useful for environments like Localstack where
+         * ECR cache export is not supported.
+         * ```js
+         * {
+         *   image: {
+         *     cache: false
+         *   }
+         * }
+         * ```
+         */
+        cache?: Input<boolean>;
       }
   >;
   /**
@@ -896,6 +917,7 @@ export function createTaskRole(
         })(),
         actions: item.actions,
         resources: item.resources,
+        conditions: "conditions" in item ? item.conditions : undefined,
       })),
     }),
   );
@@ -993,7 +1015,7 @@ export function createTaskDefinition(
   executionRole: ReturnType<typeof createExecutionRole>,
 ) {
   const clusterName = args.cluster.nodes.cluster.name;
-  const region = getRegionOutput({}, opts).name;
+  const region = getRegionOutput({}, opts).region;
   const bootstrapData = region.apply((region) => bootstrap.forRegion(region));
   const linkEnvs = Link.propertiesToEnv(Link.getProperties(args.link));
   const containerDefinitions = output(containers).apply((containers) =>
@@ -1052,23 +1074,27 @@ export function createTaskDefinition(
                     username: authToken.userName,
                   })),
               ],
-              cacheFrom: [
-                {
-                  registry: {
-                    ref: interpolate`${bootstrapData.assetEcrUrl}:${container.name}-cache`,
-                  },
-                },
-              ],
-              cacheTo: [
-                {
-                  registry: {
-                    ref: interpolate`${bootstrapData.assetEcrUrl}:${container.name}-cache`,
-                    imageManifest: true,
-                    ociMediaTypes: true,
-                    mode: "max",
-                  },
-                },
-              ],
+              ...(container.image.cache !== false
+                ? {
+                    cacheFrom: [
+                      {
+                        registry: {
+                          ref: interpolate`${bootstrapData.assetEcrUrl}:${container.name}-cache`,
+                        },
+                      },
+                    ],
+                    cacheTo: [
+                      {
+                        registry: {
+                          ref: interpolate`${bootstrapData.assetEcrUrl}:${container.name}-cache`,
+                          imageManifest: true,
+                          ociMediaTypes: true,
+                          mode: "max",
+                        },
+                      },
+                    ],
+                  }
+                : {}),
               push: true,
             },
             { parent },

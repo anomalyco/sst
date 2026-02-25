@@ -94,6 +94,30 @@ export function parseRoleArn(arn: string) {
   return { roleName };
 }
 
+export function parseLambdaEdgeArn(arn: string) {
+  // First validate it's a Lambda function ARN
+  const { functionName } = parseFunctionArn(arn);
+
+  // arn:aws:lambda:region:account-id:function:function-name:version
+  const parts = arn.split(":");
+  const region = parts[3];
+  const version = parts[7];
+
+  if (region !== "us-east-1") {
+    throw new VisibleError(
+      `Lambda@Edge functions must be deployed in us-east-1 region. Got region: ${region}`,
+    );
+  }
+
+  if (!version || version === "$LATEST") {
+    throw new VisibleError(
+      `Lambda@Edge requires a qualified ARN (with version). Got: ${arn}`,
+    );
+  }
+
+  return { functionName, region, version };
+}
+
 export function parseElasticSearch(arn: string) {
   // arn:aws:es:region:account-id:domain/domain-name
   const tableName = arn.split("/")[1];

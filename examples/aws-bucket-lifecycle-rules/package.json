@@ -1,0 +1,7 @@
+{
+  "name": "aws-bucket-lifecycle-rules",
+  "version": "0.0.0",
+  "dependencies": {
+    "sst": "^4"
+  }
+}

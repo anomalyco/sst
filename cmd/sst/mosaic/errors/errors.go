@@ -26,6 +26,8 @@ var transformers = []ErrorTransformer{
 	exact(project.ErrPassphraseInvalid, "The passphrase for this app / stage is missing or invalid"),
 	exact(aws.ErrIoTDelay, "This aws account has not had iot initialized in it before which sst depends on. It may take a few minutes before it is ready."),
 	exact(project.ErrStackRunFailed, ""),
+	exact(project.ErrPolicyViolation, ""),
+	exact(project.ErrPolicyConfigError, ""),
 	exact(provider.ErrLockExists, ""),
 	exact(project.ErrVersionInvalid, "The version range defined in the config is invalid"),
 	exact(provider.ErrCloudflareMissingAccount, "The Cloudflare Account ID was not able to be determined from this token. Make sure it has permissions to fetch account information or you can set the CLOUDFLARE_DEFAULT_ACCOUNT_ID environment variable to the account id you want to use."),

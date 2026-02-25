@@ -44,7 +44,7 @@
 export default $config({
   app(input) {
     return {
-      name: "aws-deno",
+      name: "aws-deno-redis",
       removal: input?.stage === "production" ? "retain" : "remove",
       home: "aws",
     };

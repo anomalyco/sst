@@ -1,7 +1,0 @@
-{
-  "name": "base-ts",
-  "version": "0.0.0",
-  "dependencies": {
-    "sst": "^3.0.4"
-  }
-}

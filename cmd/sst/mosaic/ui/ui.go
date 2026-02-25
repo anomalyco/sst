@@ -155,7 +155,7 @@ func (u *UI) Event(unknown interface{}) {
 		u.println(evt.Line)
 
 	case *aws.TaskProvisionEvent:
-		u.printEvent(u.getColor(""), TEXT_NORMAL_BOLD.Render(fmt.Sprintf("%-11s", "Provision")), evt.Name)
+		u.printEvent(u.getColor(""), fmt.Sprintf("%-11s", "Provision"), evt.Name)
 
 	case *aws.TaskStartEvent:
 		u.workerTime[evt.WorkerID] = time.Now()
@@ -172,7 +172,7 @@ func (u *UI) Event(unknown interface{}) {
 		u.printEvent(u.getColor(evt.WorkerID), "Done", formattedDuration)
 
 	case *aws.TaskMissingCommandEvent:
-		u.printEvent(u.getColor(""), TEXT_DANGER_BOLD.Render(fmt.Sprintf("%-11s", "Missing")), fmt.Sprintf("Dev command not configured for the \"%s\" task. Set `dev.command` to configure how the task works in `sst dev`.", evt.Name))
+		u.printEvent(TEXT_DANGER, fmt.Sprintf("%-11s", "Missing"), fmt.Sprintf("Dev command not configured for the \"%s\" task. Set `dev.command` to configure how the task works in `sst dev`.", evt.Name))
 
 	case *aws.FunctionInvokedEvent:
 		u.workerTime[evt.WorkerID] = time.Now()
@@ -220,6 +220,9 @@ func (u *UI) Event(unknown interface{}) {
 		if evt.Error != "" {
 			u.printEvent(TEXT_DANGER, "Error", evt.Error)
 		}
+
+	case *project.PolicyAdvisoryEvent:
+		u.printEvent(TEXT_WARNING, "Warning", u.FormatURN(evt.URN)+" "+evt.Policy+": "+evt.Message)
 
 	case *project.StackCommandEvent:
 		u.reset()
@@ -618,7 +621,7 @@ func (u *UI) header(version, app, stage string) {
 	}
 	u.println(
 		TEXT_HIGHLIGHT_BOLD.Render("SST "+version),
-		TEXT_DIM.Render("  ready!"),
+		TEXT_DIM.Render(" ready!"),
 	)
 	u.blank()
 	u.println(

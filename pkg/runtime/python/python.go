@@ -1181,7 +1181,7 @@ func (r *PythonRuntime) CreateBuildAsset(ctx context.Context, input *runtime.Bui
 	// Deployment mode: Full build with dependency management
 	type Properties struct {
 		Architecture string `json:"architecture"`
-		Container    bool   `json:"container"`
+		Container    json.RawMessage `json:"container"`
 	}
 	var props Properties
 	if err := json.Unmarshal(input.Properties, &props); err != nil {

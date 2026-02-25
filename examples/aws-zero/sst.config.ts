@@ -1,5 +1,11 @@
 /// <reference path="./.sst/platform/config.d.ts" />
 
+/**
+ * ## Zero sync engine
+ *
+ * Deploy the Zero sync engine with a Postgres database configured for logical
+ * replication in a VPC cluster.
+ */
 export default $config({
   app(input) {
     return {

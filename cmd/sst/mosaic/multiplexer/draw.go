@@ -64,6 +64,7 @@ func (s *Multiplexer) draw() {
 		hotkeys["enter"] = "copy"
 	}
 	hotkeys["ctrl-u/d"] = "scroll"
+	hotkeys["ctrl-l"] = "clear"
 	// sort hotkeys
 	keys := make([]string, 0, len(hotkeys))
 	for key := range hotkeys {
@@ -137,6 +138,9 @@ func (s *Multiplexer) sort() {
 	}
 	key := s.selectedProcess().key
 	sort.Slice(s.processes, func(i, j int) bool {
+		if !s.processes[i].killable && s.processes[j].killable {
+			return true
+		}
 		if s.processes[i].killable && !s.processes[j].killable {
 			return false
 		}
