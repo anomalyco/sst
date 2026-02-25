@@ -22,7 +22,7 @@ not-a-token-line=value
 		t.Errorf("registry = %q, want %q", rc.registry, "https://custom.registry.com")
 	}
 
-	wantAuths := map[string]npmAuth{
+	wantAuths := map[string]NpmAuth{
 		"//registry.npmjs.org/":  {token: "hardcoded-token", scheme: "Bearer"},
 		"//custom.registry.com/": {token: "env-token", scheme: "Bearer"},
 		"//another.host/":        {token: "plain", scheme: "Bearer"},
@@ -117,7 +117,7 @@ func TestParseNpmrcRegistryOnly(t *testing.T) {
 }
 
 func TestFindAuth(t *testing.T) {
-	auths := map[string]npmAuth{
+	auths := map[string]NpmAuth{
 		"//registry.example.com/": {token: "host-token", scheme: "Bearer"},
 	}
 	got := findAuth("https://registry.example.com", auths)
@@ -127,7 +127,7 @@ func TestFindAuth(t *testing.T) {
 }
 
 func TestFindAuthPathMatch(t *testing.T) {
-	auths := map[string]npmAuth{
+	auths := map[string]NpmAuth{
 		"//registry.example.com/custom/path/": {token: "path-token", scheme: "Bearer"},
 		"//registry.example.com/":             {token: "host-token", scheme: "Bearer"},
 	}
@@ -144,7 +144,7 @@ func TestFindAuthPathMatch(t *testing.T) {
 }
 
 func TestFindAuthNoMatch(t *testing.T) {
-	auths := map[string]npmAuth{
+	auths := map[string]NpmAuth{
 		"//other.host/": {token: "other-token", scheme: "Bearer"},
 	}
 	got := findAuth("https://registry.example.com", auths)
