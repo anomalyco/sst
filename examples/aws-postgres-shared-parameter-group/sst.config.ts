@@ -11,6 +11,25 @@ export default $config({
   async run() {
     const vpc = new sst.aws.Vpc("MyVpc");
 
+    // Alternative: create a standalone parameter group and reference it
+    //
+    // const sharedParameterGroup = new aws.rds.ParameterGroup(
+    //   "SharedParameterGroup",
+    //   {
+    //     name: "shared-parameter-group",
+    //     family: "postgres17",
+    //     parameters: [
+    //       { name: "rds.force_ssl", value: "0" },
+    //       { name: "log_min_duration_statement", value: "1000" },
+    //     ],
+    //   },
+    // );
+    //
+    // Then use in each Postgres:
+    //   transform: {
+    //     instance: { parameterGroupName: sharedParameterGroup.name },
+    //   }
+
     // First database with custom parameters
     const db1 = new sst.aws.Postgres("Database1", {
       vpc,
