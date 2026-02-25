@@ -2,6 +2,8 @@ package npm
 
 import (
 	"encoding/base64"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -116,6 +118,53 @@ func TestParseNpmrcRegistryOnly(t *testing.T) {
 	}
 }
 
+func TestParseNpmrcUsernameWithoutPassword(t *testing.T) {
+	rc := parseNpmrc("//host.com/:username=lonely-user\n")
+	if len(rc.auths) != 0 {
+		t.Errorf("username without password should produce no auth, got %v", rc.auths)
+	}
+}
+
+func TestParseNpmrcPasswordWithoutUsername(t *testing.T) {
+	b64Pass := base64.StdEncoding.EncodeToString([]byte("orphan"))
+	rc := parseNpmrc("//host.com/:_password=" + b64Pass + "\n")
+	if len(rc.auths) != 0 {
+		t.Errorf("password without username should produce no auth, got %v", rc.auths)
+	}
+}
+
+func TestParseNpmrcInvalidBase64Password(t *testing.T) {
+	rc := parseNpmrc("//host.com/:username=user\n//host.com/:_password=%%%not-base64\n")
+	if len(rc.auths) != 0 {
+		t.Errorf("invalid base64 password should be skipped, got %v", rc.auths)
+	}
+}
+
+func TestParseNpmrcBasicAuthOverridesUsernamePassword(t *testing.T) {
+	b64Pass := base64.StdEncoding.EncodeToString([]byte("pass"))
+	input := "//host.com/:_auth=direct-basic\n//host.com/:username=user\n//host.com/:_password=" + b64Pass + "\n"
+	rc := parseNpmrc(input)
+
+	got := rc.auths["//host.com/"]
+	if got.token != "direct-basic" || got.scheme != "Basic" {
+		t.Errorf("should prefer _auth, got %+v", got)
+	}
+}
+
+func TestParseNpmrcRegistryWithTrailingSlash(t *testing.T) {
+	rc := parseNpmrc("registry=https://my.registry.io/")
+	if rc.registry != "https://my.registry.io/" {
+		t.Errorf("registry = %q, want %q", rc.registry, "https://my.registry.io/")
+	}
+}
+
+func TestParseNpmrcRegistryWithWhitespace(t *testing.T) {
+	rc := parseNpmrc("registry = https://my.registry.io")
+	if rc.registry != "https://my.registry.io" {
+		t.Errorf("registry = %q, want %q", rc.registry, "https://my.registry.io")
+	}
+}
+
 func TestFindAuth(t *testing.T) {
 	auths := map[string]Auth{
 		"//registry.example.com/": {token: "host-token", scheme: "Bearer"},
@@ -150,5 +199,71 @@ func TestFindAuthNoMatch(t *testing.T) {
 	got := findAuth("https://registry.example.com", auths)
 	if got.token != "" {
 		t.Errorf("no match should return empty, got %+v", got)
+	}
+}
+
+func TestFindAuthWithPort(t *testing.T) {
+	auths := map[string]Auth{
+		"//registry.example.com:8080/": {token: "port-token", scheme: "Bearer"},
+	}
+	got := findAuth("https://registry.example.com:8080", auths)
+	if got.token != "port-token" {
+		t.Errorf("port match = %+v, want port-token", got)
+	}
+}
+
+func TestFindAuthRegistryWithTrailingSlash(t *testing.T) {
+	auths := map[string]Auth{
+		"//registry.example.com/": {token: "slash-token", scheme: "Bearer"},
+	}
+	got := findAuth("https://registry.example.com/", auths)
+	if got.token != "slash-token" {
+		t.Errorf("trailing slash = %+v, want slash-token", got)
+	}
+}
+
+func TestFindAuthEmptyAuths(t *testing.T) {
+	got := findAuth("https://registry.example.com", map[string]Auth{})
+	if got.token != "" {
+		t.Errorf("empty auths should return empty, got %+v", got)
+	}
+}
+
+func TestLoadRegistryDefaults(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+	t.Setenv("NPM_REGISTRY", "")
+
+	origDir, _ := os.Getwd()
+	os.Chdir(tmp)
+	defer os.Chdir(origDir)
+
+	reg := LoadRegistry()
+	if reg.url != "https://registry.npmjs.org" {
+		t.Errorf("default registry = %q, want https://registry.npmjs.org", reg.url)
+	}
+	if reg.auth.token != "" {
+		t.Errorf("default auth should be empty, got %+v", reg.auth)
+	}
+}
+
+func TestLoadRegistryNpmRegistryEnvVar(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+	t.Setenv("NPM_REGISTRY", "https://env.registry.io")
+
+	// write an .npmrc with a different registry to confirm env wins
+	os.WriteFile(filepath.Join(tmp, ".npmrc"), []byte("registry=https://file.registry.io\n//env.registry.io/:_authToken=env-tok\n"), 0644)
+
+	origDir, _ := os.Getwd()
+	os.Chdir(tmp)
+	defer os.Chdir(origDir)
+
+	reg := LoadRegistry()
+	if reg.url != "https://env.registry.io" {
+		t.Errorf("env registry = %q, want https://env.registry.io", reg.url)
+	}
+	if reg.auth.token != "env-tok" {
+		t.Errorf("env auth token = %q, want env-tok", reg.auth.token)
 	}
 }
