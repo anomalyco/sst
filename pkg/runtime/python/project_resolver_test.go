@@ -9,9 +9,14 @@ import (
 
 func TestSetupSourceRoot_MonorepoStructure(t *testing.T) {
 	// Create a temp directory structure that mimics the GTF monorepo:
-	// /tmp/gtfd/                    <- root with pyproject.toml
-	// /tmp/gtfd/apps/main/          <- SST project root
-	// /tmp/gtfd/apps/main/packages/ <- handler files
+	// /tmp/gtfd/                              <- root with workspace pyproject.toml
+	// /tmp/gtfd/apps/main/                    <- SST project root
+	// /tmp/gtfd/apps/main/packages/api/       <- workspace member with its own pyproject.toml
+	// /tmp/gtfd/apps/main/packages/api/auth/  <- handler files
+	//
+	// In the real GTF layout, each workspace member package has its own pyproject.toml.
+	// The resolver walks up from the handler file and finds the package-level one first,
+	// which is within the project root boundary. It never needs to go above apps/main/.
 
 	tmpDir, err := os.MkdirTemp("", "sst-test-monorepo")
 	if err != nil {
@@ -20,30 +25,41 @@ func TestSetupSourceRoot_MonorepoStructure(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	// Create directory structure
-	rootDir := tmpDir
 	appsMainDir := filepath.Join(tmpDir, "apps", "main")
-	packagesDir := filepath.Join(appsMainDir, "packages", "api", "auth")
+	packagesApiDir := filepath.Join(appsMainDir, "packages", "api")
+	authDir := filepath.Join(packagesApiDir, "auth")
 
-	if err := os.MkdirAll(packagesDir, 0755); err != nil {
-		t.Fatalf("Failed to create packages dir: %v", err)
+	if err := os.MkdirAll(authDir, 0755); err != nil {
+		t.Fatalf("Failed to create auth dir: %v", err)
 	}
 
-	// Create pyproject.toml at root (above SST project)
-	pyprojectPath := filepath.Join(rootDir, "pyproject.toml")
-	pyprojectContent := `[project]
+	// Create root pyproject.toml (workspace root, above SST project)
+	rootPyproject := filepath.Join(tmpDir, "pyproject.toml")
+	if err := os.WriteFile(rootPyproject, []byte(`[project]
 name = "gtf"
 version = "1.0.0"
-`
-	if err := os.WriteFile(pyprojectPath, []byte(pyprojectContent), 0644); err != nil {
-		t.Fatalf("Failed to write pyproject.toml: %v", err)
+
+[tool.uv.workspace]
+members = ["apps/main/packages/api"]
+`), 0644); err != nil {
+		t.Fatalf("Failed to write root pyproject.toml: %v", err)
+	}
+
+	// Create package-level pyproject.toml (this is what the resolver actually finds)
+	packagePyproject := filepath.Join(packagesApiDir, "pyproject.toml")
+	if err := os.WriteFile(packagePyproject, []byte(`[project]
+name = "gtf-api"
+version = "0.1.0"
+requires-python = ">=3.13"
+`), 0644); err != nil {
+		t.Fatalf("Failed to write package pyproject.toml: %v", err)
 	}
 
 	// Create handler file
-	handlerPath := filepath.Join(packagesDir, "login.py")
-	handlerContent := `def handler(event, context):
+	handlerPath := filepath.Join(authDir, "login.py")
+	if err := os.WriteFile(handlerPath, []byte(`def handler(event, context):
     return {"statusCode": 200}
-`
-	if err := os.WriteFile(handlerPath, []byte(handlerContent), 0644); err != nil {
+`), 0644); err != nil {
 		t.Fatalf("Failed to write handler: %v", err)
 	}
 
@@ -57,15 +73,14 @@ version = "1.0.0"
 	}
 
 	// Key assertions:
-	// 1. PyprojectPath should be found at root
-	if info.PyprojectPath != pyprojectPath {
-		t.Errorf("Expected PyprojectPath=%s, got %s", pyprojectPath, info.PyprojectPath)
+	// 1. PyprojectPath should be the package-level one (within project root)
+	if info.PyprojectPath != packagePyproject {
+		t.Errorf("Expected PyprojectPath=%s, got %s", packagePyproject, info.PyprojectPath)
 	}
 
-	// 2. SourceRoot should be the SST project root (apps/main), NOT the pyproject.toml dir
-	//    This is critical - if SourceRoot is the root dir, the Lambda zip will have wrong paths
-	if info.SourceRoot != appsMainDir {
-		t.Errorf("Expected SourceRoot=%s (project root), got %s", appsMainDir, info.SourceRoot)
+	// 2. SourceRoot should be the package directory (where pyproject.toml was found)
+	if info.SourceRoot != packagesApiDir {
+		t.Errorf("Expected SourceRoot=%s, got %s", packagesApiDir, info.SourceRoot)
 	}
 
 	// 3. ProjectRoot should be apps/main
@@ -125,7 +140,7 @@ version = "1.0.0"
 
 func TestCopySourceFilesSimple_MonorepoStructure(t *testing.T) {
 	// This test verifies that copySourceFilesSimple uses the correct workspaceDir
-	// when pyproject.toml is above the SST project root (monorepo setup)
+	// when pyproject.toml is at the package level within the SST project root
 
 	tmpDir, err := os.MkdirTemp("", "sst-test-copy-monorepo")
 	if err != nil {
@@ -134,32 +149,33 @@ func TestCopySourceFilesSimple_MonorepoStructure(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	// Create monorepo structure:
-	// /tmp/root/                    <- pyproject.toml here
-	// /tmp/root/apps/main/          <- SST project root
-	// /tmp/root/apps/main/packages/ <- handler files
-	rootDir := tmpDir
+	// /tmp/root/                              <- workspace pyproject.toml here
+	// /tmp/root/apps/main/                    <- SST project root
+	// /tmp/root/apps/main/packages/api/       <- package pyproject.toml here
+	// /tmp/root/apps/main/packages/api/auth/  <- handler files
 	appsMainDir := filepath.Join(tmpDir, "apps", "main")
-	packagesDir := filepath.Join(appsMainDir, "packages", "api", "auth")
+	packagesApiDir := filepath.Join(appsMainDir, "packages", "api")
+	authDir := filepath.Join(packagesApiDir, "auth")
 	outputDir := filepath.Join(tmpDir, "output")
 
-	if err := os.MkdirAll(packagesDir, 0755); err != nil {
-		t.Fatalf("Failed to create packages dir: %v", err)
+	if err := os.MkdirAll(authDir, 0755); err != nil {
+		t.Fatalf("Failed to create auth dir: %v", err)
 	}
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		t.Fatalf("Failed to create output dir: %v", err)
 	}
 
-	// Create pyproject.toml at root (above SST project)
-	pyprojectPath := filepath.Join(rootDir, "pyproject.toml")
-	if err := os.WriteFile(pyprojectPath, []byte(`[project]
-name = "gtf"
-version = "1.0.0"
+	// Create package-level pyproject.toml (what the resolver finds)
+	packagePyproject := filepath.Join(packagesApiDir, "pyproject.toml")
+	if err := os.WriteFile(packagePyproject, []byte(`[project]
+name = "gtf-api"
+version = "0.1.0"
 `), 0644); err != nil {
-		t.Fatalf("Failed to write pyproject.toml: %v", err)
+		t.Fatalf("Failed to write package pyproject.toml: %v", err)
 	}
 
 	// Create handler file
-	handlerPath := filepath.Join(packagesDir, "login.py")
+	handlerPath := filepath.Join(authDir, "login.py")
 	if err := os.WriteFile(handlerPath, []byte(`def handler(event, context):
     return {"statusCode": 200}
 `), 0644); err != nil {
@@ -169,8 +185,8 @@ version = "1.0.0"
 	// Create __init__.py files for proper Python package structure
 	for _, dir := range []string{
 		filepath.Join(appsMainDir, "packages"),
-		filepath.Join(appsMainDir, "packages", "api"),
-		filepath.Join(appsMainDir, "packages", "api", "auth"),
+		packagesApiDir,
+		authDir,
 	} {
 		initPath := filepath.Join(dir, "__init__.py")
 		if err := os.WriteFile(initPath, []byte(""), 0644); err != nil {
@@ -179,26 +195,19 @@ version = "1.0.0"
 	}
 
 	// Create ProjectInfo as it would be set by the resolver
-	// Key: PyprojectPath is at root, but SourceRoot should be apps/main
+	// The resolver finds the package-level pyproject.toml, so SourceRoot = package dir
 	projectInfo := &ProjectInfo{
 		HandlerFile:   handlerPath,
 		ProjectRoot:   appsMainDir,
-		SourceRoot:    appsMainDir, // This is the key - should be project root, not pyproject dir
-		PyprojectPath: pyprojectPath,
-		PythonPath:    []string{appsMainDir},
+		SourceRoot:    packagesApiDir,
+		PyprojectPath: packagePyproject,
+		PythonPath:    []string{packagesApiDir},
 	}
 
-	// Verify the key invariant: when pyproject.toml is above project root,
-	// SourceRoot should equal ProjectRoot
-	if projectInfo.SourceRoot != projectInfo.ProjectRoot {
-		t.Errorf("For monorepo, SourceRoot should equal ProjectRoot. Got SourceRoot=%s, ProjectRoot=%s",
-			projectInfo.SourceRoot, projectInfo.ProjectRoot)
-	}
-
-	// Verify pyproject.toml is above project root
+	// Verify the key invariant: pyproject.toml is within the project root
 	pyprojectDir := filepath.Dir(projectInfo.PyprojectPath)
-	if strings.HasPrefix(pyprojectDir, projectInfo.ProjectRoot) {
-		t.Errorf("Test setup error: pyproject.toml should be ABOVE project root. pyprojectDir=%s, ProjectRoot=%s",
+	if !strings.HasPrefix(pyprojectDir, projectInfo.ProjectRoot) {
+		t.Errorf("pyproject.toml should be within project root. pyprojectDir=%s, ProjectRoot=%s",
 			pyprojectDir, projectInfo.ProjectRoot)
 	}
 
