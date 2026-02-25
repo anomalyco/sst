@@ -1886,6 +1886,11 @@ func (ib *IncrementalBuilder) shouldUseDependencyCache(input *runtime.BuildInput
 
 // installDependenciesForBuild installs dependencies for the build
 func (ib *IncrementalBuilder) installDependenciesForBuild(ctx context.Context, input *runtime.BuildInput, projectInfo *ProjectInfo, plan *BuildPlan, result *BuildResult) error {
+	// Ensure output directory exists (it may not if no packages needed building)
+	if err := os.MkdirAll(input.Out(), 0755); err != nil {
+		return fmt.Errorf("failed to create output directory: %w", err)
+	}
+
 	// Generate requirements file - uses shared global file for all functions in same workspace
 	requirementsFile := filepath.Join(input.Out(), "requirements.txt")
 	if err := ib.generateOrCopyRequirementsFile(ctx, input, projectInfo, requirementsFile); err != nil {
