@@ -6,8 +6,8 @@ import {
   interpolate,
   output,
 } from "@pulumi/pulumi";
-import * as pulumi from "@pulumi/pulumi";
-import * as aws from "@pulumi/aws";
+import { asset } from "@pulumi/pulumi";
+import { iam, lambda } from "@pulumi/aws";
 import crypto from "crypto";
 import { Component, Transform, transform } from "../component";
 import { Link } from "../link";
@@ -2275,7 +2275,7 @@ async function handler(event) {
             ? toSeconds(edgeConfig.timeout)
             : 5;
 
-          const edgeRole = new aws.iam.Role(
+          const edgeRole = new iam.Role(
             ...transform(
               undefined,
               `${name}EdgeFunctionRole`,
@@ -2304,7 +2304,7 @@ async function handler(event) {
             ),
           );
 
-          const edgeFn = new aws.lambda.Function(
+          const edgeFn = new lambda.Function(
             ...transform(
               undefined,
               `${name}EdgeFunction`,
@@ -2313,7 +2313,7 @@ async function handler(event) {
                 runtime: "nodejs22.x",
                 handler: "index.handler",
                 role: edgeRole.arn,
-                code: new pulumi.asset.FileArchive(
+                code: new asset.FileArchive(
                   path.join($cli.paths.platform, "dist", "oac-edge-signer"),
                 ),
                 publish: true,
