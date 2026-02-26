@@ -35,7 +35,7 @@ export default $config({
       ],
     });
 
-    const app = new sst.aws.Function("MyApp", {
+    const creator = new sst.aws.Function("MyCreator", {
       handler: "publisher.handler",
       link: [table],
       url: true,
@@ -48,7 +48,7 @@ export default $config({
     });
 
     return {
-      app: app.url,
+      creator: creator.url,
       reader: reader.url,
       table: table.name,
     };
