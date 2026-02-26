@@ -13,7 +13,8 @@ import { Component, Transform, transform } from "../component";
 import { Link } from "../link";
 import type { Input } from "../input";
 import { Cdn, CdnArgs } from "./cdn";
-import { cloudfront } from "@pulumi/aws";
+import { cloudfront, cloudwatch, wafv2 } from "@pulumi/aws";
+import { useProvider } from "./helpers/provider";
 import { hashStringToPrettyString, physicalName } from "../naming";
 import { Bucket } from "./bucket";
 import { OriginAccessControl } from "./providers/origin-access-control";
@@ -25,6 +26,7 @@ import { FunctionArn } from "./function";
 import { parseLambdaEdgeArn } from "./helpers/arn";
 import { Size, toMBs } from "../size";
 import { useProvider } from "./helpers/provider";
+import { RETENTION } from "./logging";
 
 interface InlineUrlRouteArgs extends InlineBaseRouteArgs {
   /**
@@ -460,6 +462,226 @@ export interface RouterBucketRouteArgs extends RouteArgs {
      */
     to: Input<string>;
   }>;
+}
+
+export interface WafLoggingArgs {
+  /**
+   * Filter which requests are logged.
+   *
+   * - `"all"` logs every request evaluated by the WAF.
+   * - `"blocked"` only logs requests that were blocked.
+   *
+   * @default `"all"`
+   * @example
+   * ```js
+   * {
+   *   waf: {
+   *     logging: {
+   *       include: "blocked"
+   *     }
+   *   }
+   * }
+   * ```
+   */
+  include?: Input<"all" | "blocked">;
+  /**
+   * The duration the WAF logs are kept in CloudWatch.
+   *
+   * @default `"1 month"`
+   * @example
+   * ```js
+   * {
+   *   waf: {
+   *     logging: {
+   *       retention: "3 months"
+   *     }
+   *   }
+   * }
+   * ```
+   */
+  retention?: Input<keyof typeof RETENTION>;
+  /**
+   * Configure which parts of the request are redacted from the logs. Redacted
+   * fields are replaced with `REDACTED` in the log output.
+   *
+   * By default, the query string and the `cookie` and `authorization` headers
+   * are redacted since they commonly contain PII or credentials.
+   *
+   * Set to `false` to disable all redaction.
+   *
+   * @default `{ queryString: true, headers: ["cookie", "authorization"] }`
+   * @example
+   *
+   * Disable all redaction.
+   *
+   * ```js
+   * {
+   *   waf: {
+   *     logging: {
+   *       redact: false
+   *     }
+   *   }
+   * }
+   * ```
+   *
+   * Redact everything.
+   *
+   * ```js
+   * {
+   *   waf: {
+   *     logging: {
+   *       redact: {
+   *         queryString: true,
+   *         uriPath: true,
+   *         method: true,
+   *         headers: ["cookie", "authorization"]
+   *       }
+   *     }
+   *   }
+   * }
+   * ```
+   */
+  redact?: Input<
+    | false
+    | {
+        /**
+         * Redact the query string from the logs. The query string is the
+         * part of a URL after the `?` and can contain tokens, user IDs,
+         * or other sensitive parameters.
+         * @default `true`
+         */
+        queryString?: Input<boolean>;
+        /**
+         * Redact the URI path from the logs. The URI path identifies the
+         * resource being accessed, like `/users/123/profile`.
+         * @default `false`
+         */
+        uriPath?: Input<boolean>;
+        /**
+         * Redact the HTTP method from the logs (GET, POST, etc.).
+         * @default `false`
+         */
+        method?: Input<boolean>;
+        /**
+         * A list of header names to redact from the logs. Must be lowercase.
+         * @default `["cookie", "authorization"]`
+         * @example
+         * ```js
+         * {
+         *   headers: ["cookie", "authorization", "x-api-key"]
+         * }
+         * ```
+         */
+        headers?: Input<string[]>;
+      }
+  >;
+}
+
+export interface WafArgs {
+  /**
+   * The rate limit per IP address. Requests from an IP that exceed this limit
+   * within a 5-minute window will be blocked.
+   *
+   * @default `2000`
+   * @example
+   * ```js
+   * {
+   *   waf: {
+   *     rateLimitPerIp: 1000
+   *   }
+   * }
+   * ```
+   */
+  rateLimitPerIp?: Input<number>;
+  /**
+   * Configure which AWS managed rule groups to enable.
+   *
+   * @default All managed rules enabled
+   * @example
+   * ```js
+   * {
+   *   waf: {
+   *     managedRules: {
+   *       coreRuleSet: true,
+   *       knownBadInputs: true,
+   *       sqlInjection: false
+   *     }
+   *   }
+   * }
+   * ```
+   */
+  managedRules?: Input<{
+    /**
+     * Enable the AWS Core Rule Set (CRS) which provides protection against common
+     * web vulnerabilities.
+     * @default `true`
+     */
+    coreRuleSet?: Input<boolean>;
+    /**
+     * Enable protection against known bad inputs, including Log4j vulnerabilities.
+     * @default `true`
+     */
+    knownBadInputs?: Input<boolean>;
+    /**
+     * Enable SQL injection protection.
+     * @default `true`
+     */
+    sqlInjection?: Input<boolean>;
+  }>;
+  /**
+   * Configure WAF logging to CloudWatch. When set to `true`, all WAF-evaluated
+   * requests are logged with a 1-month retention. Or pass in an object to
+   * customize what is logged, how long logs are retained, and which fields
+   * are redacted.
+   *
+   * :::tip
+   * WAF logging is off by default. Enabling it will incur additional
+   * [CloudWatch costs](https://aws.amazon.com/cloudwatch/pricing/) depending
+   * on log volume.
+   * :::
+   *
+   * @default Logging is disabled
+   * @example
+   *
+   * Enable with defaults.
+   *
+   * ```js
+   * {
+   *   waf: {
+   *     logging: true
+   *   }
+   * }
+   * ```
+   *
+   * Only log blocked requests.
+   *
+   * ```js
+   * {
+   *   waf: {
+   *     logging: {
+   *       include: "blocked",
+   *       retention: "3 months"
+   *     }
+   *   }
+   * }
+   * ```
+   *
+   * Redact sensitive fields.
+   *
+   * ```js
+   * {
+   *   waf: {
+   *     logging: {
+   *       redact: {
+   *         queryString: true,
+   *         headers: ["cookie"]
+   *       }
+   *     }
+   *   }
+   * }
+   * ```
+   */
+  logging?: Input<boolean | WafLoggingArgs>;
 }
 
 export interface RouterArgs {
@@ -913,6 +1135,42 @@ export interface RouterArgs {
       }
   >;
   /**
+   * Enable AWS WAF (Web Application Firewall) to protect your Router from common
+   * web exploits and bots.
+   *
+   * :::tip
+   * WAF provides protection against SQL injection, cross-site scripting (XSS),
+   * and other common attacks.
+   * :::
+   *
+   * @default WAF is disabled
+   * @example
+   *
+   * Enable with sensible defaults.
+   *
+   * ```js
+   * {
+   *   waf: true
+   * }
+   * ```
+   *
+   * Or customize the configuration.
+   *
+   * ```js
+   * {
+   *   waf: {
+   *     rateLimitPerIp: 1000,
+   *     managedRules: {
+   *       coreRuleSet: true,
+   *       knownBadInputs: true,
+   *       sqlInjection: true
+   *     }
+   *   }
+   * }
+   * ```
+   */
+  waf?: Input<boolean | WafArgs>;
+  /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
    */
@@ -925,6 +1183,18 @@ export interface RouterArgs {
      * Transform the CloudFront CDN resource.
      */
     cdn?: Transform<CdnArgs>;
+    /**
+     * Transform the WAF WebACL resource.
+     */
+    waf?: Transform<wafv2.WebAclArgs>;
+    /**
+     * Transform the CloudWatch LogGroup resource used for WAF logs.
+     */
+    wafLogGroup?: Transform<cloudwatch.LogGroupArgs>;
+    /**
+     * Transform the WAF WebACL logging configuration resource.
+     */
+    wafLogging?: Transform<wafv2.WebAclLoggingConfigurationArgs>;
   };
   /**
    * @internal
@@ -1137,6 +1407,11 @@ export class Router extends Component implements Link.Linkable {
       });
     }
 
+    const waf = createWaf();
+    const wafArn = waf?.arn;
+    const wafLogging = normalizeWafLogging();
+    createWafLogging();
+
     let cdn, kvStoreArn, kvNamespace;
     if (hasInlineRoutes) {
       cdn = handleInlineRoutes();
@@ -1184,6 +1459,247 @@ export class Router extends Component implements Link.Linkable {
           mode: p as ProtectionConfig["mode"],
         })),
       };
+    }
+
+    function createWaf(): wafv2.WebAcl | undefined {
+      if (!args.waf) return undefined;
+
+      const wafInput = output(args.waf);
+      const config = wafInput.apply((waf) =>
+        typeof waf === "boolean" || !waf ? {} : waf,
+      );
+      const rateLimitPerIp = config.apply((c) => c.rateLimitPerIp ?? 2000);
+      const managedRules = config.apply((c) => c.managedRules ?? {});
+      const enableCoreRuleSet = managedRules.apply(
+        (m) => m.coreRuleSet !== false,
+      );
+      const enableKnownBadInputs = managedRules.apply(
+        (m) => m.knownBadInputs !== false,
+      );
+      const enableSqlInjection = managedRules.apply(
+        (m) => m.sqlInjection !== false,
+      );
+
+      // Build rules array dynamically based on config
+      const rules = all([
+        rateLimitPerIp,
+        enableCoreRuleSet,
+        enableKnownBadInputs,
+        enableSqlInjection,
+      ]).apply(([rateLimit, coreRuleSet, knownBadInputs, sqlInjection]) => {
+        const r: wafv2.WebAclArgs["rules"] = [];
+        let priority = 0;
+
+        r.push({
+          name: "RateLimitPerIP",
+          priority: priority++,
+          action: { block: {} },
+          statement: {
+            rateBasedStatement: {
+              limit: rateLimit,
+              aggregateKeyType: "IP",
+            },
+          },
+          visibilityConfig: {
+            cloudwatchMetricsEnabled: true,
+            metricName: `${name}RateLimitPerIP`,
+            sampledRequestsEnabled: true,
+          },
+        });
+
+        if (coreRuleSet) {
+          r.push({
+            name: "AWSManagedRulesCommonRuleSet",
+            priority: priority++,
+            overrideAction: { none: {} },
+            statement: {
+              managedRuleGroupStatement: {
+                vendorName: "AWS",
+                name: "AWSManagedRulesCommonRuleSet",
+                // Set SizeRestrictions_BODY to COUNT to avoid blocking large request bodies
+                ruleActionOverrides: [
+                  {
+                    name: "SizeRestrictions_BODY",
+                    actionToUse: { count: {} },
+                  },
+                ],
+              },
+            },
+            visibilityConfig: {
+              cloudwatchMetricsEnabled: true,
+              metricName: `${name}AWSManagedRulesCommonRuleSet`,
+              sampledRequestsEnabled: true,
+            },
+          });
+        }
+
+        if (knownBadInputs) {
+          r.push({
+            name: "AWSManagedRulesKnownBadInputsRuleSet",
+            priority: priority++,
+            overrideAction: { none: {} },
+            statement: {
+              managedRuleGroupStatement: {
+                vendorName: "AWS",
+                name: "AWSManagedRulesKnownBadInputsRuleSet",
+              },
+            },
+            visibilityConfig: {
+              cloudwatchMetricsEnabled: true,
+              metricName: `${name}AWSManagedRulesKnownBadInputsRuleSet`,
+              sampledRequestsEnabled: true,
+            },
+          });
+        }
+
+        if (sqlInjection) {
+          r.push({
+            name: "AWSManagedRulesSQLiRuleSet",
+            priority: priority++,
+            overrideAction: { none: {} },
+            statement: {
+              managedRuleGroupStatement: {
+                vendorName: "AWS",
+                name: "AWSManagedRulesSQLiRuleSet",
+              },
+            },
+            visibilityConfig: {
+              cloudwatchMetricsEnabled: true,
+              metricName: `${name}AWSManagedRulesSQLiRuleSet`,
+              sampledRequestsEnabled: true,
+            },
+          });
+        }
+
+        return r;
+      });
+
+      // WAF must be created in us-east-1 for CloudFront
+      return new wafv2.WebAcl(
+        ...transform(
+          args.transform?.waf,
+          `${name}Waf`,
+          {
+            scope: "CLOUDFRONT",
+            defaultAction: { allow: {} },
+            rules,
+            visibilityConfig: {
+              cloudwatchMetricsEnabled: true,
+              metricName: `${name}Waf`,
+              sampledRequestsEnabled: true,
+            },
+          },
+          { parent: self, provider: useProvider("us-east-1") },
+        ),
+      );
+    }
+
+    function normalizeWafLogging() {
+      return output(args.waf)
+        .apply((waf) => {
+          if (!waf || typeof waf === "boolean") return undefined;
+          return output(waf.logging);
+        })
+        .apply((logging) => {
+          if (!logging) return undefined;
+          const l = (
+            typeof logging === "boolean" ? {} : logging
+          ) as WafLoggingArgs;
+          const defaultRedact = {
+            queryString: true as boolean,
+            headers: ["cookie", "authorization"] as string[],
+          };
+          const redact = l.redact;
+          return {
+            include: (l.include ?? "all") as "all" | "blocked",
+            retention: (l.retention ?? "1 month") as keyof typeof RETENTION,
+            redact:
+              redact === false
+                ? undefined
+                : redact ?? defaultRedact,
+          };
+        });
+    }
+
+    function createWafLogging() {
+      if (!waf) return;
+
+      wafLogging.apply((logging) => {
+        if (!logging) return;
+
+        // CloudWatch Log Group name MUST start with "aws-waf-logs-"
+        const logGroup = new cloudwatch.LogGroup(
+          ...transform(
+            args.transform?.wafLogGroup,
+            `${name}WafLogGroup`,
+            {
+              name: `aws-waf-logs-${physicalName(64, name)}`,
+              retentionInDays: RETENTION[logging.retention],
+            },
+            {
+              parent: self,
+              provider: useProvider("us-east-1"),
+              ignoreChanges: ["name"],
+            },
+          ),
+        );
+
+        const redactedFields = logging.redact
+          ? output(logging.redact).apply((redact) => {
+              if (!redact || typeof redact === "boolean") return [];
+              const fields: wafv2.WebAclLoggingConfigurationArgs["redactedFields"] &
+                {}[] = [];
+              if (redact.method) fields.push({ method: {} });
+              if (redact.queryString) fields.push({ queryString: {} });
+              if (redact.uriPath) fields.push({ uriPath: {} });
+              if (redact.headers) {
+                for (const header of redact.headers) {
+                  fields.push({
+                    singleHeader: { name: header.toLowerCase() },
+                  });
+                }
+              }
+              return fields;
+            })
+          : undefined;
+
+        const loggingFilter =
+          logging.include === "blocked"
+            ? {
+                defaultBehavior: "DROP",
+                filters: [
+                  {
+                    behavior: "KEEP" as const,
+                    requirement: "MEETS_ANY" as const,
+                    conditions: [
+                      {
+                        actionCondition: {
+                          action: "BLOCK",
+                        },
+                      },
+                    ],
+                  },
+                ],
+              }
+            : undefined;
+
+        new wafv2.WebAclLoggingConfiguration(
+          ...transform(
+            args.transform?.wafLogging,
+            `${name}WafLogging`,
+            {
+              resourceArn: waf!.arn,
+              logDestinationConfigs: [logGroup.arn],
+              ...(redactedFields ? { redactedFields } : {}),
+              ...(loggingFilter ? { loggingFilter } : {}),
+            },
+            {
+              parent: self,
+              provider: useProvider("us-east-1"),
+            },
+          ),
+        );
+      });
     }
 
     function registerOutputs() {
@@ -1531,6 +2047,7 @@ async function handler(event) {
                   .map((d) => d.behavior),
                 domain: args.domain,
                 wait: true,
+                webAclArn: wafArn,
               },
               { parent: self },
             ),
@@ -1900,6 +2417,7 @@ async function handler(event) {
                 "sst:ref:version": _refVersion.toString(),
                 "sst:ref:protection": protection.apply((p) => p.mode),
               },
+              webAclArn: wafArn,
             },
             { parent: self },
           ),

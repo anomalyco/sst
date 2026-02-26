@@ -664,8 +664,8 @@ export interface FunctionArgs {
   /**
    * Enable streaming for the function.
    *
-   * Streaming is only supported when using the function `url` is enabled and not when using it
-   * with API Gateway.
+   * Streaming is supported with both Function URLs and API Gateway REST API (V1). It is
+   * not supported with API Gateway HTTP API (V2).
    *
    * You'll also need to [wrap your handler](https://docs.aws.amazon.com/lambda/latest/dg/configuration-response-streaming.html) with `awslambda.streamifyResponse` to enable streaming.
    *
