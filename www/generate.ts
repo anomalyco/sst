@@ -644,20 +644,6 @@ async function generateComponentDoc(
           ...(["realtime", "task"].includes(sdk?.name!)
             ? renderAbout(useModuleComment(sdk!))
             : []),
-          ...(() => {
-            if (!["opencontrol"].includes(sdk?.name!)) return [];
-            for (const variable of sdk!.children!) {
-              if (variable.name === "tools") {
-                // @ts-expect-error
-                variable.type = {
-                  type: "reference",
-                  name: "Tools",
-                  package: "opencontrol",
-                };
-              }
-            }
-            return renderVariables(sdk!);
-          })(),
           ...(sdk
             ? renderFunctions(
                 sdk,
@@ -785,9 +771,6 @@ function renderType(
     }
     if (type.type === "reference" && type.package === "esbuild") {
       return renderEsbuildType(type);
-    }
-    if (type.type === "reference" && type.package === "opencontrol") {
-      return renderOpencontrolType(type);
     }
     if (
       // when bun is installed globally, package is `bun-types`
@@ -1164,9 +1147,6 @@ function renderType(
   function renderEsbuildType(type: TypeDoc.ReferenceType) {
     const hash = type.name === "Loader" ? `#loader` : "#build";
     return `[<code class="type">${type.name}</code>](https://esbuild.github.io/api/${hash})`;
-  }
-  function renderOpencontrolType(type: TypeDoc.ReferenceType) {
-    return `[<code class="type">${type.name}</code>](https://opencontrol.ai/)`;
   }
   function renderBunShellType(type: TypeDoc.ReferenceType) {
     return `[<code class="type">Bun Shell</code>](https://bun.sh/docs/runtime/shell)`;
@@ -2299,7 +2279,6 @@ async function buildSdk() {
       "../sdk/js/src/aws/realtime.ts",
       "../sdk/js/src/aws/task.ts",
       "../sdk/js/src/vector/index.ts",
-      "../sdk/js/src/opencontrol.ts",
     ],
     tsconfig: "../sdk/js/tsconfig.json",
   });
