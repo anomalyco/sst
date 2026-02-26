@@ -413,6 +413,7 @@ export class Cdn extends Component {
             ),
             waitForDeployment: false,
             tags: args.tags,
+            // CloudFront API confusingly names the WAF ARN field "webAclId"
             webAclId: args.webAclArn,
           },
           { parent },

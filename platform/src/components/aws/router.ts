@@ -565,7 +565,7 @@ export interface WafLoggingArgs {
          * }
          * ```
          */
-        headers?: Input<Input<string>[]>;
+        headers?: Input<string[]>;
       }
   >;
 }
@@ -1299,9 +1299,9 @@ export class Router extends Component implements Link.Linkable {
     const hasInlineRoutes = args.routes !== undefined;
 
     const waf = createWaf();
-    // Extract the WAF ARN. When WAF is enabled, waf is WebAcl.
-    // When disabled, waf is undefined and we pass undefined to webAclArn.
     const wafArn = waf?.arn;
+    const wafLogging = normalizeWafLogging();
+    createWafLogging();
 
     let cdn, kvStoreArn, kvNamespace;
     if (hasInlineRoutes) {
@@ -1348,10 +1348,8 @@ export class Router extends Component implements Link.Linkable {
     }
 
     function createWaf(): wafv2.WebAcl | undefined {
-      // Return undefined if WAF is not configured
       if (!args.waf) return undefined;
 
-      // Normalize the waf config - handle both boolean and object forms
       const wafInput = output(args.waf);
       const config = wafInput.apply((waf) =>
         typeof waf === "boolean" || !waf ? {} : waf,
@@ -1378,7 +1376,6 @@ export class Router extends Component implements Link.Linkable {
         const r: wafv2.WebAclArgs["rules"] = [];
         let priority = 0;
 
-        // Rate limiting rule
         r.push({
           name: "RateLimitPerIP",
           priority: priority++,
@@ -1396,7 +1393,6 @@ export class Router extends Component implements Link.Linkable {
           },
         });
 
-        // AWS Managed Rules - Core Rule Set (CRS)
         if (coreRuleSet) {
           r.push({
             name: "AWSManagedRulesCommonRuleSet",
@@ -1423,7 +1419,6 @@ export class Router extends Component implements Link.Linkable {
           });
         }
 
-        // AWS Managed Rules - Known Bad Inputs
         if (knownBadInputs) {
           r.push({
             name: "AWSManagedRulesKnownBadInputsRuleSet",
@@ -1443,7 +1438,6 @@ export class Router extends Component implements Link.Linkable {
           });
         }
 
-        // AWS Managed Rules - SQL Injection
         if (sqlInjection) {
           r.push({
             name: "AWSManagedRulesSQLiRuleSet",
@@ -1467,7 +1461,7 @@ export class Router extends Component implements Link.Linkable {
       });
 
       // WAF must be created in us-east-1 for CloudFront
-      const webAcl = new wafv2.WebAcl(
+      return new wafv2.WebAcl(
         ...transform(
           args.transform?.waf,
           `${name}Waf`,
@@ -1484,16 +1478,13 @@ export class Router extends Component implements Link.Linkable {
           { parent: self, provider: useProvider("us-east-1") },
         ),
       );
+    }
 
-      // Create WAF logging resources if logging is configured
-      // Normalize directly from args.waf (not from `config`) to keep apply
-      // depth at 2 — matching the step-functions.ts pattern. Resources inside
-      // deeper apply chains can be empty during preview with unknown inputs.
-      const loggingInput = output(args.waf).apply((waf) => {
+    function normalizeWafLogging() {
+      return output(args.waf).apply((waf) => {
         if (!waf || typeof waf === "boolean") return undefined;
         if (!waf.logging) return undefined;
         const l = typeof waf.logging === "boolean" ? {} : waf.logging;
-        // Default redact: query string + cookie/authorization headers (PII)
         const defaultRedact: NonNullable<WafLoggingArgs["redact"]> = {
           queryString: true,
           headers: ["cookie", "authorization"],
@@ -1504,18 +1495,22 @@ export class Router extends Component implements Link.Linkable {
           redact: l.redact === false ? undefined : (l.redact ?? defaultRedact),
         };
       });
+    }
 
-      loggingInput.apply((logConfig) => {
-        if (!logConfig) return;
+    function createWafLogging() {
+      if (!waf) return;
 
-        // CloudWatch Log Group - name MUST start with "aws-waf-logs-"
+      wafLogging.apply((logging) => {
+        if (!logging) return;
+
+        // CloudWatch Log Group name MUST start with "aws-waf-logs-"
         const logGroup = new cloudwatch.LogGroup(
           ...transform(
             args.transform?.wafLogGroup,
             `${name}WafLogGroup`,
             {
               name: `aws-waf-logs-${physicalName(64, name)}`,
-              retentionInDays: RETENTION[logConfig.retention],
+              retentionInDays: RETENTION[logging.retention],
             },
             {
               parent: self,
@@ -1525,9 +1520,8 @@ export class Router extends Component implements Link.Linkable {
           ),
         );
 
-        // Build redacted fields from the redact config
-        const redactedFields = logConfig.redact
-          ? output(logConfig.redact).apply((redact) => {
+        const redactedFields = logging.redact
+          ? output(logging.redact).apply((redact) => {
               const fields: wafv2.WebAclLoggingConfigurationArgs["redactedFields"] &
                 {}[] = [];
               if (redact?.method) fields.push({ method: {} });
@@ -1544,9 +1538,8 @@ export class Router extends Component implements Link.Linkable {
             })
           : undefined;
 
-        // Build logging filter: "blocked" -> only keep BLOCK actions
         const loggingFilter =
-          logConfig.include === "blocked"
+          logging.include === "blocked"
             ? {
                 defaultBehavior: "DROP",
                 filters: [
@@ -1565,13 +1558,12 @@ export class Router extends Component implements Link.Linkable {
               }
             : undefined;
 
-        // WebACL Logging Configuration
         new wafv2.WebAclLoggingConfiguration(
           ...transform(
             args.transform?.wafLogging,
             `${name}WafLogging`,
             {
-              resourceArn: webAcl.arn,
+              resourceArn: waf!.arn,
               logDestinationConfigs: [logGroup.arn],
               ...(redactedFields ? { redactedFields } : {}),
               ...(loggingFilter ? { loggingFilter } : {}),
@@ -1583,8 +1575,6 @@ export class Router extends Component implements Link.Linkable {
           ),
         );
       });
-
-      return webAcl;
     }
 
     function registerOutputs() {
