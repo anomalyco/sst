@@ -54,6 +54,9 @@ export default $config({
     api.route("GET /", "index.handler", {
       streaming: true,
     });
+    api.route("GET /hono", "hono.handler", {
+      streaming: true,
+    });
     api.deploy();
 
     return {
