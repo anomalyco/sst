@@ -1255,7 +1255,6 @@ async function handler(event) {
 
         if (
           protection.mode === "oac-with-edge-signing" &&
-          "edgeFunction" in protection &&
           protection.edgeFunction?.arn
         ) {
           const arn = protection.edgeFunction.arn;

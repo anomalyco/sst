@@ -2568,23 +2568,17 @@ export class Function extends Component implements Link.Linkable {
       return url.apply((url) => {
         if (url === undefined) return output(undefined);
 
-        const routerProtection = url.route?.routerProtection;
-        const isOac = routerProtection
-          ? output(routerProtection).apply(
-              (p) => p.mode === "oac" || p.mode === "oac-with-edge-signing",
-            )
-          : output(false);
-
-        const authType = isOac.apply((oac) => {
-          if (oac) return "AWS_IAM";
-          return url.authorization === "iam" ? "AWS_IAM" : "NONE";
-        });
+        const isOac = output(url.route?.routerProtection).apply(
+          (p) => p?.mode === "oac" || p?.mode === "oac-with-edge-signing",
+        );
 
         const fnUrl = new lambda.FunctionUrl(
           `${name}Url`,
           {
             functionName: fn.name,
-            authorizationType: authType,
+            authorizationType: isOac.apply((oac) =>
+              oac || url.authorization === "iam" ? "AWS_IAM" : "NONE",
+            ),
             invokeMode: streaming.apply((streaming) =>
               streaming ? "RESPONSE_STREAM" : "BUFFERED",
             ),

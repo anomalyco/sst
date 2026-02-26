@@ -1171,7 +1171,9 @@ export class Router extends Component implements Link.Linkable {
         kvStoreArn: tags.kvStoreArn,
         kvNamespace: tags.kvNamespace,
         hasInlineRoutes: tags.hasInlineRoutes,
-        protection: tags.protection.apply((p) => ({ mode: p })),
+        protection: tags.protection.apply((p) => ({
+          mode: p as ProtectionConfig["mode"],
+        })),
       };
     }
 
@@ -1181,7 +1183,7 @@ export class Router extends Component implements Link.Linkable {
       });
     }
 
-    function normalizeProtection() {
+    function normalizeProtection(): Output<ProtectionConfig> {
       return output(args.protection).apply((protection) => {
         if (!protection) return { mode: "none" as const };
 
@@ -1191,7 +1193,6 @@ export class Router extends Component implements Link.Linkable {
 
         if (
           protection.mode === "oac-with-edge-signing" &&
-          "edgeFunction" in protection &&
           protection.edgeFunction?.arn
         ) {
           const arn = protection.edgeFunction.arn;
@@ -1737,16 +1738,12 @@ async function handler(event) {
         return protection.apply((protectionConfig) => {
           if (
             protectionConfig.mode !== "oac-with-edge-signing" ||
-            ("edgeFunction" in protectionConfig &&
-              protectionConfig.edgeFunction?.arn)
+            protectionConfig.edgeFunction?.arn
           ) {
             return undefined;
           }
 
-          const edgeConfig =
-            "edgeFunction" in protectionConfig
-              ? protectionConfig.edgeFunction
-              : {};
+          const edgeConfig = protectionConfig.edgeFunction;
           const memory = edgeConfig?.memory ? toMBs(edgeConfig.memory) : 128;
           const timeout = edgeConfig?.timeout
             ? toSeconds(edgeConfig.timeout)
@@ -1865,10 +1862,7 @@ async function handler(event) {
                     return [];
                   }
 
-                  if (
-                    "edgeFunction" in protectionConfig &&
-                    protectionConfig.edgeFunction?.arn
-                  ) {
+                  if (protectionConfig.edgeFunction?.arn) {
                     return [
                       {
                         eventType: "origin-request",
@@ -2461,7 +2455,7 @@ export type KV_SITE_METADATA = {
 };
 
 export type ProtectionConfig = {
-  mode: string;
+  mode: "none" | "oac" | "oac-with-edge-signing";
   edgeFunction?: {
     arn?: string;
     memory?: Size;
