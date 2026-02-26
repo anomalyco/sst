@@ -1491,24 +1491,18 @@ export class Router extends Component implements Link.Linkable {
           const l = (
             typeof logging === "boolean" ? {} : logging
           ) as WafLoggingArgs;
-          return all([
-            output(l.include ?? "all"),
-            output(l.retention ?? "1 month"),
-            output(l.redact),
-          ]);
-        })
-        .apply((resolved) => {
-          if (!resolved) return undefined;
-          const [include, retention, redact] = resolved;
-          const defaultRedact: NonNullable<WafLoggingArgs["redact"]> = {
-            queryString: true,
-            headers: ["cookie", "authorization"],
+          const defaultRedact = {
+            queryString: true as boolean,
+            headers: ["cookie", "authorization"] as string[],
           };
+          const redact = l.redact;
           return {
-            include: include as "all" | "blocked",
-            retention: retention as keyof typeof RETENTION,
+            include: (l.include ?? "all") as "all" | "blocked",
+            retention: (l.retention ?? "1 month") as keyof typeof RETENTION,
             redact:
-              redact === false ? undefined : (redact ?? defaultRedact),
+              redact === false
+                ? undefined
+                : redact ?? defaultRedact,
           };
         });
     }
@@ -1538,13 +1532,14 @@ export class Router extends Component implements Link.Linkable {
 
         const redactedFields = logging.redact
           ? output(logging.redact).apply((redact) => {
+              if (!redact || typeof redact === "boolean") return [];
               const fields: wafv2.WebAclLoggingConfigurationArgs["redactedFields"] &
                 {}[] = [];
-              if (redact?.method) fields.push({ method: {} });
-              if (redact?.queryString) fields.push({ queryString: {} });
-              if (redact?.uriPath) fields.push({ uriPath: {} });
-              if (redact?.headers) {
-                for (const header of redact.headers ?? []) {
+              if (redact.method) fields.push({ method: {} });
+              if (redact.queryString) fields.push({ queryString: {} });
+              if (redact.uriPath) fields.push({ uriPath: {} });
+              if (redact.headers) {
+                for (const header of redact.headers) {
                   fields.push({
                     singleHeader: { name: header.toLowerCase() },
                   });
