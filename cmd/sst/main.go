@@ -549,6 +549,8 @@ var root = &cli.Command{
 					"```bash frame=\"none\"",
 					"NPM_REGISTRY=https://my-registry.com sst add aws",
 					"```",
+					"",
+					"You can also set the registry in your `.npmrc` file. If your registry requires authentication, SST supports `_authToken`, `_auth`, and `username`/`_password` from `.npmrc`.",
 				}, "\n"),
 			},
 			Args: []cli.Argument{

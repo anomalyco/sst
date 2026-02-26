@@ -146,7 +146,8 @@ func Create(templateName string, home string) ([]string, error) {
 			version := npmStep.Version
 			if version == "" {
 				slog.Info("fetching latest version", "package", npmStep.Package)
-				data, err := npm.Get(npmStep.Package, "latest")
+				registry := npm.LoadRegistry()
+				data, err := npm.Get(registry, npmStep.Package, "latest")
 				if err != nil {
 					return nil, err
 				}

@@ -302,7 +302,7 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 		}
 	}
 
-	if input.Command == "deploy" || input.Command == "diff" {
+	if input.Command == "deploy" || input.Command == "diff" || input.Command == "refresh" {
 		for provider, opts := range p.app.Providers {
 			for key, value := range opts.(map[string]interface{}) {
 				switch v := value.(type) {
