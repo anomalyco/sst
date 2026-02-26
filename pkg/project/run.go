@@ -588,6 +588,21 @@ loop:
 		}
 	}
 
+	if !finished {
+		if data, err := os.ReadFile(eventlogPath); err == nil {
+			for _, line := range strings.Split(string(data), "\n") {
+				if line == "" {
+					continue
+				}
+				var ev events.EngineEvent
+				if json.Unmarshal([]byte(line), &ev) == nil && ev.SummaryEvent != nil {
+					finished = true
+					break
+				}
+			}
+		}
+	}
+
 	log.Info("parsing state")
 	complete, err := getCompletedEvent(context.Background(), passphrase, workdir)
 	if err != nil {
