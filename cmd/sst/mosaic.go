@@ -40,10 +40,7 @@ func CmdMosaic(c *cli.Cli) error {
 	child := os.Getenv("SST_CHILD")
 	// spawning child process
 	if len(c.Arguments()) > 0 || child != "" {
-		var args []string
-		for _, arg := range c.Arguments() {
-			args = append(args, strings.Fields(arg)...)
-		}
+		args := c.Arguments()
 		slog.Info("dev mode with target", "args", c.Arguments())
 		cfgPath, err := c.Discover()
 		stage, err := c.Stage(cfgPath)
@@ -359,6 +356,7 @@ func CmdMosaic(c *cli.Cli) error {
 								append([]string{currentExecutable, "dev", "--"}, words...),
 								dir,
 								title,
+								"SST_CHILD="+d.Name,
 							)
 						}
 						for range evt.Tunnels {

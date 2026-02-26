@@ -44,9 +44,9 @@ require (
 	github.com/manifoldco/promptui v0.9.0
 	github.com/mattn/go-runewidth v0.0.15
 	github.com/posthog/posthog-go v0.0.0-20240221135834-4944045455b4
-	github.com/pulumi/pulumi/pkg/v3 v3.210.0
-	github.com/pulumi/pulumi/sdk/v3 v3.210.0
-	github.com/spf13/pflag v1.0.9
+	github.com/pulumi/pulumi/pkg/v3 v3.215.0
+	github.com/pulumi/pulumi/sdk/v3 v3.215.0
+	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.10.0
 	github.com/tailscale/hujson v0.0.0-20241010212012-29efb4a0184b
 	github.com/twitchtv/twirp v8.1.3+incompatible
@@ -100,7 +100,7 @@ require (
 	github.com/containerd/cgroups v1.1.0 // indirect
 	github.com/containerd/console v1.0.4-0.20230313162750-1ae8d489ac81 // indirect
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
-	github.com/cyphar/filepath-securejoin v0.3.6 // indirect
+	github.com/cyphar/filepath-securejoin v0.4.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/davidlazar/go-crypto v0.0.0-20200604182044-b73af7476f6c // indirect
 	github.com/deckarep/golang-set/v2 v2.5.0 // indirect

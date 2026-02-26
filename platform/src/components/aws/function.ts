@@ -344,7 +344,7 @@ export interface FunctionArgs {
    * Node.js and Golang are officially supported. While, Python and Rust are
    * community supported. Support for other runtimes are on the roadmap.
    *
-   * @default `"nodejs20.x"`
+   * @default `"nodejs24.x"`
    *
    * @example
    * ```js
@@ -365,6 +365,7 @@ export interface FunctionArgs {
     | "python3.10"
     | "python3.11"
     | "python3.12"
+    | "python3.13"
   >;
   /**
    * Path to the source code directory for the function. By default, the handler is
@@ -1170,7 +1171,28 @@ export interface FunctionArgs {
      *
      * You can refer to [this example of using a container image](/docs/examples/#aws-lambda-python-container).
      */
-    container?: Input<boolean>;
+    container?: Input<
+      | boolean
+      | {
+          /**
+           * Controls whether Docker build cache is enabled.
+           * @default `true`
+           * @example
+           * Disable Docker build caching, useful for environments like Localstack where
+           * ECR cache export is not supported.
+           * ```js
+           * {
+           *   python: {
+           *     container: {
+           *       cache: false
+           *     }
+           *   }
+           * }
+           * ```
+           */
+          cache?: Input<boolean>;
+        }
+    >;
   }>;
   /**
    * Add additional files to copy into the function package. Takes a list of objects
@@ -1683,13 +1705,18 @@ export class Function extends Component implements Link.Linkable {
     const parent = this;
     const dev = normalizeDev();
     const isContainer = all([args.python, dev]).apply(
-      ([python, dev]) => !dev && (python?.container ?? false),
+      ([python, dev]) => !dev && !!python?.container,
+    );
+    const containerCache = all([args.python]).apply(([python]) =>
+      typeof python?.container === "object"
+        ? (python.container.cache ?? true)
+        : true,
     );
     const partition = getPartitionOutput({}, opts).partition;
     const region = getRegionOutput({}, opts).region;
     const bootstrapData = region.apply((region) => bootstrap.forRegion(region));
     const injections = normalizeInjections();
-    const runtime = output(args.runtime ?? "nodejs20.x");
+    const runtime = output(args.runtime ?? "nodejs24.x");
     const timeout = normalizeTimeout();
     const memory = normalizeMemory();
     const storage = output(args.storage).apply((v) => v ?? "512 MB");
@@ -1768,7 +1795,7 @@ export class Function extends Component implements Link.Linkable {
                 links,
                 handler: handler,
                 bundle: bundle,
-                runtime: runtime || "nodejs20.x",
+                runtime: runtime || "nodejs24.x",
                 copyFiles,
                 properties: nodejs,
               };
@@ -2206,11 +2233,12 @@ export class Function extends Component implements Link.Linkable {
       // The build artifact directory already exists, with all the user code and
       // config files. It also has the dockerfile, we need to now just build and push to
       // the container registry.
-      return all([isContainer, dev, bundle]).apply(
+      return all([isContainer, dev, bundle, containerCache]).apply(
         ([
           isContainer,
           dev,
           bundle, // We need the bundle to be resolved because of implicit dockerfiles even though we don't use it here
+          containerCache,
         ]) => {
           if (!isContainer || dev) return;
 
@@ -2229,23 +2257,27 @@ export class Function extends Component implements Link.Linkable {
                   `${name}-src`,
                 ),
               },
-              cacheFrom: [
-                {
-                  registry: {
-                    ref: $interpolate`${bootstrapData.assetEcrUrl}:${name}-cache`,
-                  },
-                },
-              ],
-              cacheTo: [
-                {
-                  registry: {
-                    ref: $interpolate`${bootstrapData.assetEcrUrl}:${name}-cache`,
-                    imageManifest: true,
-                    ociMediaTypes: true,
-                    mode: "max",
-                  },
-                },
-              ],
+              ...(containerCache !== false
+                ? {
+                    cacheFrom: [
+                      {
+                        registry: {
+                          ref: $interpolate`${bootstrapData.assetEcrUrl}:${name}-cache`,
+                        },
+                      },
+                    ],
+                    cacheTo: [
+                      {
+                        registry: {
+                          ref: $interpolate`${bootstrapData.assetEcrUrl}:${name}-cache`,
+                          imageManifest: true,
+                          ociMediaTypes: true,
+                          mode: "max",
+                        },
+                      },
+                    ],
+                  }
+                : {}),
               platforms: [
                 architecture.apply((v) =>
                   v === "arm64" ? "linux/arm64" : "linux/amd64",
@@ -2508,7 +2540,7 @@ export class Function extends Component implements Link.Linkable {
                   ),
                 }),
             },
-            { parent },
+            { parent, ignoreChanges: args.runtime ? [] : ["runtime"] },
           );
           return new lambda.Function(
             transformed[0],

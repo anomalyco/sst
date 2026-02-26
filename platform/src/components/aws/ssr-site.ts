@@ -11,9 +11,8 @@ import {
   interpolate,
   ComponentResourceOptions,
   Resource,
+  asset as pulumiAsset,
 } from "@pulumi/pulumi";
-import * as pulumi from "@pulumi/pulumi";
-import * as aws from "@pulumi/aws";
 import { Cdn, CdnArgs } from "./cdn.js";
 import { Function, FunctionArgs, FunctionArn } from "./function.js";
 import { parseLambdaEdgeArn } from "./helpers/arn.js";
@@ -325,7 +324,7 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
     /**
      * The runtime environment for the server function.
      *
-     * @default `"nodejs20.x"`
+     * @default `"nodejs24.x"`
      * @example
      * ```js
      * {
@@ -1285,7 +1284,7 @@ async function handler(event) {
         const timeout = edgeConfig?.timeout ? toSeconds(edgeConfig.timeout) : 5;
 
         // Create IAM role for Lambda@Edge using SST transform pattern
-        const edgeRole = new aws.iam.Role(
+        const edgeRole = new iam.Role(
           ...transform(
             undefined,
             `${name}EdgeFunctionRole`,
@@ -1314,7 +1313,7 @@ async function handler(event) {
         );
 
         // Create the Lambda@Edge function using SST transform pattern
-        const edgeFunction = new aws.lambda.Function(
+        const edgeFunction = new lambda.Function(
           ...transform(
             undefined,
             `${name}EdgeFunction`,
@@ -1322,7 +1321,7 @@ async function handler(event) {
               runtime: "nodejs22.x",
               handler: "index.handler",
               role: edgeRole.arn,
-              code: new pulumi.asset.FileArchive(
+              code: new pulumiAsset.FileArchive(
                 path.join($cli.paths.platform, "dist", "oac-edge-signer"),
               ),
               publish: true, // Required for Lambda@Edge
@@ -1349,7 +1348,7 @@ async function handler(event) {
           `${name}DevServer`,
           {
             description: `${name} dev server`,
-            runtime: "nodejs20.x",
+            runtime: "nodejs24.x",
             timeout: "20 seconds",
             memory: "128 MB",
             bundle: path.join(
@@ -1426,7 +1425,7 @@ async function handler(event) {
                 ...planServer,
                 description: planServer.description ?? `${name} server`,
                 runtime: output(args.server?.runtime).apply(
-                  (v) => v ?? planServer.runtime ?? "nodejs20.x",
+                  (v) => v ?? planServer.runtime ?? "nodejs24.x",
                 ),
                 timeout,
                 memory: output(args.server?.memory).apply(
@@ -1494,7 +1493,7 @@ async function handler(event) {
                 job: {
                   description: `${name} warmer`,
                   bundle: path.join($cli.paths.platform, "dist", "ssr-warmer"),
-                  runtime: "nodejs20.x",
+                  runtime: "nodejs24.x",
                   handler: "index.handler",
                   timeout: "900 seconds",
                   memory: "128 MB",
