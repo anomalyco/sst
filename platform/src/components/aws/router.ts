@@ -1481,20 +1481,36 @@ export class Router extends Component implements Link.Linkable {
     }
 
     function normalizeWafLogging() {
-      return output(args.waf).apply((waf) => {
-        if (!waf || typeof waf === "boolean") return undefined;
-        if (!waf.logging) return undefined;
-        const l = typeof waf.logging === "boolean" ? {} : waf.logging;
-        const defaultRedact: NonNullable<WafLoggingArgs["redact"]> = {
-          queryString: true,
-          headers: ["cookie", "authorization"],
-        };
-        return {
-          include: (l.include ?? "all") as "all" | "blocked",
-          retention: (l.retention ?? "1 month") as keyof typeof RETENTION,
-          redact: l.redact === false ? undefined : (l.redact ?? defaultRedact),
-        };
-      });
+      return output(args.waf)
+        .apply((waf) => {
+          if (!waf || typeof waf === "boolean") return undefined;
+          return output(waf.logging);
+        })
+        .apply((logging) => {
+          if (!logging) return undefined;
+          const l = (
+            typeof logging === "boolean" ? {} : logging
+          ) as WafLoggingArgs;
+          return all([
+            output(l.include ?? "all"),
+            output(l.retention ?? "1 month"),
+            output(l.redact),
+          ]);
+        })
+        .apply((resolved) => {
+          if (!resolved) return undefined;
+          const [include, retention, redact] = resolved;
+          const defaultRedact: NonNullable<WafLoggingArgs["redact"]> = {
+            queryString: true,
+            headers: ["cookie", "authorization"],
+          };
+          return {
+            include: include as "all" | "blocked",
+            retention: retention as keyof typeof RETENTION,
+            redact:
+              redact === false ? undefined : (redact ?? defaultRedact),
+          };
+        });
     }
 
     function createWafLogging() {

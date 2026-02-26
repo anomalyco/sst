@@ -62,9 +62,11 @@ function findResources(type: string) {
   return createdResources.filter((r) => r.type === type);
 }
 
-// Allow async Pulumi .apply() chains to settle
-function settle(ms = 500) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+// Flush event loop to let Pulumi .apply() chains settle without wall-clock delays
+async function settle() {
+  for (let i = 0; i < 50; i++) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
 }
 
 describe("Router WAF Logging", function () {
