@@ -43,7 +43,7 @@ export default $config({
   async run() {
     const hono = new sst.aws.Function("Hono", {
       url: true,
-      streaming: $dev ? false : true,
+      streaming: true,
       timeout: "15 minutes",
       handler: "index.handler",
     });

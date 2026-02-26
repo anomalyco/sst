@@ -143,19 +143,46 @@ func function(ctx context.Context, input input) {
 		log.Info("got response", "workerID", workerID, "requestID", r.PathValue("requestID"))
 		writer := input.client.NewWriter(bridge.MessageResponse, input.prefix+"/"+workerID+"/in")
 		writer.SetID(requestID)
-		var buf bytes.Buffer
-		tee := io.TeeReader(r.Body, &buf)
-		io.Copy(writer, tee)
-		writer.Close()
-		w.WriteHeader(202)
-		info, ok := workers[workerID]
-		if ok {
-			bus.Publish(&FunctionResponseEvent{
-				FunctionID: info.FunctionID,
-				WorkerID:   workerID,
-				RequestID:  requestID,
-				Output:     buf.Bytes(),
-			})
+
+		if r.Header.Get("X-SST-Streaming") == "true" {
+			// stream chunks eagerly through the bridge
+			buf := make([]byte, 16*1024)
+			for {
+				n, err := r.Body.Read(buf)
+				if n > 0 {
+					writer.Write(buf[:n])
+					writer.Flush(false)
+				}
+				if err != nil {
+					break
+				}
+			}
+			writer.Close()
+			w.WriteHeader(202)
+			info, ok := workers[workerID]
+			if ok {
+				bus.Publish(&FunctionResponseEvent{
+					FunctionID: info.FunctionID,
+					WorkerID:   workerID,
+					RequestID:  requestID,
+					Output:     []byte("(streamed)"),
+				})
+			}
+		} else {
+			var buf bytes.Buffer
+			tee := io.TeeReader(r.Body, &buf)
+			io.Copy(writer, tee)
+			writer.Close()
+			w.WriteHeader(202)
+			info, ok := workers[workerID]
+			if ok {
+				bus.Publish(&FunctionResponseEvent{
+					FunctionID: info.FunctionID,
+					WorkerID:   workerID,
+					RequestID:  requestID,
+					Output:     buf.Bytes(),
+				})
+			}
 		}
 	})
 

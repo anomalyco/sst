@@ -11,4 +11,4 @@ const app = new Hono()
     })
   });
 
-export const handler = process.env.SST_LIVE ? handle(app) : streamHandle(app);
+export const handler = streamHandle(app);
