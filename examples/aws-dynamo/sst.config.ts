@@ -36,7 +36,7 @@ export default $config({
     });
 
     const creator = new sst.aws.Function("MyCreator", {
-      handler: "publisher.handler",
+      handler: "creator.handler",
       link: [table],
       url: true,
     });
