@@ -37,8 +37,15 @@ export default $config({
       url: true,
     });
 
+    const reader = new sst.aws.Function("MyReader", {
+      handler: "reader.handler",
+      link: [table],
+      url: true,
+    });
+
     return {
       app: app.url,
+      reader: reader.url,
       table: table.name,
     };
   },

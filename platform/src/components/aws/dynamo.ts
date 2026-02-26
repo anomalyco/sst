@@ -537,43 +537,37 @@ export class Dynamo extends Component implements Link.Linkable {
                         enabled: true,
                       },
                 globalSecondaryIndexes: Object.entries(globalIndexes ?? {}).map(
-                  ([name, index]) => {
-                    const useKeySchemas =
-                      Array.isArray(index.hashKey) ||
-                      Array.isArray(index.rangeKey);
-                    const toArray = (v: string | string[]) =>
-                      Array.isArray(v) ? v : [v];
-                    return {
-                      name,
-                      ...(useKeySchemas
+                  ([name, index]) => ({
+                    name,
+                    ...(Array.isArray(index.hashKey) ||
+                    Array.isArray(index.rangeKey)
+                      ? {
+                          keySchemas: [
+                            ...[index.hashKey].flat().map((k) => ({
+                              attributeName: k,
+                              keyType: "HASH",
+                            })),
+                            ...(index.rangeKey
+                              ? [index.rangeKey].flat().map((k) => ({
+                                  attributeName: k,
+                                  keyType: "RANGE",
+                                }))
+                              : []),
+                          ],
+                        }
+                      : {
+                          hashKey: index.hashKey,
+                          rangeKey: index.rangeKey,
+                        }),
+                    ...(index.projection === "keys-only"
+                      ? { projectionType: "KEYS_ONLY" }
+                      : Array.isArray(index.projection)
                         ? {
-                            keySchemas: [
-                              ...toArray(index.hashKey).map((k) => ({
-                                attributeName: k,
-                                keyType: "HASH",
-                              })),
-                              ...(index.rangeKey
-                                ? toArray(index.rangeKey).map((k) => ({
-                                    attributeName: k,
-                                    keyType: "RANGE",
-                                  }))
-                                : []),
-                            ],
+                            projectionType: "INCLUDE",
+                            nonKeyAttributes: index.projection,
                           }
-                        : {
-                            hashKey: index.hashKey as string,
-                            rangeKey: index.rangeKey as string | undefined,
-                          }),
-                      ...(index.projection === "keys-only"
-                        ? { projectionType: "KEYS_ONLY" }
-                        : Array.isArray(index.projection)
-                          ? {
-                              projectionType: "INCLUDE",
-                              nonKeyAttributes: index.projection,
-                            }
-                          : { projectionType: "ALL" }),
-                    };
-                  },
+                        : { projectionType: "ALL" }),
+                  }),
                 ),
                 localSecondaryIndexes: Object.entries(localIndexes ?? {}).map(
                   ([name, index]) => ({
