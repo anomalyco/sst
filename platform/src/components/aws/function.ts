@@ -2577,7 +2577,7 @@ export class Function extends Component implements Link.Linkable {
           {
             functionName: fn.name,
             authorizationType: isOac.apply((oac) =>
-              oac || url.authorization === "iam" ? "AWS_IAM" : "NONE",
+              (oac || url.authorization === "iam") ? "AWS_IAM" : "NONE",
             ),
             invokeMode: streaming.apply((streaming) =>
               streaming ? "RESPONSE_STREAM" : "BUFFERED",

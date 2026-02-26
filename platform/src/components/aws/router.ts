@@ -1128,6 +1128,15 @@ export class Router extends Component implements Link.Linkable {
     const hasInlineRoutes = args.routes !== undefined;
     const protection = normalizeProtection();
 
+    if (hasInlineRoutes) {
+      protection.apply((p) => {
+        if (p.mode !== "none")
+          throw new VisibleError(
+            `Cannot set "protection" on a Router with inline routes. Use lazy routes instead.`,
+          );
+      });
+    }
+
     let cdn, kvStoreArn, kvNamespace;
     if (hasInlineRoutes) {
       cdn = handleInlineRoutes();
