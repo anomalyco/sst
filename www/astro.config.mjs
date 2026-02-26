@@ -113,7 +113,6 @@ const sidebar = [
           "docs/component/aws/static-site",
           "docs/component/aws/solid-start",
           "docs/component/aws/open-search",
-          "docs/component/aws/opencontrol",
           "docs/component/aws/tan-stack-start",
           "docs/component/aws/kinesis-stream",
           "docs/component/aws/apigatewayv1",
@@ -198,6 +197,7 @@ const sidebar = [
             label: "Deprecated",
             collapsed: true,
             items: [
+              { label: "OpenControl", slug: "docs/component/aws/opencontrol" },
               { label: "Vpc.v1", slug: "docs/component/aws/vpc-v1" },
               { label: "Redis.v1", slug: "docs/component/aws/redis-v1" },
               { label: "Service.v1", slug: "docs/component/aws/service-v1" },
