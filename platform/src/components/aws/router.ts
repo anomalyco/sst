@@ -25,7 +25,6 @@ import { DurationSeconds, toSeconds } from "../duration";
 import { FunctionArn } from "./function";
 import { parseLambdaEdgeArn } from "./helpers/arn";
 import { Size, toMBs } from "../size";
-import { useProvider } from "./helpers/provider";
 import { RETENTION } from "./logging";
 
 interface InlineUrlRouteArgs extends InlineBaseRouteArgs {
