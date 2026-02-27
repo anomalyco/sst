@@ -16,3 +16,10 @@ func Detach(cmd *exec.Cmd) {
 	// clobbering any other existing SysProcAttr fields set by the caller.
 	cmd.SysProcAttr.Setpgid = true
 }
+
+func DetachSession(cmd *exec.Cmd) {
+	if cmd.SysProcAttr == nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
+	}
+	cmd.SysProcAttr.Setsid = true
+}
