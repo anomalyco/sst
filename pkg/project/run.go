@@ -588,6 +588,7 @@ loop:
 		}
 	}
 
+	// fallback: re-read the event log if the tailing loop missed SummaryEvent
 	if !finished {
 		if data, err := os.ReadFile(eventlogPath); err == nil {
 			for _, line := range strings.Split(string(data), "\n") {
