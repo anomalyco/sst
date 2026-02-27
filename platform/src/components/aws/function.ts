@@ -344,12 +344,12 @@ export interface FunctionArgs {
    * Node.js and Golang are officially supported. While, Python and Rust are
    * community supported. Support for other runtimes are on the roadmap.
    *
-   * @default `"nodejs20.x"`
+   * @default `"nodejs24.x"`
    *
    * @example
    * ```js
    * {
-   *   runtime: "nodejs22.x"
+   *   runtime: "nodejs24.x"
    * }
    * ```
    */
@@ -357,6 +357,7 @@ export interface FunctionArgs {
     | "nodejs18.x"
     | "nodejs20.x"
     | "nodejs22.x"
+    | "nodejs24.x"
     | "go"
     | "rust"
     | "provided.al2023"
@@ -364,6 +365,7 @@ export interface FunctionArgs {
     | "python3.10"
     | "python3.11"
     | "python3.12"
+    | "python3.13"
   >;
   /**
    * Path to the source code directory for the function. By default, the handler is
@@ -662,8 +664,8 @@ export interface FunctionArgs {
   /**
    * Enable streaming for the function.
    *
-   * Streaming is only supported when using the function `url` is enabled and not when using it
-   * with API Gateway.
+   * Streaming is supported with both Function URLs and API Gateway REST API (V1). It is
+   * not supported with API Gateway HTTP API (V2).
    *
    * You'll also need to [wrap your handler](https://docs.aws.amazon.com/lambda/latest/dg/configuration-response-streaming.html) with `awslambda.streamifyResponse` to enable streaming.
    *
@@ -1169,7 +1171,28 @@ export interface FunctionArgs {
      *
      * You can refer to [this example of using a container image](/docs/examples/#aws-lambda-python-container).
      */
-    container?: Input<boolean>;
+    container?: Input<
+      | boolean
+      | {
+          /**
+           * Controls whether Docker build cache is enabled.
+           * @default `true`
+           * @example
+           * Disable Docker build caching, useful for environments like Localstack where
+           * ECR cache export is not supported.
+           * ```js
+           * {
+           *   python: {
+           *     container: {
+           *       cache: false
+           *     }
+           *   }
+           * }
+           * ```
+           */
+          cache?: Input<boolean>;
+        }
+    >;
   }>;
   /**
    * Add additional files to copy into the function package. Takes a list of objects
@@ -1682,13 +1705,18 @@ export class Function extends Component implements Link.Linkable {
     const parent = this;
     const dev = normalizeDev();
     const isContainer = all([args.python, dev]).apply(
-      ([python, dev]) => !dev && (python?.container ?? false),
+      ([python, dev]) => !dev && !!python?.container,
+    );
+    const containerCache = all([args.python]).apply(([python]) =>
+      typeof python?.container === "object"
+        ? (python.container.cache ?? true)
+        : true,
     );
     const partition = getPartitionOutput({}, opts).partition;
-    const region = getRegionOutput({}, opts).name;
+    const region = getRegionOutput({}, opts).region;
     const bootstrapData = region.apply((region) => bootstrap.forRegion(region));
     const injections = normalizeInjections();
-    const runtime = output(args.runtime ?? "nodejs20.x");
+    const runtime = output(args.runtime ?? "nodejs24.x");
     const timeout = normalizeTimeout();
     const memory = normalizeMemory();
     const storage = output(args.storage).apply((v) => v ?? "512 MB");
@@ -1767,7 +1795,7 @@ export class Function extends Component implements Link.Linkable {
                 links,
                 handler: handler,
                 bundle: bundle,
-                runtime: runtime || "nodejs20.x",
+                runtime: runtime || "nodejs24.x",
                 copyFiles,
                 properties: nodejs,
               };
@@ -2205,11 +2233,12 @@ export class Function extends Component implements Link.Linkable {
       // The build artifact directory already exists, with all the user code and
       // config files. It also has the dockerfile, we need to now just build and push to
       // the container registry.
-      return all([isContainer, dev, bundle]).apply(
+      return all([isContainer, dev, bundle, containerCache]).apply(
         ([
           isContainer,
           dev,
           bundle, // We need the bundle to be resolved because of implicit dockerfiles even though we don't use it here
+          containerCache,
         ]) => {
           if (!isContainer || dev) return;
 
@@ -2228,23 +2257,27 @@ export class Function extends Component implements Link.Linkable {
                   `${name}-src`,
                 ),
               },
-              cacheFrom: [
-                {
-                  registry: {
-                    ref: $interpolate`${bootstrapData.assetEcrUrl}:${name}-cache`,
-                  },
-                },
-              ],
-              cacheTo: [
-                {
-                  registry: {
-                    ref: $interpolate`${bootstrapData.assetEcrUrl}:${name}-cache`,
-                    imageManifest: true,
-                    ociMediaTypes: true,
-                    mode: "max",
-                  },
-                },
-              ],
+              ...(containerCache !== false
+                ? {
+                    cacheFrom: [
+                      {
+                        registry: {
+                          ref: $interpolate`${bootstrapData.assetEcrUrl}:${name}-cache`,
+                        },
+                      },
+                    ],
+                    cacheTo: [
+                      {
+                        registry: {
+                          ref: $interpolate`${bootstrapData.assetEcrUrl}:${name}-cache`,
+                          imageManifest: true,
+                          ociMediaTypes: true,
+                          mode: "max",
+                        },
+                      },
+                    ],
+                  }
+                : {}),
               platforms: [
                 architecture.apply((v) =>
                   v === "arm64" ? "linux/arm64" : "linux/amd64",
@@ -2507,7 +2540,7 @@ export class Function extends Component implements Link.Linkable {
                   ),
                 }),
             },
-            { parent },
+            { parent, ignoreChanges: args.runtime ? [] : ["runtime"] },
           );
           return new lambda.Function(
             transformed[0],
@@ -2535,12 +2568,17 @@ export class Function extends Component implements Link.Linkable {
       return url.apply((url) => {
         if (url === undefined) return output(undefined);
 
-        // create the function url
+        const isOac = output(url.route?.routerProtection).apply(
+          (p) => p?.mode === "oac" || p?.mode === "oac-with-edge-signing",
+        );
+
         const fnUrl = new lambda.FunctionUrl(
           `${name}Url`,
           {
             functionName: fn.name,
-            authorizationType: url.authorization === "iam" ? "AWS_IAM" : "NONE",
+            authorizationType: isOac.apply((oac) =>
+              (oac || url.authorization === "iam") ? "AWS_IAM" : "NONE",
+            ),
             invokeMode: streaming.apply((streaming) =>
               streaming ? "RESPONSE_STREAM" : "BUFFERED",
             ),
@@ -2548,18 +2586,60 @@ export class Function extends Component implements Link.Linkable {
           },
           { parent },
         );
-        if (url.authorization === "none") {
-          new lambda.Permission(
-            `${name}InvokeFunction`,
-            {
-              action: "lambda:InvokeFunction",
-              function: fn.name,
-              principal: "*",
-            },
-            { parent },
-          );
+
+        if (!url.route) {
+          if (url.authorization === "none") {
+            new lambda.Permission(
+              `${name}InvokeFunction`,
+              {
+                action: "lambda:InvokeFunction",
+                function: fn.name,
+                principal: "*",
+              },
+              { parent },
+            );
+          }
+          return fnUrl.functionUrl;
         }
-        if (!url.route) return fnUrl.functionUrl;
+
+        // Create permissions based on Router protection mode
+        all([isOac, url.route.routerDistributionArn]).apply(
+          ([oac, distributionArn]) => {
+            if (oac && distributionArn) {
+              new lambda.Permission(
+                `${name}CloudFrontFunctionUrlAccess`,
+                {
+                  action: "lambda:InvokeFunctionUrl",
+                  function: fn.name,
+                  principal: "cloudfront.amazonaws.com",
+                  sourceArn: distributionArn,
+                },
+                { parent },
+              );
+              new lambda.Permission(
+                `${name}CloudFrontInvokeFunction`,
+                {
+                  action: "lambda:InvokeFunction",
+                  function: fn.name,
+                  principal: "cloudfront.amazonaws.com",
+                  sourceArn: distributionArn,
+                },
+                { parent },
+              );
+            } else {
+              new lambda.Permission(
+                `${name}PublicFunctionUrlAccess`,
+                {
+                  action: "lambda:InvokeFunctionUrl",
+                  function: fn.name,
+                  principal: "*",
+                  functionUrlAuthType: "NONE",
+                },
+                { parent },
+              );
+            }
+          },
+        );
 
         // add router route
         const routeNamespace = crypto
@@ -2572,11 +2652,25 @@ export class Function extends Component implements Link.Linkable {
           {
             store: url.route.routerKvStoreArn,
             namespace: routeNamespace,
-            entries: fnUrl.functionUrl.apply((fnUrl) => ({
-              metadata: JSON.stringify({
-                host: new URL(fnUrl).host,
+            entries: all([fnUrl.functionUrl, isOac]).apply(
+              ([fnUrlValue, oac]) => ({
+                metadata: JSON.stringify({
+                  host: new URL(fnUrlValue).host,
+                  ...(oac
+                    ? {
+                        origin: {
+                          originAccessControlConfig: {
+                            enabled: true,
+                            signingBehavior: "always",
+                            signingProtocol: "sigv4",
+                            originType: "lambda",
+                          },
+                        },
+                      }
+                    : {}),
+                }),
               }),
-            })),
+            ),
             purge: false,
           },
           { parent },
@@ -2724,7 +2818,7 @@ export class Function extends Component implements Link.Linkable {
       {
         functionName: this.name,
         environment,
-        region: getRegionOutput(undefined, { parent: this }).name,
+        region: getRegionOutput(undefined, { parent: this }).region,
       },
       { parent: this },
     );

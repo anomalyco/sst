@@ -1,6 +1,5 @@
-import * as aws from "@pulumi/aws";
-
 import { ComponentResourceOptions, Output, all, output } from "@pulumi/pulumi";
+import { kinesis, lambda } from "@pulumi/aws";
 import { Component, Transform, transform } from "../component.js";
 import { Input } from "../input.js";
 import { Link } from "../link.js";
@@ -20,7 +19,7 @@ export interface KinesisStreamArgs {
     /**
      * Transform the Kinesis stream resource.
      */
-    stream?: Transform<aws.kinesis.StreamArgs>;
+    stream?: Transform<kinesis.StreamArgs>;
   };
 }
 
@@ -72,7 +71,7 @@ export interface KinesisStreamLambdaSubscriberArgs {
     /**
      * Transform the Lambda Event Source Mapping resource.
      */
-    eventSourceMapping?: Transform<aws.lambda.EventSourceMappingArgs>;
+    eventSourceMapping?: Transform<lambda.EventSourceMappingArgs>;
   };
 }
 
@@ -121,7 +120,7 @@ export interface KinesisStreamLambdaSubscriberArgs {
 export class KinesisStream extends Component implements Link.Linkable {
   private constructorName: string;
   private constructorOpts: ComponentResourceOptions;
-  private stream: aws.kinesis.Stream;
+  private stream: kinesis.Stream;
 
   constructor(
     name: string,
@@ -137,7 +136,7 @@ export class KinesisStream extends Component implements Link.Linkable {
     this.constructorOpts = opts;
 
     function createStream() {
-      return new aws.kinesis.Stream(
+      return new kinesis.Stream(
         ...transform(
           args?.transform?.stream,
           `${name}Stream`,

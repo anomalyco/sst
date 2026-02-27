@@ -32,8 +32,12 @@ type Multiplexer struct {
 	main      *views.ViewPort
 	stack     *views.BoxLayout
 
-	dragging bool
-	click    *tcell.EventMouse
+	dragging       bool
+	click          *tcell.EventMouse
+	scrollTicker   *time.Ticker
+	scrollDone     chan struct{}
+	scrollDir      int
+	lastDragX      int
 }
 
 func New() (*Multiplexer, error) {
@@ -77,6 +81,7 @@ func (s *Multiplexer) resize(width int, height int) {
 
 func (s *Multiplexer) Start() {
 	defer func() {
+		s.stopAutoScroll()
 		s.screen.Fini()
 	}()
 
@@ -98,6 +103,18 @@ func (s *Multiplexer) Start() {
 			selected := s.selectedProcess()
 
 			switch evt := unknown.(type) {
+
+			case *tcell.EventInterrupt:
+				if s.scrollDir != 0 && s.dragging && selected != nil {
+					if s.scrollDir < 0 {
+						s.scrollUp(1)
+						selected.vt.SelectEnd(s.lastDragX, 0)
+					} else {
+						s.scrollDown(1)
+						selected.vt.SelectEnd(s.lastDragX, s.height-1)
+					}
+				}
+				return
 
 			case *EventExit:
 				shouldBreak = true
@@ -151,6 +168,7 @@ func (s *Multiplexer) Start() {
 					return
 				}
 				if evt.Buttons() == tcell.ButtonNone {
+					s.stopAutoScroll()
 					if s.dragging && selected != nil {
 						s.copy()
 					}
@@ -159,6 +177,24 @@ func (s *Multiplexer) Start() {
 				}
 				if evt.Buttons()&tcell.ButtonPrimary != 0 {
 					x, y := evt.Position()
+					if x <= SIDEBAR_WIDTH && s.dragging && selected != nil {
+						if y <= 0 {
+							s.scrollUp(1)
+							s.startAutoScroll(-1)
+							selected.vt.SelectEnd(0, 0)
+							s.draw()
+						} else if y >= s.height-1 {
+							s.scrollDown(1)
+							s.startAutoScroll(1)
+							selected.vt.SelectEnd(0, s.height-1)
+							s.draw()
+						} else {
+							s.stopAutoScroll()
+							selected.vt.SelectEnd(0, y)
+							s.draw()
+						}
+						return
+					}
 					if x < SIDEBAR_WIDTH && !s.dragging {
 						alive := 0
 						for _, p := range s.processes {
@@ -194,7 +230,17 @@ func (s *Multiplexer) Start() {
 						}
 						s.click = evt
 						offsetX := x - SIDEBAR_WIDTH - 1
+						s.lastDragX = offsetX
 						if s.dragging {
+							if y <= 0 {
+								s.scrollUp(1)
+								s.startAutoScroll(-1)
+							} else if y >= s.height-1 {
+								s.scrollDown(1)
+								s.startAutoScroll(1)
+							} else {
+								s.stopAutoScroll()
+							}
 							selected.vt.SelectEnd(offsetX, y)
 						}
 						if !s.dragging {
@@ -344,6 +390,36 @@ func (e *EventExit) When() time.Time {
 
 func (s *Multiplexer) Exit() {
 	s.screen.PostEvent(&EventExit{})
+}
+
+func (s *Multiplexer) stopAutoScroll() {
+	if s.scrollTicker != nil {
+		s.scrollTicker.Stop()
+		close(s.scrollDone)
+		s.scrollTicker = nil
+		s.scrollDone = nil
+		s.scrollDir = 0
+	}
+}
+
+func (s *Multiplexer) startAutoScroll(dir int) {
+	if s.scrollDir == dir && s.scrollTicker != nil {
+		return
+	}
+	s.stopAutoScroll()
+	s.scrollDir = dir
+	s.scrollTicker = time.NewTicker(50 * time.Millisecond)
+	s.scrollDone = make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-s.scrollDone:
+				return
+			case <-s.scrollTicker.C:
+				s.screen.PostEvent(tcell.NewEventInterrupt(nil))
+			}
+		}
+	}()
 }
 
 func (s *Multiplexer) scrollDown(n int) {

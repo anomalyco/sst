@@ -1,31 +1,27 @@
-SST is a framework for building full-stack apps on your own infrastructure. It uses Pulumi under the hood to deploy to AWS, Cloudflare, and other providers with a high-level component model, resource linking, and a live dev mode that runs Lambda functions locally.
+## Layout
 
+- `platform/` — TS Pulumi components embedded via `//go:embed` (`platform/platform.go:16`)
+- `examples/` — sample apps
+- `cmd/sst/` — Go CLI entry, orchestrates everything
+- `cmd/sst/mosaic/` — live dev TUI
+- `pkg/server/` — JSON-RPC bridge for custom Pulumi dynamic providers (`rpc/rpc.ts` ↔ `pkg/server`)
+- `pkg/bus/` — pub/sub event bus
+- `sdk/js/` — runtime SDK for reading linked resources
+- `www/` — docs site (auto-generated from JSDoc comments in platform and extracted from the Go CLI)
 
 ## Commands
 
-- **Setup**: `bun install && go mod tidy && cd platform && bun run build`
-- **Run CLI locally**: `cd examples/<app> && go run ../../cmd/sst <command>`
-- **Build CLI binary**: `go build ./cmd/sst`
-- **Go tests**: `go test ./pkg/...` (all), `go test ./pkg/project/...` (single package)
-- **Type check**: `cd platform && bun run dev` (tsc --watch --noEmit)
-- **Build platform**: `cd platform && bun run build` (runs `scripts/build` — bundles workers, runtime, bridge binary, types)
+- **Setup**: `bun install && go mod tidy`
+- **Build platform**: `cd platform && bun run build`
+- **Run CLI locally**: `cd ../examples/<app> && go run ../../cmd/sst <command>`
+- **Go tests**: `go test ./...`
 - **Generate docs**: `cd www && bun run generate`
 - **Run docs locally**: `cd www && bun run dev`
 
-## Codebase
+## Verification
 
-- `cmd/sst/` — Go CLI entry, orchestrates everything. Commands as tree in `main.go`
-- `cmd/sst/mosaic/` — live dev TUI, Lambda stubs forward invocations to local runtimes
-- `pkg/server/` — JSON-RPC bridge, Go side (`rpc/rpc.ts` ↔ `pkg/server`)
-- `pkg/runtime/` — runtimes each implement `Match()`, `Build()`, `Run()`, `ShouldRebuild()`
-- `pkg/project/provider/` — pluggable state backend + encrypted secrets
-- `pkg/bus/` — pub/sub connecting watcher, deployer, runtimes, UI
-- `platform/` — TS Pulumi components by provider (`aws/`, `cloudflare/`, `vercel/`), embedded into Go binary via `//go:embed`
-- `sdk/js/` — runtime SDK for reading linked resources
-- `internal/` — shared Go utilities
-- `examples/` — sample apps (useful for testing CLI locally)
-- `www/` — docs site
-
-## Notes
-
-- This repo was renamed from `sst/sst` to `anomalyco/sst`
+1. Build the platform
+2. `cd examples/<app> && bun install`
+3. `go run ../../cmd/sst deploy`
+4. Verify with `curl` or AWS CLI
+5. Don't clean up unless told to

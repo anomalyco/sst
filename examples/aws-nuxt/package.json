@@ -13,7 +13,7 @@
     "@aws-sdk/client-s3": "^3.651.1",
     "@aws-sdk/s3-request-presigner": "^3.651.1",
     "nuxt": "^3.13.0",
-    "sst": "^3",
+    "sst": "^4",
     "vue": "latest",
     "vue-router": "latest"
   }

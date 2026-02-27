@@ -31,14 +31,31 @@ const appFunctionDeclaration =
     (property) => property.name.getText() === "app",
   );
 
-const returnStatement = appFunctionDeclaration.body?.statements.find(
-  (statement) =>
-    ts.isReturnStatement(statement) &&
-    ts.isObjectLiteralExpression(statement.expression),
-);
+const appBody = ts.isMethodDeclaration(appFunctionDeclaration)
+  ? appFunctionDeclaration.body
+  : appFunctionDeclaration.initializer?.body;
+
+// Concise arrow: app: (input) => ({...})
+// Block body: app(input) { return {...}; }
+const returnedObject = ts.isParenthesizedExpression(appBody)
+  ? appBody.expression
+  : ts.isObjectLiteralExpression(appBody)
+    ? appBody
+    : appBody?.statements?.find(
+        (s) =>
+          ts.isReturnStatement(s) &&
+          ts.isObjectLiteralExpression(s.expression),
+      )?.expression;
+
+if (!returnedObject || !ts.isObjectLiteralExpression(returnedObject)) {
+  console.error(
+    'Could not find the returned object in the "app" function. Make sure it returns an object literal.',
+  );
+  process.exit(1);
+}
 
 // Find the "providers" property inside the "app" function
-let providersProperty = returnStatement.expression?.properties.find(
+let providersProperty = returnedObject.properties.find(
   (property) =>
     ts.isPropertyAssignment(property) &&
     property.name.getText() === "providers",
@@ -49,7 +66,7 @@ if (!providersProperty) {
     "providers",
     ts.factory.createObjectLiteralExpression([]),
   );
-  returnStatement.expression.properties.push(providersProperty);
+  returnedObject.properties.push(providersProperty);
 }
 
 if (!ts.isObjectLiteralExpression(providersProperty.initializer)) {

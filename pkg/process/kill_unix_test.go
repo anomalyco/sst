@@ -42,6 +42,35 @@ func TestKillTerminatesProcessGroup(t *testing.T) {
 	}
 }
 
+func TestKillTerminatesSessionGroup(t *testing.T) {
+	reset()
+	cmd := Command("sh", "-c", "sleep 60 & wait")
+	DetachSession(cmd)
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("failed to start: %v", err)
+	}
+	parentPid := cmd.Process.Pid
+
+	time.Sleep(100 * time.Millisecond)
+
+	// with Setsid the pgid equals the parent pid, same as Setpgid
+	childPid := findChildInGroup(t, parentPid)
+
+	if err := Kill(cmd.Process); err != nil {
+		t.Fatalf("Kill returned error: %v", err)
+	}
+
+	time.Sleep(100 * time.Millisecond)
+	if err := syscall.Kill(parentPid, 0); err == nil {
+		t.Error("parent still alive after Kill")
+	}
+	if childPid != 0 {
+		if err := syscall.Kill(childPid, 0); err == nil {
+			t.Error("child still alive after group Kill")
+		}
+	}
+}
+
 func TestSendSignalInvalidPid(t *testing.T) {
 	p := &os.Process{}
 	// Pid 0 should be rejected

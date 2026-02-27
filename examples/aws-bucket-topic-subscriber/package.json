@@ -1,0 +1,7 @@
+{
+  "name": "aws-bucket-topic-subscriber",
+  "version": "0.0.0",
+  "dependencies": {
+    "sst": "^4"
+  }
+}

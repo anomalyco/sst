@@ -15,7 +15,7 @@
     "@aws-sdk/s3-request-presigner": "^3.705.0",
     "express": "^4.21.1",
     "multer": "^1.4.5-lts.1",
-    "sst": "^3"
+    "sst": "^4"
   },
   "devDependencies": {
     "@types/aws-lambda": "8.10.146"

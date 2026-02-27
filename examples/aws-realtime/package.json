@@ -14,7 +14,7 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "sst": "^3"
+    "sst": "^4"
   },
   "dependencies": {
     "@aws-sdk/client-iot-data-plane": "^3.569.0"

@@ -3,10 +3,10 @@
   "version": "0.0.0",
   "dependencies": {
     "@aws-monorepo/core": "*",
-    "sst": "^3"
+    "sst": "^4"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.137",
-    "sst": "^3"
+    "sst": "^4"
   }
 }

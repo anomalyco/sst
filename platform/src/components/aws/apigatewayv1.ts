@@ -620,6 +620,23 @@ export interface ApiGatewayV1RouteArgs {
    */
   apiKey?: Input<boolean>;
   /**
+   * Enable streaming for the route. The route handler must use `awslambda.streamifyResponse`
+   * to stream responses.
+   *
+   * :::note
+   * Streaming is only supported for API Gateway REST APIs, not HTTP APIs.
+   * :::
+   *
+   * @default `false`
+   * @example
+   * ```js
+   * {
+   *   streaming: true
+   * }
+   * ```
+   */
+  streaming?: Input<boolean>;
+  /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
    */
@@ -782,7 +799,7 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
     this.endpointType = endpoint.types;
 
     function normalizeRegion() {
-      return getRegionOutput(undefined, { parent }).name;
+      return getRegionOutput(undefined, { parent }).region;
     }
 
     function normalizeEndpoint() {
@@ -828,7 +845,7 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
         ([domain, key]) =>
           key ? `https://${domain}/${key}/` : `https://${domain}`,
       )
-      : interpolate`https://${this.api.id}.execute-api.${this.region}.amazonaws.com/${$app.stage}/`;
+      : interpolate`https://${this.api.id}.execute-api.${this.region}.amazonaws.com/${this.stage?.stageName ?? $app.stage}/`;
   }
 
   /**
