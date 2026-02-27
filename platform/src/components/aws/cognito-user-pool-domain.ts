@@ -1,8 +1,13 @@
-import { ComponentResourceOptions, Output, output } from "@pulumi/pulumi";
+import {
+  ComponentResourceOptions,
+  Output,
+  interpolate,
+  output,
+} from "@pulumi/pulumi";
 import { Component, Transform, transform } from "../component";
 import { Input } from "../input";
 import { Dns } from "../dns";
-import { cognito } from "@pulumi/aws";
+import { cognito, getRegionOutput } from "@pulumi/aws";
 import { dns as awsDns } from "./dns.js";
 import { DnsValidatedCertificate } from "./dns-validated-certificate.js";
 import { useProvider } from "./helpers/provider.js";
@@ -46,22 +51,25 @@ export interface Args {
  * See: https://docs.aws.amazon.com/cognito/latest/developerguide/cognito-user-pools-managed-login.html
  */
 export class CognitoUserPoolDomain extends Component {
-  private _domain: Output<cognito.UserPoolDomain>;
+  private _domain: cognito.UserPoolDomain;
   private _domainUrl: Output<string>;
 
   constructor(name: string, args: Args, opts?: ComponentResourceOptions) {
     super(__pulumiType, name, args, opts);
 
     const parent = this;
+    const region = getRegionOutput(undefined, { parent }).region;
 
     const normalized = normalizeDomain();
-    const domain = createDomainWithSsl();
+    const certificateArn = createSsl();
+    const domain = createDomain();
+    createDnsRecords();
 
     this._domain = domain;
     this._domainUrl = normalized.apply((n) =>
       n.prefix
-        ? `https://${n.prefix}.auth.${process.env.AWS_REGION || "us-east-1"}.amazoncognito.com`
-        : `https://${n.name}`,
+        ? interpolate`https://${n.prefix}.auth.${region}.amazoncognito.com`
+        : interpolate`https://${n.name}`,
     );
 
     function normalizeDomain() {
@@ -90,82 +98,59 @@ export class CognitoUserPoolDomain extends Component {
         return {
           prefix: norm.prefix,
           name: norm.name,
-          dns: norm.dns === false ? undefined : norm.dns ?? (norm.name ? awsDns() : undefined),
+          dns:
+            norm.dns === false
+              ? undefined
+              : norm.dns ?? (norm.name ? awsDns() : undefined),
           cert: norm.cert,
         };
       });
     }
 
-    function createDomainWithSsl() {
+    function createSsl() {
       return normalized.apply((norm) => {
-        // For prefix domains, no SSL needed
-        if (norm.prefix) {
-          const [resourceName, domainArgs, resourceOpts] = transform(
-            args.transform,
-            `${name}Domain`,
-            {
-              userPoolId: args.userPool,
-              domain: norm.prefix,
-            },
-            { parent, deleteBeforeReplace: true },
-          );
+        if (norm.prefix) return output(undefined);
+        if (norm.cert) return output(norm.cert);
 
-          const domain = new cognito.UserPoolDomain(
-            resourceName,
-            domainArgs,
-            resourceOpts,
-          );
+        return new DnsValidatedCertificate(
+          `${name}Ssl`,
+          {
+            domainName: norm.name!,
+            dns: output(norm.dns!),
+          },
+          { parent, provider: useProvider("us-east-1") },
+        ).arn;
+      });
+    }
 
-          return domain;
-        }
-
-        // For custom domains, create SSL cert if needed
-        let certificateArn: Input<string>;
-        if (norm.cert) {
-          certificateArn = norm.cert;
-        } else {
-          const cert = new DnsValidatedCertificate(
-            `${name}Ssl`,
-            {
-              domainName: norm.name!,
-              dns: output(norm.dns!),
-            },
-            { parent, provider: useProvider("us-east-1") },
-          );
-          certificateArn = cert.arn;
-        }
-
-        const [resourceName, domainArgs, resourceOpts] = transform(
+    function createDomain() {
+      return new cognito.UserPoolDomain(
+        ...transform(
           args.transform,
           `${name}Domain`,
           {
             userPoolId: args.userPool,
-            domain: norm.name!,
-            certificateArn,
+            domain: normalized.apply((n) => (n.prefix ?? n.name)!),
+            certificateArn: certificateArn as Output<string>,
           },
           { parent, deleteBeforeReplace: true },
+        ),
+      );
+    }
+
+    function createDnsRecords() {
+      normalized.apply((norm) => {
+        if (!norm.name || !norm.dns) return;
+
+        norm.dns.createAlias(
+          name,
+          {
+            name: norm.name,
+            aliasName: domain.cloudfrontDistribution,
+            aliasZone: domain.cloudfrontDistributionZoneId,
+          },
+          { parent },
         );
-
-        const domain = new cognito.UserPoolDomain(
-          resourceName,
-          domainArgs,
-          resourceOpts,
-        );
-
-        // Create DNS records for custom domain
-        if (norm.dns) {
-          norm.dns.createAlias(
-            name,
-            {
-              name: norm.name!,
-              aliasName: domain.cloudfrontDistribution,
-              aliasZone: domain.cloudfrontDistributionZoneId,
-            },
-            { parent },
-          );
-        }
-
-        return domain;
       });
     }
   }
@@ -175,7 +160,7 @@ export class CognitoUserPoolDomain extends Component {
    * For custom domains, this is the full domain name.
    */
   public get domainName() {
-    return this._domain.apply((d) => d.domain);
+    return this._domain.domain;
   }
 
   /**
@@ -190,7 +175,7 @@ export class CognitoUserPoolDomain extends Component {
    * when managing DNS outside of SST.
    */
   public get cloudfrontDistribution() {
-    return this._domain.apply((d) => d.cloudfrontDistribution);
+    return this._domain.cloudfrontDistribution;
   }
 
   /**
