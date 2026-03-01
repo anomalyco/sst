@@ -84,7 +84,7 @@ export class ApiGatewayV2LambdaRoute extends Component {
         {
           action: "lambda:InvokeFunction",
           function: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).unqualifiedArn),
-          qualifier: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).qualifier),
+          qualifier: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).qualifier!),
           principal: "apigateway.amazonaws.com",
           sourceArn: interpolate`${api.executionArn}/*`,
         },

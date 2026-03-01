@@ -24,6 +24,7 @@ export function splitQualifiedFunctionArn(arn: string) {
   };
 }
 
+
 export function parseBucketArn(arn: string) {
   // arn:aws:s3:::bucket-name
   const bucketName = arn.split(":")[5];

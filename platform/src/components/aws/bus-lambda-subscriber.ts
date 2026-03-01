@@ -68,7 +68,7 @@ export class BusLambdaSubscriber extends Component {
         {
           action: "lambda:InvokeFunction",
           function: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).unqualifiedArn),
-          qualifier: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).qualifier),
+          qualifier: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).qualifier!),
           principal: "events.amazonaws.com",
           sourceArn: rule.arn,
         },

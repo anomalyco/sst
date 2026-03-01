@@ -92,7 +92,7 @@ export class RealtimeLambdaSubscriber extends Component {
         {
           action: "lambda:InvokeFunction",
           function: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).unqualifiedArn),
-          qualifier: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).qualifier),
+          qualifier: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).qualifier!),
           principal: "iot.amazonaws.com",
           sourceArn: rule.arn,
         },

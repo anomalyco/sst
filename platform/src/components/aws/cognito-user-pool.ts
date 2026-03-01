@@ -681,7 +681,7 @@ export class CognitoUserPool extends Component implements Link.Linkable {
                         {
                           action: "lambda:InvokeFunction",
                           function: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).unqualifiedArn),
-                          qualifier: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).qualifier),
+                          qualifier: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).qualifier!),
                           principal: "cognito-idp.amazonaws.com",
                           sourceArn: userPool.arn,
                         },
