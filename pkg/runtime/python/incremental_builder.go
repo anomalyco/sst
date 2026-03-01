@@ -2600,19 +2600,29 @@ func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input 
 		depsCacheDir = input.Out()
 	}
 
-	// Workspace packages are now installed by uv pip install (with --no-editable export)
-	// No need to manually copy them anymore
+	// Workspace packages are installed by uv pip install (with --no-editable export).
+	// We use --reinstall-package for each workspace package to force uv to rebuild them
+	// from source every time, bypassing uv's cache. Without this, uv caches local packages
+	// by name+version from pyproject.toml and serves stale builds when source files change.
+	workspacePackages := ib.getWorkspacePackageNames(projectInfo)
 
 	slog.Info("installing dependencies using uv pip install",
 		"requirementsFile", requirementsPath,
 		"targetDir", depsCacheDir,
-		"architecture", architecture)
+		"architecture", architecture,
+		"workspacePackages", workspacePackages)
 
 	// Build the uv pip install command with platform targeting (same as legacy builder)
 	// Note: We don't use --reinstall because it forces re-fetching git dependencies every time,
 	// which is very slow for packages like sst that come from large git repos.
+	// Instead, we use --reinstall-package for workspace packages only.
 	// Install to depsCacheDir (dedicated cache directory) instead of input.Out()
 	args := []string{"pip", "install", "-r", requirementsPath, "--target", depsCacheDir}
+
+	// Force reinstall of workspace packages to avoid stale uv cache
+	for _, pkg := range workspacePackages {
+		args = append(args, "--reinstall-package", pkg)
+	}
 
 	// Add platform targeting for Lambda deployments
 	// Use platform targeting for actual deployments (not dev mode, not containers)
