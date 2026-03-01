@@ -30,7 +30,7 @@ import { VisibleError } from "../error.js";
 import { Cron } from "./cron.js";
 import { BaseSiteFileOptions, getContentType } from "../base/base-site.js";
 import { BaseSsrSiteArgs, buildApp } from "../base/base-ssr-site.js";
-import { cloudfront, getRegionOutput, lambda, Region, iam } from "@pulumi/aws";
+import { cloudfront, getRegionOutput, lambda, Region, iam, scheduler } from "@pulumi/aws";
 import { KvKeys } from "./providers/kv-keys.js";
 import { useProvider } from "./helpers/provider.js";
 import { Link } from "../link.js";
@@ -1507,10 +1507,13 @@ async function handler(event) {
                   _skipMetadata: true,
                 },
                 transform: {
-                  target: (args) => {
-                    args.retryPolicy = {
-                      maximumRetryAttempts: 0,
-                      maximumEventAgeInSeconds: 60,
+                  schedule: (args) => {
+                    args.target = {
+                      ...args.target as scheduler.ScheduleArgs["target"],
+                      retryPolicy: {
+                        maximumRetryAttempts: 0,
+                        maximumEventAgeInSeconds: 60,
+                      },
                     };
                   },
                 },

@@ -289,6 +289,7 @@ export class Component extends ComponentResource {
               64,
               { lower: true },
             ],
+            "aws:scheduler/schedule:Schedule": ["name", 64],
             "aws:sfn/stateMachine:StateMachine": ["name", 80],
             "aws:sns/topic:Topic": [
               "name",
