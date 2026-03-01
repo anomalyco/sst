@@ -9,6 +9,7 @@ import { VisibleError } from "../error";
 import { cognito, lambda } from "@pulumi/aws";
 import { permission } from "./permission";
 import { functionBuilder } from "./helpers/function-builder";
+import { splitQualifiedFunctionArn } from "./helpers/arn";
 
 interface Triggers {
   /**
@@ -679,7 +680,8 @@ export class CognitoUserPool extends Component implements Link.Linkable {
                         `${name}Permission${key}`,
                         {
                           action: "lambda:InvokeFunction",
-                          function: fn.arn,
+                          function: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).unqualifiedArn),
+                          qualifier: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).qualifier),
                           principal: "cognito-idp.amazonaws.com",
                           sourceArn: userPool.arn,
                         },
