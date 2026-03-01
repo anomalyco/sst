@@ -124,7 +124,7 @@ func CmdMosaic(c *cli.Cli) error {
 					for k, v := range nextEnv.Env {
 						cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 					}
-					process.Detach(cmd)
+					process.DetachSession(cmd)
 					cmd.Stdin = os.Stdin
 					cmd.Stdout = os.Stdout
 					cmd.Stderr = os.Stderr

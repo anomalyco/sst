@@ -302,7 +302,7 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 		}
 	}
 
-	if input.Command == "deploy" || input.Command == "diff" {
+	if input.Command == "deploy" || input.Command == "diff" || input.Command == "refresh" {
 		for provider, opts := range p.app.Providers {
 			for key, value := range opts.(map[string]interface{}) {
 				switch v := value.(type) {
@@ -585,6 +585,22 @@ loop:
 
 		if event.SummaryEvent != nil {
 			finished = true
+		}
+	}
+
+	// fallback: re-read the event log if the tailing loop missed SummaryEvent
+	if !finished {
+		if data, err := os.ReadFile(eventlogPath); err == nil {
+			for _, line := range strings.Split(string(data), "\n") {
+				if line == "" {
+					continue
+				}
+				var ev events.EngineEvent
+				if json.Unmarshal([]byte(line), &ev) == nil && ev.SummaryEvent != nil {
+					finished = true
+					break
+				}
+			}
 		}
 	}
 

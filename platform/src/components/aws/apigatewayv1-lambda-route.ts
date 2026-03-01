@@ -1,4 +1,5 @@
 import {
+  all,
   ComponentResourceOptions,
   Input,
   Output,
@@ -65,6 +66,7 @@ export class ApiGatewayV1LambdaRoute extends Component {
         args.handler,
         {
           description: interpolate`${api.name} route ${method} ${path}`,
+          streaming: args.streaming,
         },
         args.handlerTransform,
         { parent: self },
@@ -85,6 +87,7 @@ export class ApiGatewayV1LambdaRoute extends Component {
     }
 
     function createIntegration() {
+      const streaming = output(args.streaming ?? false);
       return new apigateway.Integration(
         ...transform(
           args.transform?.integration,
@@ -95,7 +98,12 @@ export class ApiGatewayV1LambdaRoute extends Component {
             httpMethod: method.httpMethod,
             integrationHttpMethod: "POST",
             type: "AWS_PROXY",
-            uri: fn.invokeArn,
+            uri: all([streaming, fn]).apply(([s, fn]) =>
+              s ? fn.responseStreamingInvokeArn : fn.invokeArn,
+            ),
+            responseTransferMode: streaming.apply((s) =>
+              s ? "STREAM" : "BUFFERED",
+            ),
           },
           { parent: self, dependsOn: [permission] },
         ),

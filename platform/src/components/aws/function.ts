@@ -665,8 +665,8 @@ export interface FunctionArgs {
   /**
    * Enable streaming for the function.
    *
-   * Streaming is only supported when using the function `url` is enabled and not when using it
-   * with API Gateway.
+   * Streaming is supported with both Function URLs and API Gateway REST API (V1). It is
+   * not supported with API Gateway HTTP API (V2).
    *
    * You'll also need to [wrap your handler](https://docs.aws.amazon.com/lambda/latest/dg/configuration-response-streaming.html) with `awslambda.streamifyResponse` to enable streaming.
    *
@@ -2570,12 +2570,17 @@ export class Function extends Component implements Link.Linkable {
       return url.apply((url) => {
         if (url === undefined) return output(undefined);
 
-        // create the function url
+        const isOac = output(url.route?.routerProtection).apply(
+          (p) => p?.mode === "oac" || p?.mode === "oac-with-edge-signing",
+        );
+
         const fnUrl = new lambda.FunctionUrl(
           `${name}Url`,
           {
             functionName: fn.name,
-            authorizationType: url.authorization === "iam" ? "AWS_IAM" : "NONE",
+            authorizationType: isOac.apply((oac) =>
+              (oac || url.authorization === "iam") ? "AWS_IAM" : "NONE",
+            ),
             invokeMode: streaming.apply((streaming) =>
               streaming ? "RESPONSE_STREAM" : "BUFFERED",
             ),
@@ -2583,18 +2588,60 @@ export class Function extends Component implements Link.Linkable {
           },
           { parent },
         );
-        if (url.authorization === "none") {
-          new lambda.Permission(
-            `${name}InvokeFunction`,
-            {
-              action: "lambda:InvokeFunction",
-              function: fn.name,
-              principal: "*",
-            },
-            { parent },
-          );
+
+        if (!url.route) {
+          if (url.authorization === "none") {
+            new lambda.Permission(
+              `${name}InvokeFunction`,
+              {
+                action: "lambda:InvokeFunction",
+                function: fn.name,
+                principal: "*",
+              },
+              { parent },
+            );
+          }
+          return fnUrl.functionUrl;
         }
-        if (!url.route) return fnUrl.functionUrl;
+
+        // Create permissions based on Router protection mode
+        all([isOac, url.route.routerDistributionArn]).apply(
+          ([oac, distributionArn]) => {
+            if (oac && distributionArn) {
+              new lambda.Permission(
+                `${name}CloudFrontFunctionUrlAccess`,
+                {
+                  action: "lambda:InvokeFunctionUrl",
+                  function: fn.name,
+                  principal: "cloudfront.amazonaws.com",
+                  sourceArn: distributionArn,
+                },
+                { parent },
+              );
+              new lambda.Permission(
+                `${name}CloudFrontInvokeFunction`,
+                {
+                  action: "lambda:InvokeFunction",
+                  function: fn.name,
+                  principal: "cloudfront.amazonaws.com",
+                  sourceArn: distributionArn,
+                },
+                { parent },
+              );
+            } else {
+              new lambda.Permission(
+                `${name}PublicFunctionUrlAccess`,
+                {
+                  action: "lambda:InvokeFunctionUrl",
+                  function: fn.name,
+                  principal: "*",
+                  functionUrlAuthType: "NONE",
+                },
+                { parent },
+              );
+            }
+          },
+        );
 
         // add router route
         const routeNamespace = crypto
@@ -2607,11 +2654,25 @@ export class Function extends Component implements Link.Linkable {
           {
             store: url.route.routerKvStoreArn,
             namespace: routeNamespace,
-            entries: fnUrl.functionUrl.apply((fnUrl) => ({
-              metadata: JSON.stringify({
-                host: new URL(fnUrl).host,
+            entries: all([fnUrl.functionUrl, isOac]).apply(
+              ([fnUrlValue, oac]) => ({
+                metadata: JSON.stringify({
+                  host: new URL(fnUrlValue).host,
+                  ...(oac
+                    ? {
+                        origin: {
+                          originAccessControlConfig: {
+                            enabled: true,
+                            signingBehavior: "always",
+                            signingProtocol: "sigv4",
+                            originType: "lambda",
+                          },
+                        },
+                      }
+                    : {}),
+                }),
               }),
-            })),
+            ),
             purge: false,
           },
           { parent },

@@ -173,6 +173,7 @@ export class Component extends ComponentResource {
               "aws:s3/bucketVersioning:BucketVersioning",
               "aws:s3/bucketWebsiteConfiguration:BucketWebsiteConfiguration",
               "aws:secretsmanager/secretVersion:SecretVersion",
+              "aws:wafv2/webAclLoggingConfiguration:WebAclLoggingConfiguration",
               "aws:ses/domainIdentityVerification:DomainIdentityVerification",
               "aws:sesv2/configurationSetEventDestination:ConfigurationSetEventDestination",
               "aws:sesv2/emailIdentity:EmailIdentity",
@@ -309,6 +310,7 @@ export class Component extends ComponentResource {
                   ),
               },
             ],
+            "aws:wafv2/webAcl:WebAcl": ["name", 64],
             "cloudflare:index/d1Database:D1Database": [
               "name",
               64,
