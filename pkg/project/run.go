@@ -335,7 +335,7 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	case "refresh":
 		args = append([]string{"refresh", "--yes", "--run-program"}, args...)
 	case "deploy":
-		args = append([]string{"up", "--yes", "-f", "--parallel", "4"}, args...)
+		args = append([]string{"up", "--yes", "-f"}, args...)
 	case "remove":
 		args = append([]string{"destroy", "--yes", "-f"}, args...)
 	}
