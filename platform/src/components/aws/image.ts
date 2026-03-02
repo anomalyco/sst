@@ -235,6 +235,15 @@ export class Image extends Component implements Link.Linkable {
     return this.image.ref.apply((ref) => ref?.replace(":latest", ""));
   }
 
+  /**
+   * The uri of the ECR container image without tag or digest
+   */
+  public get uriTagless() {
+    return all([this.uri, this.digest]).apply(
+      ([uri, digest]) => uri.replace(`@${digest}`, '')
+    )
+  }
+
   /** @internal */
   public getSSTLink() {
     return {
