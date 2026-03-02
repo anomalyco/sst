@@ -24,12 +24,18 @@ export interface Args {
   domain: Input<
     | string
     | {
-        prefix?: Input<string>;
-        name?: Input<string>;
+        prefix: Input<string>;
+      }
+    | {
+        name: Input<string>;
         dns?: Input<false | (Dns & {})>;
         cert?: Input<string>;
       }
   >;
+  /**
+   * The managed login version. Mapped from the `login` prop on `CognitoUserPool`.
+   */
+  managedLoginVersion?: Input<number | undefined>;
   /**
    * Transform the Cognito User Pool domain resource.
    */
@@ -46,9 +52,6 @@ export interface Args {
  *
  * Use the `domain` prop on `CognitoUserPool` instead.
  *
- * @todo Add `managedLoginVersion` prop when SST upgrades to Pulumi AWS v7.
- * This will allow users to choose between classic hosted UI (1) and managed login (2).
- * See: https://docs.aws.amazon.com/cognito/latest/developerguide/cognito-user-pools-managed-login.html
  */
 export class CognitoUserPoolDomain extends Component {
   private _domain: cognito.UserPoolDomain;
@@ -74,35 +77,31 @@ export class CognitoUserPoolDomain extends Component {
 
     function normalizeDomain() {
       return output(args.domain).apply((domain) => {
-        const norm = typeof domain === "string" ? { name: domain } : domain;
+        if (typeof domain === "string") domain = { name: domain };
 
-        // Validate
-        if (norm.prefix && norm.name) {
-          throw new VisibleError(
-            `Cannot specify both "prefix" and "name". Use "prefix" for a Cognito-hosted domain or "name" for a custom domain.`,
-          );
-        }
-        if (!norm.prefix && !norm.name) {
-          throw new VisibleError(
-            `Must specify either "prefix" or "name" in domain configuration.`,
-          );
+        if ("prefix" in domain) {
+          return {
+            prefix: domain.prefix,
+            name: undefined,
+            dns: undefined,
+            cert: undefined,
+          };
         }
 
-        // For custom domains, validate DNS/cert requirements
-        if (norm.name && norm.dns === false && !norm.cert) {
+        if (domain.dns === false && !domain.cert) {
           throw new VisibleError(
             `Need to provide a validated certificate via "cert" when DNS is disabled.`,
           );
         }
 
         return {
-          prefix: norm.prefix,
-          name: norm.name,
+          prefix: undefined,
+          name: domain.name,
           dns:
-            norm.dns === false
+            domain.dns === false
               ? undefined
-              : norm.dns ?? (norm.name ? awsDns() : undefined),
-          cert: norm.cert,
+              : domain.dns ?? awsDns(),
+          cert: domain.cert,
         };
       });
     }
@@ -132,6 +131,7 @@ export class CognitoUserPoolDomain extends Component {
             userPoolId: args.userPool,
             domain: normalized.apply((n) => (n.prefix ?? n.name)!),
             certificateArn: certificateArn as Output<string>,
+            managedLoginVersion: args.managedLoginVersion,
           },
           { parent, deleteBeforeReplace: true },
         ),
