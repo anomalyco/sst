@@ -40,6 +40,10 @@ func (p *Project) NeedsInstall() bool {
 			return false
 		}
 		config := match.(map[string]interface{})
+		pkg := config["package"]
+		if pkg != nil && pkg != "" && pkg != entry.Package {
+			return true
+		}
 		version := config["version"]
 		if version == nil || version == "" {
 			continue
@@ -192,6 +196,25 @@ type ProviderLockEntry struct {
 	Alias   string `json:"alias"`
 }
 
+// ProviderName returns the config key for this provider.
+// When the user passed a full package name (e.g. @paynearme/pulumi-jetstream),
+// Name equals Package, so we use the Alias instead.
+func (e *ProviderLockEntry) ProviderName() string {
+	if e.Name == e.Package {
+		return e.Alias
+	}
+	return e.Name
+}
+
+// PackageOverride returns the NPM package name when it differs from the
+// provider name, or empty string when no override is needed.
+func (e *ProviderLockEntry) PackageOverride() string {
+	if e.Name == e.Package {
+		return e.Package
+	}
+	return ""
+}
+
 type ProviderLock = []*ProviderLockEntry
 
 func (p *Project) loadProviderLock() error {
@@ -273,11 +296,15 @@ func FindProvider(name string, pkgName string, version string) (*ProviderLockEnt
 		}
 		alias := pkg.Pulumi.Name
 		if alias == "" || alias == "terraform-provider" {
-			alias = pkg.Name
-			alias = strings.ReplaceAll(alias, "@sst-provider", "")
-			alias = strings.ReplaceAll(alias, "/", "")
-			alias = strings.ReplaceAll(alias, "@", "")
-			alias = strings.ReplaceAll(alias, "pulumi", "")
+			if pkg.Pulumi.Parameterization != nil && pkg.Pulumi.Parameterization.Name != "" {
+				alias = pkg.Pulumi.Parameterization.Name
+			} else {
+				alias = pkg.Name
+				alias = strings.ReplaceAll(alias, "@sst-provider", "")
+				alias = strings.ReplaceAll(alias, "/", "")
+				alias = strings.ReplaceAll(alias, "@", "")
+				alias = strings.ReplaceAll(alias, "pulumi", "")
+			}
 		}
 		alias = strings.ReplaceAll(alias, "-", "")
 		return &ProviderLockEntry{
