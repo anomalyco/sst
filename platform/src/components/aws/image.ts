@@ -221,18 +221,6 @@ export class Image extends Component implements Link.Linkable {
   }
 
   /**
-   * The underlying [resources](/docs/components/#nodes) this component creates.
-   */
-  public get nodes() {
-    return {
-      /**
-       * The AWS ECR image.
-       */
-      image: this.image,
-    };
-  }
-
-  /**
    * The uri of the ECR container image.
    */
   public get uri() {
