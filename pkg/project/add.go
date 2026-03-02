@@ -9,14 +9,14 @@ import (
 	"strings"
 )
 
-func (p *Project) Add(pkg string, version string, pkgName string) error {
+func (p *Project) Add(provider string, version string, pkg string) error {
 	var stderr bytes.Buffer
 	cmd := process.Command("node",
 		filepath.Join(p.PathPlatformDir(), "src/ast/add.mjs"),
 		p.PathConfig(),
-		pkg,
+		provider,
 		version,
-		pkgName,
+		pkg,
 	)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = &stderr

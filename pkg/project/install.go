@@ -196,25 +196,6 @@ type ProviderLockEntry struct {
 	Alias   string `json:"alias"`
 }
 
-// ProviderName returns the config key for this provider.
-// When the user passed a full package name (e.g. @paynearme/pulumi-jetstream),
-// Name equals Package, so we use the Alias instead.
-func (e *ProviderLockEntry) ProviderName() string {
-	if e.Name == e.Package {
-		return e.Alias
-	}
-	return e.Name
-}
-
-// PackageOverride returns the NPM package name when it differs from the
-// provider name, or empty string when no override is needed.
-func (e *ProviderLockEntry) PackageOverride() string {
-	if e.Name == e.Package {
-		return e.Package
-	}
-	return ""
-}
-
 type ProviderLock = []*ProviderLockEntry
 
 func (p *Project) loadProviderLock() error {
@@ -241,6 +222,7 @@ func (p *Project) generateProviderLock() error {
 	}
 	for name, config := range p.app.Providers {
 		n := name
+		// Use the explicit package name if set, otherwise default to the provider name
 		pkgName := config.(map[string]interface{})["package"]
 		if pkgName == nil || pkgName == "" {
 			pkgName = n
@@ -284,22 +266,22 @@ func (p *Project) generateProviderLock() error {
 	return nil
 }
 
-func FindProvider(name string, pkgName string, version string) (*ProviderLockEntry, error) {
+func FindProvider(provider string, pkg string, version string) (*ProviderLockEntry, error) {
 	registry := npm.LoadRegistry()
 	for _, prefix := range []string{"@sst-provider/", "@pulumi/", "@pulumiverse/", "pulumi-", "@", ""} {
-		pkg, err := npm.Get(registry, prefix+pkgName, version)
+		npmPkg, err := npm.Get(registry, prefix+pkg, version)
 		if err != nil {
 			continue
 		}
-		if pkg.Pulumi == nil {
+		if npmPkg.Pulumi == nil {
 			continue
 		}
-		alias := pkg.Pulumi.Name
+		alias := npmPkg.Pulumi.Name
 		if alias == "" || alias == "terraform-provider" {
-			if pkg.Pulumi.Parameterization != nil && pkg.Pulumi.Parameterization.Name != "" {
-				alias = pkg.Pulumi.Parameterization.Name
+			if npmPkg.Pulumi.Parameterization != nil && npmPkg.Pulumi.Parameterization.Name != "" {
+				alias = npmPkg.Pulumi.Parameterization.Name
 			} else {
-				alias = pkg.Name
+				alias = npmPkg.Name
 				alias = strings.ReplaceAll(alias, "@sst-provider", "")
 				alias = strings.ReplaceAll(alias, "/", "")
 				alias = strings.ReplaceAll(alias, "@", "")
@@ -307,14 +289,19 @@ func FindProvider(name string, pkgName string, version string) (*ProviderLockEnt
 			}
 		}
 		alias = strings.ReplaceAll(alias, "-", "")
+		// When the user passed a full package name (e.g. @paynearme/pulumi-jetstream),
+		// use the alias as the config key instead
+		if provider == npmPkg.Name {
+			provider = alias
+		}
 		return &ProviderLockEntry{
-			Name:    name,
-			Package: pkg.Name,
-			Version: pkg.Version,
+			Name:    provider,
+			Package: npmPkg.Name,
+			Version: npmPkg.Version,
 			Alias:   alias,
 		}, nil
 	}
-	return nil, fmt.Errorf("provider %s not found", name)
+	return nil, fmt.Errorf("provider %s not found", provider)
 }
 
 func (p *Project) writeProviderLock() error {

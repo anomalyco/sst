@@ -595,7 +595,11 @@ var root = &cli.Command{
 				if err != nil {
 					return util.NewReadableError(err, "Could not find provider "+pkg)
 				}
-				err = p.Add(entry.ProviderName(), entry.Version, entry.PackageOverride())
+				pkgOverride := ""
+				if entry.Name != pkg {
+					pkgOverride = entry.Package
+				}
+				err = p.Add(entry.Name, entry.Version, pkgOverride)
 				if err != nil {
 					return util.NewReadableError(err, err.Error())
 				}
