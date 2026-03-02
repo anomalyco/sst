@@ -114,8 +114,9 @@ export class Image extends Component implements Link.Linkable {
   private image: Output<PulumiDockerImage>;
 
   constructor(name: string, args: ImageArgs, opts?: any) {
-    super(__pulumiType, name, args, opts);
-    this.constructorName = name;
+    const componentName = `${name}Image`
+    super(__pulumiType, componentName, args, opts);
+    this.constructorName = componentName;
 
     const parent = this;
     const region = getRegionOutput({}, opts).name;
@@ -124,7 +125,7 @@ export class Image extends Component implements Link.Linkable {
     this.image = all([args, bootstrapData]).apply(
       async ([args, bootstrapData]) => {
         // Wait for the all args values to be resolved before acquiring the semaphore
-        await limiter.acquire(name);
+        await limiter.acquire(componentName);
 
         const contextPath = path.join($cli.paths.root, args.context ?? ".");
         const dockerfile = args.dockerfile ?? "Dockerfile";
@@ -149,7 +150,7 @@ export class Image extends Component implements Link.Linkable {
         const image = new PulumiDockerImage(
           ...transform(
             args.transform?.image,
-            `${name}Image`,
+            componentName,
             {
               context: { location: contextPath },
               dockerfile: { location: dockerfilePath },
