@@ -52,6 +52,9 @@ func (p *Project) checkProviderUpgrade(resources []apitype.ResourceV3) []string 
 	for _, entry := range p.lock {
 		currentVersionStr, ok := providerVersions[entry.Name]
 		if !ok {
+			currentVersionStr, ok = providerVersions[entry.Alias]
+		}
+		if !ok {
 			continue
 		}
 
@@ -72,7 +75,7 @@ func (p *Project) checkProviderUpgrade(resources []apitype.ResourceV3) []string 
 
 		// Check against all applicable upgrade rules
 		for _, rule := range migrationNotices {
-			if rule.providerName != entry.Name {
+			if rule.providerName != entry.Name && rule.providerName != entry.Alias && rule.providerName != entry.Package {
 				continue
 			}
 
