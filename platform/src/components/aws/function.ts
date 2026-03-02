@@ -36,7 +36,7 @@ import {
 } from "@pulumi/aws";
 import { Permission, permission } from "./permission.js";
 import { Vpc } from "./vpc.js";
-import { Image } from "@pulumi/docker-build";
+import { Image } from "./image";
 import { rpc } from "../rpc/rpc.js";
 import { parseRoleArn } from "./helpers/arn.js";
 import { RandomBytes } from "@pulumi/random";
@@ -2166,62 +2166,15 @@ export class Function extends Component implements Link.Linkable {
       // The build artifact directory already exists, with all the user code and
       // config files. It also has the dockerfile, we need to now just build and push to
       // the container registry.
-      return all([isContainer, dev, bundle]).apply(
-        ([
-          isContainer,
-          dev,
-          bundle, // We need the bundle to be resolved because of implicit dockerfiles even though we don't use it here
-        ]) => {
+
+      return all([isContainer, dev, architecture]).apply(
+        ([isContainer, dev, architecture]) => {
           if (!isContainer || dev) return;
-
-          const authToken = ecr.getAuthorizationTokenOutput({
-            registryId: bootstrapData.assetEcrRegistryId,
+          return new Image(name, {
+            context: `.sst/artifacts/${name}-src`,
+            tags: ['latest'],
+            platforms: [architecture === "arm64" ? "linux/arm64" : "linux/amd64"],
           });
-
-          return new Image(
-            `${name}Image`,
-            {
-              tags: [$interpolate`${bootstrapData.assetEcrUrl}:latest`],
-              context: {
-                location: path.join(
-                  $cli.paths.work,
-                  "artifacts",
-                  `${name}-src`,
-                ),
-              },
-              cacheFrom: [
-                {
-                  registry: {
-                    ref: $interpolate`${bootstrapData.assetEcrUrl}:${name}-cache`,
-                  },
-                },
-              ],
-              cacheTo: [
-                {
-                  registry: {
-                    ref: $interpolate`${bootstrapData.assetEcrUrl}:${name}-cache`,
-                    imageManifest: true,
-                    ociMediaTypes: true,
-                    mode: "max",
-                  },
-                },
-              ],
-              platforms: [
-                architecture.apply((v) =>
-                  v === "arm64" ? "linux/arm64" : "linux/amd64",
-                ),
-              ],
-              push: true,
-              registries: [
-                authToken.apply((authToken) => ({
-                  address: authToken.proxyEndpoint,
-                  username: authToken.userName,
-                  password: secret(authToken.password),
-                })),
-              ],
-            },
-            { parent },
-          );
         },
       );
     }
@@ -2440,9 +2393,7 @@ export class Function extends Component implements Link.Linkable {
               ...(isContainer
                 ? {
                   packageType: "Image",
-                  imageUri: imageAsset!.ref.apply(
-                    (ref) => ref?.replace(":latest", ""),
-                  ),
+                  imageUri: imageAsset!.uri,
                   imageConfig: {
                     commands: [
                       all([handler, runtime]).apply(([handler, runtime]) => {
