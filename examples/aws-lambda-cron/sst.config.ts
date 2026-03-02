@@ -13,7 +13,7 @@ export default $config({
 
     const cron = new sst.aws.Cron("MyCron", {
       schedule: "rate(1 minute)",
-      function: "functions/handler.handler",
+      function: "cron.handler",
       retry: {
         attempts: 3,
         maxAge: "1 hour",
