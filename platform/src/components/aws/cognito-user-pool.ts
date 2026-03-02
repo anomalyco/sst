@@ -1,14 +1,22 @@
-import { ComponentResourceOptions, Output, all, output } from "@pulumi/pulumi";
+import {
+  ComponentResourceOptions,
+  Output,
+  all,
+  interpolate,
+  output,
+} from "@pulumi/pulumi";
 import { Component, Prettify, Transform, transform } from "../component";
 import { Input } from "../input";
 import { Link } from "../link";
 import { Dns } from "../dns";
 import { CognitoIdentityProvider } from "./cognito-identity-provider";
 import { CognitoUserPoolClient } from "./cognito-user-pool-client";
-import { CognitoUserPoolDomain } from "./cognito-user-pool-domain";
 import { Function, FunctionArgs, FunctionArn } from "./function.js";
 import { VisibleError } from "../error";
-import { cognito, lambda } from "@pulumi/aws";
+import { cognito, getRegionOutput, lambda } from "@pulumi/aws";
+import { dns as awsDns } from "./dns.js";
+import { DnsValidatedCertificate } from "./dns-validated-certificate.js";
+import { useProvider } from "./helpers/provider.js";
 import { permission } from "./permission";
 import { functionBuilder } from "./helpers/function-builder";
 
@@ -596,16 +604,25 @@ export class CognitoUserPool extends Component implements Link.Linkable {
     }
 
     const parent = this;
+    const region = getRegionOutput(undefined, { parent }).region;
 
     normalizeAliasesAndUsernames();
     const triggers = normalizeTriggers();
     const verify = normalizeVerify();
     const userPool = createUserPool();
-    const domain = createDomain();
+
+    const domain = normalizeDomain();
+    const certificateArn = createSsl();
+    const cognitoDomain = createCognitoDomain();
+    createDnsRecords();
 
     this.constructorOpts = opts;
     this.userPool = userPool;
-    this._domainUrl = domain?.domainUrl;
+    this._domainUrl = domain?.apply((d) =>
+      d.prefix
+        ? interpolate`https://${d.prefix}.auth.${region}.amazoncognito.com`
+        : interpolate`https://${d.name}`,
+    );
 
     function normalizeAliasesAndUsernames() {
       all([args.aliases, args.usernames]).apply(([aliases, usernames]) => {
@@ -793,18 +810,87 @@ export class CognitoUserPool extends Component implements Link.Linkable {
       );
     }
 
-    function createDomain() {
+    function normalizeDomain() {
       if (!args.domain) return;
 
-      return new CognitoUserPoolDomain(
-        `${name}Domain`,
-        {
-          userPool: userPool.id,
-          domain: args.domain,
-          transform: args.transform?.domain,
-        },
-        { parent, provider: opts.provider },
+      return output(args.domain).apply((domain) => {
+        if (typeof domain === "string") domain = { name: domain };
+
+        if ("prefix" in domain) {
+          return {
+            prefix: domain.prefix,
+            name: undefined,
+            dns: undefined,
+            cert: undefined,
+          };
+        }
+
+        if (domain.dns === false && !domain.cert) {
+          throw new VisibleError(
+            `Need to provide a validated certificate via "cert" when DNS is disabled.`,
+          );
+        }
+
+        return {
+          prefix: undefined,
+          name: domain.name,
+          dns: domain.dns === false ? undefined : (domain.dns ?? awsDns()),
+          cert: domain.cert,
+        };
+      });
+    }
+
+    function createSsl() {
+      if (!domain) return output(undefined);
+
+      return domain.apply((domain) => {
+        if (domain.prefix) return output(undefined);
+        if (domain.cert) return output(domain.cert);
+
+        return new DnsValidatedCertificate(
+          `${name}Ssl`,
+          {
+            domainName: domain.name!,
+            dns: output(domain.dns!),
+          },
+          { parent, provider: useProvider("us-east-1") },
+        ).arn;
+      });
+    }
+
+    function createCognitoDomain() {
+      if (!domain) return;
+
+      return new cognito.UserPoolDomain(
+        ...transform(
+          args.transform?.domain,
+          `${name}Domain`,
+          {
+            userPoolId: userPool.id,
+            domain: domain.apply((d) => (d.prefix ?? d.name)!),
+            certificateArn: certificateArn as Output<string>,
+          },
+          { parent, deleteBeforeReplace: true },
+        ),
       );
+    }
+
+    function createDnsRecords() {
+      if (!domain || !cognitoDomain) return;
+
+      domain.apply((domain) => {
+        if (!domain.name || !domain.dns) return;
+
+        domain.dns.createAlias(
+          name,
+          {
+            name: domain.name,
+            aliasName: cognitoDomain.cloudfrontDistribution,
+            aliasZone: cognitoDomain.cloudfrontDistributionZoneId,
+          },
+          { parent },
+        );
+      });
     }
   }
 
