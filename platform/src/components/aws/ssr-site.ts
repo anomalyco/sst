@@ -1506,10 +1506,7 @@ async function handler(event) {
                   link: [server],
                   _skipMetadata: true,
                 },
-                retry: {
-                  attempts: 0,
-                  maxAge: "60 seconds",
-                },
+                retries: 0,
                 forceUpgrade: "v2",
               },
               { provider, parent: self },

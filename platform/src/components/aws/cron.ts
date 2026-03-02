@@ -7,7 +7,6 @@ import { functionBuilder, FunctionBuilder } from "./helpers/function-builder";
 import { Task } from "./task";
 import { VisibleError } from "../error";
 import { Cron as CronV1 } from "./cron-v1";
-import { DurationHours, toSeconds } from "../duration.js";
 
 export interface CronArgs {
   /**
@@ -189,31 +188,17 @@ export interface CronArgs {
    */
   enabled?: Input<boolean>;
   /**
-   * Configure the retry policy for failed invocations.
+   * The number of retry attempts for failed invocations. Between 0 and 185.
    *
-   * @default No retries
+   * @default `0`
    * @example
    * ```ts
    * {
-   *   retry: {
-   *     attempts: 3,
-   *     maxAge: "1 hour"
-   *   }
+   *   retries: 3
    * }
    * ```
    */
-  retry?: Input<{
-    /**
-     * The maximum number of retry attempts. Between 0 and 185.
-     * @default `0`
-     */
-    attempts?: Input<number>;
-    /**
-     * The maximum amount of time to keep retrying. Between `"60 seconds"` and `"24 hours"`.
-     * @default `"24 hours"`
-     */
-    maxAge?: Input<DurationHours>;
-  }>;
+  retries?: Input<number>;
   /**
    * The ARN of an SQS queue to use as a dead-letter queue. When all retry
    * attempts are exhausted, failed events are sent to this queue.
@@ -312,10 +297,7 @@ export interface CronArgs {
  * new sst.aws.Cron("MyCronJob", {
  *   function: "src/cron.handler",
  *   schedule: "rate(1 minute)",
- *   retry: {
- *     attempts: 3,
- *     maxAge: "1 hour"
- *   }
+ *   retries: 3
  * });
  * ```
  *
@@ -493,15 +475,9 @@ export class Cron extends Component {
     }
 
     function createSchedule() {
-      const retryPolicy = (() => {
-        const retry = output(args.retry ?? {});
-        return {
-          maximumRetryAttempts: retry.apply((r) => r.attempts ?? 0),
-          maximumEventAgeInSeconds: retry.apply((r) =>
-            r.maxAge ? toSeconds(r.maxAge) : undefined,
-          ),
-        };
-      })();
+      const retryPolicy = {
+        maximumRetryAttempts: output(args.retries ?? 0),
+      };
 
       const deadLetterConfig = args.dlq ? { arn: args.dlq } : undefined;
 
