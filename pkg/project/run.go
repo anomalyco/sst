@@ -306,7 +306,7 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 		for provider, opts := range p.app.Providers {
 			for key, value := range opts.(map[string]interface{}) {
 				// Skip SST-only fields that Pulumi doesn't understand
-			if key == "package" || key == "version" {
+				if key == "package" {
 					continue
 				}
 				switch v := value.(type) {
