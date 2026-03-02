@@ -1083,7 +1083,7 @@ export function createTaskDefinition(
               dockerfile: { location: dockerfilePath },
               buildArgs: containerImage.args,
               secrets: all([linkEnvs, containerImage.secrets ?? {}]).apply(
-                ([link, user]) => ({ ...link, ...user }),
+                ([link, secrets]) => ({ ...link, ...secrets }),
               ),
               target: container.image.target,
               platforms: [container.image.platform],
