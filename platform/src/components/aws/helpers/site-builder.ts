@@ -20,8 +20,8 @@ export function siteBuilder(
     const command = new local.Command(name, args, opts);
     waitOn = command.urn;
 
-    // When running `sst diff`, `local.Command`'s `create` and `update` are not called.
-    // So we will also run `local.runOutput` to get the output of the command.
+    // When running `sst diff` or `sst refresh`, `local.Command`'s `create` and `update` are not called.
+    // So we also run `local.runOutput` to get the output of the command.
     if ($cli.command === "diff" || $cli.command === "refresh") {
       waitOn = local.runOutput(
         {
