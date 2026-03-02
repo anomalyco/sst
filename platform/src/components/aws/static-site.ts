@@ -27,7 +27,7 @@ import { URL_UNAVAILABLE } from "./linkable.js";
 import { KvKeys } from "./providers/kv-keys.js";
 import {
   CF_BLOCK_CLOUDFRONT_URL_INJECTION,
-  buildCloudfrontHandlerCode,
+  buildCfHandlerCode,
   KV_SITE_METADATA,
   normalizeRouteArgs,
   RouterRouteArgs,
@@ -1103,8 +1103,7 @@ export class StaticSite extends Component implements Link.Linkable {
           {
             runtime: "cloudfront-js-2.0",
             keyValueStoreAssociations: kvStoreArn ? [kvStoreArn] : [],
-            code: buildCloudfrontHandlerCode({
-              handler: "site",
+            code: buildCfHandlerCode("site-handler", {
               kvNamespace,
               injection: [userInjection, blockCloudfrontUrlInjection],
             }),

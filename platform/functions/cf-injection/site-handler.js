@@ -1,6 +1,5 @@
 import cf from "cloudfront";
 async function handler(event) {
-  // Replaced at build time with user-provided CloudFront function injection code
   __SST_CF_INJECT__();
 
   async function routeSite(kvNamespace, metadata) {

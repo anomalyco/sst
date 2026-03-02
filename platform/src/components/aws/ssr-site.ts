@@ -36,7 +36,7 @@ import { useProvider } from "./helpers/provider.js";
 import { Link } from "../link.js";
 import { URL_UNAVAILABLE } from "./linkable.js";
 import {
-  buildCloudfrontHandlerCode,
+  buildCfHandlerCode,
   CF_BLOCK_CLOUDFRONT_URL_INJECTION,
   KV_SITE_METADATA,
   ProtectionConfig,
@@ -882,8 +882,7 @@ export abstract class SsrSite extends Component implements Link.Linkable {
           {
             runtime: "cloudfront-js-2.0",
             keyValueStoreAssociations: kvStoreArn ? [kvStoreArn] : [],
-            code: buildCloudfrontHandlerCode({
-              handler: "site",
+            code: buildCfHandlerCode("site-handler", {
               kvNamespace,
               injection: [userInjection, blockCloudfrontUrlInjection],
             }),
