@@ -370,17 +370,6 @@ export interface CognitoUserPoolArgs {
          * Cannot contain "aws", "amazon", or "cognito".
          */
         prefix: Input<string>;
-        /**
-         * The login UI experience to use.
-         *
-         * - `"classic"` — the classic hosted UI
-         * - `"managed"` — the newer managed login with the branding designer
-         *
-         * Managed login requires the Essentials or Plus feature tier on your user pool.
-         *
-         * @default `"classic"`
-         */
-        login?: Input<"classic" | "managed">;
       }
     | {
         /**
@@ -399,17 +388,6 @@ export interface CognitoUserPoolArgs {
          * is created and validated automatically.
          */
         cert?: Input<string>;
-        /**
-         * The login UI experience to use.
-         *
-         * - `"classic"` — the classic hosted UI
-         * - `"managed"` — the newer managed login with the branding designer
-         *
-         * Managed login requires the Essentials or Plus feature tier on your user pool.
-         *
-         * @default `"classic"`
-         */
-        login?: Input<"classic" | "managed">;
       }
   >;
   /**
@@ -818,18 +796,11 @@ export class CognitoUserPool extends Component implements Link.Linkable {
     function createDomain() {
       if (!args.domain) return;
 
-      const managedLoginVersion = output(args.domain).apply((domain) => {
-        if (typeof domain === "string") return undefined;
-        if (!domain.login) return undefined;
-        return domain.login === "managed" ? 2 : 1;
-      });
-
       return new CognitoUserPoolDomain(
         `${name}Domain`,
         {
           userPool: userPool.id,
           domain: args.domain,
-          managedLoginVersion,
           transform: args.transform?.domain,
         },
         { parent, provider: opts.provider },

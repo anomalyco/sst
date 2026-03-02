@@ -33,10 +33,6 @@ export interface Args {
       }
   >;
   /**
-   * The managed login version. Mapped from the `login` prop on `CognitoUserPool`.
-   */
-  managedLoginVersion?: Input<number | undefined>;
-  /**
    * Transform the Cognito User Pool domain resource.
    */
   transform?: Transform<cognito.UserPoolDomainArgs>;
@@ -131,7 +127,6 @@ export class CognitoUserPoolDomain extends Component {
             userPoolId: args.userPool,
             domain: normalized.apply((n) => (n.prefix ?? n.name)!),
             certificateArn: certificateArn as Output<string>,
-            managedLoginVersion: args.managedLoginVersion,
           },
           { parent, deleteBeforeReplace: true },
         ),
