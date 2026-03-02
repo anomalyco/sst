@@ -22,7 +22,7 @@ export function siteBuilder(
 
     // When running `sst diff`, `local.Command`'s `create` and `update` are not called.
     // So we will also run `local.runOutput` to get the output of the command.
-    if ($cli.command === "diff") {
+    if ($cli.command === "diff" || $cli.command === "refresh") {
       waitOn = local.runOutput(
         {
           command: args.create!,
