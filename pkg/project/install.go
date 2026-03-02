@@ -232,7 +232,7 @@ func (p *Project) generateProviderLock() error {
 			version = "latest"
 		}
 		wg.Go(func() error {
-			result, err := FindProvider(n, pkgName.(string), version.(string))
+			result, err := FindProvider(n, version.(string), pkgName.(string))
 			if err != nil {
 				return err
 			}
@@ -266,7 +266,7 @@ func (p *Project) generateProviderLock() error {
 	return nil
 }
 
-func FindProvider(provider string, pkg string, version string) (*ProviderLockEntry, error) {
+func FindProvider(provider string, version string, pkg string) (*ProviderLockEntry, error) {
 	registry := npm.LoadRegistry()
 	for _, prefix := range []string{"@sst-provider/", "@pulumi/", "@pulumiverse/", "pulumi-", "@", ""} {
 		npmPkg, err := npm.Get(registry, prefix+pkg, version)

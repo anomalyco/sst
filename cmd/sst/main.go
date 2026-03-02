@@ -591,7 +591,7 @@ var root = &cli.Command{
 						return err
 					}
 				}
-				entry, err := project.FindProvider(pkg, pkg, "latest")
+				entry, err := project.FindProvider(pkg, "latest", pkg)
 				if err != nil {
 					return util.NewReadableError(err, "Could not find provider "+pkg)
 				}
