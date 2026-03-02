@@ -476,16 +476,21 @@ export interface FargateBaseArgs {
          * ```js
          * {
          *   secrets: {
-         *     GITLAB_TOKEN: "my-secret-token",
+         *     MY_TOKEN: "my-secret-token",
          *   }
          * }
          * ```
          *
-         * Then in the Dockerfile:
-         * ```dockerfile
-         * RUN --mount=type=secret,id=GITLAB_TOKEN \
-         *   export GITLAB_TOKEN=$(cat /run/secrets/GITLAB_TOKEN) && \
-         *   npm install
+         * Then in the Dockerfile, reference it as a file:
+         * ```dockerfile title="Dockerfile"
+         * RUN --mount=type=secret,id=MY_TOKEN \
+         *   cat /run/secrets/MY_TOKEN
+         * ```
+         *
+         * Or as an environment variable:
+         * ```dockerfile title="Dockerfile"
+         * RUN --mount=type=secret,id=MY_TOKEN,env=MY_TOKEN \
+         *   echo $MY_TOKEN
          * ```
          */
         secrets?: Input<Record<string, Input<string>>>;
