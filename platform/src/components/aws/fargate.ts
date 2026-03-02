@@ -476,7 +476,7 @@ export interface FargateBaseArgs {
          * ```js
          * {
          *   secrets: {
-         *     GITLAB_TOKEN: process.env.CI_JOB_TOKEN,
+         *     GITLAB_TOKEN: "my-secret-token",
          *   }
          * }
          * ```
