@@ -467,6 +467,29 @@ export interface FargateBaseArgs {
          */
         args?: Input<Record<string, Input<string>>>;
         /**
+         * Key-value pairs of [build secrets](https://docs.docker.com/build/building/secrets/) to pass to the Docker build.
+         *
+         * Unlike build args, secrets are not persisted in the final image. They are
+         * available in the Dockerfile via [`--mount=type=secret`](https://docs.docker.com/build/building/secrets/#secret-mounts).
+         *
+         * @example
+         * ```js
+         * {
+         *   secrets: {
+         *     GITLAB_TOKEN: process.env.CI_JOB_TOKEN,
+         *   }
+         * }
+         * ```
+         *
+         * Then in the Dockerfile:
+         * ```dockerfile
+         * RUN --mount=type=secret,id=GITLAB_TOKEN \
+         *   export GITLAB_TOKEN=$(cat /run/secrets/GITLAB_TOKEN) && \
+         *   npm install
+         * ```
+         */
+        secrets?: Input<Record<string, Input<string>>>;
+        /**
          * Tags to apply to the Docker image.
          * @example
          * ```js
@@ -1054,7 +1077,9 @@ export function createTaskDefinition(
               context: { location: contextPath },
               dockerfile: { location: dockerfilePath },
               buildArgs: containerImage.args,
-              secrets: linkEnvs,
+              secrets: all([linkEnvs, containerImage.secrets ?? {}]).apply(
+                ([link, user]) => ({ ...link, ...user }),
+              ),
               target: container.image.target,
               platforms: [container.image.platform],
               tags: [container.name, ...(container.image.tags ?? [])].map(
