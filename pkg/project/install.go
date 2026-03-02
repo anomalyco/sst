@@ -289,11 +289,6 @@ func FindProvider(provider string, version string, pkg string) (*ProviderLockEnt
 			}
 		}
 		alias = strings.ReplaceAll(alias, "-", "")
-		// When the user passed a full package name (e.g. @paynearme/pulumi-jetstream),
-		// use the alias as the config key instead
-		if provider == npmPkg.Name {
-			provider = alias
-		}
 		return &ProviderLockEntry{
 			Name:    provider,
 			Package: npmPkg.Name,

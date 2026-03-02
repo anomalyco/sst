@@ -595,11 +595,15 @@ var root = &cli.Command{
 				if err != nil {
 					return util.NewReadableError(err, "Could not find provider "+pkg)
 				}
+				// When the user passed a full package name (e.g. @paynearme/pulumi-jetstream),
+				// use the alias as the config key and set the package override
+				providerName := entry.Name
 				pkgOverride := ""
-				if entry.Name != pkg {
+				if entry.Name == entry.Package {
+					providerName = entry.Alias
 					pkgOverride = entry.Package
 				}
-				err = p.Add(entry.Name, entry.Version, pkgOverride)
+				err = p.Add(providerName, entry.Version, pkgOverride)
 				if err != nil {
 					return util.NewReadableError(err, err.Error())
 				}
