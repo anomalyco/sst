@@ -6,6 +6,7 @@ import {
   Output,
   Resource,
   all,
+  interpolate,
   output,
 } from "@pulumi/pulumi";
 import { Cdn, CdnArgs } from "./cdn.js";
@@ -27,7 +28,7 @@ import { URL_UNAVAILABLE } from "./linkable.js";
 import { KvKeys } from "./providers/kv-keys.js";
 import {
   CF_BLOCK_CLOUDFRONT_URL_INJECTION,
-  buildCfHandlerCode,
+  CF_ROUTER_INJECTION,
   KV_SITE_METADATA,
   normalizeRouteArgs,
   RouterRouteArgs,
@@ -1103,10 +1104,25 @@ export class StaticSite extends Component implements Link.Linkable {
           {
             runtime: "cloudfront-js-2.0",
             keyValueStoreAssociations: kvStoreArn ? [kvStoreArn] : [],
-            code: buildCfHandlerCode("site-handler", {
-              kvNamespace,
-              injection: [userInjection, blockCloudfrontUrlInjection],
-            }),
+            code: interpolate`
+import cf from "cloudfront";
+async function handler(event) {
+  ${userInjection}
+  ${blockCloudfrontUrlInjection}
+  ${CF_ROUTER_INJECTION}
+
+  const kvNamespace = "${kvNamespace}";
+
+  // Load metadata
+  let metadata;
+  try {
+    const v = await cf.kvs().get(kvNamespace + ":metadata");
+    metadata = JSON.parse(v);
+  } catch (e) {}
+
+  await routeSite(kvNamespace, metadata);
+  return event.request;
+}`,
           },
           { parent: self },
         );
