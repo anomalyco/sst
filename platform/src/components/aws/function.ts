@@ -2393,7 +2393,7 @@ export class Function extends Component implements Link.Linkable {
               ...(isContainer
                 ? {
                   packageType: "Image",
-                  imageUri: imageAsset!.uriTagless,
+                  imageUri: imageAsset!.uri,
                   imageConfig: {
                     commands: [
                       all([handler, runtime]).apply(([handler, runtime]) => {

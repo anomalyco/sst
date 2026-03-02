@@ -112,6 +112,7 @@ const limiter = new Semaphore(
 export class Image extends Component implements Link.Linkable {
   private constructorName: string;
   private image: Output<PulumiDockerImage>;
+  private _uri: Output<string>;
 
   constructor(name: string, args: ImageArgs, opts?: any) {
     const componentName = `${name}Image`
@@ -121,6 +122,8 @@ export class Image extends Component implements Link.Linkable {
     const parent = this;
     const region = getRegionOutput({}, opts).name;
     const bootstrapData = region.apply((region) => bootstrap.forRegion(region));
+    // Empty uri should fail deployment if not set
+    this._uri = interpolate``
 
     this.image = all([args, bootstrapData]).apply(
       async ([args, bootstrapData]) => {
@@ -200,6 +203,7 @@ export class Image extends Component implements Link.Linkable {
             { parent },
           ),
         );
+        this._uri = interpolate`${bootstrapData.assetEcrUrl}@${image.digest}`
 
         image.urn.apply(() => {
           limiter.release();
@@ -232,16 +236,7 @@ export class Image extends Component implements Link.Linkable {
    * The uri of the ECR container image.
    */
   public get uri() {
-    return this.image.ref.apply((ref) => ref?.replace(":latest", ""));
-  }
-
-  /**
-   * The uri of the ECR container image without tag or digest
-   */
-  public get uriTagless() {
-    return all([this.uri, this.digest]).apply(
-      ([uri, digest]) => uri.replace(`@${digest}`, '')
-    )
+    return this._uri
   }
 
   /** @internal */
