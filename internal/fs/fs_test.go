@@ -72,10 +72,59 @@ func TestFindDown(t *testing.T) {
 		assert.Empty(t, results)
 	})
 
+	t.Run("skips git submodules", func(t *testing.T) {
+		dir := t.TempDir()
+
+		// Normal nested dir — should be found
+		normal := filepath.Join(dir, "app")
+		os.MkdirAll(normal, 0755)
+		os.WriteFile(filepath.Join(normal, "package.json"), []byte("{}"), 0644)
+
+		// Submodule dir (has .git file) — should be skipped
+		sub := filepath.Join(dir, "submod")
+		os.MkdirAll(sub, 0755)
+		os.WriteFile(filepath.Join(sub, ".git"), []byte("gitdir: ../../.git/modules/submod"), 0644)
+		os.WriteFile(filepath.Join(sub, "package.json"), []byte("{}"), 0644)
+
+		results := fs.FindDown(dir, "package.json")
+		assert.Equal(t, []string{filepath.Join(normal, "package.json")}, results)
+	})
+
+	t.Run("does not skip dirs with .git directory", func(t *testing.T) {
+		dir := t.TempDir()
+
+		// Nested repo clone (has .git directory, not file) — should be walked
+		nested := filepath.Join(dir, "nested-repo")
+		os.MkdirAll(filepath.Join(nested, ".git"), 0755)
+		os.WriteFile(filepath.Join(nested, "package.json"), []byte("{}"), 0644)
+
+		results := fs.FindDown(dir, "package.json")
+		assert.Equal(t, []string{filepath.Join(nested, "package.json")}, results)
+	})
+
 	t.Run("not found returns empty", func(t *testing.T) {
 		dir := t.TempDir()
 		results := fs.FindDown(dir, "nope.txt")
 		assert.Empty(t, results)
+	})
+}
+
+func TestIsGitSubmodule(t *testing.T) {
+	t.Run("git file returns true", func(t *testing.T) {
+		dir := t.TempDir()
+		os.WriteFile(filepath.Join(dir, ".git"), []byte("gitdir: ../../.git/modules/foo"), 0644)
+		assert.True(t, fs.IsGitSubmodule(dir))
+	})
+
+	t.Run("git directory returns false", func(t *testing.T) {
+		dir := t.TempDir()
+		os.Mkdir(filepath.Join(dir, ".git"), 0755)
+		assert.False(t, fs.IsGitSubmodule(dir))
+	})
+
+	t.Run("no git entry returns false", func(t *testing.T) {
+		dir := t.TempDir()
+		assert.False(t, fs.IsGitSubmodule(dir))
 	})
 }
 
