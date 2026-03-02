@@ -1012,7 +1012,7 @@ export function createTaskDefinition(
           },
         });
 
-        return interpolate`${bootstrapData.assetEcrUrl}@${image.digest}`;
+        return image.uri;
       })(),
       cpu: container.cpu ? toNumber(container.cpu) : undefined,
       memory: container.memory ? toMBs(container.memory) : undefined,

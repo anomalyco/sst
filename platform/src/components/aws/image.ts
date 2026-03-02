@@ -214,13 +214,6 @@ export class Image extends Component implements Link.Linkable {
   }
 
   /**
-   * SHA256 digest of the ECR image
-   */
-  public get digest() {
-    return this.image.digest;
-  }
-
-  /**
    * The uri of the ECR container image.
    */
   public get uri() {
