@@ -2133,7 +2133,8 @@ async function handler(event) {
               {
                 runtime: "cloudfront-js-2.0",
                 keyValueStoreAssociations: kvStoreArn ? [kvStoreArn] : [],
-                code: buildCfHandlerCode("router-handler", {
+                code: buildCloudfrontHandlerCode({
+                  handler: "router",
                   kvNamespace: kvNs,
                   injection: [userInjection, blockCloudfrontUrlInjection],
                 }),
@@ -2639,13 +2640,14 @@ if (event.request.headers.host.value.includes('cloudfront.net')) {
   };
 }`;
 
-export function buildCfHandlerCode(
-  handler: "router-handler" | "site-handler",
-  opts: { kvNamespace: string; injection: string[] },
-) {
+export function buildCloudfrontHandlerCode(opts: {
+  handler: "router" | "site";
+  kvNamespace: string;
+  injection: string[];
+}) {
   return fs
     .readFileSync(
-      path.join($cli.paths.platform, "dist", "cf-injection", `${handler}.js`),
+      path.join($cli.paths.platform, "dist", `cloudfront-${opts.handler}-handler`, "index.js"),
       "utf8",
     )
     .replaceAll("__SST_KV_NAMESPACE__", opts.kvNamespace)

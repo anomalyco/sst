@@ -23,10 +23,10 @@ await Promise.all(
 );
 
 // Minify CloudFront handler code
-await fs.mkdir("./dist/cf-injection/", { recursive: true });
 await Promise.all(
-  ["router-handler", "site-handler"].map(async (file) => {
-    const code = await fs.readFile(`./functions/cf-injection/${file}.js`, "utf8");
+  ["cloudfront-router-handler", "cloudfront-site-handler"].map(async (dir) => {
+    await fs.mkdir(`./dist/${dir}/`, { recursive: true });
+    const code = await fs.readFile(`./functions/${dir}/index.js`, "utf8");
     const result = await esbuild.transform(code, {
       minifyWhitespace: true,
       minifySyntax: true,
@@ -34,6 +34,6 @@ await Promise.all(
       // despite claiming ES2021 support. Target es2018 to avoid it.
       target: "es2018",
     });
-    await fs.writeFile(`./dist/cf-injection/${file}.js`, result.code);
+    await fs.writeFile(`./dist/${dir}/index.js`, result.code);
   }),
 );
