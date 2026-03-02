@@ -30,7 +30,7 @@ import { VisibleError } from "../error.js";
 import { Cron } from "./cron.js";
 import { BaseSiteFileOptions, getContentType } from "../base/base-site.js";
 import { BaseSsrSiteArgs, buildApp } from "../base/base-ssr-site.js";
-import { cloudfront, getRegionOutput, lambda, Region, iam, scheduler } from "@pulumi/aws";
+import { cloudfront, getRegionOutput, lambda, Region, iam } from "@pulumi/aws";
 import { KvKeys } from "./providers/kv-keys.js";
 import { useProvider } from "./helpers/provider.js";
 import { Link } from "../link.js";
@@ -1489,7 +1489,7 @@ async function handler(event) {
               `${name}Warmer${logicalName(region)}`,
               {
                 schedule: "rate(5 minutes)",
-                job: {
+                function: {
                   description: `${name} warmer`,
                   bundle: path.join($cli.paths.platform, "dist", "ssr-warmer"),
                   runtime: "nodejs24.x",
@@ -1506,17 +1506,11 @@ async function handler(event) {
                   link: [server],
                   _skipMetadata: true,
                 },
-                transform: {
-                  schedule: (args) => {
-                    args.target = {
-                      ...args.target as scheduler.ScheduleArgs["target"],
-                      retryPolicy: {
-                        maximumRetryAttempts: 0,
-                        maximumEventAgeInSeconds: 60,
-                      },
-                    };
-                  },
+                retry: {
+                  attempts: 0,
+                  maxAge: "60 seconds",
                 },
+                forceUpgrade: "v2",
               },
               { provider, parent: self },
             );
@@ -1525,7 +1519,7 @@ async function handler(event) {
             new lambda.Invocation(
               `${name}Prewarm${logicalName(region)}`,
               {
-                functionName: cron.nodes.job.name,
+                functionName: cron.nodes.function.name,
                 triggers: {
                   version: Date.now().toString(),
                 },
