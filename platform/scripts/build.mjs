@@ -29,10 +29,6 @@ await Promise.all(
     const code = await fs.readFile(`./functions/cf-injection/${file}.js`, "utf8");
     const result = await esbuild.transform(code, {
       minifyWhitespace: true,
-      minifySyntax: true,
-      // CloudFront Functions don't support optional catch binding (`catch {}`)
-      // despite claiming ES2021 support. Target es2018 to avoid it.
-      target: "es2018",
     });
     await fs.writeFile(`./dist/cf-injection/${file}.js`, result.code);
   }),
