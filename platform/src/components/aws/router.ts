@@ -9,6 +9,7 @@ import {
 import { asset } from "@pulumi/pulumi";
 import { iam, lambda } from "@pulumi/aws";
 import crypto from "crypto";
+import { transformSync } from "esbuild";
 import { Component, Transform, transform } from "../component";
 import { Link } from "../link";
 import type { Input } from "../input";
@@ -2729,7 +2730,7 @@ if (event.request.headers.host.value.includes('cloudfront.net')) {
   };
 }`;
 
-export const CF_ROUTER_INJECTION = `
+const CF_ROUTER_INJECTION_RAW = `
 async function routeSite(kvNamespace, metadata) {
   const baselessUri = metadata.base
     ? event.request.uri.replace(metadata.base, "")
@@ -2947,6 +2948,11 @@ function setS3Origin(s3Domain, override) {
   }
   cf.updateRequestOrigin(origin);
 }`;
+
+export const CF_ROUTER_INJECTION = transformSync(CF_ROUTER_INJECTION_RAW, {
+	minify: true,
+	target: "esnext",
+}).code;
 
 export type KV_SITE_METADATA = {
   base?: string; // Should be undefiend if no base path, should never be "/"
