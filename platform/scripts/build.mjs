@@ -21,3 +21,15 @@ await Promise.all(
     }),
   ),
 );
+
+// Minify CloudFront handler code
+await fs.mkdir("./dist/cf-injection/", { recursive: true });
+await Promise.all(
+  ["router-handler", "site-handler"].map(async (file) => {
+    const code = await fs.readFile(`./functions/cf-injection/${file}.js`, "utf8");
+    const result = await esbuild.transform(code, {
+      minifyWhitespace: true,
+    });
+    await fs.writeFile(`./dist/cf-injection/${file}.js`, result.code);
+  }),
+);
