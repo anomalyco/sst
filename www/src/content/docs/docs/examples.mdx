@@ -60,63 +60,6 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-apig-au
 
 
 ---
-## AWS API Gateway V1 streaming
-
-An example on how to enable streaming for API Gateway REST API routes.
-
-```ts title="sst.config.ts"
-api.route("GET /", "index.handler", {
-  streaming: true,
-});
-```
-
-The handler uses the native `awslambda.streamifyResponse` and
-`awslambda.HttpResponseStream.from` to stream responses through API Gateway.
-
-```ts title="index.ts"
-export const handler = awslambda.streamifyResponse(
-  async (_event: unknown, responseStream: any) => {
-    responseStream = awslambda.HttpResponseStream.from(responseStream, {
-      statusCode: 200,
-      headers: { "Content-Type": "text/plain" },
-    });
-
-    responseStream.write("Hello");
-    await new Promise((resolve) => setTimeout(resolve, 3000));
-    responseStream.write(" World");
-    responseStream.end();
-  },
-);
-```
-
-:::note
-Streaming is currently not supported in `sst dev`.
-:::
-
-To test this in your terminal, use the `curl` command with the `--no-buffer` option.
-
-```bash "--no-buffer"
-curl --no-buffer https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/prod
-```
-```ts title="sst.config.ts"
-const api = new sst.aws.ApiGatewayV1("MyApi");
-api.route("GET /", "index.handler", {
-  streaming: true,
-});
-api.route("GET /hono", "hono.handler", {
-  streaming: true,
-});
-api.deploy();
-
-return {
-  api: api.url,
-};
-```
-
-View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-apigv1-stream).
-
-
----
 ## AWS Astro container with Redis
 
 Creates a hit counter app with Astro and Redis.
@@ -1143,12 +1086,9 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-cluster
 ---
 ## AWS Cognito User Pool
 
-Create a Cognito User Pool with a hosted UI domain, client, and identity pool.
+Create a Cognito user pool with triggers and identity pool.
 ```ts title="sst.config.ts"
 const userPool = new sst.aws.CognitoUserPool("MyUserPool", {
-  domain: {
-    prefix: `my-app-${$app.stage}`,
-  },
   triggers: {
     preSignUp: {
       handler: "index.handler",
@@ -1173,7 +1113,6 @@ return {
   UserPool: userPool.id,
   Client: client.id,
   IdentityPool: identityPool.id,
-  DomainUrl: userPool.domainUrl,
 };
 ```
 
@@ -1359,50 +1298,6 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-drizzle
 
 
 ---
-## DynamoDB composite keys
-
-Create a DynamoDB table with multi-attribute composite keys in a global secondary index.
-```ts title="sst.config.ts"
-const table = new sst.aws.Dynamo("MyTable", {
-  fields: {
-    userId: "string",
-    noteId: "string",
-    region: "string",
-    category: "string",
-    createdAt: "number",
-  },
-  primaryIndex: { hashKey: "userId", rangeKey: "noteId" },
-  globalIndexes: {
-    RegionCategoryIndex: {
-      hashKey: ["region", "category"],
-      rangeKey: "createdAt",
-    },
-  },
-});
-
-const creator = new sst.aws.Function("MyCreator", {
-  handler: "creator.handler",
-  link: [table],
-  url: true,
-});
-
-const reader = new sst.aws.Function("MyReader", {
-  handler: "reader.handler",
-  link: [table],
-  url: true,
-});
-
-return {
-  creator: creator.url,
-  reader: reader.url,
-  table: table.name,
-};
-```
-
-View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-dynamo-composite-keys).
-
-
----
 ## DynamoDB streams
 
 Create a DynamoDB table, enable streams, and subscribe to it with a function.
@@ -1428,21 +1323,14 @@ table.subscribe("MySubscriber", "subscriber.handler", {
   ],
 });
 
-const creator = new sst.aws.Function("MyCreator", {
-  handler: "creator.handler",
-  link: [table],
-  url: true,
-});
-
-const reader = new sst.aws.Function("MyReader", {
-  handler: "reader.handler",
+const app = new sst.aws.Function("MyApp", {
+  handler: "publisher.handler",
   link: [table],
   url: true,
 });
 
 return {
-  creator: creator.url,
-  reader: reader.url,
+  app: app.url,
   table: table.name,
 };
 ```
@@ -2106,7 +1994,7 @@ To test this in your terminal, use the `curl` command with the `--no-buffer` opt
 curl --no-buffer https://u3dyblk457ghskwbmzrbylpxoi0ayrbb.lambda-url.us-east-1.on.aws
 ```
 
-Streaming is also supported through API Gateway REST API.
+Here we are using a Function URL directly because API Gateway doesn't support streaming.
 ```ts title="sst.config.ts"
 const hono = new sst.aws.Function("Hono", {
   url: true,
@@ -2716,7 +2604,7 @@ To test this in your terminal, use the `curl` command with the `--no-buffer` opt
 curl --no-buffer https://u3dyblk457ghskwbmzrbylpxoi0ayrbb.lambda-url.us-east-1.on.aws
 ```
 
-Streaming is also supported through API Gateway REST API.
+Here we are using a Function URL directly because API Gateway doesn't support streaming.
 ```ts title="sst.config.ts"
 const fn = new sst.aws.Function("MyFunction", {
   url: true,
@@ -4643,71 +4531,6 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-router-
 
 
 ---
-## Router protection with OAC
-
-Creates a router with Origin Access Control (OAC) to secure Lambda function URLs
-behind CloudFront. Direct access to the Lambda URL returns 403.
-```ts title="sst.config.ts"
-const router = new sst.aws.Router("MyRouter", {
-  protection: "oac",
-});
-
-const api = new sst.aws.Function("MyApi", {
-  handler: "api.handler",
-  url: {
-    router: { instance: router, path: "/api" },
-  },
-});
-
-return {
-  router: router.url,
-  api: api.url,
-};
-```
-
-View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-router-protection).
-
-
----
-## Router with WAF
-
-Enable WAF (Web Application Firewall) for a Router to protect against common
-web exploits and bots.
-
-WAF includes rate limiting per IP, and AWS managed rules for core rule set,
-known bad inputs, and SQL injection protection.
-
-You can also enable WAF logging to CloudWatch to monitor requests.
-```ts title="sst.config.ts"
-const api = new sst.aws.Function("MyApi", {
-  handler: "api.handler",
-  url: true,
-});
-
-const router = new sst.aws.Router("MyRouter", {
-  routes: {
-    "/*": api.url,
-  },
-  waf: {
-    rateLimitPerIp: 1000,
-    managedRules: {
-      coreRuleSet: true,
-      knownBadInputs: true,
-      sqlInjection: true,
-    },
-    logging: true,
-  },
-});
-
-return {
-  url: router.url,
-};
-```
-
-View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-router-waf).
-
-
----
 ## Router and function URL
 
 Creates a router that routes all requests to a function with a URL.
@@ -4720,6 +4543,7 @@ const bucket = new sst.aws.Bucket("MyBucket", {
   access: "public",
 });
 const router = new sst.aws.Router("MyRouter", {
+  domain: "router.ion.dev.sst.dev",
   routes: {
     "/api/*": api.url,
     "/*": $interpolate`https://${bucket.domain}`,
