@@ -7,6 +7,7 @@ import { functionBuilder, FunctionBuilder } from "./helpers/function-builder";
 import { Task } from "./task";
 import { VisibleError } from "../error";
 import { Cron as CronV1 } from "./cron-v1";
+import { DurationHours, toSeconds } from "../duration.js";
 
 export interface CronArgs {
   /**
@@ -153,8 +154,16 @@ export interface CronArgs {
    *   schedule: "cron(15 10 * * ? *)", // 10:15 AM (UTC) every day
    * }
    * ```
+   *
+   * Or an [at expression](https://docs.aws.amazon.com/scheduler/latest/UserGuide/schedule-types.html#one-time) for a one-time schedule.
+   *
+   * ```ts
+   * {
+   *   schedule: "at(2025-06-01T10:00:00)",
+   * }
+   * ```
    */
-  schedule: Input<`rate(${string})` | `cron(${string})`>;
+  schedule: Input<`rate(${string})` | `cron(${string})` | `at(${string})`>;
   /**
    * The IANA timezone for the cron schedule. When set, the cron expression is
    * evaluated in this timezone, with automatic DST handling.
@@ -179,6 +188,44 @@ export interface CronArgs {
    * ```
    */
   enabled?: Input<boolean>;
+  /**
+   * Configure the retry policy for failed invocations.
+   *
+   * @default No retries
+   * @example
+   * ```ts
+   * {
+   *   retry: {
+   *     attempts: 3,
+   *     maxAge: "1 hour"
+   *   }
+   * }
+   * ```
+   */
+  retry?: Input<{
+    /**
+     * The maximum number of retry attempts. Between 0 and 185.
+     * @default `0`
+     */
+    attempts?: Input<number>;
+    /**
+     * The maximum amount of time to keep retrying. Between `"60 seconds"` and `"24 hours"`.
+     * @default `"24 hours"`
+     */
+    maxAge?: Input<DurationHours>;
+  }>;
+  /**
+   * The ARN of an SQS queue to use as a dead-letter queue. When all retry
+   * attempts are exhausted, failed events are sent to this queue.
+   *
+   * @example
+   * ```ts
+   * {
+   *   dlq: myQueue.arn
+   * }
+   * ```
+   */
+  dlq?: Input<string>;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying resources.
    */
@@ -256,6 +303,28 @@ export interface CronArgs {
  *   function: "src/cron.handler",
  *   schedule: "cron(15 10 * * ? *)",
  *   timezone: "America/New_York"
+ * });
+ * ```
+ *
+ * #### Configure retries
+ *
+ * ```ts title="sst.config.ts"
+ * new sst.aws.Cron("MyCronJob", {
+ *   function: "src/cron.handler",
+ *   schedule: "rate(1 minute)",
+ *   retry: {
+ *     attempts: 3,
+ *     maxAge: "1 hour"
+ *   }
+ * });
+ * ```
+ *
+ * #### One-time schedule
+ *
+ * ```ts title="sst.config.ts"
+ * new sst.aws.Cron("MyCronJob", {
+ *   function: "src/cron.handler",
+ *   schedule: "at(2025-06-01T10:00:00)"
  * });
  * ```
  *
@@ -363,6 +432,14 @@ export class Cron extends Component {
                         actions: ["lambda:InvokeFunction"],
                         resources: [fn.arn],
                       },
+                      ...(args.dlq
+                        ? [
+                            {
+                              actions: ["sqs:SendMessage"],
+                              resources: [args.dlq],
+                            },
+                          ]
+                        : []),
                     ],
                   }).json,
                 },
@@ -397,6 +474,14 @@ export class Cron extends Component {
                         args.task!.nodes.taskRole.arn,
                       ],
                     },
+                    ...(args.dlq
+                      ? [
+                          {
+                            actions: ["sqs:SendMessage"],
+                            resources: [args.dlq],
+                          },
+                        ]
+                      : []),
                   ],
                 }).json,
               },
@@ -408,6 +493,18 @@ export class Cron extends Component {
     }
 
     function createSchedule() {
+      const retryPolicy = (() => {
+        const retry = output(args.retry ?? {});
+        return {
+          maximumRetryAttempts: retry.apply((r) => r.attempts ?? 0),
+          maximumEventAgeInSeconds: retry.apply((r) =>
+            r.maxAge ? toSeconds(r.maxAge) : undefined,
+          ),
+        };
+      })();
+
+      const deadLetterConfig = args.dlq ? { arn: args.dlq } : undefined;
+
       if (fn) {
         return new scheduler.Schedule(
           ...transform(
@@ -422,9 +519,8 @@ export class Cron extends Component {
                 arn: fn.arn,
                 roleArn: role.arn,
                 input: event.apply((event) => JSON.stringify(event)),
-                retryPolicy: {
-                  maximumRetryAttempts: 0,
-                },
+                retryPolicy,
+                deadLetterConfig,
               },
             },
             { parent },
@@ -468,9 +564,8 @@ export class Cron extends Component {
                   assignPublicIp: args.task!.assignPublicIp,
                 },
               },
-              retryPolicy: {
-                maximumRetryAttempts: 0,
-              },
+              retryPolicy,
+              deadLetterConfig,
             },
           },
           { parent },
