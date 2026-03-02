@@ -17,82 +17,6 @@ func makeProviderResource(provider string, version string) apitype.ResourceV3 {
 	}
 }
 
-func TestCheckProviderUpgrade_VercelV1ToV4(t *testing.T) {
-	// After PR 6205, lock Name is "vercel" but Package is "@pulumiverse/vercel"
-	p := &Project{
-		lock: ProviderLock{
-			{Name: "vercel", Package: "@pulumiverse/vercel", Alias: "vercel", Version: "4.6.0"},
-		},
-	}
-
-	resources := []apitype.ResourceV3{
-		makeProviderResource("vercel", "1.11.0"),
-	}
-
-	messages := p.checkProviderUpgrade(resources)
-	if len(messages) != 1 {
-		t.Fatalf("expected 1 message, got %d", len(messages))
-	}
-	if !strings.Contains(messages[0], "Vercel") {
-		t.Fatalf("expected message to mention Vercel, got: %s", messages[0])
-	}
-}
-
-func TestCheckProviderUpgrade_VercelV1ToV4_LockNameHasScope(t *testing.T) {
-	// Before PR 6205, the lock entry Name is "@pulumiverse/vercel"
-	p := &Project{
-		lock: ProviderLock{
-			{Name: "@pulumiverse/vercel", Package: "@pulumiverse/vercel", Alias: "vercel", Version: "4.6.0"},
-		},
-	}
-
-	resources := []apitype.ResourceV3{
-		makeProviderResource("vercel", "1.11.0"),
-	}
-
-	messages := p.checkProviderUpgrade(resources)
-	if len(messages) != 1 {
-		t.Fatalf("expected 1 message, got %d", len(messages))
-	}
-	if !strings.Contains(messages[0], "Vercel") {
-		t.Fatalf("expected message to mention Vercel, got: %s", messages[0])
-	}
-}
-
-func TestCheckProviderUpgrade_VercelAlreadyOnV4(t *testing.T) {
-	p := &Project{
-		lock: ProviderLock{
-			{Name: "vercel", Package: "@pulumiverse/vercel", Alias: "vercel", Version: "4.6.0"},
-		},
-	}
-
-	resources := []apitype.ResourceV3{
-		makeProviderResource("vercel", "4.5.0"),
-	}
-
-	messages := p.checkProviderUpgrade(resources)
-	if len(messages) != 0 {
-		t.Fatalf("expected 0 messages, got %d", len(messages))
-	}
-}
-
-func TestCheckProviderUpgrade_NoVercelProvider(t *testing.T) {
-	p := &Project{
-		lock: ProviderLock{
-			{Name: "vercel", Package: "@pulumiverse/vercel", Alias: "vercel", Version: "4.6.0"},
-		},
-	}
-
-	resources := []apitype.ResourceV3{
-		makeProviderResource("aws", "6.5.0"),
-	}
-
-	messages := p.checkProviderUpgrade(resources)
-	if len(messages) != 0 {
-		t.Fatalf("expected 0 messages, got %d", len(messages))
-	}
-}
-
 func TestCheckProviderUpgrade_AWSV6ToV7(t *testing.T) {
 	p := &Project{
 		lock: ProviderLock{
@@ -113,21 +37,36 @@ func TestCheckProviderUpgrade_AWSV6ToV7(t *testing.T) {
 	}
 }
 
-func TestCheckProviderUpgrade_BothProviders(t *testing.T) {
+func TestCheckProviderUpgrade_AWSAlreadyOnV7(t *testing.T) {
 	p := &Project{
 		lock: ProviderLock{
 			{Name: "aws", Package: "@pulumi/aws", Alias: "aws", Version: "7.0.0"},
-			{Name: "vercel", Package: "@pulumiverse/vercel", Alias: "vercel", Version: "4.6.0"},
 		},
 	}
 
 	resources := []apitype.ResourceV3{
-		makeProviderResource("aws", "6.52.0"),
+		makeProviderResource("aws", "7.0.0"),
+	}
+
+	messages := p.checkProviderUpgrade(resources)
+	if len(messages) != 0 {
+		t.Fatalf("expected 0 messages, got %d", len(messages))
+	}
+}
+
+func TestCheckProviderUpgrade_NoMatchingProvider(t *testing.T) {
+	p := &Project{
+		lock: ProviderLock{
+			{Name: "aws", Package: "@pulumi/aws", Alias: "aws", Version: "7.0.0"},
+		},
+	}
+
+	resources := []apitype.ResourceV3{
 		makeProviderResource("vercel", "1.11.0"),
 	}
 
 	messages := p.checkProviderUpgrade(resources)
-	if len(messages) != 2 {
-		t.Fatalf("expected 2 messages, got %d", len(messages))
+	if len(messages) != 0 {
+		t.Fatalf("expected 0 messages, got %d", len(messages))
 	}
 }
