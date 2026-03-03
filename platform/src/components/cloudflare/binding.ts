@@ -19,7 +19,7 @@
 import { Input } from "../input";
 
 export interface AiBinding {
-  type: "aiBinding";
+  type: "aiBindings";
   properties: Record<string, never>;
 }
 

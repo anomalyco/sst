@@ -64,7 +64,7 @@ export class Ai extends Component implements Link.Linkable {
       properties: {},
       include: [
         binding({
-          type: "aiBinding",
+          type: "aiBindings",
           properties: {},
         }),
       ],

@@ -13,7 +13,7 @@ import (
 )
 
 var mapping = map[string]string{
-	"aiBinding":           "Ai",
+	"aiBindings":          "Ai",
 	"r2BucketBindings":    "R2Bucket",
 	"d1DatabaseBindings":  "D1Database",
 	"kvNamespaceBindings": "KVNamespace",
