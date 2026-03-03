@@ -2822,7 +2822,7 @@ async function routeSite(kvNamespace, metadata) {
       cacheKey = getHeader("accept");
     } else {
       var headers = ["rsc","next-router-prefetch","next-router-state-tree","next-url","x-prerender-revalidate"];
-      for (var j=0; j<headers.length; j++) cacheKey += getHeader(headers[j]);
+      for (var i=0; i<headers.length; i++) cacheKey += getHeader(headers[i]);
     }
     if (event.request.cookies["__prerender_bypass"]) {
       cacheKey += event.request.cookies["__prerender_bypass"]
