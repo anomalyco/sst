@@ -29,6 +29,12 @@ import { getContentType } from "../base/base-site";
 import { physicalName } from "../naming";
 import { existsAsync } from "../../util/fs";
 
+type WorkerEnvironmentTypedValue = {
+  type: "plain_text" | "secret_text";
+  text: string;
+};
+type WorkerEnvironmentValue = Input<string | WorkerEnvironmentTypedValue>;
+
 export interface WorkerArgs {
   /**
    * Path to the handler file for the worker.
@@ -148,18 +154,24 @@ export interface WorkerArgs {
    * Key-value pairs that are set as [Worker environment variables](https://developers.cloudflare.com/workers/configuration/environment-variables/).
    *
    * They can be accessed in your worker through `env.<key>`.
+   * String values are stored as `plain_text` bindings by default.
+   * To use a `secret_text` binding, pass an object with `type` and `text`.
    *
    * @example
    *
    * ```js
    * {
    *   environment: {
-   *     DEBUG: "true"
+   *     DEBUG: "true",
+   *     API_KEY: {
+   *       type: "secret_text",
+   *       text: process.env.API_KEY
+   *     }
    *   }
    * }
    * ```
    */
-  environment?: Input<Record<string, Input<string>>>;
+  environment?: Input<Record<string, WorkerEnvironmentValue>>;
   /**
    * Upload [static assets](https://developers.cloudflare.com/workers/static-assets/) as
    * part of the worker.
@@ -418,6 +430,37 @@ export class Worker extends Component implements Link.Linkable {
       });
     }
 
+    function buildEnvironmentBindings(
+      environment?: Record<string, WorkerEnvironmentValue>,
+    ) {
+      function isTypedEnvironmentValue(
+        value: WorkerEnvironmentValue,
+      ): value is WorkerEnvironmentTypedValue {
+        return (
+          !!value &&
+          typeof value === "object" &&
+          "type" in value &&
+          "text" in value &&
+          (value.type === "plain_text" || value.type === "secret_text")
+        );
+      }
+
+      return Object.entries(environment ?? {}).map(([name, value]) => {
+        if (isTypedEnvironmentValue(value)) {
+          return {
+            type: value.type,
+            name,
+            text: value.text,
+          };
+        }
+        return {
+          type: "plain_text",
+          name,
+          text: value,
+        };
+      });
+    }
+
     function createAwsCredentials() {
       return output(
         Link.getInclude<Permission>("aws.permission", args.link),
@@ -548,11 +591,7 @@ export class Worker extends Component implements Link.Linkable {
                       },
                     ]
                   : []),
-                ...Object.entries(environment ?? {}).map(([key, value]) => ({
-                  type: "plain_text",
-                  name: key,
-                  text: value,
-                })),
+                ...buildEnvironmentBindings(environment),
               ],
             ),
           },
