@@ -75,6 +75,19 @@ export interface DynamoArgs {
    *   }
    * }
    * ```
+   *
+   * Use an array to create a composite key with multiple attributes.
+   *
+   * ```js
+   * {
+   *   globalIndexes: {
+   *     RegionCategoryIndex: {
+   *       hashKey: ["region", "category"],
+   *       rangeKey: "createdAt"
+   *     }
+   *   }
+   * }
+   * ```
    */
   globalIndexes?: Input<
     Record<
@@ -82,12 +95,32 @@ export interface DynamoArgs {
       Input<{
         /**
          * The hash key field of the index. This field needs to be defined in the `fields`.
+         *
+         * You can also pass in an array of field names to create a composite key with
+         * up to 4 attributes using the [multi-attribute keys](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/GSI.DesignPattern.MultiAttributeKeys.html) pattern.
+         *
+         * @example
+         * ```js
+         * {
+         *   hashKey: ["region", "category"]
+         * }
+         * ```
          */
-        hashKey: Input<string>;
+        hashKey: Input<string | string[]>;
         /**
          * The range key field of the index. This field needs to be defined in the `fields`.
+         *
+         * You can also pass in an array of field names to create a composite key with
+         * up to 4 attributes using the [multi-attribute keys](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/GSI.DesignPattern.MultiAttributeKeys.html) pattern.
+         *
+         * @example
+         * ```js
+         * {
+         *   rangeKey: ["createdAt", "status"]
+         * }
+         * ```
          */
-        rangeKey?: Input<string>;
+        rangeKey?: Input<string | string[]>;
         /**
          * The fields to project into the index.
          * @default `"all"`
@@ -346,6 +379,28 @@ interface DynamoRef {
  * });
  * ```
  *
+ * #### Add a composite key global index
+ *
+ * Use multi-attribute composite keys in a global index. This is useful when you want
+ * to combine multiple attributes into a single partition or sort key.
+ *
+ * ```ts {8-12} title="sst.config.ts"
+ * new sst.aws.Dynamo("MyTable", {
+ *   fields: {
+ *     region: "string",
+ *     category: "string",
+ *     createdAt: "number",
+ *   },
+ *   primaryIndex: { hashKey: "region", rangeKey: "createdAt" },
+ *   globalIndexes: {
+ *     RegionCategoryIndex: {
+ *       hashKey: ["region", "category"],
+ *       rangeKey: "createdAt"
+ *     }
+ *   }
+ * });
+ * ```
+ *
  * #### Add a local index
  *
  * Optionally add a local index to the table.
@@ -416,7 +471,6 @@ export class Dynamo extends Component implements Link.Linkable {
   private constructorName: string;
   private constructorOpts: ComponentResourceOptions;
   private table: Output<dynamodb.Table>;
-  private isStreamEnabled: boolean = false;
 
   constructor(
     name: string,
@@ -438,7 +492,6 @@ export class Dynamo extends Component implements Link.Linkable {
     const table = createTable();
 
     this.table = table;
-    this.isStreamEnabled = Boolean(args.stream);
 
     function createTable() {
       return all([
@@ -486,8 +539,26 @@ export class Dynamo extends Component implements Link.Linkable {
                 globalSecondaryIndexes: Object.entries(globalIndexes ?? {}).map(
                   ([name, index]) => ({
                     name,
-                    hashKey: index.hashKey,
-                    rangeKey: index.rangeKey,
+                    ...(Array.isArray(index.hashKey) ||
+                    Array.isArray(index.rangeKey)
+                      ? {
+                          keySchemas: [
+                            ...[index.hashKey].flat().map((k) => ({
+                              attributeName: k,
+                              keyType: "HASH",
+                            })),
+                            ...(index.rangeKey
+                              ? [index.rangeKey].flat().map((k) => ({
+                                  attributeName: k,
+                                  keyType: "RANGE",
+                                }))
+                              : []),
+                          ],
+                        }
+                      : {
+                          hashKey: index.hashKey,
+                          rangeKey: index.rangeKey,
+                        }),
                     ...(index.projection === "keys-only"
                       ? { projectionType: "KEYS_ONLY" }
                       : Array.isArray(index.projection)
@@ -615,14 +686,17 @@ export class Dynamo extends Component implements Link.Linkable {
   public subscribe(nameOrSubscriber: any, subscriberOrArgs?: any, args?: any) {
     const sourceName = this.constructorName;
 
-    // Validate stream is enabled
-    if (!this.isStreamEnabled)
-      throw new Error(
-        `Cannot subscribe to "${sourceName}" because stream is not enabled.`,
-      );
+    return all([
+      this.nodes.table.streamEnabled,
+      isFunctionSubscriber(subscriberOrArgs),
+    ]).apply(([streamEnabled, isFunctionSubscriber]) => {
+      if (!streamEnabled) {
+        throw new Error(
+          `Cannot subscribe to "${sourceName}" because stream is not enabled.`,
+        );
+      }
 
-    return isFunctionSubscriber(subscriberOrArgs).apply((v) =>
-      v
+      return isFunctionSubscriber
         ? Dynamo._subscribe(
             nameOrSubscriber, // name
             this.constructorName,
@@ -637,8 +711,8 @@ export class Dynamo extends Component implements Link.Linkable {
             nameOrSubscriber, // subscriber
             subscriberOrArgs, // args
             { provider: this.constructorOpts.provider },
-          ),
-    );
+          );
+    });
   }
 
   /**

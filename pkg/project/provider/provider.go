@@ -192,7 +192,7 @@ func PutSecrets(backend Home, app, stage string, data map[string]string) error {
 func PushPartialState(backend Home, updateID, app, stage string, data []byte) error {
 	slog.Info("pushing partial state", "updateID", updateID)
 	err := json.Unmarshal(data, &map[string]interface{}{})
-	if err != nil {
+	if err != nil || len(data) == 0 {
 		return fmt.Errorf("something has corrupted the state file - refusing to upload: %w", err)
 	}
 	return backend.putData("app", app, stage, bytes.NewReader(data))

@@ -5,7 +5,6 @@ export default $config({
       name: "scrap",
       removal: input?.stage === "production" ? "retain" : "remove",
       home: "aws",
-      version: "3.10.13",
       providers: { command: "1.0.2" },
     };
   },

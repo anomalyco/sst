@@ -270,6 +270,22 @@ export interface App {
    * `sst dev`, it'll still get removed. To avoid this, check out the `removal` prop.
    */
   protect?: boolean;
+
+  /**
+   * Configure which directories should be watched for changes when running `sst dev`.
+   * By default, all directories are watched (except node_modules and hidden directories).
+   *
+   * @example
+   * ```ts
+   * {
+   *   watch: ["packages/www", "packages/api"]
+   * }
+   * ```
+   *
+   * This will only watch the `packages/www` and `packages/api` directories.
+   * The paths are relative to the project root.
+   */
+  watch?: string[];
 }
 
 export interface AppInput {

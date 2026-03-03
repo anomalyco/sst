@@ -9,9 +9,11 @@ export default $config({
   },
   async run() {
     const ret: Record<string, any> = {};
+    const secret = new sst.Secret("MySecret", "xyz123");
     const bucket = createBucket();
     const worker = createWorker();
     createAstro();
+    createSolidStart();
     createStatic();
     return ret;
 
@@ -35,6 +37,16 @@ export default $config({
       new sst.cloudflare.x.Astro("MyAstro", {
         path: "../sites/astro5",
         link: [bucket],
+        environment: {
+          FOO: "hello",
+        },
+      });
+    }
+
+    function createSolidStart() {
+      new sst.cloudflare.x.SolidStart("MySolidStart", {
+        path: "sites/solid-start",
+        link: [secret, bucket],
         environment: {
           FOO: "hello",
         },

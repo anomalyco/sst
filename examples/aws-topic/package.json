@@ -1,5 +1,5 @@
 {
-  "name": "queue",
+  "name": "aws-topic",
   "version": "1.0.0",
   "description": "",
   "type": "module",
@@ -13,7 +13,8 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "sst": "latest"
+    "@types/aws-lambda": "^8.10.149",
+    "sst": "^4"
   },
   "dependencies": {
     "@aws-sdk/client-sns": "^3.515.0"

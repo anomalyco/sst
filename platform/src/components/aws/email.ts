@@ -187,7 +187,7 @@ interface EmailRef {
  * :::
  *
  * By default, new AWS SES accounts are in the _sandbox mode_ and can only send
- * email to verified email addresses and domains. It also limits your account has to a sending
+ * email to verified email addresses and domains. It also limits your account to a sending
  * quota. To remove these restrictions, you need to [request production access](https://docs.aws.amazon.com/ses/latest/dg/request-production-access.html).
  *
  * #### Sending from an email address

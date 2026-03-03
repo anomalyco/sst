@@ -2,6 +2,8 @@ package project
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 
 	"github.com/pulumi/pulumi/sdk/v3/go/common/apitype"
@@ -16,11 +18,13 @@ type BuildFailedEvent struct {
 type StackInput struct {
 	Command    string
 	Target     []string
+	Exclude    []string
 	ServerPort int
 	Dev        bool
 	Verbose    bool
 	Continue   bool
 	SkipHash   string
+	PolicyPath string
 }
 
 type ConcurrentUpdateEvent struct{}
@@ -33,6 +37,12 @@ type BuildSuccessEvent struct {
 }
 
 type SkipEvent struct {
+}
+
+type PolicyAdvisoryEvent struct {
+	Policy  string
+	Message string
+	URN     string
 }
 
 type Dev struct {
@@ -145,6 +155,23 @@ var ErrStackRunFailed = fmt.Errorf("stack run had errors")
 var ErrStageNotFound = fmt.Errorf("stage not found")
 var ErrPassphraseInvalid = fmt.Errorf("passphrase invalid")
 var ErrProtectedStage = fmt.Errorf("cannot remove protected stage")
+var ErrPolicyViolation = fmt.Errorf("policy violations detected")
+var ErrPolicyConfigError = fmt.Errorf("policy configuration error")
+
+func (p *Project) ResolvePolicyPackPath(policyPath string) (string, error) {
+	var resolvedPath string
+	if filepath.IsAbs(policyPath) {
+		resolvedPath = policyPath
+	} else {
+		resolvedPath = filepath.Join(p.PathRoot(), policyPath)
+	}
+
+	if _, err := os.Stat(resolvedPath); err != nil {
+		return "", fmt.Errorf("Policy pack not found in path: %v", resolvedPath)
+	}
+
+	return resolvedPath, nil
+}
 
 func (p *Project) Lock(command string) (*provider.Update, error) {
 	return provider.Lock(p.home, p.Version(), command, p.app.Name, p.app.Stage)

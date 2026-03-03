@@ -4,6 +4,7 @@ import { FunctionArgs, FunctionArn } from "./function";
 import { Input } from "../input.js";
 import { cloudwatch, iam, lambda } from "@pulumi/aws";
 import { functionBuilder, FunctionBuilder } from "./helpers/function-builder";
+import { splitQualifiedFunctionArn } from "./helpers/arn";
 import { Task } from "./task";
 import { VisibleError } from "../error";
 
@@ -291,7 +292,8 @@ export class Cron extends Component {
         `${name}Permission`,
         {
           action: "lambda:InvokeFunction",
-          function: fn.arn,
+          function: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).unqualifiedArn),
+          qualifier: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).qualifier!),
           principal: "events.amazonaws.com",
           sourceArn: rule.arn,
         },

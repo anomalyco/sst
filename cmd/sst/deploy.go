@@ -29,6 +29,12 @@ var CmdDeploy = &cli.Command{
 			"sst deploy --target MyComponent",
 			"```",
 			"",
+			"Alternatively, exclude a specific component from the deploy.",
+			"",
+			"```bash frame=\"none\"",
+			"sst deploy --exclude MyComponent",
+			"```",
+			"",
 			"All the resources are deployed as concurrently as possible, based on their dependencies.",
 			"For resources like your container images, sites, and functions; it first builds them and then deploys the generated assets.",
 			"",
@@ -90,6 +96,14 @@ var CmdDeploy = &cli.Command{
 			},
 		},
 		{
+			Name: "exclude",
+			Type: "string",
+			Description: cli.Description{
+				Short: "Exclude a component",
+				Long:  "Exclude the specified component from the operation.",
+			},
+		},
+		{
 			Name: "continue",
 			Type: "bool",
 			Description: cli.Description{
@@ -105,12 +119,26 @@ var CmdDeploy = &cli.Command{
 				Long:  "Deploy resources like `sst dev` would.",
 			},
 		},
+		{
+			Name: "policy",
+			Type: "string",
+			Description: cli.Description{
+				Short: "Path to policy pack",
+				Long:  "Run policy pack validation against the preview changes.",
+			},
+		},
 	},
 	Examples: []cli.Example{
 		{
 			Content: "sst deploy --stage production",
 			Description: cli.Description{
 				Short: "Deploy to production",
+			},
+		},
+		{
+			Content: "sst deploy --stage production --policy ./policies/production",
+			Description: cli.Description{
+				Short: "Deploy to production with policy validation",
 			},
 		},
 	},
@@ -124,6 +152,11 @@ var CmdDeploy = &cli.Command{
 		target := []string{}
 		if c.String("target") != "" {
 			target = strings.Split(c.String("target"), ",")
+		}
+
+		exclude := []string{}
+		if c.String("exclude") != "" {
+			exclude = strings.Split(c.String("exclude"), ",")
 		}
 
 		var wg errgroup.Group
@@ -152,10 +185,12 @@ var CmdDeploy = &cli.Command{
 		err = p.Run(c.Context, &project.StackInput{
 			Command:    "deploy",
 			Target:     target,
+			Exclude:    exclude,
 			Dev:        c.Bool("dev"),
 			ServerPort: s.Port,
 			Verbose:    c.Bool("verbose"),
 			Continue:   c.Bool("continue"),
+			PolicyPath: c.String("policy"),
 		})
 		if err != nil {
 			return err

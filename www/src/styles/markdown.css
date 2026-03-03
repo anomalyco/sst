@@ -28,7 +28,7 @@
   + hr:not(:where(.not-content *)),
 .sl-markdown-content hr:not(:where(.not-content *)) + :not(a, strong, em, del, span, input, code, :where(.not-content *))
 {
-  margin-top: 3.5rem;
+  margin-top: calc(var(--paragraph-spacing) + 2rem);
 }
 
 /**

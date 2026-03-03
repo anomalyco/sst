@@ -3,6 +3,7 @@ package resource
 import (
 	"bytes"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -118,6 +119,36 @@ func (r *BucketFiles) upload(client *s3.Client, bucketName string, files []Bucke
 		oldFilesMap[f.Key] = f
 	}
 
+	// Split files into HTML and non-HTML to upload non-HTML first.
+	// This avoids a race condition where CloudFront serves new HTML
+	// referencing assets that haven't been uploaded yet.
+	var htmlFiles, nonHtmlFiles []BucketFile
+	for _, file := range files {
+		oldFile, exists := oldFilesMap[file.Key]
+		if exists && oldFile.Hash != nil && *oldFile.Hash == *file.Hash &&
+			oldFile.CacheControl == file.CacheControl &&
+			oldFile.ContentType == file.ContentType {
+			continue
+		}
+		if strings.HasSuffix(file.Key, ".html") {
+			htmlFiles = append(htmlFiles, file)
+		} else {
+			nonHtmlFiles = append(nonHtmlFiles, file)
+		}
+	}
+
+	if err := r.uploadFiles(client, bucketName, nonHtmlFiles); err != nil {
+		return err
+	}
+
+	return r.uploadFiles(client, bucketName, htmlFiles)
+}
+
+func (r *BucketFiles) uploadFiles(client *s3.Client, bucketName string, files []BucketFile) error {
+	if len(files) == 0 {
+		return nil
+	}
+
 	// Create channels for work distribution and error collection
 	filesChan := make(chan BucketFile)
 	errChan := make(chan error, len(files))
@@ -131,7 +162,6 @@ func (r *BucketFiles) upload(client *s3.Client, bucketName string, files []Bucke
 			defer wg.Done()
 			// Each worker processes files from the channel
 			for file := range filesChan {
-				// write start timestamp with nanoseconds to file
 				content, err := os.ReadFile(file.Source)
 				if err != nil {
 					errChan <- err
@@ -152,15 +182,9 @@ func (r *BucketFiles) upload(client *s3.Client, bucketName string, files []Bucke
 		}()
 	}
 
-	// Send files that need uploading to the channel
+	// Send files to the channel
 	go func() {
 		for _, file := range files {
-			oldFile, exists := oldFilesMap[file.Key]
-			if exists && oldFile.Hash != nil && *oldFile.Hash == *file.Hash &&
-				oldFile.CacheControl == file.CacheControl &&
-				oldFile.ContentType == file.ContentType {
-				continue
-			}
 			filesChan <- file
 		}
 		close(filesChan)
@@ -200,4 +224,3 @@ func (r *BucketFiles) purge(client *s3.Client, bucketName string, files []Bucket
 
 	return nil
 }
-

@@ -35,14 +35,21 @@ export default $config({
       ],
     });
 
-    const app = new sst.aws.Function("MyApp", {
-      handler: "publisher.handler",
+    const creator = new sst.aws.Function("MyCreator", {
+      handler: "creator.handler",
+      link: [table],
+      url: true,
+    });
+
+    const reader = new sst.aws.Function("MyReader", {
+      handler: "reader.handler",
       link: [table],
       url: true,
     });
 
     return {
-      app: app.url,
+      creator: creator.url,
+      reader: reader.url,
       table: table.name,
     };
   },

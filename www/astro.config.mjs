@@ -63,6 +63,7 @@ const sidebar = [
       { label: "AWS Accounts", slug: "docs/aws-accounts" },
       { label: "IAM Credentials", slug: "docs/iam-credentials" },
       { label: "Migrate From v2", slug: "docs/migrate-from-v2" },
+      { label: "Migrate From v3", slug: "docs/migrate-from-v3" },
       { label: "Custom Domains", slug: "docs/custom-domains" },
       { label: "Import Resources", slug: "docs/import-resources" },
       { label: "Set up a Monorepo", slug: "docs/set-up-a-monorepo" },
@@ -70,6 +71,7 @@ const sidebar = [
       { label: "Share Across Stages", slug: "docs/share-across-stages" },
       { label: "Reference Resources", slug: "docs/reference-resources" },
       { label: "Environment Variables", slug: "docs/environment-variables" },
+      { label: "Policy Packs", slug: "docs/policy-packs" },
     ],
   },
   {
@@ -111,7 +113,6 @@ const sidebar = [
           "docs/component/aws/static-site",
           "docs/component/aws/solid-start",
           "docs/component/aws/open-search",
-          "docs/component/aws/opencontrol",
           "docs/component/aws/tan-stack-start",
           "docs/component/aws/kinesis-stream",
           "docs/component/aws/apigatewayv1",
@@ -196,6 +197,7 @@ const sidebar = [
             label: "Deprecated",
             collapsed: true,
             items: [
+              { label: "OpenControl", slug: "docs/component/aws/opencontrol" },
               { label: "Vpc.v1", slug: "docs/component/aws/vpc-v1" },
               { label: "Redis.v1", slug: "docs/component/aws/redis-v1" },
               { label: "Service.v1", slug: "docs/component/aws/service-v1" },

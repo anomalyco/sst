@@ -144,9 +144,9 @@ This problem is a deal-breaker for users that are deploying to multiple environm
 
 > You'll need to deploy your app in two steps, this makes it a deal-breaker.
 
-Let's assume you are able to put up with this at your company. You'll run into a new problem. Let's say your Next.js site depends on the value of a resource that's set as a part of the deploy process. Something like a [Config Parameter](https://docs.sst.dev/config). SST needs to pull this value before the deploy, to build your Next.js site. But since this hasn't been re-deployed yet, it can only fetch its previously deployed value. This can be really hard to debug because it's not immediately apparent what's going on.
+Let's assume you are able to put up with this at your company. You'll run into a new problem. Let's say your Next.js site depends on the value of a resource that's set as a part of the deploy process. Something like a [Config Parameter](https://v2.sst.dev/config). SST needs to pull this value before the deploy, to build your Next.js site. But since this hasn't been re-deployed yet, it can only fetch its previously deployed value. This can be really hard to debug because it's not immediately apparent what's going on.
 
-SST exists today because of two main reasons; [Live Lambda](https://docs.sst.dev/live-lambda-development) & [Resource Binding](https://docs.sst.dev/resource-binding). And due to the CDK & CFN deployment model we cannot do Resource Binding well.
+SST exists today because of two main reasons; [Live Lambda](https://v2.sst.dev/live-lambda-development) & [Resource Binding](https://v2.sst.dev/resource-binding). And due to the CDK & CFN deployment model we cannot do Resource Binding well.
 
 #### 2. Cyclical Dependencies
 
