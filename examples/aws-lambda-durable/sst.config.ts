@@ -15,18 +15,18 @@ export default $config({
   },
   async run() {
     const durableFunction = new sst.aws.Function("Durable", {
-      handler: "index.handler",
+      handler: "src/index.handler",
       durable: true,
     });
 
     new sst.aws.Function("Resolver", {
-      handler: "resolver.handler",
+      handler: "src/resolver.handler",
       url: true,
       link: [durableFunction],
     });
 
     new sst.aws.Function("Invoker", {
-      handler: "invoker.handler",
+      handler: "src/invoker.handler",
       url: true,
       link: [durableFunction],
     });
