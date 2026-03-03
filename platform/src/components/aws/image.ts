@@ -291,14 +291,11 @@ const limiter = new Semaphore(
  * Or override it entirely by passing in your own function `bundle`.
  */
 export class Image extends Component implements Link.Linkable {
-  private constructorName: string;
-  private image: Output<PulumiDockerImage>;
   private _uri: Output<string>;
 
   constructor(name: string, args: ImageArgs, opts?: any) {
     const componentName = `${name}Image`
     super(__pulumiType, componentName, args, opts);
-    this.constructorName = componentName;
 
     const parent = this;
     const region = getRegionOutput({}, opts).name;
@@ -306,7 +303,7 @@ export class Image extends Component implements Link.Linkable {
     // Empty uri should fail deployment if not set
     this._uri = interpolate``
 
-    this.image = all([args, bootstrapData]).apply(
+    all([args, bootstrapData]).apply(
       async ([args, bootstrapData]) => {
         // Wait for the all args values to be resolved before acquiring the semaphore
         await limiter.acquire(componentName);
@@ -405,7 +402,6 @@ export class Image extends Component implements Link.Linkable {
   public getSSTLink() {
     return {
       properties: {
-        name: this.constructorName,
         uri: this.uri,
       },
     };
