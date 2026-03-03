@@ -15,6 +15,9 @@ import path from "path";
 // Extracted from `@pulumi/docker-build` `Platform` - unhandled by doc generator.
 export type Platform = "darwin/386" | "darwin/amd64" | "darwin/arm" | "darwin/arm64" | "dragonfly/amd64" | "freebsd/386" | "freebsd/amd64" | "freebsd/arm" | "linux/386" | "linux/amd64" | "linux/arm" | "linux/arm64" | "linux/mips64" | "linux/mips64le" | "linux/ppc64le" | "linux/riscv64" | "linux/s390x" | "netbsd/386" | "netbsd/amd64" | "netbsd/arm" | "openbsd/386" | "openbsd/amd64" | "openbsd/arm" | "plan9/386" | "plan9/amd64" | "solaris/amd64" | "windows/386" | "windows/amd64"
 
+// Extracted from `@pulumi/docker-build` `CompressionType` - unhandled by doc generator.
+export type CompressionType = "zstd" | "gzip" | "estargz"
+
 export interface ImageArgs {
   /**
    * Key-value pairs of [build args](https://docs.docker.com/build/guide/build-args/) to pass to the Docker build command.
@@ -92,6 +95,24 @@ export interface ImageArgs {
    */
   target?: Input<string>;
   /**
+   * Specify compression type and level.
+   */
+  compression?: {
+    /**
+     * Specify compression algorithm used:
+     * - `zstd` - smallest compression.
+     * - `gzip` - best compatibility.
+     * - `estargz` - fastest pull.
+     * 
+     * @default `"zstd"`
+     */
+    type: Input<CompressionType>
+    /**
+     * Compression level. Different limits for each compression algorithm.
+     */
+    level: Input<number>
+  }
+  /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
    */
@@ -132,6 +153,35 @@ const limiter = new Semaphore(
  *   dockerfile: 'Dockerfile.function'
  * });
  * ```
+ * 
+ * @example
+ * #### Smaller compression example
+ * [Minimal example](#minimal-example) setup, optimised for smaller image.
+ * This setup reduces both storage and pull speed.
+ * 
+ * ```ts {2-5} title="sst.config.ts"
+ * new sst.aws.Image("MyImage", {
+ *   compression: {
+ *     type: 'zstd',
+ *     level: 9
+ *   }
+ * });
+ * ```
+ * 
+ * @example
+ * #### Faster pull speed example
+ * [Minimal example](#minimal-example) setup, optimised for faster pulls.
+ * This setup reduces pull speed by indexing image in chunks.
+ * 
+ * For the fastest possible pull speed, consider `"zstd"` with [SOCI indexing](https://github.com/awslabs/soci-snapshotter) - which can be [automated on AWS](https://github.com/awslabs/cfn-ecr-aws-soci-index-builder).
+ *
+ * ```ts {2-4} title="sst.config.ts"
+ * new sst.aws.Image("MyImage", {
+ *   compression: {
+ *     type: 'estargz',
+ *   }
+ * });
+ * ```
  */
 export class Image extends Component implements Link.Linkable {
   private _uri: Output<string>;
@@ -169,6 +219,11 @@ export class Image extends Component implements Link.Linkable {
             dockerIgnorePath,
             [...lines, "", "# sst", ".sst"].join("\n"),
           );
+        }
+
+        function normalizeCompressionType() {
+          if (!args.compression?.type) return 'zstd'
+          return args.compression.type
         }
 
         const image = new PulumiDockerImage(
@@ -213,6 +268,12 @@ export class Image extends Component implements Link.Linkable {
                     imageManifest: true,
                     ociMediaTypes: true,
                     mode: "max" as const,
+                    compression: normalizeCompressionType(),
+                    // Normalise compression level
+                    ...(args.compression?.level
+                      ? { compressionLevel: args.compression.level }
+                      : {}
+                    )
                   },
                 },
               ],
