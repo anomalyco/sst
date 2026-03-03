@@ -131,7 +131,13 @@ export type FunctionPermissionArgs = {
 };
 
 export type DurableFunctionArgs = {
+  /**
+   * Maximum execution time for the durable function
+   */
   executionTimeout?: Input<Duration>;
+  /**
+   * Number of days to retain the function's execution state.
+   */
   retentionPeriod?: Input<keyof typeof DURABLE_CHECKPOINT_RETENTION>;
 };
 
@@ -1486,6 +1492,9 @@ export interface FunctionArgs {
     eventInvokeConfig?: Transform<lambda.FunctionEventInvokeConfigArgs>;
   };
 
+  /**
+   * Configure the function as a [durable function](https://docs.aws.amazon.com/lambda/latest/dg/durable-functions.html).
+   */
   durable?: Input<boolean | DurableFunctionArgs>;
   /**
    * @internal
@@ -2898,7 +2907,7 @@ export class Function extends Component implements Link.Linkable {
   }
 
   /**
-   * Whether the Lambda function is a Durable Function.
+   * Whether the Lambda function is a [Durable Function](https://docs.aws.amazon.com/lambda/latest/dg/durable-functions.html).
    */
   public get isDurable() {
     return this.function.durableConfig !== undefined;
