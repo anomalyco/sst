@@ -22,6 +22,10 @@ func (p *windowsPlatform) start(routes ...string) error {
 	return nil
 }
 
+func (p *windowsPlatform) isRunning() bool {
+	return false
+}
+
 // Override Install for Windows
 func (p *windowsPlatform) install() error {
 	// Windows-specific installation

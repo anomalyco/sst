@@ -1,0 +1,8 @@
+{
+  "name": "aws-apigv1-stream",
+  "version": "1.0.0",
+  "dependencies": {
+    "hono": "^4",
+    "sst": "^4"
+  }
+}

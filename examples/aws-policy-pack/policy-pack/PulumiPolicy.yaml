@@ -1,0 +1,3 @@
+description: A minimal Policy Pack for AWS using TypeScript.
+runtime: nodejs
+main: dist/index.js

@@ -1,4 +1,4 @@
-import { output } from "@pulumi/pulumi";
+import { Output, output } from "@pulumi/pulumi";
 import { Link } from "./link";
 import { Component } from "./component";
 import { Input } from "./input";
@@ -171,6 +171,13 @@ export interface Definition<
  * ```
  *
  * This overrides the built-in link and lets you create your own.
+ *
+ * #### Exposing links as env vars
+ *
+ * If you want to pass link env vars to compute not managed by SST, like an ECS task
+ * definition or a Kubernetes pod, use `Linkable.env()`. It returns an `Output` of
+ * `SST_RESOURCE_*` env vars that you can pass to any provider.
+ * [Check out an example](/docs/examples/#aws-linkable-env).
  */
 export class Linkable<T extends Record<string, any>>
   extends Component
@@ -279,6 +286,31 @@ export class Linkable<T extends Record<string, any>>
     cls.prototype.getSSTLink = function () {
       return cb(this);
     };
+  }
+
+  /**
+   * Convert an array of resources into `SST_RESOURCE_*` environment variables so
+   * that `Resource.MyResource` works at runtime inside containers or functions
+   * deployed through an external provider.
+   *
+   * @param links Array of linkable resources.
+   *
+   * @example
+   *
+   * If the provider accepts a flat `Record<string, string>`, you can pass the
+   * output directly.
+   *
+   * ```ts title="sst.config.ts"
+   * const bucket = new sst.aws.Bucket("MyBucket");
+   *
+   * new vercel.Project("BadDecision", {
+   *   name: "bad-decision",
+   *   environment: sst.Linkable.env([bucket]),
+   * });
+   * ```
+   */
+  public static env(links: Input<any[]>): Output<Record<string, string>> {
+    return Link.propertiesToEnv(Link.getProperties(links));
   }
 }
 

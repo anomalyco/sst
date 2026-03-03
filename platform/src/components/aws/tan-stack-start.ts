@@ -120,8 +120,8 @@ export interface TanStackStartArgs extends SsrSiteArgs {
   /**
    * Set in your TanStack Start app. These are made available:
    *
-   * 1. In `vinxi build`, they are loaded into `process.env`.
-   * 2. Locally while running `sst dev vinxi dev`.
+   * 1. In `vite build`, they are loaded into `process.env`.
+   * 2. Locally while running `sst dev`.
    *
    * :::tip
    * You can also `link` resources to your TanStack Start app and access them in a type-safe way with the [SDK](/docs/reference/sdk/). We recommend linking since it's more secure.
@@ -218,8 +218,24 @@ export interface TanStackStartArgs extends SsrSiteArgs {
    *   }
    * }
    * ```
+   * 
+   * Finally, to serve your TanStack Start app **from a combined pattern** like
+   * `dev.example.com/docs`, you'll need to configure the domain in your `Router` to
+   * match the subdomain, and set the `domain` and the `path`.
+   *
+   * ```ts {4,5}
+   * {
+   *   router: {
+   *     instance: router,
+   *     domain: "dev.example.com",
+   *     path: "/docs"
+   *   }
+   * }
+   * ```
+   *
+   * Also, make sure to set this as the `base` in your `vite.config.ts`, and in your Nitro plugin config.
    */
-  router?: Prettify<Omit<RouterRouteArgs, "path">>;
+  router?: SsrSiteArgs["router"];
   /**
    * The command used internally to build your TanStack Start app.
    *
@@ -276,7 +292,7 @@ export interface TanStackStartArgs extends SsrSiteArgs {
  * The `TanStackStart` component lets you deploy a [TanStack Start](https://tanstack.com/start/latest) app to AWS.
  *
  * :::note
- * You need to make sure the `vite.config.ts` file is configured to use Nitro for deployments on aws-lambda by adding the `nitro` property and setting the `preset` to `aws-lambda`.
+ * You need to make sure the `vite.config.ts` is configured with the `aws-lambda` nitro preset.
  * :::
  *
  * @example
@@ -365,8 +381,49 @@ export class TanStackStart extends SsrSite {
       );
 
       if (!["aws-lambda"].includes(nitro.preset)) {
+        const projectRoot = path.dirname(outputPath);
+        const isViteProject =
+          fs.existsSync(path.join(projectRoot, "vite.config.ts")) ||
+          fs.existsSync(path.join(projectRoot, "vite.config.js"));
+
+        if (isViteProject) {
+          throw new VisibleError(
+            [
+              "No AWS-Lambda preset detected for TanStack Start.",
+              "",
+              "Add the nitro preset to your `vite.config.ts`:",
+              "  // vite.config.ts",
+              '  import { nitro } from "nitro/vite"',
+              "",
+              "  export default defineConfig({",
+              "    plugins: [nitro(), tanstackStart(), ...],",
+              "    nitro: {",
+              '      preset: "aws-lambda",',
+              "      awsLambda: { streaming: true }, // optional",
+              "    },",
+              "  });",
+              "",
+              `Detected preset: "${nitro.preset ?? "undefined"}"`,
+            ].join("\n"),
+          );
+        }
+
+        // Vinxi project
         throw new VisibleError(
-          `TanStackStart's app.config.ts must be configured to use the "aws-lambda" preset. It is currently set to "${nitro.preset}".`,
+          [
+            "No AWS-Lambda preset detected for TanStack Start.",
+            "",
+            "Update your `app.config.ts`:",
+            "  // app.config.ts",
+            "  export default defineConfig({",
+            "    server: {",
+            '      preset: "aws-lambda",',
+            "      awsLambda: { streaming: true }, // optional",
+            "    },",
+            "  });",
+            "",
+            `Detected preset: "${nitro.preset ?? "undefined"}"`,
+          ].join("\n"),
         );
       }
 
@@ -375,14 +432,14 @@ export class TanStackStart extends SsrSite {
       // If basepath is configured, nitro.mjs will have a line that looks like this:
       // return createRouter$2({ routeTree: Nr, defaultPreload: "intent", defaultErrorComponent: ce, defaultNotFoundComponent: () => jsx(de, {}), scrollRestoration: true, basepath: "/tan" });
       let basepath;
-      // TanStack Start currently doesn't support basepaths.
-      //try {
-      //  const serverNitroChunk = fs.readFileSync(
-      //    path.join(serverOutputPath, "chunks", "nitro", "nitro.mjs"),
-      //    "utf-8",
-      //  );
-      //  basepath = serverNitroChunk.match(/basepath: "(.*)"/)?.[1];
-      //} catch (e) {}
+      
+      try {
+        const serverNitroChunk = fs.readFileSync(
+          path.join(serverOutputPath, "chunks", "_", "server.mjs"),
+          "utf-8",
+        );
+        basepath = serverNitroChunk.match(/ROUTER_BASEPATH = "(.*)"/)?.[1];
+      } catch (e) {}
 
       // Remove the .output/public/_server directory from the assets
       // b/c all `_server` requests should go to the server function. If this folder is

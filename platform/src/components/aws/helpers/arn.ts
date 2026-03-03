@@ -11,6 +11,20 @@ export function parseFunctionArn(arn: string) {
   return { functionName };
 }
 
+export function splitQualifiedFunctionArn(arn: string) {
+  // Unqualified: arn:aws:lambda:region:account-id:function:function-name (7 parts)
+  // Qualified:   arn:aws:lambda:region:account-id:function:function-name:alias-or-version (8 parts)
+  const parts = arn.split(":");
+  if (parts.length <= 7) {
+    return { unqualifiedArn: arn, qualifier: undefined };
+  }
+  return {
+    unqualifiedArn: parts.slice(0, 7).join(":"),
+    qualifier: parts[7],
+  };
+}
+
+
 export function parseBucketArn(arn: string) {
   // arn:aws:s3:::bucket-name
   const bucketName = arn.split(":")[5];
@@ -92,6 +106,30 @@ export function parseRoleArn(arn: string) {
   if (!arn.startsWith("arn:") || !roleName)
     throw new VisibleError(`The provided ARN "${arn}" is not an IAM role ARN.`);
   return { roleName };
+}
+
+export function parseLambdaEdgeArn(arn: string) {
+  // First validate it's a Lambda function ARN
+  const { functionName } = parseFunctionArn(arn);
+
+  // arn:aws:lambda:region:account-id:function:function-name:version
+  const parts = arn.split(":");
+  const region = parts[3];
+  const version = parts[7];
+
+  if (region !== "us-east-1") {
+    throw new VisibleError(
+      `Lambda@Edge functions must be deployed in us-east-1 region. Got region: ${region}`,
+    );
+  }
+
+  if (!version || version === "$LATEST") {
+    throw new VisibleError(
+      `Lambda@Edge requires a qualified ARN (with version). Got: ${arn}`,
+    );
+  }
+
+  return { functionName, region, version };
 }
 
 export function parseElasticSearch(arn: string) {

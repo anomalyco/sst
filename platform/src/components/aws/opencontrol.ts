@@ -45,15 +45,18 @@ export interface OpenControlArgs {
    */
   server: Input<string | FunctionArgs>;
 }
-
 /**
+ * The `OpenControl` component has been deprecated. It should not be used for new projects.
+ *
+ * :::caution
+ * This component has been deprecated.
+ * :::
+ *
  * The `OpenControl` component lets you deploy your
  * [OpenControl](https://opencontrol.ai) server to
  * [AWS Lambda](https://aws.amazon.com/lambda/).
  *
- * :::note
- * OpenControl is currently in beta.
- * :::
+ * @deprecated Use OpenControl outside of SST instead.
  *
  * @example
  *

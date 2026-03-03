@@ -101,6 +101,25 @@ interface BucketCorsArgs {
 
 interface BucketLifecycleArgs {
   /**
+   * The unique identifier for the lifecycle rule.
+   *
+   * This ID must be unique across all lifecycle rules in the bucket and cannot exceed 255 characters.
+   * Whitespace-only values are not allowed.
+   *
+   * If not provided, SST will generate a unique ID based on the bucket component name and rule index.
+   *
+   * @example
+   * Use stable IDs to ensure rule identity is preserved when reordering rules.
+   * ```js
+   * {
+   *   id: "expire-tmp-files",
+   *   prefix: "/tmp",
+   *   expiresIn: "7 days"
+   * }
+   * ```
+   */
+  id?: Input<string>;
+  /**
    * An S3 object key prefix that the lifecycle rule applies to.
    * @example
    * Applies to all the objects in the `images/` folder.
@@ -443,6 +462,24 @@ export interface BucketArgs {
    *   ]
    * }
    * ```
+   *
+   * Use stable IDs to preserve rule identity when reordering.
+   * ```js
+   * {
+   *   lifecycle: [
+   *     {
+   *       id: "expire-tmp-files",
+   *       prefix: "/tmp",
+   *       expiresIn: "7 days"
+   *     },
+   *     {
+   *       id: "archive-old-logs",
+   *       prefix: "/logs",
+   *       expiresIn: "90 days"
+   *     }
+   *   ]
+   * }
+   * ```
    */
   lifecycle?: Input<Input<Prettify<BucketLifecycleArgs>>[]>;
   /**
@@ -468,11 +505,11 @@ export interface BucketArgs {
     /**
      * Transform the S3 Bucket resource.
      */
-    bucket?: Transform<s3.BucketV2Args>;
+    bucket?: Transform<s3.BucketArgs>;
     /**
      * Transform the S3 Bucket CORS configuration resource.
      */
-    cors?: Transform<s3.BucketCorsConfigurationV2Args>;
+    cors?: Transform<s3.BucketCorsConfigurationArgs>;
     /**
      * Transform the S3 Bucket Policy resource.
      */
@@ -480,11 +517,11 @@ export interface BucketArgs {
     /**
      * Transform the S3 Bucket versioning resource.
      */
-    versioning?: Transform<s3.BucketVersioningV2Args>;
+    versioning?: Transform<s3.BucketVersioningArgs>;
     /**
      * Transform the S3 Bucket lifecycle resource.
      * */
-    lifecycle?: Transform<s3.BucketLifecycleConfigurationV2Args>;
+    lifecycle?: Transform<s3.BucketLifecycleConfigurationArgs>;
     /**
      * Transform the public access block resource that's attached to the Bucket.
      *
@@ -755,7 +792,7 @@ export interface BucketSubscriberArgs {
 
 interface BucketRef {
   ref: boolean;
-  bucket: s3.BucketV2;
+  bucket: s3.Bucket;
 }
 
 /**
@@ -821,7 +858,7 @@ export class Bucket extends Component implements Link.Linkable {
   private constructorName: string;
   private constructorOpts: ComponentResourceOptions;
   private isSubscribed: boolean = false;
-  private bucket: Output<s3.BucketV2>;
+  private bucket: Output<s3.Bucket>;
 
   constructor(
     name: string,
@@ -854,7 +891,7 @@ export class Bucket extends Component implements Link.Linkable {
     // (ie. bucket.name). Also, a bucket can only have one policy. We want to ensure
     // the policy created here is created first. And SST will throw an error if
     // another policy is created after this one.
-    this.bucket = policy.urn.apply(() => bucket);
+    this.bucket = policy.apply(() => bucket);
 
     function normalizeAccess() {
       return all([args.public, args.access]).apply(([pub, access]) =>
@@ -888,7 +925,7 @@ export class Bucket extends Component implements Link.Linkable {
     }
 
     function createBucket() {
-      return new s3.BucketV2(
+      return new s3.Bucket(
         ...transform(
           args.transform?.bucket,
           `${name}Bucket`,
@@ -904,7 +941,7 @@ export class Bucket extends Component implements Link.Linkable {
       return output(args.versioning).apply((versioning) => {
         if (!versioning) return;
 
-        return new s3.BucketVersioningV2(
+        return new s3.BucketVersioning(
           ...transform(
             args.transform?.versioning,
             `${name}Versioning`,
@@ -924,14 +961,43 @@ export class Bucket extends Component implements Link.Linkable {
       return output(args.lifecycle).apply((lifecycleRules) => {
         if (!lifecycleRules || lifecycleRules.length === 0) return;
 
-        return new s3.BucketLifecycleConfigurationV2(
+        const seenIds = new Map<string, number>();
+
+        const resolvedIds = lifecycleRules.map((rule, index) => {
+          const rawId = rule.id ?? `${name}LifecycleRule${index}`;
+          const resolvedId = rawId.trim();
+
+          if (resolvedId.length === 0) {
+            throw new VisibleError(
+              `Lifecycle rule at index ${index} has an empty or whitespace-only "id". Please provide a valid id or omit it to use the auto-generated id.`,
+            );
+          }
+
+          if (resolvedId.length > 255) {
+            throw new VisibleError(
+              `Lifecycle rule at index ${index} has an "id" that is ${resolvedId.length} characters long. AWS S3 lifecycle rule IDs cannot exceed 255 characters.`,
+            );
+          }
+
+          const existingIndex = seenIds.get(resolvedId);
+          if (existingIndex !== undefined) {
+            throw new VisibleError(
+              `Lifecycle rule "id" values must be unique. The id "${resolvedId}" is used by rules at indexes ${existingIndex} and ${index}.`,
+            );
+          }
+          seenIds.set(resolvedId, index);
+
+          return resolvedId;
+        });
+
+        return new s3.BucketLifecycleConfiguration(
           ...transform(
             args.transform?.lifecycle,
             `${name}Lifecycle`,
             {
               bucket: bucket.bucket,
               rules: lifecycleRules.map((rule, index) => ({
-                id: `${name}LifecycleRule${index}`,
+                id: resolvedIds[index],
                 status: rule.enabled !== false ? "Enabled" : "Disabled",
                 expiration:
                   rule.expiresIn || rule.expiresAt
@@ -1039,7 +1105,7 @@ export class Bucket extends Component implements Link.Linkable {
       return output(args.cors).apply((cors) => {
         if (cors === false) return;
 
-        return new s3.BucketCorsConfigurationV2(
+        return new s3.BucketCorsConfiguration(
           ...transform(
             args.transform?.cors,
             `${name}Cors`,
@@ -1140,7 +1206,7 @@ export class Bucket extends Component implements Link.Linkable {
   ) {
     return new Bucket(name, {
       ref: true,
-      bucket: s3.BucketV2.get(`${name}Bucket`, bucketName, undefined, opts),
+      bucket: s3.Bucket.get(`${name}Bucket`, bucketName, undefined, opts),
     } as BucketArgs);
   }
 
