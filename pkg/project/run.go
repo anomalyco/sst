@@ -25,6 +25,7 @@ import (
 	"github.com/sst/sst/v3/pkg/id"
 	"github.com/sst/sst/v3/pkg/js"
 	"github.com/sst/sst/v3/pkg/process"
+	"github.com/sst/sst/v3/pkg/project/common"
 	"github.com/sst/sst/v3/pkg/project/provider"
 	"github.com/sst/sst/v3/pkg/telemetry"
 	"github.com/sst/sst/v3/pkg/types"
@@ -392,6 +393,7 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	hasPolicyFlag := input.PolicyPath != ""
 	hasPolicyEvents := false
 	hasPolicyViolations := false
+	plannedLinks := common.Links{}
 
 	partial := make(chan int, 1000)
 	partialContext, partialCancel := context.WithCancel(ctx)
@@ -583,6 +585,18 @@ loop:
 			partial <- 1
 		}
 
+		// Collect planned links from preview outputs
+		if input.Command == "diff" && event.ResOutputsEvent != nil {
+			evt := event.ResOutputsEvent
+			if evt.Metadata.Type == "sst:sst:LinkRef" && evt.Metadata.Op != apitype.OpDelete && evt.Metadata.New != nil {
+				if outputs, ok := parsePlaintext(evt.Metadata.New.Outputs).(map[string]interface{}); ok {
+					if link, target, ok := parseLinkRef(outputs); ok {
+						plannedLinks[target] = link
+					}
+				}
+			}
+		}
+
 		for _, field := range getNotNilFields(event) {
 			bus.Publish(field)
 		}
@@ -617,6 +631,10 @@ loop:
 	complete.Finished = finished
 	complete.Errors = errors
 	complete.ImportDiffs = importDiffs
+	// Planned links override existing for typegen (planned state is newer)
+	for k, v := range plannedLinks {
+		complete.Links[k] = v
+	}
 	types.Generate(p.PathConfig(), complete.Links)
 	defer bus.Publish(complete)
 

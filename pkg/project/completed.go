@@ -123,32 +123,9 @@ func getCompletedEvent(ctx context.Context, passphrase string, workdir *PulumiWo
 		}
 
 		if resource.Type == "sst:sst:LinkRef" {
-			target, targetOk := outputs["target"].(string)
-			properties, propertiesOk := outputs["properties"].(map[string]interface{})
-			if !targetOk || !propertiesOk {
-				continue
+			if link, target, ok := parseLinkRef(outputs); ok {
+				complete.Links[target] = link
 			}
-			link := common.Link{
-				Properties: properties,
-				Include:    []common.LinkInclude{},
-			}
-			if includeSlice, ok := outputs["include"].([]interface{}); ok {
-				for _, inc := range includeSlice {
-					incMap, ok := inc.(map[string]interface{})
-					if !ok {
-						continue
-					}
-					incType, ok := incMap["type"].(string)
-					if !ok {
-						continue
-					}
-					link.Include = append(link.Include, common.LinkInclude{
-						Type:  incType,
-						Other: incMap,
-					})
-				}
-			}
-			complete.Links[target] = link
 		}
 	}
 
@@ -164,6 +141,38 @@ func getCompletedEvent(ctx context.Context, passphrase string, workdir *PulumiWo
 	return complete, nil
 }
 
+func parseLinkRef(outputs map[string]interface{}) (common.Link, string, bool) {
+	target, ok := outputs["target"].(string)
+	if !ok {
+		return common.Link{}, "", false
+	}
+	properties, ok := outputs["properties"].(map[string]interface{})
+	if !ok {
+		return common.Link{}, "", false
+	}
+	link := common.Link{
+		Properties: properties,
+		Include:    []common.LinkInclude{},
+	}
+	if includeSlice, ok := outputs["include"].([]interface{}); ok {
+		for _, inc := range includeSlice {
+			incMap, ok := inc.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			incType, ok := incMap["type"].(string)
+			if !ok {
+				continue
+			}
+			link.Include = append(link.Include, common.LinkInclude{
+				Type:  incType,
+				Other: incMap,
+			})
+		}
+	}
+	return link, target, true
+}
+
 func parsePlaintext(input interface{}) interface{} {
 	switch cast := input.(type) {
 	case apitype.SecretV1:
@@ -175,6 +184,10 @@ func parsePlaintext(input interface{}) interface{} {
 		json.Unmarshal([]byte(cast.Plaintext), &parsed)
 		return parsed
 	case map[string]interface{}:
+		// Secrets from Pulumi preview come as {"ciphertext": "..."} — return placeholder for typegen
+		if _, hasCiphertext := cast["ciphertext"].(string); hasCiphertext {
+			return "placeholder-secret-value"
+		}
 		for key, value := range cast {
 			cast[key] = parsePlaintext(value)
 		}
