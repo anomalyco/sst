@@ -99,6 +99,17 @@ func (a *AwsProvider) Init(app string, stage string, args map[string]interface{}
 				aro.RoleSessionName = sessionName
 			}
 		})
+	} else if assumeRoles, ok := args["assumeRoles"].([]interface{}); ok {
+		for _, role := range assumeRoles {
+			if roleMap, ok := role.(map[string]interface{}); ok {
+				stsclient := sts.NewFromConfig(cfg)
+				cfg.Credentials = stscreds.NewAssumeRoleProvider(stsclient, roleMap["roleArn"].(string), func(aro *stscreds.AssumeRoleOptions) {
+					if sessionName, ok := roleMap["sessionName"].(string); ok {
+						aro.RoleSessionName = sessionName
+					}
+				})
+			}
+		}
 	}
 	_, err = cfg.Credentials.Retrieve(ctx)
 	if err != nil {
