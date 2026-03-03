@@ -2898,6 +2898,13 @@ export class Function extends Component implements Link.Linkable {
   }
 
   /**
+   * Whether the Lambda function is a Durable Function.
+   */
+  public get isDurable() {
+    return this.function.durableConfig !== undefined;
+  }
+
+  /**
    * Add environment variables lazily to the function after the function is created.
    *
    * This is useful for adding environment variables that are only available after the
@@ -2975,6 +2982,23 @@ export class Function extends Component implements Link.Linkable {
 
   /** @internal */
   public getSSTLink() {
+    let arnReference = this.arn;
+    const needsQualifiedArn = this.isDurable;
+
+    if (needsQualifiedArn) {
+      arnReference = interpolate`${this.arn}:*`;
+    }
+
+    const allowedActions = ["lambda:InvokeFunction"];
+
+    if (this.isDurable) {
+      allowedActions.push(
+        "lambda:SendDurableExecutionCallbackSuccess",
+        "lambda:SendDurableExecutionCallbackFailure",
+        "lambda:SendDurableExecutionCallbackHeartbeat"
+      );
+    }
+
     return {
       properties: {
         name: this.name,
@@ -2982,8 +3006,8 @@ export class Function extends Component implements Link.Linkable {
       },
       include: [
         permission({
-          actions: ["lambda:InvokeFunction"],
-          resources: [this.function.arn],
+          actions: allowedActions,
+          resources: [arnReference],
         }),
       ],
     };
