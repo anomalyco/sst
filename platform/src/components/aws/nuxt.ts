@@ -394,28 +394,6 @@ export interface NuxtArgs extends SsrSiteArgs {
    */
   assets?: SsrSiteArgs["assets"];
   /**
-   * Configure the server function for your Nuxt app.
-   */
-  server?: SsrSiteArgs["server"] & {
-    /**
-     * Configure if the server function should use streaming responses.
-     *
-     * Streaming responses allow you to send partial responses to the client as they are generated.
-     * This is useful for long-running requests or when you want to send data in chunks.
-     *
-     * @default `false`
-     * @example
-     * ```js
-     * {
-     *   server: {
-     *     streaming: true
-     *   }
-     * }
-     * ```
-     */
-    streaming?: boolean;
-  };
-  /**
    * Configure the Nuxt app to use an existing CloudFront cache policy.
    *
    * :::note
@@ -517,12 +495,14 @@ export class Nuxt extends SsrSite {
 
   protected normalizeBuildCommand() { }
 
-  protected buildPlan(
-      outputPath: Output<string>,
-      _name: string,
-      args: NuxtArgs,
-    ): Output<Plan> {
+  protected buildPlan(outputPath: Output<string>): Output<Plan> {
     return outputPath.apply((outputPath) => {
+      const nitro = JSON.parse(
+        fs.readFileSync(
+          path.join(outputPath, ".output", "nitro.json"),
+          "utf-8",
+        ),
+      );
       const basepath = fs
         .readFileSync(path.join(outputPath, "nuxt.config.ts"), "utf-8")
         .match(/baseURL: ['"](.*)['"]/)?.[1];
@@ -533,7 +513,7 @@ export class Nuxt extends SsrSite {
           description: "Server handler for Nuxt",
           handler: "index.handler",
           bundle: path.join(outputPath, ".output", "server"),
-          streaming: args.server?.streaming ?? false,
+          streaming: nitro?.config?.awsLambda?.streaming === true,
         },
         assets: [
           {

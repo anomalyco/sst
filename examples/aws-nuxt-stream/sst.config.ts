@@ -81,10 +81,6 @@ export default $config({
     };
   },
   async run() {
-    new sst.aws.Nuxt("MyWeb", {
-      server: {
-        streaming: true,
-      },
-    });
+    new sst.aws.Nuxt("MyWeb");
   },
 });
