@@ -11,6 +11,11 @@ export const handler = withDurableExecution(async (event: any, context: DurableC
     async (callbackToken, { logger }) => {
       logger.info({ callbackToken });
     },
+    {
+      timeout: {
+        minutes: 5,
+      },
+    },
   );
 
   const step2 = await context.step("step2", async ({ logger }) => {

@@ -1,5 +1,5 @@
 import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
-import { Resource } from 'sst';
+import { Resource } from "sst";
 const client = new LambdaClient();
 
 export const handler = async () => {
@@ -10,4 +10,6 @@ export const handler = async () => {
   });
 
   await client.send(command);
+
+  return { message: "Durable function invoked successfully!" };
 };

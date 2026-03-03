@@ -22,24 +22,13 @@ export default $config({
     new sst.aws.Function("Resolver", {
       handler: "resolver.handler",
       url: true,
-      permissions: [
-        {
-          actions: ["lambda:SendDurableExecutionCallbackSuccess"],
-          resources: [$interpolate`${durableFunction.arn}:*`],
-        },
-      ],
+      link: [durableFunction],
     });
 
     new sst.aws.Function("Invoker", {
       handler: "invoker.handler",
       url: true,
       link: [durableFunction],
-      permissions: [
-        {
-          actions: ["lambda:InvokeFunction"],
-          resources: [$interpolate`${durableFunction.arn}:*`],
-        },
-      ],
     });
   },
 });
