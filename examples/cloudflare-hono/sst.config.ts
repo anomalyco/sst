@@ -3,13 +3,13 @@
 export default $config({
   app(input) {
     return {
-      name: "cloudflare-hono-example",
+      name: "cloudflare-hono",
       home: "cloudflare",
       removal: input?.stage === "production" ? "retain" : "remove",
     };
   },
   async run() {
-    const ai = new sst.cloudflare.Ai("ai");
+    const ai = new sst.cloudflare.Ai("Ai");
     const bucket = new sst.cloudflare.Bucket("MyBucket");
     const hono = new sst.cloudflare.Worker("Hono", {
       url: true,

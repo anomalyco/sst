@@ -13,9 +13,9 @@ declare module "sst" {
 import * as cloudflare from "@cloudflare/workers-types";
 declare module "sst" {
   export interface Resource {
+    "Ai": cloudflare.Ai
     "Hono": cloudflare.Service
     "MyBucket": cloudflare.R2Bucket
-    "ai": cloudflare.Ai
   }
 }
 

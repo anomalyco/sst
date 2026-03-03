@@ -20,9 +20,7 @@ import { Input } from "../input";
 
 export interface AiBinding {
   type: "aiBinding";
-  properties: {
-    name: Input<string>;
-  };
+  properties: Record<string, never>;
 }
 
 export interface KvBinding {

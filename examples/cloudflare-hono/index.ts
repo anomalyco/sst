@@ -23,7 +23,7 @@ const app = new Hono()
     return c.body(result.body);
   })
   .get("/ai", async (c) => {
-    const result = await Resource.ai.run("@cf/meta/llama-3-8b-instruct", {
+    const result = await Resource.Ai.run("@cf/meta/llama-3-8b-instruct", {
       prompt: "What is the origin of the phrase 'Hello, World'",
     });
     return c.json(result.response);
