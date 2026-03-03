@@ -26,6 +26,7 @@ import { FunctionArn } from "./function";
 import { parseLambdaEdgeArn } from "./helpers/arn";
 import { Size, toMBs } from "../size";
 import { RETENTION } from "./logging";
+import { minify } from "../../util/minify";
 
 interface InlineUrlRouteArgs extends InlineBaseRouteArgs {
   /**
@@ -2729,7 +2730,9 @@ if (event.request.headers.host.value.includes('cloudfront.net')) {
   };
 }`;
 
-export const CF_ROUTER_INJECTION = `
+// CloudFront Function handler code injected into site and router CF functions.
+// NOTE: This string is size-sensitive — CloudFront Functions have a 10KB limit.
+export const CF_ROUTER_INJECTION = minify`
 async function routeSite(kvNamespace, metadata) {
   const baselessUri = metadata.base
     ? event.request.uri.replace(metadata.base, "")
@@ -2786,12 +2789,9 @@ async function routeSite(kvNamespace, metadata) {
   // Route to servers
   if (metadata.servers){
     event.request.headers["x-forwarded-host"] = event.request.headers.host;
-    ${
-      // Note: In SvelteKit, form action requests contain "/" in request query string
-      //  ie. POST request with query string "?/action"
-      //  CloudFront does not allow query string with "/". It needs to be encoded.
-      ""
-    }
+    // In SvelteKit, form action requests contain "/" in request query string
+    // ie. POST request with query string "?/action"
+    // CloudFront does not allow query string with "/". It needs to be encoded.
     for (var key in event.request.querystring) {
       if (key.includes("/")) {
         event.request.querystring[encodeURIComponent(key)] = event.request.querystring[key];
@@ -2803,46 +2803,26 @@ async function routeSite(kvNamespace, metadata) {
     setUrlOrigin(findNearestServer(metadata.servers), metadata.origin);
   }
 
+  // Inject the CloudFront viewer country, region, latitude, and longitude headers into
+  // the request headers for OpenNext to use them
   function setNextjsGeoHeaders() {
-    ${
-      // Inject the CloudFront viewer country, region, latitude, and longitude headers into
-      // the request headers for OpenNext to use them for OpenNext to use them
-      ""
-    }
-    if(event.request.headers["cloudfront-viewer-city"]) {
-      event.request.headers["x-open-next-city"] = event.request.headers["cloudfront-viewer-city"];
-    }
-    if(event.request.headers["cloudfront-viewer-country"]) {
-      event.request.headers["x-open-next-country"] = event.request.headers["cloudfront-viewer-country"];
-    }
-    if(event.request.headers["cloudfront-viewer-region"]) {
-      event.request.headers["x-open-next-region"] = event.request.headers["cloudfront-viewer-region"];
-    }
-    if(event.request.headers["cloudfront-viewer-latitude"]) {
-      event.request.headers["x-open-next-latitude"] = event.request.headers["cloudfront-viewer-latitude"];
-    }
-    if(event.request.headers["cloudfront-viewer-longitude"]) {
-      event.request.headers["x-open-next-longitude"] = event.request.headers["cloudfront-viewer-longitude"];
+    var keys = ["city","country","region","latitude","longitude"];
+    for (var i=0; i<keys.length; i++) {
+      if (event.request.headers["cloudfront-viewer-" + keys[i]])
+        event.request.headers["x-open-next-" + keys[i]] = event.request.headers["cloudfront-viewer-" + keys[i]];
     }
   }
 
+  // This function is used to improve cache hit ratio by setting the cache key
+  // based on the request headers and the path. next/image only needs the
+  // accept header, and this header is not useful for the rest of the query
   function setNextjsCacheKey() {
-    ${
-      // This function is used to improve cache hit ratio by setting the cache key
-      // based on the request headers and the path. `next/image` only needs the
-      // accept header, and this header is not useful for the rest of the query
-      ""
-    }
     var cacheKey = "";
     if (event.request.uri.startsWith("/_next/image")) {
       cacheKey = getHeader("accept");
     } else {
-      cacheKey =
-        getHeader("rsc") +
-        getHeader("next-router-prefetch") +
-        getHeader("next-router-state-tree") +
-        getHeader("next-url") +
-        getHeader("x-prerender-revalidate");
+      var headers = ["rsc","next-router-prefetch","next-router-state-tree","next-url","x-prerender-revalidate"];
+      for (var j=0; j<headers.length; j++) cacheKey += getHeader(headers[j]);
     }
     if (event.request.cookies["__prerender_bypass"]) {
       cacheKey += event.request.cookies["__prerender_bypass"]
