@@ -32,9 +32,7 @@ export interface ImageArgs {
    * The path to the [Docker build context](https://docs.docker.com/build/building/context/#local-context). The path is relative to your project's `sst.config.ts`.
    * @default `"."`
    * @example
-   *
-   * To change where the Docker build context is located.
-   *
+   * Specify the folder of the Docker build context:
    * ```js
    * {
    *   context: "./app"
@@ -47,7 +45,7 @@ export interface ImageArgs {
    * The path is relative to the build `context`.
    * @default `"Dockerfile"`
    * @example
-   * To use a different Dockerfile.
+   * Specify different Dockerfile:
    * ```js
    * {
    *   dockerfile: "Dockerfile.prod"
@@ -112,181 +110,28 @@ const limiter = new Semaphore(
 /**
  * The `Image` component builds docker images and uploads them to [AWS ECR (Elastic Container Registry)](https://aws.amazon.com/ecr/).
  *
- * #### Supported runtimes
- *
- * Currently supports **Node.js** and **Golang** functions. **Python** and **Rust**
- * are community supported. Other runtimes are on the roadmap.
- *
  * @example
- *
  * #### Minimal example
+ * Create `Dockerfile` and `sst.config.ts` in root directory.
  *
+ * ```ts title="sst.config.ts"
+ * new sst.aws.Image("MyImage", {});
+ * ```
+ * 
+ * @example
+ * #### Different dockerfile and context
+ * [Minimal example](#minimal-example) setup with `./app/Dockerfile.function`.
  *
- * <Tabs>
- *   <TabItem label="Node">
- *   Pass in the path to your handler function.
- *
- *   ```ts title="sst.config.ts"
- *   new sst.aws.Function("MyFunction", {
- *     handler: "src/lambda.handler"
- *   });
- *   ```
- *
- *   [Learn more below](#handler).
- *   </TabItem>
- *   <TabItem label="Python">
- *   Pass in the path to your handler function.
- *
- *   ```ts title="sst.config.ts"
- *   new sst.aws.Function("MyFunction", {
- *     runtime: "python3.11",
- *     handler: "functions/src/functions/api.handler"
- *   });
- *   ```
- *
- *   You need to have uv installed and your handler function needs to be in a uv workspace. [Learn more below](#handler).
- *   </TabItem>
- *   <TabItem label="Go">
- *   Pass in the directory to your Go module.
- *
- *   ```ts title="sst.config.ts"
- *   new sst.aws.Function("MyFunction", {
- *     runtime: "go",
- *     handler: "./src"
- *   });
- *   ```
- *
- *   [Learn more below](#handler).
- *   </TabItem>
- *   <TabItem label="Rust">
- *   Pass in the directory where your Cargo.toml lives.
- *
- *   ```ts title="sst.config.ts"
- *   new sst.aws.Function("MyFunction", {
- *     runtime: "rust",
- *     handler: "./crates/api/"
- *   });
- *   ```
- *
- *   [Learn more below](#handler).
- *   </TabItem>
- * </Tabs>
- *
- * #### Set additional config
- *
- * Pass in additional Lambda config.
- *
- * ```ts {3,4} title="sst.config.ts"
- * new sst.aws.Function("MyFunction", {
- *   handler: "src/lambda.handler",
- *   timeout: "3 minutes",
- *   memory: "1024 MB"
+ * Note:
+ * - By default, context is the root directory where `sst.config.ts` is located.
+ * - By default, dockerfile is `Dockerfile`.
+ * 
+ * ```ts {2,3} title="sst.config.ts"
+ * new sst.aws.Image("MyImage", {
+ *   context: './app',
+ *   dockerfile: 'Dockerfile.function'
  * });
  * ```
- *
- * #### Link resources
- *
- * [Link resources](/docs/linking/) to the function. This will grant permissions
- * to the resources and allow you to access it in your handler.
- *
- * ```ts {5} title="sst.config.ts"
- * const bucket = new sst.aws.Bucket("MyBucket");
- *
- * new sst.aws.Function("MyFunction", {
- *   handler: "src/lambda.handler",
- *   link: [bucket]
- * });
- * ```
- *
- * You can use the [SDK](/docs/reference/sdk/) to access the linked resources
- * in your handler.
- *
- * <Tabs>
- *   <TabItem label="Node">
- *   ```ts title="src/lambda.ts"
- *   import { Resource } from "sst";
- *
- *   console.log(Resource.MyBucket.name);
- *   ```
- *   </TabItem>
- *   <TabItem label="Python">
- *   ```ts title="functions/src/functions/api.py"
- *   from sst import Resource
- *
- *   def handler(event, context):
- *       print(Resource.MyBucket.name)
- *   ```
- *
- *   Where the `sst` package can be added to your `pyproject.toml`.
- *
- *   ```toml title="functions/pyproject.toml"
- *   [tool.uv.sources]
- *   sst = { git = "https://github.com/sst/sst.git", subdirectory = "sdk/python", branch = "dev" }
- *   ```
- *   </TabItem>
- *   <TabItem label="Go">
- *   ```go title="src/main.go"
- *   import (
- *     "github.com/sst/sst/v3/sdk/golang/resource"
- *   )
- *
- *   resource.Get("MyBucket", "name")
- *   ```
- *   </TabItem>
- *   <TabItem label="Rust">
- *   ```rust title="src/main.rs"
- *   use sst_sdk::Resource;
- *   #[derive(serde::Deserialize, Debug)]
- *   struct Bucket {
- *      name: String,
- *   }
- *
- *   let resource = Resource::init().unwrap();
- *   let Bucket { name } = resource.get("Bucket").unwrap();
- *   ```
- *   </TabItem>
- * </Tabs>
- *
- * #### Set environment variables
- *
- * Set environment variables that you can read in your function. For example, using
- * `process.env` in your Node.js functions.
- *
- * ```ts {4} title="sst.config.ts"
- * new sst.aws.Function("MyFunction", {
- *   handler: "src/lambda.handler",
- *   environment: {
- *     DEBUG: "true"
- *   }
- * });
- * ```
- *
- * #### Enable function URLs
- *
- * Enable function URLs to invoke the function over HTTP.
- *
- * ```ts {3} title="sst.config.ts"
- * new sst.aws.Function("MyFunction", {
- *   handler: "src/lambda.handler",
- *   url: true
- * });
- * ```
- *
- * #### Bundling
- *
- * Customize how SST uses [esbuild](https://esbuild.github.io/) to bundle your Node.js
- * functions with the `nodejs` property.
- *
- * ```ts title="sst.config.ts" {3-5}
- * new sst.aws.Function("MyFunction", {
- *   handler: "src/lambda.handler",
- *   nodejs: {
- *     install: ["pg"]
- *   }
- * });
- * ```
- *
- * Or override it entirely by passing in your own function `bundle`.
  */
 export class Image extends Component implements Link.Linkable {
   private _uri: Output<string>;
