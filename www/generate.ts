@@ -644,20 +644,6 @@ async function generateComponentDoc(
           ...(["realtime", "task"].includes(sdk?.name!)
             ? renderAbout(useModuleComment(sdk!))
             : []),
-          ...(() => {
-            if (!["opencontrol"].includes(sdk?.name!)) return [];
-            for (const variable of sdk!.children!) {
-              if (variable.name === "tools") {
-                // @ts-expect-error
-                variable.type = {
-                  type: "reference",
-                  name: "Tools",
-                  package: "opencontrol",
-                };
-              }
-            }
-            return renderVariables(sdk!);
-          })(),
           ...(sdk
             ? renderFunctions(
                 sdk,
@@ -786,9 +772,6 @@ function renderType(
     if (type.type === "reference" && type.package === "esbuild") {
       return renderEsbuildType(type);
     }
-    if (type.type === "reference" && type.package === "opencontrol") {
-      return renderOpencontrolType(type);
-    }
     if (
       // when bun is installed globally, package is `bun-types`
       (type.type === "reference" && type.package === "bun-types") ||
@@ -803,6 +786,7 @@ function renderType(
     if (type.type === "reflection" && type.declaration.children?.length) {
       return renderObjectType(type);
     }
+
     // @ts-expect-error
     delete type._project;
     console.log(type);
@@ -971,8 +955,12 @@ function renderType(
       return `[<code class="type">${type.name}</code>](${docLink}${docHash})`;
     }
 
-    // types in different doc
-    if (type.name === "Resource" || type.name === "Constructor") {
+    // types in different doc without their own doc page
+    if (
+      type.name === "Resource" ||
+      type.name === "Constructor" ||
+      type.name === "EsbuildOptions"
+    ) {
       return `<code class="type">${type.name}</code>`;
     }
 
@@ -1075,6 +1063,7 @@ function renderType(
         DistributionCustomErrorResponse: "cloudfront/distribution",
         DistributionDefaultCacheBehavior: "cloudfront/distribution",
         DistributionOrderedCacheBehavior: "cloudfront/distribution",
+        PolicyDocument: "iam/getpolicydocument",
       }[type.name];
       if (!link) {
         // @ts-expect-error
@@ -1158,9 +1147,6 @@ function renderType(
   function renderEsbuildType(type: TypeDoc.ReferenceType) {
     const hash = type.name === "Loader" ? `#loader` : "#build";
     return `[<code class="type">${type.name}</code>](https://esbuild.github.io/api/${hash})`;
-  }
-  function renderOpencontrolType(type: TypeDoc.ReferenceType) {
-    return `[<code class="type">${type.name}</code>](https://opencontrol.ai/)`;
   }
   function renderBunShellType(type: TypeDoc.ReferenceType) {
     return `[<code class="type">Bun Shell</code>](https://bun.sh/docs/runtime/shell)`;
@@ -2023,6 +2009,7 @@ function useNestedTypes(
           : []),
       ]);
   }
+
   return [];
 }
 
@@ -2292,7 +2279,6 @@ async function buildSdk() {
       "../sdk/js/src/aws/realtime.ts",
       "../sdk/js/src/aws/task.ts",
       "../sdk/js/src/vector/index.ts",
-      "../sdk/js/src/opencontrol.ts",
     ],
     tsconfig: "../sdk/js/tsconfig.json",
   });
