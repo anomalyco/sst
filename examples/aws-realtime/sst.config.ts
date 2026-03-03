@@ -41,6 +41,7 @@ export default $config({
         SST_TOPIC: topic,
       },
       url: true,
+      link: [realtime],
     });
 
     return {

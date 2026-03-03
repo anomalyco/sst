@@ -10,8 +10,8 @@ export type PutEvent = {
 };
 
 export type QueryEvent = {
-  vector: number[];
-  include: Record<string, any>;
+  vector?: number[];
+  include?: Record<string, any>;
   exclude?: Record<string, any>;
   threshold?: number;
   count?: number;
@@ -45,33 +45,74 @@ export async function put(event: PutEvent) {
   );
 }
 export async function query(event: QueryEvent) {
-  const include = JSON.stringify(event.include);
-  // The return type of JSON.stringify() is always "string".
-  // This is wrong when "event.exclude" is undefined.
-  const exclude = JSON.stringify(event.exclude) as string | undefined;
-  const threshold = event.threshold ?? 0;
+  const include = JSON.stringify(event.include ?? {});
+  const exclude = event.exclude ? JSON.stringify(event.exclude) : undefined;
   const count = event.count ?? 10;
+
+  if (event.vector) {
+    const threshold = event.threshold ?? 0;
+    const ret = await useClient(RDSDataClient).send(
+      new ExecuteStatementCommand({
+        resourceArn: CLUSTER_ARN,
+        secretArn: SECRET_ARN,
+        database: DATABASE_NAME,
+        sql: [
+          `SELECT metadata, embedding <=> string_to_array(:vector, ',')::float[]::vector AS score`,
+          `FROM ${TABLE_NAME}`,
+          `WHERE embedding <=> string_to_array(:vector, ',')::float[]::vector < ${
+            1 - threshold
+          }`,
+          `AND metadata @> :include`,
+          `${exclude ? "AND NOT metadata @> :exclude" : ""}`,
+          `ORDER BY score`,
+          `LIMIT ${count}`,
+        ].join(" "),
+        parameters: [
+          {
+            name: "vector",
+            value: { stringValue: event.vector.join(",") },
+          },
+          {
+            name: "include",
+            value: { stringValue: include },
+            typeHint: "JSON",
+          },
+          ...(exclude
+            ? [
+                {
+                  name: "exclude",
+                  value: { stringValue: exclude },
+                  typeHint: "JSON" as const,
+                },
+              ]
+            : []),
+        ],
+      }),
+    );
+
+    return {
+      results:
+        ret.records?.map((record) => ({
+          metadata: JSON.parse(record[0].stringValue!),
+          score: 1 - record[1].doubleValue!,
+        })) ?? [],
+    };
+  }
+
+  // Metadata-only query (no vector)
   const ret = await useClient(RDSDataClient).send(
     new ExecuteStatementCommand({
       resourceArn: CLUSTER_ARN,
       secretArn: SECRET_ARN,
       database: DATABASE_NAME,
       sql: [
-        `SELECT metadata, embedding <=> string_to_array(:vector, ',')::float[]::vector AS score`,
+        `SELECT metadata`,
         `FROM ${TABLE_NAME}`,
-        `WHERE embedding <=> string_to_array(:vector, ',')::float[]::vector < ${
-          1 - threshold
-        }`,
-        `AND metadata @> :include`,
+        `WHERE metadata @> :include`,
         `${exclude ? "AND NOT metadata @> :exclude" : ""}`,
-        `ORDER BY score`,
         `LIMIT ${count}`,
       ].join(" "),
       parameters: [
-        {
-          name: "vector",
-          value: { stringValue: event.vector.join(",") },
-        },
         {
           name: "include",
           value: { stringValue: include },
@@ -91,10 +132,11 @@ export async function query(event: QueryEvent) {
   );
 
   return {
-    results: ret.records?.map((record) => ({
-      metadata: JSON.parse(record[0].stringValue!),
-      score: 1 - record[1].doubleValue!,
-    })),
+    results:
+      ret.records?.map((record) => ({
+        metadata: JSON.parse(record[0].stringValue!),
+        score: 0,
+      })) ?? [],
   };
 }
 export async function remove(event: RemoveEvent) {

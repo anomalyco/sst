@@ -64,6 +64,10 @@ var CmdTunnel = &cli.Command{
 			return util.NewReadableError(nil, "The sst tunnel needs to be installed or upgraded. Run `sudo sst tunnel install`")
 		}
 
+		if tunnel.IsRunning() {
+			return util.NewReadableError(nil, "Another tunnel process is already running. Stop it before starting a new one.")
+		}
+
 		cfgPath, err := c.Discover()
 		if err != nil {
 			return err

@@ -4,13 +4,21 @@
   "version": "0.0.1",
   "scripts": {
     "dev": "astro dev",
-    "build": "sed -i '' 's/base: .*/base: undefined,/' astro.config.mjs && astro build",
-    "build-base": "sed -i '' 's/base: .*/base: \"\\/astro5\",/' astro.config.mjs && astro build",
+    "use:base": "sed -i '' 's/base: .*/base: \"\\/astro5\",/' astro.config.mjs",
+    "use:no-base": "sed -i '' 's/base: .*/base: undefined,/' astro.config.mjs",
+    "use:cf": "sed -i '' 's/adapter: .*/adapter: cloudflare(),/' astro.config.mjs",
+    "use:aws": "sed -i '' 's/adapter: .*/adapter: aws(),/' astro.config.mjs",
+    "build": "astro build",
+    "build:cf:base": "npm run use:cf && npm run use:base && astro build",
+    "build:cf:no-base": "npm run use:cf && npm run use:no-base && astro build",
+    "build:base": "npm run use:aws && npm run use:base && astro build",
+    "build:no-base": "npm run use:aws && npm run use:no-base && astro build",
     "preview": "astro preview",
     "astro": "astro"
   },
   "dependencies": {
-    "astro": "^5.4.1",
+    "@astrojs/cloudflare": "^12.5.3",
+    "astro": "5.8.1",
     "astro-sst": "3.1.4",
     "sst": "3.9.25"
   }

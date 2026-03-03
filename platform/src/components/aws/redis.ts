@@ -361,7 +361,7 @@ export class Redis extends Component implements Link.Linkable {
         { parent: self },
       );
 
-      const input = cluster.tags.apply((tags) => {
+      const input = cluster.tagsAll.apply((tags) => {
         registerVersion(
           tags?.["sst:component-version"]
             ? parseInt(tags["sst:component-version"])
@@ -424,9 +424,7 @@ export class Redis extends Component implements Link.Linkable {
           SST_DEV_COMMAND_MESSAGE: interpolate`Make sure your local Redis server is using:
 
   username: "${dev.username}"
-  password: ${
-    dev.password ? `"${dev.password}"` : "\x1b[38;5;8m[no password]\x1b[0m"
-  }
+  password: "${dev.password ?? "\x1b[38;5;8m[no password]\x1b[0m"}"
 
 Listening on "${dev.host}:${dev.port}"...`,
         },
@@ -571,6 +569,7 @@ Listening on "${dev.host}:${dev.port}"...`,
                 atRestEncryptionEnabled: true,
                 transitEncryptionEnabled: true,
                 transitEncryptionMode: "required",
+                authTokenUpdateStrategy: "ROTATE",
                 authToken,
                 subnetGroupName: subnetGroup.name,
                 parameterGroupName: parameterGroup.name,

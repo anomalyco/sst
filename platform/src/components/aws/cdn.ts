@@ -243,6 +243,17 @@ export interface CdnArgs {
    */
   tags?: Input<Record<string, Input<string>>>;
   /**
+   * The ARN of a WAF WebACL to associate with the CloudFront distribution.
+   *
+   * @example
+   * ```ts
+   * {
+   *   webAclArn: "arn:aws:wafv2:us-east-1:123456789012:global/webacl/my-acl/abc123"
+   * }
+   * ```
+   */
+  webAclArn?: Input<string>;
+  /**
    * [Transform](/docs/components#transform) how this component creates its underlying resources.
    */
   transform?: {
@@ -402,6 +413,8 @@ export class Cdn extends Component {
             ),
             waitForDeployment: false,
             tags: args.tags,
+            // CloudFront API confusingly names the WAF ARN field "webAclId"
+            webAclId: args.webAclArn,
           },
           { parent },
         ),

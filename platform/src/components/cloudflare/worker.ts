@@ -1,25 +1,33 @@
 import fs from "fs/promises";
 import path from "path";
+import crypto from "crypto";
 import {
   ComponentResourceOptions,
   output,
-  Output,
   all,
   jsonStringify,
   interpolate,
 } from "@pulumi/pulumi";
 import * as cf from "@pulumi/cloudflare";
-import type { Loader, BuildOptions } from "esbuild";
+import type { Loader } from "esbuild";
+import type { EsbuildOptions } from "../esbuild.js";
 import { Component, Transform, transform } from "../component";
 import { WorkerUrl } from "./providers/worker-url.js";
+import { WorkerPlacement } from "./providers/worker-placement.js";
 import { Link } from "../link.js";
 import type { Input } from "../input.js";
 import { ZoneLookup } from "./providers/zone-lookup.js";
 import { iam } from "@pulumi/aws";
 import { Permission } from "../aws/permission.js";
-import { Binding, binding } from "./binding.js";
+import { binding } from "./binding.js";
 import { DEFAULT_ACCOUNT_ID } from "./account-id.js";
 import { rpc } from "../rpc/rpc.js";
+import { WorkerAssets } from "./providers/worker-assets";
+import { globSync } from "glob";
+import { VisibleError } from "../error";
+import { getContentType } from "../base/base-site";
+import { physicalName } from "../naming";
+import { existsAsync } from "../../util/fs";
 
 export interface WorkerArgs {
   /**
@@ -102,7 +110,7 @@ export interface WorkerArgs {
      * :::
      *
      */
-    esbuild?: Input<BuildOptions>;
+    esbuild?: Input<EsbuildOptions>;
     /**
      * Disable if the worker code should be minified when bundled.
      *
@@ -153,6 +161,58 @@ export interface WorkerArgs {
    */
   environment?: Input<Record<string, Input<string>>>;
   /**
+   * Upload [static assets](https://developers.cloudflare.com/workers/static-assets/) as
+   * part of the worker.
+   *
+   * You can directly fetch and serve assets within your Worker code via the [assets
+   * binding](https://developers.cloudflare.com/workers/static-assets/binding/#binding).
+   *
+   * @example
+   * ```js
+   * {
+   *   assets: {
+   *     directory: "./dist"
+   *   }
+   * }
+   * ```
+   */
+  assets?: Input<{
+    /**
+     * The directory containing the assets.
+     */
+    directory: Input<string>;
+  }>;
+  /**
+   * Configure [placement](https://developers.cloudflare.com/workers/configuration/placement/)
+   * for your Worker.
+   *
+   * @example
+   *
+   * #### Smart Placement
+   * ```js
+   * {
+   *   placement: {
+   *     mode: "smart"
+   *   }
+   * }
+   * ```
+   *
+   * #### Explicit region
+   * ```js
+   * {
+   *   placement: {
+   *     region: "aws:us-east-1"
+   *   }
+   * }
+   * ```
+   */
+  placement?: Input<{
+    mode?: Input<string>;
+    region?: Input<string>;
+    host?: Input<string>;
+    hostname?: Input<string>;
+  }>;
+  /**
    * [Transform](/docs/components/#transform) how this component creates its underlying
    * resources.
    */
@@ -160,7 +220,7 @@ export interface WorkerArgs {
     /**
      * Transform the Worker resource.
      */
-    worker?: Transform<cf.WorkerScriptArgs>;
+    worker?: Transform<cf.WorkersScriptArgs>;
   };
   /**
    * @internal
@@ -230,8 +290,9 @@ export interface WorkerArgs {
  * ```
  */
 export class Worker extends Component implements Link.Linkable {
-  private script: Output<cf.WorkerScript>;
+  private script: cf.WorkersScript;
   private workerUrl: WorkerUrl;
+  private workerPlacement?: WorkerPlacement;
   private workerDomain?: cf.WorkerDomain;
 
   constructor(name: string, args: WorkerArgs, opts?: ComponentResourceOptions) {
@@ -261,10 +322,12 @@ export class Worker extends Component implements Link.Linkable {
     const build = buildHandler();
     const script = createScript();
     const workerUrl = createWorkersUrl();
+    const workerPlacement = createWorkerPlacement();
     const workerDomain = createWorkersDomain();
 
     this.script = script;
     this.workerUrl = workerUrl;
+    this.workerPlacement = workerPlacement;
     this.workerDomain = workerDomain;
 
     all([dev, buildInput, script.scriptName]).apply(
@@ -379,6 +442,16 @@ export class Worker extends Component implements Link.Linkable {
                 })(),
                 Action: p.actions,
                 Resource: p.resources,
+                ...("conditions" in p && p.conditions
+                  ? {
+                      Condition: Object.fromEntries(
+                        p.conditions.map((c) => [
+                          c.test,
+                          { [c.variable]: c.values },
+                        ]),
+                      ),
+                    }
+                  : {}),
               })),
             }),
           },
@@ -411,49 +484,80 @@ export class Worker extends Component implements Link.Linkable {
     }
 
     function createScript() {
-      return all([build, args.environment, iamCredentials, bindings]).apply(
-        async ([build, environment, iamCredentials, bindings]) =>
-          new cf.WorkersScript(
-            ...transform(
-              args.transform?.worker,
-              `${name}Script`,
-              {
-                scriptName: "",
-                // this can be anything b/c worker code is passed in as a string
-                // through `content`, but this is required to imply esm
-                mainModule: "placeholder",
-                accountId: DEFAULT_ACCOUNT_ID,
-                content: (
-                  await fs.readFile(path.join(build.out, build.handler))
-                ).toString(),
-                compatibilityDate: "2025-05-05",
-                compatibilityFlags: ["nodejs_compat"],
-                bindings: [
-                  ...bindings,
-                  ...(iamCredentials
-                    ? [
-                        {
-                          type: "plain_text",
-                          name: "AWS_ACCESS_KEY_ID",
-                          text: iamCredentials.id,
-                        },
-                        {
-                          type: "secret_text",
-                          name: "AWS_SECRET_ACCESS_KEY",
-                          text: iamCredentials.secret,
-                        },
-                      ]
-                    : []),
-                  ...Object.entries(environment ?? {}).map(([key, value]) => ({
-                    type: "plain_text",
-                    name: key,
-                    text: value,
-                  })),
-                ],
-              },
-              { parent },
+      const contentFilePath = build.apply((build) =>
+        path.join(build.out, build.handler),
+      );
+      return new cf.WorkersScript(
+        ...transform(
+          args.transform?.worker as Transform<cf.WorkersScriptArgs>,
+          `${name}Script`,
+          {
+            scriptName: physicalName(64, `${name}Script`).toLowerCase(),
+            mainModule: "placeholder",
+            accountId: DEFAULT_ACCOUNT_ID,
+            contentFile: contentFilePath,
+            contentSha256: contentFilePath.apply(async (p) =>
+              crypto
+                .createHash("sha256")
+                .update(await fs.readFile(p, "utf-8"))
+                .digest("hex"),
             ),
-          ),
+            compatibilityDate: "2025-05-05",
+            compatibilityFlags: ["nodejs_compat"],
+            assets: args.assets
+              ? output(args.assets).apply(async (assets) => {
+                  const directory = path.join(
+                    $cli.paths.root,
+                    assets.directory,
+                  );
+                  let headers;
+                  try {
+                    headers = await fs.readFile(
+                      path.join(directory, "_headers"),
+                      "utf-8",
+                    );
+                  } catch (e) {}
+                  return {
+                    directory,
+                    config: { headers },
+                  };
+                })
+              : undefined,
+            bindings: all([args.environment, iamCredentials, bindings]).apply(
+              ([environment, iamCredentials, bindings]) => [
+                ...bindings,
+                ...(iamCredentials
+                  ? [
+                      {
+                        type: "plain_text",
+                        name: "AWS_ACCESS_KEY_ID",
+                        text: iamCredentials.id,
+                      },
+                      {
+                        type: "secret_text",
+                        name: "AWS_SECRET_ACCESS_KEY",
+                        text: iamCredentials.secret,
+                      },
+                    ]
+                  : []),
+                ...(args.assets
+                  ? [
+                      {
+                        type: "assets",
+                        name: "ASSETS",
+                      },
+                    ]
+                  : []),
+                ...Object.entries(environment ?? {}).map(([key, value]) => ({
+                  type: "plain_text",
+                  name: key,
+                  text: value,
+                })),
+              ],
+            ),
+          },
+          { parent, ignoreChanges: ["scriptName"] },
+        ),
       );
     }
 
@@ -464,6 +568,22 @@ export class Worker extends Component implements Link.Linkable {
           accountId: DEFAULT_ACCOUNT_ID,
           scriptName: script.scriptName,
           enabled: urlEnabled,
+        },
+        { parent },
+      );
+    }
+
+    // workaround: pulumi cloudflare provider marks placement as read-only,
+    // so we use the CF API directly until upstream support lands
+    function createWorkerPlacement() {
+      if (!args.placement) return;
+
+      return new WorkerPlacement(
+        `${name}Placement`,
+        {
+          accountId: DEFAULT_ACCOUNT_ID,
+          scriptName: script.scriptName,
+          ...args.placement,
         },
         { parent },
       );

@@ -11,12 +11,14 @@ import {
   interpolate,
   ComponentResourceOptions,
   Resource,
+  asset as pulumiAsset,
 } from "@pulumi/pulumi";
 import { Cdn, CdnArgs } from "./cdn.js";
-import { Function, FunctionArgs } from "./function.js";
+import { Function, FunctionArgs, FunctionArn } from "./function.js";
+import { parseLambdaEdgeArn } from "./helpers/arn.js";
 import { Bucket, BucketArgs } from "./bucket.js";
 import { BucketFile, BucketFiles } from "./providers/bucket-files.js";
-import { logicalName } from "../naming.js";
+import { logicalName, physicalName } from "../naming.js";
 import { Input } from "../input.js";
 import {
   Component,
@@ -28,7 +30,7 @@ import { VisibleError } from "../error.js";
 import { Cron } from "./cron.js";
 import { BaseSiteFileOptions, getContentType } from "../base/base-site.js";
 import { BaseSsrSiteArgs, buildApp } from "../base/base-ssr-site.js";
-import { cloudfront, getRegionOutput, lambda, Region } from "@pulumi/aws";
+import { cloudfront, getRegionOutput, lambda, Region, iam } from "@pulumi/aws";
 import { KvKeys } from "./providers/kv-keys.js";
 import { useProvider } from "./helpers/provider.js";
 import { Link } from "../link.js";
@@ -37,14 +39,15 @@ import {
   CF_ROUTER_INJECTION,
   CF_BLOCK_CLOUDFRONT_URL_INJECTION,
   KV_SITE_METADATA,
+  ProtectionConfig,
   RouterRouteArgsDeprecated,
   normalizeRouteArgs,
   RouterRouteArgs,
 } from "./router.js";
 import { DistributionInvalidation } from "./providers/distribution-invalidation.js";
-import { toSeconds } from "../duration.js";
+import { toSeconds, DurationSeconds } from "../duration.js";
+import { Size, toMBs } from "../size.js";
 import { KvRoutesUpdate } from "./providers/kv-routes-update.js";
-import { CONSOLE_URL, getQuota } from "./helpers/quota.js";
 import { toPosix } from "../path.js";
 
 const supportedRegions = {
@@ -121,6 +124,103 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
   route?: Prettify<RouterRouteArgsDeprecated>;
   router?: Prettify<RouterRouteArgs>;
   cachePolicy?: Input<string>;
+  /**
+   * Configure Lambda function protection through CloudFront.
+   *
+   * @default `"none"`
+   *
+   * The available options are:
+   * - `"none"`: Lambda URLs are publicly accessible.
+   * - `"oac"`: Lambda URLs protected by CloudFront Origin Access Control. Requires manual `x-amz-content-sha256` header for POST requests. Use when you control all POST requests.
+   * - `"oac-with-edge-signing"`: Full protection with automatic header signing via Lambda@Edge. Works with external webhooks and callbacks. Higher cost and latency but works out of the box.
+   *
+   * :::note
+   * When using `"oac-with-edge-signing"`, request bodies are limited to 1MB due to Lambda@Edge payload limits. For file uploads larger than 1MB, consider using presigned S3 URLs or the `"oac"` mode with manual header signing.
+   * :::
+   *
+   * :::note
+   * When removing a stage that uses `"oac-with-edge-signing"`, deletion may take 5-10 minutes while AWS removes the Lambda@Edge replicated functions from all edge locations.
+   * :::
+   *
+   * @example
+   * ```js
+   * // No protection (default)
+   * {
+   *   protection: "none"
+   * }
+   * ```
+   *
+   * @example
+   * ```js
+   * // OAC protection, manual header signing required
+   * {
+   *   protection: "oac"
+   * }
+   * ```
+   *
+   * @example
+   * ```js
+   * // Full protection with automatic Lambda@Edge
+   * {
+   *   protection: "oac-with-edge-signing"
+   * }
+   * ```
+   *
+   * @example
+   * ```js
+   * // Custom Lambda@Edge configuration
+   * {
+   *   protection: {
+   *     mode: "oac-with-edge-signing",
+   *     edgeFunction: {
+   *       memory: "256 MB",
+   *       timeout: "10 seconds"
+   *     }
+   *   }
+   * }
+   * ```
+   *
+   * @example
+   * ```js
+   * // Use existing Lambda@Edge function
+   * {
+   *   protection: {
+   *     mode: "oac-with-edge-signing",
+   *     edgeFunction: {
+   *       arn: "arn:aws:lambda:us-east-1:123456789012:function:my-signing-function:1"
+   *     }
+   *   }
+   * }
+   * ```
+   */
+  protection?: Input<
+    | "none"
+    | "oac"
+    | "oac-with-edge-signing"
+    | {
+        mode: "oac-with-edge-signing";
+        edgeFunction?: {
+          /**
+           * Custom Lambda@Edge function ARN to use for request signing.
+           * If provided, this function will be used instead of creating a new one.
+           * Must be a qualified ARN (with version) and deployed in us-east-1.
+           */
+          arn?: Input<FunctionArn>;
+          /**
+           * Memory size for the auto-created Lambda@Edge function.
+           * Only used when arn is not provided.
+           * @default `"128 MB"`
+           */
+          memory?: Input<Size>;
+          /**
+           * Timeout for the auto-created Lambda@Edge function.
+           * Only used when arn is not provided.
+           * @default `"5 seconds"`
+           */
+          timeout?: Input<DurationSeconds>;
+        };
+      }
+  >;
   invalidation?: Input<
     | false
     | {
@@ -225,26 +325,22 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
     /**
      * The runtime environment for the server function.
      *
-     * @default `"nodejs20.x"`
+     * @default `"nodejs24.x"`
      * @example
      * ```js
      * {
      *   server: {
-     *     runtime: "nodejs22.x"
+     *     runtime: "nodejs24.x"
      *   }
      * }
      * ```
      */
-    runtime?: Input<"nodejs18.x" | "nodejs20.x" | "nodejs22.x">;
+    runtime?: Input<"nodejs18.x" | "nodejs20.x" | "nodejs22.x" | "nodejs24.x">;
     /**
      * The maximum amount of time the server function can run.
      *
      * While Lambda supports timeouts up to 900 seconds, your requests are served
      * through AWS CloudFront. And it has a default limit of 60 seconds.
-     *
-     * If you set a timeout that's longer than 60 seconds, this component will
-     * check if your account can allow for that timeout. If not, it'll throw an
-     * error.
      *
      * :::tip
      * If you need a timeout longer than 60 seconds, you'll need to request a
@@ -406,7 +502,7 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
        * {
        *   edge: {
        *     viewerRequest: {
-       *       injection: `event.request.headers["x-foo"] = "bar";`
+       *       injection: `event.request.headers["x-foo"] = { value: "bar" };`
        *     }
        *   }
        * }
@@ -460,7 +556,7 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
        * {
        *   edge: {
        *     viewerResponse: {
-       *       injection: `event.response.headers["x-foo"] = {value: "bar"};`
+       *       injection: `event.response.headers["x-foo"] = { value: "bar" };`
        *     }
        *   }
        * }
@@ -497,9 +593,7 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
    * Or reference an existing VPC.
    *
    * ```js title="sst.config.ts"
-   * const myVpc = sst.aws.Vpc.get("MyVpc", {
-   *   id: "vpc-12345678901234567"
-   * });
+   * const myVpc = sst.aws.Vpc.get("MyVpc", "vpc-12345678901234567");
    * ```
    *
    * And pass it in.
@@ -511,6 +605,106 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
    * ```
    */
   vpc?: FunctionArgs["vpc"];
+  assets?: Input<{
+    /**
+     * Character encoding for text based assets, like HTML, CSS, JS. This is
+     * used to set the `Content-Type` header when these files are served out.
+     *
+     * If set to `"none"`, then no charset will be returned in header.
+     * @default `"utf-8"`
+     * @example
+     * ```js
+     * {
+     *   assets: {
+     *     textEncoding: "iso-8859-1"
+     *   }
+     * }
+     * ```
+     */
+    textEncoding?: Input<
+      "utf-8" | "iso-8859-1" | "windows-1252" | "ascii" | "none"
+    >;
+    /**
+     * The `Cache-Control` header used for versioned files, like `main-1234.css`. This is
+     * used by both CloudFront and the browser cache.
+     *
+     * The default `max-age` is set to 1 year.
+     * @default `"public,max-age=31536000,immutable"`
+     * @example
+     * ```js
+     * {
+     *   assets: {
+     *     versionedFilesCacheHeader: "public,max-age=31536000,immutable"
+     *   }
+     * }
+     * ```
+     */
+    versionedFilesCacheHeader?: Input<string>;
+    /**
+     * The `Cache-Control` header used for non-versioned files, like `index.html`. This is used by both CloudFront and the browser cache.
+     *
+     * The default is set to not cache on browsers, and cache for 1 day on CloudFront.
+     * @default `"public,max-age=0,s-maxage=86400,stale-while-revalidate=8640"`
+     * @example
+     * ```js
+     * {
+     *   assets: {
+     *     nonVersionedFilesCacheHeader: "public,max-age=0,no-cache"
+     *   }
+     * }
+     * ```
+     */
+    nonVersionedFilesCacheHeader?: Input<string>;
+    /**
+     * Specify the `Content-Type` and `Cache-Control` headers for specific files. This allows
+     * you to override the default behavior for specific files using glob patterns.
+     *
+     * @example
+     * Apply `Cache-Control` and `Content-Type` to all zip files.
+     * ```js
+     * {
+     *   assets: {
+     *     fileOptions: [
+     *       {
+     *         files: "**\/*.zip",
+     *         contentType: "application/zip",
+     *         cacheControl: "private,no-cache,no-store,must-revalidate"
+     *       }
+     *     ]
+     *   }
+     * }
+     * ```
+     * Apply `Cache-Control` to all CSS and JS files except for CSS files with `index-`
+     * prefix in the `main/` directory.
+     * ```js
+     * {
+     *   assets: {
+     *     fileOptions: [
+     *       {
+     *         files: ["**\/*.css", "**\/*.js"],
+     *         ignore: "main\/index-*.css",
+     *         cacheControl: "private,no-cache,no-store,must-revalidate"
+     *       }
+     *     ]
+     *   }
+     * }
+     * ```
+     */
+    fileOptions?: Input<Prettify<BaseSiteFileOptions>[]>;
+    /**
+     * Configure if files from previous deployments should be purged from the bucket.
+     * @default `false`
+     * @example
+     * ```js
+     * {
+     *   assets: {
+     *     purge: false
+     *   }
+     * }
+     * ```
+     */
+    purge?: Input<boolean>;
+  }>;
   /**
    * @deprecated The `route` prop is now the recommended way to use the `Router` component
    * to serve your site. Setting `route` will not create a standalone CloudFront
@@ -530,6 +724,10 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
      * Transform the server Function resource.
      */
     server?: Transform<FunctionArgs>;
+    /**
+     * Transform the image optimizer Function resource.
+     */
+    imageOptimizer?: Transform<FunctionArgs>;
     /**
      * Transform the CloudFront CDN resource.
      */
@@ -568,11 +766,12 @@ export abstract class SsrSite extends Component implements Link.Linkable {
     const regions = normalizeRegions();
     const route = normalizeRoute();
     const edge = normalizeEdge();
-    const serverTimeout = normalizeServerTimeout();
+    const serverTimeout = output(args.server?.timeout);
     const buildCommand = this.normalizeBuildCommand(args);
     const sitePath = regions.apply(() => normalizeSitePath());
     const dev = normalizeDev();
     const purge = output(args.assets).apply((assets) => assets?.purge ?? false);
+    const protection = normalizeProtection();
 
     if (dev.enabled) {
       const server = createDevServer();
@@ -609,6 +808,7 @@ export abstract class SsrSite extends Component implements Link.Linkable {
     const imageOptimizer = createImageOptimizer();
     const assetsUploaded = uploadAssets();
     const kvNamespace = buildKvNamespace();
+    const edgeFunction = createLambdaEdgeFunction();
 
     let distribution: Cdn | undefined;
     let distributionId: Output<string>;
@@ -644,7 +844,7 @@ export abstract class SsrSite extends Component implements Link.Linkable {
             headersConfig: {
               headerBehavior: "whitelist",
               headers: {
-                items: ["x-open-next-cache-key"],
+                items: ["x-open-next-cache-key", "x-forwarded-host"],
               },
             },
             queryStringsConfig: {
@@ -779,6 +979,35 @@ async function handler(event) {
                   ? [{ eventType: "viewer-response", functionArn: resFn.arn }]
                   : []),
               ]),
+              lambdaFunctionAssociations: all([protection, edgeFunction]).apply(
+                ([protectionConfig, autoEdgeFunction]) => {
+                  if (protectionConfig.mode !== "oac-with-edge-signing") {
+                    return [];
+                  }
+
+                  if (protectionConfig.edgeFunction?.arn) {
+                    return [
+                      {
+                        eventType: "origin-request",
+                        lambdaArn: protectionConfig.edgeFunction.arn,
+                        includeBody: true,
+                      },
+                    ];
+                  }
+
+                  if (autoEdgeFunction) {
+                    return [
+                      {
+                        eventType: "origin-request",
+                        lambdaArn: autoEdgeFunction.qualifiedArn,
+                        includeBody: true,
+                      },
+                    ];
+                  }
+
+                  return [];
+                },
+              ),
             },
           },
           { parent: self },
@@ -788,6 +1017,98 @@ async function handler(event) {
 
     const kvUpdated = createKvEntries();
     createInvalidation();
+
+    // Create Lambda permissions based on protection mode
+    all([distribution, route, servers, imageOptimizer, protection]).apply(
+      ([dist, routeVal, servers, imgOptimizer, protection]) => {
+        const distributionArn = dist
+          ? dist.nodes.distribution.arn
+          : routeVal?.routerDistributionArn;
+        if (!distributionArn) return;
+
+        // Server functions
+        servers.forEach(({ region, server }) => {
+          const provider = useProvider(region);
+
+          if (protection.mode === "none") {
+            new lambda.Permission(
+              `${name}PublicFunctionUrlAccess${logicalName(region)}`,
+              {
+                action: "lambda:InvokeFunctionUrl",
+                function: server.nodes.function.name,
+                principal: "*",
+                functionUrlAuthType: "NONE",
+              },
+              { provider, parent: self },
+            );
+          } else if (
+            protection.mode === "oac" ||
+            protection.mode === "oac-with-edge-signing"
+          ) {
+            new lambda.Permission(
+              `${name}CloudFrontFunctionUrlAccess${logicalName(region)}`,
+              {
+                action: "lambda:InvokeFunctionUrl",
+                function: server.nodes.function.name,
+                principal: "cloudfront.amazonaws.com",
+                sourceArn: distributionArn,
+              },
+              { provider, parent: self },
+            );
+            new lambda.Permission(
+              `${name}CloudFrontInvokeFunction${logicalName(region)}`,
+              {
+                action: "lambda:InvokeFunction",
+                function: server.nodes.function.name,
+                principal: "cloudfront.amazonaws.com",
+                sourceArn: distributionArn,
+              },
+              { provider, parent: self },
+            );
+          }
+        });
+
+        // Image optimizer
+        if (imgOptimizer) {
+          if (protection.mode === "none") {
+            new lambda.Permission(
+              `${name}ImageOptimizerPublicFunctionUrlAccess`,
+              {
+                action: "lambda:InvokeFunctionUrl",
+                function: imgOptimizer.nodes.function.name,
+                principal: "*",
+                functionUrlAuthType: "NONE",
+              },
+              { parent: self },
+            );
+          } else if (
+            protection.mode === "oac" ||
+            protection.mode === "oac-with-edge-signing"
+          ) {
+            new lambda.Permission(
+              `${name}ImageOptimizerCloudFrontFunctionUrlAccess`,
+              {
+                action: "lambda:InvokeFunctionUrl",
+                function: imgOptimizer.nodes.function.name,
+                principal: "cloudfront.amazonaws.com",
+                sourceArn: distributionArn,
+              },
+              { parent: self },
+            );
+            new lambda.Permission(
+              `${name}ImageOptimizerCloudFrontInvokeFunction`,
+              {
+                action: "lambda:InvokeFunction",
+                function: imgOptimizer.nodes.function.name,
+                principal: "cloudfront.amazonaws.com",
+                sourceArn: distributionArn,
+              },
+              { parent: self },
+            );
+          }
+        }
+      },
+    );
 
     const server = servers.apply((servers) => servers[0]?.server);
     this.bucket = bucket;
@@ -803,10 +1124,6 @@ async function handler(event) {
         url: this.url,
         edge: false,
         server: server.arn,
-      },
-      _dev: {
-        ...dev.outputs,
-        aws: { role: server.nodes.role.arn },
       },
     });
 
@@ -854,7 +1171,7 @@ async function handler(event) {
 
     function normalizeRegions() {
       return output(
-        args.regions ?? [getRegionOutput(undefined, { parent: self }).name],
+        args.regions ?? [getRegionOutput(undefined, { parent: self }).region],
       ).apply((regions) => {
         if (regions.length === 0)
           throw new VisibleError(
@@ -900,6 +1217,11 @@ async function handler(event) {
           throw new VisibleError(
             `Cannot provide both "edge" and "route". Use the "edge" prop on the "Router" component when serving your site through a Router.`,
           );
+
+        if (args.protection)
+          throw new VisibleError(
+            `Cannot set "protection" when routing through a Router. Set "protection" on the Router component instead.`,
+          );
       }
 
       return route;
@@ -919,20 +1241,102 @@ async function handler(event) {
       );
     }
 
-    function normalizeServerTimeout() {
-      return output(args.server?.timeout).apply((v) => {
-        if (!v) return v;
+    function normalizeProtection(): Output<ProtectionConfig> {
+      if (route) {
+        return route.apply((r) => r.routerProtection);
+      }
 
-        const seconds = toSeconds(v);
-        if (seconds > 60) {
-          getQuota("cloudfront-response-timeout").apply((quota) => {
-            if (seconds > quota)
-              throw new VisibleError(
-                `Server timeout for "${name}" is longer than the allowed CloudFront response timeout of ${quota} seconds. You can contact AWS Support to increase the timeout - ${CONSOLE_URL}`,
-              );
-          });
+      return output(args.protection).apply((protection) => {
+        if (!protection) return { mode: "none" as const };
+
+        if (typeof protection === "string") {
+          return { mode: protection };
         }
-        return v;
+
+        if (
+          protection.mode === "oac-with-edge-signing" &&
+          protection.edgeFunction?.arn
+        ) {
+          const arn = protection.edgeFunction.arn;
+          if (typeof arn === "string") {
+            parseLambdaEdgeArn(arn);
+          }
+        }
+
+        return protection;
+      });
+    }
+
+    function createLambdaEdgeFunction() {
+      if (route) return output(undefined);
+
+      return protection.apply((protectionConfig) => {
+        if (
+          protectionConfig.mode !== "oac-with-edge-signing" ||
+          protectionConfig.edgeFunction?.arn
+        ) {
+          return undefined;
+        }
+
+        const edgeConfig = protectionConfig.edgeFunction;
+        const memory = edgeConfig?.memory ? toMBs(edgeConfig.memory) : 128;
+        const timeout = edgeConfig?.timeout ? toSeconds(edgeConfig.timeout) : 5;
+
+        const edgeRole = new iam.Role(
+          ...transform(
+            undefined,
+            `${name}EdgeFunctionRole`,
+            {
+              name: physicalName(64, `${name}EdgeRole`),
+              assumeRolePolicy: JSON.stringify({
+                Version: "2012-10-17",
+                Statement: [
+                  {
+                    Action: "sts:AssumeRole",
+                    Effect: "Allow",
+                    Principal: {
+                      Service: [
+                        "lambda.amazonaws.com",
+                        "edgelambda.amazonaws.com",
+                      ],
+                    },
+                  },
+                ],
+              }),
+              managedPolicyArns: [
+                "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+              ],
+            },
+            { parent: self, ignoreChanges: ["name"] },
+          ),
+        );
+
+        const edgeFunction = new lambda.Function(
+          ...transform(
+            undefined,
+            `${name}EdgeFunction`,
+            {
+              name: physicalName(64, `${name}EdgeFn`),
+              runtime: "nodejs22.x",
+              handler: "index.handler",
+              role: edgeRole.arn,
+              code: new pulumiAsset.FileArchive(
+                path.join($cli.paths.platform, "dist", "oac-edge-signer"),
+              ),
+              publish: true,
+              timeout: timeout,
+              memorySize: memory,
+              description: `${name} Lambda@Edge function for OAC request signing`,
+            },
+            {
+              parent: self,
+              provider: useProvider("us-east-1"),
+              ignoreChanges: ["name"],
+            },
+          ),
+        );
+
+        return edgeFunction;
       });
     }
 
@@ -943,7 +1347,7 @@ async function handler(event) {
           `${name}DevServer`,
           {
             description: `${name} dev server`,
-            runtime: "nodejs20.x",
+            runtime: "nodejs24.x",
             timeout: "20 seconds",
             memory: "128 MB",
             bundle: path.join(
@@ -1020,7 +1424,7 @@ async function handler(event) {
                 ...planServer,
                 description: planServer.description ?? `${name} server`,
                 runtime: output(args.server?.runtime).apply(
-                  (v) => v ?? planServer.runtime ?? "nodejs20.x",
+                  (v) => v ?? planServer.runtime ?? "nodejs24.x",
                 ),
                 timeout,
                 memory: output(args.server?.memory).apply(
@@ -1031,10 +1435,13 @@ async function handler(event) {
                 ),
                 vpc: args.vpc,
                 nodejs: {
-                  format: "esm" as const,
-                  install: args.server?.install,
-                  loader: args.server?.loader,
                   ...planServer.nodejs,
+                  format: "esm" as const,
+                  install: output(args.server?.install).apply((install) => [
+                    ...(install ?? []),
+                    ...(planServer.nodejs?.install ?? []),
+                  ]),
+                  loader: args.server?.loader ?? planServer.nodejs?.loader,
                 },
                 environment: output(args.environment).apply((environment) => ({
                   ...environment,
@@ -1062,7 +1469,13 @@ async function handler(event) {
                   ...(planServer.layers ?? []),
                   ...(layers ?? []),
                 ]),
-                url: true,
+                url: {
+                  authorization: protection.apply((p) =>
+                    p.mode === "oac" || p.mode === "oac-with-edge-signing"
+                      ? "iam"
+                      : "none",
+                  ),
+                },
                 dev: false,
                 _skipHint: true,
               },
@@ -1079,7 +1492,7 @@ async function handler(event) {
                 job: {
                   description: `${name} warmer`,
                   bundle: path.join($cli.paths.platform, "dist", "ssr-warmer"),
-                  runtime: "nodejs20.x",
+                  runtime: "nodejs24.x",
                   handler: "index.handler",
                   timeout: "900 seconds",
                   memory: "128 MB",
@@ -1128,25 +1541,34 @@ async function handler(event) {
       return output(plan.imageOptimizer).apply((imageOptimizer) => {
         if (!imageOptimizer) return;
         return new Function(
-          `${name}ImageOptimizer`,
-          {
-            timeout: "25 seconds",
-            logging: {
-              retention: "3 days",
-            },
-            permissions: [
-              {
-                actions: ["s3:GetObject"],
-                resources: [interpolate`${bucket.arn}/*`],
+          ...transform(
+            args.transform?.imageOptimizer,
+            `${name}ImageOptimizer`,
+            {
+              timeout: "25 seconds",
+              logging: {
+                retention: "3 days",
               },
-            ],
-            ...imageOptimizer.function,
-            url: true,
-            dev: false,
-            _skipMetadata: true,
-            _skipHint: true,
-          },
-          { parent: self },
+              permissions: [
+                {
+                  actions: ["s3:GetObject"],
+                  resources: [interpolate`${bucket.arn}/*`],
+                },
+              ],
+              ...imageOptimizer.function,
+              url: {
+                authorization: protection.apply((p) =>
+                  p.mode === "oac" || p.mode === "oac-with-edge-signing"
+                    ? "iam"
+                    : "none",
+                ),
+              },
+              dev: false,
+              _skipMetadata: true,
+              _skipHint: true,
+            },
+            { parent: self },
+          ),
         );
       });
     }
@@ -1259,7 +1681,7 @@ async function handler(event) {
               bucketName: bucket.name,
               files: bucketFiles,
               purge,
-              region: getRegionOutput(undefined, { parent: self }).name,
+              region: getRegionOutput(undefined, { parent: self }).region,
             },
             { parent: self },
           );
@@ -1284,46 +1706,60 @@ async function handler(event) {
         plan,
         bucket.nodes.bucket.bucketRegionalDomainName,
         timeout,
+        protection,
       ]).apply(
-        ([servers, imageOptimizer, outputPath, plan, bucketDomain, timeout]) =>
+        ([
+          servers,
+          imageOptimizer,
+          outputPath,
+          plan,
+          bucketDomain,
+          timeout,
+          protectionConfig,
+        ]) =>
           all([
             servers.map((s) => ({ region: s.region, url: s.server!.url })),
             imageOptimizer?.url,
           ]).apply(([servers, imageOptimizerUrl]) => {
             const kvEntries: Record<string, string> = {};
             const dirs: string[] = [];
+            // Router append .html and index.html suffixes to requests to s3 routes:
+            // - `.well-known` contain files without suffix, hence will be appended .html
+            // - in the future, it might make sense for each dir to have props that controls
+            //   the suffixes ie. "handleTrailingSlashse"
+            const expandDirs = [".well-known"];
 
             plan.assets.forEach((copy) => {
-              fs.readdirSync(path.join(outputPath, copy.from), {
-                withFileTypes: true,
-              }).forEach((item) => {
-                if (item.isFile()) {
-                  kvEntries[toPosix(path.join("/", item.name))] = "s3";
-                  return;
-                }
-
-                // Handle deep routes
-                // In Next.js, asset requests are prefixed with is /_next/static, and
-                // image optimization requests are prefixed with /_next/image. We cannot
-                // route by 1 level of subdirs (ie. /_next/`), so we need to route by 2
-                // levels of subdirs.
-                if (item.name !== copy.deepRoute) {
-                  dirs.push(toPosix(path.join("/", item.name)));
-                  return;
-                }
-
-                fs.readdirSync(path.join(outputPath, copy.from, item.name), {
-                  withFileTypes: true,
-                }).forEach((subItem) => {
-                  if (subItem.isFile()) {
-                    kvEntries[
-                      toPosix(path.join("/", item.name, subItem.name))
-                    ] = "s3";
-                    return;
-                  }
-                  dirs.push(toPosix(path.join("/", item.name, subItem.name)));
-                });
-              });
+              const processDir = (childPath = "", level = 0) => {
+                const currentPath = path.join(outputPath, copy.from, childPath);
+                fs.readdirSync(currentPath, { withFileTypes: true }).forEach(
+                  (item) => {
+                    // File: add to kvEntries
+                    if (item.isFile()) {
+                      kvEntries[toPosix(path.join("/", childPath, item.name))] =
+                        "s3";
+                      return;
+                    }
+                    // Directory + deep routes: recursively process it
+                    //   In Next.js, asset requests are prefixed with is /_next/static,
+                    //   and image optimization requests are prefixed with /_next/image.
+                    //   We cannot route by 1 level of subdirs (ie. /_next/`), so we need
+                    //   to route by 2 levels of subdirs.
+                    // Directory + expand: recursively process it
+                    if (
+                      level === 0 &&
+                      (expandDirs.includes(item.name) ||
+                        item.name === copy.deepRoute)
+                    ) {
+                      processDir(path.join(childPath, item.name), level + 1);
+                      return;
+                    }
+                    // Directory + NOT expand: add to route
+                    dirs.push(toPosix(path.join("/", childPath, item.name)));
+                  },
+                );
+              };
+              processDir();
             });
 
             kvEntries["metadata"] = JSON.stringify({
@@ -1336,12 +1772,23 @@ async function handler(event) {
               },
               image: imageOptimizerUrl
                 ? {
-                  host: new URL(imageOptimizerUrl!).host,
-                  route: plan.imageOptimizer!.prefix,
-                }
+                    host: new URL(imageOptimizerUrl!).host,
+                    route: plan.imageOptimizer!.prefix,
+                    ...(protectionConfig.mode === "oac" ||
+                    protectionConfig.mode === "oac-with-edge-signing"
+                      ? {
+                          originAccessControlConfig: {
+                            enabled: true,
+                            signingBehavior: "always",
+                            signingProtocol: "sigv4",
+                            originType: "lambda",
+                          },
+                        }
+                      : {}),
+                  }
                 : undefined,
               servers: servers.map((s) => [
-                new URL(s.url).host,
+                new URL(s.url!).host,
                 supportedRegions[s.region as keyof typeof supportedRegions].lat,
                 supportedRegions[s.region as keyof typeof supportedRegions].lon,
               ]),
@@ -1349,6 +1796,17 @@ async function handler(event) {
                 timeouts: {
                   readTimeout: toSeconds(timeout),
                 },
+                ...(protectionConfig.mode === "oac" ||
+                protectionConfig.mode === "oac-with-edge-signing"
+                  ? {
+                      originAccessControlConfig: {
+                        enabled: true,
+                        signingBehavior: "always",
+                        signingProtocol: "sigv4",
+                        originType: "lambda",
+                      },
+                    }
+                  : {}),
               },
             } satisfies KV_SITE_METADATA);
             return kvEntries;

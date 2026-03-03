@@ -1,5 +1,11 @@
 /// <reference path="./.sst/platform/config.d.ts" />
 
+/**
+ * ## AWS Cognito User Pool
+ *
+ * Create a Cognito User Pool with a hosted UI domain, client, and identity pool.
+ *
+ */
 export default $config({
   app(input) {
     return {
@@ -10,13 +16,20 @@ export default $config({
   },
   async run() {
     const userPool = new sst.aws.CognitoUserPool("MyUserPool", {
+      domain: {
+        prefix: `my-app-${$app.stage}`,
+      },
       triggers: {
         preSignUp: {
           handler: "index.handler",
         },
       },
     });
-    const client = userPool.addClient("Web");
+
+    const client = userPool.addClient("Web", {
+      callbackUrls: ['https://example.com/auth/callback']
+    });
+
     const identityPool = new sst.aws.CognitoIdentityPool("MyIdentityPool", {
       userPools: [
         {
@@ -30,6 +43,7 @@ export default $config({
       UserPool: userPool.id,
       Client: client.id,
       IdentityPool: identityPool.id,
+      DomainUrl: userPool.domainUrl,
     };
   },
 });
