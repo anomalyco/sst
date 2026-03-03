@@ -305,6 +305,10 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	if input.Command == "deploy" || input.Command == "diff" || input.Command == "refresh" {
 		for provider, opts := range p.app.Providers {
 			for key, value := range opts.(map[string]interface{}) {
+				// Skip SST-only fields that Pulumi doesn't understand
+				if key == "package" {
+					continue
+				}
 				switch v := value.(type) {
 				case map[string]interface{}:
 					bytes, err := json.Marshal(v)
@@ -585,6 +589,22 @@ loop:
 
 		if event.SummaryEvent != nil {
 			finished = true
+		}
+	}
+
+	// fallback: re-read the event log if the tailing loop missed SummaryEvent
+	if !finished {
+		if data, err := os.ReadFile(eventlogPath); err == nil {
+			for _, line := range strings.Split(string(data), "\n") {
+				if line == "" {
+					continue
+				}
+				var ev events.EngineEvent
+				if json.Unmarshal([]byte(line), &ev) == nil && ev.SummaryEvent != nil {
+					finished = true
+					break
+				}
+			}
 		}
 	}
 

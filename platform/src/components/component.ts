@@ -173,6 +173,7 @@ export class Component extends ComponentResource {
               "aws:s3/bucketVersioning:BucketVersioning",
               "aws:s3/bucketWebsiteConfiguration:BucketWebsiteConfiguration",
               "aws:secretsmanager/secretVersion:SecretVersion",
+              "aws:wafv2/webAclLoggingConfiguration:WebAclLoggingConfiguration",
               "aws:ses/domainIdentityVerification:DomainIdentityVerification",
               "aws:sesv2/configurationSetEventDestination:ConfigurationSetEventDestination",
               "aws:sesv2/emailIdentity:EmailIdentity",
@@ -217,6 +218,11 @@ export class Component extends ComponentResource {
             "aws:cloudfront/keyValueStore:KeyValueStore": ["name", 64],
             "aws:cognito/identityPool:IdentityPool": ["identityPoolName", 128],
             "aws:cognito/userPool:UserPool": ["name", 128],
+            "aws:cognito/userPoolDomain:UserPoolDomain": [
+              "domain",
+              63,
+              { lower: true },
+            ],
             "aws:dynamodb/table:Table": ["name", 255],
             "aws:ec2/keyPair:KeyPair": ["keyName", 255],
             "aws:ec2/eip:Eip": ["tags", 255],
@@ -309,6 +315,7 @@ export class Component extends ComponentResource {
                   ),
               },
             ],
+            "aws:wafv2/webAcl:WebAcl": ["name", 64],
             "cloudflare:index/d1Database:D1Database": [
               "name",
               64,

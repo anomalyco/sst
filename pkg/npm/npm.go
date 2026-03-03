@@ -186,8 +186,11 @@ type Package struct {
 	Name    string `json:"name"`
 	Version string `json:"version"`
 	Pulumi  *struct {
-		Name    string `json:"name"`
-		Version string `json:"version"`
+		Name             string `json:"name"`
+		Version          string `json:"version"`
+		Parameterization *struct {
+			Name string `json:"name"`
+		} `json:"parameterization"`
 	}
 }
 
