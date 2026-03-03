@@ -72,9 +72,7 @@ export interface ImageArgs {
    *
    * Similar to Docker's `--secret` flag.
    */
-  secrets?: Input<{
-    [k: string]: string;
-  }>;
+  secrets?: Input<Record<string, string>>;
   /**
    * Tags to apply to the Docker image.
    * @example
