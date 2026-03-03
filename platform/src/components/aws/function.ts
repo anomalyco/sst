@@ -24,6 +24,7 @@ import { VisibleError } from "../error.js";
 import type { Input } from "../input.js";
 import { physicalName } from "../naming.js";
 import { RETENTION } from "./logging.js";
+import { DURABLE_CHECKPOINT_RETENTION } from "./durable.js";
 import {
   cloudwatch,
   ecr,
@@ -127,6 +128,11 @@ export type FunctionPermissionArgs = {
       values: Input<Input<string>[]>;
     }>[]
   >;
+};
+
+export type DurableFunctionArgs = {
+  executionTimeout?: Input<Duration>;
+  retentionPeriod?: Input<keyof typeof DURABLE_CHECKPOINT_RETENTION>;
 };
 
 interface FunctionUrlCorsArgs {
@@ -1479,6 +1485,8 @@ export interface FunctionArgs {
      */
     eventInvokeConfig?: Transform<lambda.FunctionEventInvokeConfigArgs>;
   };
+
+  durable?: Input<boolean | DurableFunctionArgs>;
   /**
    * @internal
    */
@@ -1721,6 +1729,7 @@ export class Function extends Component implements Link.Linkable {
     const volume = normalizeVolume();
     const url = normalizeUrl();
     const copyFiles = normalizeCopyFiles();
+    const durable = normalizeDurableConfig();
     const policies = output(args.policies ?? []);
     const vpc = normalizeVpc();
 
@@ -1871,7 +1880,7 @@ export class Function extends Component implements Link.Linkable {
     }
 
     function normalizeLogging() {
-      return output(args.logging).apply((logging) => {
+      return all([args.logging, args.durable]).apply(([logging, durable]) => {
         if (logging === false) return undefined;
 
         if (logging?.retention && logging?.logGroup) {
@@ -1880,10 +1889,18 @@ export class Function extends Component implements Link.Linkable {
           );
         }
 
+        if(durable && logging?.format && logging?.format != "json"){
+          throw new VisibleError(
+            `Durable functions require "logging.format" to be set to "json"`,
+          )
+        }
+
+        const defaultFormat = durable ? "json" : "text";
+
         return {
           logGroup: logging?.logGroup,
           retention: logging?.retention ?? "1 month",
-          format: logging?.format ?? "text",
+          format: logging?.format ?? defaultFormat,
         };
       });
     }
@@ -1993,6 +2010,21 @@ export class Function extends Component implements Link.Linkable {
       });
     }
 
+    function normalizeDurableConfig() {
+      return output(args.durable).apply((durable) => {
+        if (durable === false || durable === undefined) return;
+
+        if (durable === true) {
+          durable = {};
+        }
+
+        return {
+          executionTimeout: durable.executionTimeout ?? "15 minutes",
+          retentionPeriod: durable.retentionPeriod ?? "2 weeks",
+        };
+      });
+    }
+
     function buildLinkData() {
       return output(args.link || []).apply((links) => Link.build(links));
     }
@@ -2002,13 +2034,10 @@ export class Function extends Component implements Link.Linkable {
     }
 
     function buildHandler() {
-      return all([runtime, dev, isContainer]).apply(
-        async ([runtime, dev, isContainer]) => {
+      return all([runtime, dev, isContainer, durable]).apply(
+        async ([runtime, dev, isContainer, durable]) => {
           if (dev) {
-            return {
-              handler: "bootstrap",
-              bundle: path.join($cli.paths.platform, "dist", "bridge"),
-            };
+            return resolveDevBridge();
           }
 
           const buildResult = buildInput.apply(async (input) => {
@@ -2030,6 +2059,22 @@ export class Function extends Component implements Link.Linkable {
             bundle: buildResult.out,
             sourcemaps: buildResult.sourcemaps,
           };
+
+          function resolveDevBridge() {
+            if (durable) {
+              return {
+                handler: "index.handler",
+                bundle: path.join($cli.paths.platform, "dist", "nodejs-bridge"),
+                sourcemaps: undefined,
+              };
+            }
+
+            return {
+              handler: "bootstrap",
+              bundle: path.join($cli.paths.platform, "dist", "bridge"),
+              sourcemaps: undefined,
+            };
+          }
         },
       );
     }
@@ -2217,6 +2262,11 @@ export class Function extends Component implements Link.Linkable {
                 ...(vpc
                   ? [
                     interpolate`arn:${partition}:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole`,
+                  ]
+                  : []),
+                ...(durable
+                  ? [
+                    interpolate`arn:${partition}:iam::aws:policy/service-role/AWSLambdaBasicDurableExecutionRolePolicy`,
                   ]
                   : []),
               ],
@@ -2463,6 +2513,7 @@ export class Function extends Component implements Link.Linkable {
         zipAsset,
         args.concurrency,
         dev,
+        durable,
       ]).apply(
         ([
           logging,
@@ -2472,6 +2523,7 @@ export class Function extends Component implements Link.Linkable {
           zipAsset,
           concurrency,
           dev,
+          durable,
         ]) => {
           // This is a hack to avoid handler being marked as having propertyDependencies.
           // There is an unresolved bug in pulumi that causes issues when it does
@@ -2507,6 +2559,10 @@ export class Function extends Component implements Link.Linkable {
               tags: args.tags,
               publish: output(args.versioning).apply((v) => v ?? false),
               reservedConcurrentExecutions: concurrency?.reserved,
+              durableConfig: durable && {
+                executionTimeout: toSeconds(durable.executionTimeout),
+                retentionPeriod: DURABLE_CHECKPOINT_RETENTION[durable.retentionPeriod],
+              },
               ...(isContainer
                 ? {
                   packageType: "Image",
@@ -2551,13 +2607,21 @@ export class Function extends Component implements Link.Linkable {
                       (v) => `${v.substring(0, 240)} (live)`,
                     )
                     : "live",
-                  runtime: "provided.al2023",
+                  runtime: resolveDevRuntime(),
                   architectures: ["x86_64"],
                 }
                 : {}),
             },
             transformed[2],
           );
+
+          function resolveDevRuntime() {
+            if (durable) {
+              return "nodejs24.x";
+            }
+
+            return "provided.al2023";
+          }
         },
       );
     }
@@ -2573,11 +2637,28 @@ export class Function extends Component implements Link.Linkable {
         const isIam = all([isOac, authorization]).apply(
           ([oac, authorization]) => oac || authorization === "iam",
         );
+        const functionName = all([fn.name, durable]).apply(([name, durable]) =>{
+          const needsQualifiedArn = !!durable;
+          if(needsQualifiedArn){
+            // AWS expects function URLs for durable functions to use qualified ARNs.
+            // This could easily be solved using arn:version or the qualifier property,
+            // but Pulumi has buggy regex that doesn't allow $LATEST as a qualifier and
+            // blocks long ARNs (even though they are valid).
+            // So we are blocking URLs for durable functions until there is a solution
+            // to this issue in Pulumi.
+
+            throw new VisibleError(
+              "SST currently does not support enabling function URLs on durable functions. This is because durable functions require the use of qualified ARNs, which is not currently supported by function URLs.",
+            )
+          }
+
+          return name;
+        })
 
         const fnUrl = new lambda.FunctionUrl(
           `${name}Url`,
           {
-            functionName: fn.name,
+            functionName,
             authorizationType: isIam.apply((isIam) =>
               isIam ? "AWS_IAM" : "NONE",
             ),

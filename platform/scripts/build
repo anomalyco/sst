@@ -12,6 +12,10 @@ bun build ./functions/nodejs-runtime/loop.ts --target=node --outdir ./dist/nodej
 GOARCH=amd64 GOOS=linux go build -trimpath -mod=readonly -ldflags="-buildid=" -o ./dist/bridge/bootstrap ./functions/bridge 
 node ./scripts/build.mjs
 
+mkdir -p ./dist/nodejs-bridge
+cp ./functions/nodejs-bridge/index.mjs ./dist/nodejs-bridge/index.mjs
+cp ./dist/bridge/bootstrap ./dist/nodejs-bridge/bootstrap
+
 mkdir -p ./dist/python-runtime/
 cp ./functions/python-runtime/index.py ./dist/python-runtime/index.py
 
