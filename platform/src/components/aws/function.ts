@@ -2657,7 +2657,7 @@ export class Function extends Component implements Link.Linkable {
             // to this issue in Pulumi.
 
             throw new VisibleError(
-              "SST currently does not support enabling function URLs on durable functions. This is because durable functions require the use of qualified ARNs, which is not currently supported by function URLs.",
+              "SST currently does not support enabling function URLs on durable functions.",
             )
           }
 
