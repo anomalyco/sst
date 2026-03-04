@@ -329,12 +329,6 @@ func (s *Multiplexer) Start() {
 						s.draw()
 						return
 					}
-					if selected != nil && selected.isScrolling() && (s.focused || !selected.killable) {
-						selected.scrollReset()
-						s.draw()
-						s.screen.Sync()
-						return
-					}
 					if !s.focused {
 						if selected.killable {
 							if selected.dead {
@@ -358,6 +352,13 @@ func (s *Multiplexer) Start() {
 				case tcell.KeyCtrlZ:
 					if s.focused {
 						s.blur()
+						return
+					}
+				case tcell.KeyCtrlG:
+					if selected != nil && selected.isScrolling() {
+						selected.scrollReset()
+						s.draw()
+						s.screen.Sync()
 						return
 					}
 				case tcell.KeyCtrlL:
