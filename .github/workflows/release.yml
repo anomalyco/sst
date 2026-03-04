@@ -43,11 +43,6 @@ jobs:
       - name: Fetch tags
         run: git fetch --force --tags
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.x"
-
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
@@ -85,18 +80,6 @@ jobs:
         env:
           NPM_CONFIG_PROVENANCE: false
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Release Python SDK
-        run: |
-          VERSION=$(jq -r .version dist/metadata.json)
-          cd sdk/python
-          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" pyproject.toml
-          pip install build twine
-          python -m build
-          twine upload dist/*
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
 
       - name: Release Rust SDK
         run: |
