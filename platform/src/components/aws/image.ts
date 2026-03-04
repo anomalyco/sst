@@ -173,7 +173,7 @@ const limiter = new Semaphore(
  * [Minimal example](#minimal-example) setup, optimised for faster pulls.
  * This setup reduces pull speed by indexing image in chunks.
  * 
- * For the fastest possible pull speed, consider `"zstd"` with [SOCI indexing](https://github.com/awslabs/soci-snapshotter) - which can be [automated on AWS](https://github.com/awslabs/cfn-ecr-aws-soci-index-builder).
+ * Alternatively, consider `"gzip"` compression with [SOCI indexing](https://github.com/awslabs/soci-snapshotter) - which can be [automatically created on AWS](https://github.com/awslabs/cfn-ecr-aws-soci-index-builder).
  *
  * ```ts {2-4} title="sst.config.ts"
  * new sst.aws.Image("MyImage", {
