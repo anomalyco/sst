@@ -358,7 +358,7 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 			}
 			resource := completed.Resources[index]
 			if resource.Type == "sst:sst:Group" {
-				for _, memberURN := range resolveGroupMembers(resource) {
+				for _, memberURN := range resolveGroupMembers(resource, completed.Resources) {
 					args = append(args, "--target", memberURN)
 				}
 			} else {
@@ -380,7 +380,7 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 			}
 			resource := completed.Resources[index]
 			if resource.Type == "sst:sst:Group" {
-				for _, memberURN := range resolveGroupMembers(resource) {
+				for _, memberURN := range resolveGroupMembers(resource, completed.Resources) {
 					args = append(args, "--exclude", memberURN)
 				}
 			} else {
@@ -683,7 +683,7 @@ loop:
 	return nil
 }
 
-func resolveGroupMembers(resource apitype.ResourceV3) []string {
+func resolveGroupMembers(resource apitype.ResourceV3, allResources []apitype.ResourceV3) []string {
 	outputs, ok := parsePlaintext(resource.Outputs).(map[string]interface{})
 	if !ok {
 		return nil
@@ -696,11 +696,67 @@ func resolveGroupMembers(resource apitype.ResourceV3) []string {
 	if !ok {
 		return nil
 	}
-	var urns []string
+
+	// Collect direct member URNs
+	var directMembers []string
+	memberSet := make(map[string]bool)
 	for _, m := range members {
 		if urn, ok := m.(string); ok {
-			urns = append(urns, urn)
+			directMembers = append(directMembers, urn)
+			memberSet[urn] = true
 		}
 	}
-	return urns
+
+	// For each direct member, find linked dependencies by walking the
+	// children's dependency graph back up to top-level SST components
+	for _, urn := range directMembers {
+		for _, desc := range findDescendants(urn, allResources) {
+			for _, dep := range desc.Dependencies {
+				if parent := findTopLevelSSTParent(string(dep), allResources); parent != "" {
+					memberSet[parent] = true
+				}
+			}
+			for _, deps := range desc.PropertyDependencies {
+				for _, dep := range deps {
+					if parent := findTopLevelSSTParent(string(dep), allResources); parent != "" {
+						memberSet[parent] = true
+					}
+				}
+			}
+		}
+	}
+
+	result := make([]string, 0, len(memberSet))
+	for urn := range memberSet {
+		result = append(result, urn)
+	}
+	return result
+}
+
+func findDescendants(parentURN string, allResources []apitype.ResourceV3) []apitype.ResourceV3 {
+	var result []apitype.ResourceV3
+	for _, res := range allResources {
+		if string(res.Parent) == parentURN {
+			result = append(result, res)
+			result = append(result, findDescendants(string(res.URN), allResources)...)
+		}
+	}
+	return result
+}
+
+func findTopLevelSSTParent(urn string, allResources []apitype.ResourceV3) string {
+	idx := slices.IndexFunc(allResources, func(r apitype.ResourceV3) bool {
+		return string(r.URN) == urn
+	})
+	if idx == -1 {
+		return ""
+	}
+	res := allResources[idx]
+	if res.Parent == "" || res.Parent.Type() == "pulumi:pulumi:Stack" {
+		if strings.HasPrefix(string(res.Type), "sst:") {
+			return string(res.URN)
+		}
+		return ""
+	}
+	return findTopLevelSSTParent(string(res.Parent), allResources)
 }
