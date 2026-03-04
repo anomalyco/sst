@@ -27,7 +27,7 @@ import {
   type Transform,
 } from "../component.js";
 import { VisibleError } from "../error.js";
-import { CronV2 } from "./cron-v2.js";
+import { Cron } from "./cron.js";
 import { BaseSiteFileOptions, getContentType } from "../base/base-site.js";
 import { BaseSsrSiteArgs, buildApp } from "../base/base-ssr-site.js";
 import { cloudfront, getRegionOutput, lambda, Region, iam } from "@pulumi/aws";
@@ -1485,11 +1485,11 @@ async function handler(event) {
 
           if (args.warm) {
             // Create cron job
-            const cron = new CronV2(
+            const cron = new Cron(
               `${name}Warmer${logicalName(region)}`,
               {
                 schedule: "rate(5 minutes)",
-                function: {
+                job: {
                   description: `${name} warmer`,
                   bundle: path.join($cli.paths.platform, "dist", "ssr-warmer"),
                   runtime: "nodejs24.x",
@@ -1506,7 +1506,14 @@ async function handler(event) {
                   link: [server],
                   _skipMetadata: true,
                 },
-                retries: 0,
+                transform: {
+                  target: (args) => {
+                    args.retryPolicy = {
+                      maximumRetryAttempts: 0,
+                      maximumEventAgeInSeconds: 60,
+                    };
+                  },
+                },
               },
               { provider, parent: self },
             );
@@ -1515,7 +1522,7 @@ async function handler(event) {
             new lambda.Invocation(
               `${name}Prewarm${logicalName(region)}`,
               {
-                functionName: cron.nodes.function.name,
+                functionName: cron.nodes.job.name,
                 triggers: {
                   version: Date.now().toString(),
                 },
