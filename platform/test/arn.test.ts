@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "bun:test";
 import {
   parseFunctionArn,
   splitQualifiedFunctionArn,
@@ -13,7 +13,7 @@ import {
   parseLambdaEdgeArn,
   parseElasticSearch,
   parseOpenSearch,
-} from "../../src/components/aws/helpers/arn";
+} from "../src/components/aws/helpers/arn";
 
 describe("parseFunctionArn", () => {
   it("parses unqualified ARN", () => {

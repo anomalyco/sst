@@ -4,7 +4,7 @@
   "type": "module",
   "prettier": {},
   "scripts": {
-    "test": "vitest run",
+    "test": "bun test",
     "dev": "tsc --watch --noEmit",
     "build": "bash ./scripts/build"
   },
@@ -51,8 +51,7 @@
     "@aws-sdk/client-iot": "3.501.0",
     "@types/archiver": "6.0.2",
     "@types/aws-lambda": "8.10.133",
-    "@types/bun": "1.2.1",
-    "vitest": "^1.2.2"
+    "@types/bun": "1.2.1"
   },
   "overrides": {
     "string-width": "4.2.3",

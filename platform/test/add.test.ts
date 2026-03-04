@@ -1,10 +1,10 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach } from "bun:test";
 import { execFileSync } from "child_process";
 import fs from "fs";
 import path from "path";
 import os from "os";
 
-const ADD_SCRIPT = path.resolve(__dirname, "../../src/ast/add.mjs");
+const ADD_SCRIPT = path.resolve(__dirname, "../src/ast/add.mjs");
 const PKG = "@pulumiverse/grafana";
 const VERSION = "0.0.1";
 
