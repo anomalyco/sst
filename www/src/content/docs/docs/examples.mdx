@@ -1970,23 +1970,17 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-hono-re
 
 An example on how to enable streaming for Lambda functions using Hono.
 
-While `sst dev` doesn't support streaming, we can conditionally enable it on deploy.
+Streaming is supported in both `sst dev` and `sst deploy`.
 
 ```ts title="sst.config.ts"
 {
-  streaming: $dev ? false : true
+  streaming: true
 }
 ```
 
 ```ts title="index.ts"
-export const handler = process.env.SST_LIVE ? handle(app) : streamHandle(app);
+export const handler = streamHandle(app);
 ```
-
-This will return the standard handler for `sst dev`.
-
-:::note
-Streaming is currently not supported in `sst dev`.
-:::
 
 To test this in your terminal, use the `curl` command with the `--no-buffer` option.
 
@@ -1998,7 +1992,7 @@ Here we are using a Function URL directly because API Gateway doesn't support st
 ```ts title="sst.config.ts"
 const hono = new sst.aws.Function("Hono", {
   url: true,
-  streaming: $dev ? false : true,
+  streaming: true,
   timeout: "15 minutes",
   handler: "index.handler",
 });
@@ -2555,30 +2549,24 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-lambda-
 
 An example on how to enable streaming for Lambda functions.
 
+Streaming is supported in both `sst dev` and `sst deploy`.
+
 ```ts title="sst.config.ts"
 {
   streaming: true
 }
 ```
 
-While `sst dev` doesn't support streaming, you can use the
-[`lambda-stream`](https://github.com/astuyve/lambda-stream) package to test locally.
-
-```bash
-npm install lambda-stream
-```
-
-Then, you can use the `streamifyResponse` function to wrap your handler:
+Use the `awslambda.streamifyResponse` function to wrap your handler. The `awslambda` global is provided by the Lambda execution environment at runtime, and SST provides it automatically during `sst dev` as well. For TypeScript types, importing from `@types/aws-lambda` will augment the global namespace.
 
 ```ts title="index.ts"
 import { APIGatewayProxyEventV2 } from "aws-lambda";
-import { streamifyResponse, ResponseStream } from "lambda-stream";
 
-export const handler = streamifyResponse(myHandler);
+export const handler = awslambda.streamifyResponse(myHandler);
 
 async function myHandler(
   _event: APIGatewayProxyEventV2,
-  responseStream: ResponseStream
+  responseStream: awslambda.HttpResponseStream
 ): Promise<void> {
   return new Promise((resolve, _reject) => {
     responseStream.setContentType('text/plain')
@@ -2591,12 +2579,6 @@ async function myHandler(
   })
 }
 ```
-
-When deployed, this will use the `awslambda.streamifyResponse`.
-
-:::note
-Streaming is currently not supported in `sst dev`.
-:::
 
 To test this in your terminal, use the `curl` command with the `--no-buffer` option.
 
