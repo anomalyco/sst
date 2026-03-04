@@ -356,7 +356,14 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 			if index == -1 {
 				return util.NewReadableError(nil, fmt.Sprintf("Target not found: %v", item))
 			}
-			args = append(args, "--target", string(completed.Resources[index].URN))
+			resource := completed.Resources[index]
+			if resource.Type == "sst:sst:Group" {
+				for _, memberURN := range resolveGroupMembers(resource) {
+					args = append(args, "--target", memberURN)
+				}
+			} else {
+				args = append(args, "--target", string(resource.URN))
+			}
 		}
 		if len(input.Target) > 0 {
 			args = append(args, "--target-dependents")
@@ -371,7 +378,14 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 			if index == -1 {
 				return util.NewReadableError(nil, fmt.Sprintf("Exclude target not found: %v", item))
 			}
-			args = append(args, "--exclude", string(completed.Resources[index].URN))
+			resource := completed.Resources[index]
+			if resource.Type == "sst:sst:Group" {
+				for _, memberURN := range resolveGroupMembers(resource) {
+					args = append(args, "--exclude", memberURN)
+				}
+			} else {
+				args = append(args, "--exclude", string(resource.URN))
+			}
 		}
 		if len(input.Exclude) > 0 {
 			args = append(args, "--exclude-dependents")
@@ -667,4 +681,26 @@ loop:
 		return ErrStackRunFailed
 	}
 	return nil
+}
+
+func resolveGroupMembers(resource apitype.ResourceV3) []string {
+	outputs, ok := parsePlaintext(resource.Outputs).(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	group, ok := outputs["_group"].(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	members, ok := group["members"].([]interface{})
+	if !ok {
+		return nil
+	}
+	var urns []string
+	for _, m := range members {
+		if urn, ok := m.(string); ok {
+			urns = append(urns, urn)
+		}
+	}
+	return urns
 }
