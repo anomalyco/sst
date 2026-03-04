@@ -7,8 +7,5 @@
   ],
   "overrides": {
     "google-protobuf": "3.21.2"
-  },
-  "scripts": {
-    "preinstall": "node preinstall.js"
   }
 }
