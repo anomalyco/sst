@@ -519,6 +519,36 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-auth-re
 
 
 ---
+## Bucket lifecycle policies
+
+Configure S3 bucket lifecycle policies to expire objects automatically.
+```ts title="sst.config.ts"
+const bucket = new sst.aws.Bucket("MyBucket", {
+  lifecycle: [
+    {
+      expiresIn: "60 days",
+    },
+    {
+      id: "expire-tmp-files",
+      prefix: "tmp/",
+      expiresIn: "30 days",
+    },
+    {
+      prefix: "data/",
+      expiresAt: "2028-12-31",
+    },
+  ],
+});
+
+return {
+  bucket: bucket.name,
+};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-bucket-lifecycle-rules).
+
+
+---
 ## Bucket policy
 
 Create an S3 bucket and transform its bucket policy.
@@ -762,10 +792,29 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-bun-red
 
 
 ---
+## AWS Bus subscriptions
+
+Subscribe bus events with AWS Lambda functions.
+```ts title="sst.config.ts"
+const bus = new sst.aws.Bus("Bus");
+
+const publisher = new sst.aws.Function("Publisher", {
+  handler: "./src/publisher.handler",
+  url: true,
+  link: [bus],
+});
+
+bus.subscribe("Example", "./src/receiver.handler");
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-bus).
+
+
+---
 ## AWS Cluster custom autoscaling
 
-In this example, we'll create a cluster that can autoscales based on a custom
-metric; in this case, the number of messages in a queue.
+In this example, we'll create a cluster that autoscales based on a custom
+metric. In this case, the number of messages in a queue.
 
 We'll create a queue, and two functions that'll seed and purge the queue. We'll
 also create two policies.
@@ -1032,6 +1081,42 @@ api.routePrivate("$default", service.nodes.cloudmapService.arn);
 ```
 
 View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-cluster-vpclink).
+
+
+---
+## AWS Cognito User Pool
+
+Create a Cognito user pool with triggers and identity pool.
+```ts title="sst.config.ts"
+const userPool = new sst.aws.CognitoUserPool("MyUserPool", {
+  triggers: {
+    preSignUp: {
+      handler: "index.handler",
+    },
+  },
+});
+
+const client = userPool.addClient("Web", {
+  callbackUrls: ['https://example.com/auth/callback']
+});
+
+const identityPool = new sst.aws.CognitoIdentityPool("MyIdentityPool", {
+  userPools: [
+    {
+      userPool: userPool.id,
+      client: client.id,
+    },
+  ],
+});
+
+return {
+  UserPool: userPool.id,
+  Client: client.id,
+  IdentityPool: identityPool.id,
+};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-cognito).
 
 
 ---
@@ -1555,6 +1640,32 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-express
 
 
 ---
+## FastAPI
+
+Deploy a Python FastAPI app as a Lambda function with a linked value.
+```ts title="sst.config.ts"
+const linkableValue = new sst.Linkable("MyLinkableValue", {
+  properties: {
+    foo: "Hello World",
+  },
+});
+
+const fastapi = new sst.aws.Function("FastAPI", {
+  handler: "functions/src/functions/api.handler",
+  runtime: "python3.11",
+  url: true,
+  link: [linkableValue],
+});
+
+return {
+  fastapi: fastapi.url,
+};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-fastapi).
+
+
+---
 ## FFmpeg in Lambda
 
 Uses [FFmpeg](https://ffmpeg.org/) to process videos. In this example, it takes a `clip.mp4`
@@ -1603,6 +1714,22 @@ return {
 ```
 
 View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-ffmpeg).
+
+
+---
+## Flutter web
+
+Deploy a Flutter web app as a static site to S3 and CloudFront.
+```ts title="sst.config.ts"
+new sst.aws.StaticSite("MySite", {
+  build: {
+    command: "flutter build web",
+    output: "build/web",
+  },
+});
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-flutter-web).
 
 
 ---
@@ -1843,13 +1970,13 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-hono-re
 
 An example on how to enable streaming for Lambda functions using Hono.
 
+While `sst dev` doesn't support streaming, we can conditionally enable it on deploy.
+
 ```ts title="sst.config.ts"
 {
-  streaming: true
+  streaming: $dev ? false : true
 }
 ```
-
-While `sst dev` doesn't support streaming, we can conditionally enable it on deploy.
 
 ```ts title="index.ts"
 export const handler = process.env.SST_LIVE ? handle(app) : streamHandle(app);
@@ -1871,7 +1998,7 @@ Here we are using a Function URL directly because API Gateway doesn't support st
 ```ts title="sst.config.ts"
 const hono = new sst.aws.Function("Hono", {
   url: true,
-  streaming: true,
+  streaming: $dev ? false : true,
   timeout: "15 minutes",
   handler: "index.handler",
 });
@@ -1880,7 +2007,7 @@ return {
 };
 ```
 
-View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-hono-steam).
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-hono-stream).
 
 
 ---
@@ -1937,6 +2064,25 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-iam-per
 
 
 ---
+## Import existing resource
+
+Import an existing AWS resource using the `transform` option with `opts.import`.
+```ts title="sst.config.ts"
+new sst.aws.Bucket("MyBucket", {
+  transform: {
+    bucket(args, opts) {
+      opts.import = "aws-import-my-bucket";
+      args.bucket = "aws-import-my-bucket";
+      args.forceDestroy = undefined;
+    },
+  },
+});
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-import).
+
+
+---
 ## Current AWS account
 
 You can use the `aws.getXXXXOutput()` provider functions to get info about the current
@@ -1944,7 +2090,7 @@ AWS account.
 Learn more about [provider functions](/docs/providers/#functions).
 ```ts title="sst.config.ts"
 return {
-  region: aws.getRegionOutput().name,
+  region: aws.getRegionOutput().region,
   account: aws.getCallerIdentityOutput({}).accountId,
 };
 ```
@@ -2169,7 +2315,7 @@ retryQueue.subscribe({
     {
       actions: ["lambda:GetFunction", "lambda:InvokeFunction"],
       resources: [
-        $interpolate`arn:aws:lambda:${aws.getRegionOutput().name}:${
+        $interpolate`arn:aws:lambda:${aws.getRegionOutput().region}:${
           aws.getCallerIdentityOutput().accountId
         }:function:*`,
       ],
@@ -2309,7 +2455,7 @@ retryQueue.subscribe({
     {
       actions: ["lambda:GetFunction", "lambda:InvokeFunction"],
       resources: [
-        $interpolate`arn:aws:lambda:${aws.getRegionOutput().name}:${
+        $interpolate`arn:aws:lambda:${aws.getRegionOutput().region}:${
           aws.getCallerIdentityOutput().accountId
         }:function:*`,
       ],
@@ -2531,6 +2677,143 @@ return {
 ```
 
 View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-lambda-vpc).
+
+
+---
+## Linkable env vars
+
+Pass SST link env vars to a native `aws.ecs.TaskDefinition` container using
+`sst.Linkable.env()`. This lets `Resource.MyResource` work at runtime
+in compute not managed by SST.
+```ts title="sst.config.ts"
+// Create an SST bucket
+const bucket = new sst.aws.Bucket("MyBucket");
+
+// Create a custom linkable
+const linkable = new sst.Linkable("MyLinkable", {
+  properties: {
+    foo: "bar",
+  },
+});
+
+// Create VPC and ECS cluster using native AWS resources
+const vpc = new aws.ec2.Vpc("Vpc", { cidrBlock: "10.0.0.0/16" });
+const subnet = new aws.ec2.Subnet("Subnet", {
+  vpcId: vpc.id,
+  cidrBlock: "10.0.0.0/24",
+});
+const cluster = new aws.ecs.Cluster("Cluster");
+
+// Linkable.env() returns a Record<string, string>, but ECS expects
+// environment as an array of { name, value } objects
+const environment = sst.Linkable.env([bucket, linkable]).apply((env) =>
+  Object.entries(env).map(([name, value]) => ({ name, value })),
+);
+
+const taskDefinition = new aws.ecs.TaskDefinition("TaskDefinition", {
+  family: $interpolate`${$app.name}-${$app.stage}`,
+  cpu: "256",
+  memory: "512",
+  networkMode: "awsvpc",
+  requiresCompatibilities: ["FARGATE"],
+  containerDefinitions: $jsonStringify([
+    {
+      name: "app",
+      image: "public.ecr.aws/docker/library/node:20-slim",
+      essential: true,
+      environment,
+    },
+  ]),
+});
+
+new aws.ecs.Service("Service", {
+  cluster: cluster.arn,
+  taskDefinition: taskDefinition.arn,
+  desiredCount: 0,
+  launchType: "FARGATE",
+  networkConfiguration: {
+    subnets: [subnet.id],
+  },
+});
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-linkable-env).
+
+
+---
+## AWS Load Balancer Web Application Firewall (WAF)
+
+Enable WAF for an AWS Load Balancer.
+
+The WAF is configured to enable a rate limit and enables AWS managed rules.
+```ts title="sst.config.ts"
+const vpc = new sst.aws.Vpc("MyVpc");
+const cluster = new sst.aws.Cluster("MyCluster", { vpc });
+const service = cluster.addService("MyAppService", {
+  image: {
+    context: "./",
+    dockerfile: "packages/server/Dockerfile",
+  },
+});
+
+const rateLimitRule = {
+  name: "RateLimitRule",
+  statement: {
+    rateBasedStatement: {
+      limit: 200,
+      aggregateKeyType: "IP",
+    },
+  },
+  priority: 1,
+  action: { block: {} },
+  visibilityConfig: {
+    cloudwatchMetricsEnabled: true,
+    sampledRequestsEnabled: true,
+    metricName: "MyAppRateLimitRule",
+  },
+};
+
+const awsManagedRules = {
+  name: "AWSManagedRules",
+  statement: {
+    managedRuleGroupStatement: {
+      name: "AWSManagedRulesCommonRuleSet",
+      vendorName: "AWS",
+    },
+  },
+  priority: 2,
+  overrideAction: {
+    none: {},
+  },
+  visibilityConfig: {
+    cloudwatchMetricsEnabled: true,
+    sampledRequestsEnabled: true,
+    metricName: "MyAppAWSManagedRules",
+  },
+};
+
+const webAcl = new aws.wafv2.WebAcl("AppAlbWebAcl", {
+  defaultAction: { allow: {} },
+  scope: "REGIONAL",
+  visibilityConfig: {
+    cloudwatchMetricsEnabled: true,
+    sampledRequestsEnabled: true,
+    metricName: "AppAlbWebAcl",
+  },
+  rules: [rateLimitRule, awsManagedRules],
+});
+
+service.nodes.loadBalancer.arn.apply((arn) => {
+  new aws.wafv2.WebAclAssociation("MyAppAlbWebAclAssociation", {
+    resourceArn: arn,
+    webAclArn: webAcl.arn,
+  });
+});
+
+return {};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-load-balancer-waf).
 
 
 ---
@@ -3160,6 +3443,171 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-open-se
 
 
 ---
+## AWS PlanetScale Drizzle
+
+In this example, we use PlanetScale with a branch-per-stage pattern. Every stage gets its own
+database branch — so each PR can have an isolated database.
+
+```ts title="sst.config.ts"
+const db = planetscale.getDatabaseOutput({
+  name: "mydb",
+  organization: "myorg",
+});
+
+const branch =
+  $app.stage === "production"
+    ? planetscale.getBranchOutput({
+        name: "production",
+        organization: db.organization,
+        database: db.name,
+      })
+    : new planetscale.Branch("DatabaseBranch", {
+        database: db.name,
+        organization: db.organization,
+        name: $app.stage,
+        parentBranch: "production",
+      });
+```
+
+We then create a password and wrap it in a `Linkable` to link it to a function.
+
+```ts title="sst.config.ts" {3}
+new sst.aws.Function("Api", {
+  handler: "src/api.handler",
+  link: [database],
+  url: true,
+});
+```
+
+You can push your Drizzle schema changes to PlanetScale with:
+
+```bash
+bun run db:push
+```
+
+In the function we use [Drizzle ORM](https://orm.drizzle.team) with the
+[`Resource`](/docs/reference/sdk/#resource) helper.
+
+```ts title="src/drizzle.ts"
+import { drizzle } from "drizzle-orm/planetscale-serverless";
+import { Resource } from "sst";
+
+export const db = drizzle({
+  connection: {
+    host: Resource.Database.host,
+    username: Resource.Database.username,
+    password: Resource.Database.password,
+  },
+});
+```
+```ts title="sst.config.ts"
+const db = planetscale.getDatabaseOutput({
+  name: "mydb",
+  organization: "myorg",
+});
+
+const branch =
+  $app.stage === "production"
+    ? planetscale.getBranchOutput({
+        name: "production",
+        organization: db.organization,
+        database: db.name,
+      })
+    : new planetscale.Branch("DatabaseBranch", {
+        database: db.name,
+        organization: db.organization,
+        name: $app.stage,
+        parentBranch: "production",
+      });
+
+const password = new planetscale.Password("DatabasePassword", {
+  database: db.name,
+  organization: db.organization,
+  branch: branch.name,
+  role: "admin",
+  name: `${$app.name}-${$app.stage}`,
+});
+
+const database = new sst.Linkable("Database", {
+  properties: {
+    host: password.accessHostUrl,
+    username: password.username,
+    password: password.plaintext,
+    database: db.name,
+    port: 3306,
+  },
+});
+
+const api = new sst.aws.Function("Api", {
+  handler: "src/api.handler",
+  link: [database],
+  url: true,
+});
+
+return {
+  url: api.url,
+};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-planetscale-drizzle).
+
+
+---
+## Policy Pack Validation
+
+You can use Pulumi Policy Packs to enforce compliance and security policies on your
+infrastructure before deployment. Created policies with and enforcement level of "mandatory" will block the deployment.
+
+This example shows how to use the `--policy` flag with `sst diff` and `sst deploy` to
+validate your infrastructure against a policy pack.
+
+Run the diff command with a policy pack to preview changes and check for violations:
+
+```bash
+sst diff --policy ./policy-pack --stage prod
+```
+
+Deploy with policy validation:
+
+```bash
+sst deploy --policy ./policy-pack --stage prod
+```
+
+To get started you can create a new policy pack for AWS using:
+
+```bash
+mkdir policy-pack
+cd policy-pack
+pulumi policy new aws-typescript
+```
+
+The example policy pack (check the full example) enforces that all IAM roles must have a permission boundary, blocking the deployment in this sst example.
+```ts title="sst.config.ts"
+const role = new aws.iam.Role("ExampleRoleWithBoundary", {
+  assumeRolePolicy: aws.iam.assumeRolePolicyForPrincipal({
+    Service: "lambda.amazonaws.com",
+  }),
+  // To make this compliant with the policy example, uncomment the following line:
+  // permissionsBoundary: "arn:aws:iam::aws:policy/PowerUserAccess",
+});
+
+new aws.iam.RolePolicy("S3GetItemPolicy", {
+  role: role.id,
+  policy: aws.iam.getPolicyDocumentOutput({
+    statements: [
+      {
+        actions: ["s3:GetObject"],
+        resources: ["*"],
+      },
+    ],
+  }).json,
+});
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-policy-pack).
+
+
+---
 ## AWS Postgres local
 
 In this example, we connect to a locally running Postgres instance for dev. While
@@ -3666,6 +4114,7 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-python)
 ## Subscribe to queues
 
 Create an SQS queue, subscribe to it, and publish to it from a function.
+
 ```ts title="sst.config.ts"
 const queue = new sst.aws.Queue("MyQueue");
 queue.subscribe("subscriber.handler");
@@ -3731,8 +4180,135 @@ export const handler: SQSHandler = async (event: SQSEvent) => {
   return { batchItemFailures };
 };
 ```
+```ts title="sst.config.ts"
+const queue = new sst.aws.Queue("MyQueue");
+queue.subscribe("subscriber.handler", {
+  batch: {
+    partialResponses: true,
+  }
+});
+
+const app = new sst.aws.Function("MyApp", {
+  handler: "publisher.handler",
+  link: [queue],
+  url: true,
+});
+
+return {
+  app: app.url,
+  queue: queue.url,
+};
+```
 
 View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-queue).
+
+
+---
+## AWS Quota Increase
+
+Use the Pulumi AWS provider to request an increase to an AWS service quota.
+In this example, we increase the Lambda concurrent executions quota.
+
+You can find service and quota codes in the
+[AWS Service Quotas console](https://console.aws.amazon.com/servicequotas) or by running
+`aws service-quotas list-service-quotas --service-code <service>`.
+```ts title="sst.config.ts"
+new aws.servicequotas.ServiceQuota("LambdaConcurrentExecutions", {
+  serviceCode: "lambda",
+  quotaCode: "L-B99A9384",
+  value: 2000,
+});
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-quota-increase).
+
+
+---
+## Rails container
+
+Deploy a Ruby on Rails app in a container with a linked public S3 bucket.
+```ts title="sst.config.ts"
+const bucket = new sst.aws.Bucket("MyBucket", {
+  access: "public",
+});
+const vpc = new sst.aws.Vpc("MyVpc");
+
+const cluster = new sst.aws.Cluster("MyCluster", { vpc });
+new sst.aws.Service("MyService", {
+  cluster,
+  loadBalancer: {
+    ports: [{ listen: "80/http", forward: "3000/http" }],
+  },
+  environment: {
+    RAILS_MASTER_KEY: (await import("fs")).readFileSync(
+      "config/master.key",
+      "utf8"
+    ),
+  },
+  dev: {
+    command: "bin/rails server",
+  },
+  link: [bucket],
+});
+return { vpc: vpc.id };
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-rails).
+
+
+---
+## AWS RDS MySQL public
+
+Create a publicly accessible MySQL RDS instance with a security group that
+allows external connections.
+```ts title="sst.config.ts"
+const MYSQL_PORT = 3306;
+const ALL_IPS = '0.0.0.0/0';
+const publicSecurityGroup = new aws.ec2.SecurityGroup(
+  'MyPublicSecurityGroup',
+  {
+    ingress: [
+      {
+        // Expose to public connection. Remove if not needed
+        protocol: 'tcp',
+        fromPort: MYSQL_PORT,
+        toPort: MYSQL_PORT,
+        cidrBlocks: [ALL_IPS],
+      },
+    ],
+  },
+);
+
+const identifier = 'my-db-instance';
+
+const database = new aws.rds.Instance(
+  'MyDbInstanceMySQL',
+  {
+    identifier,
+    engine: 'mysql',
+    // free-tier
+    instanceClass: 'db.t3.micro',
+    allocatedStorage: 20, // free-tier 20GB
+    // credentials
+    username: 'dev-user',
+    password: 'dev-password',
+    dbName: 'dev-database',
+    // settings
+    tags: { Name: identifier },
+    skipFinalSnapshot: true,
+
+    // allow public access
+    vpcSecurityGroupIds: [publicSecurityGroup.id],
+    publiclyAccessible: true,
+  },
+);
+
+return {
+  Database: database.address
+};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-rds-instance-mysql-public).
 
 
 ---
@@ -3984,6 +4560,117 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-router)
 
 
 ---
+## Rust function
+
+Deploy a Rust Lambda function with a function URL and a linked S3 bucket.
+```ts title="sst.config.ts"
+const bucket = new sst.aws.Bucket("Bucket");
+const lambda = new sst.aws.Function("RustFunction", {
+  runtime: "rust",
+  handler: "./",
+  url: true,
+  architecture: "arm64",
+  link: [bucket],
+});
+
+return { url: lambda.url };
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-rust-api).
+
+
+---
+## Rust container
+
+Deploy a Rust app in a container with a load balancer using a Dockerfile.
+```ts title="sst.config.ts"
+const vpc = new sst.aws.Vpc("MyVpc", { nat: "gateway" });
+const cluster = new sst.aws.Cluster("MyCluster", { vpc });
+
+const service = new sst.aws.Service("MyService", {
+  cluster,
+  image: {
+    context: "./",
+    dockerfile: "Dockerfile",
+  },
+  loadBalancer: {
+    domain: "rust.dockerfile.dev.sst.dev",
+    ports: [
+      { listen: "80/http" },
+      { listen: "443/https", forward: "80/http" },
+    ],
+  },
+});
+
+return {
+  url: service.url,
+};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-rust-cluster).
+
+
+---
+## Rust Loco
+
+Deploy a Rust Loco app with a Postgres database, Redis, and a background worker
+service.
+```ts title="sst.config.ts"
+const vpc = new sst.aws.Vpc("LocoVpc", {
+  bastion: true,
+});
+
+const database = new sst.aws.Postgres("LocoDatabase", { vpc });
+
+const redis = new sst.aws.Redis("LocoRedis", { vpc });
+
+const DATABASE_URL = $interpolate`postgres://${
+  database.username
+}:${database.password.apply(encodeURIComponent)}@${database.host}:${
+  database.port
+}/${database.database}`;
+const REDIS_URL = $interpolate`redis://${
+  redis.username
+}:${redis.password.apply(encodeURIComponent)}@${redis.host}:${redis.port}`;
+
+const locoCluster = new sst.aws.Cluster("LocoCluster", { vpc });
+
+// external facing http service
+const locoServer = new sst.aws.Service("LocoApp", {
+  cluster: locoCluster,
+  architecture: "x86_64",
+  scaling: { min: 2, max: 4 },
+  command: ["start"],
+  loadBalancer: {
+    ports: [{ listen: "80/http", forward: "5150/http" }],
+  },
+  environment: {
+    DATABASE_URL,
+    REDIS_URL,
+  },
+  link: [database, redis],
+  dev: {
+    command: "cargo loco start",
+  },
+});
+
+// add a worker that uses redis to process jobs off a queue
+new sst.aws.Service("LocoWorker", {
+  cluster: locoCluster,
+  architecture: "x86_64",
+  command: ["start", "--worker"],
+  environment: {
+    DATABASE_URL,
+    REDIS_URL,
+  },
+  link: [database, redis],
+});
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-rust-loco).
+
+
+---
 ## AWS Cluster Service Discovery
 
 In this example, we are connecting to a service running on a cluster using its AWS Cloud
@@ -4189,6 +4876,43 @@ new sst.aws.StaticSite("MySite", {
 ```
 
 View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-static-site).
+
+
+---
+## AWS Step Functions task token
+
+Use Step Functions with task tokens to pause execution, send a message to an
+SQS queue, and resume after processing.
+```ts title="sst.config.ts"
+// Create a queue the state machine will send messages to
+const queue = new sst.aws.Queue("MyQueue");
+
+// Define all the states of the state machine
+const sendMessage = sst.aws.StepFunctions.sqsSendMessage({
+  name: "SendMessage",
+  integration: "token",
+  queue,
+  messageBody: {
+    // Task token passed in the message body
+    MyTaskToken: "{% $states.context.Task.Token %}",
+  },
+});
+const success = sst.aws.StepFunctions.succeed({ name: "Succeed" });
+
+// Create the state machine
+const stepFunction = new sst.aws.StepFunctions("MyStateMachine", {
+  definition: sendMessage.next(success),
+});
+
+// Create a function that will receive messages from the queue
+queue.subscribe({
+  handler: "index.handler",
+  // Linking the state machine to grant permissions to call `SendTaskSuccess`
+  link: [stepFunction],
+});
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-step-functions-task-token).
 
 
 ---
@@ -4621,6 +5345,67 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-vite).
 
 
 ---
+## Zero sync engine
+
+Deploy the Zero sync engine with a Postgres database configured for logical
+replication in a VPC cluster.
+```ts title="sst.config.ts"
+const vpc = new sst.aws.Vpc("Vpc", {
+  bastion: true,
+});
+const db = new sst.aws.Postgres("Database", {
+  vpc,
+  transform: {
+    parameterGroup: {
+      parameters: [
+        {
+          name: "rds.logical_replication",
+          value: "1",
+          applyMethod: "pending-reboot",
+        },
+        {
+          name: "rds.force_ssl",
+          value: "0",
+          applyMethod: "pending-reboot",
+        },
+        {
+          name: "max_connections",
+          value: "1000",
+          applyMethod: "pending-reboot",
+        },
+      ],
+    },
+  },
+});
+const cluster = new sst.aws.Cluster("Cluster", { vpc });
+const connection = $interpolate`postgres://${db.username}:${db.password}@${db.host}:${db.port}`;
+new sst.aws.Service("Zero", {
+  cluster,
+  image: "rocicorp/zero",
+  dev: {
+    command: "npx zero-cache",
+  },
+  loadBalancer: {
+    ports: [{ listen: "80/http", forward: "4848/http" }],
+  },
+  environment: {
+    ZERO_UPSTREAM_DB: $interpolate`${connection}/${db.database}`,
+    ZERO_CVR_DB: $interpolate`${connection}/${db.database}_cvr`,
+    ZERO_CHANGE_DB: $interpolate`${connection}/${db.database}_change`,
+    ZERO_REPLICA_FILE: "zero.db",
+    ZERO_NUM_SYNC_WORKERS: "1",
+  },
+});
+
+return {
+  connection: $interpolate`${connection}/${db.database}`,
+};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-zero).
+
+
+---
 ## Cloudflare Cron
 
 This example creates a Cloudflare Worker that runs on a schedule.
@@ -4706,7 +5491,7 @@ new sst.aws.Function("MyFunction", {
 });
 ```
 
-View the [full example](https://github.com/sst/sst/tree/dev/examples/sst-$transform).
+View the [full example](https://github.com/sst/sst/tree/dev/examples/sst-transform).
 
 
 ---

@@ -7,8 +7,9 @@
   "main": "./dist/index.js",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sst/sst.git"
+    "url": "git+https://github.com/anomalyco/sst.git"
   },
+  "license": "MIT",
   "exports": {
     ".": "./dist/index.js",
     "./auth": "./dist/auth/index.js",
@@ -44,10 +45,8 @@
   },
   "optionalDependencies": {},
   "dependencies": {
-    "aws-sdk": "2.1692.0",
     "aws4fetch": "1.0.18",
     "jose": "5.2.3",
-    "opencontrol": "0.0.6",
     "openid-client": "5.6.4"
   }
 }

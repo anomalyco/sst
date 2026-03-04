@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
-	"runtime"
 	"sync"
 	"syscall"
 	"time"
@@ -98,58 +97,56 @@ func Kill(process *os.Process) error {
 	}
 	slog.Info("killing process", "pid", process.Pid)
 
-	switch runtime.GOOS {
-
-	case "windows":
-		if err := process.Kill(); err != nil {
-			slog.Error("failed to kill", "pid", process.Pid)
-			return err
-		}
-		break
-
-	default:
-		if err := process.Signal(syscall.SIGTERM); err != nil {
-			slog.Error("failed to send sigterm", "pid", process.Pid)
-			return err
-		}
-	}
-
 	done := make(chan struct{})
 	go func() {
-		process.Wait()
+		_, _ = process.Wait()
 		close(done)
 	}()
 
+	killErr := escalatingKill(process, done)
+	untrack(process.Pid)
+	return killErr
+}
+
+func escalatingKill(process *os.Process, done <-chan struct{}) error {
+	if err := sendTermSignal(process); err != nil {
+		slog.Error("term signal failed, escalating", "pid", process.Pid, "err", err)
+		return forceKill(process, done)
+	}
 	select {
 	case <-done:
 		slog.Info("process killed with term", "pid", process.Pid)
-		break
+		return nil
 	case <-time.After(killWait):
-		slog.Info("process not responding, sending sigkill", "pid", process.Pid)
-		if err := process.Signal(syscall.SIGKILL); err != nil {
-			slog.Error("failed to send sigkill", "pid", process.Pid)
-			return err
-		}
-
-		// Wait for SIGKILL to complete
-		select {
-		case <-done:
-			slog.Info("process killed with kill", "pid", process.Pid)
-			break
-		case <-time.After(killWait):
-			slog.Info("timed out waiting for sigkill", "pid", process.Pid)
-			return syscall.ETIMEDOUT
-		}
+		slog.Info("term timeout, escalating", "pid", process.Pid)
+		return forceKill(process, done)
 	}
+}
+
+func forceKill(process *os.Process, done <-chan struct{}) error {
+	if err := sendKillSignal(process); err != nil {
+		slog.Error("kill signal failed", "pid", process.Pid, "err", err)
+		return err
+	}
+	select {
+	case <-done:
+		slog.Info("process killed with kill", "pid", process.Pid)
+		return nil
+	case <-time.After(killWait):
+		slog.Info("timed out waiting for kill", "pid", process.Pid)
+		return syscall.ETIMEDOUT
+	}
+}
+
+func untrack(pid int) {
 	lock.Lock()
 	defer lock.Unlock()
 	for i := len(cmds) - 1; i >= 0; i-- {
-		if cmds[i].Process != nil && cmds[i].Process.Pid == process.Pid {
+		if cmds[i].Process != nil && cmds[i].Process.Pid == pid {
 			cmds[i] = cmds[len(cmds)-1]
 			cmds = cmds[:len(cmds)-1]
-			break
+			return
 		}
 	}
-	slog.Info("untracked process", "pid", process.Pid)
-	return nil
+	slog.Info("process not found in tracked list", "pid", pid)
 }
