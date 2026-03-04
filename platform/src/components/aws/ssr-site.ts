@@ -27,7 +27,7 @@ import {
   type Transform,
 } from "../component.js";
 import { VisibleError } from "../error.js";
-import { Cron } from "./cron.js";
+import { CronV2 } from "./cron-v2.js";
 import { BaseSiteFileOptions, getContentType } from "../base/base-site.js";
 import { BaseSsrSiteArgs, buildApp } from "../base/base-ssr-site.js";
 import { cloudfront, getRegionOutput, lambda, Region, iam } from "@pulumi/aws";
@@ -1485,7 +1485,7 @@ async function handler(event) {
 
           if (args.warm) {
             // Create cron job
-            const cron = new Cron(
+            const cron = new CronV2(
               `${name}Warmer${logicalName(region)}`,
               {
                 schedule: "rate(5 minutes)",
@@ -1507,7 +1507,6 @@ async function handler(event) {
                   _skipMetadata: true,
                 },
                 retries: 0,
-                forceUpgrade: "v2",
               },
               { provider, parent: self },
             );

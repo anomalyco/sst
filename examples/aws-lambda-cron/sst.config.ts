@@ -11,7 +11,7 @@ export default $config({
   async run() {
     const queue = new sst.aws.Queue("MyDLQ");
 
-    const cron = new sst.aws.Cron("MyCron", {
+    const cron = new sst.aws.CronV2("MyCron", {
       schedule: "rate(1 minute)",
       function: "cron.handler",
       retries: 3,

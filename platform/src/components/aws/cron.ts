@@ -2,11 +2,10 @@ import { all, ComponentResourceOptions, output, Output } from "@pulumi/pulumi";
 import { Component, Transform, transform } from "../component";
 import { FunctionArgs, FunctionArn } from "./function";
 import { Input } from "../input.js";
-import { iam, scheduler } from "@pulumi/aws";
+import { cloudwatch, iam, lambda } from "@pulumi/aws";
 import { functionBuilder, FunctionBuilder } from "./helpers/function-builder";
 import { Task } from "./task";
 import { VisibleError } from "../error";
-import { Cron as CronV1 } from "./cron-v1";
 
 export interface CronArgs {
   /**
@@ -153,29 +152,8 @@ export interface CronArgs {
    *   schedule: "cron(15 10 * * ? *)", // 10:15 AM (UTC) every day
    * }
    * ```
-   *
-   * Or an [at expression](https://docs.aws.amazon.com/scheduler/latest/UserGuide/schedule-types.html#one-time) for a one-time schedule.
-   *
-   * ```ts
-   * {
-   *   schedule: "at(2025-06-01T10:00:00)",
-   * }
-   * ```
    */
-  schedule: Input<`rate(${string})` | `cron(${string})` | `at(${string})`>;
-  /**
-   * The IANA timezone for the cron schedule. When set, the cron expression is
-   * evaluated in this timezone, with automatic DST handling.
-   *
-   * @default `"UTC"`
-   * @example
-   * ```ts
-   * {
-   *   timezone: "America/New_York"
-   * }
-   * ```
-   */
-  timezone?: Input<string>;
+  schedule: Input<`rate(${string})` | `cron(${string})`>;
   /**
    * Configures whether the cron job is enabled. When disabled, the cron job won't run.
    * @default true
@@ -188,72 +166,23 @@ export interface CronArgs {
    */
   enabled?: Input<boolean>;
   /**
-   * The number of retry attempts for failed invocations. Between 0 and 185.
-   *
-   * @default `0`
-   * @example
-   * ```ts
-   * {
-   *   retries: 3
-   * }
-   * ```
-   */
-  retries?: Input<number>;
-  /**
-   * The ARN of an SQS queue to use as a dead-letter queue. When all retry
-   * attempts are exhausted, failed events are sent to this queue.
-   *
-   * @example
-   * ```ts
-   * {
-   *   dlq: myQueue.arn
-   * }
-   * ```
-   */
-  dlq?: Input<string>;
-  /**
    * [Transform](/docs/components#transform) how this component creates its underlying resources.
    */
   transform?: {
     /**
-     * Transform the EventBridge Scheduler Schedule resource.
+     * Transform the EventBridge Rule resource.
      */
-    schedule?: Transform<scheduler.ScheduleArgs>;
+    rule?: Transform<cloudwatch.EventRuleArgs>;
     /**
-     * Transform the IAM Role resource.
+     * Transform the EventBridge Target resource.
      */
-    role?: Transform<iam.RoleArgs>;
+    target?: Transform<cloudwatch.EventTargetArgs>;
   };
-  /**
-   * Force upgrade from `Cron.v1` to the latest `Cron` version. The only valid value
-   * is `v2`, which is the version of the new `Cron`.
-   *
-   * The latest `Cron` is powered by [EventBridge Scheduler](https://docs.aws.amazon.com/scheduler/latest/UserGuide/what-is-scheduler.html). To
-   * upgrade, add the prop.
-   *
-   * ```ts
-   * {
-   *   forceUpgrade: "v2"
-   * }
-   * ```
-   *
-   * Run `sst deploy`.
-   *
-   * :::tip
-   * You can remove this prop after you upgrade.
-   * :::
-   *
-   * This upgrades your component and the resources it created. You can now optionally
-   * remove the prop.
-   *
-   * @internal
-   */
-  forceUpgrade?: "v2";
 }
 
 /**
  * The `Cron` component lets you add cron jobs to your app
- * using [Amazon EventBridge Scheduler](https://docs.aws.amazon.com/scheduler/latest/UserGuide/what-is-scheduler.html). The cron job can invoke a `Function` or a container `Task`.
+ * using [Amazon Event Bus](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-event-bus.html). The cron job can invoke a `Function` or a container `Task`.
  *
  * @example
  * #### Cron job function
@@ -281,35 +210,6 @@ export interface CronArgs {
  * });
  * ```
  *
- * #### Set a timezone
- *
- * ```ts title="sst.config.ts"
- * new sst.aws.Cron("MyCronJob", {
- *   function: "src/cron.handler",
- *   schedule: "cron(15 10 * * ? *)",
- *   timezone: "America/New_York"
- * });
- * ```
- *
- * #### Configure retries
- *
- * ```ts title="sst.config.ts"
- * new sst.aws.Cron("MyCronJob", {
- *   function: "src/cron.handler",
- *   schedule: "rate(1 minute)",
- *   retries: 3
- * });
- * ```
- *
- * #### One-time schedule
- *
- * ```ts title="sst.config.ts"
- * new sst.aws.Cron("MyCronJob", {
- *   function: "src/cron.handler",
- *   schedule: "at(2025-06-01T10:00:00)"
- * });
- * ```
- *
  * #### Customize the function
  *
  * ```js title="sst.config.ts"
@@ -323,50 +223,29 @@ export interface CronArgs {
  * ```
  */
 export class Cron extends Component {
-  public static v1 = CronV1;
-
-  private _name: string;
+  private name: string;
   private fn?: FunctionBuilder;
-  private _schedule: scheduler.Schedule;
-  private _role: iam.Role;
+  private rule: cloudwatch.EventRule;
+  private target: cloudwatch.EventTarget;
 
   constructor(name: string, args: CronArgs, opts?: ComponentResourceOptions) {
     super(__pulumiType, name, args, opts);
 
-    const _version = 2;
     const parent = this;
-
-    this.registerVersion({
-      new: _version,
-      old: $cli.state.version[name],
-      message: [
-        `There is a new version of "Cron" that has breaking changes.`,
-        ``,
-        `What changed:`,
-        `  - The latest version is now powered by EventBridge Scheduler instead of EventBridge Rules`,
-        `  - This adds timezone/DST support, higher scale limits, and built-in retry policies`,
-        ``,
-        `To upgrade:`,
-        `  - Set \`forceUpgrade: "v${_version}"\` on the "Cron" component. Learn more https://sst.dev/docs/component/aws/cron#forceupgrade`,
-        ``,
-        `To continue using v${$cli.state.version[name]}:`,
-        `  - Rename "Cron" to "Cron.v${$cli.state.version[name]}". Learn more about versioning - https://sst.dev/docs/components/#versioning`,
-      ].join("\n"),
-      forceUpgrade: args.forceUpgrade,
-    });
 
     const fnArgs = normalizeFunction();
     const event = output(args.event || {});
     normalizeTargets();
     const enabled = output(args.enabled ?? true);
+    const rule = createRule();
     const fn = createFunction();
     const role = createRole();
-    const schedule = createSchedule();
+    const target = createTarget();
 
-    this._name = name;
+    this.name = name;
     this.fn = fn;
-    this._role = role;
-    this._schedule = schedule;
+    this.rule = rule;
+    this.target = target;
 
     function normalizeFunction() {
       if (args.job && args.function)
@@ -385,165 +264,117 @@ export class Cron extends Component {
         );
     }
 
-    function createFunction() {
-      if (!fnArgs) return;
-
-      return fnArgs.apply((fnArgs) =>
-        functionBuilder(`${name}Handler`, fnArgs, {}, undefined, {
-          parent,
-        }),
-      );
-    }
-
-    function createRole() {
-      if (fn) {
-        return new iam.Role(
-          ...transform(
-            args.transform?.role,
-            `${name}Role`,
-            {
-              assumeRolePolicy: iam.assumeRolePolicyForPrincipal({
-                Service: "scheduler.amazonaws.com",
-              }),
-              inlinePolicies: [
-                {
-                  name: "inline",
-                  policy: iam.getPolicyDocumentOutput({
-                    statements: [
-                      {
-                        actions: ["lambda:InvokeFunction"],
-                        resources: [fn.arn],
-                      },
-                      ...(args.dlq
-                        ? [
-                            {
-                              actions: ["sqs:SendMessage"],
-                              resources: [args.dlq],
-                            },
-                          ]
-                        : []),
-                    ],
-                  }).json,
-                },
-              ],
-            },
-            { parent },
-          ),
-        );
-      }
-
-      return new iam.Role(
+    function createRule() {
+      return new cloudwatch.EventRule(
         ...transform(
-          args.transform?.role,
-          `${name}Role`,
+          args.transform?.rule,
+          `${name}Rule`,
           {
-            assumeRolePolicy: iam.assumeRolePolicyForPrincipal({
-              Service: "scheduler.amazonaws.com",
-            }),
-            inlinePolicies: [
-              {
-                name: "inline",
-                policy: iam.getPolicyDocumentOutput({
-                  statements: [
-                    {
-                      actions: ["ecs:RunTask"],
-                      resources: [args.task!.nodes.taskDefinition.arn],
-                    },
-                    {
-                      actions: ["iam:PassRole"],
-                      resources: [
-                        args.task!.nodes.executionRole.arn,
-                        args.task!.nodes.taskRole.arn,
-                      ],
-                    },
-                    ...(args.dlq
-                      ? [
-                          {
-                            actions: ["sqs:SendMessage"],
-                            resources: [args.dlq],
-                          },
-                        ]
-                      : []),
-                  ],
-                }).json,
-              },
-            ],
+            scheduleExpression: args.schedule,
+            state: enabled.apply((v) => (v ? "ENABLED" : "DISABLED")),
           },
           { parent },
         ),
       );
     }
 
-    function createSchedule() {
-      const retryPolicy = {
-        maximumRetryAttempts: output(args.retries ?? 0),
-      };
+    function createFunction() {
+      if (!fnArgs) return;
 
-      const deadLetterConfig = args.dlq ? { arn: args.dlq } : undefined;
+      const fn = fnArgs.apply((fnArgs) =>
+        functionBuilder(`${name}Handler`, fnArgs, {}, undefined, {
+          parent,
+        }),
+      );
 
-      if (fn) {
-        return new scheduler.Schedule(
-          ...transform(
-            args.transform?.schedule,
-            `${name}Schedule`,
+      new lambda.Permission(
+        `${name}Permission`,
+        {
+          action: "lambda:InvokeFunction",
+          function: fn.arn,
+          principal: "events.amazonaws.com",
+          sourceArn: rule.arn,
+        },
+        { parent },
+      );
+
+      return fn;
+    }
+
+    function createRole() {
+      if (!args.task) return;
+
+      return new iam.Role(
+        `${name}TargetRole`,
+        {
+          assumeRolePolicy: iam.assumeRolePolicyForPrincipal({
+            Service: "events.amazonaws.com",
+          }),
+          inlinePolicies: [
             {
-              scheduleExpression: args.schedule,
-              scheduleExpressionTimezone: args.timezone,
-              flexibleTimeWindow: { mode: "OFF" },
-              state: enabled.apply((v) => (v ? "ENABLED" : "DISABLED")),
-              target: {
-                arn: fn.arn,
-                roleArn: role.arn,
-                input: event.apply((event) => JSON.stringify(event)),
-                retryPolicy,
-                deadLetterConfig,
-              },
+              name: "inline",
+              policy: iam.getPolicyDocumentOutput({
+                statements: [
+                  {
+                    actions: ["ecs:RunTask"],
+                    resources: [args.task.nodes.taskDefinition.arn],
+                  },
+                  {
+                    actions: ["iam:PassRole"],
+                    resources: [
+                      args.task.nodes.executionRole.arn,
+                      args.task.nodes.taskRole.arn,
+                    ],
+                  },
+                ],
+              }).json,
             },
-            { parent },
-          ),
-        );
-      }
+          ],
+        },
+        { parent },
+      );
+    }
 
-      return new scheduler.Schedule(
+    function createTarget() {
+      return new cloudwatch.EventTarget(
         ...transform(
-          args.transform?.schedule,
-          `${name}Schedule`,
-          {
-            scheduleExpression: args.schedule,
-            scheduleExpressionTimezone: args.timezone,
-            flexibleTimeWindow: { mode: "OFF" },
-            state: enabled.apply((v) => (v ? "ENABLED" : "DISABLED")),
-            target: {
-              arn: args.task!.cluster,
-              roleArn: role.arn,
-              input: all([event, args.task!.containers]).apply(
-                ([event, containers]) => {
-                  return JSON.stringify({
-                    containerOverrides: containers.map((name) => ({
-                      name,
-                      environment: [
-                        {
-                          name: "SST_EVENT",
-                          value: JSON.stringify(event),
-                        },
-                      ],
-                    })),
-                  });
+          args.transform?.target,
+          `${name}Target`,
+          fn
+            ? {
+                arn: fn.arn,
+                rule: rule.name,
+                input: event.apply((event) => JSON.stringify(event)),
+              }
+            : {
+                arn: args.task!.cluster,
+                rule: rule.name,
+                ecsTarget: {
+                  launchType: "FARGATE",
+                  taskDefinitionArn: args.task!.nodes.taskDefinition.arn,
+                  networkConfiguration: {
+                    subnets: args.task!.subnets,
+                    securityGroups: args.task!.securityGroups,
+                    assignPublicIp: args.task!.assignPublicIp,
+                  },
                 },
-              ),
-              ecsParameters: {
-                taskDefinitionArn: args.task!.nodes.taskDefinition.arn,
-                launchType: "FARGATE",
-                networkConfiguration: {
-                  subnets: args.task!.subnets,
-                  securityGroups: args.task!.securityGroups,
-                  assignPublicIp: args.task!.assignPublicIp,
-                },
+                roleArn: role!.arn,
+                input: all([event, args.task!.containers]).apply(
+                  ([event, containers]) => {
+                    return JSON.stringify({
+                      containerOverrides: containers.map((name) => ({
+                        name,
+                        environment: [
+                          {
+                            name: "SST_EVENT",
+                            value: JSON.stringify(event),
+                          },
+                        ],
+                      })),
+                    });
+                  },
+                ),
               },
-              retryPolicy,
-              deadLetterConfig,
-            },
-          },
           { parent },
         ),
       );
@@ -563,7 +394,7 @@ export class Cron extends Component {
       get job() {
         if (!self.fn)
           throw new VisibleError(
-            `No function created for the "${self._name}" cron job.`,
+            `No function created for the "${self.name}" cron job.`,
           );
         return self.fn.apply((fn) => fn.getFunction());
       },
@@ -573,18 +404,18 @@ export class Cron extends Component {
       get function() {
         if (!self.fn)
           throw new VisibleError(
-            `No function created for the "${self._name}" cron job.`,
+            `No function created for the "${self.name}" cron job.`,
           );
         return self.fn.apply((fn) => fn.getFunction());
       },
       /**
-       * The EventBridge Scheduler Schedule resource.
+       * The EventBridge Rule resource.
        */
-      schedule: this._schedule,
+      rule: this.rule,
       /**
-       * The IAM Role resource.
+       * The EventBridge Target resource.
        */
-      role: this._role,
+      target: this.target,
     };
   }
 }
