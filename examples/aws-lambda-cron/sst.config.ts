@@ -14,6 +14,7 @@ export default $config({
     const cron = new sst.aws.CronV2("MyCron", {
       schedule: "rate(1 minute)",
       function: "cron.handler",
+      timezone: "America/New_York",
       retries: 3,
       dlq: queue.arn,
     });
