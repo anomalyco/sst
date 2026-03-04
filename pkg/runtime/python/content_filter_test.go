@@ -6,6 +6,13 @@ import (
 	"testing"
 )
 
+// newContentFilterWithPatterns creates a ContentFilter with the given exclude patterns for testing
+func newContentFilterWithPatterns(patterns []string) *ContentFilter {
+	filter := NewContentFilter()
+	filter.excludePatterns = patterns
+	return filter
+}
+
 func TestContentFilter_ShouldExclude(t *testing.T) {
 	tests := []struct {
 		name            string
@@ -106,7 +113,7 @@ func TestContentFilter_ShouldExclude(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			filter := NewContentFilterWithPatterns(tt.excludePatterns)
+			filter := newContentFilterWithPatterns(tt.excludePatterns)
 
 			for testPath, shouldExclude := range tt.testPaths {
 				result := filter.ShouldExclude(testPath)
@@ -327,7 +334,7 @@ func TestContentFilter_FilterDirectory(t *testing.T) {
 			}
 
 			// Create filter and apply
-			filter := NewContentFilterWithPatterns(tt.excludePatterns)
+			filter := newContentFilterWithPatterns(tt.excludePatterns)
 			err = filter.FilterDirectory(sourceDir, targetDir)
 
 			if err != nil {
@@ -378,7 +385,7 @@ func TestContentFilter_GetExcludePatterns(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			filter := NewContentFilterWithPatterns(tt.excludePatterns)
+			filter := newContentFilterWithPatterns(tt.excludePatterns)
 			patterns := filter.GetExcludePatterns()
 
 			if len(patterns) != len(tt.excludePatterns) {
@@ -449,7 +456,7 @@ func TestContentFilter_PatternMatching(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			filter := NewContentFilterWithPatterns([]string{tt.pattern})
+			filter := newContentFilterWithPatterns([]string{tt.pattern})
 
 			for path, shouldMatch := range tt.paths {
 				result := filter.ShouldExclude(path)
@@ -550,7 +557,7 @@ func TestContentFilter_Integration(t *testing.T) {
 		"test_*",
 	}
 
-	filter := NewContentFilterWithPatterns(excludePatterns)
+	filter := newContentFilterWithPatterns(excludePatterns)
 
 	// Apply filter
 	if err := filter.FilterDirectory(sourceDir, targetDir); err != nil {

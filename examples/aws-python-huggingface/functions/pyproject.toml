@@ -7,7 +7,7 @@ dependencies = ["transformers>=4.44.2", "torch==2.3.1"]
 
 # It is recommended to specify your python version to match your Lambda runtime otherwise you may
 # encounter issues with dependencies.
-requires-python = "==3.13.*"
+requires-python = "==3.12.*"
 
 [tool.uv.sources]
 torch = [{ index = "pytorch-cpu", marker = "platform_system != 'Darwin'" }]

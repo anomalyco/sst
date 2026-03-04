@@ -22,12 +22,12 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 # Install UV to manage your python runtime
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
-# Install the dependencies to the lambda runtime
-COPY requirements.txt ${LAMBDA_TASK_ROOT}/requirements.txt
-RUN uv pip install -r requirements.txt --target ${LAMBDA_TASK_ROOT} --system --no-verify-hashes
-
-# Copy the rest of the code
+# Copy everything first so workspace package references (e.g., ./functions)
+# in requirements.txt resolve correctly during installation
 COPY . ${LAMBDA_TASK_ROOT}
+
+# Install the dependencies to the lambda runtime
+RUN uv pip install -r requirements.txt --target ${LAMBDA_TASK_ROOT} --system --no-verify-hashes
 
 FROM public.ecr.aws/lambda/python:${PYTHON_VERSION}
 

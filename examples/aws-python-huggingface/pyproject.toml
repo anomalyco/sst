@@ -7,7 +7,7 @@ dependencies = []
 
 # It is recommended to specify your python version to match your Lambda runtime otherwise you may
 # encounter issues with dependencies.
-requires-python = "==3.13.*"
+requires-python = "==3.12.*"
 
 [tool.uv.workspace]
 members = ["functions"]

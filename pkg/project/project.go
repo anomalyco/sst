@@ -121,14 +121,7 @@ func New(input *ProjectConfig) (*Project, error) {
 	}
 
 	rootPath := filepath.Dir(input.Config)
-
-	proj := &Project{
-		version: input.Version,
-		root:    rootPath,
-		config:  input.Config,
-		env:     map[string]string{},
-	}
-	tmp := proj.PathWorkingDir()
+	tmp := filepath.Join(rootPath, ".sst")
 
 	// Create Python runtime with caching enabled
 	pythonCacheDir := filepath.Join(tmp, "python-cache")
@@ -136,6 +129,13 @@ func New(input *ProjectConfig) (*Project, error) {
 	if pythonErr != nil {
 		// Fall back to non-cached runtime if cache creation fails
 		pythonRuntime = python.New()
+	}
+
+	proj := &Project{
+		version: input.Version,
+		root:    rootPath,
+		config:  input.Config,
+		env:     map[string]string{},
 	}
 
 	proj.Runtime = runtime.NewCollection(

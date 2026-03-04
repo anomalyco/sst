@@ -34,8 +34,9 @@ export default $config({
 				container: true,
 			},
 			handler: "functions/src/functions/api.handler",
-			runtime: "python3.13",
-			timeout: "60 seconds",
+			runtime: "python3.12",
+			memory: "2048 MB",
+			timeout: "120 seconds",
 			url: true,
 		});
 	},

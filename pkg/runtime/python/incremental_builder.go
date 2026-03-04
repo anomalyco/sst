@@ -11,7 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	goruntime "runtime"
-	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -1117,6 +1117,19 @@ func (ib *IncrementalBuilder) ensureDockerfile(input *runtime.BuildInput, projec
 		return ib.copyFileSimple(customDockerfile, outputDockerfile)
 	}
 
+	// Check if there's a custom Dockerfile in the handler's package directory
+	// (e.g., functions/Dockerfile when handler is functions/src/functions/api.handler)
+	if projectInfo.PyprojectPath != "" {
+		handlerPkgDir := filepath.Dir(projectInfo.PyprojectPath)
+		if handlerPkgDir != projectRoot {
+			handlerDockerfile := filepath.Join(handlerPkgDir, "Dockerfile")
+			if _, err := os.Stat(handlerDockerfile); err == nil {
+				slog.Info("copying custom Dockerfile from handler package directory", "src", handlerDockerfile, "dest", outputDockerfile)
+				return ib.copyFileSimple(handlerDockerfile, outputDockerfile)
+			}
+		}
+	}
+
 	// Use the default Python Dockerfile from the platform directory
 	defaultDockerfile := filepath.Join(path.ResolvePlatformDir(input.CfgPath), "dist", "dockerfiles", "python.Dockerfile")
 	if _, err := os.Stat(defaultDockerfile); err != nil {
@@ -1237,6 +1250,46 @@ func (ib *IncrementalBuilder) copyDirectoryRecursive(src, dest string) error {
 	})
 }
 
+// copyDirectoryUnfiltered copies a directory recursively without any content filtering.
+// Used for workspace packages in container builds where pyproject.toml and other metadata
+// files must be preserved for uv pip install to work inside the container.
+func copyDirectoryUnfiltered(src, dest string) error {
+	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		relPath, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+
+		// Skip common non-essential directories
+		if info.IsDir() {
+			name := info.Name()
+			if name == "__pycache__" || name == ".venv" || name == "node_modules" || name == ".git" {
+				return filepath.SkipDir
+			}
+		}
+
+		destPath := filepath.Join(dest, relPath)
+
+		if info.IsDir() {
+			return os.MkdirAll(destPath, info.Mode())
+		}
+
+		// Copy file
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+			return err
+		}
+		return os.WriteFile(destPath, data, 0644)
+	})
+}
+
 // copyFile copies a single file
 func (ib *IncrementalBuilder) copyFile(src, dest string) error {
 	// Create destination directory if it doesn't exist
@@ -1260,19 +1313,72 @@ func (ib *IncrementalBuilder) copyFile(src, dest string) error {
 func (ib *IncrementalBuilder) adjustHandlerPath(input *runtime.BuildInput, projectInfo *ProjectInfo) (string, error) {
 	originalHandler := input.Handler
 
-	// Only adjust for src/ prefix - this is a legacy pattern where src/ is flattened
-	// Pattern: src/functions/api.handler -> functions/api.handler
-	if strings.HasPrefix(originalHandler, "src/") {
-		adjustedHandler := strings.TrimPrefix(originalHandler, "src/")
-		slog.Info("incremental builder handler path adjustment",
-			"original", originalHandler,
-			"adjusted", adjustedHandler,
-			"reason", "flattened src structure")
-		return adjustedHandler, nil
+	// Strip leading ./ if present
+	handler := strings.TrimPrefix(originalHandler, "./")
+
+	// Split handler into file path and function name
+	// e.g., "functions/src/functions/api.handler" -> filePath="functions/src/functions/api", funcName="handler"
+	lastDot := strings.LastIndex(handler, ".")
+	if lastDot == -1 {
+		return handler, nil
+	}
+	filePath := handler[:lastDot]
+	funcName := handler[lastDot+1:]
+
+	// When workspace packages use src/ layout (PEP 517), uv pip install flattens
+	// src/pkg/ to pkg/ in the installed package. The handler path in sst.config.ts
+	// points to the source tree (e.g., functions/src/functions/api) but the installed
+	// package will be at functions/api.
+	//
+	// For container builds: dependencies are installed inside the Docker container,
+	// so we can't check the artifact filesystem. Instead, detect the src/ pattern
+	// and adjust proactively.
+	//
+	// For zip builds: both the raw source and installed package may exist in the
+	// artifact. Python's import system finds the installed package first, so we
+	// prefer the flattened path.
+	parts := strings.Split(filePath, "/")
+	for i := 0; i < len(parts)-1; i++ {
+		if parts[i] == "src" && i+1 < len(parts) {
+			// Try removing "src/{next}" from the path
+			adjusted := append([]string{}, parts[:i]...)
+			adjusted = append(adjusted, parts[i+2:]...)
+			adjustedPath := strings.Join(adjusted, "/")
+
+			if input.IsContainer {
+				// For containers, we can't check the artifact (deps installed in Docker).
+				// Proactively flatten the src/ layout since uv pip install will do so.
+				adjustedHandler := adjustedPath + "." + funcName
+				slog.Info("handler path adjustment: src/ layout detected for container build",
+					"original", originalHandler,
+					"adjusted", adjustedHandler,
+					"reason", "uv pip install in Docker will flatten src/ layout")
+				return adjustedHandler, nil
+			}
+
+			// For zip builds, verify the flattened file exists in the artifact
+			adjustedFile := filepath.Join(input.Out(), adjustedPath+".py")
+			if _, err := os.Stat(adjustedFile); err == nil {
+				adjustedHandler := adjustedPath + "." + funcName
+				slog.Info("handler path adjustment: src/ layout flattened by package install",
+					"original", originalHandler,
+					"adjusted", adjustedHandler,
+					"reason", "installed package takes precedence over raw source tree")
+				return adjustedHandler, nil
+			}
+		}
 	}
 
-	slog.Info("incremental builder handler path adjustment", "original", originalHandler, "adjusted", "no change needed")
-	return originalHandler, nil
+	// Check if the handler file exists at the expected path in the artifact
+	expectedFile := filepath.Join(input.Out(), filePath+".py")
+	if _, err := os.Stat(expectedFile); err == nil {
+		slog.Info("handler path adjustment: file found at expected path", "handler", handler)
+		return handler, nil
+	}
+
+	// No file found at either path, return original (stripped of ./)
+	slog.Info("handler path adjustment: no change needed", "handler", handler)
+	return handler, nil
 }
 
 // updateCacheAfterBuild updates the cache with build results
@@ -1823,67 +1929,6 @@ func (ib *IncrementalBuilder) BuildWithRecovery(ctx context.Context, input *runt
 	return result, err
 }
 
-// installDependenciesFresh installs dependencies without using cache
-// TODO: DEAD CODE - this function is never called. Consider removing.
-// The functionality is handled by copySyncedDependencies instead.
-func (ib *IncrementalBuilder) installDependenciesFresh(ctx context.Context, input *runtime.BuildInput, requirementsFile string, architecture string) error {
-	// Determine platform for installation
-	pythonPlatform := "x86_64-unknown-linux-gnu"
-	if architecture == "arm64" {
-		pythonPlatform = "aarch64-unknown-linux-gnu"
-	}
-
-	// Create UV install command
-	installCmd := &UvInstallCommand{
-		WorkingDir:       input.Out(),
-		RequirementsFile: requirementsFile,
-		TargetDir:        input.Out(),
-		PythonPlatform:   pythonPlatform,
-		Architecture:     architecture,
-	}
-
-	// Execute install command
-	return ib.uvRunner.ExecuteInstallCommand(ctx, installCmd)
-}
-
-// parseDependencyList parses a requirements file to extract dependency names
-func (ib *IncrementalBuilder) parseDependencyList(requirementsFile string) ([]string, error) {
-	content, err := os.ReadFile(requirementsFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read requirements file: %w", err)
-	}
-
-	var dependencies []string
-	lines := strings.Split(string(content), "\n")
-
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-
-		// Extract package name (before version specifiers)
-		parts := strings.FieldsFunc(line, func(r rune) bool {
-			return r == '=' || r == '<' || r == '>' || r == '!' || r == '~' || r == ' '
-		})
-
-		if len(parts) > 0 {
-			packageName := strings.TrimSpace(parts[0])
-			if packageName != "" {
-				dependencies = append(dependencies, packageName)
-			}
-		}
-	}
-
-	return dependencies, nil
-}
-
-// shouldUseDependencyCache determines if dependency caching should be used
-func (ib *IncrementalBuilder) shouldUseDependencyCache(input *runtime.BuildInput) bool {
-	// Use dependency cache for non-dev builds and when optimization is enabled
-	return !input.Dev && ib.config.EnableBuildOptimization
-}
-
 // installDependenciesForBuild installs dependencies for the build
 func (ib *IncrementalBuilder) installDependenciesForBuild(ctx context.Context, input *runtime.BuildInput, projectInfo *ProjectInfo, plan *BuildPlan, result *BuildResult) error {
 	// Ensure output directory exists (it may not if no packages needed building)
@@ -1966,7 +2011,7 @@ func (ib *IncrementalBuilder) generateOrCopyRequirementsFile(ctx context.Context
 
 				// Walk up to find any parent pyproject.toml
 				iterCount := 0
-				for currentDir != "/" && currentDir != "." && currentDir != projectInfo.SourceRoot {
+				for currentDir != filepath.Dir(currentDir) && currentDir != "." && currentDir != projectInfo.SourceRoot {
 					iterCount++
 					parentPyproject := filepath.Join(currentDir, "pyproject.toml")
 					slog.Info("checking for parent pyproject.toml",
@@ -1993,7 +2038,7 @@ func (ib *IncrementalBuilder) generateOrCopyRequirementsFile(ctx context.Context
 						"iterations", iterCount,
 						"stoppedBecause", fmt.Sprintf("currentDir=%s, sourceRoot=%s, isRoot=%v, isDot=%v",
 							currentDir, projectInfo.SourceRoot,
-							currentDir == "/", currentDir == "."))
+							currentDir == filepath.Dir(currentDir), currentDir == "."))
 				}
 			}
 		} else {
@@ -2068,40 +2113,6 @@ func (ib *IncrementalBuilder) generateOrCopyRequirementsFile(ctx context.Context
 	globalRequirementsFilesMutex.Unlock()
 
 	return nil
-}
-
-// sortRequirementsFile sorts a requirements.txt file alphabetically for deterministic caching
-func (ib *IncrementalBuilder) sortRequirementsFile(filePath string) error {
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		return fmt.Errorf("failed to read requirements file: %w", err)
-	}
-
-	lines := strings.Split(string(data), "\n")
-
-	// Separate comments/blank lines from package lines
-	var comments []string
-	var packages []string
-
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
-			comments = append(comments, line)
-		} else {
-			packages = append(packages, line)
-		}
-	}
-
-	// Sort package lines alphabetically
-	sort.Strings(packages)
-
-	// Reconstruct file: comments first, then sorted packages
-	var result []string
-	result = append(result, comments...)
-	result = append(result, packages...)
-
-	// Write back
-	return os.WriteFile(filePath, []byte(strings.Join(result, "\n")), 0644)
 }
 
 // InputProperties represents the input properties structure
@@ -2180,10 +2191,116 @@ func (ib *IncrementalBuilder) installDependenciesForLambda(ctx context.Context, 
 
 	// Copy the synced packages from .venv to output directory
 	// This includes git dependencies like sst that are properly resolved after sync
-	ib.progressReporter.UpdateProgress(StageBuildPackages, "Copying synced dependencies")
+	// For container builds, skip dependency installation — the Dockerfile handles it
+	// inside the container to ensure native binaries are compiled for Linux.
+	// Instead, copy workspace package directories so the Dockerfile can install them.
+	if input.IsContainer {
+		slog.Info("skipping copySyncedDependencies for container build — Dockerfile will install dependencies",
+			"functionID", input.FunctionID)
 
-	if err := ib.copySyncedDependencies(ctx, input, projectInfo, architecture); err != nil {
-		return fmt.Errorf("failed to copy synced dependencies: %w", err)
+		// Copy workspace package directories into the artifact so the Dockerfile's
+		// `uv pip install -r requirements.txt` can resolve relative paths like ./core
+		if err := ib.copyWorkspacePackagesForContainer(input, projectInfo); err != nil {
+			return fmt.Errorf("failed to copy workspace packages for container: %w", err)
+		}
+	} else {
+		ib.progressReporter.UpdateProgress(StageBuildPackages, "Copying synced dependencies")
+
+		if err := ib.copySyncedDependencies(ctx, input, projectInfo, architecture); err != nil {
+			return fmt.Errorf("failed to copy synced dependencies: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// copyWorkspacePackagesForContainer copies workspace package directories into the artifact
+// so the Dockerfile's `uv pip install -r requirements.txt` can resolve relative paths like ./core.
+func (ib *IncrementalBuilder) copyWorkspacePackagesForContainer(input *runtime.BuildInput, projectInfo *ProjectInfo) error {
+	// Find the workspace root
+	workspaceRoot := projectInfo.ProjectRoot
+	if workspaceRoot == "" {
+		workspaceRoot = path.ResolveRootDir(input.CfgPath)
+	}
+
+	// Read the requirements.txt from the artifact to find workspace package paths
+	requirementsPath := filepath.Join(input.Out(), "requirements.txt")
+	content, err := os.ReadFile(requirementsPath)
+	if err != nil {
+		slog.Info("no requirements.txt found for container build, skipping workspace package copy")
+		return nil
+	}
+
+	lines := strings.Split(string(content), "\n")
+	var copied []string
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		// Skip comments, empty lines, and non-local-path lines
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "-") {
+			continue
+		}
+
+		// Detect local path references: ./core, ./functions, etc.
+		if !strings.HasPrefix(line, "./") && !strings.HasPrefix(line, "../") {
+			continue
+		}
+
+		// Strip any extras or markers (e.g., "./core[extra] ; python_version >= '3.11'")
+		pkgPath := line
+		for _, sep := range []string{" ", "[", ";"} {
+			if idx := strings.Index(pkgPath, sep); idx > 0 {
+				pkgPath = pkgPath[:idx]
+			}
+		}
+
+		// Resolve the full path relative to workspace root
+		fullPath := filepath.Join(workspaceRoot, pkgPath)
+		if _, err := os.Stat(fullPath); err != nil {
+			slog.Warn("workspace package directory not found", "path", fullPath, "line", line)
+			continue
+		}
+
+		// Copy to the artifact at the same relative path
+		destPath := filepath.Join(input.Out(), pkgPath)
+		if _, err := os.Stat(destPath); err == nil {
+			// Directory already exists (e.g., copySourceFilesSimple already copied handler source files).
+			// Ensure pyproject.toml is present — it's needed for uv pip install but may have been
+			// filtered out by the content filter during source file copying.
+			srcPyproject := filepath.Join(fullPath, "pyproject.toml")
+			destPyproject := filepath.Join(destPath, "pyproject.toml")
+			if _, err := os.Stat(srcPyproject); err == nil {
+				if _, err := os.Stat(destPyproject); err != nil {
+					slog.Info("copying missing pyproject.toml into existing workspace package", "path", pkgPath)
+					data, readErr := os.ReadFile(srcPyproject)
+					if readErr != nil {
+						return fmt.Errorf("failed to read pyproject.toml for workspace package %s: %w", pkgPath, readErr)
+					}
+					if err := os.WriteFile(destPyproject, data, 0644); err != nil {
+						return fmt.Errorf("failed to copy pyproject.toml for workspace package %s: %w", pkgPath, err)
+					}
+				}
+			}
+			continue
+		}
+
+		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+			return fmt.Errorf("failed to create directory for workspace package %s: %w", pkgPath, err)
+		}
+
+		// Use unfiltered copy — workspace packages need pyproject.toml and all
+		// metadata files for uv pip install to work inside the container.
+		// copyDirectoryRecursive uses ContentFilter which strips pyproject.toml.
+		if err := copyDirectoryUnfiltered(fullPath, destPath); err != nil {
+			return fmt.Errorf("failed to copy workspace package %s: %w", pkgPath, err)
+		}
+
+		copied = append(copied, pkgPath)
+		slog.Info("copied workspace package for container build", "path", pkgPath)
+	}
+
+	if len(copied) > 0 {
+		slog.Info("copied workspace packages for container build", "packages", copied)
 	}
 
 	return nil
@@ -2442,27 +2559,6 @@ func (ib *IncrementalBuilder) copySourceFilesSimple(ctx context.Context, input *
 	return nil
 }
 
-// containsPythonContent checks if a directory contains Python files
-func (ib *IncrementalBuilder) containsPythonContent(dirPath string) bool {
-	entries, err := os.ReadDir(dirPath)
-	if err != nil {
-		return false
-	}
-
-	for _, entry := range entries {
-		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".py") {
-			return true
-		}
-		if entry.IsDir() {
-			subPath := filepath.Join(dirPath, entry.Name())
-			if ib.containsPythonContent(subPath) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 // copySyncedDependencies installs all dependencies (external + workspace packages) with correct platform targeting
 func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input *runtime.BuildInput, projectInfo *ProjectInfo, architecture string) error {
 	startTime := time.Now()
@@ -2491,7 +2587,7 @@ func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input 
 		currentDir := pyprojectDir
 		for {
 			parentDir := filepath.Dir(currentDir)
-			if parentDir == currentDir || parentDir == "/" || parentDir == "." {
+			if parentDir == currentDir || parentDir == "." {
 				break
 			}
 			parentPyproject := filepath.Join(parentDir, "pyproject.toml")
@@ -2647,20 +2743,35 @@ func (ib *IncrementalBuilder) copySyncedDependencies(ctx context.Context, input 
 		}
 
 		if needsCrossPlatform {
-			pythonPlatform := "x86_64-unknown-linux-gnu"
-			if architecture == "arm64" {
-				pythonPlatform = "aarch64-unknown-linux-gnu"
-			}
-
-			// Extract Python version from runtime string (e.g., "python3.13" -> "3.13")
+			// Use manylinux platform tags to ensure GLIBC compatibility with Lambda.
+			// Lambda python3.11 and below run on Amazon Linux 2 (GLIBC 2.17 = manylinux2014).
+			// Lambda python3.12 and above run on Amazon Linux 2023 (GLIBC 2.28 = manylinux_2_28).
+			// Using the correct manylinux tag prevents uv from downloading wheels
+			// built against a newer GLIBC than the Lambda runtime provides.
 			pythonVersion := strings.TrimPrefix(input.Runtime, "python")
 			if pythonVersion == "" || pythonVersion == input.Runtime {
 				pythonVersion = "3.13" // fallback to 3.13 if parsing fails
 			}
 
+			// Determine manylinux tag based on Python minor version
+			// Parse minor version: "3.11" -> 11, "3.12" -> 12
+			manylinuxTag := "manylinux_2_28" // AL2023 default (3.12+)
+			if parts := strings.SplitN(pythonVersion, ".", 2); len(parts) == 2 {
+				if minor, err := strconv.Atoi(parts[1]); err == nil && minor <= 11 {
+					manylinuxTag = "manylinux2014" // AL2 (3.9-3.11)
+				}
+			}
+
+			archPrefix := "x86_64"
+			if architecture == "arm64" {
+				archPrefix = "aarch64"
+			}
+			pythonPlatform := archPrefix + "-" + manylinuxTag
+
 			args = append(args, "--python-platform", pythonPlatform, "--python-version", pythonVersion)
 			slog.Info("using platform targeting for Lambda deployment (cross-platform build)",
 				"platform", pythonPlatform,
+				"manylinuxTag", manylinuxTag,
 				"pythonVersion", pythonVersion,
 				"runtime", input.Runtime,
 				"currentOS", currentOS,
@@ -2931,161 +3042,6 @@ func (ib *IncrementalBuilder) filterWorkspacePackagesFromRequirementsAndGetPaths
 	return workspacePackagePaths, nil
 }
 
-// copyWorkspacePackageSources copies workspace package source code to the artifact directory
-// TODO: DEAD CODE - this function is never called. Consider removing.
-// The functionality is handled by copySourceFilesSimple and copySyncedDependencies instead.
-func (ib *IncrementalBuilder) copyWorkspacePackageSources(ctx context.Context, packagePaths []string, workspaceRoot string, artifactDir string) error {
-	if len(packagePaths) == 0 {
-		return nil
-	}
-
-	slog.Info("copying workspace package sources to artifact",
-		"packagePaths", packagePaths,
-		"workspaceRoot", workspaceRoot,
-		"artifactDir", artifactDir)
-
-	for _, pkgPath := range packagePaths {
-		// Parse the package's pyproject.toml to determine the package name and source layout
-		pyprojectPath := filepath.Join(pkgPath, "pyproject.toml")
-		if _, err := os.Stat(pyprojectPath); os.IsNotExist(err) {
-			slog.Warn("workspace package has no pyproject.toml, skipping", "path", pkgPath)
-			continue
-		}
-
-		config, err := ib.projectResolver.ParsePyprojectToml(pyprojectPath)
-		if err != nil {
-			slog.Warn("failed to parse workspace package pyproject.toml", "path", pyprojectPath, "error", err)
-			continue
-		}
-
-		packageName := config.Project.Name
-		if packageName == "" {
-			packageName = filepath.Base(pkgPath)
-		}
-
-		// Calculate the relative path from workspace root to this package for filter prefix
-		// This allows patterns like "backend/tests/**" to match when copying "backend/"
-		filterPrefix, _ := filepath.Rel(workspaceRoot, pkgPath)
-
-		// Determine source directory based on hatch configuration or convention
-		// Check for src/{package_name}/ layout first (common convention)
-		srcLayoutPath := filepath.Join(pkgPath, "src", packageName)
-		if _, err := os.Stat(srcLayoutPath); err == nil {
-			// Copy src/{package_name}/ as {package_name}/ in artifact
-			destPath := filepath.Join(artifactDir, packageName)
-			// For src layout, the filter prefix should include src/{packageName}
-			srcFilterPrefix := filepath.Join(filterPrefix, "src", packageName)
-			slog.Info("copying workspace package with src layout",
-				"package", packageName,
-				"source", srcLayoutPath,
-				"dest", destPath,
-				"filterPrefix", srcFilterPrefix)
-
-			if err := ib.copyDirectory(srcLayoutPath, destPath, srcFilterPrefix); err != nil {
-				return fmt.Errorf("failed to copy workspace package %s: %w", packageName, err)
-			}
-			continue
-		}
-
-		// Check for flat src/ layout (src/ contains the package code directly)
-		srcPath := filepath.Join(pkgPath, "src")
-		if _, err := os.Stat(srcPath); err == nil {
-			// Check if src/ contains an __init__.py (flat package) or subdirectories
-			srcInitPath := filepath.Join(srcPath, "__init__.py")
-			if _, err := os.Stat(srcInitPath); err == nil {
-				// Flat src layout - copy src/ as {package_name}/
-				destPath := filepath.Join(artifactDir, packageName)
-				srcFilterPrefix := filepath.Join(filterPrefix, "src")
-				slog.Info("copying workspace package with flat src layout",
-					"package", packageName,
-					"source", srcPath,
-					"dest", destPath,
-					"filterPrefix", srcFilterPrefix)
-
-				if err := ib.copyDirectory(srcPath, destPath, srcFilterPrefix); err != nil {
-					return fmt.Errorf("failed to copy workspace package %s: %w", packageName, err)
-				}
-				continue
-			}
-		}
-
-		// Check for {package_name}/ directory at package root
-		pkgDirPath := filepath.Join(pkgPath, packageName)
-		if _, err := os.Stat(pkgDirPath); err == nil {
-			destPath := filepath.Join(artifactDir, packageName)
-			pkgFilterPrefix := filepath.Join(filterPrefix, packageName)
-			slog.Info("copying workspace package from root directory",
-				"package", packageName,
-				"source", pkgDirPath,
-				"dest", destPath,
-				"filterPrefix", pkgFilterPrefix)
-
-			if err := ib.copyDirectory(pkgDirPath, destPath, pkgFilterPrefix); err != nil {
-				return fmt.Errorf("failed to copy workspace package %s: %w", packageName, err)
-			}
-			continue
-		}
-
-		// Check if the package directory itself is the package (has __init__.py at root)
-		// This handles the case where the directory name IS the package name
-		rootInitPath := filepath.Join(pkgPath, "__init__.py")
-		if _, err := os.Stat(rootInitPath); err == nil {
-			// The package directory itself is the package - copy it as {directory_name}/
-			dirName := filepath.Base(pkgPath)
-			destPath := filepath.Join(artifactDir, dirName)
-			slog.Info("copying workspace package as flat package directory",
-				"package", packageName,
-				"dirName", dirName,
-				"source", pkgPath,
-				"dest", destPath,
-				"filterPrefix", filterPrefix)
-
-			if err := ib.copyDirectory(pkgPath, destPath, filterPrefix); err != nil {
-				return fmt.Errorf("failed to copy workspace package %s: %w", packageName, err)
-			}
-			continue
-		}
-
-		// Handle namespace packages - directories with Python files in subdirectories but no __init__.py
-		// This is common for handler-based layouts like packages/api/auth/login.py
-		// We preserve the relative path from workspace root so handler paths work correctly
-		// e.g., packages/api/ -> packages/api/ in artifact (not gtf-api/)
-		hasPythonFiles := false
-		filepath.Walk(pkgPath, func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return err
-			}
-			if !info.IsDir() && strings.HasSuffix(info.Name(), ".py") {
-				hasPythonFiles = true
-				return filepath.SkipAll // Found one, stop walking
-			}
-			return nil
-		})
-
-		if hasPythonFiles {
-			// Copy preserving the relative path from workspace root
-			// filterPrefix is already the relative path (e.g., "packages/api")
-			destPath := filepath.Join(artifactDir, filterPrefix)
-			slog.Info("copying namespace package preserving relative path",
-				"package", packageName,
-				"source", pkgPath,
-				"dest", destPath,
-				"filterPrefix", filterPrefix)
-
-			if err := ib.copyDirectory(pkgPath, destPath, filterPrefix); err != nil {
-				return fmt.Errorf("failed to copy namespace package %s: %w", packageName, err)
-			}
-			continue
-		}
-
-		slog.Warn("could not determine source layout for workspace package",
-			"package", packageName,
-			"path", pkgPath)
-	}
-
-	return nil
-}
-
 // copyDirectory recursively copies a directory
 // filterPrefix is prepended to relative paths when checking the content filter
 // (e.g., when copying "backend/", pass "backend" so "tests/" matches "backend/tests/**" patterns)
@@ -3343,33 +3299,6 @@ func (ib *IncrementalBuilder) getWorkspacePackageNames(projectInfo *ProjectInfo)
 	}
 
 	return packages
-}
-
-// isWorkspacePackage checks if a package name is a workspace package
-func (ib *IncrementalBuilder) isWorkspacePackage(packageName string, workspacePackages []string) bool {
-	for _, wp := range workspacePackages {
-		if packageName == wp || strings.HasPrefix(packageName, wp+"-") {
-			return true
-		}
-	}
-	return false
-}
-
-// shouldSkipPackage determines if a package should be skipped
-func (ib *IncrementalBuilder) shouldSkipPackage(packageName string) bool {
-	skipPackages := []string{
-		"pip", "setuptools", "wheel", "_distutils_hack",
-		"pkg_resources", "distutils-precedence.pth",
-		"__pycache__",
-	}
-
-	for _, skip := range skipPackages {
-		if strings.HasPrefix(packageName, skip) {
-			return true
-		}
-	}
-
-	return false
 }
 
 // hashFile computes a hash of a file's contents for cache key generation

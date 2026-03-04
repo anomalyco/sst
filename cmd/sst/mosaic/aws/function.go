@@ -18,7 +18,6 @@ import (
 	"github.com/sst/sst/v3/cmd/sst/mosaic/aws/bridge"
 	"github.com/sst/sst/v3/cmd/sst/mosaic/watcher"
 	"github.com/sst/sst/v3/pkg/bus"
-	"github.com/sst/sst/v3/pkg/events"
 	"github.com/sst/sst/v3/pkg/project"
 	"github.com/sst/sst/v3/pkg/runtime"
 	"github.com/sst/sst/v3/pkg/server"
@@ -51,9 +50,6 @@ type FunctionBuildEvent struct {
 	FunctionID string
 	Errors     []string
 }
-
-// Use the common FunctionBuildProgressEvent from events package
-type FunctionBuildProgressEvent = events.FunctionBuildProgressEvent
 
 type FunctionLogEvent struct {
 	FunctionID string

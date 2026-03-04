@@ -530,51 +530,6 @@ func (da *DependencyAnalyzer) hasBuildConfiguration(pyprojectPath string) bool {
 	return false
 }
 
-// isInTypicalPackageLocation checks if a path is in a location where packages are typically found
-func (da *DependencyAnalyzer) isInTypicalPackageLocation(path string) bool {
-	// Get relative path components
-	pathParts := strings.Split(path, string(filepath.Separator))
-
-	// Look for typical package directory patterns
-	for _, part := range pathParts {
-		if part == "src" || part == "lib" || part == "packages" || part == "libs" {
-			return true
-		}
-	}
-
-	// If it's a direct subdirectory of the workspace root, it could be a package
-	// but we need to be careful not to include build/cache directories
-	return len(pathParts) <= 2 // Workspace root or one level deep
-}
-
-// followsPackageNamingConventions checks if a directory name follows Python package naming conventions
-func (da *DependencyAnalyzer) followsPackageNamingConventions(name string) bool {
-	// Python package names should be lowercase and use underscores or hyphens
-	// Avoid names that look like system directories
-	systemLikeNames := []string{
-		"bin", "lib", "include", "share", "etc", "var", "tmp", "temp",
-		"cache", "log", "logs", "test", "tests", "doc", "docs",
-	}
-
-	for _, systemName := range systemLikeNames {
-		if name == systemName {
-			return false
-		}
-	}
-
-	// Should not contain uppercase letters or special characters (except _ and -)
-	for _, char := range name {
-		if char >= 'A' && char <= 'Z' {
-			return false
-		}
-		if char != '_' && char != '-' && !((char >= 'a' && char <= 'z') || (char >= '0' && char <= '9')) {
-			return false
-		}
-	}
-
-	return len(name) > 0
-}
-
 // parseWorkspacePackages extracts workspace package paths from pyproject.toml
 func (da *DependencyAnalyzer) parseWorkspacePackages(pyprojectPath string) ([]string, error) {
 	// Parse pyproject.toml to find workspace configuration
@@ -812,50 +767,6 @@ func (da *DependencyAnalyzer) findPackageSourceFiles(packagePath string) ([]stri
 }
 
 // walkPackageDirectory walks a package directory more selectively than filepath.Walk
-func (da *DependencyAnalyzer) walkPackageDirectory(packagePath string, fn func(string, os.FileInfo) error) error {
-	return da.walkPackageDirectoryRecursive(packagePath, fn, 0, 10) // Max depth of 10
-}
-
-// walkPackageDirectoryRecursive recursively walks a package directory with depth control
-func (da *DependencyAnalyzer) walkPackageDirectoryRecursive(dir string, fn func(string, os.FileInfo) error, depth, maxDepth int) error {
-	if depth > maxDepth {
-		return nil // Stop recursion if too deep
-	}
-
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil // Skip directories we can't read
-	}
-
-	for _, entry := range entries {
-		path := filepath.Join(dir, entry.Name())
-
-		// Skip obviously non-source directories early (be more permissive than package discovery)
-		if entry.IsDir() && da.shouldSkipSourceDirectory(entry.Name()) {
-			continue
-		}
-
-		info, err := entry.Info()
-		if err != nil {
-			continue // Skip entries we can't stat
-		}
-
-		// Call the function for this entry
-		if err := fn(path, info); err != nil {
-			return err
-		}
-
-		// Recurse into subdirectories
-		if entry.IsDir() {
-			if err := da.walkPackageDirectoryRecursive(path, fn, depth+1, maxDepth); err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
-}
-
 // shouldSkipSourceFile determines if a source file should be skipped
 func (da *DependencyAnalyzer) shouldSkipSourceFile(filePath string) bool {
 	// Skip files in specific directories (check path components)
@@ -894,24 +805,6 @@ func (da *DependencyAnalyzer) shouldSkipSourceFile(filePath string) bool {
 	// Skip files in .egg-info directories
 	if strings.Contains(filePath, ".egg-info") {
 		return true
-	}
-
-	return false
-}
-
-// shouldSkipSourceDirectory determines if a directory should be skipped during source file discovery
-// This is more permissive than shouldSkipDirectory since we want to find source files in legitimate subdirectories
-func (da *DependencyAnalyzer) shouldSkipSourceDirectory(name string) bool {
-	skipDirs := []string{
-		".git", ".venv", "venv", "__pycache__", ".pytest_cache", ".mypy_cache",
-		".sst", "node_modules", "site-packages", "dist-info",
-		".tox", ".coverage", ".idea", ".vscode",
-	}
-
-	for _, skipDir := range skipDirs {
-		if name == skipDir || (strings.HasPrefix(name, ".") && name != "." && name != "..") {
-			return true
-		}
 	}
 
 	return false
@@ -1305,88 +1198,4 @@ func (da *DependencyAnalyzer) calculateConfigFileHashes(analysis *DependencyAnal
 	}
 
 	return nil
-}
-
-// dependenciesEqual compares two DependencyAnalysis structs for equality, excluding the AnalyzedAt field
-func (da *DependencyAnalyzer) dependenciesEqual(a, b *DependencyAnalysis) bool {
-	if a == nil || b == nil {
-		return a == b
-	}
-
-	// Compare basic fields
-	if a.WorkspaceDir != b.WorkspaceDir ||
-		a.PackageName != b.PackageName {
-		return false
-	}
-
-	// Compare LocalPackages slices
-	if len(a.LocalPackages) != len(b.LocalPackages) {
-		return false
-	}
-	for i, pkg := range a.LocalPackages {
-		if !da.localPackagesEqual(pkg, b.LocalPackages[i]) {
-			return false
-		}
-	}
-
-	// Compare ExternalDependencies slices
-	if len(a.ExternalDependencies) != len(b.ExternalDependencies) {
-		return false
-	}
-	for i, dep := range a.ExternalDependencies {
-		if !da.externalDependenciesEqual(dep, b.ExternalDependencies[i]) {
-			return false
-		}
-	}
-
-	return true
-}
-
-// localPackagesEqual compares two LocalPackageInfo structs for equality
-func (da *DependencyAnalyzer) localPackagesEqual(a, b *LocalPackageInfo) bool {
-	if a == nil || b == nil {
-		return a == b
-	}
-
-	if a.Name != b.Name ||
-		a.Path != b.Path ||
-		a.HasChanges != b.HasChanges ||
-		a.ChangeReason != b.ChangeReason ||
-		a.BuildRequired != b.BuildRequired ||
-		a.EstimatedBuildTime != b.EstimatedBuildTime {
-		return false
-	}
-
-	// Compare SourceFiles slices
-	if len(a.SourceFiles) != len(b.SourceFiles) {
-		return false
-	}
-	for i, file := range a.SourceFiles {
-		if file != b.SourceFiles[i] {
-			return false
-		}
-	}
-
-	// Compare Dependencies slices
-	if len(a.Dependencies) != len(b.Dependencies) {
-		return false
-	}
-	for i, dep := range a.Dependencies {
-		if dep != b.Dependencies[i] {
-			return false
-		}
-	}
-
-	return true
-}
-
-// externalDependenciesEqual compares two ExternalDependencyInfo structs for equality
-func (da *DependencyAnalyzer) externalDependenciesEqual(a, b *ExternalDependencyInfo) bool {
-	if a == nil || b == nil {
-		return a == b
-	}
-
-	return a.Name == b.Name &&
-		a.Version == b.Version &&
-		a.Source == b.Source
 }

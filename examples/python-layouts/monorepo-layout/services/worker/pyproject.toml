@@ -4,8 +4,6 @@ version = "0.1.0"
 description = "Worker service"
 requires-python = ">=3.12"
 dependencies = [
-    "celery>=5.3.0",
-    "redis>=5.0.0",
     "shared",
 ]
 

@@ -434,7 +434,7 @@ func (cd *ChangeDetector) shouldIgnoreFile(filePath string) bool {
 
 		// Check if any parent directory matches the pattern
 		dir := filepath.Dir(filePath)
-		for dir != "." && dir != "/" {
+		for dir != "." && dir != filepath.Dir(dir) {
 			dirName := filepath.Base(dir)
 			if matched, _ := filepath.Match(cleanPattern, dirName); matched {
 				return true

@@ -44,7 +44,6 @@ func CmdUI(c *cli.Cli) error {
 			aws.FunctionErrorEvent{},
 			aws.FunctionLogEvent{},
 			aws.FunctionBuildEvent{},
-			aws.FunctionBuildProgressEvent{},
 		)
 	}
 	if filter == "task" || filter == "" {

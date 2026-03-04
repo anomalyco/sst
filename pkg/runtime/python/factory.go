@@ -73,12 +73,3 @@ func (rf *RuntimeFactory) CreateIncrementalBuilderWithCacheDir(workingDir string
 		ProjectRoot:             workingDir,
 	})
 }
-
-// CreateDefaultProgressCallback creates a standard progress callback
-func (rf *RuntimeFactory) CreateDefaultProgressCallback(functionID string) ProgressCallback {
-	return func(event ProgressEvent) {
-		// This could be implemented with proper event publishing
-		// For now, just log the progress
-		fmt.Printf("Build progress [%s]: %s - %s\n", functionID, event.Stage, event.Message)
-	}
-}

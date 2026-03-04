@@ -13,18 +13,21 @@ export default $config({
     const rootHandler = new sst.aws.Function("RootHandler", {
       handler: "handler.lambda_handler",
       runtime: "python3.11",
+      url: true,
     });
 
     // Test 2: Package with [tool.uv] package = true
     const packageHandler = new sst.aws.Function("PackageHandler", {
       handler: "packages/api/src/api/handler.lambda_handler",
       runtime: "python3.11",
+      url: true,
     });
 
     // Test 3: Workspace member importing another member
     const workspaceHandler = new sst.aws.Function("WorkspaceHandler", {
       handler: "packages/worker/src/worker/handler.lambda_handler",
       runtime: "python3.11",
+      url: true,
     });
 
     return {

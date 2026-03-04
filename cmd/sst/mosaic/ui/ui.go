@@ -188,9 +188,6 @@ func (u *UI) Event(unknown interface{}) {
 		formattedDuration := fmt.Sprintf("%.9s", fmt.Sprintf("+%v", duration))
 		u.printEvent(u.getColor(evt.WorkerID), formattedDuration, evt.Line)
 
-	case *aws.FunctionBuildProgressEvent:
-		u.printEvent(u.getColor(evt.FunctionID), "Build", fmt.Sprintf("%s: %s", evt.Stage, evt.Message))
-
 	case *aws.FunctionBuildEvent:
 		if len(evt.Errors) > 0 {
 			u.printEvent(TEXT_DANGER, "Build Error", u.functionName(evt.FunctionID))

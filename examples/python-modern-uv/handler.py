@@ -2,7 +2,7 @@
 Test: Entry point in root with src/ layout
 This tests if [tool.uv] package = true allows imports from src/
 """
-from src.myapp import utils
+from myapp import utils
 
 def lambda_handler(event, context):
     result = utils.process_data({"test": "data"})

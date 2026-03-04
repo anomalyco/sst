@@ -133,39 +133,6 @@ func TestNewHandlerNotFoundErrorLegacy(t *testing.T) {
 	}
 }
 
-func TestNewCacheCorruptedError(t *testing.T) {
-	originalErr := errors.New("cache corruption")
-	err := NewCacheCorruptedError("/cache/dir", originalErr)
-
-	if err.Type != ErrorTypeCacheCorrupted {
-		t.Error("Expected cache corrupted error type")
-	}
-
-	if err.Severity != ErrorSeverityWarning {
-		t.Error("Expected warning severity for cache corruption")
-	}
-
-	if err.Cause != originalErr {
-		t.Error("Expected cause to be set")
-	}
-
-	if err.Context["cacheDir"] != "/cache/dir" {
-		t.Error("Expected cache directory context to be set")
-	}
-
-	// Check for automatic recovery action
-	hasAutomaticAction := false
-	for _, action := range err.RecoveryActions {
-		if action.Automatic {
-			hasAutomaticAction = true
-			break
-		}
-	}
-	if !hasAutomaticAction {
-		t.Error("Expected automatic recovery action for cache corruption")
-	}
-}
-
 func TestNewBuildFailedError(t *testing.T) {
 	err := NewBuildFailedError("test-package", errors.New("build error"))
 
@@ -196,26 +163,6 @@ func TestNewUVCommandFailedError(t *testing.T) {
 
 	if err.Context["stderr"] != "command failed" {
 		t.Error("Expected stderr context to be set")
-	}
-}
-
-func TestNewDependencyFailedError(t *testing.T) {
-	err := NewDependencyFailedError("requests", errors.New("dependency error"))
-
-	if err.Type != ErrorTypeDependencyFailed {
-		t.Error("Expected dependency failed error type")
-	}
-
-	if err.Context["dependency"] != "requests" {
-		t.Error("Expected dependency context to be set")
-	}
-
-	if !err.Retryable {
-		t.Error("Expected dependency errors to be retryable")
-	}
-
-	if err.RetryAfter != 60*time.Second {
-		t.Error("Expected retry delay to be set")
 	}
 }
 

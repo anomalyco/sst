@@ -13,17 +13,20 @@ logger = logging.getLogger(__name__)
 def main(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """Main auth service handler."""
     try:
-        # Handle both API Gateway and Lambda Function URL events
-        path = event.get("path") or event.get("rawPath", "/")
-        method = event.get("httpMethod") or event.get("requestContext", {}).get("http", {}).get("method", "GET")
-        
+        path = event.get("rawPath") or event.get("path", "/")
+        method = event.get("requestContext", {}).get("http", {}).get("method") or event.get("httpMethod", "GET")
+
         if method == "POST" and path == "/auth/login":
             return handle_login(event)
         elif method == "POST" and path == "/auth/verify":
             return handle_verify(event)
         else:
-            return format_response(404, {"error": "Not found"})
-            
+            return format_response(200, {
+                "service": "auth",
+                "status": "healthy",
+                "timestamp": get_current_time().isoformat()
+            })
+
     except Exception as e:
         logger.error(f"Auth service error: {str(e)}")
         return format_response(500, {"error": "Internal server error"})
@@ -31,11 +34,10 @@ def main(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
 def handle_login(event: Dict[str, Any]) -> Dict[str, Any]:
     """Handle login requests."""
-    body = json.loads(event.get("body", "{}"))
+    body = json.loads(event.get("body") or "{}")
     username = body.get("username")
     password = body.get("password")
-    
-    # Mock authentication
+
     if username == "admin" and password == "password":
         return format_response(200, {
             "token": "mock-jwt-token",
@@ -48,10 +50,9 @@ def handle_login(event: Dict[str, Any]) -> Dict[str, Any]:
 
 def handle_verify(event: Dict[str, Any]) -> Dict[str, Any]:
     """Handle token verification."""
-    body = json.loads(event.get("body", "{}"))
+    body = json.loads(event.get("body") or "{}")
     token = body.get("token")
-    
-    # Mock verification
+
     if token == "mock-jwt-token":
         return format_response(200, {
             "valid": True,

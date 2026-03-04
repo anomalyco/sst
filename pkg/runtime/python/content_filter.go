@@ -35,14 +35,6 @@ func NewContentFilterForProject(projectRoot string) *ContentFilter {
 	}
 }
 
-// NewContentFilterWithPatterns creates a content filter with custom exclude patterns
-func NewContentFilterWithPatterns(patterns []string) *ContentFilter {
-	return &ContentFilter{
-		excludePatterns: patterns,
-		logger:          slog.Default(),
-	}
-}
-
 // getDefaultExcludePatterns returns the default patterns to exclude from deployment artifacts
 func getDefaultExcludePatterns() []string {
 	return []string{

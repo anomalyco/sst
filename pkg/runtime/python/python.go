@@ -9,13 +9,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/BurntSushi/toml"
-	"github.com/sst/sst/v3/pkg/bus"
-	"github.com/sst/sst/v3/pkg/events"
+	"github.com/sst/sst/v3/pkg/flag"
 	"github.com/sst/sst/v3/pkg/process"
 	"github.com/sst/sst/v3/pkg/project/path"
 	"github.com/sst/sst/v3/pkg/runtime"
@@ -23,12 +22,10 @@ import (
 
 // Global sync tracker shared across all builds
 var (
-	globalSyncCompleted = make(map[string]bool)
-	globalSyncMutex     sync.RWMutex
-
 	// Global build semaphore to limit concurrent builds
 	// This prevents system overload when Pulumi tries to build 100+ functions in parallel
-	globalBuildSemaphore = make(chan struct{}, 4) // Allow max 4 concurrent builds
+	// Respects SST_BUILD_CONCURRENCY_FUNCTION env var, defaults to 4
+	globalBuildSemaphore = make(chan struct{}, parseConcurrency())
 
 	// Global dependency analysis cache - shared across ALL function builds
 	// Key is the pyproject.toml path, value is the cached analysis
@@ -49,6 +46,27 @@ var (
 	// The deps cache is only meant to be shared within a single deploy run
 	globalDepsCacheClearOnce sync.Once
 )
+
+// parseConcurrency reads SST_BUILD_CONCURRENCY_FUNCTION (or the deprecated
+// SST_BUILD_CONCURRENCY) and returns the desired parallelism, defaulting to 4.
+// Panics if the env var is set but not a valid positive integer.
+func parseConcurrency() int {
+	raw := flag.SST_BUILD_CONCURRENCY_FUNCTION
+	if raw == "" {
+		raw = flag.SST_BUILD_CONCURRENCY
+	}
+	if raw == "" {
+		return 4
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil {
+		panic(fmt.Sprintf("SST_BUILD_CONCURRENCY_FUNCTION=%q is not a valid integer", raw))
+	}
+	if n < 1 {
+		panic(fmt.Sprintf("SST_BUILD_CONCURRENCY_FUNCTION=%d must be >= 1", n))
+	}
+	return n
+}
 
 type Worker struct {
 	stdout io.ReadCloser
@@ -140,11 +158,6 @@ type FunctionLogEvent struct {
 }
 
 func New() *PythonRuntime {
-	// Check if uv sync is needed (one-time check on initialization)
-	if cwd, err := os.Getwd(); err == nil {
-		checkUvSyncNeeded(cwd)
-	}
-
 	return &PythonRuntime{
 		lastBuiltHandler: map[string]string{},
 		lastRebuildTime:  map[string]time.Time{},
@@ -160,11 +173,6 @@ func NewWithCache(cacheDir string) (*PythonRuntime, error) {
 		lastRebuildTime:  map[string]time.Time{},
 		pendingChanges:   map[string][]string{},
 		restartSignaled:  map[string]bool{},
-	}
-
-	// Run uv sync if needed (one-time on initialization)
-	if cwd, err := os.Getwd(); err == nil {
-		checkUvSyncNeeded(cwd)
 	}
 
 	// Initialize cache and detection systems
@@ -320,11 +328,11 @@ func (r *PythonRuntime) Build(ctx context.Context, input *runtime.BuildInput) (*
 
 	file, err := r.getFile(input)
 	if err != nil {
-		bus.Publish(&events.FunctionBuildProgressEvent{
-			FunctionID: input.FunctionID,
-			Stage:      "BuildFailed",
-			Message:    fmt.Sprintf("Handler not found: %s\n  Error: %v\n  Working dir: %s", input.Handler, err, path.ResolveRootDir(input.CfgPath)),
-		})
+		slog.Error("handler not found",
+			"functionID", input.FunctionID,
+			"handler", input.Handler,
+			"workingDir", path.ResolveRootDir(input.CfgPath),
+			"error", err)
 		return nil, fmt.Errorf("python runtime - handler not found: %v", err)
 	}
 
@@ -332,11 +340,10 @@ func (r *PythonRuntime) Build(ctx context.Context, input *runtime.BuildInput) (*
 		// Development mode: Simple build without complex dependency management
 		result, err := r.CreateBuildAsset(ctx, input)
 		if err != nil {
-			bus.Publish(&events.FunctionBuildProgressEvent{
-				FunctionID: input.FunctionID,
-				Stage:      "BuildFailed",
-				Message:    fmt.Sprintf("Build failed: %s\n  Error: %v", input.Handler, err),
-			})
+			slog.Error("build failed",
+				"functionID", input.FunctionID,
+				"handler", input.Handler,
+				"error", err)
 			return nil, err
 		}
 
@@ -424,11 +431,9 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 
 	// Sync artifacts with source before starting the worker
 	if err := r.syncArtifactsIfNeeded(input); err != nil {
-		bus.Publish(&events.FunctionBuildProgressEvent{
-			FunctionID: input.FunctionID,
-			Stage:      "RunFailed",
-			Message:    fmt.Sprintf("Failed to sync artifacts: %v", err),
-		})
+		slog.Error("failed to sync artifacts",
+			"functionID", input.FunctionID,
+			"error", err)
 		return nil, fmt.Errorf("failed to sync artifacts: %v", err)
 	}
 
@@ -459,11 +464,11 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 		// Copy the lambda bridge from the platform directory into the artifact directory
 		err := copyFile(sourceBridgePath, lambdaBridgePath)
 		if err != nil {
-			bus.Publish(&events.FunctionBuildProgressEvent{
-				FunctionID: input.FunctionID,
-				Stage:      "RunFailed",
-				Message:    fmt.Sprintf("Failed to copy lambda bridge: %v\n  Source: %s\n  Dest: %s", err, sourceBridgePath, lambdaBridgePath),
-			})
+			slog.Error("failed to copy lambda bridge",
+				"functionID", input.FunctionID,
+				"source", sourceBridgePath,
+				"dest", lambdaBridgePath,
+				"error", err)
 			return nil, fmt.Errorf("failed to copy lambda bridge: %v", err)
 		}
 	}
@@ -530,14 +535,14 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 		return nil, fmt.Errorf("failed to create stderr pipe: %v", err)
 	}
 
-	cmd.Start()
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("failed to start worker process: %v", err)
+	}
 
-	// Publish RunComplete event
-	bus.Publish(&events.FunctionBuildProgressEvent{
-		FunctionID: input.FunctionID,
-		Stage:      "RunComplete",
-		Message:    fmt.Sprintf("Started %s in %v", input.Build.Handler, time.Since(runStart)),
-	})
+	slog.Debug("worker started",
+		"functionID", input.FunctionID,
+		"handler", input.Build.Handler,
+		"elapsed", time.Since(runStart))
 
 	return &Worker{
 		stdout,
@@ -568,16 +573,6 @@ func (r *PythonRuntime) ShouldRebuild(functionID string, file string) bool {
 	}
 
 	return true
-}
-
-// appendIfMissing appends a string to a slice if it's not already present
-func appendIfMissing(slice []string, s string) []string {
-	for _, item := range slice {
-		if item == s {
-			return slice
-		}
-	}
-	return append(slice, s)
 }
 
 // syncArtifactsIfNeeded checks if artifacts need to be synced with source and does it if necessary
@@ -906,22 +901,6 @@ func (r *PythonRuntime) adjustHandlerPathOnly(handlerPath string) string {
 	return handlerPath
 }
 
-// getHandlerForFunction retrieves the handler path for a given function ID
-func (r *PythonRuntime) getHandlerForFunction(functionID string) string {
-	if r.buildCache == nil {
-		return ""
-	}
-
-	// Try to get the handler from the build cache
-	cacheEntry, exists := r.buildCache.Get(functionID)
-	if !exists || cacheEntry == nil {
-		return ""
-	}
-
-	// Return the handler path from the cache entry
-	return cacheEntry.Handler
-}
-
 // isRelevantFile checks if a file change is relevant for Python functions
 func (r *PythonRuntime) isRelevantFile(file string) bool {
 	// Quick exclusions first - this prevents infinite rebuild loops
@@ -949,92 +928,6 @@ func (r *PythonRuntime) isRelevantFile(file string) bool {
 		}
 	}
 
-	return false
-}
-
-// isFileRelatedToFunction checks if a changed file is actually related to a specific function
-// This prevents rebuilding ALL functions when ANY .py file changes
-func (r *PythonRuntime) isFileRelatedToFunction(functionID string, file string) bool {
-	// Get the handler path for this function
-	r.mutex.RLock()
-	handlerPath, hasHandler := r.lastBuiltHandler[functionID]
-	r.mutex.RUnlock()
-
-	if !hasHandler || handlerPath == "" {
-		// No handler info yet - this is likely the first build
-		// Be conservative and return true to allow the build
-		slog.Debug("isFileRelatedToFunction: no handler info, allowing rebuild",
-			"functionID", functionID,
-			"file", file)
-		return true
-	}
-
-	// Normalize both paths for comparison
-	absFile, err := filepath.Abs(file)
-	if err != nil {
-		absFile = file
-	}
-	absHandlerPath, err := filepath.Abs(handlerPath)
-	if err != nil {
-		absHandlerPath = handlerPath
-	}
-
-	// Check if the changed file IS the handler file
-	if absFile == absHandlerPath {
-		slog.Debug("isFileRelatedToFunction: file is the handler",
-			"functionID", functionID,
-			"file", absFile)
-		return true
-	}
-
-	// Get the directory containing the handler
-	handlerDir := filepath.Dir(absHandlerPath)
-
-	// Check if the changed file is in the SAME directory as the handler
-	// (not subdirectories - just the same directory)
-	fileDir := filepath.Dir(absFile)
-	if fileDir == handlerDir {
-		slog.Debug("isFileRelatedToFunction: file is in same directory as handler",
-			"functionID", functionID,
-			"file", absFile,
-			"handlerDir", handlerDir)
-		return true
-	}
-
-	// Check if the changed file is in a parent directory of the handler
-	// This catches changes to __init__.py files in parent packages
-	if strings.HasPrefix(handlerDir, fileDir) {
-		slog.Debug("isFileRelatedToFunction: file is in parent directory of handler",
-			"functionID", functionID,
-			"file", absFile,
-			"fileDir", fileDir,
-			"handlerDir", handlerDir)
-		return true
-	}
-
-	// For global config files, only rebuild if they're at the project root
-	// (not in some random subdirectory)
-	basename := filepath.Base(file)
-	globalFiles := []string{"pyproject.toml", "uv.lock", "requirements.txt"}
-	for _, globalFile := range globalFiles {
-		if basename == globalFile {
-			// Only trigger if this is likely a root-level config
-			// Check if the file is NOT deep in a subdirectory
-			relPath, err := filepath.Rel(handlerDir, absFile)
-			if err == nil && strings.HasPrefix(relPath, "..") {
-				// File is above the handler directory - likely project root
-				slog.Debug("isFileRelatedToFunction: global config file changed",
-					"functionID", functionID,
-					"file", file)
-				return true
-			}
-		}
-	}
-
-	slog.Debug("isFileRelatedToFunction: file not related to this function",
-		"functionID", functionID,
-		"file", absFile,
-		"handlerPath", absHandlerPath)
 	return false
 }
 
@@ -1180,7 +1073,7 @@ func (r *PythonRuntime) CreateBuildAsset(ctx context.Context, input *runtime.Bui
 
 	// Deployment mode: Full build with dependency management
 	type Properties struct {
-		Architecture string `json:"architecture"`
+		Architecture string          `json:"architecture"`
 		Container    json.RawMessage `json:"container"`
 	}
 	var props Properties
@@ -1222,14 +1115,12 @@ func (r *PythonRuntime) createBuildAssetIncremental(ctx context.Context, input *
 
 		// Progress callback - only report errors to dev screen
 		progressCallback := func(event ProgressEvent) {
-			// Only publish error/failure events, not progress
+			// Only log error/failure events
 			if strings.Contains(strings.ToLower(event.Stage), "error") ||
 				strings.Contains(strings.ToLower(event.Stage), "fail") {
-				bus.Publish(&events.FunctionBuildProgressEvent{
-					FunctionID: "python-build",
-					Stage:      event.Stage,
-					Message:    event.Message,
-				})
+				slog.Error("python build progress",
+					"stage", event.Stage,
+					"message", event.Message)
 			}
 		}
 
@@ -1338,362 +1229,6 @@ func copyFile(src, dst string) error {
 	return nil
 }
 
-// fileExists checks if a file exists
-func fileExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
-}
-
-// copyDirectory recursively copies a directory from src to dst
-func copyDirectory(src, dst string) error {
-	srcInfo, err := os.Stat(src)
-	if err != nil {
-		return fmt.Errorf("failed to stat source directory: %w", err)
-	}
-
-	if !srcInfo.IsDir() {
-		return fmt.Errorf("source is not a directory: %s", src)
-	}
-
-	// Create destination directory
-	if err := os.MkdirAll(dst, srcInfo.Mode()); err != nil {
-		return fmt.Errorf("failed to create destination directory: %w", err)
-	}
-
-	entries, err := os.ReadDir(src)
-	if err != nil {
-		return fmt.Errorf("failed to read source directory: %w", err)
-	}
-
-	for _, entry := range entries {
-		name := entry.Name()
-
-		// Skip unwanted files and directories
-		if shouldSkipFile(name, entry.IsDir()) {
-			continue
-		}
-
-		srcPath := filepath.Join(src, name)
-		dstPath := filepath.Join(dst, name)
-
-		if entry.IsDir() {
-			// Recursively copy subdirectory
-			if err := copyDirectory(srcPath, dstPath); err != nil {
-				return fmt.Errorf("failed to copy subdirectory %s: %w", name, err)
-			}
-		} else {
-			// Copy file
-			if err := copyFile(srcPath, dstPath); err != nil {
-				return fmt.Errorf("failed to copy file %s: %w", name, err)
-			}
-		}
-	}
-
-	return nil
-}
-
-// shouldSkipFile determines if a file or directory should be skipped during copying
-func shouldSkipFile(name string, isDir bool) bool {
-	// Skip hidden files and directories
-	if strings.HasPrefix(name, ".") {
-		return true
-	}
-
-	if isDir {
-		// Skip common development and cache directories
-		skipDirs := []string{
-			"__pycache__",
-			".pytest_cache",
-			".mypy_cache",
-			".ruff_cache",
-			".coverage",
-			"venv",
-			".venv",
-			"env",
-			".env",
-			"node_modules",
-			".git",
-			".svn",
-			".hg",
-			"tests",
-			"test",
-			".tox",
-			"htmlcov",
-			".nyc_output",
-			"coverage",
-			"dist",
-			"build",
-			"*.egg-info",
-		}
-
-		for _, skipDir := range skipDirs {
-			if name == skipDir || strings.HasSuffix(name, ".egg-info") {
-				return true
-			}
-		}
-	} else {
-		// Skip common development files
-		skipFiles := []string{
-			"coverage.json",
-			"coverage.xml",
-			".coverage",
-			"pytest.ini",
-			"pyproject.toml", // This is handled separately if needed
-			"setup.py",       // This is handled separately if needed
-			"setup.cfg",
-			"tox.ini",
-			".gitignore",
-			".gitattributes",
-			"README.md",
-			"README.rst",
-			"LICENSE",
-			"MANIFEST.in",
-			"requirements-dev.txt",
-			"requirements-test.txt",
-		}
-
-		for _, skipFile := range skipFiles {
-			if name == skipFile {
-				return true
-			}
-		}
-
-		// Skip files with certain extensions
-		skipExtensions := []string{
-			".pyc",
-			".pyo",
-			".pyd",
-			".so",
-			".dylib",
-			".dll",
-			".log",
-			".tmp",
-			".temp",
-			".bak",
-			".swp",
-			".DS_Store",
-		}
-
-		for _, ext := range skipExtensions {
-			if strings.HasSuffix(name, ext) {
-				return true
-			}
-		}
-	}
-
-	return false
-}
-
-func (r *PythonRuntime) getWorkspaceDirectory(input *runtime.BuildInput) (string, error) {
-	startTime := time.Now()
-	slog.Info("getWorkspaceDirectory started", "functionID", input.FunctionID, "handler", input.Handler)
-
-	slog.Info("getWorkspaceDirectory: calling getFile", "elapsed", time.Since(startTime))
-	file, err := r.getFile(input)
-	if err != nil {
-		slog.Error("getWorkspaceDirectory: getFile failed", "elapsed", time.Since(startTime), "error", err)
-		return "", err
-	}
-	slog.Info("getWorkspaceDirectory: getFile completed", "elapsed", time.Since(startTime), "file", file)
-
-	projectRoot := path.ResolveRootDir(input.CfgPath)
-	currentDir := filepath.Dir(file)
-
-	slog.Info("getWorkspaceDirectory: resolved paths", "elapsed", time.Since(startTime), "projectRoot", projectRoot, "currentDir", currentDir)
-
-	// First verify that the current directory is within the project root
-	if !strings.HasPrefix(currentDir, projectRoot) {
-		slog.Error("getWorkspaceDirectory: handler file not within project root", "elapsed", time.Since(startTime), "file", file, "projectRoot", projectRoot)
-		return "", fmt.Errorf("handler file %s is not within the project root %s", file, projectRoot)
-	}
-
-	// Traverse up the file tree to find the pyproject.toml file
-	// If we reach the project root then return an error
-	slog.Info("getWorkspaceDirectory: searching for pyproject.toml", "elapsed", time.Since(startTime), "startingDir", currentDir)
-	searchCount := 0
-	for {
-		searchCount++
-		pyprojectPath := filepath.Join(currentDir, "pyproject.toml")
-		slog.Debug("getWorkspaceDirectory: checking for pyproject.toml", "elapsed", time.Since(startTime), "searchCount", searchCount, "path", pyprojectPath)
-
-		if _, err := os.Stat(pyprojectPath); err == nil {
-			// We found the pyproject.toml file
-			slog.Info("getWorkspaceDirectory: found pyproject.toml", "elapsed", time.Since(startTime), "searchCount", searchCount, "workspaceDir", currentDir)
-			return currentDir, nil
-		}
-
-		// Move up the directory tree
-		parentDir := filepath.Dir(currentDir)
-
-		// Check if we have reached the project root or cannot move up anymore
-		if parentDir == currentDir || currentDir == projectRoot {
-			slog.Error("getWorkspaceDirectory: no pyproject.toml found", "elapsed", time.Since(startTime), "searchCount", searchCount, "startDir", filepath.Dir(file), "projectRoot", projectRoot)
-			return "", fmt.Errorf("no pyproject.toml found in directory tree from %s up to project root %s", filepath.Dir(file), projectRoot)
-		}
-
-		currentDir = parentDir
-	}
-}
-
-func (r *PythonRuntime) getPackageName(input *runtime.BuildInput) (string, error) {
-	workspaceDir, err := r.getWorkspaceDirectory(input)
-	if err != nil {
-		return "", err
-	}
-
-	pyprojectPath := filepath.Join(workspaceDir, "pyproject.toml")
-
-	// Read the pyproject.toml file
-	pyproject, err := os.ReadFile(pyprojectPath)
-	if err != nil {
-		return "", fmt.Errorf("failed to read pyproject.toml file: %v", err)
-	}
-
-	// Parse the pyproject.toml file
-	pyprojectData := PyProject{}
-	err = toml.Unmarshal(pyproject, &pyprojectData)
-	if err != nil {
-		return "", fmt.Errorf("failed to parse pyproject.toml file: %v", err)
-	}
-
-	packageName := pyprojectData.Project.Name
-	if packageName == "" {
-		return "", fmt.Errorf("no project name found in pyproject.toml at %s", pyprojectPath)
-	}
-
-	slog.Info("resolved package name from pyproject.toml",
-		"packageName", packageName,
-		"pyprojectPath", pyprojectPath,
-		"functionID", input.FunctionID)
-
-	return packageName, nil
-
-}
-
-func (r *PythonRuntime) adjustHandlerPath(input *runtime.BuildInput) (string, error) {
-	originalHandler := input.Handler
-
-	// Check if handler path contains the pattern {package_name}/src/{package_name}
-	// If so, we need to adjust it because the build process flattens this structure
-	if strings.Contains(originalHandler, "/src/") {
-		// Pattern: functions/src/functions/api.handler -> functions/api.handler
-		parts := strings.Split(originalHandler, "/")
-		var adjustedParts []string
-
-		skipNext := false
-		for i, part := range parts {
-			if skipNext {
-				skipNext = false
-				continue
-			}
-
-			if part == "src" && i > 0 && i < len(parts)-1 {
-				// Check if the next part matches the previous part (package name)
-				if i+1 < len(parts) && parts[i+1] == parts[i-1] {
-					// Skip both "src" and the duplicate package name
-					skipNext = true
-					continue
-				}
-			}
-			adjustedParts = append(adjustedParts, part)
-		}
-
-		adjustedHandler := strings.Join(adjustedParts, "/")
-		slog.Info("handler path adjustment",
-			"original", originalHandler,
-			"adjusted", adjustedHandler,
-			"reason", "flattened src structure")
-		return adjustedHandler, nil
-	}
-
-	slog.Info("handler path adjustment", "original", originalHandler, "adjusted", "no change needed")
-	return originalHandler, nil
-}
-
-// calculateArtifactSummary calculates summary information about the deployment artifact
-func (r *PythonRuntime) calculateArtifactSummary(artifactDir string) ArtifactSummary {
-	summary := ArtifactSummary{}
-
-	err := filepath.Walk(artifactDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil // Continue despite errors
-		}
-
-		if !info.IsDir() {
-			summary.FileCount++
-			summary.TotalSize += info.Size()
-
-			if strings.HasSuffix(info.Name(), ".py") {
-				summary.PythonFileCount++
-			}
-		} else {
-			// Count directories that look like Python modules
-			if strings.Contains(path, artifactDir) && path != artifactDir {
-				relPath, _ := filepath.Rel(artifactDir, path)
-				// Count top-level directories as potential modules
-				if !strings.Contains(relPath, string(filepath.Separator)) {
-					summary.ModuleCount++
-				}
-			}
-		}
-
-		return nil
-	})
-
-	if err != nil {
-		slog.Warn("failed to calculate artifact summary", "error", err, "artifactDir", artifactDir)
-	}
-
-	return summary
-}
-
-// updateCacheAfterBuild updates the build cache after a successful build
-func (r *PythonRuntime) updateCacheAfterBuild(input *runtime.BuildInput, buildOutput *runtime.BuildOutput) {
-	r.mutex.RLock()
-	defer r.mutex.RUnlock()
-
-	// Skip if caching is not enabled
-	if r.changeDetector == nil || r.projectResolver == nil {
-		return
-	}
-
-	// Update project resolver project root
-	workingDir := path.ResolveRootDir(input.CfgPath)
-	r.projectResolver.projectRoot = workingDir
-
-	// Resolve project structure for this build
-	projectInfo, err := r.projectResolver.ResolveHandler(input.Handler)
-	if err != nil {
-		slog.Warn("failed to resolve project structure for cache update",
-			"functionID", input.FunctionID,
-			"handler", input.Handler,
-			"error", err)
-		return
-	}
-
-	// Create cached build output
-	cachedBuildOutput := &CachedBuildOutput{
-		Handler:       buildOutput.Handler,
-		OutputDir:     input.Out(),
-		Errors:        buildOutput.Errors,
-		Sourcemaps:    buildOutput.Sourcemaps,
-		ArtifactPaths: []string{}, // TODO: collect actual artifact paths
-		BuildDuration: 0,          // TODO: track build duration
-	}
-
-	// Update cache
-	err = r.changeDetector.UpdateCacheAfterBuild(input.FunctionID, input.Handler, projectInfo, cachedBuildOutput)
-	if err != nil {
-		slog.Warn("failed to update cache after build",
-			"functionID", input.FunctionID,
-			"error", err)
-	} else {
-		slog.Debug("updated build cache",
-			"functionID", input.FunctionID,
-			"handler", input.Handler)
-	}
-}
-
 // createSimpleDevBuild creates a simple build for development mode by doing nothing
 // All work is deferred to Run() for just-in-time execution
 func (r *PythonRuntime) createSimpleDevBuild(ctx context.Context, input *runtime.BuildInput) (*runtime.BuildOutput, error) {
@@ -1749,247 +1284,19 @@ func (r *PythonRuntime) hasWorkspaceLayoutPatterns(projectRoot string) bool {
 	return hasPatterns
 }
 
-// copySourceFiles copies Python source files and installs local packages
-func (r *PythonRuntime) copySourceFiles(srcDir, destDir string) error {
-	// First, copy all Python source files
-
-	err := r.copyPythonFiles(srcDir, destDir)
-	if err != nil {
-
-		return fmt.Errorf("failed to copy Python files: %w", err)
-	}
-
-	// Then, install local Python packages
-
-	err = r.installLocalPackages(srcDir, destDir)
-	if err != nil {
-
-		return fmt.Errorf("failed to install local packages: %w", err)
-	}
-
-	return nil
-}
-
-// copyPythonFilesWithProgress copies Python files and reports progress via bus events
-func (r *PythonRuntime) copyPythonFilesWithProgress(srcDir, destDir, functionID string) error {
-	fileCount := 0
-
-	return filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		// Skip certain directories
-		relPath, err := filepath.Rel(srcDir, path)
-		if err != nil {
-			return err
-		}
-
-		// Skip hidden directories, .git, node_modules, etc.
-		if strings.HasPrefix(filepath.Base(path), ".") && info.IsDir() {
-			return filepath.SkipDir
-		}
-		if strings.Contains(relPath, "node_modules") || strings.Contains(relPath, "__pycache__") {
-			if info.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-
-		// Only copy Python files and directories
-		if info.IsDir() {
-			destPath := filepath.Join(destDir, relPath)
-			return os.MkdirAll(destPath, info.Mode())
-		}
-
-		if strings.HasSuffix(path, ".py") {
-			destPath := filepath.Join(destDir, relPath)
-			fileCount++
-
-			// Ensure destination directory exists
-			if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
-				return err
-			}
-
-			return copyFile(path, destPath)
-		}
-
-		return nil
-	})
-}
-
-// copyPythonFiles copies Python source files from project root to artifact directory
-func (r *PythonRuntime) copyPythonFiles(srcDir, destDir string) error {
-	return filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		// Skip certain directories
-		relPath, err := filepath.Rel(srcDir, path)
-		if err != nil {
-			return err
-		}
-
-		// Skip hidden directories, .git, node_modules, etc.
-		if strings.HasPrefix(filepath.Base(path), ".") && info.IsDir() {
-			return filepath.SkipDir
-		}
-
-		// Skip virtual environments and other unwanted directories
-		if info.IsDir() {
-			dirName := filepath.Base(path)
-			skipDirs := []string{
-				"node_modules",
-				"__pycache__",
-				"venv",
-				"env",
-				".venv",
-				".env",
-				".tox",
-				"build",
-				"dist",
-				".pytest_cache",
-				".mypy_cache",
-			}
-			for _, skipDir := range skipDirs {
-				if dirName == skipDir {
-					slog.Debug("skipping directory during Python file copy", "dir", relPath)
-					return filepath.SkipDir
-				}
-			}
-		}
-
-		// Only copy Python files and directories
-		if info.IsDir() {
-			destPath := filepath.Join(destDir, relPath)
-			return os.MkdirAll(destPath, info.Mode())
-		}
-
-		if strings.HasSuffix(path, ".py") {
-			destPath := filepath.Join(destDir, relPath)
-
-			// Ensure destination directory exists
-			if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
-				return err
-			}
-
-			return copyFile(path, destPath)
-		}
-
-		return nil
-	})
-}
-
-// installLocalPackages finds and installs local Python packages
-func (r *PythonRuntime) installLocalPackages(srcDir, destDir string) error {
-	startTime := time.Now()
-	slog.Info("installLocalPackages started", "srcDir", srcDir, "destDir", destDir)
-
-	// Find directories with pyproject.toml files (local packages)
-	var packages []string
-
-	slog.Info("installLocalPackages: scanning for pyproject.toml files", "elapsed", time.Since(startTime))
-	err := filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		if info.Name() == "pyproject.toml" {
-			packageDir := filepath.Dir(path)
-			// Skip the root pyproject.toml
-			if packageDir != srcDir {
-				packages = append(packages, packageDir)
-			}
-		}
-
-		return nil
-	})
-
-	if err != nil {
-		slog.Error("installLocalPackages: failed to scan for packages", "elapsed", time.Since(startTime), "error", err)
-		return err
-	}
-
-	slog.Info("installLocalPackages: found packages", "elapsed", time.Since(startTime), "count", len(packages), "packages", packages)
-
-	// Handle each local package
-	for i, packageDir := range packages {
-		packageStartTime := time.Now()
-		slog.Info("installLocalPackages: processing package", "elapsed", time.Since(startTime), "packageIndex", i+1, "totalPackages", len(packages), "package", packageDir)
-
-		// Special handling for packages with src layout
-		packageName := filepath.Base(packageDir)
-		srcPath := filepath.Join(packageDir, "src", packageName)
-
-		if _, err := os.Stat(srcPath); err == nil {
-			// This package uses src layout (like lib/src/lib/)
-			// Copy the inner package directly to the target
-			destPackagePath := filepath.Join(destDir, packageName)
-
-			slog.Info("installLocalPackages: copying src-layout package", "elapsed", time.Since(startTime), "packageElapsed", time.Since(packageStartTime), "from", srcPath, "to", destPackagePath)
-
-			err := r.copyDirectory(srcPath, destPackagePath)
-			if err != nil {
-				slog.Warn("installLocalPackages: failed to copy src-layout package", "elapsed", time.Since(startTime), "packageElapsed", time.Since(packageStartTime), "package", packageDir, "error", err)
-				continue
-			}
-
-			slog.Info("installLocalPackages: successfully copied src-layout package", "elapsed", time.Since(startTime), "packageElapsed", time.Since(packageStartTime), "package", packageName)
-		} else {
-			// Try regular pip install for other packages
-			slog.Info("installLocalPackages: installing package with uv pip", "elapsed", time.Since(startTime), "packageElapsed", time.Since(packageStartTime), "package", packageDir, "target", destDir)
-
-			cmd := exec.Command("uv", "pip", "install", "-e", packageDir, "--target", destDir)
-			cmd.Dir = srcDir
-
-			output, err := cmd.CombinedOutput()
-			if err != nil {
-				slog.Warn("installLocalPackages: failed to install package", "elapsed", time.Since(startTime), "packageElapsed", time.Since(packageStartTime), "package", packageDir, "error", err, "output", string(output))
-				continue
-			}
-
-			slog.Info("installLocalPackages: successfully installed package", "elapsed", time.Since(startTime), "packageElapsed", time.Since(packageStartTime), "package", packageDir)
-		}
-	}
-
-	slog.Info("installLocalPackages completed", "elapsed", time.Since(startTime), "processedPackages", len(packages))
-	return nil
-}
-
 // flattenWorkspaceLayouts detects and flattens package/src/package structures for all legacy projects
 func (r *PythonRuntime) flattenWorkspaceLayouts(artifactDir, functionID string) error {
-	// Create debug log file
-	logFile, err := os.Create(filepath.Join(artifactDir, "flatten_debug.log"))
-	if err == nil {
-		defer logFile.Close()
-		logFile.WriteString(fmt.Sprintf("=== Flatten Debug Log ===\n"))
-		logFile.WriteString(fmt.Sprintf("artifactDir: %s\n", artifactDir))
-		logFile.WriteString(fmt.Sprintf("functionID: %s\n\n", functionID))
-	}
-
-	// Create a content filter to exclude test files during flattening
 	contentFilter := NewContentFilter()
-	// Look for any directories that might have workspace layout (package/src/package)
+
 	entries, err := os.ReadDir(artifactDir)
 	if err != nil {
-		if logFile != nil {
-			logFile.WriteString(fmt.Sprintf("ERROR: Failed to read artifactDir: %v\n", err))
-		}
 		return err
-	}
-
-	if logFile != nil {
-		logFile.WriteString(fmt.Sprintf("Found %d entries in artifactDir\n", len(entries)))
 	}
 
 	var flattened []string
 
 	for _, entry := range entries {
 		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
-			if logFile != nil {
-				logFile.WriteString(fmt.Sprintf("Skipping: %s (isDir=%v, hidden=%v)\n", entry.Name(), entry.IsDir(), strings.HasPrefix(entry.Name(), ".")))
-			}
 			continue
 		}
 
@@ -1998,90 +1305,44 @@ func (r *PythonRuntime) flattenWorkspaceLayouts(artifactDir, functionID string) 
 		srcDir := filepath.Join(packageDir, "src")
 		innerPackageDir := filepath.Join(srcDir, packageName)
 
-		if logFile != nil {
-			logFile.WriteString(fmt.Sprintf("\nChecking package: %s\n", packageName))
-			logFile.WriteString(fmt.Sprintf("  packageDir: %s\n", packageDir))
-			logFile.WriteString(fmt.Sprintf("  srcDir: %s\n", srcDir))
-			logFile.WriteString(fmt.Sprintf("  innerPackageDir: %s\n", innerPackageDir))
-		}
-
 		// Check if this follows the package/src/package pattern
 		if _, err := os.Stat(innerPackageDir); err == nil {
-			if logFile != nil {
-				logFile.WriteString(fmt.Sprintf("  ✓ Pattern matches! Flattening %s/src/%s -> %s\n", packageName, packageName, packageName))
-			}
+			slog.Debug("flattening workspace layout",
+				"package", packageName,
+				"functionID", functionID)
 
 			// Copy contents of package/src/package to package/ (excluding test files and build artifacts)
 			innerEntries, err := os.ReadDir(innerPackageDir)
-			if err == nil {
-				if logFile != nil {
-					logFile.WriteString(fmt.Sprintf("  Found %d entries in innerPackageDir\n", len(innerEntries)))
+			if err != nil {
+				slog.Warn("failed to read inner package dir", "package", packageName, "error", err)
+				continue
+			}
+
+			for _, innerEntry := range innerEntries {
+				if contentFilter.ShouldExclude(innerEntry.Name()) {
+					continue
 				}
 
-				for _, innerEntry := range innerEntries {
-					if logFile != nil {
-						logFile.WriteString(fmt.Sprintf("    Processing: %s (isDir=%v)\n", innerEntry.Name(), innerEntry.IsDir()))
-					}
+				srcPath := filepath.Join(innerPackageDir, innerEntry.Name())
+				destPath := filepath.Join(packageDir, innerEntry.Name())
 
-					// Use ContentFilter to determine if this file/directory should be excluded
-					if contentFilter.ShouldExclude(innerEntry.Name()) {
-						if logFile != nil {
-							logFile.WriteString(fmt.Sprintf("      ✗ Excluded by filter\n"))
-						}
-						continue
-					}
-
-					srcPath := filepath.Join(innerPackageDir, innerEntry.Name())
-					destPath := filepath.Join(packageDir, innerEntry.Name())
-
-					if logFile != nil {
-						logFile.WriteString(fmt.Sprintf("      Copying: %s -> %s\n", srcPath, destPath))
-					}
-
-					if innerEntry.IsDir() {
-						err = r.copyDirectoryWithFilter(srcPath, destPath, contentFilter)
-					} else {
-						err = copyFile(srcPath, destPath)
-					}
-
-					if err != nil {
-						if logFile != nil {
-							logFile.WriteString(fmt.Sprintf("      ✗ ERROR: %v\n", err))
-						}
-						return fmt.Errorf("failed to flatten %s structure: %w", packageName, err)
-					}
-
-					if logFile != nil {
-						logFile.WriteString(fmt.Sprintf("      ✓ Success\n"))
-					}
-				}
-
-				// CRITICAL: Remove the old src/ directory after flattening to avoid import confusion
-				if logFile != nil {
-					logFile.WriteString(fmt.Sprintf("  Removing old src directory: %s\n", srcDir))
-				}
-
-				if err := os.RemoveAll(srcDir); err != nil {
-					if logFile != nil {
-						logFile.WriteString(fmt.Sprintf("  ✗ Failed to remove src/: %v\n", err))
-					}
-					// Don't fail the entire operation, just log the warning
+				if innerEntry.IsDir() {
+					err = r.copyDirectoryWithFilter(srcPath, destPath, contentFilter)
 				} else {
-					if logFile != nil {
-						logFile.WriteString(fmt.Sprintf("  ✓ Removed src/ successfully\n"))
-					}
+					err = copyFile(srcPath, destPath)
 				}
 
-				flattened = append(flattened, packageName)
-			} else {
-				if logFile != nil {
-					logFile.WriteString(fmt.Sprintf("  ✗ Failed to read innerPackageDir: %v\n", err))
+				if err != nil {
+					return fmt.Errorf("failed to flatten %s structure: %w", packageName, err)
 				}
 			}
-		} else {
-			if logFile != nil {
-				logFile.WriteString(fmt.Sprintf("  ✗ Pattern doesn't match (innerPackageDir doesn't exist)\n"))
+
+			// CRITICAL: Remove the old src/ directory after flattening to avoid import confusion
+			if err := os.RemoveAll(srcDir); err != nil {
+				slog.Warn("failed to remove src/ after flattening", "package", packageName, "error", err)
 			}
+
+			flattened = append(flattened, packageName)
 		}
 	}
 
@@ -2093,66 +1354,6 @@ func (r *PythonRuntime) flattenWorkspaceLayouts(artifactDir, functionID string) 
 	}
 
 	return nil
-}
-
-// copyDirectory recursively copies a directory
-func (r *PythonRuntime) copyDirectory(src, dst string) error {
-	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		// Calculate destination path
-		relPath, err := filepath.Rel(src, path)
-		if err != nil {
-			return err
-		}
-
-		// Skip unwanted directories and files
-		if info.IsDir() {
-			// Check if this directory should be skipped
-			dirName := filepath.Base(path)
-			skipDirs := []string{
-				"__pycache__",
-				".pytest_cache",
-				".mypy_cache",
-				".ruff_cache",
-				".venv",
-				"venv",
-				"env",
-				".env",
-				"node_modules",
-				".git",
-				".svn",
-				".hg",
-				".tox",
-				"htmlcov",
-				".nyc_output",
-				"coverage",
-				"dist",
-				"build",
-			}
-			for _, skipDir := range skipDirs {
-				if dirName == skipDir {
-					slog.Debug("skipping directory during copy", "dir", relPath)
-					return filepath.SkipDir
-				}
-			}
-		}
-
-		destPath := filepath.Join(dst, relPath)
-
-		if info.IsDir() {
-			return os.MkdirAll(destPath, info.Mode())
-		}
-
-		// Copy file
-		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
-			return err
-		}
-
-		return copyFile(path, destPath)
-	})
 }
 
 // copyDirectoryWithFilter recursively copies a directory while applying ContentFilter
@@ -2194,12 +1395,4 @@ func (r *PythonRuntime) copyDirectoryWithFilter(src, dst string, filter *Content
 
 		return copyFile(path, destPath)
 	})
-}
-
-// checkUvSyncNeeded is disabled - it was causing issues by removing dev/extra dependencies
-// Users should run 'uv sync' manually if needed
-func checkUvSyncNeeded(projectRoot string) {
-	// Disabled - this was stripping dev dependencies from user's venv
-	// The build process uses its own isolated venv in .sst/python-cache/build-venv
-	return
 }

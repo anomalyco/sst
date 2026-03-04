@@ -2,7 +2,7 @@ import os
 import json
 import base64
 from typing import Dict, Any
-from Crypto.Cipher import AES
+from Cryptodome.Cipher import AES
 
 raw: Dict[str, Any] = {}
 
@@ -37,7 +37,7 @@ if (
     authTag = encryptedData[-16:]
     actualCiphertext = encryptedData[:-16]
 
-    # Create AES-GCM cipher and decrypt using PyCryptodome
+    # Create AES-GCM cipher and decrypt using PyCryptodomex
     cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
     plaintext = cipher.decrypt_and_verify(actualCiphertext, authTag)
 
