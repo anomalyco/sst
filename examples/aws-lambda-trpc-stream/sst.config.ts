@@ -11,9 +11,7 @@
  * The `trpc-server` function defines a tRPC router and streams responses.
  * The `trpc-client` function invokes the server using `httpBatchStreamLink`.
  *
- * :::note
- * Streaming is currently not supported in `sst dev`.
- * :::
+ * Streaming is supported in both `sst dev` and `sst deploy`.
  *
  */
 export default $config({
