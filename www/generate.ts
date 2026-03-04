@@ -606,7 +606,7 @@ async function generateComponentDoc(
   const className = useClassName(component);
   const fullClassName = `${useClassProviderNamespace(component)}.${className}`;
   const matchRet = component.name.match(/-(v\d+)$/);
-  const version = matchRet ? `.${matchRet[1]}` : "";
+  const version = matchRet && !className.toLowerCase().endsWith(matchRet[1]) ? `.${matchRet[1]}` : "";
 
   // Remove leading `components/`
   // module.name = "components/aws/bucket"
@@ -2167,6 +2167,7 @@ async function buildComponents() {
       "../platform/src/components/aws/cognito-user-pool.ts",
       "../platform/src/components/aws/cognito-user-pool-client.ts",
       "../platform/src/components/aws/cron.ts",
+      "../platform/src/components/aws/cron-v2.ts",
       "../platform/src/components/aws/dynamo.ts",
       "../platform/src/components/aws/dynamo-lambda-subscriber.ts",
       "../platform/src/components/aws/efs.ts",

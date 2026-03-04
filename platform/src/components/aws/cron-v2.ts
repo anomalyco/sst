@@ -79,15 +79,15 @@ export interface CronV2Args {
    * For example, let's say you have a task.
    *
    * ```js title="sst.config.ts"
-   * const myCluster = new sst.aws.Cluster("MyCluster");
-   * const myTask = new sst.aws.Task("MyTask", { cluster: myCluster });
+   * const cluster = new sst.aws.Cluster("MyCluster");
+   * const task = new sst.aws.Task("MyTask", { cluster });
    * ```
    *
    * You can then pass in the task to the cron job.
    *
    * ```js title="sst.config.ts"
    * new sst.aws.CronV2("MyCronJob", {
-   *   task: myTask,
+   *   task,
    *   schedule: "rate(1 minute)"
    * });
    * ```
@@ -246,11 +246,11 @@ export interface CronV2Args {
  * Create a container task and pass in a `schedule` and a `task` that'll be executed.
  *
  * ```ts title="sst.config.ts" {5}
- * const myCluster = new sst.aws.Cluster("MyCluster");
- * const myTask = new sst.aws.Task("MyTask", { cluster: myCluster });
+ * const cluster = new sst.aws.Cluster("MyCluster");
+ * const task = new sst.aws.Task("MyTask", { cluster });
  *
  * new sst.aws.CronV2("MyCronJob", {
- *   task: myTask,
+ *   task,
  *   schedule: "rate(1 day)"
  * });
  * ```

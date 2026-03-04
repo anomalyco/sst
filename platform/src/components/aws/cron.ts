@@ -181,8 +181,16 @@ export interface CronArgs {
 }
 
 /**
+ * The `Cron` component has been deprecated. Use [`CronV2`](https://sst.dev/docs/component/aws/cron-v2) instead.
+ *
+ * :::caution
+ * This component has been deprecated.
+ * :::
+ *
  * The `Cron` component lets you add cron jobs to your app
  * using [Amazon Event Bus](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-event-bus.html). The cron job can invoke a `Function` or a container `Task`.
+ *
+ * @deprecated Use [`CronV2`](https://sst.dev/docs/component/aws/cron-v2) instead.
  *
  * @example
  * #### Cron job function

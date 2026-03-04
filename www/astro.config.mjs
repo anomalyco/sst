@@ -85,7 +85,7 @@ const sidebar = [
           "docs/component/aws/bus",
           "docs/component/aws/vpc",
           "docs/component/aws/task",
-          "docs/component/aws/cron",
+          "docs/component/aws/cron-v2",
           "docs/component/aws/auth",
           "docs/component/aws/nuxt",
           "docs/component/aws/astro",
@@ -197,6 +197,7 @@ const sidebar = [
             label: "Deprecated",
             collapsed: true,
             items: [
+              { label: "Cron", slug: "docs/component/aws/cron" },
               { label: "OpenControl", slug: "docs/component/aws/opencontrol" },
               { label: "Vpc.v1", slug: "docs/component/aws/vpc-v1" },
               { label: "Redis.v1", slug: "docs/component/aws/redis-v1" },
