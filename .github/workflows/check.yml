@@ -45,6 +45,9 @@ jobs:
       - name: Check types
         run: cd platform && bun tsc --noEmit
 
+      - name: Run platform tests
+        run: cd platform && bun run test
+
       - name: Build platform
         run: ./platform/scripts/build
         env:
