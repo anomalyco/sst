@@ -335,6 +335,10 @@ export class CronV2 extends Component {
         throw new VisibleError(
           `You cannot provide both a function and a task in the "${name}" CronV2 component.`,
         );
+      if (!fnArgs && !args.task)
+        throw new VisibleError(
+          `You must provide either a function or a task in the "${name}" CronV2 component.`,
+        );
     }
 
     function createFunction() {
@@ -360,22 +364,24 @@ export class CronV2 extends Component {
               inlinePolicies: [
                 {
                   name: "inline",
-                  policy: iam.getPolicyDocumentOutput({
-                    statements: [
-                      {
-                        actions: ["lambda:InvokeFunction"],
-                        resources: [fn.arn],
-                      },
-                      ...(args.dlq
-                        ? [
-                            {
-                              actions: ["sqs:SendMessage"],
-                              resources: [args.dlq],
-                            },
-                          ]
-                        : []),
-                    ],
-                  }).json,
+                  policy: output(args.dlq).apply((dlq) =>
+                    iam.getPolicyDocumentOutput({
+                      statements: [
+                        {
+                          actions: ["lambda:InvokeFunction"],
+                          resources: [fn.arn],
+                        },
+                        ...(dlq
+                          ? [
+                              {
+                                actions: ["sqs:SendMessage"],
+                                resources: [dlq],
+                              },
+                            ]
+                          : []),
+                      ],
+                    }).json,
+                  ),
                 },
               ],
             },
@@ -395,29 +401,31 @@ export class CronV2 extends Component {
             inlinePolicies: [
               {
                 name: "inline",
-                policy: iam.getPolicyDocumentOutput({
-                  statements: [
-                    {
-                      actions: ["ecs:RunTask"],
-                      resources: [args.task!.nodes.taskDefinition.arn],
-                    },
-                    {
-                      actions: ["iam:PassRole"],
-                      resources: [
-                        args.task!.nodes.executionRole.arn,
-                        args.task!.nodes.taskRole.arn,
-                      ],
-                    },
-                    ...(args.dlq
-                      ? [
-                          {
-                            actions: ["sqs:SendMessage"],
-                            resources: [args.dlq],
-                          },
-                        ]
-                      : []),
-                  ],
-                }).json,
+                policy: output(args.dlq).apply((dlq) =>
+                  iam.getPolicyDocumentOutput({
+                    statements: [
+                      {
+                        actions: ["ecs:RunTask"],
+                        resources: [args.task!.nodes.taskDefinition.arn],
+                      },
+                      {
+                        actions: ["iam:PassRole"],
+                        resources: [
+                          args.task!.nodes.executionRole.arn,
+                          args.task!.nodes.taskRole.arn,
+                        ],
+                      },
+                      ...(dlq
+                        ? [
+                            {
+                              actions: ["sqs:SendMessage"],
+                              resources: [dlq],
+                            },
+                          ]
+                        : []),
+                    ],
+                  }).json,
+                ),
               },
             ],
           },
