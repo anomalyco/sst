@@ -92,14 +92,7 @@ func (a *AwsProvider) Init(app string, stage string, args map[string]interface{}
 	if err != nil {
 		return err
 	}
-	if assumeRole, ok := args["assumeRole"].(map[string]interface{}); ok {
-		stsclient := sts.NewFromConfig(cfg)
-		cfg.Credentials = stscreds.NewAssumeRoleProvider(stsclient, assumeRole["roleArn"].(string), func(aro *stscreds.AssumeRoleOptions) {
-			if sessionName, ok := assumeRole["sessionName"].(string); ok {
-				aro.RoleSessionName = sessionName
-			}
-		})
-	} else if assumeRoles, ok := args["assumeRoles"].([]interface{}); ok {
+	if assumeRoles, ok := args["assumeRoles"].([]interface{}); ok {
 		for _, role := range assumeRoles {
 			if roleMap, ok := role.(map[string]interface{}); ok {
 				stsclient := sts.NewFromConfig(cfg)
