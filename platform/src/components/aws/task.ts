@@ -19,6 +19,7 @@ import {
   normalizeStorage,
 } from "./fargate.js";
 import { Input } from "../input.js";
+import { needsLocalDocker, requireDocker } from "../../util/docker.js";
 
 export interface TaskArgs extends FargateBaseArgs {
   /**
@@ -288,6 +289,7 @@ export class Task extends Component implements Link.Linkable {
 
     const self = this;
     const dev = normalizeDev();
+    if (!dev && needsLocalDocker(args)) requireDocker();
     const architecture = normalizeArchitecture(args);
     const cpu = normalizeCpu(args);
     const memory = normalizeMemory(cpu, args);

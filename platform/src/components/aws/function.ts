@@ -42,6 +42,7 @@ import { rpc } from "../rpc/rpc.js";
 import { parseRoleArn } from "./helpers/arn.js";
 import { RandomBytes } from "@pulumi/random";
 import { lazy } from "../../util/lazy.js";
+import { requireDocker } from "../../util/docker.js";
 import { Efs } from "./efs.js";
 import { FunctionEnvironmentUpdate } from "./providers/function-environment-update.js";
 import { warnOnce } from "../../util/warn.js";
@@ -2242,6 +2243,8 @@ export class Function extends Component implements Link.Linkable {
           containerCache,
         ]) => {
           if (!isContainer || dev) return;
+
+          requireDocker();
 
           const authToken = ecr.getAuthorizationTokenOutput({
             registryId: bootstrapData.assetEcrRegistryId,

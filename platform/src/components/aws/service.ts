@@ -38,6 +38,7 @@ import {
 } from "./fargate.js";
 import { Dns } from "../dns.js";
 import { hashStringToPrettyString } from "../naming.js";
+import { needsLocalDocker, requireDocker } from "../../util/docker.js";
 
 type Port = `${number}/${"http" | "https" | "tcp" | "udp" | "tcp_udp" | "tls"}`;
 
@@ -1642,6 +1643,7 @@ export class Service extends Component implements Link.Linkable {
     const clusterName = args.cluster.nodes.cluster.name;
     const region = getRegionOutput({}, opts).region;
     const dev = normalizeDev();
+    if (!dev && needsLocalDocker(args)) requireDocker();
     const wait = output(args.wait ?? false);
     const architecture = normalizeArchitecture(args);
     const cpu = normalizeCpu(args);
