@@ -1,15 +1,15 @@
 [project]
 name = "worker"
 version = "0.1.0"
-description = "Worker package that imports from api"
-dependencies = ["api", "requests>=2.31.0", "arrow>=1.3.0"]
+description = "Worker package that uses shared models"
+dependencies = ["shared", "requests>=2.31.0", "arrow>=1.3.0"]
 requires-python = ">=3.11"
 
 [tool.uv]
 package = true
 
 [tool.uv.sources]
-api = { workspace = true }
+shared = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

@@ -1287,62 +1287,87 @@ func (r *PythonRuntime) hasWorkspaceLayoutPatterns(projectRoot string) bool {
 // flattenWorkspaceLayouts detects and flattens package/src/package structures for all legacy projects
 func (r *PythonRuntime) flattenWorkspaceLayouts(artifactDir, functionID string) error {
 	contentFilter := NewContentFilter()
-
-	entries, err := os.ReadDir(artifactDir)
-	if err != nil {
-		return err
-	}
-
 	var flattened []string
 
-	for _, entry := range entries {
-		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
-			continue
+	// flattenDir checks all immediate subdirectories of dir for the package/src/package pattern
+	flattenDir := func(dir string) error {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return err
 		}
 
-		packageName := entry.Name()
-		packageDir := filepath.Join(artifactDir, packageName)
-		srcDir := filepath.Join(packageDir, "src")
-		innerPackageDir := filepath.Join(srcDir, packageName)
-
-		// Check if this follows the package/src/package pattern
-		if _, err := os.Stat(innerPackageDir); err == nil {
-			slog.Debug("flattening workspace layout",
-				"package", packageName,
-				"functionID", functionID)
-
-			// Copy contents of package/src/package to package/ (excluding test files and build artifacts)
-			innerEntries, err := os.ReadDir(innerPackageDir)
-			if err != nil {
-				slog.Warn("failed to read inner package dir", "package", packageName, "error", err)
+		for _, entry := range entries {
+			if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") || entry.Name() == "__pycache__" || entry.Name() == "node_modules" {
 				continue
 			}
 
-			for _, innerEntry := range innerEntries {
-				if contentFilter.ShouldExclude(innerEntry.Name()) {
+			packageName := entry.Name()
+			packageDir := filepath.Join(dir, packageName)
+			srcDir := filepath.Join(packageDir, "src")
+			innerPackageDir := filepath.Join(srcDir, packageName)
+
+			// Check if this follows the package/src/package pattern
+			if _, err := os.Stat(innerPackageDir); err == nil {
+				slog.Debug("flattening workspace layout",
+					"package", packageName,
+					"dir", dir,
+					"functionID", functionID)
+
+				// Copy contents of package/src/package to package/
+				innerEntries, err := os.ReadDir(innerPackageDir)
+				if err != nil {
+					slog.Warn("failed to read inner package dir", "package", packageName, "error", err)
 					continue
 				}
 
-				srcPath := filepath.Join(innerPackageDir, innerEntry.Name())
-				destPath := filepath.Join(packageDir, innerEntry.Name())
+				for _, innerEntry := range innerEntries {
+					if contentFilter.ShouldExclude(innerEntry.Name()) {
+						continue
+					}
 
-				if innerEntry.IsDir() {
-					err = r.copyDirectoryWithFilter(srcPath, destPath, contentFilter)
-				} else {
-					err = copyFile(srcPath, destPath)
+					srcPath := filepath.Join(innerPackageDir, innerEntry.Name())
+					destPath := filepath.Join(packageDir, innerEntry.Name())
+
+					if innerEntry.IsDir() {
+						err = r.copyDirectoryWithFilter(srcPath, destPath, contentFilter)
+					} else {
+						err = copyFile(srcPath, destPath)
+					}
+
+					if err != nil {
+						return fmt.Errorf("failed to flatten %s structure: %w", packageName, err)
+					}
 				}
 
-				if err != nil {
-					return fmt.Errorf("failed to flatten %s structure: %w", packageName, err)
+				// Remove the old src/ directory after flattening to avoid import confusion
+				if err := os.RemoveAll(srcDir); err != nil {
+					slog.Warn("failed to remove src/ after flattening", "package", packageName, "error", err)
 				}
-			}
 
-			// CRITICAL: Remove the old src/ directory after flattening to avoid import confusion
-			if err := os.RemoveAll(srcDir); err != nil {
-				slog.Warn("failed to remove src/ after flattening", "package", packageName, "error", err)
+				relPath, _ := filepath.Rel(artifactDir, packageDir)
+				flattened = append(flattened, relPath)
 			}
+		}
+		return nil
+	}
 
-			flattened = append(flattened, packageName)
+	// Check top-level directories
+	if err := flattenDir(artifactDir); err != nil {
+		return err
+	}
+
+	// Also check one level deeper (e.g., packages/api/src/api pattern)
+	topEntries, err := os.ReadDir(artifactDir)
+	if err != nil {
+		return err
+	}
+	for _, entry := range topEntries {
+		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") || entry.Name() == "__pycache__" || entry.Name() == "node_modules" {
+			continue
+		}
+		subDir := filepath.Join(artifactDir, entry.Name())
+		if err := flattenDir(subDir); err != nil {
+			return err
 		}
 	}
 

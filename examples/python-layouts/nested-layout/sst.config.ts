@@ -75,19 +75,10 @@ export default $config({
       url: true  // Enable function URL for auth endpoints
     });
 
-    // Test function to validate deployment capabilities
-    const test = new sst.aws.Function("TestFunction", {
-      handler: "app/functions/test/handler.main",
-      runtime: "python3.11",
-      timeout: "30 seconds",
-      url: true  // Enable function URL for testing
-    });
-
     return {
       api: api.url,
       worker: worker.name,
-      auth: auth.url,
-      test: test.url
+      auth: auth.url
     };
   }
 });

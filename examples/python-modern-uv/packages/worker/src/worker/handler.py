@@ -1,19 +1,18 @@
 """
-Test: Workspace member importing another workspace member
-This tests if cross-package imports work with [tool.uv] package = true
-Also tests that worker-only dependencies (arrow) are bundled only with worker
+Test: Workspace member importing a shared workspace package
+This tests if cross-package imports work via a shared library
+Also tests that worker-only dependencies (arrow) are bundled correctly
 """
-from api import models
+from shared import models
 import arrow
 
+
 def lambda_handler(event, context):
-    # Test that workspace imports work
-    result = models.create_response("Worker importing from API package")
-    
-    # Test worker-only dependency (arrow) - should only be bundled with worker
+    result = models.create_response("Worker using shared models")
+
     now = arrow.utcnow()
     timestamp = now.isoformat()
-    
+
     return {
         "statusCode": 200,
         "body": result,

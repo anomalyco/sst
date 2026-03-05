@@ -80,7 +80,7 @@ export default $config({
       url: true,
     });
 
-    // Test 3: Workspace member importing another member
+    // Test 3: Workspace member importing a shared workspace package
     const workspaceHandler = new sst.aws.Function("WorkspaceHandler", {
       handler: "packages/worker/src/worker/handler.lambda_handler",
       runtime: "python3.11",
