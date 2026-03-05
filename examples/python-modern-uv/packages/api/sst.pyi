@@ -4,18 +4,19 @@
 from typing import Any
 
 class Resource:
-    class ApiService:
-        name: str
-        type: str
-        url: str
     class App:
         name: str
         stage: str
-    class AuthService:
+    class PackageHandler:
         name: str
         type: str
         url: str
-    class WorkerService:
+    class RootHandler:
         name: str
         type: str
+        url: str
+    class WorkspaceHandler:
+        name: str
+        type: str
+        url: str
 

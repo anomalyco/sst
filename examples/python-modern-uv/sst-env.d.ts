@@ -6,14 +6,20 @@
 
 declare module "sst" {
   export interface Resource {
-    "FastAPI": {
+    "PackageHandler": {
       "name": string
       "type": "sst.aws.Function"
       "url": string
     }
-    "MyLinkableValue": {
-      "foo": string
-      "type": "sst.sst.Linkable"
+    "RootHandler": {
+      "name": string
+      "type": "sst.aws.Function"
+      "url": string
+    }
+    "WorkspaceHandler": {
+      "name": string
+      "type": "sst.aws.Function"
+      "url": string
     }
   }
 }
