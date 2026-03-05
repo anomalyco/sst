@@ -212,7 +212,6 @@ const sidebar = [
         collapsed: true,
         items: [
           "docs/component/cloudflare/ai",
-          "docs/component/cloudflare/auth",
           "docs/component/cloudflare/bucket",
           "docs/component/cloudflare/cron",
           "docs/component/cloudflare/d1",

@@ -1583,7 +1583,8 @@ function renderInterfacesAtH2Level(
   const interfaces = useModuleInterfaces(module)
     .filter((c) => !c.comment?.modifierTags.has("@internal"))
     .filter((c) => !c.comment?.blockTags.find((t) => t.tag === "@deprecated"))
-    .filter((c) => !opts.filter || opts.filter(c));
+    .filter((c) => !opts.filter || opts.filter(c))
+    .filter((c) => c.children?.length);
 
   for (const int of interfaces) {
     console.debug(` - interface ${int.name}`);
@@ -2205,10 +2206,13 @@ async function buildComponents() {
       "../platform/src/components/aws/task.ts",
       "../platform/src/components/aws/vpc.ts",
       "../platform/src/components/aws/vpc-v1.ts",
-      "../platform/src/components/cloudflare/worker.ts",
+      "../platform/src/components/cloudflare/ai.ts",
       "../platform/src/components/cloudflare/bucket.ts",
+      "../platform/src/components/cloudflare/cron.ts",
       "../platform/src/components/cloudflare/d1.ts",
       "../platform/src/components/cloudflare/kv.ts",
+      "../platform/src/components/cloudflare/static-site.ts",
+      "../platform/src/components/cloudflare/worker.ts",
       // internal
       "../platform/src/components/aws/cdn.ts",
       "../platform/src/components/aws/dns.ts",
