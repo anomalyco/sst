@@ -13,14 +13,10 @@ import (
 
 // UVSource represents a UV source configuration
 type UVSource struct {
-	Path         string `toml:"path"`
-	URL          string `toml:"url"`
-	Git          string `toml:"git"`
-	Branch       string `toml:"branch"`
-	Tag          string `toml:"tag"`
-	Rev          string `toml:"rev"`
-	Subdirectory string `toml:"subdirectory"`
-	Workspace    bool   `toml:"workspace"` // For workspace members: { workspace = true }
+	Path      string `toml:"path"`
+	URL       string `toml:"url"`
+	Git       string `toml:"git"`
+	Workspace bool   `toml:"workspace"` // For workspace members: { workspace = true }
 }
 
 // ProjectResolver provides simplified Python project resolution without layout classification
@@ -63,19 +59,7 @@ type PyprojectConfig struct {
 	// Standard PEP 621 project metadata
 	Project struct {
 		Name         string   `toml:"name"`
-		Version      string   `toml:"version"`
-		Description  string   `toml:"description"`
 		Dependencies []string `toml:"dependencies"`
-		// Optional fields that may be present
-		Authors        []map[string]string `toml:"authors"`
-		Maintainers    []map[string]string `toml:"maintainers"`
-		License        map[string]string   `toml:"license"`
-		Readme         string              `toml:"readme"`
-		Homepage       string              `toml:"homepage"`
-		Repository     string              `toml:"repository"`
-		Keywords       []string            `toml:"keywords"`
-		Classifiers    []string            `toml:"classifiers"`
-		RequiresPython string              `toml:"requires-python"`
 	} `toml:"project"`
 
 	// Tool-specific configurations
@@ -86,16 +70,11 @@ type PyprojectConfig struct {
 			Workspace struct {
 				Members []string `toml:"members"`
 			} `toml:"workspace"`
-			DevDependencies map[string]string `toml:"dev-dependencies"`
 		} `toml:"uv"`
 
 		// Poetry configuration (legacy support)
 		Poetry struct {
-			Name            string            `toml:"name"`
-			Version         string            `toml:"version"`
-			Description     string            `toml:"description"`
-			Dependencies    map[string]string `toml:"dependencies"`
-			DevDependencies map[string]string `toml:"dev-dependencies"`
+			Name string `toml:"name"`
 		} `toml:"poetry"`
 
 		// Hatch configuration
@@ -127,12 +106,6 @@ type PyprojectConfig struct {
 			IncludeLambdaRuntime bool `toml:"include-lambda-runtime"`
 		} `toml:"sst"`
 	} `toml:"tool"`
-
-	// Build system configuration
-	BuildSystem struct {
-		Requires     []string `toml:"requires"`
-		BuildBackend string   `toml:"build-backend"`
-	} `toml:"build-system"`
 }
 
 // NewProjectResolver creates a new project resolver
@@ -489,24 +462,9 @@ func (pr *ProjectResolver) validateUVSource(sourceName string, source UVSource) 
 	return nil
 }
 
-// ResolvePythonPath returns the Python path for the given project using standard resolution rules
-func (pr *ProjectResolver) ResolvePythonPath(projectInfo *ProjectInfo) []string {
-	// Return a copy to prevent external modification
-	pythonPath := make([]string, len(projectInfo.PythonPath))
-	copy(pythonPath, projectInfo.PythonPath)
-	return pythonPath
-}
-
 // ClearCache removes all cached project information
 func (pr *ProjectResolver) ClearCache() {
 	pr.mutex.Lock()
 	defer pr.mutex.Unlock()
 	pr.cache = make(map[string]*ProjectInfo)
-}
-
-// InvalidateCache removes cached project information for a specific handler
-func (pr *ProjectResolver) InvalidateCache(handlerPath string) {
-	pr.mutex.Lock()
-	defer pr.mutex.Unlock()
-	delete(pr.cache, handlerPath)
 }

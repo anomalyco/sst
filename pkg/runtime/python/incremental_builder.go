@@ -210,9 +210,6 @@ type IncrementalBuilderConfig struct {
 	FunctionID string
 
 	// Fallback mechanisms removed - using direct error handling instead
-
-	// EnableDeprecationWarnings enables deprecation warnings
-	EnableDeprecationWarnings bool
 }
 
 // BuildPlan represents a plan for building packages
@@ -653,11 +650,6 @@ func (ib *IncrementalBuilder) ShouldRebuild(functionID string, handler string) b
 	}
 
 	return result.HasChanges
-}
-
-// GetProgressReporter returns the progress reporter for external access
-func (ib *IncrementalBuilder) GetProgressReporter() *ProgressReporter {
-	return ib.progressReporter
 }
 
 // GetBuildProgress returns the current build progress
@@ -1803,132 +1795,6 @@ func (ib *IncrementalBuilder) ForceRebuild(functionID string, reason string) err
 	return nil
 }
 
-// RecoverFromError attempts to recover from various error conditions
-func (ib *IncrementalBuilder) RecoverFromError(err error) error {
-	if pythonErr, ok := err.(*PythonRuntimeError); ok {
-		switch pythonErr.Type {
-		case ErrorTypeCacheCorrupted:
-			return ib.recoverFromCacheCorruption(pythonErr)
-		case ErrorTypeBuildFailed:
-			return ib.recoverFromBuildFailure(pythonErr)
-		case ErrorTypeProjectStructure:
-			return ib.recoverFromProjectStructureFailure(pythonErr)
-		case ErrorTypeHandlerNotFound:
-			return ib.recoverFromHandlerNotFoundFailure(pythonErr)
-		case ErrorTypeConfigurationError:
-			return ib.recoverFromConfigurationFailure(pythonErr)
-		}
-	}
-	return err
-}
-
-// recoverFromCacheCorruption handles cache corruption recovery
-func (ib *IncrementalBuilder) recoverFromCacheCorruption(err *PythonRuntimeError) error {
-	slog.Info("attempting to recover from cache corruption")
-
-	// Clear all caches
-	if clearErr := ib.ClearCache(); clearErr != nil {
-		return WrapError(clearErr, "cache recovery").
-			WithContext("originalError", err.Message).
-			WithSuggestion("Manually delete the cache directory and retry")
-	}
-
-	slog.Info("cache corruption recovery completed")
-	return nil
-}
-
-// recoverFromBuildFailure handles build failure recovery
-func (ib *IncrementalBuilder) recoverFromBuildFailure(err *PythonRuntimeError) error {
-	slog.Info("attempting to recover from build failure")
-
-	// Check if it's a transient error that might be retryable
-	if err.IsRetryable() {
-		slog.Info("build failure is retryable", "retryAfter", err.GetRetryAfter())
-		return err // Let the caller handle the retry
-	}
-
-	// For non-retryable build failures, suggest clearing cache
-	packageName, ok := err.Context["package"].(string)
-	if ok {
-		slog.Info("clearing cache for failed package", "package", packageName)
-		// Clear package-specific cache if possible
-		// For now, we'll just log and return the error
-	}
-
-	return err
-}
-
-// recoverFromProjectStructureFailure handles project structure failure recovery
-func (ib *IncrementalBuilder) recoverFromProjectStructureFailure(err *PythonRuntimeError) error {
-	slog.Info("attempting to recover from project structure failure")
-
-	// Clear project resolver cache and try again
-	ib.projectResolver.ClearCache()
-
-	// For now, just return the error - more sophisticated fallback could be implemented
-	return err
-}
-
-// recoverFromHandlerNotFoundFailure handles handler not found failure recovery
-func (ib *IncrementalBuilder) recoverFromHandlerNotFoundFailure(err *PythonRuntimeError) error {
-	slog.Info("attempting to recover from handler not found failure")
-
-	// Extract handler path from error context
-	handler, ok := err.Context["handler"].(string)
-	if !ok {
-		return err
-	}
-
-	// Try to suggest alternative handler locations
-	if searchPaths, exists := err.Context["searchPaths"].([]string); exists {
-		slog.Info("handler not found in search paths", "handler", handler, "searchPaths", searchPaths)
-	}
-
-	// For now, just return the error - could implement file discovery here
-	return err
-}
-
-// recoverFromConfigurationFailure handles configuration failure recovery
-func (ib *IncrementalBuilder) recoverFromConfigurationFailure(err *PythonRuntimeError) error {
-	slog.Info("attempting to recover from configuration failure")
-
-	// Extract configuration file from error context
-	configFile, ok := err.Context["configFile"].(string)
-	if !ok {
-		return err
-	}
-
-	slog.Info("configuration issue detected", "configFile", configFile)
-
-	// For now, just return the error - could implement config validation/repair here
-	return err
-}
-
-// BuildWithRecovery performs a build with automatic error recovery
-func (ib *IncrementalBuilder) BuildWithRecovery(ctx context.Context, input *runtime.BuildInput) (*runtime.BuildOutput, error) {
-	// Create error recovery manager
-	recoveryManager := NewErrorRecoveryManager()
-
-	var result *runtime.BuildOutput
-
-	// Attempt build with retry and recovery
-	err := recoveryManager.RetryWithBackoff(func() error {
-		buildResult, buildErr := ib.Build(ctx, input)
-		if buildErr != nil {
-			// Attempt recovery
-			if recoveryErr := ib.RecoverFromError(buildErr); recoveryErr == nil {
-				// Recovery successful, retry the build
-				slog.Info("error recovery successful, retrying build")
-				buildResult, buildErr = ib.Build(ctx, input)
-			}
-		}
-		result = buildResult
-		return buildErr
-	})
-
-	return result, err
-}
-
 // installDependenciesForBuild installs dependencies for the build
 func (ib *IncrementalBuilder) installDependenciesForBuild(ctx context.Context, input *runtime.BuildInput, projectInfo *ProjectInfo, plan *BuildPlan, result *BuildResult) error {
 	// Ensure output directory exists (it may not if no packages needed building)
@@ -2118,7 +1984,6 @@ func (ib *IncrementalBuilder) generateOrCopyRequirementsFile(ctx context.Context
 // InputProperties represents the input properties structure
 type InputProperties struct {
 	Architecture string `json:"architecture"`
-	Container    bool   `json:"container"`
 }
 
 // parseInputProperties parses the input properties JSON

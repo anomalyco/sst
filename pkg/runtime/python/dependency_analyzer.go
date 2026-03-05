@@ -101,12 +101,6 @@ type LocalPackageInfo struct {
 	EstimatedBuildTime time.Duration
 }
 
-// DependencyInfo contains dependency information for deprecation checking
-type DependencyInfo struct {
-	PythonVersion string            `json:"pythonVersion"`
-	Dependencies  map[string]string `json:"dependencies"`
-}
-
 // ExternalDependencyInfo contains information about external dependencies
 type ExternalDependencyInfo struct {
 	// Name is the dependency name
@@ -1094,30 +1088,6 @@ func (da *DependencyAnalyzer) removeDuplicateStrings(slice []string) []string {
 	}
 
 	return result
-}
-
-// ClearCache clears the dependency analysis cache
-func (da *DependencyAnalyzer) ClearCache() {
-	da.mutex.Lock()
-	defer da.mutex.Unlock()
-
-	da.dependencyCache = make(map[string]*DependencyAnalysis)
-}
-
-// GetCachedAnalysis returns cached dependency analysis if available
-func (da *DependencyAnalyzer) GetCachedAnalysis(projectInfo *ProjectInfo) (*DependencyAnalysis, bool) {
-	da.mutex.RLock()
-	defer da.mutex.RUnlock()
-
-	cacheKey := da.generateCacheKey(projectInfo)
-	if cached, exists := da.dependencyCache[cacheKey]; exists {
-		// Validate cache using content hashes instead of time
-		if da.isCacheValid(cached, projectInfo) {
-			return cached, true
-		}
-	}
-
-	return nil, false
 }
 
 // isCacheValid validates cache entry using content hashes instead of time

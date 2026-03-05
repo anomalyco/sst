@@ -25,9 +25,6 @@ type CacheInterface interface {
 	UpdateFileHashes(entry *CacheEntry, filePaths []string) error
 	GetStats() CacheStats
 	Cleanup() error
-	ResetMetrics()
-	GetHitRate() float64
-	GetPerformanceReport() map[string]any
 }
 
 // BuildCache manages build state and change detection for Python functions
@@ -569,21 +566,6 @@ func (bc *BuildCache) Cleanup() error {
 	return nil
 }
 
-// ResetMetrics resets all performance metrics
-func (bc *BuildCache) ResetMetrics() {
-	bc.metrics.reset()
-}
-
-// GetHitRate returns the cache hit rate as a percentage
-func (bc *BuildCache) GetHitRate() float64 {
-	return bc.metrics.getHitRate()
-}
-
-// GetCacheDir returns the cache directory
-func (bc *BuildCache) GetCacheDir() string {
-	return bc.cacheDir
-}
-
 // loadEntryFromDisk loads a specific cache entry from disk
 func (bc *BuildCache) loadEntryFromDisk(functionID string) *CacheEntry {
 	filePath := filepath.Join(bc.cacheDir, functionID+".json")
@@ -601,29 +583,6 @@ func (bc *BuildCache) loadEntryFromDisk(functionID string) *CacheEntry {
 	}
 
 	return &entry
-}
-
-// GetPerformanceReport returns a detailed performance report
-func (bc *BuildCache) GetPerformanceReport() map[string]any {
-	metrics := bc.metrics.getSnapshot()
-
-	return map[string]any{
-		"hitRate":            metrics.getHitRate(),
-		"totalOperations":    metrics.Hits + metrics.Misses,
-		"hits":               metrics.Hits,
-		"misses":             metrics.Misses,
-		"averageGetTime":     metrics.AverageGetTime.String(),
-		"averageSetTime":     metrics.AverageSetTime.String(),
-		"averageHashTime":    metrics.AverageHashTime.String(),
-		"fileHashOperations": metrics.FileHashOperations,
-		"totalHashTime":      metrics.TotalHashTime.String(),
-		"invalidationCount":  metrics.InvalidationCount,
-		"hashErrors":         metrics.HashErrors,
-		"persistErrors":      metrics.PersistErrors,
-		"loadErrors":         metrics.LoadErrors,
-		"lastReset":          metrics.LastReset.Format(time.RFC3339),
-		"uptime":             time.Since(metrics.LastReset).String(),
-	}
 }
 
 // BuildResultCache manages caching of build results and artifacts
@@ -1191,36 +1150,4 @@ func (cm *CacheMetrics) getSnapshot() *CacheMetrics {
 		LoadErrors:         cm.LoadErrors,
 		LastReset:          cm.LastReset,
 	}
-}
-
-// reset resets all metrics
-func (cm *CacheMetrics) reset() {
-	cm.mutex.Lock()
-	defer cm.mutex.Unlock()
-
-	cm.Hits = 0
-	cm.Misses = 0
-	cm.AverageGetTime = 0
-	cm.AverageSetTime = 0
-	cm.AverageHashTime = 0
-	cm.FileHashOperations = 0
-	cm.TotalHashTime = 0
-	cm.InvalidationCount = 0
-	cm.HashErrors = 0
-	cm.PersistErrors = 0
-	cm.LoadErrors = 0
-	cm.LastReset = time.Now()
-}
-
-// getHitRate returns the cache hit rate as a percentage
-func (cm *CacheMetrics) getHitRate() float64 {
-	cm.mutex.RLock()
-	defer cm.mutex.RUnlock()
-
-	total := cm.Hits + cm.Misses
-	if total == 0 {
-		return 0.0
-	}
-
-	return float64(cm.Hits) / float64(total) * 100.0
 }

@@ -149,14 +149,6 @@ type PythonRuntime struct {
 	mutex sync.RWMutex
 }
 
-// FunctionLogEvent represents a function log event (matches the AWS function log event)
-type FunctionLogEvent struct {
-	FunctionID string `json:"functionID"`
-	WorkerID   string `json:"workerID"`
-	RequestID  string `json:"requestID"`
-	Line       string `json:"line"`
-}
-
 func New() *PythonRuntime {
 	return &PythonRuntime{
 		lastBuiltHandler: map[string]string{},
@@ -237,29 +229,6 @@ func (r *PythonRuntime) initializeCacheSystem(cacheDir string) error {
 		"hasBuildCache", r.buildCache != nil,
 		"hasChangeDetector", r.changeDetector != nil,
 		"hasProjectResolver", r.projectResolver != nil)
-
-	return nil
-}
-
-// EnableCaching enables caching for an existing runtime
-func (r *PythonRuntime) EnableCaching(cacheDir string) error {
-	return r.initializeCacheSystem(cacheDir)
-}
-
-// DisableCaching disables caching and cleans up resources
-func (r *PythonRuntime) DisableCaching() error {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
-	if r.buildCache != nil {
-		if err := r.buildCache.Clear(); err != nil {
-			return fmt.Errorf("failed to clear build cache: %w", err)
-		}
-	}
-
-	r.buildCache = nil
-	r.changeDetector = nil
-	r.projectResolver = nil
 
 	return nil
 }
@@ -389,35 +358,6 @@ func (r *PythonRuntime) Match(runtime string) bool {
 // - Idle functions stay stopped until needed
 func (r *PythonRuntime) ShouldRunEagerly() bool {
 	return false
-}
-
-type Source struct {
-	URL          string  `toml:"url,omitempty"`
-	Git          string  `toml:"git,omitempty"`
-	Subdirectory *string `toml:"subdirectory,omitempty"`
-	Branch       string  `toml:"branch,omitempty"`
-}
-
-type PyProject struct {
-	Project struct {
-		Name string `toml:"name"`
-	} `toml:"project"`
-	Tool struct {
-		Setuptools struct {
-			Packages struct {
-				Find struct {
-					Where []string `toml:"where"`
-				} `toml:"find"`
-			} `toml:"packages"`
-		} `toml:"setuptools"`
-		Uv struct {
-			Package   bool `toml:"package"`
-			Workspace struct {
-				Members []string `toml:"members"`
-			} `toml:"workspace"`
-			Sources map[string]interface{} `toml:"sources"`
-		} `toml:"uv"`
-	} `toml:"tool"`
 }
 
 func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runtime.Worker, error) {
@@ -1013,56 +953,6 @@ func (r *PythonRuntime) shouldIgnoreFile(file string) bool {
 	}
 
 	return false
-}
-
-// GetCacheStats returns statistics about the build cache
-func (r *PythonRuntime) GetCacheStats() *CacheStats {
-	r.mutex.RLock()
-	defer r.mutex.RUnlock()
-
-	if r.buildCache == nil {
-		return nil
-	}
-
-	stats := r.buildCache.GetStats()
-	return &stats
-}
-
-// ClearCache clears the build cache
-func (r *PythonRuntime) ClearCache() error {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
-	if r.buildCache == nil {
-		return fmt.Errorf("caching not enabled")
-	}
-
-	return r.buildCache.Clear()
-}
-
-// InvalidateCacheEntry removes a specific cache entry
-func (r *PythonRuntime) InvalidateCacheEntry(functionID string) error {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
-	if r.buildCache == nil {
-		return fmt.Errorf("caching not enabled")
-	}
-
-	return r.buildCache.Delete(functionID)
-}
-
-// ForceRebuild forces a rebuild for a specific function
-func (r *PythonRuntime) ForceRebuild(functionID string, reason string) {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
-	if r.buildCache != nil {
-		// Remove from cache to force rebuild
-		r.buildCache.Delete(functionID)
-	}
-
-	slog.Info("forced rebuild requested", "functionID", functionID, "reason", reason)
 }
 
 func (r *PythonRuntime) CreateBuildAsset(ctx context.Context, input *runtime.BuildInput) (*runtime.BuildOutput, error) {

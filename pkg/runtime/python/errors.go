@@ -7,6 +7,14 @@ import (
 	"time"
 )
 
+const (
+	defaultRetryDelay        = 1 * time.Second
+	defaultMaxRetryDelay     = 30 * time.Second
+	networkRetryDelay        = 30 * time.Second
+	transientErrorRetryDelay = 5 * time.Second
+	defaultMaxRetries        = 3
+)
+
 // ErrorType represents different categories of errors
 type ErrorType string
 
@@ -17,13 +25,10 @@ const (
 	ErrorTypeProjectStructure   ErrorType = "project_structure"
 
 	// Cache errors
-	ErrorTypeCacheCorrupted  ErrorType = "cache_corrupted"
 	ErrorTypeCachePermission ErrorType = "cache_permission"
-	ErrorTypeCacheInvalid    ErrorType = "cache_invalid"
 
 	// Build errors
 	ErrorTypeBuildFailed        ErrorType = "build_failed"
-	ErrorTypeDependencyFailed   ErrorType = "dependency_failed"
 	ErrorTypeUVCommandFailed    ErrorType = "uv_command_failed"
 	ErrorTypeBuildOutputMissing ErrorType = "build_output_missing"
 	ErrorTypeExtractionFailed   ErrorType = "extraction_failed"
@@ -42,10 +47,8 @@ const (
 type ErrorSeverity string
 
 const (
-	ErrorSeverityInfo     ErrorSeverity = "info"
-	ErrorSeverityWarning  ErrorSeverity = "warning"
-	ErrorSeverityError    ErrorSeverity = "error"
-	ErrorSeverityCritical ErrorSeverity = "critical"
+	ErrorSeverityWarning ErrorSeverity = "warning"
+	ErrorSeverityError   ErrorSeverity = "error"
 )
 
 // PythonRuntimeError represents a structured error with context and recovery information
@@ -285,7 +288,7 @@ func NewBuildFailedError(packageName string, cause error) *PythonRuntimeError {
 			err.WithSuggestion("Check available disk space")
 		}
 		if strings.Contains(causeStr, "network") {
-			err.WithRetry(NetworkRetryDelay).
+			err.WithRetry(networkRetryDelay).
 				WithSuggestion("Check network connectivity and try again")
 		}
 	}
@@ -326,9 +329,9 @@ type ErrorRecoveryManager struct {
 // NewErrorRecoveryManager creates a new error recovery manager
 func NewErrorRecoveryManager() *ErrorRecoveryManager {
 	return &ErrorRecoveryManager{
-		maxRetries: DefaultMaxRetries,
-		baseDelay:  DefaultRetryDelay,
-		maxDelay:   DefaultMaxRetryDelay,
+		maxRetries: defaultMaxRetries,
+		baseDelay:  defaultRetryDelay,
+		maxDelay:   defaultMaxRetryDelay,
 	}
 }
 
@@ -456,7 +459,7 @@ func WrapError(err error, context string) *PythonRuntimeError {
 
 	// Add retry capability for transient errors
 	if IsTransientError(err) {
-		pythonErr.WithRetry(TransientErrorRetryDelay)
+		pythonErr.WithRetry(transientErrorRetryDelay)
 	}
 
 	return pythonErr

@@ -2,9 +2,27 @@ package python
 
 import (
 	"fmt"
+	"path/filepath"
+	"time"
 
 	"github.com/sst/sst/v3/pkg/runtime"
 )
+
+const (
+	sstCacheDevDir    = ".sst/cache/dev"
+	sstCacheDeployDir = ".sst/cache/deploy"
+
+	defaultDependencyCacheAge = 24 * time.Hour
+	defaultMaxCacheSize       = 1024 * 1024 * 1024 // 1GB
+)
+
+// getCacheDirForMode returns the cache directory for dev or deploy mode
+func getCacheDirForMode(workingDir string, isDev bool) string {
+	if isDev {
+		return filepath.Join(workingDir, sstCacheDevDir)
+	}
+	return filepath.Join(workingDir, sstCacheDeployDir)
+}
 
 // RuntimeFactory creates Python runtime components with sensible defaults
 // This decouples high-level code from implementation details
@@ -40,13 +58,11 @@ func (rf *RuntimeFactory) CreateCacheSystem(cacheDir string) (*BuildCache, *Chan
 
 // CreateIncrementalBuilder creates an incremental builder with sensible defaults
 func (rf *RuntimeFactory) CreateIncrementalBuilder(workingDir string, input *runtime.BuildInput, progressCallback ProgressCallback) (*IncrementalBuilder, error) {
-	pathHelpers := NewPathHelpers()
-
 	return NewIncrementalBuilder(IncrementalBuilderConfig{
-		CacheDir:                pathHelpers.GetCacheDirForMode(workingDir, input.Dev),
+		CacheDir:                getCacheDirForMode(workingDir, input.Dev),
 		ArtifactDir:             input.Out(),
-		MaxCacheAge:             DefaultDependencyCacheAge, // For dependency cache, NOT build cache
-		MaxCacheSize:            DefaultMaxCacheSize,
+		MaxCacheAge:             defaultDependencyCacheAge, // For dependency cache, NOT build cache
+		MaxCacheSize:            defaultMaxCacheSize,
 		EnableParallelBuilds:    false, // Disabled to prevent thread explosion
 		MaxParallelBuilds:       1,
 		EnableProgressReporting: true,
@@ -62,8 +78,8 @@ func (rf *RuntimeFactory) CreateIncrementalBuilderWithCacheDir(workingDir string
 	return NewIncrementalBuilder(IncrementalBuilderConfig{
 		CacheDir:                cacheDir,
 		ArtifactDir:             input.Out(),
-		MaxCacheAge:             DefaultDependencyCacheAge, // For dependency cache, NOT build cache
-		MaxCacheSize:            DefaultMaxCacheSize,
+		MaxCacheAge:             defaultDependencyCacheAge, // For dependency cache, NOT build cache
+		MaxCacheSize:            defaultMaxCacheSize,
 		EnableParallelBuilds:    false, // Disabled to prevent thread explosion
 		MaxParallelBuilds:       1,
 		EnableProgressReporting: true,

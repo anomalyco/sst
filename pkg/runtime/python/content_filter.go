@@ -400,63 +400,6 @@ func (cf *ContentFilter) GetExcludePatterns() []string {
 	return cf.excludePatterns
 }
 
-// AddExcludePattern adds a new exclude pattern
-func (cf *ContentFilter) AddExcludePattern(pattern string) {
-	cf.excludePatterns = append(cf.excludePatterns, pattern)
-}
-
-// ValidateFilteredContent validates that the filtered content is reasonable for deployment
-func (cf *ContentFilter) ValidateFilteredContent(targetDir string, maxSizeBytes int64) error {
-	cf.logger.Info("validating filtered content", "targetDir", targetDir)
-
-	var totalSize int64
-	var fileCount int
-	var pythonFiles []string
-
-	err := filepath.Walk(targetDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		if !info.IsDir() {
-			totalSize += info.Size()
-			fileCount++
-
-			if strings.HasSuffix(info.Name(), ".py") {
-				relPath, _ := filepath.Rel(targetDir, path)
-				pythonFiles = append(pythonFiles, relPath)
-			}
-		}
-
-		return nil
-	})
-
-	if err != nil {
-		return fmt.Errorf("failed to walk filtered directory: %w", err)
-	}
-
-	cf.logger.Info("filtered content validation results",
-		"targetDir", targetDir,
-		"totalSize", totalSize,
-		"fileCount", fileCount,
-		"pythonFiles", len(pythonFiles),
-		"maxSizeBytes", maxSizeBytes)
-
-	// Check size limits
-	if maxSizeBytes > 0 && totalSize > maxSizeBytes {
-		return fmt.Errorf("filtered content size %d bytes exceeds maximum %d bytes - consider adding more exclude patterns", totalSize, maxSizeBytes)
-	}
-
-	// Check that we have some Python files
-	if len(pythonFiles) == 0 {
-		cf.logger.Warn("no Python files found in filtered content",
-			"targetDir", targetDir,
-			"fileCount", fileCount)
-	}
-
-	return nil
-}
-
 // checkPyprojectConfig checks if a file should be included/excluded based on pyproject.toml [tool.sst] configuration
 // Returns (shouldExclude, found) where found indicates if explicit configuration was found
 func (cf *ContentFilter) checkPyprojectConfig(path string) (bool, bool) {
