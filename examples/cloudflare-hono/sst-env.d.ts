@@ -2,6 +2,7 @@
 /* tslint:disable */
 /* eslint-disable */
 /* deno-fmt-ignore-file */
+/* biome-ignore-all lint: auto-generated */
 
 import "sst"
 declare module "sst" {
@@ -12,6 +13,7 @@ declare module "sst" {
 import * as cloudflare from "@cloudflare/workers-types";
 declare module "sst" {
   export interface Resource {
+    "Ai": cloudflare.Ai
     "Hono": cloudflare.Service
     "MyBucket": cloudflare.R2Bucket
   }

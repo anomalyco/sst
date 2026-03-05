@@ -361,6 +361,7 @@ export interface FunctionArgs {
     | "nodejs24.x"
     | "go"
     | "rust"
+    | "provided.al2"
     | "provided.al2023"
     | "python3.9"
     | "python3.10"

@@ -211,10 +211,13 @@ const sidebar = [
         label: "Cloudflare",
         collapsed: true,
         items: [
-          "docs/component/cloudflare/kv",
-          "docs/component/cloudflare/d1",
-          "docs/component/cloudflare/worker",
+          "docs/component/cloudflare/ai",
           "docs/component/cloudflare/bucket",
+          "docs/component/cloudflare/cron",
+          "docs/component/cloudflare/d1",
+          "docs/component/cloudflare/kv",
+          "docs/component/cloudflare/static-site",
+          "docs/component/cloudflare/worker",
         ],
       },
       {

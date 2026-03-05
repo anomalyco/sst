@@ -273,9 +273,6 @@ func CmdMosaic(c *cli.Cli) error {
 				case unknown := <-evts:
 					switch evt := unknown.(type) {
 					case *project.CompleteEvent:
-						if evt.Old {
-							continue
-						}
 						for _, d := range evt.Devs {
 							if d.Command == "" {
 								continue
@@ -338,9 +335,6 @@ func CmdMosaic(c *cli.Cli) error {
 				case unknown := <-evts:
 					switch evt := unknown.(type) {
 					case *project.CompleteEvent:
-						if evt.Old {
-							continue
-						}
 						for _, d := range evt.Devs {
 							if d.Command == "" {
 								continue
