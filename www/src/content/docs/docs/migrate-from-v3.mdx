@@ -41,6 +41,10 @@ When you update SST and the AWS provider version changes, `sst deploy` will be b
 
    Run `sst refresh` to migrate your state.
 
+   :::caution
+   Do not use the `--target` flag during migration. The state refresh must cover all resources to ensure a consistent migration.
+   :::
+
    ```bash frame="none"
    npx sst refresh
    ```
