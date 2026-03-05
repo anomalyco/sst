@@ -1,21 +1,26 @@
 .sst
+sst
 dist
 node_modules
+
+# pulumi
 Pulumi.*.yaml
 Pulumi.yaml
 
 # osx
 .DS_Store
 
-# Local Netlify folder
+# local netlify folder
 .netlify
 .env
 tmp
+
+# coding agents
 .termai
 .opencode
 .idea
 .kiro
 
-#Python
+# python
 __pycache__
-sst
+uv.lock
