@@ -191,20 +191,39 @@ func PutSecrets(backend Home, app, stage string, data map[string]string) error {
 
 func PushPartialState(backend Home, updateID, app, stage string, data []byte) error {
 	slog.Info("pushing partial state", "updateID", updateID)
-	err := json.Unmarshal(data, &map[string]interface{}{})
-	if err != nil || len(data) == 0 {
-		return fmt.Errorf("something has corrupted the state file - refusing to upload: %w", err)
+	if err := validateStateJSON(data); err != nil {
+		return err
 	}
 	return backend.putData("app", app, stage, bytes.NewReader(data))
 }
 
 func PushSnapshot(backend Home, updateID, app, stage string, data []byte) error {
 	slog.Info("pushing snapshot", "updateID", updateID)
-	err := json.Unmarshal(data, &map[string]interface{}{})
-	if err != nil {
-		return fmt.Errorf("something has corrupted the state file - refusing to upload: %w", err)
+	if err := validateStateJSON(data); err != nil {
+		return err
 	}
 	return backend.putData("snapshot", app, stage+"/"+updateID, bytes.NewReader(data))
+}
+
+// validateStateJSON checks that data is a non-empty, valid JSON object.
+// Pulumi state files are always JSON objects (VersionedCheckpoint structs);
+// anything else indicates corruption or a truncated write.
+func validateStateJSON(data []byte) error {
+	if len(data) == 0 {
+		return fmt.Errorf("something has corrupted the state file - refusing to upload: file is empty")
+	}
+	if data[0] != '{' {
+		return fmt.Errorf("something has corrupted the state file - refusing to upload: expected JSON object, got %q", data[0])
+	}
+	if !json.Valid(data) {
+		// Use Unmarshal on the failure path only to recover the parse error detail
+		// (position, character). The hot path uses json.Valid for zero allocations.
+		var m json.RawMessage
+		if err := json.Unmarshal(data, &m); err != nil {
+			return fmt.Errorf("something has corrupted the state file - refusing to upload: %w", err)
+		}
+	}
+	return nil
 }
 
 func PushEventLog(backend Home, updateID, app, stage string, reader io.Reader) error {
