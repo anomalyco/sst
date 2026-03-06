@@ -1,5 +1,11 @@
 /// <reference path="./.sst/platform/config.d.ts" />
 
+/**
+ * ## AWS Step Functions task token
+ *
+ * Use Step Functions with task tokens to pause execution, send a message to an
+ * SQS queue, and resume after processing.
+ */
 export default $config({
   app(input) {
     return {

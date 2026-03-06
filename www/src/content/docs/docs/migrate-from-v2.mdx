@@ -273,7 +273,7 @@ For example, in the [monorepo notes app](https://github.com/sst/demo-notes-app/p
   
       return {
         UserPool: auth.userPool.id,
-        Region: aws.getRegionOutput().name,
+        Region: aws.getRegionOutput().region,
         IdentityPool: auth.identityPool.id,
         UserPoolClient: auth.userPoolClient.id,
       };
@@ -532,7 +532,7 @@ There are a couple of global variables, `$app` and `$dev` that replace the `app`
 3. `$dev === true` tells you if you are in dev mode. Used to be `app.mode === "dev`.
 4. `$dev === false` tells you if it's being deployed. Used to be `app.mode === "deploy`.
 5. There is no `app.mode === remove` replacement since your components are not evaluated on `sst remove`.
-6. There is no `app.region` since in v3 you can deploy resources to different regions or AWS profiles or _providers_. To get the default AWS provider you can use `aws.getRegionOutput().name`.
+6. There is no `app.region` since in v3 you can deploy resources to different regions or AWS profiles or _providers_. To get the default AWS provider you can use `aws.getRegionOutput().region`.
 
 ---
 

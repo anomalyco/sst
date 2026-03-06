@@ -52,7 +52,7 @@
 export default $config({
   app(input) {
     return {
-      name: "aws-rust-lambda",
+      name: "aws-lambda-rust-multiple-binaries",
       removal: input?.stage === "production" ? "retain" : "remove",
       protect: ["production"].includes(input?.stage),
       home: "aws",

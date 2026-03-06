@@ -3,7 +3,7 @@ import path from "path";
 import crypto from "crypto";
 import { ComponentResourceOptions, all, output } from "@pulumi/pulumi";
 import { Kv, KvArgs } from "./kv.js";
-import { Component, Transform, transform } from "../component.js";
+import { Component, Prettify, Transform, transform } from "../component.js";
 import { Link } from "../link.js";
 import { Input } from "../input.js";
 import { globSync } from "glob";
@@ -84,7 +84,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
    * ```
    * @default `Object`
    */
-  assets?: Input<BaseStaticSiteAssets & {}>;
+  assets?: Prettify<BaseStaticSiteAssets & {}>;
   /**
    * Set a custom domain for your static site. Supports domains hosted on Cloudflare.
    *
