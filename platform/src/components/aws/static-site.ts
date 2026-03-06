@@ -1007,15 +1007,15 @@ export class StaticSite extends Component implements Link.Linkable {
         assets,
         bucketDomain,
         errorPage,
-        output(args.errorPage),
         route,
+        output(args.errorPage),
       ]).apply(async ([
         outputPath,
         assets,
         bucketDomain,
         errorPage,
-        hasErrorPage,
         route,
+        hasErrorPage,
       ]) => {
         const customErrorResponse = !!hasErrorPage;
         const kvEntries: Record<string, string> = {};
