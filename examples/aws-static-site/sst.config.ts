@@ -17,6 +17,7 @@ export default $config({
   async run() {
     new sst.aws.StaticSite("MySite", {
       path: "site",
+      errorPage: "404.html",
     });
   },
 });
