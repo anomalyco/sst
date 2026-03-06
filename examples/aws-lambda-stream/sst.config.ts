@@ -5,8 +5,6 @@
  *
  * An example on how to enable streaming for Lambda functions.
  *
- * Streaming is supported in both `sst dev` and `sst deploy`.
- *
  * ```ts title="sst.config.ts"
  * {
  *   streaming: true

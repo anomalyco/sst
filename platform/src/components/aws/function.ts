@@ -670,8 +670,6 @@ export interface FunctionArgs {
    *
    * You'll also need to [wrap your handler](https://docs.aws.amazon.com/lambda/latest/dg/configuration-response-streaming.html) with `awslambda.streamifyResponse` to enable streaming.
    *
-   * Streaming is supported in both `sst dev` and `sst deploy`.
-   *
    * Check out the [AWS Lambda streaming example](/docs/examples/#aws-lambda-streaming) for more
    * details.
    *
