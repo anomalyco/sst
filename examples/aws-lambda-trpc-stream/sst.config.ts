@@ -23,14 +23,14 @@ export default $config({
     };
   },
   async run() {
-    const trpcServer = new sst.aws.Function('trpc-server', {
+    const trpcServer = new sst.aws.Function('TrpcServer', {
       handler: 'trpc-server.handler',
       streaming: true,
       url: true,
       runtime: 'nodejs24.x',
     });
 
-    new sst.x.DevCommand('run-client', {
+    new sst.x.DevCommand('Client', {
       dev: {
         autostart: false,
         command: $interpolate`npx tsx trpc-client.ts`,
