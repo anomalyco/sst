@@ -903,6 +903,10 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
    * You cannot have duplicate routes.
    * :::
    *
+   * :::warning
+   * [API Gateway has strict rate limits](https://docs.aws.amazon.com/apigateway/latest/developerguide/limits.html) for creating and updating resources. Creating one Lambda function for every endpoint can significantly slow down your deployments.
+   * :::
+   *
    * @param route The path for the route.
    * @param handler The function that'll be invoked.
    * @param args Configure the route.
