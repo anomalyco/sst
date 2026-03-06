@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"path": "../../.."
+		},
+		{
+			"path": "../../../../gtfd"
+		}
+	],
+	"settings": {
+		"git.ignoreLimitWarning": true
+	}
+}

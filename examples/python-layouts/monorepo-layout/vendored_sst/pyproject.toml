@@ -1,0 +1,10 @@
+[project]
+name = "sst"
+version = "0.2.0"
+description = "Vendored SST SDK"
+requires-python = ">=3.9"
+dependencies = ["pycryptodome>=3.20.0"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

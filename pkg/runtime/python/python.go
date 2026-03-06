@@ -2,6 +2,8 @@ package python
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -26,11 +28,6 @@ var (
 	// This prevents system overload when Pulumi tries to build 100+ functions in parallel
 	// Respects SST_BUILD_CONCURRENCY_FUNCTION env var, defaults to 4
 	globalBuildSemaphore = make(chan struct{}, parseConcurrency())
-
-	// Global dependency analysis cache - shared across ALL function builds
-	// Key is the pyproject.toml path, value is the cached analysis
-	globalDependencyCache      = make(map[string]*DependencyAnalysis)
-	globalDependencyCacheMutex sync.RWMutex
 
 	// Global dependency installation locks - ensures only ONE function installs per cache key
 	// Other functions wait for the installation to complete, then copy from disk cache
@@ -121,48 +118,19 @@ func (w *Worker) Logs() io.ReadCloser {
 type PythonRuntime struct {
 	lastBuiltHandler map[string]string
 
-	// Build cache and change detection components
-	buildCache      *BuildCache
-	changeDetector  *ChangeDetector
-	projectResolver *ProjectResolver
-
 	// Cache directory for sharing with incremental builder
 	cacheDir string
 
 	// Cached incremental builder - reused across all function builds
-	// This is critical for performance: creating a new IncrementalBuilder for each
-	// of 50+ functions was causing massive CPU/memory overhead
 	incrementalBuilder *IncrementalBuilder
-
-	// Track when each function was last rebuilt - used to skip file changes
-	// that occurred before the last rebuild (mtime comparison)
-	lastRebuildTime map[string]time.Time
-
-	// Track pending changes per function
-	pendingChanges map[string][]string // functionID -> list of changed files
-
-	// Track if we've already signaled a restart for pending changes
-	// This prevents showing "LazyRestart" when worker is actually running
-	restartSignaled map[string]bool // functionID -> whether we've returned a dummy worker
 
 	// Mutex for thread-safe access
 	mutex sync.RWMutex
 }
 
-// FunctionLogEvent represents a function log event (matches the AWS function log event)
-type FunctionLogEvent struct {
-	FunctionID string `json:"functionID"`
-	WorkerID   string `json:"workerID"`
-	RequestID  string `json:"requestID"`
-	Line       string `json:"line"`
-}
-
 func New() *PythonRuntime {
 	return &PythonRuntime{
 		lastBuiltHandler: map[string]string{},
-		lastRebuildTime:  map[string]time.Time{},
-		pendingChanges:   map[string][]string{},
-		restartSignaled:  map[string]bool{},
 	}
 }
 
@@ -170,9 +138,6 @@ func New() *PythonRuntime {
 func NewWithCache(cacheDir string) (*PythonRuntime, error) {
 	runtime := &PythonRuntime{
 		lastBuiltHandler: map[string]string{},
-		lastRebuildTime:  map[string]time.Time{},
-		pendingChanges:   map[string][]string{},
-		restartSignaled:  map[string]bool{},
 	}
 
 	// Initialize cache and detection systems
@@ -190,12 +155,10 @@ func (r *PythonRuntime) initializeCacheSystem(cacheDir string) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	// Validate cache directory
 	if cacheDir == "" {
 		return fmt.Errorf("cache directory cannot be empty")
 	}
 
-	// Ensure cache directory exists and is writable
 	if err := os.MkdirAll(cacheDir, 0755); err != nil {
 		return fmt.Errorf("failed to create cache directory %s: %w", cacheDir, err)
 	}
@@ -205,61 +168,9 @@ func (r *PythonRuntime) initializeCacheSystem(cacheDir string) error {
 	if err := os.WriteFile(testFile, []byte("test"), 0644); err != nil {
 		return fmt.Errorf("cache directory %s is not writable: %w", cacheDir, err)
 	}
-	os.Remove(testFile) // Clean up test file
+	os.Remove(testFile)
 
-	// Store cache directory for sharing with incremental builder
 	r.cacheDir = cacheDir
-
-	// Use factory to create cache system with sensible defaults
-	factory := NewRuntimeFactory()
-	buildCache, changeDetector, projectResolver, err := factory.CreateCacheSystem(cacheDir)
-	if err != nil {
-		return fmt.Errorf("failed to create cache system: %w", err)
-	}
-
-	// Validate that all components were created successfully
-	if buildCache == nil {
-		return fmt.Errorf("build cache was not created")
-	}
-	if changeDetector == nil {
-		return fmt.Errorf("change detector was not created")
-	}
-	if projectResolver == nil {
-		return fmt.Errorf("project resolver was not created")
-	}
-
-	r.buildCache = buildCache
-	r.changeDetector = changeDetector
-	r.projectResolver = projectResolver
-
-	slog.Info("cache system initialized successfully",
-		"cacheDir", cacheDir,
-		"hasBuildCache", r.buildCache != nil,
-		"hasChangeDetector", r.changeDetector != nil,
-		"hasProjectResolver", r.projectResolver != nil)
-
-	return nil
-}
-
-// EnableCaching enables caching for an existing runtime
-func (r *PythonRuntime) EnableCaching(cacheDir string) error {
-	return r.initializeCacheSystem(cacheDir)
-}
-
-// DisableCaching disables caching and cleans up resources
-func (r *PythonRuntime) DisableCaching() error {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
-	if r.buildCache != nil {
-		if err := r.buildCache.Clear(); err != nil {
-			return fmt.Errorf("failed to clear build cache: %w", err)
-		}
-	}
-
-	r.buildCache = nil
-	r.changeDetector = nil
-	r.projectResolver = nil
 
 	return nil
 }
@@ -272,7 +183,6 @@ func (r *PythonRuntime) Build(ctx context.Context, input *runtime.BuildInput) (*
 		artifactsDir := filepath.Dir(input.Out())
 		depsDir := filepath.Join(artifactsDir, ".deps")
 		if _, err := os.Stat(depsDir); err == nil {
-			slog.Info("clearing deps cache for new SST run", "depsDir", depsDir)
 			if err := os.RemoveAll(depsDir); err != nil {
 				slog.Warn("failed to clear deps cache", "error", err)
 			}
@@ -336,35 +246,18 @@ func (r *PythonRuntime) Build(ctx context.Context, input *runtime.BuildInput) (*
 		return nil, fmt.Errorf("python runtime - handler not found: %v", err)
 	}
 
-	if input.Dev {
-		// Development mode: Simple build without complex dependency management
-		result, err := r.CreateBuildAsset(ctx, input)
-		if err != nil {
-			slog.Error("build failed",
-				"functionID", input.FunctionID,
-				"handler", input.Handler,
-				"error", err)
-			return nil, err
-		}
-
-		r.mutex.Lock()
-		r.lastBuiltHandler[input.FunctionID] = file
-		r.lastRebuildTime[input.FunctionID] = time.Now()
-		// Clear pending changes and restart signal after successful build
-		delete(r.pendingChanges, input.FunctionID)
-		delete(r.restartSignaled, input.FunctionID)
-		r.mutex.Unlock()
-
-		return result, nil
-	} else {
-		// Deployment mode: Use the original complex build system
-		result, err := r.CreateBuildAsset(ctx, input)
-		if err != nil {
-			return nil, err
-		}
-		return result, nil
+	result, err := r.CreateBuildAsset(ctx, input)
+	if err != nil {
+		return nil, err
 	}
 
+	if input.Dev {
+		r.mutex.Lock()
+		r.lastBuiltHandler[input.FunctionID] = file
+		r.mutex.Unlock()
+	}
+
+	return result, nil
 }
 
 func (r *PythonRuntime) Match(runtime string) bool {
@@ -391,44 +284,7 @@ func (r *PythonRuntime) ShouldRunEagerly() bool {
 	return false
 }
 
-type Source struct {
-	URL          string  `toml:"url,omitempty"`
-	Git          string  `toml:"git,omitempty"`
-	Subdirectory *string `toml:"subdirectory,omitempty"`
-	Branch       string  `toml:"branch,omitempty"`
-}
-
-type PyProject struct {
-	Project struct {
-		Name string `toml:"name"`
-	} `toml:"project"`
-	Tool struct {
-		Setuptools struct {
-			Packages struct {
-				Find struct {
-					Where []string `toml:"where"`
-				} `toml:"find"`
-			} `toml:"packages"`
-		} `toml:"setuptools"`
-		Uv struct {
-			Package   bool `toml:"package"`
-			Workspace struct {
-				Members []string `toml:"members"`
-			} `toml:"workspace"`
-			Sources map[string]interface{} `toml:"sources"`
-		} `toml:"uv"`
-	} `toml:"tool"`
-}
-
 func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runtime.Worker, error) {
-	runStart := time.Now()
-
-	// Clear any pending state from ShouldRebuild
-	r.mutex.Lock()
-	delete(r.pendingChanges, input.FunctionID)
-	delete(r.restartSignaled, input.FunctionID)
-	r.mutex.Unlock()
-
 	// Sync artifacts with source before starting the worker
 	if err := r.syncArtifactsIfNeeded(input); err != nil {
 		slog.Error("failed to sync artifacts",
@@ -539,11 +395,6 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 		return nil, fmt.Errorf("failed to start worker process: %v", err)
 	}
 
-	slog.Debug("worker started",
-		"functionID", input.FunctionID,
-		"handler", input.Build.Handler,
-		"elapsed", time.Since(runStart))
-
 	return &Worker{
 		stdout,
 		stderr,
@@ -583,10 +434,6 @@ func (r *PythonRuntime) syncArtifactsIfNeeded(input *runtime.RunInput) error {
 	// Only sync files for legacy workspace layouts that need flattening
 	// Modern layouts (monorepo, standard) run directly from source via PYTHONPATH
 	if r.hasWorkspaceLayoutPatterns(projectRoot) {
-		slog.Info("legacy workspace layout detected, syncing files",
-			"functionID", input.FunctionID,
-			"projectRoot", projectRoot)
-
 		if err := r.syncPythonFiles(input.FunctionID, projectRoot, artifactDir); err != nil {
 			return err
 		}
@@ -596,117 +443,14 @@ func (r *PythonRuntime) syncArtifactsIfNeeded(input *runtime.RunInput) error {
 		return r.flattenWorkspaceLayouts(artifactDir, input.FunctionID)
 	}
 
-	slog.Info("modern layout detected, skipping file sync (running from source)",
-		"functionID", input.FunctionID,
-		"projectRoot", projectRoot)
-
-	// For modern layouts, we don't sync files but we still need to clear pending changes
-	// since the worker will run directly from source
-	r.mutex.Lock()
-	if len(r.pendingChanges[input.FunctionID]) > 0 {
-		slog.Info("clearing pending changes for modern layout",
-			"functionID", input.FunctionID,
-			"pendingChanges", len(r.pendingChanges[input.FunctionID]))
-		delete(r.pendingChanges, input.FunctionID)
-		delete(r.restartSignaled, input.FunctionID)
-	}
-	r.mutex.Unlock()
-
 	return nil
 }
 
 // syncPythonFiles syncs Python files from source to artifacts (adds, updates, deletes)
 func (r *PythonRuntime) syncPythonFiles(functionID, srcDir, destDir string) error {
-	// Check if artifact directory is empty or nearly empty (first build)
-	// If so, do a full sync regardless of pending changes
-	entries, err := os.ReadDir(destDir)
-	if err != nil || len(entries) <= 1 { // <= 1 because lambdaric_python_bridge.py might be there
-		slog.Info("artifact directory empty or nearly empty, doing full sync",
-			"functionID", functionID,
-			"destDir", destDir)
-		// Clear any pending changes since we're doing a full sync anyway
-		r.mutex.Lock()
-		delete(r.pendingChanges, functionID)
-		delete(r.restartSignaled, functionID)
-		r.mutex.Unlock()
-		// Fall through to full sync below
-	} else {
-		// Check if we have pending changes to sync
-		r.mutex.Lock()
-		pendingFiles := r.pendingChanges[functionID]
-		hasPendingChanges := len(pendingFiles) > 0
-
-		// CRITICAL FIX: Clear pending changes immediately after reading them
-		// This prevents accumulation if multiple syncs happen
-		if hasPendingChanges {
-			// Make a copy of the pending files list
-			pendingFilesCopy := make([]string, len(pendingFiles))
-			copy(pendingFilesCopy, pendingFiles)
-
-			// Clear the pending changes map immediately
-			delete(r.pendingChanges, functionID)
-			delete(r.restartSignaled, functionID)
-
-			// Use the copy for syncing
-			pendingFiles = pendingFilesCopy
-
-			slog.Info("cleared pending changes before sync (preventing accumulation)",
-				"functionID", functionID,
-				"fileCount", len(pendingFiles))
-		}
-		r.mutex.Unlock()
-
-		// If we have specific pending changes, only sync those files
-		if hasPendingChanges {
-			slog.Info("syncing only changed Python files",
-				"functionID", functionID,
-				"count", len(pendingFiles))
-
-			for _, relPath := range pendingFiles {
-				sourcePath := filepath.Join(srcDir, relPath)
-
-				// For legacy projects with workspace layouts, we need to handle flattened paths
-				// If the source path contains package/src/package pattern, adjust the artifact path
-				artifactPath := r.adjustPathForFlattenedLayout(destDir, relPath)
-
-				// Check if source file exists
-				if _, err := os.Stat(sourcePath); err != nil {
-					slog.Warn("source file not found, skipping sync",
-						"file", relPath,
-						"sourcePath", sourcePath,
-						"error", err)
-					continue
-				}
-
-				// Ensure destination directory exists
-				if err := os.MkdirAll(filepath.Dir(artifactPath), 0755); err != nil {
-					return fmt.Errorf("failed to create directory for %s: %v", artifactPath, err)
-				}
-
-				// Copy the file
-				if err := copyFile(sourcePath, artifactPath); err != nil {
-					return fmt.Errorf("failed to copy %s: %v", relPath, err)
-				}
-				slog.Info("synced changed file",
-					"file", relPath,
-					"sourcePath", sourcePath,
-					"artifactPath", artifactPath)
-			}
-
-			slog.Info("completed sync of changed files",
-				"functionID", functionID,
-				"syncedCount", len(pendingFiles))
-
-			return nil
-		}
-	}
-
-	// No pending changes, do full sync (first time or after deploy)
-	slog.Info("performing full Python file sync", "functionID", functionID)
-
 	// First, collect all Python files in source
 	sourceFiles := make(map[string]os.FileInfo)
-	err = filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -768,7 +512,6 @@ func (r *PythonRuntime) syncPythonFiles(functionID, srcDir, destDir string) erro
 			if err := os.Remove(artifactPath); err != nil {
 				return fmt.Errorf("failed to delete %s: %v", artifactPath, err)
 			}
-			slog.Info("deleted stale artifact", "file", relPath)
 		}
 	}
 
@@ -795,7 +538,6 @@ func (r *PythonRuntime) syncPythonFiles(functionID, srcDir, destDir string) erro
 			if err := copyFile(sourcePath, artifactPath); err != nil {
 				return fmt.Errorf("failed to copy %s: %v", relPath, err)
 			}
-			slog.Info("synced artifact", "file", relPath)
 		}
 	}
 
@@ -826,10 +568,6 @@ func (r *PythonRuntime) adjustPathForFlattenedLayout(destDir, relPath string) st
 				flattenedParts := append(parts[:i], parts[i+2:]...)
 				flattenedPath := filepath.Join(flattenedParts...)
 
-				slog.Debug("adjusted path for flattened layout",
-					"original", relPath,
-					"flattened", flattenedPath)
-
 				return filepath.Join(destDir, flattenedPath)
 			}
 		}
@@ -858,12 +596,6 @@ func (r *PythonRuntime) adjustHandlerForFlattenedLayout(handlerPath string) stri
 
 	// Reconstruct handler path
 	adjustedHandler := adjustedFilePath + "." + functionName
-
-	if adjustedHandler != handlerPath {
-		slog.Info("adjusted handler path for flattened layout",
-			"original", handlerPath,
-			"adjusted", adjustedHandler)
-	}
 
 	return adjustedHandler
 }
@@ -971,10 +703,6 @@ func (r *PythonRuntime) shouldIgnoreFile(file string) bool {
 	for _, part := range pathParts {
 		for _, ignorePath := range ignorePaths {
 			if part == ignorePath || strings.HasPrefix(part, ignorePath) {
-				slog.Debug("ignoring file due to path pattern",
-					"file", file,
-					"pattern", ignorePath,
-					"matchedPart", part)
 				return true
 			}
 		}
@@ -983,9 +711,6 @@ func (r *PythonRuntime) shouldIgnoreFile(file string) bool {
 	// Check if file has an ignored extension
 	for _, ext := range ignoreExtensions {
 		if strings.HasSuffix(file, ext) {
-			slog.Debug("ignoring file due to extension",
-				"file", file,
-				"extension", ext)
 			return true
 		}
 	}
@@ -1004,65 +729,12 @@ func (r *PythonRuntime) shouldIgnoreFile(file string) bool {
 				}
 			}
 			if !allowed {
-				slog.Debug("ignoring file in hidden directory",
-					"file", file,
-					"hiddenPart", part)
 				return true
 			}
 		}
 	}
 
 	return false
-}
-
-// GetCacheStats returns statistics about the build cache
-func (r *PythonRuntime) GetCacheStats() *CacheStats {
-	r.mutex.RLock()
-	defer r.mutex.RUnlock()
-
-	if r.buildCache == nil {
-		return nil
-	}
-
-	stats := r.buildCache.GetStats()
-	return &stats
-}
-
-// ClearCache clears the build cache
-func (r *PythonRuntime) ClearCache() error {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
-	if r.buildCache == nil {
-		return fmt.Errorf("caching not enabled")
-	}
-
-	return r.buildCache.Clear()
-}
-
-// InvalidateCacheEntry removes a specific cache entry
-func (r *PythonRuntime) InvalidateCacheEntry(functionID string) error {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
-	if r.buildCache == nil {
-		return fmt.Errorf("caching not enabled")
-	}
-
-	return r.buildCache.Delete(functionID)
-}
-
-// ForceRebuild forces a rebuild for a specific function
-func (r *PythonRuntime) ForceRebuild(functionID string, reason string) {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
-	if r.buildCache != nil {
-		// Remove from cache to force rebuild
-		r.buildCache.Delete(functionID)
-	}
-
-	slog.Info("forced rebuild requested", "functionID", functionID, "reason", reason)
 }
 
 func (r *PythonRuntime) CreateBuildAsset(ctx context.Context, input *runtime.BuildInput) (*runtime.BuildOutput, error) {
@@ -1105,31 +777,26 @@ func (r *PythonRuntime) createBuildAssetIncremental(ctx context.Context, input *
 
 	// CRITICAL OPTIMIZATION: Reuse the IncrementalBuilder across all function builds
 	// Creating a new IncrementalBuilder for each of 50+ functions was causing massive
-	// CPU/memory overhead because each one creates BuildCache, ChangeDetector,
-	// DependencyAnalyzer, UvCommandRunner, DependencyCache, etc.
+	// CPU/memory overhead. Reuse a single builder per (cacheDir, artifactDir) pair.
 
 	r.mutex.Lock()
 	if r.incrementalBuilder == nil {
-		// Create incremental builder with sensible defaults - only once
-		factory := NewRuntimeFactory()
-
-		// Progress callback - only report errors to dev screen
-		progressCallback := func(event ProgressEvent) {
-			// Only log error/failure events
-			if strings.Contains(strings.ToLower(event.Stage), "error") ||
-				strings.Contains(strings.ToLower(event.Stage), "fail") {
-				slog.Error("python build progress",
-					"stage", event.Stage,
-					"message", event.Message)
+		cacheDir := r.cacheDir
+		if cacheDir == "" {
+			if input.Dev {
+				cacheDir = filepath.Join(workingDir, ".sst/cache/dev")
+			} else {
+				cacheDir = filepath.Join(workingDir, ".sst/cache/deploy")
 			}
 		}
 
 		var err error
-		if r.cacheDir != "" {
-			r.incrementalBuilder, err = factory.CreateIncrementalBuilderWithCacheDir(workingDir, input, progressCallback, r.cacheDir)
-		} else {
-			r.incrementalBuilder, err = factory.CreateIncrementalBuilder(workingDir, input, progressCallback)
-		}
+		r.incrementalBuilder, err = NewIncrementalBuilder(IncrementalBuilderConfig{
+			CacheDir:    cacheDir,
+			ArtifactDir: input.Out(),
+			FunctionID:  input.FunctionID,
+			ProjectRoot: workingDir,
+		})
 		if err != nil {
 			r.mutex.Unlock()
 			return nil, fmt.Errorf("failed to create incremental builder: %w", err)
@@ -1143,54 +810,33 @@ func (r *PythonRuntime) createBuildAssetIncremental(ctx context.Context, input *
 
 	elapsed := time.Since(startTime)
 	if err != nil {
-		slog.Error("❌ Build failed",
-			"functionID", input.FunctionID,
-			"elapsed", elapsed,
-			"error", err)
+		slog.Error("build failed", "functionID", input.FunctionID, "elapsed", elapsed, "error", err)
 		return nil, err
 	}
 
-	slog.Info("✅ Built", "function", input.FunctionID, "elapsed", elapsed)
+	slog.Info("built", "function", input.FunctionID, "elapsed", elapsed)
 
 	return result, nil
 }
 
 func (r *PythonRuntime) getFile(input *runtime.BuildInput) (string, error) {
-	startTime := time.Now()
-	slog.Info("getFile started", "handler", input.Handler)
-
 	rootDir := path.ResolveRootDir(input.CfgPath)
 
 	// Handler format is: path/to/file.function_name
-	// We need to split on the LAST dot to separate file path from function name
 	lastDotIndex := strings.LastIndex(input.Handler, ".")
 	if lastDotIndex == -1 {
 		return "", fmt.Errorf("invalid handler format '%s': expected 'path/to/file.function_name'", input.Handler)
 	}
 
-	// Everything before the last dot is the file path (without .py extension)
 	filePath := input.Handler[:lastDotIndex]
-	functionName := input.Handler[lastDotIndex+1:]
-
-	slog.Info("getFile: parsed handler",
-		"elapsed", time.Since(startTime),
-		"filePath", filePath,
-		"functionName", functionName,
-		"rootDir", rootDir)
 
 	// Look for .py file
 	pythonFile := filepath.Join(rootDir, filePath+".py")
-	slog.Info("getFile: checking for Python file", "elapsed", time.Since(startTime), "pythonFile", pythonFile)
-
 	if _, err := os.Stat(pythonFile); err == nil {
-		slog.Info("getFile: found Python file", "elapsed", time.Since(startTime), "pythonFile", pythonFile)
 		return pythonFile, nil
 	}
 
-	// No Python file found for the handler
-	slog.Error("getFile: Python file not found", "elapsed", time.Since(startTime), "expectedFile", pythonFile)
-
-	// List what files DO exist in the directory to help debug
+	// No Python file found — list what exists to help debug
 	dirPath := filepath.Join(rootDir, filepath.Dir(filePath))
 	if entries, err := os.ReadDir(dirPath); err == nil {
 		var files []string
@@ -1199,7 +845,7 @@ func (r *PythonRuntime) getFile(input *runtime.BuildInput) (string, error) {
 				files = append(files, entry.Name())
 			}
 		}
-		slog.Error("getFile: Python files in directory", "dir", dirPath, "files", files)
+		slog.Error("handler file not found", "expected", pythonFile, "pyFilesInDir", files)
 	}
 
 	return "", fmt.Errorf("could not find Python file '%s.py' for handler '%s' (looked in: %s)",
@@ -1208,25 +854,115 @@ func (r *PythonRuntime) getFile(input *runtime.BuildInput) (string, error) {
 		pythonFile)
 }
 
+// copyFile copies a single file from src to dst, creating parent directories as needed.
 func copyFile(src, dst string) error {
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return fmt.Errorf("failed to create directory for %s: %w", dst, err)
+	}
+
 	srcFile, err := os.Open(src)
 	if err != nil {
-		return fmt.Errorf("failed to open source file: %v", err)
+		return fmt.Errorf("failed to open source file: %w", err)
 	}
 	defer srcFile.Close()
 
 	dstFile, err := os.Create(dst)
 	if err != nil {
-		return fmt.Errorf("failed to create destination file: %v", err)
+		return fmt.Errorf("failed to create destination file: %w", err)
 	}
 	defer dstFile.Close()
 
-	_, err = io.Copy(dstFile, srcFile)
-	if err != nil {
-		return fmt.Errorf("failed to copy file contents: %v", err)
+	if _, err := io.Copy(dstFile, srcFile); err != nil {
+		return fmt.Errorf("failed to copy file contents: %w", err)
 	}
 
 	return nil
+}
+
+// copyDir recursively copies a directory. If a ContentFilter is provided, it is used
+// to exclude files/directories. The optional filterPrefix is prepended to relative paths
+// when checking the filter (e.g. pass "backend" so "tests/" matches "backend/tests/**").
+func copyDir(src, dst string, filter *ContentFilter, filterPrefix string) error {
+	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		relPath, _ := filepath.Rel(src, path)
+
+		// Always skip __pycache__ and .pyc files
+		if info.IsDir() && info.Name() == "__pycache__" {
+			return filepath.SkipDir
+		}
+		if !info.IsDir() && strings.HasSuffix(info.Name(), ".pyc") {
+			return nil
+		}
+
+		// Apply content filter if provided
+		if filter != nil {
+			filterPath := relPath
+			if filterPrefix != "" && relPath != "." {
+				filterPath = filepath.Join(filterPrefix, relPath)
+			}
+			if filter.ShouldExclude(filterPath) {
+				if info.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+		}
+
+		dstPath := filepath.Join(dst, relPath)
+
+		if info.IsDir() {
+			return os.MkdirAll(dstPath, info.Mode())
+		}
+
+		return copyFile(path, dstPath)
+	})
+}
+
+// copyDirUnfiltered copies a directory recursively without content filtering.
+// It only skips __pycache__, .venv, node_modules, and .git directories.
+// Used for container builds where pyproject.toml and metadata must be preserved.
+func copyDirUnfiltered(src, dst string) error {
+	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if info.IsDir() {
+			name := info.Name()
+			if name == "__pycache__" || name == ".venv" || name == "node_modules" || name == ".git" {
+				return filepath.SkipDir
+			}
+		}
+
+		relPath, _ := filepath.Rel(src, path)
+		dstPath := filepath.Join(dst, relPath)
+
+		if info.IsDir() {
+			return os.MkdirAll(dstPath, info.Mode())
+		}
+
+		return copyFile(path, dstPath)
+	})
+}
+
+// hashFileContents computes a SHA256 hash of a file's contents.
+func hashFileContents(filePath string) (string, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to open file for hashing: %w", err)
+	}
+	defer file.Close()
+
+	hasher := sha256.New()
+	if _, err := io.Copy(hasher, file); err != nil {
+		return "", fmt.Errorf("failed to hash file: %w", err)
+	}
+
+	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
 // createSimpleDevBuild creates a simple build for development mode by doing nothing
@@ -1308,11 +1044,6 @@ func (r *PythonRuntime) flattenWorkspaceLayouts(artifactDir, functionID string) 
 
 			// Check if this follows the package/src/package pattern
 			if _, err := os.Stat(innerPackageDir); err == nil {
-				slog.Debug("flattening workspace layout",
-					"package", packageName,
-					"dir", dir,
-					"functionID", functionID)
-
 				// Copy contents of package/src/package to package/
 				innerEntries, err := os.ReadDir(innerPackageDir)
 				if err != nil {
@@ -1329,7 +1060,7 @@ func (r *PythonRuntime) flattenWorkspaceLayouts(artifactDir, functionID string) 
 					destPath := filepath.Join(packageDir, innerEntry.Name())
 
 					if innerEntry.IsDir() {
-						err = r.copyDirectoryWithFilter(srcPath, destPath, contentFilter)
+						err = copyDir(srcPath, destPath, contentFilter, "")
 					} else {
 						err = copyFile(srcPath, destPath)
 					}
@@ -1371,53 +1102,5 @@ func (r *PythonRuntime) flattenWorkspaceLayouts(artifactDir, functionID string) 
 		}
 	}
 
-	if len(flattened) > 0 {
-		slog.Info("workspace layout flattening completed",
-			"functionID", functionID,
-			"flattened", flattened,
-			"count", len(flattened))
-	}
-
 	return nil
-}
-
-// copyDirectoryWithFilter recursively copies a directory while applying ContentFilter
-func (r *PythonRuntime) copyDirectoryWithFilter(src, dst string, filter *ContentFilter) error {
-	// Safety check for nil filter
-	if filter == nil {
-		return fmt.Errorf("ContentFilter cannot be nil")
-	}
-
-	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		// Calculate destination path
-		relPath, err := filepath.Rel(src, path)
-		if err != nil {
-			return err
-		}
-
-		// Apply ContentFilter to exclude unwanted files/directories
-		if filter.ShouldExclude(relPath) {
-			if info.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil // Skip this file
-		}
-
-		destPath := filepath.Join(dst, relPath)
-
-		if info.IsDir() {
-			return os.MkdirAll(destPath, info.Mode())
-		}
-
-		// Copy file
-		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
-			return err
-		}
-
-		return copyFile(path, destPath)
-	})
 }

@@ -112,9 +112,9 @@ boto3>=1.34.0`
 			t.Errorf("Valid package requests was filtered out")
 		}
 
-		// boto3 should be filtered (Lambda runtime package)
-		if strings.Contains(filteredStr, "boto3") {
-			t.Errorf("boto3 should be filtered out (Lambda provides it)")
+		// boto3 is now kept in requirements (removed later by cleanupInstalledDependencies)
+		if !strings.Contains(filteredStr, "boto3") {
+			t.Errorf("boto3 should be kept in requirements (cleanup handles removal)")
 		}
 	})
 }

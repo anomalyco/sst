@@ -4,18 +4,18 @@
 from typing import Any
 
 class Resource:
-    class ApiFunction:
+    class ApiService:
         name: str
         type: str
         url: str
     class App:
         name: str
         stage: str
-    class AuthFunction:
+    class AuthService:
         name: str
         type: str
         url: str
-    class WorkerFunction:
+    class WorkerService:
         name: str
         type: str
 

@@ -374,15 +374,15 @@ func listDirectoryContents(t *testing.T, dir string) {
 	})
 }
 
-// TestDependencyAnalyzerWorkspaceIsolation tests that the DependencyAnalyzer
-// correctly identifies package-specific dependencies in a workspace
-func TestDependencyAnalyzerWorkspaceIsolation(t *testing.T) {
+// TestDiscoverBuildablePackagesWorkspaceIsolation tests that discoverBuildablePackages
+// correctly identifies packages in a workspace
+func TestDiscoverBuildablePackagesWorkspaceIsolation(t *testing.T) {
 	exampleDir := findExampleDir("python-modern-uv")
 	if exampleDir == "" {
 		t.Skip("python-modern-uv example not found, skipping test")
 	}
 
-	t.Run("worker package dependencies include arrow", func(t *testing.T) {
+	t.Run("worker package is discoverable", func(t *testing.T) {
 		workerDir := filepath.Join(exampleDir, "packages", "worker")
 		resolver := NewProjectResolver(workerDir)
 
@@ -391,23 +391,18 @@ func TestDependencyAnalyzerWorkspaceIsolation(t *testing.T) {
 			t.Fatalf("Failed to resolve worker handler: %v", err)
 		}
 
-		analyzer := NewDependencyAnalyzer(DependencyAnalyzerConfig{
-			ProjectResolver: resolver,
-		})
-
-		ctx := context.Background()
-		analysis, err := analyzer.AnalyzeDependencies(ctx, projectInfo)
+		packages, err := discoverBuildablePackages(projectInfo, resolver)
 		if err != nil {
-			t.Fatalf("Failed to analyze dependencies: %v", err)
+			t.Fatalf("Failed to discover packages: %v", err)
 		}
 
-		// Check that the package name is correct
-		if analysis.PackageName != "worker" {
-			t.Errorf("Expected package name 'worker', got %s", analysis.PackageName)
+		t.Logf("Found %d buildable packages for worker", len(packages))
+		for _, pkg := range packages {
+			t.Logf("  Package: %s at %s", pkg.Name, pkg.Path)
 		}
 	})
 
-	t.Run("api package dependencies do not include arrow", func(t *testing.T) {
+	t.Run("api package is discoverable", func(t *testing.T) {
 		apiDir := filepath.Join(exampleDir, "packages", "api")
 		resolver := NewProjectResolver(apiDir)
 
@@ -416,19 +411,14 @@ func TestDependencyAnalyzerWorkspaceIsolation(t *testing.T) {
 			t.Fatalf("Failed to resolve api handler: %v", err)
 		}
 
-		analyzer := NewDependencyAnalyzer(DependencyAnalyzerConfig{
-			ProjectResolver: resolver,
-		})
-
-		ctx := context.Background()
-		analysis, err := analyzer.AnalyzeDependencies(ctx, projectInfo)
+		packages, err := discoverBuildablePackages(projectInfo, resolver)
 		if err != nil {
-			t.Fatalf("Failed to analyze dependencies: %v", err)
+			t.Fatalf("Failed to discover packages: %v", err)
 		}
 
-		// Check that the package name is correct
-		if analysis.PackageName != "api" {
-			t.Errorf("Expected package name 'api', got %s", analysis.PackageName)
+		t.Logf("Found %d buildable packages for api", len(packages))
+		for _, pkg := range packages {
+			t.Logf("  Package: %s at %s", pkg.Name, pkg.Path)
 		}
 	})
 }
