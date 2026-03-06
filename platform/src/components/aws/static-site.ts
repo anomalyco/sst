@@ -1008,7 +1008,7 @@ export class StaticSite extends Component implements Link.Linkable {
         bucketDomain,
         errorPage,
         route,
-        output(args.errorPage),
+        args.errorPage,
       ]).apply(async ([
         outputPath,
         assets,
