@@ -8,6 +8,6 @@
     ]
   },
   "devDependencies": {
-    "sst": "^3"
+    "sst": "^4"
   }
 }

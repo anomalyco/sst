@@ -49,6 +49,8 @@ for (const artifact of artifacts) {
       {
         name,
         version: nextPkg.version,
+        license: nextPkg.license,
+        repository: nextPkg.repository,
         os: [os],
         cpu: [cpu],
       },

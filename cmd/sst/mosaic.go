@@ -20,6 +20,7 @@ import (
 	"github.com/sst/sst/v3/cmd/sst/mosaic/monoplexer"
 	"github.com/sst/sst/v3/cmd/sst/mosaic/multiplexer"
 	"github.com/sst/sst/v3/cmd/sst/mosaic/socket"
+	"github.com/sst/sst/v3/cmd/sst/mosaic/ui"
 	"github.com/sst/sst/v3/cmd/sst/mosaic/watcher"
 	"github.com/sst/sst/v3/internal/util"
 	"github.com/sst/sst/v3/pkg/bus"
@@ -39,10 +40,7 @@ func CmdMosaic(c *cli.Cli) error {
 	child := os.Getenv("SST_CHILD")
 	// spawning child process
 	if len(c.Arguments()) > 0 || child != "" {
-		var args []string
-		for _, arg := range c.Arguments() {
-			args = append(args, strings.Fields(arg)...)
-		}
+		args := c.Arguments()
 		slog.Info("dev mode with target", "args", c.Arguments())
 		cfgPath, err := c.Discover()
 		stage, err := c.Stage(cfgPath)
@@ -89,7 +87,7 @@ func CmdMosaic(c *cli.Cli) error {
 				go func() {
 					evts <- true
 				}()
-				fmt.Println("[timeout]")
+				fmt.Println("\n"+ui.TEXT_DIM.Render("[timeout]"))
 				timer.Reset(timeout)
 				continue
 			case _, ok := <-evts:
@@ -126,6 +124,7 @@ func CmdMosaic(c *cli.Cli) error {
 					for k, v := range nextEnv.Env {
 						cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 					}
+					process.DetachSession(cmd)
 					cmd.Stdin = os.Stdin
 					cmd.Stdout = os.Stdout
 					cmd.Stderr = os.Stderr
@@ -156,6 +155,12 @@ func CmdMosaic(c *cli.Cli) error {
 	p, err := c.InitProject()
 	if err != nil {
 		return err
+	}
+	policyPath := c.String("policy")
+	if policyPath != "" {
+		if _, err := p.ResolvePolicyPackPath(policyPath); err != nil {
+			return util.NewReadableError(nil, err.Error())
+		}
 	}
 	os.Setenv("SST_STAGE", p.App().Stage)
 	slog.Info("mosaic", "project", p.PathRoot())
@@ -238,7 +243,7 @@ func CmdMosaic(c *cli.Cli) error {
 
 	wg.Go(func() error {
 		defer c.Cancel()
-		return deployer.Start(c.Context, p, server)
+		return deployer.Start(c.Context, p, server, policyPath)
 	})
 
 	if mode == "multi" {
@@ -268,9 +273,6 @@ func CmdMosaic(c *cli.Cli) error {
 				case unknown := <-evts:
 					switch evt := unknown.(type) {
 					case *project.CompleteEvent:
-						if evt.Old {
-							continue
-						}
 						for _, d := range evt.Devs {
 							if d.Command == "" {
 								continue
@@ -333,9 +335,6 @@ func CmdMosaic(c *cli.Cli) error {
 				case unknown := <-evts:
 					switch evt := unknown.(type) {
 					case *project.CompleteEvent:
-						if evt.Old {
-							continue
-						}
 						for _, d := range evt.Devs {
 							if d.Command == "" {
 								continue
@@ -351,6 +350,7 @@ func CmdMosaic(c *cli.Cli) error {
 								append([]string{currentExecutable, "dev", "--"}, words...),
 								dir,
 								title,
+								"SST_CHILD="+d.Name,
 							)
 						}
 						for range evt.Tunnels {

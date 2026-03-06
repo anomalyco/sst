@@ -119,12 +119,26 @@ var CmdDeploy = &cli.Command{
 				Long:  "Deploy resources like `sst dev` would.",
 			},
 		},
+		{
+			Name: "policy",
+			Type: "string",
+			Description: cli.Description{
+				Short: "Path to policy pack",
+				Long:  "Run policy pack validation against the preview changes.",
+			},
+		},
 	},
 	Examples: []cli.Example{
 		{
 			Content: "sst deploy --stage production",
 			Description: cli.Description{
 				Short: "Deploy to production",
+			},
+		},
+		{
+			Content: "sst deploy --stage production --policy ./policies/production",
+			Description: cli.Description{
+				Short: "Deploy to production with policy validation",
 			},
 		},
 	},
@@ -176,6 +190,7 @@ var CmdDeploy = &cli.Command{
 			ServerPort: s.Port,
 			Verbose:    c.Bool("verbose"),
 			Continue:   c.Bool("continue"),
+			PolicyPath: c.String("policy"),
 		})
 		if err != nil {
 			return err

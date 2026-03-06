@@ -20,7 +20,7 @@ import { Vpc as VpcV1 } from "./vpc-v1";
 import { Link } from "../link";
 import { VisibleError } from "../error";
 import { PrivateKey } from "@pulumi/tls";
-import * as pulumi from "@pulumi/pulumi";
+import { rootStackResource } from "@pulumi/pulumi";
 
 export type { VpcArgs as VpcV1Args } from "./vpc-v1";
 
@@ -338,8 +338,8 @@ interface VpcRef {
  *
  * ### Cost
  *
- * By default, this component is **free**. Following is the cost to enable the `nat` or `bastion`
- * options.
+ * By default, this component costs **$0.50 per month** for the CloudMap hosted zone used for
+ * service discovery. Following is the cost to enable the `nat` or `bastion` options.
  *
  * #### Managed NAT
  *
@@ -465,7 +465,7 @@ export class Vpc extends Component implements Link.Linkable {
         parent: self,
       });
 
-      const vpcId = vpc.tags.apply((tags) => {
+      const vpcId = vpc.tagsAll.apply((tags) => {
         registerVersion(
           tags?.["sst:component-version"]
             ? parseInt(tags["sst:component-version"])
@@ -982,7 +982,7 @@ export class Vpc extends Component implements Link.Linkable {
                 args.transform?.elasticIp,
                 `${name}ElasticIp${i + 1}`,
                 {
-                  vpc: true,
+                  domain: "vpc",
                 },
                 { parent: self },
               ),
@@ -1137,7 +1137,7 @@ export class Vpc extends Component implements Link.Linkable {
               },
               {
                 parent: self,
-                aliases: [{ parent: pulumi.rootStackResource }],
+                aliases: [{ parent: rootStackResource }],
               },
             );
 

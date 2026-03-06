@@ -10,6 +10,7 @@ import { VisibleError } from "../error";
 import { ApiGatewayV1AuthorizerArgs } from "./apigatewayv1";
 import { apigateway, lambda } from "@pulumi/aws";
 import { FunctionBuilder, functionBuilder } from "./helpers/function-builder";
+import { splitQualifiedFunctionArn } from "./helpers/arn";
 
 export interface AuthorizerArgs extends ApiGatewayV1AuthorizerArgs {
   /**
@@ -113,7 +114,8 @@ export class ApiGatewayV1Authorizer extends Component {
         `${name}Permission`,
         {
           action: "lambda:InvokeFunction",
-          function: fn.arn,
+          function: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).unqualifiedArn),
+          qualifier: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).qualifier!),
           principal: "apigateway.amazonaws.com",
           sourceArn: interpolate`${api.executionArn}/authorizers/${authorizer.id}`,
         },

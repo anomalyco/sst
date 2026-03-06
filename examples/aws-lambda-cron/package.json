@@ -1,0 +1,7 @@
+{
+  "name": "aws-cron-lambda",
+  "private": true,
+  "dependencies": {
+    "sst": "^4"
+  }
+}

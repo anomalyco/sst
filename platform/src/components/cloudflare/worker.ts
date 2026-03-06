@@ -457,6 +457,7 @@ export class Worker extends Component implements Link.Linkable {
             b
               ? {
                   type: {
+                    aiBindings: "ai",
                     plainTextBindings: "plain_text",
                     secretTextBindings: "secret_text",
                     queueBindings: "queue",

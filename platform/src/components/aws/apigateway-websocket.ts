@@ -819,7 +819,7 @@ export class ApiGatewayWebSocket extends Component implements Link.Linkable {
    * const authorizer = api.addAuthorizer({
    *   name: "myCognitoAuthorizer",
    *   jwt: {
-   *     issuer: $interpolate`https://cognito-idp.${aws.getRegionOutput().name}.amazonaws.com/${pool.id}`,
+   *     issuer: $interpolate`https://cognito-idp.${aws.getRegionOutput().region}.amazonaws.com/${pool.id}`,
    *     audiences: [poolClient.id]
    *   }
    * });

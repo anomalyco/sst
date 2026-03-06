@@ -10,6 +10,7 @@ import { Function, FunctionArgs } from "./function";
 import { SnsTopicSubscriberArgs } from "./sns-topic";
 import { lambda, sns } from "@pulumi/aws";
 import { FunctionBuilder, functionBuilder } from "./helpers/function-builder";
+import { splitQualifiedFunctionArn } from "./helpers/arn";
 
 export interface Args extends SnsTopicSubscriberArgs {
   /**
@@ -72,7 +73,8 @@ export class SnsTopicLambdaSubscriber extends Component {
         `${name}Permission`,
         {
           action: "lambda:InvokeFunction",
-          function: fn.arn,
+          function: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).unqualifiedArn),
+          qualifier: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).qualifier!),
           principal: "sns.amazonaws.com",
           sourceArn: topic.arn,
         },

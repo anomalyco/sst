@@ -361,7 +361,7 @@ export class Redis extends Component implements Link.Linkable {
         { parent: self },
       );
 
-      const input = cluster.tags.apply((tags) => {
+      const input = cluster.tagsAll.apply((tags) => {
         registerVersion(
           tags?.["sst:component-version"]
             ? parseInt(tags["sst:component-version"])
@@ -569,6 +569,7 @@ Listening on "${dev.host}:${dev.port}"...`,
                 atRestEncryptionEnabled: true,
                 transitEncryptionEnabled: true,
                 transitEncryptionMode: "required",
+                authTokenUpdateStrategy: "ROTATE",
                 authToken,
                 subnetGroupName: subnetGroup.name,
                 parameterGroupName: parameterGroup.name,

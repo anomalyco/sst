@@ -11,15 +11,14 @@ import {
   interpolate,
   ComponentResourceOptions,
   Resource,
+  asset as pulumiAsset,
 } from "@pulumi/pulumi";
-import * as pulumi from "@pulumi/pulumi";
-import * as aws from "@pulumi/aws";
 import { Cdn, CdnArgs } from "./cdn.js";
 import { Function, FunctionArgs, FunctionArn } from "./function.js";
 import { parseLambdaEdgeArn } from "./helpers/arn.js";
 import { Bucket, BucketArgs } from "./bucket.js";
 import { BucketFile, BucketFiles } from "./providers/bucket-files.js";
-import { logicalName } from "../naming.js";
+import { logicalName, physicalName } from "../naming.js";
 import { Input } from "../input.js";
 import {
   Component,
@@ -40,6 +39,7 @@ import {
   CF_ROUTER_INJECTION,
   CF_BLOCK_CLOUDFRONT_URL_INJECTION,
   KV_SITE_METADATA,
+  ProtectionConfig,
   RouterRouteArgsDeprecated,
   normalizeRouteArgs,
   RouterRouteArgs,
@@ -48,7 +48,6 @@ import { DistributionInvalidation } from "./providers/distribution-invalidation.
 import { toSeconds, DurationSeconds } from "../duration.js";
 import { Size, toMBs } from "../size.js";
 import { KvRoutesUpdate } from "./providers/kv-routes-update.js";
-import { CONSOLE_URL, getQuota } from "./helpers/quota.js";
 import { toPosix } from "../path.js";
 
 const supportedRegions = {
@@ -326,26 +325,22 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
     /**
      * The runtime environment for the server function.
      *
-     * @default `"nodejs20.x"`
+     * @default `"nodejs24.x"`
      * @example
      * ```js
      * {
      *   server: {
-     *     runtime: "nodejs22.x"
+     *     runtime: "nodejs24.x"
      *   }
      * }
      * ```
      */
-    runtime?: Input<"nodejs18.x" | "nodejs20.x" | "nodejs22.x">;
+    runtime?: Input<"nodejs18.x" | "nodejs20.x" | "nodejs22.x" | "nodejs24.x">;
     /**
      * The maximum amount of time the server function can run.
      *
      * While Lambda supports timeouts up to 900 seconds, your requests are served
      * through AWS CloudFront. And it has a default limit of 60 seconds.
-     *
-     * If you set a timeout that's longer than 60 seconds, this component will
-     * check if your account can allow for that timeout. If not, it'll throw an
-     * error.
      *
      * :::tip
      * If you need a timeout longer than 60 seconds, you'll need to request a
@@ -771,7 +766,7 @@ export abstract class SsrSite extends Component implements Link.Linkable {
     const regions = normalizeRegions();
     const route = normalizeRoute();
     const edge = normalizeEdge();
-    const serverTimeout = normalizeServerTimeout();
+    const serverTimeout = output(args.server?.timeout);
     const buildCommand = this.normalizeBuildCommand(args);
     const sitePath = regions.apply(() => normalizeSitePath());
     const dev = normalizeDev();
@@ -849,7 +844,7 @@ export abstract class SsrSite extends Component implements Link.Linkable {
             headersConfig: {
               headerBehavior: "whitelist",
               headers: {
-                items: ["x-open-next-cache-key"],
+                items: ["x-open-next-cache-key", "x-forwarded-host"],
               },
             },
             queryStringsConfig: {
@@ -990,11 +985,7 @@ async function handler(event) {
                     return [];
                   }
 
-                  // Use provided ARN if available
-                  if (
-                    "edgeFunction" in protectionConfig &&
-                    protectionConfig.edgeFunction?.arn
-                  ) {
+                  if (protectionConfig.edgeFunction?.arn) {
                     return [
                       {
                         eventType: "origin-request",
@@ -1004,7 +995,6 @@ async function handler(event) {
                     ];
                   }
 
-                  // Use auto-created function if available
                   if (autoEdgeFunction) {
                     return [
                       {
@@ -1029,16 +1019,18 @@ async function handler(event) {
     createInvalidation();
 
     // Create Lambda permissions based on protection mode
-    all([distribution, servers, imageOptimizer, protection]).apply(
-      ([dist, servers, imgOptimizer, protection]) => {
-        if (!dist) return;
+    all([distribution, route, servers, imageOptimizer, protection]).apply(
+      ([dist, routeVal, servers, imgOptimizer, protection]) => {
+        const distributionArn = dist
+          ? dist.nodes.distribution.arn
+          : routeVal?.routerDistributionArn;
+        if (!distributionArn) return;
 
         // Server functions
         servers.forEach(({ region, server }) => {
           const provider = useProvider(region);
 
           if (protection.mode === "none") {
-            // Create explicit public access permission for none mode
             new lambda.Permission(
               `${name}PublicFunctionUrlAccess${logicalName(region)}`,
               {
@@ -1053,14 +1045,13 @@ async function handler(event) {
             protection.mode === "oac" ||
             protection.mode === "oac-with-edge-signing"
           ) {
-            // Create CloudFront-specific permission for OAC modes
             new lambda.Permission(
               `${name}CloudFrontFunctionUrlAccess${logicalName(region)}`,
               {
                 action: "lambda:InvokeFunctionUrl",
                 function: server.nodes.function.name,
                 principal: "cloudfront.amazonaws.com",
-                sourceArn: dist.nodes.distribution.arn,
+                sourceArn: distributionArn,
               },
               { provider, parent: self },
             );
@@ -1070,7 +1061,7 @@ async function handler(event) {
                 action: "lambda:InvokeFunction",
                 function: server.nodes.function.name,
                 principal: "cloudfront.amazonaws.com",
-                sourceArn: dist.nodes.distribution.arn,
+                sourceArn: distributionArn,
               },
               { provider, parent: self },
             );
@@ -1100,7 +1091,7 @@ async function handler(event) {
                 action: "lambda:InvokeFunctionUrl",
                 function: imgOptimizer.nodes.function.name,
                 principal: "cloudfront.amazonaws.com",
-                sourceArn: dist.nodes.distribution.arn,
+                sourceArn: distributionArn,
               },
               { parent: self },
             );
@@ -1110,7 +1101,7 @@ async function handler(event) {
                 action: "lambda:InvokeFunction",
                 function: imgOptimizer.nodes.function.name,
                 principal: "cloudfront.amazonaws.com",
-                sourceArn: dist.nodes.distribution.arn,
+                sourceArn: distributionArn,
               },
               { parent: self },
             );
@@ -1180,7 +1171,7 @@ async function handler(event) {
 
     function normalizeRegions() {
       return output(
-        args.regions ?? [getRegionOutput(undefined, { parent: self }).name],
+        args.regions ?? [getRegionOutput(undefined, { parent: self }).region],
       ).apply((regions) => {
         if (regions.length === 0)
           throw new VisibleError(
@@ -1226,6 +1217,11 @@ async function handler(event) {
           throw new VisibleError(
             `Cannot provide both "edge" and "route". Use the "edge" prop on the "Router" component when serving your site through a Router.`,
           );
+
+        if (args.protection)
+          throw new VisibleError(
+            `Cannot set "protection" when routing through a Router. Set "protection" on the Router component instead.`,
+          );
       }
 
       return route;
@@ -1245,37 +1241,20 @@ async function handler(event) {
       );
     }
 
-    function normalizeServerTimeout() {
-      return output(args.server?.timeout).apply((v) => {
-        if (!v) return v;
+    function normalizeProtection(): Output<ProtectionConfig> {
+      if (route) {
+        return route.apply((r) => r.routerProtection);
+      }
 
-        const seconds = toSeconds(v);
-        if (seconds > 60) {
-          getQuota("cloudfront-response-timeout").apply((quota) => {
-            if (seconds > quota)
-              throw new VisibleError(
-                `Server timeout for "${name}" is longer than the allowed CloudFront response timeout of ${quota} seconds. You can contact AWS Support to increase the timeout - ${CONSOLE_URL}`,
-              );
-          });
-        }
-        return v;
-      });
-    }
-
-    function normalizeProtection() {
       return output(args.protection).apply((protection) => {
-        // Default to "none" if not specified
         if (!protection) return { mode: "none" as const };
 
-        // Handle string values
         if (typeof protection === "string") {
           return { mode: protection };
         }
 
-        // Handle object form - validate ARN if provided
         if (
           protection.mode === "oac-with-edge-signing" &&
-          "edgeFunction" in protection &&
           protection.edgeFunction?.arn
         ) {
           const arn = protection.edgeFunction.arn;
@@ -1289,29 +1268,26 @@ async function handler(event) {
     }
 
     function createLambdaEdgeFunction() {
+      if (route) return output(undefined);
+
       return protection.apply((protectionConfig) => {
-        // Only create function if mode is oac-with-edge-signing and no ARN is provided
         if (
           protectionConfig.mode !== "oac-with-edge-signing" ||
-          ("edgeFunction" in protectionConfig &&
-            protectionConfig.edgeFunction?.arn)
+          protectionConfig.edgeFunction?.arn
         ) {
           return undefined;
         }
 
-        const edgeConfig =
-          "edgeFunction" in protectionConfig
-            ? protectionConfig.edgeFunction
-            : {};
+        const edgeConfig = protectionConfig.edgeFunction;
         const memory = edgeConfig?.memory ? toMBs(edgeConfig.memory) : 128;
         const timeout = edgeConfig?.timeout ? toSeconds(edgeConfig.timeout) : 5;
 
-        // Create IAM role for Lambda@Edge using SST transform pattern
-        const edgeRole = new aws.iam.Role(
+        const edgeRole = new iam.Role(
           ...transform(
             undefined,
             `${name}EdgeFunctionRole`,
             {
+              name: physicalName(64, `${name}EdgeRole`),
               assumeRolePolicy: JSON.stringify({
                 Version: "2012-10-17",
                 Statement: [
@@ -1331,31 +1307,31 @@ async function handler(event) {
                 "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
               ],
             },
-            { parent: self },
+            { parent: self, ignoreChanges: ["name"] },
           ),
         );
 
-        // Create the Lambda@Edge function using SST transform pattern
-        const edgeFunction = new aws.lambda.Function(
+        const edgeFunction = new lambda.Function(
           ...transform(
             undefined,
             `${name}EdgeFunction`,
             {
+              name: physicalName(64, `${name}EdgeFn`),
               runtime: "nodejs22.x",
               handler: "index.handler",
               role: edgeRole.arn,
-              code: new pulumi.asset.FileArchive(
+              code: new pulumiAsset.FileArchive(
                 path.join($cli.paths.platform, "dist", "oac-edge-signer"),
               ),
-              publish: true, // Required for Lambda@Edge
+              publish: true,
               timeout: timeout,
               memorySize: memory,
               description: `${name} Lambda@Edge function for OAC request signing`,
             },
             {
               parent: self,
-              // Lambda@Edge functions must be created in us-east-1
               provider: useProvider("us-east-1"),
+              ignoreChanges: ["name"],
             },
           ),
         );
@@ -1371,7 +1347,7 @@ async function handler(event) {
           `${name}DevServer`,
           {
             description: `${name} dev server`,
-            runtime: "nodejs20.x",
+            runtime: "nodejs24.x",
             timeout: "20 seconds",
             memory: "128 MB",
             bundle: path.join(
@@ -1448,7 +1424,7 @@ async function handler(event) {
                 ...planServer,
                 description: planServer.description ?? `${name} server`,
                 runtime: output(args.server?.runtime).apply(
-                  (v) => v ?? planServer.runtime ?? "nodejs20.x",
+                  (v) => v ?? planServer.runtime ?? "nodejs24.x",
                 ),
                 timeout,
                 memory: output(args.server?.memory).apply(
@@ -1516,7 +1492,7 @@ async function handler(event) {
                 job: {
                   description: `${name} warmer`,
                   bundle: path.join($cli.paths.platform, "dist", "ssr-warmer"),
-                  runtime: "nodejs20.x",
+                  runtime: "nodejs24.x",
                   handler: "index.handler",
                   timeout: "900 seconds",
                   memory: "128 MB",
@@ -1705,7 +1681,7 @@ async function handler(event) {
               bucketName: bucket.name,
               files: bucketFiles,
               purge,
-              region: getRegionOutput(undefined, { parent: self }).name,
+              region: getRegionOutput(undefined, { parent: self }).region,
             },
             { parent: self },
           );
@@ -1812,7 +1788,7 @@ async function handler(event) {
                   }
                 : undefined,
               servers: servers.map((s) => [
-                new URL(s.url).host,
+                new URL(s.url!).host,
                 supportedRegions[s.region as keyof typeof supportedRegions].lat,
                 supportedRegions[s.region as keyof typeof supportedRegions].lon,
               ]),

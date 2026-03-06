@@ -10,6 +10,7 @@ import { Function, FunctionArgs } from "./function";
 import { BusBaseSubscriberArgs, createRule } from "./bus-base-subscriber";
 import { cloudwatch, lambda } from "@pulumi/aws";
 import { FunctionBuilder, functionBuilder } from "./helpers/function-builder";
+import { splitQualifiedFunctionArn } from "./helpers/arn";
 
 export interface Args extends BusBaseSubscriberArgs {
   /**
@@ -66,7 +67,8 @@ export class BusLambdaSubscriber extends Component {
         `${name}Permission`,
         {
           action: "lambda:InvokeFunction",
-          function: fn.arn,
+          function: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).unqualifiedArn),
+          qualifier: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).qualifier!),
           principal: "events.amazonaws.com",
           sourceArn: rule.arn,
         },

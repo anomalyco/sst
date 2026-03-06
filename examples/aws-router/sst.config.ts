@@ -22,7 +22,6 @@ export default $config({
       access: "public",
     });
     const router = new sst.aws.Router("MyRouter", {
-      domain: "router.ion.dev.sst.dev",
       routes: {
         "/api/*": api.url,
         "/*": $interpolate`https://${bucket.domain}`,
