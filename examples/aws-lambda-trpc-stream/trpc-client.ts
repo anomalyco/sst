@@ -20,7 +20,7 @@ export const main = async () => {
       const delay = Math.random() * 8_000;
       console.log("sending request", idx);
       try {
-        const res = await client.getBydId.query({ delay, idx });
+        const res = await client.getById.query({ delay, idx });
         console.log("got response", res.idx);
       } catch (err) {
         if (isTrpcError(err)) {

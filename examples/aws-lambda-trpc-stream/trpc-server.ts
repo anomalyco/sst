@@ -5,7 +5,7 @@ import z from 'zod';
 const { router, procedure } = initTRPC.create();
 
 const apiRouter = router({
-  getBydId: procedure
+  getById: procedure
     .input(
       z.object({
         delay: z.number(),
