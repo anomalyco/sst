@@ -1017,7 +1017,6 @@ export class StaticSite extends Component implements Link.Linkable {
         route,
         hasErrorPage,
       ]) => {
-        const customErrorResponse = !!hasErrorPage;
         const kvEntries: Record<string, string> = {};
         const dirs: string[] = [];
         // Router append .html and index.html suffixes to requests to s3 routes:
@@ -1049,8 +1048,8 @@ export class StaticSite extends Component implements Link.Linkable {
 
         kvEntries["metadata"] = JSON.stringify({
           base: route?.pathPrefix === "/" ? undefined : route?.pathPrefix,
-          custom404: customErrorResponse ? undefined : errorPage,
-          errorResponseCode: customErrorResponse ? 404 : undefined,
+          custom404: hasErrorPage ? undefined : errorPage,
+          errorResponseCode: hasErrorPage ? 404 : undefined,
           s3: {
             domain: bucketDomain,
             dir: assets.path ? "/" + assets.path : "",
