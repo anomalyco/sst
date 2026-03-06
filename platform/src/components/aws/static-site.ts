@@ -1126,7 +1126,6 @@ async function handler(event) {
   let metadata;
   try {
     const v = await cf.kvs().get(kvNamespace + ":metadata");
-    if (!v) return event.request;
     metadata = JSON.parse(v);
   } catch (e) {}
 

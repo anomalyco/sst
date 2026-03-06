@@ -2734,8 +2734,6 @@ if (event.request.headers.host.value.includes('cloudfront.net')) {
 // NOTE: This string is size-sensitive — CloudFront Functions have a 10KB limit.
 export const CF_ROUTER_INJECTION = minify`
 async function routeSite(kvNamespace, metadata) {
-  if (!metadata || !metadata.s3) return;
-
   const baselessUri = metadata.base
     ? event.request.uri.replace(metadata.base, "")
     : event.request.uri;
