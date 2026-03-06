@@ -1493,9 +1493,27 @@ export interface FunctionArgs {
   };
 
   /**
-   * Configure the function as a [durable function](https://docs.aws.amazon.com/lambda/latest/dg/durable-functions.html).
+   * Configure the function as a [Durable Function](https://docs.aws.amazon.com/lambda/latest/dg/durable-functions.html).
+   *
+   * @example
+   * Enable with defaults.
+   * ```js
+   * {
+   *   durable: true
+   * }
+   * ```
+   *
+   * Customize the execution timeout and retention period.
+   * ```js
+   * {
+   *   durable: {
+   *     executionTimeout: "10 minutes",
+   *     retentionPeriod: "2 weeks"
+   *   }
+   * }
+   * ```
    */
-  durable?: Input<boolean | DurableFunctionArgs>;
+  durable?: Input<boolean | Prettify<DurableFunctionArgs>>;
   /**
    * @internal
    */
