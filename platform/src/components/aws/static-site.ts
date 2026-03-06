@@ -1007,9 +1007,17 @@ export class StaticSite extends Component implements Link.Linkable {
         assets,
         bucketDomain,
         errorPage,
+        output(args.errorPage),
         route,
-        args.errorPage,
-      ]).apply(async ([outputPath, assets, bucketDomain, errorPage, route, userErrorPage]) => {
+      ]).apply(async ([
+        outputPath,
+        assets,
+        bucketDomain,
+        errorPage,
+        hasErrorPage,
+        route,
+      ]) => {
+        const customErrorResponse = !!hasErrorPage;
         const kvEntries: Record<string, string> = {};
         const dirs: string[] = [];
         // Router append .html and index.html suffixes to requests to s3 routes:
@@ -1041,7 +1049,8 @@ export class StaticSite extends Component implements Link.Linkable {
 
         kvEntries["metadata"] = JSON.stringify({
           base: route?.pathPrefix === "/" ? undefined : route?.pathPrefix,
-          custom404: userErrorPage ? undefined : errorPage,
+          custom404: customErrorResponse ? undefined : errorPage,
+          errorResponseCode: customErrorResponse ? 404 : undefined,
           s3: {
             domain: bucketDomain,
             dir: assets.path ? "/" + assets.path : "",
@@ -1118,6 +1127,7 @@ async function handler(event) {
   let metadata;
   try {
     const v = await cf.kvs().get(kvNamespace + ":metadata");
+    if (!v) return event.request;
     metadata = JSON.parse(v);
   } catch (e) {}
 
@@ -1206,13 +1216,14 @@ async function handler(event) {
               args.errorPage,
               errorPage,
               route,
-            ]).apply(([userErrorPage, errorPage, route]) => {
-              if (!userErrorPage) return [];
+            ]).apply(([hasCustomErrorPage, errorPage, route]) => {
+              if (!hasCustomErrorPage) return [];
               const base =
                 route?.pathPrefix && route.pathPrefix !== "/"
                   ? route.pathPrefix
                   : "/";
               const pagePath = path.posix.join(base, errorPage);
+
               return [
                 {
                   errorCode: 403,
@@ -1228,11 +1239,11 @@ async function handler(event) {
                 },
               ];
             }),
-          },
-          { parent: self },
-        ),
-      );
-    }
+        },
+        { parent: self },
+      ),
+    );
+  }
 
     function createInvalidation() {
       all([outputPath, args.assets, args.invalidation]).apply(
