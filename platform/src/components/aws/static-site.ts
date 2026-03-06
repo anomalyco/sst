@@ -1,4 +1,3 @@
-import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import {
@@ -14,22 +13,21 @@ import { Bucket, BucketArgs } from "./bucket.js";
 import { Component, Prettify, Transform, transform } from "../component.js";
 import { Link } from "../link.js";
 import { Input } from "../input.js";
-import { globSync } from "glob";
-import { BucketFile, BucketFiles } from "./providers/bucket-files.js";
-import { getContentType, BaseSiteDev } from "../base/base-site.js";
+import { BucketFiles } from "./providers/bucket-files.js";
+import { BaseSiteDev } from "../base/base-site.js";
 import {
   BaseStaticSiteArgs,
   BaseStaticSiteAssets,
-  buildApp,
+  buildOutputPath,
   prepare,
 } from "../base/base-static-site.js";
+import { StaticSiteManifest } from "../base/static-site-manifest.js";
 import { cloudfront, getRegionOutput, s3 } from "@pulumi/aws";
 import { URL_UNAVAILABLE } from "./linkable.js";
 import { KvKeys } from "./providers/kv-keys.js";
 import {
   CF_BLOCK_CLOUDFRONT_URL_INJECTION,
   CF_ROUTER_INJECTION,
-  KV_SITE_METADATA,
   normalizeRouteArgs,
   RouterRouteArgs,
   RouterRouteArgsDeprecated,
@@ -37,7 +35,6 @@ import {
 import { DistributionInvalidation } from "./providers/distribution-invalidation.js";
 import { VisibleError } from "../error.js";
 import { KvRoutesUpdate } from "./providers/kv-routes-update.js";
-import { toPosix } from "../path.js";
 
 export interface StaticSiteArgs extends BaseStaticSiteArgs {
   /**
@@ -773,9 +770,10 @@ export class StaticSite extends Component implements Link.Linkable {
     const route = normalizeRoute();
     const errorPage = normalizeErrorPage();
     const assets = normalizeAsssets();
-    const outputPath = buildApp(self, name, args.build, sitePath, environment);
+    const outputPath = buildOutputPath(args.build, sitePath);
     const bucket = createBucket();
     const { bucketName, bucketDomain } = getBucketDetails();
+    const manifest = createAssetManifest();
     const assetsUploaded = uploadAssets();
     const kvNamespace = buildKvNamespace();
 
@@ -918,77 +916,15 @@ export class StaticSite extends Component implements Link.Linkable {
     }
 
     function uploadAssets() {
-      return all([outputPath, assets, route]).apply(
-        async ([outputPath, assets, route]) => {
-          const bucketFiles: BucketFile[] = [];
-
-          // Build fileOptions
-          const fileOptions = assets?.fileOptions ?? [
-            {
-              files: "**",
-              cacheControl: "max-age=31536000,public,immutable",
-            },
-            {
-              files: "**/*.html",
-              cacheControl: "max-age=0,no-cache,no-store,must-revalidate",
-            },
-          ];
-
-          // Upload files based on fileOptions
-          const filesProcessed: string[] = [];
-          for (const fileOption of fileOptions.reverse()) {
-            const files = globSync(fileOption.files, {
-              cwd: path.resolve(outputPath),
-              nodir: true,
-              dot: true,
-              ignore: [
-                ".sst/**",
-                ...(typeof fileOption.ignore === "string"
-                  ? [fileOption.ignore]
-                  : fileOption.ignore ?? []),
-              ],
-            }).filter((file) => !filesProcessed.includes(file));
-
-            bucketFiles.push(
-              ...(await Promise.all(
-                files.map(async (file) => {
-                  const source = path.resolve(outputPath, file);
-                  const content = await fs.promises.readFile(source, "utf-8");
-                  const hash = crypto
-                    .createHash("sha256")
-                    .update(content)
-                    .digest("hex");
-                  return {
-                    source,
-                    key: toPosix(
-                      path.join(
-                        assets.path ?? "",
-                        route?.pathPrefix?.replace(/^\//, "") ?? "",
-                        file,
-                      ),
-                    ),
-                    hash,
-                    cacheControl: fileOption.cacheControl,
-                    contentType:
-                      fileOption.contentType ?? getContentType(file, "UTF-8"),
-                  };
-                }),
-              )),
-            );
-            filesProcessed.push(...files);
-          }
-
-          return new BucketFiles(
-            `${name}AssetFiles`,
-            {
-              bucketName,
-              files: bucketFiles,
-              purge: assets.purge,
-              region: getRegionOutput(undefined, { parent: self }).region,
-            },
-            { parent: self },
-          );
+      return new BucketFiles(
+        `${name}AssetFiles`,
+        {
+          bucketName,
+          files: manifest.files,
+          purge: assets.purge,
+          region: getRegionOutput(undefined, { parent: self }).region,
         },
+        { parent: self },
       );
     }
 
@@ -1002,62 +938,53 @@ export class StaticSite extends Component implements Link.Linkable {
     }
 
     function createKvEntries() {
-      const entries = all([
-        outputPath,
-        assets,
-        bucketDomain,
-        errorPage,
-        route,
-      ]).apply(async ([outputPath, assets, bucketDomain, errorPage, route]) => {
-        const kvEntries: Record<string, string> = {};
-        const dirs: string[] = [];
-        // Router append .html and index.html suffixes to requests to s3 routes:
-        // - `.well-known` contain files without suffix, hence will be appended .html
-        // - in the future, it might make sense for each dir to have props that controls
-        //   the suffixes ie. "handleTrailingSlashse"
-        const expandDirs = [".well-known"];
-
-        const processDir = (childPath = "", level = 0) => {
-          const currentPath = path.join(outputPath, childPath);
-          fs.readdirSync(currentPath, { withFileTypes: true }).forEach(
-            (item) => {
-              // File: add to kvEntries
-              if (item.isFile()) {
-                kvEntries[toPosix(path.join("/", childPath, item.name))] = "s3";
-                return;
-              }
-              // Directory + expand: recursively process it
-              if (level === 0 && expandDirs.includes(item.name)) {
-                processDir(path.join(childPath, item.name), level + 1);
-                return;
-              }
-              // Directory + NOT expand: add to route
-              dirs.push(toPosix(path.join("/", childPath, item.name)));
-            },
-          );
-        };
-        processDir();
-
-        kvEntries["metadata"] = JSON.stringify({
-          base: route?.pathPrefix === "/" ? undefined : route?.pathPrefix,
-          custom404: errorPage,
-          s3: {
-            domain: bucketDomain,
-            dir: assets.path ? "/" + assets.path : "",
-            routes: [...assets.routes, ...dirs],
-          },
-        } satisfies KV_SITE_METADATA);
-
-        return kvEntries;
-      });
-
       return new KvKeys(
         `${name}KvKeys`,
         {
           store: kvStoreArn!,
           namespace: kvNamespace,
-          entries,
+          entries: manifest.kvEntries,
           purge: assets.purge,
+        },
+        { parent: self },
+      );
+    }
+
+    function createAssetManifest() {
+      return new StaticSiteManifest(
+        `${name}Manifest`,
+        {
+          sitePath: output(sitePath).apply((sitePath) =>
+            path.join($cli.paths.root, sitePath),
+          ),
+          outputPath,
+          buildCommand: output(args.build).apply((build) => build?.command),
+          environment,
+          fileOptions: output(
+            args.assets?.fileOptions ?? [
+              {
+                files: "**",
+                cacheControl: "max-age=31536000,public,immutable",
+              },
+              {
+                files: "**/*.html",
+                cacheControl: "max-age=0,no-cache,no-store,must-revalidate",
+              },
+            ],
+          ),
+          textEncoding: output(args.assets?.textEncoding ?? "utf-8"),
+          keyPrefix: all([assets.path, route?.pathPrefix]).apply(
+            ([assetPath, pathPrefix]) =>
+              [assetPath, pathPrefix?.replace(/^\//, "")]
+                .filter((part): part is string => !!part)
+                .join("/"),
+          ),
+          assetPath: assets.path,
+          assetRoutes: assets.routes,
+          bucketDomain,
+          errorPage,
+          base: route ? route.pathPrefix : undefined,
+          trigger: Date.now().toString(),
         },
         { parent: self },
       );
@@ -1208,8 +1135,7 @@ async function handler(event) {
     }
 
     function createInvalidation() {
-      all([outputPath, args.assets, args.invalidation]).apply(
-        ([outputPath, assets, invalidationRaw]) => {
+      output(args.invalidation).apply((invalidationRaw) => {
           // Normalize invalidation
           if (invalidationRaw === false) return;
           const invalidation = {
@@ -1223,31 +1149,12 @@ async function handler(event) {
             invalidation.paths === "all" ? ["/*"] : invalidation.paths;
           if (invalidationPaths.length === 0) return;
 
-          // Calculate a hash based on the contents of the S3 files. This will be
-          // used to determine if we need to invalidate our CloudFront cache.
-          //
-          // The below options are needed to support following symlinks when building zip files:
-          // - nodir: This will prevent symlinks themselves from being copied into the zip.
-          // - follow: This will follow symlinks and copy the files within.
-          const hash = crypto.createHash("md5");
-          hash.update(JSON.stringify(assets ?? {}));
-          globSync("**", {
-            dot: true,
-            nodir: true,
-            follow: true,
-            cwd: path.resolve(outputPath),
-          }).forEach((filePath) =>
-            hash.update(
-              fs.readFileSync(path.resolve(outputPath, filePath), "utf-8"),
-            ),
-          );
-
           new DistributionInvalidation(
             `${name}Invalidation`,
             {
               distributionId,
               paths: invalidationPaths,
-              version: hash.digest("hex"),
+              version: manifest.invalidationVersion,
               wait: invalidation.wait,
             },
             {

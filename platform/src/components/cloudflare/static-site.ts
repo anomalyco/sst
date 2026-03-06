@@ -1,21 +1,18 @@
-import fs from "fs";
 import path from "path";
-import crypto from "crypto";
-import { ComponentResourceOptions, all, output } from "@pulumi/pulumi";
+import { ComponentResourceOptions, output } from "@pulumi/pulumi";
 import { Kv, KvArgs } from "./kv.js";
 import { Component, Prettify, Transform, transform } from "../component.js";
 import { Link } from "../link.js";
 import { Input } from "../input.js";
-import { globSync } from "glob";
 import { KvData } from "./providers/kv-data.js";
 import { Worker } from "./worker.js";
-import { getContentType } from "../base/base-site.js";
 import {
   BaseStaticSiteArgs,
   BaseStaticSiteAssets,
-  buildApp,
+  buildOutputPath,
   prepare,
 } from "../base/base-static-site.js";
+import { StaticSiteManifest } from "../base/static-site-manifest.js";
 import { DEFAULT_ACCOUNT_ID } from "./account-id.js";
 
 export interface StaticSiteArgs extends BaseStaticSiteArgs {
@@ -257,9 +254,9 @@ export class StaticSite extends Component implements Link.Linkable {
     const { sitePath, environment, indexPage } = prepare(args);
     const outputPath = $dev
       ? path.join($cli.paths.platform, "functions", "empty-site")
-      : buildApp(parent, name, args.build, sitePath, environment);
+      : buildOutputPath(args.build, sitePath);
     const storage = createKvStorage();
-    const assetManifest = generateAssetManifest();
+    const assetManifest = createAssetManifest();
     const kvData = uploadAssets();
     const worker = createRouter();
     this.assets = storage;
@@ -294,62 +291,32 @@ export class StaticSite extends Component implements Link.Linkable {
       );
     }
 
-    function generateAssetManifest() {
-      return all([outputPath, args.assets]).apply(
-        async ([outputPath, assets]) => {
-          // Build fileOptions
-          const fileOptions = assets?.fileOptions ?? [
-            {
-              files: "**",
-              cacheControl: "max-age=0,no-cache,no-store,must-revalidate",
-            },
-            {
-              files: ["**/*.js", "**/*.css"],
-              cacheControl: "max-age=31536000,public,immutable",
-            },
-          ];
-
-          // Upload files based on fileOptions
-          const manifest = [];
-          const filesProcessed: string[] = [];
-          for (const fileOption of fileOptions.reverse()) {
-            const files = globSync(fileOption.files, {
-              cwd: path.resolve(outputPath),
-              nodir: true,
-              dot: true,
-              ignore: [
-                ".sst/**",
-                ...(typeof fileOption.ignore === "string"
-                  ? [fileOption.ignore]
-                  : fileOption.ignore ?? []),
-              ],
-            }).filter((file) => !filesProcessed.includes(file));
-            filesProcessed.push(...files);
-
-            manifest.push(
-              ...(await Promise.all(
-                files.map(async (file) => {
-                  const source = path.resolve(outputPath, file);
-                  const content = await fs.promises.readFile(source, "utf-8");
-                  const hash = crypto
-                    .createHash("sha256")
-                    .update(content)
-                    .digest("hex");
-                  return {
-                    source,
-                    key: file,
-                    hash,
-                    cacheControl: fileOption.cacheControl,
-                    contentType:
-                      fileOption.contentType ?? getContentType(file, "UTF-8"),
-                  };
-                }),
-              )),
-            );
-          }
-
-          return manifest;
+    function createAssetManifest() {
+      return new StaticSiteManifest(
+        `${name}Manifest`,
+        {
+          sitePath: output(sitePath).apply((sitePath) =>
+            path.join($cli.paths.root, sitePath),
+          ),
+          outputPath,
+          buildCommand: output(args.build).apply((build) => build?.command),
+          environment,
+          fileOptions: output(
+            args.assets?.fileOptions ?? [
+              {
+                files: "**",
+                cacheControl: "max-age=0,no-cache,no-store,must-revalidate",
+              },
+              {
+                files: ["**/*.js", "**/*.css"],
+                cacheControl: "max-age=31536000,public,immutable",
+              },
+            ],
+          ),
+          textEncoding: output(args.assets?.textEncoding ?? "utf-8"),
+          trigger: Date.now().toString(),
         },
+        { parent },
       );
     }
 
@@ -359,15 +326,7 @@ export class StaticSite extends Component implements Link.Linkable {
         {
           accountId: DEFAULT_ACCOUNT_ID,
           namespaceId: storage.id,
-          entries: assetManifest.apply((manifest) =>
-            manifest.map((m) => ({
-              source: m.source,
-              key: m.key,
-              hash: m.hash,
-              cacheControl: m.cacheControl,
-              contentType: m.contentType,
-            })),
-          ),
+          entries: assetManifest.files,
         },
         { parent, ignoreChanges: $dev ? ["*"] : undefined },
       );
@@ -389,11 +348,9 @@ export class StaticSite extends Component implements Link.Linkable {
             ...(args.errorPage ? { ERROR_PAGE: args.errorPage } : {}),
           },
           build: {
-            esbuild: assetManifest.apply((assetManifest) => ({
+            esbuild: assetManifest.assetManifest.apply((assetManifest) => ({
               define: {
-                SST_ASSET_MANIFEST: JSON.stringify(
-                  Object.fromEntries(assetManifest.map((e) => [e.key, e.hash])),
-                ),
+                SST_ASSET_MANIFEST: JSON.stringify(assetManifest),
               },
             })),
           },

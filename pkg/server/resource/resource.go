@@ -67,8 +67,10 @@ func Register(ctx context.Context, p *project.Project, r *rpc.Server) error {
 	awsResource := &AwsResource{ctx, p}
 	cloudflareResource := &CloudflareResource{ctx, p}
 	vercelResource := &VercelResource{ctx, p}
-	r.RegisterName("Resource.Run", NewRun())
-	
+	runResource := NewRun()
+	r.RegisterName("Resource.Run", runResource)
+	r.RegisterName("Resource.StaticSite.Manifest", &StaticSiteManifest{run: runResource})
+
 	// AWS Resources
 	r.RegisterName("Resource.Aws.BucketFiles", &BucketFiles{awsResource})
 	r.RegisterName("Resource.Aws.DistributionDeploymentWaiter", &DistributionDeploymentWaiter{awsResource})

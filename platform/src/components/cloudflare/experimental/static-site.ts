@@ -1,14 +1,15 @@
 import path from "path";
-import { ComponentResourceOptions } from "@pulumi/pulumi";
+import { ComponentResourceOptions, output } from "@pulumi/pulumi";
 import { Component } from "../../component.js";
 import { Link } from "../../link.js";
 import { Input } from "../../input.js";
 import { Worker } from "../worker.js";
 import {
   BaseStaticSiteArgs,
-  buildApp,
+  buildOutputPath,
   prepare,
 } from "../../base/base-static-site.js";
+import { StaticSiteManifest } from "../../base/static-site-manifest.js";
 
 export interface StaticSiteArgs extends BaseStaticSiteArgs {
   /**
@@ -214,7 +215,8 @@ export class StaticSite extends Component implements Link.Linkable {
     const { sitePath, environment, indexPage } = prepare(args);
     const outputPath = $dev
       ? path.join($cli.paths.platform, "functions", "empty-site")
-      : buildApp(self, name, args.build, sitePath, environment);
+      : buildOutputPath(args.build, sitePath);
+    const manifest = $dev ? undefined : createAssetManifest();
     const worker = createRouter();
 
     this.server = worker;
@@ -253,8 +255,26 @@ export class StaticSite extends Component implements Link.Linkable {
           dev: false,
           domain: args.domain,
           assets: {
-            directory: outputPath,
+            directory: manifest?.outputPath ?? outputPath,
           },
+        },
+        { parent: self },
+      );
+    }
+
+    function createAssetManifest() {
+      return new StaticSiteManifest(
+        `${name}Manifest`,
+        {
+          sitePath: output(sitePath).apply((sitePath) =>
+            path.join($cli.paths.root, sitePath),
+          ),
+          outputPath,
+          buildCommand: output(args.build).apply((build) => build?.command),
+          environment,
+          fileOptions: [],
+          textEncoding: "utf-8",
+          trigger: Date.now().toString(),
         },
         { parent: self },
       );

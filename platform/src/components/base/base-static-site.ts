@@ -1,11 +1,10 @@
 import fs from "fs";
 import path from "path";
-import { all, output, Resource } from "@pulumi/pulumi";
+import { all, output } from "@pulumi/pulumi";
 import { VisibleError } from "../error.js";
 import { Input } from "../input.js";
 import { Prettify } from "../component.js";
 import { BaseSiteFileOptions } from "./base-site.js";
-import { siteBuilder } from "../aws/helpers/site-builder.js";
 
 export type BaseStaticSiteAssets = {
   /**
@@ -274,41 +273,11 @@ interface ImportMeta {
   }
 }
 
-export function buildApp(
-  parent: Resource,
-  name: string,
+export function buildOutputPath(
   build: BaseStaticSiteArgs["build"],
   sitePath: ReturnType<typeof prepare>["sitePath"],
-  environment: ReturnType<typeof prepare>["environment"],
 ) {
-  if (!build) return sitePath;
-
-  const result = siteBuilder(
-    `${name}Builder`,
-    {
-      create: output(build).command,
-      update: output(build).command,
-      dir: output(sitePath).apply((sitePath) =>
-        path.join($cli.paths.root, sitePath),
-      ),
-      environment,
-      triggers: [Date.now().toString()],
-    },
-    {
-      parent,
-      ignoreChanges: process.env.SKIP ? ["*"] : undefined,
-    },
+  return all([sitePath, build]).apply(([sitePath, build]) =>
+    path.join($cli.paths.root, sitePath, build?.output ?? ""),
   );
-
-  // Validate build output
-  return all([sitePath, build, result.id]).apply(([sitePath, build, _]) => {
-    const outputPath = path.join(sitePath, build.output);
-    if (!fs.existsSync(outputPath)) {
-      throw new VisibleError(
-        `No build output found at "${path.resolve(outputPath)}".`,
-      );
-    }
-
-    return outputPath;
-  });
 }
