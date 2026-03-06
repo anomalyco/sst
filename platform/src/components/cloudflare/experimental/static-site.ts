@@ -1,19 +1,20 @@
 import fs from "fs/promises";
 import path from "path";
-import { ComponentResourceOptions, output, all, interpolate } from "@pulumi/pulumi";
 import * as cf from "@pulumi/cloudflare";
+import { all, interpolate, output } from "@pulumi/pulumi";
+import type { ComponentResourceOptions } from "@pulumi/pulumi";
 import { Component } from "../../component.js";
 import { Link } from "../../link.js";
-import { Input } from "../../input.js";
+import type { Input } from "../../input.js";
 import { WorkerUrl } from "../providers/worker-url.js";
 import { ZoneLookup } from "../providers/zone-lookup.js";
 import { DEFAULT_ACCOUNT_ID } from "../account-id.js";
 import { physicalName } from "../../naming.js";
 import {
-  BaseStaticSiteArgs,
   buildApp,
   prepare,
 } from "../../base/base-static-site.js";
+import type { BaseStaticSiteArgs } from "../../base/base-static-site.js";
 
 export interface StaticSiteArgs extends BaseStaticSiteArgs {
   /**
@@ -278,14 +279,14 @@ export class StaticSite extends Component implements Link.Linkable {
   ) {
     super(__pulumiType, name, args, opts);
 
-    const self = this;
+    const parent = this;
     const { sitePath, environment } = prepare(args);
     const outputPath = $dev
       ? path.join($cli.paths.platform, "functions", "empty-site")
-      : buildApp(self, name, args.build, sitePath, environment);
+      : buildApp(parent, name, args.build, sitePath, environment);
     const script = createScript();
-    const workerUrl = createWorkerUrl();
-    const workerDomain = createWorkerDomain();
+    const workerUrl = createWorkersUrl();
+    const workerDomain = createWorkersDomain();
 
     this.script = script;
     this.workerUrl = workerUrl;
@@ -352,11 +353,11 @@ export class StaticSite extends Component implements Link.Linkable {
             })),
           ]),
         },
-        { parent: self, ignoreChanges: ["scriptName"] },
+        { parent, ignoreChanges: ["scriptName"] },
       );
     }
 
-    function createWorkerUrl() {
+    function createWorkersUrl() {
       return new WorkerUrl(
         `${name}Url`,
         {
@@ -364,11 +365,11 @@ export class StaticSite extends Component implements Link.Linkable {
           scriptName: script.scriptName,
           enabled: true,
         },
-        { parent: self },
+        { parent },
       );
     }
 
-    function createWorkerDomain() {
+    function createWorkersDomain() {
       if (!args.domain) return;
 
       const zone = new ZoneLookup(
@@ -377,7 +378,7 @@ export class StaticSite extends Component implements Link.Linkable {
           accountId: DEFAULT_ACCOUNT_ID,
           domain: args.domain,
         },
-        { parent: self },
+        { parent },
       );
 
       return new cf.WorkersCustomDomain(
@@ -389,7 +390,7 @@ export class StaticSite extends Component implements Link.Linkable {
           zoneId: zone.id,
           environment: "production",
         },
-        { parent: self },
+        { parent },
       );
     }
   }
