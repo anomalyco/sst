@@ -2779,6 +2779,13 @@ async function routeSite(kvNamespace, metadata) {
     return;
   }
 
+  // Route unmatched to S3 (triggers customErrorResponses)
+  if (!metadata.custom404 && metadata.s3 && !metadata.servers) {
+    event.request.uri = metadata.s3.dir + event.request.uri;
+    setS3Origin(metadata.s3.domain);
+    return;
+  }
+
   // Route to image optimizer
   if (metadata.image && baselessUri.startsWith(metadata.image.route)) {
     setNextjsCacheKey();

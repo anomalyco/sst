@@ -1008,7 +1008,8 @@ export class StaticSite extends Component implements Link.Linkable {
         bucketDomain,
         errorPage,
         route,
-      ]).apply(async ([outputPath, assets, bucketDomain, errorPage, route]) => {
+        args.errorPage,
+      ]).apply(async ([outputPath, assets, bucketDomain, errorPage, route, userErrorPage]) => {
         const kvEntries: Record<string, string> = {};
         const dirs: string[] = [];
         // Router append .html and index.html suffixes to requests to s3 routes:
@@ -1040,7 +1041,7 @@ export class StaticSite extends Component implements Link.Linkable {
 
         kvEntries["metadata"] = JSON.stringify({
           base: route?.pathPrefix === "/" ? undefined : route?.pathPrefix,
-          custom404: errorPage,
+          custom404: userErrorPage ? undefined : errorPage,
           s3: {
             domain: bucketDomain,
             dir: assets.path ? "/" + assets.path : "",
@@ -1201,6 +1202,32 @@ async function handler(event) {
                   : []),
               ]),
             },
+            customErrorResponses: all([
+              args.errorPage,
+              errorPage,
+              route,
+            ]).apply(([userErrorPage, errorPage, route]) => {
+              if (!userErrorPage) return [];
+              const base =
+                route?.pathPrefix && route.pathPrefix !== "/"
+                  ? route.pathPrefix
+                  : "/";
+              const pagePath = path.posix.join(base, errorPage);
+              return [
+                {
+                  errorCode: 403,
+                  responseCode: 404,
+                  responsePagePath: pagePath,
+                  errorCachingMinTtl: 0,
+                },
+                {
+                  errorCode: 404,
+                  responseCode: 404,
+                  responsePagePath: pagePath,
+                  errorCachingMinTtl: 0,
+                },
+              ];
+            }),
           },
           { parent: self },
         ),
