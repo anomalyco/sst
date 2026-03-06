@@ -2648,10 +2648,10 @@ export class Function extends Component implements Link.Linkable {
         );
 
         /**
-         * Durable Functions needs qualifier arn to work. An qualifier: fn.version
-         * should be enough, but pulumi has a broken regex that don't matches $LATEST
-         * as described [here](https://github.com/anomalyco/sst/pull/6510#discussion_r2880575195)
-         * To solve that we need to create an alias and use it as qualifier when durable is enabled 
+          * Durable Functions needs a qualifier ARN to work. A qualifier like `fn.version`
+          * should be enough, but Pulumi has a broken regex that doesn't match `$LATEST`,
+          * as described [here](https://github.com/anomalyco/sst/pull/6510#discussion_r2880575195).
+          * To solve this, we need to create an alias and use it as the qualifier when Durable is enabled.
          */
         const needsQualifiedArn = durable.apply(Boolean);
         
