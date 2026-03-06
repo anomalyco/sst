@@ -31,7 +31,7 @@ When you update SST and the AWS provider version changes, `sst deploy` will be b
 
 2. **Review changes**
 
-   Run `sst diff` to preview what will change. This is a **one-way migration**, so it's worth reviewing first.
+    Run `sst diff` to preview what will change. This is a **one-way migration**, so it's worth reviewing first.
 
     ```bash frame="none"
     sst diff
@@ -49,23 +49,23 @@ When you update SST and the AWS provider version changes, `sst deploy` will be b
     sst refresh
     ```
 
-   Repeat for each stage.
+    Repeat for each stage.
 
     ```bash frame="none"
     sst refresh --stage production
     ```
 
-   If the stage was deployed using `sst dev`, use the `--dev` flag.
+    If the stage was deployed using `sst dev`, use the `--dev` flag.
 
     ```bash frame="none"
     sst refresh --dev
     ```
 
-   If you [share resources across stages](/docs/share-across-stages), run `sst refresh` on the stage where the resource is created first — not the stage that references it via `.get()`.
+    If you [share resources across stages](/docs/share-across-stages), run `sst refresh` on the stage where the resource is created first — not the stage that references it via `.get()`.
 
 4. **Deploy**
 
-   Once refreshed, deploy as usual.
+    Once refreshed, deploy as usual.
 
     ```bash frame="none"
     sst deploy
