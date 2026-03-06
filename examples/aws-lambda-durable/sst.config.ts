@@ -17,6 +17,7 @@ export default $config({
     const durableFunction = new sst.aws.Function("Durable", {
       handler: "src/index.handler",
       durable: true,
+      url: true
     });
 
     new sst.aws.Function("Resolver", {

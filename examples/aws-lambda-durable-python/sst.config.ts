@@ -18,6 +18,7 @@ export default $config({
       handler: "src/main.handler",
 			runtime: "python3.13",
       durable: true,
+      url: true
     });
 
     new sst.aws.Function("Resolver", {

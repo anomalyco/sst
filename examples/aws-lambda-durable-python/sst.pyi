@@ -10,6 +10,7 @@ class Resource:
     class Durable:
         name: str
         type: str
+        url: str
     class Invoker:
         name: str
         type: str

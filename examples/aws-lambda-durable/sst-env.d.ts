@@ -9,6 +9,7 @@ declare module "sst" {
     "Durable": {
       "name": string
       "type": "sst.aws.Function"
+      "url": string
     }
     "Invoker": {
       "name": string

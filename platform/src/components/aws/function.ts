@@ -2646,28 +2646,20 @@ export class Function extends Component implements Link.Linkable {
         const isIam = all([isOac, authorization]).apply(
           ([oac, authorization]) => oac || authorization === "iam",
         );
-        const functionName = all([fn.name, durable]).apply(([name, durable]) =>{
-          const needsQualifiedArn = !!durable;
-          if(needsQualifiedArn){
-            // AWS expects function URLs for durable functions to use qualified ARNs.
-            // This could easily be solved using arn:version or the qualifier property,
-            // but Pulumi has buggy regex that doesn't allow $LATEST as a qualifier and
-            // blocks long ARNs (even though they are valid).
-            // So we are blocking URLs for durable functions until there is a solution
-            // to this issue in Pulumi.
 
-            throw new VisibleError(
-              "SST currently does not support enabling function URLs on durable functions.",
-            )
-          }
-
-          return name;
-        })
-
+        /**
+         * Durable Functions needs qualifier arn to work. An qualifier: fn.version
+         * should be enough, but pulumi has a broken regex that don't matches $LATEST
+         * as described [here](https://github.com/anomalyco/sst/pull/6510#discussion_r2880575195)
+         * To solve that we need to create an alias and use it as qualifier when durable is enabled 
+         */
+        const needsQualifiedArn = durable.apply(Boolean);
+        
         const fnUrl = new lambda.FunctionUrl(
           `${name}Url`,
           {
-            functionName,
+            functionName: fn.arn,
+            qualifier: needsQualifiedArn.apply((needs) => (needs ? createAlias().name : output(''))),
             authorizationType: isIam.apply((isIam) =>
               isIam ? "AWS_IAM" : "NONE",
             ),
@@ -2806,6 +2798,13 @@ export class Function extends Component implements Link.Linkable {
           { parent },
         );
         return url.route.routerUrl;
+      });
+    }
+
+    function createAlias(infix = "Latest", version = fn.version) {
+      return new lambda.Alias(`${name}${infix}Alias`, {
+        functionName: fn.arn,
+        functionVersion: version,
       });
     }
 
