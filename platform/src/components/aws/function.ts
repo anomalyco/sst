@@ -16,7 +16,7 @@ import {
   unsecret,
 } from "@pulumi/pulumi";
 import { bootstrap } from "./helpers/bootstrap.js";
-import { Duration, DurationMinutes, toSeconds } from "../duration.js";
+import { Duration, DurationDays, DurationMinutes, toDays, toSeconds } from "../duration.js";
 import { Size, toMBs } from "../size.js";
 import { Component, Prettify, Transform, transform } from "../component.js";
 import { Link } from "../link.js";
@@ -24,7 +24,6 @@ import { VisibleError } from "../error.js";
 import type { Input } from "../input.js";
 import { physicalName } from "../naming.js";
 import { RETENTION } from "./logging.js";
-import { DURABLE_CHECKPOINT_RETENTION } from "./durable.js";
 import {
   cloudwatch,
   ecr,
@@ -138,7 +137,7 @@ export type DurableFunctionArgs = {
   /**
    * Number of days to retain the function's execution state.
    */
-  retentionPeriod?: Input<keyof typeof DURABLE_CHECKPOINT_RETENTION>;
+  retentionPeriod?: Input<DurationDays>;
 };
 
 interface FunctionUrlCorsArgs {
@@ -2047,7 +2046,7 @@ export class Function extends Component implements Link.Linkable {
 
         return {
           executionTimeout: durable.executionTimeout ?? "15 minutes",
-          retentionPeriod: durable.retentionPeriod ?? "2 weeks",
+          retentionPeriod: durable.retentionPeriod ?? "14 days",
         };
       });
     }
@@ -2588,7 +2587,7 @@ export class Function extends Component implements Link.Linkable {
               reservedConcurrentExecutions: concurrency?.reserved,
               durableConfig: durable && {
                 executionTimeout: toSeconds(durable.executionTimeout),
-                retentionPeriod: DURABLE_CHECKPOINT_RETENTION[durable.retentionPeriod],
+                retentionPeriod: toDays(durable.retentionPeriod),
               },
               ...(isContainer
                 ? {

@@ -50,3 +50,15 @@ export function toMilliseconds(
 ) {
   return toSeconds(duration) * 1000;
 }
+
+export function toDays(duration: DurationDays) {
+  const [count, unit] = duration.split(" ");
+  const countNum = parseInt(count);
+  const unitLower = unit.toLowerCase();
+
+  if (unitLower.startsWith("day")) {
+    return countNum;
+  }
+
+  throw new Error(`Invalid duration ${duration}`);
+}
