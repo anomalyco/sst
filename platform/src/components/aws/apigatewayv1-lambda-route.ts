@@ -14,6 +14,7 @@ import {
   createMethod,
 } from "./apigatewayv1-base-route";
 import { FunctionBuilder, functionBuilder } from "./helpers/function-builder";
+import { splitQualifiedFunctionArn } from "./helpers/arn";
 
 export interface Args extends ApiGatewayV1BaseRouteArgs {
   /**
@@ -78,7 +79,8 @@ export class ApiGatewayV1LambdaRoute extends Component {
         `${name}Permissions`,
         {
           action: "lambda:InvokeFunction",
-          function: fn.arn,
+          function: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).unqualifiedArn),
+          qualifier: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).qualifier!),
           principal: "apigateway.amazonaws.com",
           sourceArn: interpolate`${api.executionArn}/*`,
         },

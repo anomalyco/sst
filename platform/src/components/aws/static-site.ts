@@ -1008,7 +1008,15 @@ export class StaticSite extends Component implements Link.Linkable {
         bucketDomain,
         errorPage,
         route,
-      ]).apply(async ([outputPath, assets, bucketDomain, errorPage, route]) => {
+        args.errorPage,
+      ]).apply(async ([
+        outputPath,
+        assets,
+        bucketDomain,
+        errorPage,
+        route,
+        hasErrorPage,
+      ]) => {
         const kvEntries: Record<string, string> = {};
         const dirs: string[] = [];
         // Router append .html and index.html suffixes to requests to s3 routes:
@@ -1040,7 +1048,8 @@ export class StaticSite extends Component implements Link.Linkable {
 
         kvEntries["metadata"] = JSON.stringify({
           base: route?.pathPrefix === "/" ? undefined : route?.pathPrefix,
-          custom404: errorPage,
+          custom404: hasErrorPage ? undefined : errorPage,
+          errorResponseCode: hasErrorPage ? 404 : undefined,
           s3: {
             domain: bucketDomain,
             dir: assets.path ? "/" + assets.path : "",
@@ -1201,11 +1210,38 @@ async function handler(event) {
                   : []),
               ]),
             },
-          },
-          { parent: self },
-        ),
-      );
-    }
+            customErrorResponses: all([
+              args.errorPage,
+              errorPage,
+              route,
+            ]).apply(([hasCustomErrorPage, errorPage, route]) => {
+              if (!hasCustomErrorPage) return [];
+              const base =
+                route?.pathPrefix && route.pathPrefix !== "/"
+                  ? route.pathPrefix
+                  : "/";
+              const pagePath = path.posix.join(base, errorPage);
+
+              return [
+                {
+                  errorCode: 403,
+                  responseCode: 404,
+                  responsePagePath: pagePath,
+                  errorCachingMinTtl: 0,
+                },
+                {
+                  errorCode: 404,
+                  responseCode: 404,
+                  responsePagePath: pagePath,
+                  errorCachingMinTtl: 0,
+                },
+              ];
+            }),
+        },
+        { parent: self },
+      ),
+    );
+  }
 
     function createInvalidation() {
       all([outputPath, args.assets, args.invalidation]).apply(

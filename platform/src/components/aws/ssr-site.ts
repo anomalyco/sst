@@ -844,7 +844,7 @@ export abstract class SsrSite extends Component implements Link.Linkable {
             headersConfig: {
               headerBehavior: "whitelist",
               headers: {
-                items: ["x-open-next-cache-key"],
+                items: ["x-open-next-cache-key", "x-forwarded-host"],
               },
             },
             queryStringsConfig: {

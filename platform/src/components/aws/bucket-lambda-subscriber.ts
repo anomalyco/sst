@@ -10,6 +10,7 @@ import { Function, FunctionArgs } from "./function";
 import { BucketSubscriberArgs } from "./bucket";
 import { lambda, s3 } from "@pulumi/aws";
 import { FunctionBuilder, functionBuilder } from "./helpers/function-builder";
+import { splitQualifiedFunctionArn } from "./helpers/arn";
 
 export interface Args extends BucketSubscriberArgs {
   /**
@@ -101,7 +102,8 @@ export class BucketLambdaSubscriber extends Component {
         `${name}Permission`,
         {
           action: "lambda:InvokeFunction",
-          function: fn.arn,
+          function: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).unqualifiedArn),
+          qualifier: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).qualifier!),
           principal: "s3.amazonaws.com",
           sourceArn: bucket.arn,
         },

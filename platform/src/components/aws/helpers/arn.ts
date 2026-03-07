@@ -11,6 +11,20 @@ export function parseFunctionArn(arn: string) {
   return { functionName };
 }
 
+export function splitQualifiedFunctionArn(arn: string) {
+  // Unqualified: arn:aws:lambda:region:account-id:function:function-name (7 parts)
+  // Qualified:   arn:aws:lambda:region:account-id:function:function-name:alias-or-version (8 parts)
+  const parts = arn.split(":");
+  if (parts.length <= 7) {
+    return { unqualifiedArn: arn, qualifier: undefined };
+  }
+  return {
+    unqualifiedArn: parts.slice(0, 7).join(":"),
+    qualifier: parts[7],
+  };
+}
+
+
 export function parseBucketArn(arn: string) {
   // arn:aws:s3:::bucket-name
   const bucketName = arn.split(":")[5];

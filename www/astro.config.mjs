@@ -85,7 +85,7 @@ const sidebar = [
           "docs/component/aws/bus",
           "docs/component/aws/vpc",
           "docs/component/aws/task",
-          "docs/component/aws/cron",
+          "docs/component/aws/cron-v2",
           "docs/component/aws/auth",
           "docs/component/aws/nuxt",
           "docs/component/aws/astro",
@@ -197,6 +197,7 @@ const sidebar = [
             label: "Deprecated",
             collapsed: true,
             items: [
+              { label: "Cron", slug: "docs/component/aws/cron" },
               { label: "OpenControl", slug: "docs/component/aws/opencontrol" },
               { label: "Vpc.v1", slug: "docs/component/aws/vpc-v1" },
               { label: "Redis.v1", slug: "docs/component/aws/redis-v1" },
@@ -211,10 +212,13 @@ const sidebar = [
         label: "Cloudflare",
         collapsed: true,
         items: [
-          "docs/component/cloudflare/kv",
-          "docs/component/cloudflare/d1",
-          "docs/component/cloudflare/worker",
+          "docs/component/cloudflare/ai",
           "docs/component/cloudflare/bucket",
+          "docs/component/cloudflare/cron",
+          "docs/component/cloudflare/d1",
+          "docs/component/cloudflare/kv",
+          "docs/component/cloudflare/static-site",
+          "docs/component/cloudflare/worker",
         ],
       },
       {

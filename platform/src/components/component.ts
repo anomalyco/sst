@@ -218,6 +218,11 @@ export class Component extends ComponentResource {
             "aws:cloudfront/keyValueStore:KeyValueStore": ["name", 64],
             "aws:cognito/identityPool:IdentityPool": ["identityPoolName", 128],
             "aws:cognito/userPool:UserPool": ["name", 128],
+            "aws:cognito/userPoolDomain:UserPoolDomain": [
+              "domain",
+              63,
+              { lower: true },
+            ],
             "aws:dynamodb/table:Table": ["name", 255],
             "aws:ec2/keyPair:KeyPair": ["keyName", 255],
             "aws:ec2/eip:Eip": ["tags", 255],
@@ -289,6 +294,7 @@ export class Component extends ComponentResource {
               64,
               { lower: true },
             ],
+            "aws:scheduler/schedule:Schedule": ["name", 64],
             "aws:sfn/stateMachine:StateMachine": ["name", 80],
             "aws:sns/topic:Topic": [
               "name",

@@ -76,6 +76,7 @@ func function(ctx context.Context, input input) {
 		Worker           runtime.Worker
 		CurrentRequestID string
 		Env              []string
+		Streaming        bool
 	}
 	workerShutdownChan := make(chan *WorkerInfo, 1000)
 	nextChan := map[string]chan io.Reader{}
@@ -143,19 +144,32 @@ func function(ctx context.Context, input input) {
 		log.Info("got response", "workerID", workerID, "requestID", r.PathValue("requestID"))
 		writer := input.client.NewWriter(bridge.MessageResponse, input.prefix+"/"+workerID+"/in")
 		writer.SetID(requestID)
-		var buf bytes.Buffer
-		tee := io.TeeReader(r.Body, &buf)
-		io.Copy(writer, tee)
-		writer.Close()
-		w.WriteHeader(202)
 		info, ok := workers[workerID]
-		if ok {
+		if ok && info.Streaming {
+			writer.SetStreaming(true)
+			io.Copy(writer, r.Body)
+			writer.Close()
+			w.WriteHeader(202)
 			bus.Publish(&FunctionResponseEvent{
 				FunctionID: info.FunctionID,
 				WorkerID:   workerID,
 				RequestID:  requestID,
-				Output:     buf.Bytes(),
+				Output:     []byte("[streaming response]"),
 			})
+		} else {
+			var buf bytes.Buffer
+			tee := io.TeeReader(r.Body, &buf)
+			io.Copy(writer, tee)
+			writer.Close()
+			w.WriteHeader(202)
+			if ok {
+				bus.Publish(&FunctionResponseEvent{
+					FunctionID: info.FunctionID,
+					WorkerID:   workerID,
+					RequestID:  requestID,
+					Output:     buf.Bytes(),
+				})
+			}
 		}
 	})
 
@@ -234,10 +248,18 @@ func function(ctx context.Context, input input) {
 			log.Error("failed to run worker", "error", err)
 			return false
 		}
+		streaming := false
+		for _, e := range workerEnv[workerID] {
+			if e == "SST_FUNCTION_STREAMING=true" {
+				streaming = true
+				break
+			}
+		}
 		info := &WorkerInfo{
 			FunctionID: functionID,
 			Worker:     worker,
 			WorkerID:   workerID,
+			Streaming:  streaming,
 		}
 		go func() {
 			logs := worker.Logs()
