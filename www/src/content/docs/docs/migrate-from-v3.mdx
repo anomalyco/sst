@@ -31,44 +31,44 @@ When you update SST and the AWS provider version changes, `sst deploy` will be b
 
 2. **Review changes**
 
-   Run `sst diff` to preview what will change. This is a **one-way migration**, so it's worth reviewing first.
+    Run `sst diff` to preview what will change. This is a **one-way migration**, so it's worth reviewing first.
 
-   ```bash frame="none"
-   npx sst diff
-   ```
+    ```bash frame="none"
+    sst diff
+    ```
 
 3. **Migrate state**
 
-   Run `sst refresh` to migrate your state.
+    Run `sst refresh` to migrate your state.
 
-   :::caution
-   Do not use the `--target` flag during migration. The state refresh must cover all resources to ensure a consistent migration.
-   :::
+    :::caution
+    Do not use the `--target` flag during migration. The state refresh must cover all resources to ensure a consistent migration.
+    :::
 
-   ```bash frame="none"
-   npx sst refresh
-   ```
+    ```bash frame="none"
+    sst refresh
+    ```
 
-   Repeat for each stage.
+    Repeat for each stage.
 
-   ```bash frame="none"
-   npx sst refresh --stage production
-   ```
+    ```bash frame="none"
+    sst refresh --stage production
+    ```
 
-   If the stage was deployed using `sst dev`, use the `--dev` flag.
+    If the stage was deployed using `sst dev`, use the `--dev` flag.
 
-   ```bash frame="none"
-   npx sst refresh --dev
-   ```
+    ```bash frame="none"
+    sst refresh --dev
+    ```
 
-   If you [share resources across stages](/docs/share-across-stages), run `sst refresh` on the stage where the resource is created first — not the stage that references it via `.get()`.
+    If you [share resources across stages](/docs/share-across-stages), run `sst refresh` on the stage where the resource is created first — not the stage that references it via `.get()`.
 
 4. **Deploy**
 
-   Once refreshed, deploy as usual.
+    Once refreshed, deploy as usual.
 
-   ```bash frame="none"
-   npx sst deploy
-   ```
+    ```bash frame="none"
+    sst deploy
+    ```
 
 That's it — once refreshed and deployed, your app is fully migrated to v4.

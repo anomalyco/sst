@@ -44,15 +44,16 @@ type Message struct {
 }
 
 type Writer struct {
-	conn     *appsync.Connection
-	message  MessageType
-	source   string
-	channel  string
-	event    string
-	buffer   []byte
-	position int
-	index    int
-	id       string
+	conn      *appsync.Connection
+	message   MessageType
+	source    string
+	channel   string
+	event     string
+	buffer    []byte
+	position  int
+	index     int
+	id        string
+	streaming bool
 }
 
 type InitBody struct {
@@ -91,6 +92,10 @@ func (w *Writer) SetID(id string) {
 	w.id = id
 }
 
+func (w *Writer) SetStreaming(streaming bool) {
+	w.streaming = streaming
+}
+
 const BUFFER_SIZE = 1024 * 128
 
 func (w *Writer) Write(p []byte) (int, error) {
@@ -106,6 +111,11 @@ func (w *Writer) Write(p []byte) (int, error) {
 			if err := w.Flush(false); err != nil {
 				return total, err
 			}
+		}
+	}
+	if w.streaming && w.position > 0 {
+		if err := w.Flush(false); err != nil {
+			return total, err
 		}
 	}
 	return total, nil

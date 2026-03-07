@@ -670,13 +670,6 @@ export interface FunctionArgs {
    *
    * You'll also need to [wrap your handler](https://docs.aws.amazon.com/lambda/latest/dg/configuration-response-streaming.html) with `awslambda.streamifyResponse` to enable streaming.
    *
-   * :::note
-   * Streaming is currently not supported in `sst dev`.
-   * :::
-   *
-   * While `sst dev` doesn't support streaming, you can use the
-   * [`lambda-stream`](https://github.com/astuyve/lambda-stream) package to test locally.
-   *
    * Check out the [AWS Lambda streaming example](/docs/examples/#aws-lambda-streaming) for more
    * details.
    *
@@ -1837,7 +1830,8 @@ export class Function extends Component implements Link.Linkable {
         bootstrapData,
         Function.encryptionKey().base64,
         args.link,
-      ]).apply(async ([environment, dev, bootstrap, key, link]) => {
+        args.streaming,
+      ]).apply(async ([environment, dev, bootstrap, key, link, streaming]) => {
         const result = environment ?? {};
         result.SST_RESOURCE_App = JSON.stringify({
           name: $app.name,
@@ -1863,6 +1857,9 @@ export class Function extends Component implements Link.Linkable {
           result.SST_ASSET_BUCKET = bootstrap.asset;
           if (process.env.SST_FUNCTION_TIMEOUT) {
             result.SST_FUNCTION_TIMEOUT = process.env.SST_FUNCTION_TIMEOUT;
+          }
+          if (streaming) {
+            result.SST_FUNCTION_STREAMING = "true";
           }
         }
         return result;

@@ -28,6 +28,7 @@ var SST_REGION = os.Getenv("SST_REGION")
 var SST_ASSET_BUCKET = os.Getenv("SST_ASSET_BUCKET")
 var SST_APPSYNC_HTTP = os.Getenv("SST_APPSYNC_HTTP")
 var SST_APPSYNC_REALTIME = os.Getenv("SST_APPSYNC_REALTIME")
+var SST_FUNCTION_STREAMING = os.Getenv("SST_FUNCTION_STREAMING")
 
 var ENV_BLACKLIST = map[string]bool{
 	"SST_DEBUG_ENDPOINT":              true,
@@ -145,7 +146,22 @@ func run() error {
 			case msg := <-client.Read():
 				fmt.Println("got message", msg.Type)
 				if msg.Type == bridge.MessageResponse && msg.ID == requestID {
-					http.Post("http://"+LAMBDA_RUNTIME_API+"/2018-06-01/runtime/invocation/"+requestID+"/response", "application/json", msg.Body)
+					responseURL := "http://" + LAMBDA_RUNTIME_API + "/2018-06-01/runtime/invocation/" + requestID + "/response"
+					if SST_FUNCTION_STREAMING == "true" {
+						req, err := http.NewRequest("POST", responseURL, msg.Body)
+						if err != nil {
+							fmt.Println("failed to create streaming request", err)
+							break loop
+						}
+						req.Header.Set("Lambda-Runtime-Function-Response-Mode", "streaming")
+						req.Header.Set("Transfer-Encoding", "chunked")
+						req.Header.Set("Content-Type", "application/vnd.awslambda.http-integration-response")
+						if _, err := http.DefaultClient.Do(req); err != nil {
+							fmt.Println("failed to send streaming response", err)
+						}
+					} else {
+						http.Post(responseURL, "application/json", msg.Body)
+					}
 					break loop
 				}
 				if msg.Type == bridge.MessageError && msg.ID == requestID {

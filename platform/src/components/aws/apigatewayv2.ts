@@ -1015,6 +1015,12 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
    * - An HTTP method and a path, `{METHOD} /{path}`.
    * - Or a `$default` route.
    *
+   * :::caution
+   * [API Gateway has strict rate limits](https://docs.aws.amazon.com/apigateway/latest/developerguide/limits.html) for creating and updating resources. Creating one Lambda function for every endpoint can significantly slow down your deployments.
+   *
+   * Use a single Lambda and handle routing in code if you don't need specific API Gateway features.
+   * :::
+   *
    * :::tip
    * The `$default` route is a default or catch-all route. It'll match if no other route matches.
    * :::

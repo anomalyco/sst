@@ -2772,9 +2772,16 @@ async function routeSite(kvNamespace, metadata) {
     }
   }
 
-  // Route to S3 custom 404 (no servers)
-  if (metadata.custom404) {
+  // Route to S3 custom 404 (SPA fallback, no servers)
+  if (metadata.custom404 && !metadata.errorResponseCode) {
     event.request.uri = metadata.s3.dir + (metadata.base ? metadata.base : "") + metadata.custom404;
+    setS3Origin(metadata.s3.domain);
+    return;
+  }
+
+  // Route unmatched to S3 (triggers customErrorResponses)
+  if (metadata.s3 && !metadata.servers) {
+    event.request.uri = metadata.s3.dir + event.request.uri;
     setS3Origin(metadata.s3.domain);
     return;
   }
@@ -2931,6 +2938,7 @@ function setS3Origin(s3Domain, override) {
 export type KV_SITE_METADATA = {
   base?: string; // Should be undefiend if no base path, should never be "/"
   custom404?: string;
+  errorResponseCode?: number;
   s3: {
     domain: string;
     dir: string; // Should be "" if no dir
