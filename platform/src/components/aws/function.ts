@@ -2676,7 +2676,7 @@ export class Function extends Component implements Link.Linkable {
           `${name}Url`,
           {
             functionName: fn.arn,
-            qualifier: needsQualifiedArn.apply((needs) => (needs ? createAlias().name : output(''))),
+            qualifier: needsQualifiedArn.apply((needs) => (needs ? createDurableAlias().name : output(''))),
             authorizationType: isIam.apply((isIam) =>
               isIam ? "AWS_IAM" : "NONE",
             ),
@@ -2818,8 +2818,8 @@ export class Function extends Component implements Link.Linkable {
       });
     }
 
-    function createAlias(infix = "Latest", version = fn.version) {
-      return new lambda.Alias(`${name}${infix}Alias`, {
+    function createDurableAlias(version = fn.version) {
+      return new lambda.Alias(`${name}DurableAlias`, {
         functionName: fn.arn,
         functionVersion: version,
       });
