@@ -11,24 +11,19 @@
  * }
  * ```
  *
- * While `sst dev` doesn't support streaming, you can use the
- * [`lambda-stream`](https://github.com/astuyve/lambda-stream) package to test locally.
- *
- * ```bash
- * npm install lambda-stream
- * ```
- *
- * Then, you can use the `streamifyResponse` function to wrap your handler:
+ * Use the `awslambda.streamifyResponse` function to wrap your handler. The `awslambda`
+ * global is provided by the Lambda execution environment at runtime, and SST provides it
+ * automatically during `sst dev` as well. For TypeScript types, importing from
+ * `@types/aws-lambda` will augment the global namespace.
  *
  * ```ts title="index.ts"
  * import { APIGatewayProxyEventV2 } from "aws-lambda";
- * import { streamifyResponse, ResponseStream } from "lambda-stream";
  *
- * export const handler = streamifyResponse(myHandler);
+ * export const handler = awslambda.streamifyResponse(myHandler);
  *
  * async function myHandler(
  *   _event: APIGatewayProxyEventV2,
- *   responseStream: ResponseStream
+ *   responseStream: awslambda.HttpResponseStream
  * ): Promise<void> {
  *   return new Promise((resolve, _reject) => {
  *     responseStream.setContentType('text/plain')
@@ -41,12 +36,6 @@
  *   })
  * }
  * ```
- *
- * When deployed, this will use the `awslambda.streamifyResponse`.
- *
- * :::note
- * Streaming is currently not supported in `sst dev`.
- * :::
  *
  * To test this in your terminal, use the `curl` command with the `--no-buffer` option.
  *
