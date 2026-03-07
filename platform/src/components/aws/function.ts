@@ -2926,7 +2926,7 @@ export class Function extends Component implements Link.Linkable {
    * Whether the Lambda function is a [Durable Function](https://docs.aws.amazon.com/lambda/latest/dg/durable-functions.html).
    */
   public get isDurable() {
-    return this.function.durableConfig !== undefined;
+    return this.function.durableConfig.apply(Boolean);
   }
 
   /**
@@ -3007,22 +3007,8 @@ export class Function extends Component implements Link.Linkable {
 
   /** @internal */
   public getSSTLink() {
-    let arnReference = this.arn;
     const needsQualifiedArn = this.isDurable;
-
-    if (needsQualifiedArn) {
-      arnReference = interpolate`${this.arn}:*`;
-    }
-
-    const allowedActions = ["lambda:InvokeFunction"];
-
-    if (this.isDurable) {
-      allowedActions.push(
-        "lambda:SendDurableExecutionCallbackSuccess",
-        "lambda:SendDurableExecutionCallbackFailure",
-        "lambda:SendDurableExecutionCallbackHeartbeat"
-      );
-    }
+    const arnReference = needsQualifiedArn.apply((needs) => (needs ? interpolate`${this.arn}:*` : this.arn));
 
     return {
       properties: {
@@ -3031,14 +3017,18 @@ export class Function extends Component implements Link.Linkable {
       },
       include: [
         permission({
-          actions: allowedActions,
+          actions: [
+            "lambda:InvokeFunction",
+            "lambda:SendDurableExecutionCallbackSuccess",
+            "lambda:SendDurableExecutionCallbackFailure",
+            "lambda:SendDurableExecutionCallbackHeartbeat",
+          ],
           resources: [arnReference],
         }),
       ],
     };
   }
 }
-
 const __pulumiType = "sst:aws:Function";
 // @ts-expect-error
 Function.__pulumiType = __pulumiType;
