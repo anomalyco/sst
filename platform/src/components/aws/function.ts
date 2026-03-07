@@ -2037,6 +2037,7 @@ export class Function extends Component implements Link.Linkable {
     }
 
     function normalizeDurableConfig() {
+      if (args.durable === false || args.durable === undefined) return;
       return output(args.durable).apply((durable) => {
         if (durable === false || durable === undefined) return;
 
@@ -2277,8 +2278,8 @@ export class Function extends Component implements Link.Linkable {
             inlinePolicies: policy.apply(({ statements }) =>
               statements ? [{ name: "inline", policy: policy.json }] : [],
             ),
-            managedPolicyArns: all([logging, policies]).apply(
-              ([logging, policies]) => [
+            managedPolicyArns: all([logging, policies, durable]).apply(
+              ([logging, policies, durable]) => [
                 ...policies,
                 ...(logging
                   ? [
@@ -2670,7 +2671,7 @@ export class Function extends Component implements Link.Linkable {
           * as described [here](https://github.com/anomalyco/sst/pull/6510#discussion_r2880575195).
           * To solve this, we need to create an alias and use it as the qualifier when Durable is enabled.
          */
-        const needsQualifiedArn = durable.apply(Boolean);
+        const needsQualifiedArn = output(durable).apply(Boolean);
         
         const fnUrl = new lambda.FunctionUrl(
           `${name}Url`,
