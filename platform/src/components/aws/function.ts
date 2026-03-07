@@ -133,11 +133,11 @@ export type DurableFunctionArgs = {
   /**
    * Maximum execution time for the durable function
    */
-  executionTimeout?: Input<Duration>;
+  timeout?: Input<Duration>;
   /**
    * Number of days to retain the function's execution state.
    */
-  retentionPeriod?: Input<DurationDays>;
+  retention?: Input<DurationDays>;
 };
 
 interface FunctionUrlCorsArgs {
@@ -2045,8 +2045,8 @@ export class Function extends Component implements Link.Linkable {
         }
 
         return {
-          executionTimeout: durable.executionTimeout ?? "15 minutes",
-          retentionPeriod: durable.retentionPeriod ?? "14 days",
+          timeout: durable.timeout ?? "15 minutes",
+          retention: durable.retention ?? "14 days",
         };
       });
     }
@@ -2586,8 +2586,8 @@ export class Function extends Component implements Link.Linkable {
               publish: output(args.versioning).apply((v) => v ?? false),
               reservedConcurrentExecutions: concurrency?.reserved,
               durableConfig: durable && {
-                executionTimeout: toSeconds(durable.executionTimeout),
-                retentionPeriod: toDays(durable.retentionPeriod),
+                executionTimeout: toSeconds(durable.timeout),
+                retentionPeriod: toDays(durable.retention),
               },
               ...(isContainer
                 ? {
