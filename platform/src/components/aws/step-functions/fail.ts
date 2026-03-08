@@ -1,5 +1,5 @@
-import { Input } from "../../input";
-import { State, StateArgs } from "./state";
+import { Input } from "../../input.js";
+import { State, StateArgs } from "./state.js";
 
 export interface FailArgs extends StateArgs {
   /**

@@ -1,12 +1,12 @@
 import { all, ComponentResourceOptions, Output } from "@pulumi/pulumi";
 import * as cf from "@pulumi/cloudflare";
 import * as cloudflare from "@pulumi/cloudflare";
-import { Component, Transform, transform } from "../component";
-import { WorkerArgs } from "./worker";
+import { Component, Transform, transform } from "../component.js";
+import { WorkerArgs } from "./worker.js";
 import { DEFAULT_ACCOUNT_ID } from "./account-id.js";
 import { Input } from "../input.js";
-import { WorkerBuilder, workerBuilder } from "./helpers/worker-builder";
-import { VisibleError } from "../error";
+import { WorkerBuilder, workerBuilder } from "./helpers/worker-builder.js";
+import { VisibleError } from "../error.js";
 
 export interface CronArgs {
   /**

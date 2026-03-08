@@ -4,13 +4,13 @@ import {
   Output,
   output,
 } from "@pulumi/pulumi";
-import { Component, transform } from "../component";
-import { ApiGatewayV1IntegrationArgs } from "./apigatewayv1";
+import { Component, transform } from "../component.js";
+import { ApiGatewayV1IntegrationArgs } from "./apigatewayv1.js";
 import { apigateway } from "@pulumi/aws";
 import {
   ApiGatewayV1BaseRouteArgs,
   createMethod,
-} from "./apigatewayv1-base-route";
+} from "./apigatewayv1-base-route.js";
 
 export interface Args extends ApiGatewayV1BaseRouteArgs {
   /**

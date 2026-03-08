@@ -1,7 +1,7 @@
 import { Output, output } from "@pulumi/pulumi";
-import { Link } from "./link";
-import { Component } from "./component";
-import { Input } from "./input";
+import { Link } from "./link.js";
+import { Component } from "./component.js";
+import { Input } from "./input.js";
 
 export interface Definition<
   Properties extends Record<string, any> = Record<string, any>,

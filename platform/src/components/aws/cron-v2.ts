@@ -1,11 +1,11 @@
 import { all, ComponentResourceOptions, output, Output } from "@pulumi/pulumi";
-import { Component, Transform, transform } from "../component";
-import { FunctionArgs, FunctionArn } from "./function";
+import { Component, Transform, transform } from "../component.js";
+import { FunctionArgs, FunctionArn } from "./function.js";
 import { Input } from "../input.js";
 import { iam, scheduler } from "@pulumi/aws";
-import { functionBuilder, FunctionBuilder } from "./helpers/function-builder";
-import { Task } from "./task";
-import { VisibleError } from "../error";
+import { functionBuilder, FunctionBuilder } from "./helpers/function-builder.js";
+import { Task } from "./task.js";
+import { VisibleError } from "../error.js";
 
 export interface CronV2Args {
   /**

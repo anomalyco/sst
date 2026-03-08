@@ -1,4 +1,4 @@
-import { rpc } from "../../rpc/rpc";
+import { rpc } from "../../rpc/rpc.js";
 
 interface BootstrapData {
   asset: string;

@@ -4,13 +4,13 @@ import {
   Output,
   output,
 } from "@pulumi/pulumi";
-import { Component, transform, Transform } from "../component";
-import { Function, FunctionArgs } from "./function";
-import { QueueSubscriberArgs } from "./queue";
+import { Component, transform, Transform } from "../component.js";
+import { Function, FunctionArgs } from "./function.js";
+import { QueueSubscriberArgs } from "./queue.js";
 import { lambda } from "@pulumi/aws";
-import { toSeconds } from "../duration";
-import { FunctionBuilder, functionBuilder } from "./helpers/function-builder";
-import { parseFunctionArn } from "./helpers/arn";
+import { toSeconds } from "../duration.js";
+import { FunctionBuilder, functionBuilder } from "./helpers/function-builder.js";
+import { parseFunctionArn } from "./helpers/arn.js";
 
 export interface Args extends QueueSubscriberArgs {
   /**

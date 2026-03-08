@@ -1,7 +1,7 @@
 import { output } from "@pulumi/pulumi";
-import { Duration, toSeconds } from "../../duration";
-import { Input } from "../../input";
-import { isJSONata, JSONata, Nextable, State, StateArgs } from "./state";
+import { Duration, toSeconds } from "../../duration.js";
+import { Input } from "../../input.js";
+import { isJSONata, JSONata, Nextable, State, StateArgs } from "./state.js";
 
 export interface WaitArgs extends StateArgs {
   /**

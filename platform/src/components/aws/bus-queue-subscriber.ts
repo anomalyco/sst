@@ -1,8 +1,8 @@
 import { ComponentResourceOptions, Input, output } from "@pulumi/pulumi";
-import { Component, transform } from "../component";
-import { BusBaseSubscriberArgs, createRule } from "./bus-base-subscriber";
+import { Component, transform } from "../component.js";
+import { BusBaseSubscriberArgs, createRule } from "./bus-base-subscriber.js";
 import { cloudwatch, sqs } from "@pulumi/aws";
-import { Queue } from "./queue";
+import { Queue } from "./queue.js";
 
 export interface Args extends BusBaseSubscriberArgs {
   /**

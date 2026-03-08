@@ -1,11 +1,11 @@
 import { ComponentResourceOptions, interpolate, output } from "@pulumi/pulumi";
-import { Component, Transform, transform } from "../component";
+import { Component, Transform, transform } from "../component.js";
 import { FunctionArgs } from "./function.js";
-import { Input } from "../input";
-import { Link } from "../link";
+import { Input } from "../input.js";
+import { Link } from "../link.js";
 import { cognito, getRegionOutput, iam } from "@pulumi/aws";
-import { permission } from "./permission";
-import { parseRoleArn } from "./helpers/arn";
+import { permission } from "./permission.js";
+import { parseRoleArn } from "./helpers/arn.js";
 
 export interface CognitoIdentityPoolArgs {
   /**

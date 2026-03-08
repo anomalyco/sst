@@ -1,6 +1,6 @@
 import { ComponentResourceOptions, Input } from "@pulumi/pulumi";
-import { Component, transform } from "../component";
-import { AppSyncFunctionArgs } from "./app-sync";
+import { Component, transform } from "../component.js";
+import { AppSyncFunctionArgs } from "./app-sync.js";
 import { appsync } from "@pulumi/aws";
 
 export interface FunctionArgs extends AppSyncFunctionArgs {

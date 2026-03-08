@@ -1,13 +1,13 @@
 import { all, Output, output } from "@pulumi/pulumi";
-import { Duration, toSeconds } from "../../duration";
-import { Input } from "../../input";
-import { Prettify } from "../../component";
+import { Duration, toSeconds } from "../../duration.js";
+import { Input } from "../../input.js";
+import { Prettify } from "../../component.js";
 import {
   Function,
   FunctionArgs,
   FunctionArn,
   FunctionPermissionArgs,
-} from "../function";
+} from "../function.js";
 import {
   CatchArgs,
   Failable,
@@ -17,11 +17,11 @@ import {
   RetryArgs,
   State,
   StateArgs,
-} from "./state";
-import { SnsTopic } from "../sns-topic";
-import { Queue } from "../queue";
-import { Task as ServiceTask } from "../task";
-import { Bus } from "../bus";
+} from "./state.js";
+import { SnsTopic } from "../sns-topic.js";
+import { Queue } from "../queue.js";
+import { Task as ServiceTask } from "../task.js";
+import { Bus } from "../bus.js";
 
 interface TaskBaseArgs extends StateArgs {
   /**

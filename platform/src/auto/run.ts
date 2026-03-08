@@ -1,4 +1,4 @@
-import { Link } from "../components/link";
+import { Link } from "../components/link.js";
 import {
   ResourceTransformationArgs,
   runtime,
@@ -6,7 +6,7 @@ import {
   output,
 } from "@pulumi/pulumi";
 
-import { VisibleError } from "../components/error";
+import { VisibleError } from "../components/error.js";
 
 export async function run(program: automation.PulumiFn) {
   process.chdir($cli.paths.root);

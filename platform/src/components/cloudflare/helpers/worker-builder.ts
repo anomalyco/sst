@@ -4,8 +4,8 @@ import {
   Output,
   output,
 } from "@pulumi/pulumi";
-import { transform, Transform } from "../../component";
-import { Worker, WorkerArgs } from "../worker";
+import { transform, Transform } from "../../component.js";
+import { Worker, WorkerArgs } from "../worker.js";
 import * as cloudflare from "@pulumi/cloudflare";
 
 export type WorkerBuilder = Output<{

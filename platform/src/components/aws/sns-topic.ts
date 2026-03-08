@@ -1,16 +1,16 @@
 import { ComponentResourceOptions, Output, all, output } from "@pulumi/pulumi";
-import { Component, outputId, Transform, transform } from "../component";
-import { Link } from "../link";
-import type { Input } from "../input";
-import { FunctionArgs, FunctionArn } from "./function";
-import { hashStringToPrettyString, logicalName } from "../naming";
-import { parseTopicArn } from "./helpers/arn";
-import { SnsTopicLambdaSubscriber } from "./sns-topic-lambda-subscriber";
-import { SnsTopicQueueSubscriber } from "./sns-topic-queue-subscriber";
+import { Component, outputId, Transform, transform } from "../component.js";
+import { Link } from "../link.js";
+import type { Input } from "../input.js";
+import { FunctionArgs, FunctionArn } from "./function.js";
+import { hashStringToPrettyString, logicalName } from "../naming.js";
+import { parseTopicArn } from "./helpers/arn.js";
+import { SnsTopicLambdaSubscriber } from "./sns-topic-lambda-subscriber.js";
+import { SnsTopicQueueSubscriber } from "./sns-topic-queue-subscriber.js";
 import { sns } from "@pulumi/aws";
-import { permission } from "./permission";
-import { isFunctionSubscriber, isQueueSubscriber } from "./helpers/subscriber";
-import { Queue } from "./queue";
+import { permission } from "./permission.js";
+import { isFunctionSubscriber, isQueueSubscriber } from "./helpers/subscriber.js";
+import { Queue } from "./queue.js";
 
 export interface SnsTopicArgs {
   /**

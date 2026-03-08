@@ -1,8 +1,8 @@
 import { ComponentResourceOptions, output } from "@pulumi/pulumi";
-import { Component, Transform, transform } from "../component";
-import { Input } from "../input";
+import { Component, Transform, transform } from "../component.js";
+import { Input } from "../input.js";
 import { CognitoUserPoolClientArgs } from "./cognito-user-pool.js";
-import { Link } from "../link";
+import { Link } from "../link.js";
 import { cognito } from "@pulumi/aws";
 
 export interface Args extends CognitoUserPoolClientArgs {

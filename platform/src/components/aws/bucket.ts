@@ -5,22 +5,22 @@ import {
   all,
   Output,
 } from "@pulumi/pulumi";
-import { hashStringToPrettyString, logicalName } from "../naming";
-import { Component, Prettify, Transform, transform } from "../component";
-import { Link } from "../link";
-import type { Input } from "../input";
-import { FunctionArgs, FunctionArn } from "./function";
-import { Duration, DurationDays, toSeconds } from "../duration";
-import { VisibleError } from "../error";
-import { parseBucketArn } from "./helpers/arn";
-import { BucketLambdaSubscriber } from "./bucket-lambda-subscriber";
+import { hashStringToPrettyString, logicalName } from "../naming.js";
+import { Component, Prettify, Transform, transform } from "../component.js";
+import { Link } from "../link.js";
+import type { Input } from "../input.js";
+import { FunctionArgs, FunctionArn } from "./function.js";
+import { Duration, DurationDays, toSeconds } from "../duration.js";
+import { VisibleError } from "../error.js";
+import { parseBucketArn } from "./helpers/arn.js";
+import { BucketLambdaSubscriber } from "./bucket-lambda-subscriber.js";
 import { iam, s3 } from "@pulumi/aws";
-import { permission } from "./permission";
-import { BucketQueueSubscriber } from "./bucket-queue-subscriber";
-import { BucketTopicSubscriber } from "./bucket-topic-subscriber";
-import { Queue } from "./queue";
-import { SnsTopic } from "./sns-topic";
-import { BucketNotification } from "./bucket-notification";
+import { permission } from "./permission.js";
+import { BucketQueueSubscriber } from "./bucket-queue-subscriber.js";
+import { BucketTopicSubscriber } from "./bucket-topic-subscriber.js";
+import { Queue } from "./queue.js";
+import { SnsTopic } from "./sns-topic.js";
+import { BucketNotification } from "./bucket-notification.js";
 
 interface BucketCorsArgs {
   /**

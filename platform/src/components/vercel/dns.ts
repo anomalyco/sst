@@ -37,13 +37,13 @@
  */
 
 import { DnsRecord, DnsRecordArgs } from "@pulumiverse/vercel";
-import { DnsRecord as OverridableDnsRecord } from "./providers/dns-record";
-import { AliasRecord, Dns, Record } from "../dns";
-import { logicalName } from "../naming";
+import { DnsRecord as OverridableDnsRecord } from "./providers/dns-record.js";
+import { AliasRecord, Dns, Record } from "../dns.js";
+import { logicalName } from "../naming.js";
 import { ComponentResourceOptions, all } from "@pulumi/pulumi";
-import { Transform, transform } from "../component";
-import { Input } from "../input";
-import { DEFAULT_TEAM_ID } from "./account-id";
+import { Transform, transform } from "../component.js";
+import { Input } from "../input.js";
+import { DEFAULT_TEAM_ID } from "./account-id.js";
 
 export interface DnsArgs {
   /**

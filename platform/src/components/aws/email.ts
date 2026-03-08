@@ -5,13 +5,13 @@ import {
   interpolate,
   output,
 } from "@pulumi/pulumi";
-import { Component, Prettify, Transform, transform } from "../component";
-import { Link } from "../link";
-import { Input } from "../input";
-import { Dns } from "../dns";
+import { Component, Prettify, Transform, transform } from "../component.js";
+import { Link } from "../link.js";
+import { Input } from "../input.js";
+import { Dns } from "../dns.js";
 import { dns as awsDns } from "./dns.js";
 import { ses, sesv2 } from "@pulumi/aws";
-import { permission } from "./permission";
+import { permission } from "./permission.js";
 
 interface Events {
   /**

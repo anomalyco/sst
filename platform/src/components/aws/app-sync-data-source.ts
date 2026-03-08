@@ -4,13 +4,13 @@ import {
   Output,
   output,
 } from "@pulumi/pulumi";
-import { Component, transform } from "../component";
-import { Function } from "./function";
-import { VisibleError } from "../error";
-import { AppSyncDataSourceArgs } from "./app-sync";
-import { parseDynamoArn } from "./helpers/arn";
+import { Component, transform } from "../component.js";
+import { Function } from "./function.js";
+import { VisibleError } from "../error.js";
+import { AppSyncDataSourceArgs } from "./app-sync.js";
+import { parseDynamoArn } from "./helpers/arn.js";
 import { appsync, iam } from "@pulumi/aws";
-import { FunctionBuilder, functionBuilder } from "./helpers/function-builder";
+import { FunctionBuilder, functionBuilder } from "./helpers/function-builder.js";
 
 export interface DataSourceArgs extends AppSyncDataSourceArgs {
   /**

@@ -5,13 +5,13 @@ import {
   interpolate,
   output,
 } from "@pulumi/pulumi";
-import { Component, transform } from "../component";
-import { Function, FunctionArgs } from "./function";
-import { RealtimeSubscriberArgs } from "./realtime";
+import { Component, transform } from "../component.js";
+import { Function, FunctionArgs } from "./function.js";
+import { RealtimeSubscriberArgs } from "./realtime.js";
 import { lambda } from "@pulumi/aws";
 import { iot } from "@pulumi/aws";
-import { FunctionBuilder, functionBuilder } from "./helpers/function-builder";
-import { splitQualifiedFunctionArn } from "./helpers/arn";
+import { FunctionBuilder, functionBuilder } from "./helpers/function-builder.js";
+import { splitQualifiedFunctionArn } from "./helpers/arn.js";
 
 export interface Args extends RealtimeSubscriberArgs {
   /**

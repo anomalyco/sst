@@ -1,5 +1,5 @@
 import { all, output, ComponentResourceOptions } from "@pulumi/pulumi";
-import { Semaphore } from "../../../util/semaphore";
+import { Semaphore } from "../../../util/semaphore.js";
 import { Image, ImageArgs } from "@pulumi/docker-build";
 
 const limiter = new Semaphore(

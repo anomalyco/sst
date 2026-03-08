@@ -9,24 +9,24 @@ import {
 import { asset } from "@pulumi/pulumi";
 import { iam, lambda } from "@pulumi/aws";
 import crypto from "crypto";
-import { Component, Transform, transform } from "../component";
-import { Link } from "../link";
-import type { Input } from "../input";
-import { Cdn, CdnArgs } from "./cdn";
+import { Component, Transform, transform } from "../component.js";
+import { Link } from "../link.js";
+import type { Input } from "../input.js";
+import { Cdn, CdnArgs } from "./cdn.js";
 import { cloudfront, cloudwatch, wafv2 } from "@pulumi/aws";
-import { useProvider } from "./helpers/provider";
-import { hashStringToPrettyString, physicalName } from "../naming";
-import { Bucket } from "./bucket";
-import { OriginAccessControl } from "./providers/origin-access-control";
-import { VisibleError } from "../error";
-import { RouterUrlRoute } from "./router-url-route";
-import { RouterBucketRoute } from "./router-bucket-route";
-import { DurationSeconds, toSeconds } from "../duration";
-import { FunctionArn } from "./function";
-import { parseLambdaEdgeArn } from "./helpers/arn";
-import { Size, toMBs } from "../size";
-import { RETENTION } from "./logging";
-import { minify } from "../../util/minify";
+import { useProvider } from "./helpers/provider.js";
+import { hashStringToPrettyString, physicalName } from "../naming.js";
+import { Bucket } from "./bucket.js";
+import { OriginAccessControl } from "./providers/origin-access-control.js";
+import { VisibleError } from "../error.js";
+import { RouterUrlRoute } from "./router-url-route.js";
+import { RouterBucketRoute } from "./router-bucket-route.js";
+import { DurationSeconds, toSeconds } from "../duration.js";
+import { FunctionArn } from "./function.js";
+import { parseLambdaEdgeArn } from "./helpers/arn.js";
+import { Size, toMBs } from "../size.js";
+import { RETENTION } from "./logging.js";
+import { minify } from "../../util/minify.js";
 
 interface InlineUrlRouteArgs extends InlineBaseRouteArgs {
   /**

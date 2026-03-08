@@ -25,8 +25,8 @@
 
 import "@types/node";
 import * as util from "@pulumi/pulumi";
-import * as _sst from "./components/index";
-import { $config as config, App } from "./config";
+import * as _sst from "./components/index.js";
+import { $config as config, App } from "./config.js";
 
 type Simplify<T> = {
   [K in keyof T]: T[K];
@@ -72,7 +72,7 @@ declare global {
   export import sst = _sst;
 
   /** @internal */
-  export const $linkable: typeof import("./components/link").Link.linkable;
+  export const $linkable: typeof import("./components/link.js").Link.linkable;
 
   /**
    * A convenience reference to the the [`util`](https://www.pulumi.com/docs/reference/pkg/nodejs/pulumi/pulumi/) module from Pulumi.
@@ -333,7 +333,7 @@ declare global {
    * new sst.aws.Function(name: string, args: FunctionArgs, opts?: pulumi.ComponentResourceOptions)
    * ```
    */
-  export const $transform: typeof import("./components/component").$transform;
+  export const $transform: typeof import("./components/component.js").$transform;
 
   /**
    * Packages a file or directory into a Pulumi asset. This can be used for Pulumi resources that
@@ -378,7 +378,7 @@ declare global {
    * });
    * ```
    */
-  export const $asset: typeof import("./components/component").$asset;
+  export const $asset: typeof import("./components/component.js").$asset;
 
   /**
    * Returns `true` if the app is running in `sst dev`.

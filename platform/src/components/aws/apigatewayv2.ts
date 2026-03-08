@@ -5,28 +5,28 @@ import {
   Prettify,
   Transform,
   transform,
-} from "../component";
-import { Link } from "../link";
-import type { Input } from "../input";
-import { FunctionArgs, FunctionArn } from "./function";
-import { hashStringToPrettyString, physicalName, logicalName } from "../naming";
-import { VisibleError } from "../error";
-import { DnsValidatedCertificate } from "./dns-validated-certificate";
-import { RETENTION } from "./logging";
-import { dns as awsDns } from "./dns";
-import { ApiGatewayV2DomainArgs } from "./helpers/apigatewayv2-domain";
-import { ApiGatewayV2LambdaRoute } from "./apigatewayv2-lambda-route";
-import { ApiGatewayV2Authorizer } from "./apigatewayv2-authorizer";
+} from "../component.js";
+import { Link } from "../link.js";
+import type { Input } from "../input.js";
+import { FunctionArgs, FunctionArn } from "./function.js";
+import { hashStringToPrettyString, physicalName, logicalName } from "../naming.js";
+import { VisibleError } from "../error.js";
+import { DnsValidatedCertificate } from "./dns-validated-certificate.js";
+import { RETENTION } from "./logging.js";
+import { dns as awsDns } from "./dns.js";
+import { ApiGatewayV2DomainArgs } from "./helpers/apigatewayv2-domain.js";
+import { ApiGatewayV2LambdaRoute } from "./apigatewayv2-lambda-route.js";
+import { ApiGatewayV2Authorizer } from "./apigatewayv2-authorizer.js";
 import { apigatewayv2, cloudwatch, types } from "@pulumi/aws";
-import { ApiGatewayV2UrlRoute } from "./apigatewayv2-url-route";
+import { ApiGatewayV2UrlRoute } from "./apigatewayv2-url-route.js";
 import {
   Duration,
   DurationHours,
   DurationMinutes,
   toSeconds,
-} from "../duration";
-import { ApiGatewayV2PrivateRoute } from "./apigatewayv2-private-route";
-import { Vpc } from "./vpc";
+} from "../duration.js";
+import { ApiGatewayV2PrivateRoute } from "./apigatewayv2-private-route.js";
+import { Vpc } from "./vpc.js";
 
 interface ApiGatewayV2CorsArgs {
   /**

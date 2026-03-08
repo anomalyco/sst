@@ -11,21 +11,21 @@ import {
   Prettify,
   Transform,
   transform,
-} from "../component";
-import { Link } from "../link";
-import type { Input } from "../input";
-import { FunctionArgs, FunctionArn } from "./function";
-import { hashStringToPrettyString, physicalName, logicalName } from "../naming";
-import { DnsValidatedCertificate } from "./dns-validated-certificate";
-import { RETENTION } from "./logging";
+} from "../component.js";
+import { Link } from "../link.js";
+import type { Input } from "../input.js";
+import { FunctionArgs, FunctionArn } from "./function.js";
+import { hashStringToPrettyString, physicalName, logicalName } from "../naming.js";
+import { DnsValidatedCertificate } from "./dns-validated-certificate.js";
+import { RETENTION } from "./logging.js";
 import { dns as awsDns } from "./dns.js";
-import { ApiGatewayV2DomainArgs } from "./helpers/apigatewayv2-domain";
-import { ApiGatewayV2Authorizer } from "./apigatewayv2-authorizer";
-import { ApiGatewayWebSocketRoute } from "./apigateway-websocket-route";
-import { setupApiGatewayAccount } from "./helpers/apigateway-account";
+import { ApiGatewayV2DomainArgs } from "./helpers/apigatewayv2-domain.js";
+import { ApiGatewayV2Authorizer } from "./apigatewayv2-authorizer.js";
+import { ApiGatewayWebSocketRoute } from "./apigateway-websocket-route.js";
+import { setupApiGatewayAccount } from "./helpers/apigateway-account.js";
 import { apigatewayv2, cloudwatch } from "@pulumi/aws";
-import { permission } from "./permission";
-import { VisibleError } from "../error";
+import { permission } from "./permission.js";
+import { VisibleError } from "../error.js";
 
 export interface ApiGatewayWebSocketArgs {
   /**

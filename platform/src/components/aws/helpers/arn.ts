@@ -1,5 +1,5 @@
-import { aws } from "../..";
-import { VisibleError } from "../../error";
+import { aws } from "../../index.js";
+import { VisibleError } from "../../error.js";
 
 export function parseFunctionArn(arn: string) {
   // arn:aws:lambda:region:account-id:function:function-name

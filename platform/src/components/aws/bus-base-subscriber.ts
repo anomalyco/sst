@@ -1,7 +1,7 @@
 import { Input, output } from "@pulumi/pulumi";
-import { Component, transform } from "../component";
+import { Component, transform } from "../component.js";
 import { cloudwatch } from "@pulumi/aws";
-import { BusSubscriberArgs } from "./bus";
+import { BusSubscriberArgs } from "./bus.js";
 
 export interface BusBaseSubscriberArgs extends BusSubscriberArgs {
   /**

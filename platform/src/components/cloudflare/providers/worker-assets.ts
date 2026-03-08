@@ -1,6 +1,6 @@
 import { CustomResourceOptions, Input, Output, dynamic } from "@pulumi/pulumi";
 import { rpc } from "../../rpc/rpc.js";
-import { DEFAULT_ACCOUNT_ID } from "../account-id";
+import { DEFAULT_ACCOUNT_ID } from "../account-id.js";
 
 export interface WorkerAssetsInputs {
   directory: Input<string>;

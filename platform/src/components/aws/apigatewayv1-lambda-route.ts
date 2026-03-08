@@ -6,15 +6,15 @@ import {
   interpolate,
   output,
 } from "@pulumi/pulumi";
-import { Component, Transform, transform } from "../component";
-import { FunctionArgs } from "./function";
+import { Component, Transform, transform } from "../component.js";
+import { FunctionArgs } from "./function.js";
 import { apigateway, lambda } from "@pulumi/aws";
 import {
   ApiGatewayV1BaseRouteArgs,
   createMethod,
-} from "./apigatewayv1-base-route";
-import { FunctionBuilder, functionBuilder } from "./helpers/function-builder";
-import { splitQualifiedFunctionArn } from "./helpers/arn";
+} from "./apigatewayv1-base-route.js";
+import { FunctionBuilder, functionBuilder } from "./helpers/function-builder.js";
+import { splitQualifiedFunctionArn } from "./helpers/arn.js";
 
 export interface Args extends ApiGatewayV1BaseRouteArgs {
   /**

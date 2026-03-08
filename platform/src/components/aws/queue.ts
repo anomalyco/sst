@@ -5,16 +5,16 @@ import {
   jsonStringify,
   Output,
 } from "@pulumi/pulumi";
-import { Component, Transform, transform } from "../component";
-import { Link } from "../link";
-import type { Input } from "../input";
-import { FunctionArgs, FunctionArn } from "./function";
-import { VisibleError } from "../error";
-import { hashStringToPrettyString, logicalName } from "../naming";
-import { parseQueueArn } from "./helpers/arn";
-import { QueueLambdaSubscriber } from "./queue-lambda-subscriber";
+import { Component, Transform, transform } from "../component.js";
+import { Link } from "../link.js";
+import type { Input } from "../input.js";
+import { FunctionArgs, FunctionArn } from "./function.js";
+import { VisibleError } from "../error.js";
+import { hashStringToPrettyString, logicalName } from "../naming.js";
+import { parseQueueArn } from "./helpers/arn.js";
+import { QueueLambdaSubscriber } from "./queue-lambda-subscriber.js";
 import { iam, lambda, sqs } from "@pulumi/aws";
-import { DurationHours, DurationMinutes, toSeconds } from "../duration";
+import { DurationHours, DurationMinutes, toSeconds } from "../duration.js";
 import { permission } from "./permission.js";
 
 export interface QueueArgs {

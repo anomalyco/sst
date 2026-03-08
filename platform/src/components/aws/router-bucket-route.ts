@@ -1,15 +1,15 @@
 import { ComponentResourceOptions, Input, all, output } from "@pulumi/pulumi";
-import { Component } from "../component";
+import { Component } from "../component.js";
 import {
   buildKvNamespace,
   createKvRouteData,
   parsePattern,
   RouterBaseRouteArgs,
   updateKvRoutes,
-} from "./router-base-route";
-import { Bucket } from "./bucket";
-import { RouterBucketRouteArgs } from "./router";
-import { toSeconds } from "../duration";
+} from "./router-base-route.js";
+import { Bucket } from "./bucket.js";
+import { RouterBucketRouteArgs } from "./router.js";
+import { toSeconds } from "../duration.js";
 
 export interface Args extends RouterBaseRouteArgs {
   /**

@@ -4,9 +4,9 @@ import {
   output,
   secret,
 } from "@pulumi/pulumi";
-import { Component, Transform } from "../component";
-import { Link } from "../link";
-import { FunctionArgs, Function } from "./function";
+import { Component, Transform } from "../component.js";
+import { Link } from "../link.js";
+import { FunctionArgs, Function } from "./function.js";
 import { PrivateKey } from "@pulumi/tls";
 import { s3 } from "@pulumi/aws";
 

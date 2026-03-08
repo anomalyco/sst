@@ -1,9 +1,9 @@
 import { ComponentResourceOptions } from "@pulumi/pulumi";
 import * as cloudflare from "@pulumi/cloudflare";
-import { Component, Transform, transform } from "../component";
+import { Component, Transform, transform } from "../component.js";
 import { Link } from "../link.js";
 import { binding } from "./binding.js";
-import { DEFAULT_ACCOUNT_ID } from "./account-id";
+import { DEFAULT_ACCOUNT_ID } from "./account-id.js";
 
 export interface BucketArgs {
   /**

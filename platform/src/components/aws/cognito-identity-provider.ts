@@ -1,11 +1,11 @@
 import { ComponentResourceOptions, output } from "@pulumi/pulumi";
-import { Component, Transform, transform } from "../component";
-import { Input } from "../input";
-import { Link } from "../link";
+import { Component, Transform, transform } from "../component.js";
+import { Input } from "../input.js";
+import { Link } from "../link.js";
 import { cognito } from "@pulumi/aws";
-import { CognitoIdentityProviderArgs } from "./cognito-user-pool";
+import { CognitoIdentityProviderArgs } from "./cognito-user-pool.js";
 import { OpenIdConnectProvider } from "@pulumi/aws/iam";
-import { VisibleError } from "../error";
+import { VisibleError } from "../error.js";
 
 export interface Args extends CognitoIdentityProviderArgs {
   /**

@@ -14,7 +14,7 @@ import { elasticache, secretsmanager } from "@pulumi/aws";
 import { Vpc } from "./vpc.js";
 import { VisibleError } from "../error.js";
 import { DevCommand } from "../experimental/dev-command.js";
-import { Redis as RedisV1 } from "./redis-v1";
+import { Redis as RedisV1 } from "./redis-v1.js";
 
 export interface RedisArgs {
   /**

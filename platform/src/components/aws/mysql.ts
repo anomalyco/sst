@@ -6,17 +6,17 @@ import {
   Output,
   output,
 } from "@pulumi/pulumi";
-import { Component, Transform, transform } from "../component";
-import { Link } from "../link";
+import { Component, Transform, transform } from "../component.js";
+import { Link } from "../link.js";
 import { Input } from "../input.js";
 import { iam, rds, secretsmanager } from "@pulumi/aws";
 import { RandomPassword } from "@pulumi/random";
-import { Vpc } from "./vpc";
-import { Vpc as VpcV1 } from "./vpc-v1";
-import { VisibleError } from "../error";
-import { SizeGbTb, toGBs } from "../size";
+import { Vpc } from "./vpc.js";
+import { Vpc as VpcV1 } from "./vpc-v1.js";
+import { VisibleError } from "../error.js";
+import { SizeGbTb, toGBs } from "../size.js";
 import { DevCommand } from "../experimental/dev-command.js";
-import { RdsRoleLookup } from "./providers/rds-role-lookup";
+import { RdsRoleLookup } from "./providers/rds-role-lookup.js";
 
 export interface MysqlArgs {
   /**

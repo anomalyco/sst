@@ -4,13 +4,13 @@ import {
   interpolate,
   output,
 } from "@pulumi/pulumi";
-import { Component, transform } from "../component";
-import { ApiGatewayV2AuthorizerArgs } from "./apigatewayv2";
+import { Component, transform } from "../component.js";
+import { ApiGatewayV2AuthorizerArgs } from "./apigatewayv2.js";
 import { apigatewayv2, lambda } from "@pulumi/aws";
-import { VisibleError } from "../error";
-import { toSeconds } from "../duration";
-import { functionBuilder } from "./helpers/function-builder";
-import { splitQualifiedFunctionArn } from "./helpers/arn";
+import { VisibleError } from "../error.js";
+import { toSeconds } from "../duration.js";
+import { functionBuilder } from "./helpers/function-builder.js";
+import { splitQualifiedFunctionArn } from "./helpers/arn.js";
 
 export interface AuthorizerArgs extends ApiGatewayV2AuthorizerArgs {
   /**

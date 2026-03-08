@@ -1,18 +1,18 @@
 import fs from "fs/promises";
 import { ComponentResourceOptions, interpolate, output } from "@pulumi/pulumi";
-import { Component, Transform, transform } from "../component";
-import { Link } from "../link";
-import type { Input } from "../input";
-import { FunctionArgs, FunctionArn } from "./function";
-import { logicalName } from "../naming";
-import { VisibleError } from "../error";
-import { AppSyncDataSource } from "./app-sync-data-source";
-import { AppSyncResolver } from "./app-sync-resolver";
-import { AppSyncFunction } from "./app-sync-function";
+import { Component, Transform, transform } from "../component.js";
+import { Link } from "../link.js";
+import type { Input } from "../input.js";
+import { FunctionArgs, FunctionArn } from "./function.js";
+import { logicalName } from "../naming.js";
+import { VisibleError } from "../error.js";
+import { AppSyncDataSource } from "./app-sync-data-source.js";
+import { AppSyncResolver } from "./app-sync-resolver.js";
+import { AppSyncFunction } from "./app-sync-function.js";
 import { dns as awsDns } from "./dns.js";
-import { Dns } from "../dns";
-import { DnsValidatedCertificate } from "./dns-validated-certificate";
-import { useProvider } from "./helpers/provider";
+import { Dns } from "../dns.js";
+import { DnsValidatedCertificate } from "./dns-validated-certificate.js";
+import { useProvider } from "./helpers/provider.js";
 import { appsync, iam } from "@pulumi/aws";
 
 export interface AppSyncArgs {

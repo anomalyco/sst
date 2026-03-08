@@ -5,12 +5,12 @@ import {
   interpolate,
   output,
 } from "@pulumi/pulumi";
-import { Component, transform } from "../component";
-import { VisibleError } from "../error";
-import { ApiGatewayV1AuthorizerArgs } from "./apigatewayv1";
+import { Component, transform } from "../component.js";
+import { VisibleError } from "../error.js";
+import { ApiGatewayV1AuthorizerArgs } from "./apigatewayv1.js";
 import { apigateway, lambda } from "@pulumi/aws";
-import { FunctionBuilder, functionBuilder } from "./helpers/function-builder";
-import { splitQualifiedFunctionArn } from "./helpers/arn";
+import { FunctionBuilder, functionBuilder } from "./helpers/function-builder.js";
+import { splitQualifiedFunctionArn } from "./helpers/arn.js";
 
 export interface AuthorizerArgs extends ApiGatewayV1AuthorizerArgs {
   /**

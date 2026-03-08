@@ -1,9 +1,9 @@
 import { all, ComponentResourceOptions, Output } from "@pulumi/pulumi";
 import { RandomPassword } from "@pulumi/random";
-import { Component } from "../component";
-import { FunctionArgs, Function } from ".";
-import { functionBuilder } from "./helpers/function-builder";
-import { Input } from "../input";
+import { Component } from "../component.js";
+import { FunctionArgs, Function } from "./index.js";
+import { functionBuilder } from "./helpers/function-builder.js";
+import { Input } from "../input.js";
 
 export interface OpenControlArgs {
   /**

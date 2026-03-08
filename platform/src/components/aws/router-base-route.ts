@@ -1,8 +1,8 @@
 import crypto from "crypto";
 import { Input, jsonStringify } from "@pulumi/pulumi";
-import { Component } from "../component";
-import { KvRoutesUpdate } from "./providers/kv-routes-update";
-import { KvKeys } from "./providers/kv-keys";
+import { Component } from "../component.js";
+import { KvRoutesUpdate } from "./providers/kv-routes-update.js";
+import { KvKeys } from "./providers/kv-keys.js";
 
 export interface RouterBaseRouteArgs {
   /**

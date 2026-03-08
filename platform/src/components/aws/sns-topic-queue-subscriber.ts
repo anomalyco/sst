@@ -4,10 +4,10 @@ import {
   jsonStringify,
   output,
 } from "@pulumi/pulumi";
-import { Component, transform } from "../component";
-import { SnsTopicSubscriberArgs } from "./sns-topic";
+import { Component, transform } from "../component.js";
+import { SnsTopicSubscriberArgs } from "./sns-topic.js";
 import { sns, sqs } from "@pulumi/aws";
-import { Queue } from "./queue";
+import { Queue } from "./queue.js";
 
 export interface Args extends SnsTopicSubscriberArgs {
   /**

@@ -11,23 +11,23 @@ import {
   Prettify,
   Transform,
   transform,
-} from "../component";
-import { Link } from "../link";
-import type { Input } from "../input";
-import { FunctionArgs, FunctionArn } from "./function";
-import { hashStringToPrettyString, physicalName, logicalName } from "../naming";
-import { VisibleError } from "../error";
-import { RETENTION } from "./logging";
-import { ApiGatewayV1LambdaRoute } from "./apigatewayv1-lambda-route";
-import { ApiGatewayV1Authorizer } from "./apigatewayv1-authorizer";
-import { setupApiGatewayAccount } from "./helpers/apigateway-account";
+} from "../component.js";
+import { Link } from "../link.js";
+import type { Input } from "../input.js";
+import { FunctionArgs, FunctionArn } from "./function.js";
+import { hashStringToPrettyString, physicalName, logicalName } from "../naming.js";
+import { VisibleError } from "../error.js";
+import { RETENTION } from "./logging.js";
+import { ApiGatewayV1LambdaRoute } from "./apigatewayv1-lambda-route.js";
+import { ApiGatewayV1Authorizer } from "./apigatewayv1-authorizer.js";
+import { setupApiGatewayAccount } from "./helpers/apigateway-account.js";
 import { apigateway, cloudwatch, getRegionOutput } from "@pulumi/aws";
-import { Dns } from "../dns";
-import { dns as awsDns } from "./dns";
-import { DnsValidatedCertificate } from "./dns-validated-certificate";
-import { ApiGatewayV1IntegrationRoute } from "./apigatewayv1-integration-route";
-import { ApiGatewayV1UsagePlan } from "./apigatewayv1-usage-plan";
-import { useProvider } from "./helpers/provider";
+import { Dns } from "../dns.js";
+import { dns as awsDns } from "./dns.js";
+import { DnsValidatedCertificate } from "./dns-validated-certificate.js";
+import { ApiGatewayV1IntegrationRoute } from "./apigatewayv1-integration-route.js";
+import { ApiGatewayV1UsagePlan } from "./apigatewayv1-usage-plan.js";
+import { useProvider } from "./helpers/provider.js";
 
 export interface ApiGatewayV1DomainArgs {
   /**

@@ -2,15 +2,15 @@ import fs from "fs";
 import path from "path";
 import { ComponentResourceOptions, interpolate, secret } from "@pulumi/pulumi";
 import { all, output } from "@pulumi/pulumi";
-import { Input } from "../input";
-import { Efs } from "./efs";
-import { FunctionArgs } from "./function";
-import { RETENTION } from "./logging";
-import { toGBs, toMBs } from "../size";
-import { VisibleError } from "../error";
-import { ServiceArgs } from "./service";
+import { Input } from "../input.js";
+import { Efs } from "./efs.js";
+import { FunctionArgs } from "./function.js";
+import { RETENTION } from "./logging.js";
+import { toGBs, toMBs } from "../size.js";
+import { VisibleError } from "../error.js";
+import { ServiceArgs } from "./service.js";
 import { ImageArgs, Platform } from "@pulumi/docker-build";
-import { Component, Transform, transform } from "../component";
+import { Component, Transform, transform } from "../component.js";
 import {
   cloudwatch,
   ecr,
@@ -20,14 +20,14 @@ import {
   getRegionOutput,
   iam,
 } from "@pulumi/aws";
-import { Link } from "../link";
-import { Permission } from "./permission";
-import { bootstrap } from "./helpers/bootstrap";
-import { imageBuilder } from "./helpers/container-builder";
-import { toNumber } from "../cpu";
-import { toSeconds } from "../duration";
-import { Cluster } from "./cluster";
-import { physicalName } from "../naming";
+import { Link } from "../link.js";
+import { Permission } from "./permission.js";
+import { bootstrap } from "./helpers/bootstrap.js";
+import { imageBuilder } from "./helpers/container-builder.js";
+import { toNumber } from "../cpu.js";
+import { toSeconds } from "../duration.js";
+import { Cluster } from "./cluster.js";
+import { physicalName } from "../naming.js";
 
 export const supportedCpus = {
   "0.25 vCPU": 256,

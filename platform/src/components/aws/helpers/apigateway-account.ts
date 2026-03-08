@@ -4,7 +4,7 @@ import {
   jsonStringify,
   interpolate,
 } from "@pulumi/pulumi";
-import { $print } from "../../component";
+import { $print } from "../../component.js";
 
 export function setupApiGatewayAccount(
   namePrefix: string,

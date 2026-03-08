@@ -1,5 +1,5 @@
 import { all, output, CustomResourceOptions } from "@pulumi/pulumi";
-import { Semaphore } from "../../../util/semaphore";
+import { Semaphore } from "../../../util/semaphore.js";
 import { local } from "@pulumi/command";
 
 const limiter = new Semaphore(

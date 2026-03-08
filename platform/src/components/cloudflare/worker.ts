@@ -11,7 +11,7 @@ import {
 import * as cf from "@pulumi/cloudflare";
 import type { Loader } from "esbuild";
 import type { EsbuildOptions } from "../esbuild.js";
-import { Component, Transform, transform } from "../component";
+import { Component, Transform, transform } from "../component.js";
 import { WorkerUrl } from "./providers/worker-url.js";
 import { WorkerPlacement } from "./providers/worker-placement.js";
 import { Link } from "../link.js";
@@ -22,12 +22,12 @@ import { Permission } from "../aws/permission.js";
 import { binding } from "./binding.js";
 import { DEFAULT_ACCOUNT_ID } from "./account-id.js";
 import { rpc } from "../rpc/rpc.js";
-import { WorkerAssets } from "./providers/worker-assets";
+import { WorkerAssets } from "./providers/worker-assets.js";
 import { globSync } from "glob";
-import { VisibleError } from "../error";
-import { getContentType } from "../base/base-site";
-import { physicalName } from "../naming";
-import { existsAsync } from "../../util/fs";
+import { VisibleError } from "../error.js";
+import { getContentType } from "../base/base-site.js";
+import { physicalName } from "../naming.js";
+import { existsAsync } from "../../util/fs.js";
 
 export interface WorkerArgs {
   /**

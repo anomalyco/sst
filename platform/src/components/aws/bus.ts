@@ -1,14 +1,14 @@
 import { ComponentResourceOptions, Output, output } from "@pulumi/pulumi";
-import { Component, Transform, transform } from "../component";
-import { Link } from "../link";
-import type { Input } from "../input";
-import { FunctionArgs, FunctionArn } from "./function";
-import { parseEventBusArn } from "./helpers/arn";
-import { BusLambdaSubscriber } from "./bus-lambda-subscriber";
+import { Component, Transform, transform } from "../component.js";
+import { Link } from "../link.js";
+import type { Input } from "../input.js";
+import { FunctionArgs, FunctionArn } from "./function.js";
+import { parseEventBusArn } from "./helpers/arn.js";
+import { BusLambdaSubscriber } from "./bus-lambda-subscriber.js";
 import { cloudwatch } from "@pulumi/aws";
-import { permission } from "./permission";
-import { Queue } from "./queue";
-import { BusQueueSubscriber } from "./bus-queue-subscriber";
+import { permission } from "./permission.js";
+import { Queue } from "./queue.js";
+import { BusQueueSubscriber } from "./bus-queue-subscriber.js";
 
 export interface BusArgs {
   /**

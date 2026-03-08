@@ -1,2 +1,2 @@
-export * from "./account-id";
-export * from "./dns";
+export * from "./account-id.js";
+export * from "./dns.js";

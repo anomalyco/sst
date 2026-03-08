@@ -1,11 +1,11 @@
 import { apigateway } from "@pulumi/aws";
 import { ComponentResourceOptions, Input, output } from "@pulumi/pulumi";
-import { Component } from "../component";
+import { Component } from "../component.js";
 import {
   ApiGatewayV1ApiKeyArgs,
   ApiGatewayV1UsagePlanArgs,
-} from "./apigatewayv1";
-import { ApiGatewayV1ApiKey } from "./apigatewayv1-api-key";
+} from "./apigatewayv1.js";
+import { ApiGatewayV1ApiKey } from "./apigatewayv1-api-key.js";
 
 export interface UsagePlanArgs extends ApiGatewayV1UsagePlanArgs {
   /**

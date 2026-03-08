@@ -1,6 +1,6 @@
 import { Input, output } from "@pulumi/pulumi";
-import { FunctionArgs, FunctionArn } from "../function";
-import { Queue } from "../queue";
+import { FunctionArgs, FunctionArn } from "../function.js";
+import { Queue } from "../queue.js";
 
 export function isFunctionSubscriber(
   subscriber?: Input<string | FunctionArgs | FunctionArn>,

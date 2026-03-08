@@ -6,19 +6,19 @@ import {
   Output,
   output,
 } from "@pulumi/pulumi";
-import { Component, Transform, transform } from "../component";
-import { Link } from "../link";
+import { Component, Transform, transform } from "../component.js";
+import { Link } from "../link.js";
 import { Input } from "../input.js";
 import { iam, rds, secretsmanager } from "@pulumi/aws";
 import { RandomPassword } from "@pulumi/random";
-import { Vpc } from "./vpc";
-import { Vpc as VpcV1 } from "./vpc-v1";
-import { VisibleError } from "../error";
-import { Postgres as PostgresV1 } from "./postgres-v1";
-import { SizeGbTb, toGBs } from "../size";
+import { Vpc } from "./vpc.js";
+import { Vpc as VpcV1 } from "./vpc-v1.js";
+import { VisibleError } from "../error.js";
+import { Postgres as PostgresV1 } from "./postgres-v1.js";
+import { SizeGbTb, toGBs } from "../size.js";
 import { DevCommand } from "../experimental/dev-command.js";
-import { RdsRoleLookup } from "./providers/rds-role-lookup";
-export type { PostgresArgs as PostgresV1Args } from "./postgres-v1";
+import { RdsRoleLookup } from "./providers/rds-role-lookup.js";
+export type { PostgresArgs as PostgresV1Args } from "./postgres-v1.js";
 
 export interface PostgresArgs {
   /**

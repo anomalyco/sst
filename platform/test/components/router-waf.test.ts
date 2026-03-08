@@ -70,10 +70,10 @@ async function settle() {
 }
 
 describe("Router WAF Logging", function () {
-  let Router: typeof import("./../../src/components/aws/router").Router;
+  let Router: typeof import("../../src/components/aws/router.js").Router;
 
   beforeAll(async function () {
-    Router = (await import("./../../src/components/aws/router")).Router;
+    Router = (await import("../../src/components/aws/router.js")).Router;
   });
 
   beforeEach(function () {

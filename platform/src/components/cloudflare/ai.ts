@@ -1,7 +1,7 @@
 import { ComponentResourceOptions } from "@pulumi/pulumi";
-import { Component } from "../component";
-import { Link } from "../link";
-import { binding } from "./binding";
+import { Component } from "../component.js";
+import { Link } from "../link.js";
+import { binding } from "./binding.js";
 
 export interface AiArgs {}
 

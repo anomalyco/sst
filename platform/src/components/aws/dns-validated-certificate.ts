@@ -1,7 +1,7 @@
 import { ComponentResourceOptions, Output, all } from "@pulumi/pulumi";
-import { Component } from "../component";
+import { Component } from "../component.js";
 import { Input } from "../input.js";
-import { Dns } from "../dns";
+import { Dns } from "../dns.js";
 import { acm } from "@pulumi/aws";
 
 /**

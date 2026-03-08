@@ -5,12 +5,12 @@ import {
   interpolate,
   output,
 } from "@pulumi/pulumi";
-import { Component, transform } from "../component";
-import { Function, FunctionArgs } from "./function";
-import { BucketSubscriberArgs } from "./bucket";
+import { Component, transform } from "../component.js";
+import { Function, FunctionArgs } from "./function.js";
+import { BucketSubscriberArgs } from "./bucket.js";
 import { lambda, s3 } from "@pulumi/aws";
-import { FunctionBuilder, functionBuilder } from "./helpers/function-builder";
-import { splitQualifiedFunctionArn } from "./helpers/arn";
+import { FunctionBuilder, functionBuilder } from "./helpers/function-builder.js";
+import { splitQualifiedFunctionArn } from "./helpers/arn.js";
 
 export interface Args extends BucketSubscriberArgs {
   /**

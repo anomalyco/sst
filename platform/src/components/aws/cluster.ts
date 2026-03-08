@@ -6,16 +6,16 @@ import {
   Prettify,
   Transform,
   transform,
-} from "../component";
-import { Input } from "../input";
-import { Service, ServiceArgs } from "./service";
+} from "../component.js";
+import { Input } from "../input.js";
+import { Service, ServiceArgs } from "./service.js";
 import { ecs } from "@pulumi/aws";
-import { Cluster as ClusterV1 } from "./cluster-v1";
-import { Vpc } from "./vpc";
+import { Cluster as ClusterV1 } from "./cluster-v1.js";
+import { Vpc } from "./vpc.js";
 import { Vpc as VpcV1 } from "./vpc-v1.js";
-import { Task, TaskArgs } from "./task";
-import { VisibleError } from "../error";
-export type { ClusterArgs as ClusterV1Args } from "./cluster-v1";
+import { Task, TaskArgs } from "./task.js";
+import { VisibleError } from "../error.js";
+export type { ClusterArgs as ClusterV1Args } from "./cluster-v1.js";
 
 type ClusterVpcArgs = {
   /**

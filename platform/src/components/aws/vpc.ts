@@ -5,8 +5,8 @@ import {
   Output,
   output,
 } from "@pulumi/pulumi";
-import { Component, Transform, transform } from "../component";
-import { Input } from "../input";
+import { Component, Transform, transform } from "../component.js";
+import { Input } from "../input.js";
 import {
   ec2,
   getAvailabilityZonesOutput,
@@ -16,13 +16,13 @@ import {
   servicediscovery,
   ssm,
 } from "@pulumi/aws";
-import { Vpc as VpcV1 } from "./vpc-v1";
-import { Link } from "../link";
-import { VisibleError } from "../error";
+import { Vpc as VpcV1 } from "./vpc-v1.js";
+import { Link } from "../link.js";
+import { VisibleError } from "../error.js";
 import { PrivateKey } from "@pulumi/tls";
 import { rootStackResource } from "@pulumi/pulumi";
 
-export type { VpcArgs as VpcV1Args } from "./vpc-v1";
+export type { VpcArgs as VpcV1Args } from "./vpc-v1.js";
 
 export interface VpcArgs {
   /**

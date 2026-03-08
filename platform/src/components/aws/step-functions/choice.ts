@@ -1,4 +1,4 @@
-import { isJSONata, JSONata, State, StateArgs } from "./state";
+import { isJSONata, JSONata, State, StateArgs } from "./state.js";
 
 export interface ChoiceArgs extends StateArgs { }
 

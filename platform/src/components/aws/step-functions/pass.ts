@@ -1,5 +1,5 @@
-import { Input } from "../../input";
-import { Nextable, State, StateArgs } from "./state";
+import { Input } from "../../input.js";
+import { Nextable, State, StateArgs } from "./state.js";
 
 export interface PassArgs extends StateArgs { }
 

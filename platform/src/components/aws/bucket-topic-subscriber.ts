@@ -4,8 +4,8 @@ import {
   interpolate,
   output,
 } from "@pulumi/pulumi";
-import { Component, transform } from "../component";
-import { BucketSubscriberArgs } from "./bucket";
+import { Component, transform } from "../component.js";
+import { BucketSubscriberArgs } from "./bucket.js";
 import { iam, s3, sns } from "@pulumi/aws";
 
 export interface Args extends BucketSubscriberArgs {

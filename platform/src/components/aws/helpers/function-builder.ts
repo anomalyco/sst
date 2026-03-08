@@ -5,9 +5,9 @@ import {
   Output,
   output,
 } from "@pulumi/pulumi";
-import { Function, FunctionArn, FunctionArgs } from "../function";
-import { transform, Transform } from "../../component";
-import { VisibleError } from "../../error";
+import { Function, FunctionArn, FunctionArgs } from "../function.js";
+import { transform, Transform } from "../../component.js";
+import { VisibleError } from "../../error.js";
 
 export type FunctionBuilder = Output<{
   getFunction: () => Function;

@@ -1,5 +1,5 @@
-import { Input } from "../../input";
-import { Dns } from "../../dns";
+import { Input } from "../../input.js";
+import { Dns } from "../../dns.js";
 
 export interface ApiGatewayV2DomainArgs {
   /**

@@ -1,7 +1,7 @@
 import * as util from "@pulumi/pulumi";
-import { Link } from "../components/link";
-import { $config } from "../config";
-import { $transform, $asset } from "../components/component";
+import { Link } from "../components/link.js";
+import { $config } from "../config.js";
+import { $transform, $asset } from "../components/component.js";
 
 const $secrets = JSON.parse(process.env.SST_SECRETS || "{}");
 const { output, apply, all, interpolate, concat, jsonParse, jsonStringify } =

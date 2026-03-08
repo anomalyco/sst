@@ -41,14 +41,14 @@
  */
 
 import * as cloudflare from "@pulumi/cloudflare";
-import { AliasRecord, Dns, Record } from "../dns";
-import { logicalName } from "../naming";
-import { ZoneLookup } from "./providers/zone-lookup";
+import { AliasRecord, Dns, Record } from "../dns.js";
+import { logicalName } from "../naming.js";
+import { ZoneLookup } from "./providers/zone-lookup.js";
 import { ComponentResourceOptions, output } from "@pulumi/pulumi";
-import { Transform, transform } from "../component";
-import { Input } from "../input";
-import { DEFAULT_ACCOUNT_ID } from "./account-id";
-import { DnsRecord as OverridableDnsRecord } from "./providers/dns-record";
+import { Transform, transform } from "../component.js";
+import { Input } from "../input.js";
+import { DEFAULT_ACCOUNT_ID } from "./account-id.js";
+import { DnsRecord as OverridableDnsRecord } from "./providers/dns-record.js";
 
 export interface DnsArgs {
   /**

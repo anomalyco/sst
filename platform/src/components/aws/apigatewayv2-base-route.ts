@@ -1,6 +1,6 @@
 import { Input, Output, interpolate, output } from "@pulumi/pulumi";
-import { Component, transform } from "../component";
-import { ApiGatewayV2RouteArgs } from "./apigatewayv2";
+import { Component, transform } from "../component.js";
+import { ApiGatewayV2RouteArgs } from "./apigatewayv2.js";
 import { apigatewayv2 } from "@pulumi/aws";
 
 export interface ApiGatewayV2BaseRouteArgs extends ApiGatewayV2RouteArgs {

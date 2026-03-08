@@ -1,7 +1,7 @@
 import { ComponentResourceOptions, output } from "@pulumi/pulumi";
-import { Component } from "../component";
+import { Component } from "../component.js";
 import { Link } from "../link.js";
-import { Input } from "../input";
+import { Input } from "../input.js";
 
 export interface DevCommandArgs {
   dev?: {

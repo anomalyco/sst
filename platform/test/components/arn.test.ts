@@ -13,7 +13,7 @@ import {
   parseLambdaEdgeArn,
   parseElasticSearch,
   parseOpenSearch,
-} from "../../src/components/aws/helpers/arn";
+} from "../../src/components/aws/helpers/arn.js";
 
 describe("parseFunctionArn", () => {
   it("parses unqualified ARN", () => {

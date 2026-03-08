@@ -5,16 +5,16 @@ import {
   interpolate,
   output,
 } from "@pulumi/pulumi";
-import { Component, outputId, Transform, transform } from "../component";
-import { Link } from "../link";
-import type { Input } from "../input";
-import { FunctionArgs, FunctionArn } from "./function";
-import { hashStringToPrettyString, logicalName } from "../naming";
-import { parseDynamoStreamArn } from "./helpers/arn";
-import { DynamoLambdaSubscriber } from "./dynamo-lambda-subscriber";
+import { Component, outputId, Transform, transform } from "../component.js";
+import { Link } from "../link.js";
+import type { Input } from "../input.js";
+import { FunctionArgs, FunctionArn } from "./function.js";
+import { hashStringToPrettyString, logicalName } from "../naming.js";
+import { parseDynamoStreamArn } from "./helpers/arn.js";
+import { DynamoLambdaSubscriber } from "./dynamo-lambda-subscriber.js";
 import { dynamodb, lambda } from "@pulumi/aws";
-import { permission } from "./permission";
-import { isFunctionSubscriber } from "./helpers/subscriber";
+import { permission } from "./permission.js";
+import { isFunctionSubscriber } from "./helpers/subscriber.js";
 
 export interface DynamoArgs {
   /**

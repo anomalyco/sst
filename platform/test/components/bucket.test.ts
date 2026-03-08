@@ -30,10 +30,10 @@ pulumi.runtime.setMocks(
 );
 
 describe("Bucket", function () {
-  let Bucket: typeof import("./../../src/components/aws/bucket").Bucket;
+  let Bucket: typeof import("../../src/components/aws/bucket.js").Bucket;
 
   beforeAll(async function () {
-    Bucket = (await import("./../../src/components/aws/bucket")).Bucket;
+    Bucket = (await import("../../src/components/aws/bucket.js")).Bucket;
   });
 
   describe("#constructor", () => {

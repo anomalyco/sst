@@ -4,14 +4,14 @@ import {
   Output,
   output,
 } from "@pulumi/pulumi";
-import { Component, transform } from "../component";
-import { BucketNotificationsArgs } from "./bucket";
+import { Component, transform } from "../component.js";
+import { BucketNotificationsArgs } from "./bucket.js";
 import { iam, lambda, s3, sns } from "@pulumi/aws";
-import { FunctionBuilder, functionBuilder } from "./helpers/function-builder";
-import { splitQualifiedFunctionArn } from "./helpers/arn";
-import { VisibleError } from "../error";
-import { SnsTopic } from "./sns-topic";
-import { Queue } from "./queue";
+import { FunctionBuilder, functionBuilder } from "./helpers/function-builder.js";
+import { splitQualifiedFunctionArn } from "./helpers/arn.js";
+import { VisibleError } from "../error.js";
+import { SnsTopic } from "./sns-topic.js";
+import { Queue } from "./queue.js";
 
 export interface Args extends BucketNotificationsArgs {
   /**

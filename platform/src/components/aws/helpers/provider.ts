@@ -1,6 +1,6 @@
 import { runtime } from "@pulumi/pulumi";
 import { Provider, Region } from "@pulumi/aws";
-import { lazy } from "../../../util/lazy";
+import { lazy } from "../../../util/lazy.js";
 
 const useProviderCache = lazy(() => new Map<string, Provider>());
 

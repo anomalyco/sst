@@ -1,6 +1,6 @@
 import { ComponentResourceOptions, Output, all, output } from "@pulumi/pulumi";
-import { Component, Transform, transform } from "../component";
-import { Input } from "../input";
+import { Component, Transform, transform } from "../component.js";
+import { Input } from "../input.js";
 import { ec2, getAvailabilityZonesOutput } from "@pulumi/aws";
 
 export interface VpcArgs {

@@ -1,10 +1,10 @@
 import { ComponentResourceOptions, Input, output } from "@pulumi/pulumi";
-import { Component, transform } from "../component";
-import { FunctionArgs } from "./function";
-import { DynamoSubscriberArgs } from "./dynamo";
+import { Component, transform } from "../component.js";
+import { FunctionArgs } from "./function.js";
+import { DynamoSubscriberArgs } from "./dynamo.js";
 import { lambda } from "@pulumi/aws";
-import { FunctionBuilder, functionBuilder } from "./helpers/function-builder";
-import { parseFunctionArn } from "./helpers/arn";
+import { FunctionBuilder, functionBuilder } from "./helpers/function-builder.js";
+import { parseFunctionArn } from "./helpers/arn.js";
 
 export interface Args extends DynamoSubscriberArgs {
   /**

@@ -1,12 +1,12 @@
 import { ComponentResourceOptions, Output, all } from "@pulumi/pulumi";
-import { Component, Transform, transform } from "../component";
-import { Link } from "../link";
-import type { Input } from "../input";
-import { Function, FunctionArgs, FunctionArn } from "./function";
-import { hashStringToPrettyString, logicalName } from "../naming";
-import { RealtimeLambdaSubscriber } from "./realtime-lambda-subscriber";
+import { Component, Transform, transform } from "../component.js";
+import { Link } from "../link.js";
+import type { Input } from "../input.js";
+import { Function, FunctionArgs, FunctionArn } from "./function.js";
+import { hashStringToPrettyString, logicalName } from "../naming.js";
+import { RealtimeLambdaSubscriber } from "./realtime-lambda-subscriber.js";
 import { iot, lambda } from "@pulumi/aws";
-import { permission } from "./permission";
+import { permission } from "./permission.js";
 
 export interface RealtimeArgs {
   /**

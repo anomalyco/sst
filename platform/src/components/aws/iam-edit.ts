@@ -1,6 +1,6 @@
 import { Input, jsonStringify, output, UnwrappedObject } from "@pulumi/pulumi";
 import { iam } from "@pulumi/aws";
-import { Prettify } from "../component";
+import { Prettify } from "../component.js";
 
 type PartialUnwrappedPolicyDocument = {
   Id?: string;

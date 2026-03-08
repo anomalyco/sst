@@ -1,11 +1,11 @@
 import { lambda } from "@pulumi/aws";
 import { output } from "@pulumi/pulumi";
-import { Component, transform } from "../component";
+import { Component, transform } from "../component.js";
 import { Input } from "../input.js";
 import { FunctionArgs } from "./function.js";
 import { KinesisStreamLambdaSubscriberArgs } from "./kinesis-stream.js";
-import { FunctionBuilder, functionBuilder } from "./helpers/function-builder";
-import { parseFunctionArn } from "./helpers/arn";
+import { FunctionBuilder, functionBuilder } from "./helpers/function-builder.js";
+import { parseFunctionArn } from "./helpers/arn.js";
 
 export interface Args extends KinesisStreamLambdaSubscriberArgs {
   /**

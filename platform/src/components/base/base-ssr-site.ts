@@ -1,12 +1,12 @@
 import path from "path";
 import fs from "fs";
 import { Output, Resource, all, output } from "@pulumi/pulumi";
-import { Prettify } from "../component";
-import { Input } from "../input";
+import { Prettify } from "../component.js";
+import { Input } from "../input.js";
 import { Link } from "../link.js";
 import { VisibleError } from "../error.js";
-import { BaseSiteDev } from "./base-site";
-import { siteBuilder } from "../aws/helpers/site-builder";
+import { BaseSiteDev } from "./base-site.js";
+import { siteBuilder } from "../aws/helpers/site-builder.js";
 
 export interface BaseSsrSiteArgs {
   dev?: false | Prettify<BaseSiteDev>;

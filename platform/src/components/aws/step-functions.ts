@@ -4,17 +4,17 @@ import {
   interpolate,
   output,
 } from "@pulumi/pulumi";
-import { Component, Transform, transform } from "../component";
+import { Component, Transform, transform } from "../component.js";
 import { cloudwatch, iam, sfn } from "@pulumi/aws";
-import { Link } from "../link";
-import { permission } from "./permission";
-import { State } from "./step-functions/state";
-import { Choice, ChoiceArgs } from "./step-functions/choice";
-import { Fail, FailArgs } from "./step-functions/fail";
-import { Map, MapArgs } from "./step-functions/map";
-import { Parallel, ParallelArgs } from "./step-functions/parallel";
-import { Pass, PassArgs } from "./step-functions/pass";
-import { Succeed, SucceedArgs } from "./step-functions/succeed";
+import { Link } from "../link.js";
+import { permission } from "./permission.js";
+import { State } from "./step-functions/state.js";
+import { Choice, ChoiceArgs } from "./step-functions/choice.js";
+import { Fail, FailArgs } from "./step-functions/fail.js";
+import { Map, MapArgs } from "./step-functions/map.js";
+import { Parallel, ParallelArgs } from "./step-functions/parallel.js";
+import { Pass, PassArgs } from "./step-functions/pass.js";
+import { Succeed, SucceedArgs } from "./step-functions/succeed.js";
 import {
   Task,
   TaskArgs,
@@ -23,13 +23,13 @@ import {
   SqsSendMessageArgs,
   EcsRunTaskArgs,
   EventBridgePutEventsArgs,
-} from "./step-functions/task";
-import { Wait, WaitArgs } from "./step-functions/wait";
-import { Input } from "../input";
-import { RETENTION } from "./logging";
-import { physicalName } from "../naming";
-import { functionBuilder } from "./helpers/function-builder";
-import { Function } from "./function";
+} from "./step-functions/task.js";
+import { Wait, WaitArgs } from "./step-functions/wait.js";
+import { Input } from "../input.js";
+import { RETENTION } from "./logging.js";
+import { physicalName } from "../naming.js";
+import { functionBuilder } from "./helpers/function-builder.js";
+import { Function } from "./function.js";
 
 export interface StepFunctionsArgs {
   /**

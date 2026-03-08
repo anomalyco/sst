@@ -31,14 +31,14 @@
  * @packageDocumentation
  */
 
-import { AliasRecord, Dns, Record } from "../dns";
-import { logicalName } from "../naming";
-import { HostedZoneLookup } from "./providers/hosted-zone-lookup";
+import { AliasRecord, Dns, Record } from "../dns.js";
+import { logicalName } from "../naming.js";
+import { HostedZoneLookup } from "./providers/hosted-zone-lookup.js";
 import { ComponentResourceOptions, output } from "@pulumi/pulumi";
-import { Transform, transform } from "../component";
-import { Input } from "../input";
+import { Transform, transform } from "../component.js";
+import { Input } from "../input.js";
 import { route53 } from "@pulumi/aws";
-import { VisibleError } from "../error";
+import { VisibleError } from "../error.js";
 
 export interface DnsArgs {
   /**

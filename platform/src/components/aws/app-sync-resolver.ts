@@ -1,7 +1,7 @@
 import { ComponentResourceOptions, Input, output } from "@pulumi/pulumi";
-import { Component, transform } from "../component";
-import { AppSyncResolverArgs } from "./app-sync";
-import { VisibleError } from "../error";
+import { Component, transform } from "../component.js";
+import { AppSyncResolverArgs } from "./app-sync.js";
+import { VisibleError } from "../error.js";
 import { appsync } from "@pulumi/aws";
 
 export interface ResolverArgs extends AppSyncResolverArgs {

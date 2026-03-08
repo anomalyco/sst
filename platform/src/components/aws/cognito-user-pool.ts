@@ -5,21 +5,21 @@ import {
   interpolate,
   output,
 } from "@pulumi/pulumi";
-import { Component, Prettify, Transform, transform } from "../component";
-import { Input } from "../input";
-import { Link } from "../link";
-import { Dns } from "../dns";
-import { CognitoIdentityProvider } from "./cognito-identity-provider";
-import { CognitoUserPoolClient } from "./cognito-user-pool-client";
+import { Component, Prettify, Transform, transform } from "../component.js";
+import { Input } from "../input.js";
+import { Link } from "../link.js";
+import { Dns } from "../dns.js";
+import { CognitoIdentityProvider } from "./cognito-identity-provider.js";
+import { CognitoUserPoolClient } from "./cognito-user-pool-client.js";
 import { Function, FunctionArgs, FunctionArn } from "./function.js";
-import { VisibleError } from "../error";
+import { VisibleError } from "../error.js";
 import { cognito, getRegionOutput, lambda } from "@pulumi/aws";
 import { dns as awsDns } from "./dns.js";
 import { DnsValidatedCertificate } from "./dns-validated-certificate.js";
 import { useProvider } from "./helpers/provider.js";
-import { permission } from "./permission";
-import { functionBuilder } from "./helpers/function-builder";
-import { splitQualifiedFunctionArn } from "./helpers/arn";
+import { permission } from "./permission.js";
+import { functionBuilder } from "./helpers/function-builder.js";
+import { splitQualifiedFunctionArn } from "./helpers/arn.js";
 
 interface Triggers {
   /**

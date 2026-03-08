@@ -3,13 +3,13 @@ import {
   jsonStringify,
   Output,
 } from "@pulumi/pulumi";
-import { Component, Transform, transform } from "../component";
-import { Link } from "../link";
-import { FunctionArgs, Function, Dynamo, CdnArgs, Router, RouterArgs } from ".";
-import { functionBuilder } from "./helpers/function-builder";
-import { env } from "../linkable";
-import { Auth as AuthV1 } from "./auth-v1";
-import { Input } from "../input";
+import { Component, Transform, transform } from "../component.js";
+import { Link } from "../link.js";
+import { FunctionArgs, Function, Dynamo, CdnArgs, Router, RouterArgs } from "./index.js";
+import { functionBuilder } from "./helpers/function-builder.js";
+import { env } from "../linkable.js";
+import { Auth as AuthV1 } from "./auth-v1.js";
+import { Input } from "../input.js";
 
 export interface AuthArgs {
   /**

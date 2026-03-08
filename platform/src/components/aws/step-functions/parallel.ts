@@ -1,4 +1,4 @@
-import { Input } from "../../input";
+import { Input } from "../../input.js";
 import {
   CatchArgs,
   Failable,
@@ -6,7 +6,7 @@ import {
   RetryArgs,
   State,
   StateArgs,
-} from "./state";
+} from "./state.js";
 
 export interface ParallelArgs extends StateArgs {
   /**

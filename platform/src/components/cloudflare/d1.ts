@@ -1,9 +1,9 @@
 import { ComponentResourceOptions } from "@pulumi/pulumi";
 import * as cloudflare from "@pulumi/cloudflare";
-import { Component, Transform, transform } from "../component";
-import { Link } from "../link";
-import { binding } from "./binding";
-import { DEFAULT_ACCOUNT_ID } from ".";
+import { Component, Transform, transform } from "../component.js";
+import { Link } from "../link.js";
+import { binding } from "./binding.js";
+import { DEFAULT_ACCOUNT_ID } from "./index.js";
 
 export interface D1Args {
   /**

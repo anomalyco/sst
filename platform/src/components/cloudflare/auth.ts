@@ -4,9 +4,9 @@ import {
   output,
   secret,
 } from "@pulumi/pulumi";
-import { Component, Transform } from "../component";
-import { Link } from "../link";
-import { WorkerArgs, Worker } from "./worker";
+import { Component, Transform } from "../component.js";
+import { Link } from "../link.js";
+import { WorkerArgs, Worker } from "./worker.js";
 import { PrivateKey } from "@pulumi/tls";
 import { BucketPolicyArgs } from "@pulumi/aws/s3";
 

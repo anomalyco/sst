@@ -5,13 +5,13 @@ import {
   Output,
   output,
 } from "@pulumi/pulumi";
-import { $print, Component, Transform, transform } from "../component";
-import { Link } from "../link";
+import { $print, Component, Transform, transform } from "../component.js";
+import { Link } from "../link.js";
 import { Input } from "../input.js";
 import { iam, opensearch, secretsmanager } from "@pulumi/aws";
 import { RandomPassword } from "@pulumi/random";
-import { VisibleError } from "../error";
-import { SizeGbTb, toGBs } from "../size";
+import { VisibleError } from "../error.js";
+import { SizeGbTb, toGBs } from "../size.js";
 import { DevCommand } from "../experimental/dev-command.js";
 
 export interface OpenSearchArgs {
