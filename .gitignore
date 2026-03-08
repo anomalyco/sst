@@ -3,6 +3,7 @@ dist
 node_modules
 Pulumi.*.yaml
 Pulumi.yaml
+bun.lock
 
 # osx
 .DS_Store
