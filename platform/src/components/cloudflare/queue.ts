@@ -1,4 +1,4 @@
-import { ComponentResourceOptions, Input, output } from "@pulumi/pulumi";
+import { ComponentResourceOptions, Input } from "@pulumi/pulumi";
 import * as cloudflare from "@pulumi/cloudflare";
 import { Component, Transform, transform } from "../component";
 import { Link } from "../link";
@@ -7,6 +7,7 @@ import { DEFAULT_ACCOUNT_ID } from "./account-id";
 import { WorkerArgs } from "./worker";
 import { VisibleError } from "../error";
 import { QueueWorkerSubscriber } from "./queue-worker-subscriber";
+import { DurationHours, DurationMinutes, DurationSeconds } from "../duration";
 
 export interface QueueArgs {
   /**
@@ -25,11 +26,88 @@ export interface QueueSubscribeArgs {
   /**
    * The dead letter queue to send messages that fail processing.
    */
-  deadLetterQueue?: Input<string>;
+  dlq?: {
+    /**
+     * The name of the dead letter queue.
+     */
+    queue?: Input<string>;
+    /**
+     * The number of times the main queue will retry the message before sending it to the dead-letter queue.
+     * @default `3`
+     */
+    retry?: Input<number>;
+    /**
+     * The number of seconds to delay before making the message available for another attempt.
+     * @default `0 seconds`
+     */
+    retryDelay?: Input<DurationSeconds>;
+  };
   /**
-   * Consumer settings like batch size, retries, and visibility timeout.
+   * Maximum number of concurrent consumers that may consume from this Queue.
+   * @default `null`
    */
-  settings?: cloudflare.QueueConsumerArgs["settings"];
+  maxConcurrency?: Input<number>;
+  /**
+   * The maximum number of messages to include in a batch.
+   * @default `10`
+   */
+  batch?: {
+    /**
+     * The maximum number of events that will be processed together in a single invocation
+     * of the consumer function.
+     *
+     * Value must be between 1 and 10000.
+     *
+     * :::note
+     * When `size` is set to a value greater than 10, `window` must be set to at least `1 second`.
+     * :::
+     *
+     * @default `10`
+     * @example
+     * Set batch size to 1. This will process events individually.
+     * ```js
+     * {
+     *   batch: {
+     *     size: 1
+     *   }
+     * }
+     * ```
+     */
+    size?: Input<number>;
+    /**
+     * The maximum amount of time to wait for collecting events before sending the batch to
+     * the consumer function, even if the batch size hasn't been reached.
+     *
+     * Value must be between 0 seconds and 5 minutes (300 seconds).
+     * @default `"20 seconds"`
+     * @example
+     * ```js
+     * {
+     *   batch: {
+     *     window: "20 seconds"
+     *   }
+     * }
+     * ```
+     */
+    window?: Input<DurationMinutes>;
+  };
+  /**
+   * Visibility timeout is a period of time during which a message is temporarily
+   * invisible to other consumers after a consumer has retrieved it from the queue.
+   * This mechanism prevents other consumers from processing the same message
+   * concurrently, ensuring that each message is processed only once.
+   *
+   * This timeout can range from 0 seconds to 12 hours.
+   *
+   * @default `"30 seconds"`
+   * @example
+   * ```js
+   * {
+   *   visibilityTimeout: "1 hour"
+   * }
+   * ```
+   */
+  visibilityTimeout?: Input<DurationHours>;
   /**
    * [Transform](/docs/components/#transform) how this component creates its underlying
    * resources.
@@ -156,14 +234,15 @@ export class Queue extends Component implements Link.Linkable {
    * });
    * ```
    *
-   * Configure consumer settings.
+   * Configure batch and concurrency settings.
    *
    * ```ts title="sst.config.ts"
    * queue.subscribe("consumer.ts", {
-   *   settings: {
-   *     batchSize: 10,
-   *     maxRetries: 3,
+   *   batch: {
+   *     size: 10,
+   *     window: "20 seconds",
    *   },
+   *   maxConcurrency: 5,
    * });
    * ```
    *
@@ -173,7 +252,10 @@ export class Queue extends Component implements Link.Linkable {
    * const dlq = new sst.cloudflare.Queue("DeadLetterQueue");
    *
    * queue.subscribe("consumer.ts", {
-   *   deadLetterQueue: dlq.id,
+   *   dlq: {
+   *     queue: dlq.nodes.queue.queueName,
+   *     retry: 3,
+   *   },
    * });
    * ```
    */
@@ -197,8 +279,10 @@ export class Queue extends Component implements Link.Linkable {
       {
         queue: { id: this.queue.id },
         subscriber,
-        deadLetterQueue: args?.deadLetterQueue,
-        settings: args?.settings,
+        dlq: args?.dlq,
+        maxConcurrency: args?.maxConcurrency,
+        batch: args?.batch,
+        visibilityTimeout: args?.visibilityTimeout,
         transform: args?.transform,
       },
       { parent, ...opts },

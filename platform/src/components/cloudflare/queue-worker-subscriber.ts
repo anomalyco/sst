@@ -1,6 +1,12 @@
 import { ComponentResourceOptions, Input, output } from "@pulumi/pulumi";
 import * as cloudflare from "@pulumi/cloudflare";
 import { Component, Transform, transform } from "../component";
+import {
+  DurationHours,
+  DurationMinutes,
+  DurationSeconds,
+  toMilliSeconds,
+} from "../duration";
 import { WorkerBuilder, workerBuilder } from "./helpers/worker-builder";
 import { WorkerArgs } from "./worker";
 import { DEFAULT_ACCOUNT_ID } from "./account-id";
@@ -22,11 +28,63 @@ export interface QueueWorkerSubscriberArgs {
   /**
    * The dead letter queue to send messages that fail processing.
    */
-  deadLetterQueue?: Input<string>;
+  dlq?: {
+    /**
+     * The name of the dead letter queue.
+     */
+    queue?: Input<string>;
+    /**
+     * The number of times the main queue will retry the message before sending it to the dead-letter queue.
+     * @default `3`
+     */
+    retry?: Input<number>;
+    /**
+     * The number of seconds to delay before making the message available for another attempt.
+     * @default `0 seconds`
+     */
+    retryDelay?: Input<DurationSeconds>;
+  };
   /**
-   * Consumer settings like batch size, retries, and visibility timeout.
+   * Maximum number of concurrent consumers that may consume from this Queue.
+   * @default `null`
    */
-  settings?: cloudflare.QueueConsumerArgs["settings"];
+  maxConcurrency?: Input<number>;
+  /**
+   * The maximum number of messages to include in a batch.
+   * @default `10`
+   */
+  batch?: {
+    /**
+     * The maximum number of events that will be processed together in a single invocation
+     * of the consumer function.
+     *
+     * Value must be between 1 and 10000.
+     *
+     * :::note
+     * When `size` is set to a value greater than 10, `window` must be set to at least `1 second`.
+     * :::
+     *
+     * @default `10`
+     */
+    size?: Input<number>;
+    /**
+     * The maximum amount of time to wait for collecting events before sending the batch to
+     * the consumer function, even if the batch size hasn't been reached.
+     *
+     * Value must be between 0 seconds and 5 minutes (300 seconds).
+     * @default `"20 seconds"`
+     */
+    window?: Input<DurationMinutes>;
+  };
+  /**
+   * Visibility timeout is a period of time during which a message is temporarily
+   * invisible to other consumers after a consumer has retrieved it from the queue.
+   *
+   * This timeout can range from 0 seconds to 12 hours.
+   *
+   * @default `"30 seconds"`
+   */
+  visibilityTimeout?: Input<DurationHours>;
   /**
    * [Transform](/docs/components/#transform) how this component creates its underlying
    * resources.
@@ -51,7 +109,7 @@ export interface QueueWorkerSubscriberArgs {
  * This component is not intended to be created directly.
  * :::
  *
- * You'll find this component returned by the `subscribe` method of the `Queue` component.
+ * You'll find this component returned by `Queue.subscribe()`.
  */
 export class QueueWorkerSubscriber extends Component {
   private readonly _worker: WorkerBuilder;
@@ -67,6 +125,10 @@ export class QueueWorkerSubscriber extends Component {
     const self = this;
     const queue = output(args.queue);
     const worker = createWorker();
+    const batchSize = output(args.batch?.size ?? 10);
+    const window = output(args.batch?.window ?? "20 seconds");
+    const visibilityTimeout = output(args.visibilityTimeout ?? "30 seconds");
+    const retryDelay = output(args.dlq?.retryDelay ?? "0 seconds");
     const consumer = createConsumer();
 
     this._worker = worker;
@@ -88,10 +150,19 @@ export class QueueWorkerSubscriber extends Component {
           `${name}Consumer`,
           {
             accountId: DEFAULT_ACCOUNT_ID,
-            deadLetterQueue: args.deadLetterQueue,
+            deadLetterQueue: args.dlq?.queue,
             queueId: queue.id,
             scriptName: worker.script.scriptName,
-            settings: args.settings,
+            settings: {
+              batchSize,
+              maxConcurrency: args.maxConcurrency,
+              maxRetries: args.dlq?.retry,
+              retryDelay: retryDelay.apply((v) => toMilliSeconds(v)),
+              visibilityTimeoutMs: visibilityTimeout.apply((v) =>
+                toMilliSeconds(v),
+              ),
+              maxWaitTimeMs: window.apply((v) => toMilliSeconds(v)),
+            },
             type: "worker",
           },
           { parent: self },
