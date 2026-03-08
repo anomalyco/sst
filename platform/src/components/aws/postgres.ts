@@ -23,6 +23,11 @@ export type { PostgresArgs as PostgresV1Args } from "./postgres-v1";
 export interface PostgresArgs {
   /**
    * The Postgres engine version. Check out the [available versions in your region](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/PostgreSQL.Concepts.General.DBVersions.html).
+   *
+   * :::note
+   * Changing the version will **immediately** apply the update on the next `sst deploy`.
+   * :::
+   *
    * @default `"17"`
    * @example
    * ```js
@@ -86,6 +91,10 @@ export interface PostgresArgs {
   /**
    * The type of instance to use for the database. Check out the [supported instance types](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.DBInstanceClass.Types.html).
    *
+   * :::note
+   * Changing the instance type will **immediately** apply the update on the next `sst deploy`.
+   * :::
+   *
    * @default `"t4g.micro"`
    * @example
    * ```js
@@ -93,10 +102,6 @@ export interface PostgresArgs {
    *   instance: "m7g.xlarge"
    * }
    * ```
-   *
-   * By default, these changes are not applied immediately by RDS. Instead, they are
-   * applied in the next maintenance window. Check out the [full list](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_ModifyInstance.Settings.html)
-   * of props that are not applied immediately.
    */
   instance?: Input<string>;
   /**
@@ -765,7 +770,8 @@ Listening on "${dev.host}:${dev.port}"...`,
                 username: instance.username,
                 password: instance.password.apply((v) => v!),
                 parameterGroupName: instance.parameterGroupName,
-                skipFinalSnapshot: true,
+            applyImmediately: true,
+            skipFinalSnapshot: true,
                 storageEncrypted: instance.storageEncrypted.apply((v) => v!),
                 storageType: instance.storageType,
                 allocatedStorage: instance.allocatedStorage,
