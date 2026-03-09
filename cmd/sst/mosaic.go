@@ -60,9 +60,6 @@ func CmdMosaic(c *cli.Cli) error {
 		if err != nil {
 			return err
 		}
-		if err := ensureDevRunsInPersonalStage(cfgPath, stage); err != nil {
-			return err
-		}
 		url, err := server.Discover(cfgPath, stage)
 		if err != nil {
 			return err
