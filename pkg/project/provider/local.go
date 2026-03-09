@@ -10,7 +10,6 @@ import (
 
 	"github.com/sst/sst/v3/internal/util"
 	"github.com/sst/sst/v3/pkg/global"
-	"github.com/sst/sst/v3/pkg/state"
 )
 
 type LocalHome struct {
@@ -102,17 +101,7 @@ func (a *LocalHome) listStages(app string) ([]string, error) {
 	for _, entry := range entries {
 		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".json") {
 			stageName := strings.TrimSuffix(entry.Name(), ".json")
-			file, err := a.getData("app", app, stageName)
-			if err != nil {
-				continue
-			}
-
-			checkpoint, err := state.UnmarshalCheckpoint(file)
-			if err != nil {
-				continue
-			}
-
-			if state.HasResources(checkpoint) {
+			if hasResources(a, app, stageName) {
 				stages = append(stages, stageName)
 			}
 		}
