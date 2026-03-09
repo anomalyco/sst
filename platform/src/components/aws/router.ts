@@ -2796,9 +2796,7 @@ async function routeSite(kvNamespace, metadata) {
 
   // Route to image optimizer
   if (metadata.image && baselessUri.startsWith(metadata.image.route)) {
-    // Add x-forwarded-host before measuring so the size check accounts for it.
-    // setUrlOrigin() also adds this, but we need to measure before calling it.
-    event.request.headers["x-forwarded-host"] = event.request.headers.host;
+    setForwardedHost();
     setNextjsCacheKey();
     if (isRequestHeaderTooLarge()) return buildOversizedHeadersResponse();
     setUrlOrigin(metadata.image.host, metadata.image.originAccessControlConfig ? { originAccessControlConfig: metadata.image.originAccessControlConfig } : undefined);
@@ -2807,7 +2805,7 @@ async function routeSite(kvNamespace, metadata) {
 
   // Route to servers
   if (metadata.servers){
-    event.request.headers["x-forwarded-host"] = event.request.headers.host;
+    setForwardedHost();
     // In SvelteKit, form action requests contain "/" in request query string
     // ie. POST request with query string "?/action"
     // CloudFront does not allow query string with "/". It needs to be encoded.
@@ -2947,8 +2945,13 @@ async function routeSite(kvNamespace, metadata) {
   }
 }
 
-function setUrlOrigin(urlHost, override) {
+function setForwardedHost() {
+  // Lambda URLs expect the original viewer host in x-forwarded-host.
   event.request.headers["x-forwarded-host"] = event.request.headers.host;
+}
+
+function setUrlOrigin(urlHost, override) {
+  setForwardedHost();
   const origin = {
     domainName: urlHost,
     customOriginConfig: {

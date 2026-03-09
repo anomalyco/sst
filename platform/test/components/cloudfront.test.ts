@@ -16,7 +16,11 @@ type CloudFrontField = {
   multiValue?: { value: string }[];
 };
 
-function extractTemplateCode(start: string, end: string) {
+function extractTemplateCode(
+  start: string,
+  end: string,
+  context: Record<string, unknown> = {},
+) {
   const startIndex = routerSource.indexOf(start);
   const endIndex = routerSource.indexOf(end, startIndex);
 
@@ -24,12 +28,23 @@ function extractTemplateCode(start: string, end: string) {
     throw new Error(`Failed to extract code between ${start} and ${end}`);
   }
 
-  return vm.runInNewContext(`\`${routerSource.slice(startIndex, endIndex)}\``);
+  return vm.runInNewContext(`\`${routerSource.slice(startIndex, endIndex)}\``, context);
 }
 
 const MATCH_ROUTE_CODE = extractTemplateCode(
   "async function matchRoute(routes) {",
   "\n\n  // Look up the route",
+);
+
+const REQUEST_HANDLER_CODE = extractTemplateCode(
+  "async function handler(event) {\n  ${userInjection}\n  ${blockCloudfrontUrlInjection}\n  ${CF_ROUTER_INJECTION}\n",
+  "\n}`,\n            },\n            { parent: self },\n          );",
+  {
+    userInjection: "",
+    blockCloudfrontUrlInjection: "",
+    CF_ROUTER_INJECTION,
+    kvNamespace: "router",
+  },
 );
 
 function createContext(input: {
@@ -119,6 +134,42 @@ function loadRouteMatcher(input: {
   );
 
   return context.__matchRoute as (routes: string[]) => Promise<any>;
+}
+
+function loadHandler(input: {
+  uri: string;
+  headers: Record<string, CloudFrontField>;
+  routes: string[];
+  metadata: Record<string, any>;
+  cookies?: Record<string, CloudFrontField>;
+  querystring?: Record<string, unknown>;
+}) {
+  const { context, event } = createContext({
+    ...input,
+    kvGet: async (key: string) => {
+      if (key === "router:routes") return JSON.stringify(input.routes);
+      if (!key.endsWith(":metadata")) throw new Error("missing");
+
+      const routeNs = key.slice(0, -":metadata".length);
+      const metadata = input.metadata[routeNs];
+      if (!metadata) throw new Error("missing");
+      return JSON.stringify(metadata);
+    },
+    updateRequestOrigin(origin, currentEvent) {
+      currentEvent.request.origin = origin;
+    },
+  });
+
+  new vm.Script(`${REQUEST_HANDLER_CODE}
+}
+globalThis.__handler = handler;`).runInContext(
+    context,
+  );
+
+  return {
+    event,
+    handler: context.__handler as (event: typeof event) => Promise<any>,
+  };
 }
 
 async function selectRoute(requestUri: string, routePaths: string[]) {
@@ -322,6 +373,56 @@ describe("CloudFront router", () => {
         servers: [["server.example.com", 0, 0]],
         origin: {},
       });
+
+      expect(response.statusCode).toBe(431);
+      expect(response.statusDescription).toBe("Request Header Fields Too Large");
+      expect(response.body.data).toContain("Reduce cookie size");
+    });
+
+    it("returns 431 for oversized image requests through handler", async () => {
+      const { event, handler } = loadHandler({
+        uri: "/_next/image",
+        headers: {
+          host: { value: "example.com" },
+          accept: { value: "image/webp" },
+        },
+        cookies: {
+          session: { value: "x".repeat(10000) },
+        },
+        routes: ["site,route0,,/"],
+        metadata: {
+          route0: {
+            image: { route: "/_next/image", host: "image.example.com" },
+          },
+        },
+      });
+
+      const response = await handler(event);
+
+      expect(response.statusCode).toBe(431);
+      expect(response.statusDescription).toBe("Request Header Fields Too Large");
+      expect(response.body.data).toContain("Reduce cookie size");
+    });
+
+    it("returns 431 for oversized server requests through handler", async () => {
+      const { event, handler } = loadHandler({
+        uri: "/",
+        headers: {
+          host: { value: "example.com" },
+        },
+        cookies: {
+          session: { value: "x".repeat(10000) },
+        },
+        routes: ["site,route0,,/"],
+        metadata: {
+          route0: {
+            servers: [["server.example.com", 0, 0]],
+            origin: {},
+          },
+        },
+      });
+
+      const response = await handler(event);
 
       expect(response.statusCode).toBe(431);
       expect(response.statusDescription).toBe("Request Header Fields Too Large");
