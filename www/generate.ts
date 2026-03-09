@@ -64,7 +64,7 @@ if (!cmd || cmd === "components") {
     if (sourceFile.endsWith("/aws/iam-edit.ts")) continue;
     else if (sourceFile === "platform/src/global-config.d.ts") {
       const iamEditComponent = components.find((c) =>
-        c.sources![0].fileName.endsWith("/aws/iam-edit.ts"),
+        c.sources![0].fileName.endsWith("/aws/iam-edit.ts")
       );
       await generateGlobalConfigDoc(component, iamEditComponent!);
     } else if (sourceFile === "platform/src/config.ts") {
@@ -82,7 +82,7 @@ if (!cmd || cmd === "components") {
           // ie. vector
           s.name === sdkName ||
           // ie. aws/realtime
-          s.name === `aws/${sdkName}`,
+          s.name === `aws/${sdkName}`
       );
       const sdkNamespace = sdk && useModuleOrNamespace(sdk);
       // Handle SDK modules are namespaced (ie. aws/realtime)
@@ -113,7 +113,7 @@ function generateCliDoc() {
       renderBodyEnd(),
     ]
       .flat()
-      .join("\n"),
+      .join("\n")
   );
 
   function renderCliAbout() {
@@ -126,7 +126,7 @@ function generateCliDoc() {
       renderCliDescription(json.description),
       `</Section>`,
       ``,
-      `---`,
+      `---`
     );
     return lines;
   }
@@ -149,7 +149,7 @@ function generateCliDoc() {
         `</InlineSection>`,
         `</Section>`,
         renderCliDescription(f.description),
-        `</Segment>`,
+        `</Segment>`
       );
     }
     return lines;
@@ -172,7 +172,7 @@ function generateCliDoc() {
           '```sh frame="none"',
           `sst ${renderCliCommandUsage(cmd)}`,
           "```",
-          `</Section>`,
+          `</Section>`
         );
       }
 
@@ -186,7 +186,7 @@ function generateCliDoc() {
             `- <p><code class="key">${renderCliArgName(a)}</code></p>`,
             `<p>${renderCliDescription(a.description)}</p>`,
           ]),
-          `</Section>`,
+          `</Section>`
         );
       }
 
@@ -198,11 +198,11 @@ function generateCliDoc() {
           `#### Flags`,
           ...cmd.flags.flatMap((f) => [
             `- <p><code class="key">${f.name}</code> ${renderCliFlagType(
-              f.type,
+              f.type
             )}</p>`,
             `<p>${renderCliDescription(f.description)}</p>`,
           ]),
-          `</Section>`,
+          `</Section>`
         );
       }
 
@@ -217,7 +217,7 @@ function generateCliDoc() {
             .flatMap((s) => [
               `- <p>[<code class="key">${s.name}</code>](#${cmd.name}-${s.name})</p>`,
             ]),
-          `</Section>`,
+          `</Section>`
         );
       }
 
@@ -230,7 +230,7 @@ function generateCliDoc() {
         .flatMap((subcmd) => {
           lines.push(
             `<NestedTitle id="${cmd.name}-${subcmd.name}" Tag="h4" parent="${cmd.name} ">${subcmd.name}</NestedTitle>`,
-            `<Segment>`,
+            `<Segment>`
           );
 
           // usage
@@ -239,7 +239,7 @@ function generateCliDoc() {
             '```sh frame="none"',
             `sst ${cmd.name} ${renderCliCommandUsage(subcmd)}`,
             "```",
-            `</Section>`,
+            `</Section>`
           );
 
           // subcommand args
@@ -251,7 +251,7 @@ function generateCliDoc() {
                 `- <p><code class="key">${a.name}</code></p>`,
                 `<p>${renderCliDescription(a.description)}</p>`,
               ]),
-              `</Section>`,
+              `</Section>`
             );
           }
 
@@ -264,7 +264,7 @@ function generateCliDoc() {
                 `- <p><code class="key">${f.name}</code></p>`,
                 `<p>${renderCliDescription(f.description)}</p>`,
               ]),
-              `</Section>`,
+              `</Section>`
             );
           }
 
@@ -288,7 +288,7 @@ function generateCliDoc() {
 
     parts.push(command.name);
     command.args.forEach((arg) =>
-      arg.required ? parts.push(`<${arg.name}>`) : parts.push(`[${arg.name}]`),
+      arg.required ? parts.push(`<${arg.name}>`) : parts.push(`[${arg.name}]`)
     );
     return parts.join(" ");
   }
@@ -303,7 +303,7 @@ function generateCliDoc() {
             `<code class="symbol">&ldquo;</code>`,
             `<code class="primitive">${t}</code>`,
             `<code class="symbol">&rdquo;</code>`,
-          ].join(""),
+          ].join("")
         )
         .join(`<code class="symbol"> | </code>`);
     }
@@ -323,7 +323,7 @@ function generateCommonErrorsDoc() {
     [
       renderHeader(
         "Common Errors",
-        "A list of CLI error messages and how to fix them.",
+        "A list of CLI error messages and how to fix them."
       ),
       renderSourceMessage("cmd/sst/main.go"),
       renderImports(outputFilePath),
@@ -333,7 +333,7 @@ function generateCommonErrorsDoc() {
       renderBodyEnd(),
     ]
       .flat()
-      .join("\n"),
+      .join("\n")
   );
 
   function renderCommonErrorsAbout() {
@@ -362,7 +362,7 @@ function generateCommonErrorsDoc() {
         ``,
         `> ${error.message}`,
         ``,
-        ...error.long,
+        ...error.long
       );
     }
     return lines;
@@ -381,7 +381,7 @@ function generateCommonErrorsDoc() {
 
     parts.push(command.name);
     command.args.forEach((arg) =>
-      arg.required ? parts.push(`<${arg.name}>`) : parts.push(`[${arg.name}]`),
+      arg.required ? parts.push(`<${arg.name}>`) : parts.push(`[${arg.name}]`)
     );
     return parts.join(" ");
   }
@@ -396,7 +396,7 @@ function generateCommonErrorsDoc() {
             `<code class="symbol">&ldquo;</code>`,
             `<code class="primitive">${t}</code>`,
             `<code class="symbol">&rdquo;</code>`,
-          ].join(""),
+          ].join("")
         )
         .join(`<code class="symbol"> | </code>`);
     }
@@ -432,7 +432,7 @@ async function generateExamplesDocs() {
       }),
     ]
       .flat()
-      .join("\n"),
+      .join("\n")
   );
 
   function renderIntro() {
@@ -470,7 +470,7 @@ async function generateExamplesDocs() {
 
 async function generateGlobalConfigDoc(
   module: TypeDoc.DeclarationReflection,
-  iamEditComponent: TypeDoc.DeclarationReflection,
+  iamEditComponent: TypeDoc.DeclarationReflection
 ) {
   console.info(`Generating Global...`);
   const outputFilePath = `src/content/docs/docs/reference/global.mdx`;
@@ -492,7 +492,7 @@ async function generateGlobalConfigDoc(
       renderBodyEnd(),
     ]
       .flat()
-      .join("\n"),
+      .join("\n")
   );
 }
 
@@ -513,7 +513,7 @@ async function generateConfigDoc(module: TypeDoc.DeclarationReflection) {
       renderBodyEnd(),
     ]
       .flat()
-      .join("\n"),
+      .join("\n")
   );
 }
 
@@ -536,7 +536,7 @@ async function generateDnsDoc(module: TypeDoc.DeclarationReflection) {
     [
       renderHeader(
         `${title} DNS Adapter`,
-        `Reference doc for the \`sst.${dnsProvider}.dns\` adapter.`,
+        `Reference doc for the \`sst.${dnsProvider}.dns\` adapter.`
       ),
       renderSourceMessage(sourceFile),
       renderImports(outputFilePath),
@@ -549,7 +549,7 @@ async function generateDnsDoc(module: TypeDoc.DeclarationReflection) {
       renderBodyEnd(),
     ]
       .flat()
-      .join("\n"),
+      .join("\n")
   );
 }
 
@@ -558,7 +558,7 @@ async function generateLinkableDoc(module: TypeDoc.DeclarationReflection) {
   const sourceFile = module.sources![0].fileName;
   const outputFilePath = path.join(
     "src/content/docs/docs/component",
-    `${module.name.split("/").slice(1).join("/")}.mdx`,
+    `${module.name.split("/").slice(1).join("/")}.mdx`
   );
   const copy = {
     "components/aws/permission": {
@@ -579,7 +579,7 @@ async function generateLinkableDoc(module: TypeDoc.DeclarationReflection) {
     [
       renderHeader(
         `${copy.title} Linkable helper`,
-        `Reference doc for the \`${copy.namespace}\` helper.`,
+        `Reference doc for the \`${copy.namespace}\` helper.`
       ),
       renderSourceMessage(sourceFile),
       renderImports(outputFilePath),
@@ -592,13 +592,13 @@ async function generateLinkableDoc(module: TypeDoc.DeclarationReflection) {
       renderBodyEnd(),
     ]
       .flat()
-      .join("\n"),
+      .join("\n")
   );
 }
 
 async function generateComponentDoc(
   component: TypeDoc.DeclarationReflection,
-  sdk?: TypeDoc.DeclarationReflection,
+  sdk?: TypeDoc.DeclarationReflection
 ) {
   console.info(`Generating ${component.name}...`);
 
@@ -606,17 +606,14 @@ async function generateComponentDoc(
   const className = useClassName(component);
   const fullClassName = `${useClassProviderNamespace(component)}.${className}`;
   const matchRet = component.name.match(/-(v\d+)$/);
-  const version =
-    matchRet && !className.toLowerCase().endsWith(matchRet[1])
-      ? `.${matchRet[1]}`
-      : "";
+  const version = matchRet && !className.toLowerCase().endsWith(matchRet[1]) ? `.${matchRet[1]}` : "";
 
   // Remove leading `components/`
   // module.name = "components/aws/bucket"
   // module.name = "components/secret"
   const outputFilePath = path.join(
     "src/content/docs/docs/component",
-    `${component.name.split("/").slice(1).join("/")}.mdx`,
+    `${component.name.split("/").slice(1).join("/")}.mdx`
   );
 
   const dir = path.dirname(outputFilePath);
@@ -627,7 +624,7 @@ async function generateComponentDoc(
     [
       renderHeader(
         useClassName(component) + version,
-        `Reference doc for the \`${fullClassName + version}\` component.`,
+        `Reference doc for the \`${fullClassName + version}\` component.`
       ),
       renderSourceMessage(sourceFile),
       renderImports(outputFilePath),
@@ -653,7 +650,7 @@ async function generateComponentDoc(
                 useModuleFunctions(sdk),
                 ["realtime", "task"].includes(sdk.name)
                   ? { prefix: sdk.name }
-                  : undefined,
+                  : undefined
               )
             : []),
           ...(sdk ? renderInterfacesAtH3Level(sdk) : []),
@@ -677,7 +674,7 @@ async function generateComponentDoc(
       renderBodyEnd(),
     ]
       .flat()
-      .join("\n"),
+      .join("\n")
   );
 }
 
@@ -727,7 +724,7 @@ function renderType(
     | TypeDoc.ParameterReflection,
   opts: {
     ignoreOutput?: boolean;
-  } = {},
+  } = {}
 ) {
   // Check for type override
   // ie. SST SDK uses @see [@aws-sdk/client-ecs.DescribeTasksResponse](https://docs.aws.amazon.com/AWSJavaScriptSDK/v3/latest/Package/-aws-sdk-client-ecs/Interface/DescribeTasksResponse/)
@@ -735,7 +732,7 @@ function renderType(
   const see = type.comment?.blockTags.find((t) => t.tag === "@see");
   if (see?.content.length === 1) {
     const match = see.content[0].text.match(
-      /^\[(@aws-sdk\/client-.+)\]\((.+)\)$/,
+      /^\[(@aws-sdk\/client-.+)\]\((.+)\)$/
     );
     if (match) {
       return `[<code class="type">${match[1]}</code>](${match[2]})`;
@@ -857,7 +854,7 @@ function renderType(
   function renderArrayType(type: TypeDoc.ArrayType) {
     return type.elementType.type === "union"
       ? `<code class="symbol">(</code>${renderSomeType(
-          type.elementType,
+          type.elementType
         )}<code class="symbol">)[]</code>`
       : `${renderSomeType(type.elementType)}<code class="symbol">[]</code>`;
   }
@@ -953,7 +950,7 @@ function renderType(
         : "";
       const docLink = fileName.replace(
         /platform\/src\/components\/(.*)\.ts/,
-        "/docs/component/$1",
+        "/docs/component/$1"
       );
       return `[<code class="type">${type.name}</code>](${docLink}${docHash})`;
     }
@@ -1038,7 +1035,7 @@ function renderType(
   }
   function renderPulumiProviderType(type: TypeDoc.ReferenceType) {
     const ret = ((type as any)._target.fileName as string).match(
-      "node_modules/@pulumi/([^/]+)/(.+).d.ts",
+      "node_modules/@pulumi/([^/]+)/(.+).d.ts"
     )!;
     const provider = ret[1].toLocaleLowerCase(); // ie. aws
     const cls = ret[2].toLocaleLowerCase(); // ie. s3/Bucket
@@ -1104,7 +1101,7 @@ function renderType(
   }
   function renderAwsLambdaType(type: TypeDoc.ReferenceType) {
     const ret = ((type as any)._target.fileName as string).match(
-      "node_modules/@types/aws-lambda/(.+)",
+      "node_modules/@types/aws-lambda/(.+)"
     )!;
     const filePath = ret[1];
     // Resource types
@@ -1127,7 +1124,7 @@ function renderType(
   }
   function renderVercelType(type: TypeDoc.ReferenceType) {
     const ret = ((type as any)._target.fileName as string).match(
-      "node_modules/@pulumiverse/([^/]+)/(.+).d.ts",
+      "node_modules/@pulumiverse/([^/]+)/(.+).d.ts"
     )!;
     const provider = ret[1].toLocaleLowerCase(); // ie. vercel
     const cls = ret[2].toLocaleLowerCase(); // ie. dnsRecord
@@ -1159,11 +1156,11 @@ function renderType(
     const parameters = (signature.parameters ?? [])
       .map(
         (parameter) =>
-          `${renderSignatureArg(parameter)}: ${renderSomeType(parameter.type!)}`,
+          `${renderSignatureArg(parameter)}: ${renderSomeType(parameter.type!)}`
       )
       .join(", ");
     return `<code class="primitive">(${parameters}) => ${renderSomeType(
-      signature.type!,
+      signature.type!
     )}</code>`;
   }
   function renderObjectType(type: TypeDoc.ReflectionType) {
@@ -1173,14 +1170,14 @@ function renderType(
 
 function renderVariables(
   module: TypeDoc.DeclarationReflection,
-  opts?: { title?: string },
+  opts?: { title?: string }
 ) {
   const lines: string[] = [];
   const vars = (module.children ?? []).filter(
     (c) =>
       c.kind === TypeDoc.ReflectionKind.Variable &&
       !c.comment?.modifierTags.has("@internal") &&
-      !c.comment?.blockTags.find((t) => t.tag === "@deprecated"),
+      !c.comment?.blockTags.find((t) => t.tag === "@deprecated")
   );
 
   if (!vars.length) return lines;
@@ -1189,7 +1186,7 @@ function renderVariables(
   // in TypeDoc. So we'll replace $app's type with the $APP interface.
   const type$app = vars.find((v) => v.name === "$app");
   const interface$app = useModuleInterfaces(module).find(
-    (i) => i.name === "$APP",
+    (i) => i.name === "$APP"
   );
   if (type$app && interface$app) {
     // @ts-expect-error
@@ -1230,8 +1227,8 @@ function renderVariables(
           `</Section>`,
           ...renderDescription(subType),
           `</Segment>`,
-        ],
-      ),
+        ]
+      )
     );
   }
   return lines;
@@ -1240,7 +1237,7 @@ function renderVariables(
 function renderFunctions(
   module: TypeDoc.DeclarationReflection,
   fns: TypeDoc.DeclarationReflection[],
-  opts?: { title?: string; prefix?: string },
+  opts?: { title?: string; prefix?: string }
 ) {
   const lines: string[] = [];
 
@@ -1259,7 +1256,7 @@ function renderFunctions(
       (opts?.prefix ? `${opts.prefix}.` : "") +
         renderSignature(f.signatures![0]),
       "```",
-      `</Section>`,
+      `</Section>`
     );
 
     // parameters
@@ -1286,12 +1283,12 @@ function renderFunctions(
 
           return [
             `- <p><code class="key">${renderSignatureArg(
-              param,
+              param
             )}</code> ${type}</p>`,
             ...renderDescription(param),
           ];
         }),
-        `</Section>`,
+        `</Section>`
       );
     }
 
@@ -1300,7 +1297,7 @@ function renderFunctions(
       ...renderDescription(f.signatures![0]),
       ``,
       ...renderExamples(f.signatures![0]),
-      `</Segment>`,
+      `</Segment>`
     );
   }
   return lines;
@@ -1320,7 +1317,7 @@ function renderAbout(comment: TypeDoc.Comment) {
   if (examples.length) {
     lines.push(
       ``,
-      ...examples.map((example) => renderTdComment(example.content)),
+      ...examples.map((example) => renderTdComment(example.content))
     );
   }
 
@@ -1341,7 +1338,7 @@ function renderConstructor(module: TypeDoc.DeclarationReflection) {
     "```ts",
     renderSignature(signature),
     "```",
-    `</Section>`,
+    `</Section>`
   );
 
   // parameters
@@ -1352,11 +1349,11 @@ function renderConstructor(module: TypeDoc.DeclarationReflection) {
       `#### Parameters`,
       ...signature.parameters.flatMap((param) => [
         `- <p><code class="key">${renderSignatureArg(
-          param,
+          param
         )}</code> ${renderType(module, param)}</p>`,
         ...renderDescription(param),
       ]),
-      `</Section>`,
+      `</Section>`
     );
   }
 
@@ -1376,7 +1373,7 @@ function renderMethods(module: TypeDoc.DeclarationReflection) {
       renderMethod(module, m, {
         methodTitle: `### ${m.flags.isStatic ? "static " : ""}${renderName(m)}`,
         parametersTitle: `#### Parameters`,
-      }),
+      })
     ),
   ];
 }
@@ -1384,7 +1381,7 @@ function renderMethods(module: TypeDoc.DeclarationReflection) {
 function renderMethod(
   module: TypeDoc.DeclarationReflection,
   method: TypeDoc.DeclarationReflection,
-  opts: { methodTitle: string; parametersTitle: string },
+  opts: { methodTitle: string; parametersTitle: string }
 ) {
   if (method.kind !== TypeDoc.ReflectionKind.Method) return [];
   const lines = [];
@@ -1397,7 +1394,7 @@ function renderMethod(
     (method.flags.isStatic ? `${useClassName(module)}.` : "") +
       renderSignature(method.signatures![0]),
     "```",
-    `</Section>`,
+    `</Section>`
   );
 
   // parameters
@@ -1408,11 +1405,11 @@ function renderMethod(
       opts.parametersTitle,
       ...method.signatures![0].parameters.flatMap((param) => [
         `- <p><code class="key">${renderSignatureArg(
-          param,
+          param
         )}</code> ${renderType(module, param)}</p>`,
         ...renderDescription(param),
       ]),
-      `</Section>`,
+      `</Section>`
     );
   }
 
@@ -1421,7 +1418,7 @@ function renderMethod(
     ...renderDescription(method.signatures![0]),
     ``,
     ...renderExamples(method.signatures![0]),
-    `</Segment>`,
+    `</Segment>`
   );
   return lines;
 }
@@ -1432,7 +1429,7 @@ function renderProperties(module: TypeDoc.DeclarationReflection) {
     (c) =>
       c.getSignature &&
       !c.getSignature.comment?.modifierTags.has("@internal") &&
-      !c.getSignature.comment?.blockTags.find((t) => t.tag === "@deprecated"),
+      !c.getSignature.comment?.blockTags.find((t) => t.tag === "@deprecated")
   );
   if (!getters.length) return lines;
 
@@ -1472,8 +1469,8 @@ function renderProperties(module: TypeDoc.DeclarationReflection) {
             ? renderDescription(subType)
             : renderDescription(subType.getSignature!)),
           `</Segment>`,
-        ],
-      ),
+        ]
+      )
     );
   }
   return lines;
@@ -1490,7 +1487,7 @@ function renderLinks(module: TypeDoc.DeclarationReflection) {
 
   // Get `getSSTLink().properties` type
   const properties = returnType.declaration.children?.find(
-    (c) => c.name === "properties",
+    (c) => c.name === "properties"
   );
   if (!properties) return lines;
 
@@ -1500,7 +1497,7 @@ function renderLinks(module: TypeDoc.DeclarationReflection) {
     console.log(properties);
   }
   const links = (propertiesType.declaration.children || []).filter(
-    (c) => !c.comment?.modifierTags.has("@internal"),
+    (c) => !c.comment?.modifierTags.has("@internal")
   );
   if (!links.length) return lines;
 
@@ -1517,7 +1514,7 @@ function renderLinks(module: TypeDoc.DeclarationReflection) {
       const getter = useClassGetters(module).find((g) => g.name === link.name);
       if (!getter) {
         throw new Error(
-          `Failed to render link ${link.name} b/c cannot find a getter property with the matching name`,
+          `Failed to render link ${link.name} b/c cannot find a getter property with the matching name`
         );
       }
 
@@ -1525,14 +1522,14 @@ function renderLinks(module: TypeDoc.DeclarationReflection) {
         `- <p><code class="key">${renderName(link)}</code> ${renderType(
           module,
           link,
-          { ignoreOutput: true },
+          { ignoreOutput: true }
         )}</p>`,
         "", // Needed to indent the description
         ...renderDescription(getter.getSignature!, { indent: true }),
       ];
     }),
     `</Section>`,
-    `</Segment>`,
+    `</Segment>`
   );
 
   return lines;
@@ -1549,7 +1546,7 @@ function renderCloudflareBindings(module: TypeDoc.DeclarationReflection) {
 
   // Get `getSSTLink().include` type
   const include = returnType.declaration.children?.find(
-    (c) => c.name === "include",
+    (c) => c.name === "include"
   );
   if (!include) return lines;
 
@@ -1559,7 +1556,7 @@ function renderCloudflareBindings(module: TypeDoc.DeclarationReflection) {
   const isCloudflareBinding = includeType.declaration.children?.some(
     (c) =>
       c.name === "type" &&
-      (c.type as TypeDoc.LiteralType)?.value === "cloudflare.binding",
+      (c.type as TypeDoc.LiteralType)?.value === "cloudflare.binding"
   );
   if (!isCloudflareBinding) return lines;
 
@@ -1570,7 +1567,7 @@ function renderCloudflareBindings(module: TypeDoc.DeclarationReflection) {
     ...renderDescription(method.signatures![0]),
     ``,
     ...renderExamples(method.signatures![0]),
-    `</Segment>`,
+    `</Segment>`
   );
 
   return lines;
@@ -1580,7 +1577,7 @@ function renderInterfacesAtH2Level(
   module: TypeDoc.DeclarationReflection,
   opts: {
     filter?: (c: TypeDoc.DeclarationReflection) => boolean;
-  } = {},
+  } = {}
 ) {
   const lines: string[] = [];
   const interfaces = useModuleInterfaces(module)
@@ -1623,21 +1620,21 @@ function renderInterfacesAtH2Level(
               return subType.kind === TypeDoc.ReflectionKind.Method
                 ? renderMethod(module, subType, {
                     methodTitle: `<NestedTitle id="${useLinkHashes(module).get(
-                      subType,
+                      subType
                     )}" Tag="${
                       depth === 0 ? "h4" : "h5"
                     }" parent="${prefix}.">${renderName(
-                      subType,
+                      subType
                     )}</NestedTitle>`,
                     parametersTitle: `**Parameters**`,
                   })
                 : [
                     `<NestedTitle id="${useLinkHashes(module).get(
-                      subType,
+                      subType
                     )}" Tag="${
                       depth === 0 ? "h4" : "h5"
                     }" parent="${prefix}.">${renderName(
-                      subType,
+                      subType
                     )}</NestedTitle>`,
                     `<Segment>`,
                     `<Section type="parameters">`,
@@ -1651,8 +1648,8 @@ function renderInterfacesAtH2Level(
                     ...renderExamples(subType),
                     `</Segment>`,
                   ];
-            },
-          ),
+            }
+          )
         );
       } else if (prop.kind === TypeDoc.ReflectionKind.Method) {
         console.debug(`   - interface method ${prop.name}`);
@@ -1662,7 +1659,7 @@ function renderInterfacesAtH2Level(
               prop.flags.isStatic ? "static " : ""
             }${renderName(prop)}`,
             parametersTitle: `#### Parameters`,
-          }),
+          })
         );
       }
     }
@@ -1713,8 +1710,8 @@ function renderInterfacesAtH3Level(module: TypeDoc.DeclarationReflection) {
           ``,
           ...renderExamples(subType),
           `</Segment>`,
-        ],
-      ),
+        ]
+      )
     );
   }
 
@@ -1736,7 +1733,7 @@ function renderSignatureArg(prop: TypeDoc.ParameterReflection) {
         ` - defaultValue is set, ie. "(args: FooArgs = {})`,
         ``,
         `But in this case, the default value is not "{}". Hence not supported.`,
-      ].join("\n"),
+      ].join("\n")
     );
   }
 
@@ -1752,7 +1749,7 @@ function renderDescription(
     | TypeDoc.DeclarationReflection
     | TypeDoc.ParameterReflection
     | TypeDoc.SignatureReflection,
-  opts?: { indent: true },
+  opts?: { indent: true }
 ) {
   if (!prop.comment?.summary) return [];
   const str = renderTdComment(prop.comment?.summary);
@@ -1768,10 +1765,10 @@ function renderDescription(
 
 function renderDefaultTag(
   module: TypeDoc.DeclarationReflection,
-  prop: TypeDoc.DeclarationReflection,
+  prop: TypeDoc.DeclarationReflection
 ) {
   const defaultTag = prop.comment?.blockTags.find(
-    (tag) => tag.tag === "@default",
+    (tag) => tag.tag === "@default"
   );
   if (!defaultTag) return [];
   return [
@@ -1796,7 +1793,7 @@ function renderDefaultTag(
 
 function renderReturnValue(
   module: TypeDoc.DeclarationReflection,
-  prop: TypeDoc.SignatureReflection,
+  prop: TypeDoc.SignatureReflection
 ) {
   return [
     ``,
@@ -1808,7 +1805,7 @@ function renderReturnValue(
 
 function renderNestedTypeList(
   module: TypeDoc.DeclarationReflection,
-  prop: TypeDoc.DeclarationReflection | TypeDoc.SignatureReflection,
+  prop: TypeDoc.DeclarationReflection | TypeDoc.SignatureReflection
 ) {
   return useNestedTypes(prop.type!, prop.name).map(
     ({ depth, prefix, subType }) => {
@@ -1832,14 +1829,14 @@ function renderNestedTypeList(
       const hash = generateHash();
       useLinkHashes(module).set(subType, hash);
       return `${" ".repeat(depth * 2)}- <p>[<code class="key">${renderName(
-        subType,
+        subType
       )}</code>](#${hash})${type}</p>`;
-    },
+    }
   );
 }
 
 function renderExamples(
-  prop: TypeDoc.DeclarationReflection | TypeDoc.SignatureReflection,
+  prop: TypeDoc.DeclarationReflection | TypeDoc.SignatureReflection
 ) {
   return (prop.comment?.blockTags ?? [])
     .filter((tag) => tag.tag === "@example")
@@ -1917,7 +1914,7 @@ function useClassProviderNamespace(module: TypeDoc.DeclarationReflection) {
   const fileName = useClass(module).sources![0].fileName;
   if (!fileName.startsWith("platform/src/components/")) {
     throw new Error(
-      `Fail to generate class namespace from class fileName ${fileName}. Expected to start with "platform/src/components/"`,
+      `Fail to generate class namespace from class fileName ${fileName}. Expected to start with "platform/src/components/"`
     );
   }
 
@@ -1931,7 +1928,7 @@ function useClassComment(module: TypeDoc.DeclarationReflection) {
 }
 function useClassConstructor(module: TypeDoc.DeclarationReflection) {
   const constructor = useClass(module).children?.find(
-    (c) => c.kind === TypeDoc.ReflectionKind.Constructor,
+    (c) => c.kind === TypeDoc.ReflectionKind.Constructor
   );
   if (!constructor) throw new Error("Constructor not found");
   return constructor;
@@ -1946,14 +1943,12 @@ function useClassMethods(module: TypeDoc.DeclarationReflection) {
         !c.flags.isProtected &&
         c.signatures &&
         !c.signatures[0].comment?.modifierTags.has("@internal") &&
-        !c.signatures[0].comment?.blockTags.find(
-          (t) => t.tag === "@deprecated",
-        ),
+        !c.signatures[0].comment?.blockTags.find((t) => t.tag === "@deprecated")
     );
 }
 function useClassMethodByName(
   module: TypeDoc.DeclarationReflection,
-  methodName: string,
+  methodName: string
 ) {
   return useClass(module)
     .getChildrenByKind(TypeDoc.ReflectionKind.Method)
@@ -1961,7 +1956,7 @@ function useClassMethodByName(
 }
 function useClassGetters(module: TypeDoc.DeclarationReflection) {
   return (useClass(module).children ?? []).filter(
-    (c) => c.kind === TypeDoc.ReflectionKind.Accessor && c.flags.isPublic,
+    (c) => c.kind === TypeDoc.ReflectionKind.Accessor && c.flags.isPublic
   );
 }
 function useInterfaceProps(i: TypeDoc.DeclarationReflection) {
@@ -1974,7 +1969,7 @@ function useInterfaceProps(i: TypeDoc.DeclarationReflection) {
 function useNestedTypes(
   type: TypeDoc.SomeType,
   prefix: string = "",
-  depth: number = 0,
+  depth: number = 0
 ): {
   subType: TypeDoc.DeclarationReflection;
   prefix: string;
@@ -1990,7 +1985,7 @@ function useNestedTypes(
     return (type.typeArguments ?? []).flatMap((t) =>
       type.package === "typescript" && type.name === "Record"
         ? useNestedTypes(t, `${prefix}[]`, depth)
-        : useNestedTypes(t, prefix, depth),
+        : useNestedTypes(t, prefix, depth)
     );
   }
   if (type.type === "reflection" && type.declaration.children?.length) {
@@ -2003,14 +1998,14 @@ function useNestedTypes(
           ? useNestedTypes(
               subType.type!,
               `${prefix}.${subType.name}`,
-              depth + 1,
+              depth + 1
             )
           : []),
         ...(subType.kind === TypeDoc.ReflectionKind.Accessor
           ? useNestedTypes(
               subType.getSignature?.type!,
               `${prefix}.${subType.name}`,
-              depth + 1,
+              depth + 1
             )
           : []),
       ]);
@@ -2032,7 +2027,7 @@ function patchCode() {
   // patch Input
   fs.renameSync(
     "../platform/src/components/input.ts",
-    "../platform/src/components/input.ts.bk",
+    "../platform/src/components/input.ts.bk"
   );
   fs.copyFileSync("./input-patch.ts", "../platform/src/components/input.ts");
   // patch global
@@ -2053,13 +2048,13 @@ function patchCode() {
       // search multiple lines
       .replace(
         /export function \$resolve[\s\S]*?(?=\/\*\*)/,
-        "export const $resolve: typeof util.all;\n",
-      ),
+        "export const $resolve: typeof util.all;\n"
+      )
   );
   // patch Linkable
   fs.cpSync(
     "../platform/src/components/linkable.ts",
-    "../platform/src/components/linkable.ts.bk",
+    "../platform/src/components/linkable.ts.bk"
   );
   fs.writeFileSync(
     "../platform/src/components/linkable.ts",
@@ -2071,24 +2066,24 @@ function patchCode() {
       .replace("properties: Properties", "properties: Record<string, any>")
       .replace(
         "public get properties() {",
-        "public get properties(): Record<string, any> {",
+        "public get properties(): Record<string, any> {"
       )
       // replace generic <Resource>
       .replaceAll(`cls: { new (...args: any[]): Resource }`, `cls: Constructor`)
       // replace Definition.include
       .replace(
         /include\?\: \{[^}]*\}/,
-        `include?: (AwsPermission | CloudflareBinding)`,
+        `include?: (AwsPermission | CloudflareBinding)`
       ) +
       "\ntype Constructor = {};\n" +
       "\ntype AwsPermission = {};\n" +
-      "\ntype CloudflareBinding = {};\n",
+      "\ntype CloudflareBinding = {};\n"
   );
   // patch StepFunctions
   ["map.ts", "parallel.ts", "pass.ts", "task.ts", "wait.ts"].forEach((file) => {
     fs.cpSync(
       `../platform/src/components/aws/step-functions/${file}`,
-      `../platform/src/components/aws/step-functions/${file}.bk`,
+      `../platform/src/components/aws/step-functions/${file}.bk`
     );
     fs.writeFileSync(
       `../platform/src/components/aws/step-functions/${file}`,
@@ -2098,8 +2093,8 @@ function patchCode() {
         .trim()
         .replace(
           "public next<T extends State>(state: T): T {",
-          "public next(state: State): State {",
-        ),
+          "public next(state: State): State {"
+        )
     );
   });
 }
@@ -2108,20 +2103,20 @@ function restoreCode() {
   // restore Input
   fs.renameSync(
     "../platform/src/components/input.ts.bk",
-    "../platform/src/components/input.ts",
+    "../platform/src/components/input.ts"
   );
   // restore global
   fs.rmSync("../platform/src/global-config.d.ts");
   // restore Linkable
   fs.renameSync(
     "../platform/src/components/linkable.ts.bk",
-    "../platform/src/components/linkable.ts",
+    "../platform/src/components/linkable.ts"
   );
   // restore StepFunctions
   ["map.ts", "parallel.ts", "pass.ts", "task.ts", "wait.ts"].forEach((file) => {
     fs.renameSync(
       `../platform/src/components/aws/step-functions/${file}.bk`,
-      `../platform/src/components/aws/step-functions/${file}`,
+      `../platform/src/components/aws/step-functions/${file}`
     );
   });
 }
@@ -2217,8 +2212,6 @@ async function buildComponents() {
       "../platform/src/components/cloudflare/cron.ts",
       "../platform/src/components/cloudflare/d1.ts",
       "../platform/src/components/cloudflare/kv.ts",
-      "../platform/src/components/cloudflare/queue.ts",
-      "../platform/src/components/cloudflare/static-site.ts",
       "../platform/src/components/cloudflare/worker.ts",
       // internal
       "../platform/src/components/aws/cdn.ts",
@@ -2266,7 +2259,7 @@ async function buildComponents() {
         "wait",
       ].includes(c.name)
         ? taskChildren.push(c)
-        : otherChildren.push(c),
+        : otherChildren.push(c)
     );
     c.children = [...taskChildren, ...otherChildren];
   })();
@@ -2326,6 +2319,6 @@ async function buildExamples() {
     (c) =>
       c.kind === TypeDoc.ReflectionKind.Module &&
       c.children?.length === 1 &&
-      c.children[0].comment,
+      c.children[0].comment
   );
 }
