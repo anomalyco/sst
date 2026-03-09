@@ -219,6 +219,13 @@ const sidebar = [
           "docs/component/cloudflare/kv",
           "docs/component/cloudflare/queue",
           "docs/component/cloudflare/worker",
+          {
+            label: "Internal",
+            collapsed: true,
+            items: [
+              "docs/component/cloudflare/queue-worker-subscriber",
+            ],
+          },
         ],
       },
       {
