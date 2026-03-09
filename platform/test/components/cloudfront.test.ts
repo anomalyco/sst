@@ -16,6 +16,51 @@ type CloudFrontField = {
   multiValue?: { value: string }[];
 };
 
+type CloudFrontRequest = {
+  uri: string;
+  headers: Record<string, CloudFrontField>;
+  cookies: Record<string, CloudFrontField>;
+  querystring: Record<string, unknown>;
+  origin?: unknown;
+};
+
+type CloudFrontEvent = {
+  request: CloudFrontRequest;
+};
+
+type TestContext = vm.Context & {
+  Promise: PromiseConstructor;
+  Math: Math;
+  JSON: JSON;
+  RegExp: RegExpConstructor;
+  decodeURIComponent: typeof decodeURIComponent;
+  encodeURIComponent: typeof encodeURIComponent;
+  event: CloudFrontEvent;
+  cf: {
+    kvs: () => {
+      get: (key: string) => Promise<string>;
+    };
+    updateRequestOrigin: (origin: unknown) => void;
+  };
+  require: NodeRequire;
+  __routeSite?: (
+    kvNamespace: string,
+    metadata: Record<string, any>,
+  ) => Promise<any>;
+  __getRequestHeaderSize?: () => number;
+  __matchRoute?: (routes: string[]) => Promise<any>;
+  __handler?: (event: CloudFrontEvent) => Promise<any>;
+};
+
+type CreateContextInput = {
+  uri: string;
+  headers: Record<string, CloudFrontField>;
+  cookies?: Record<string, CloudFrontField>;
+  querystring?: Record<string, unknown>;
+  kvGet?: (key: string) => Promise<string>;
+  updateRequestOrigin?: (origin: unknown, event: CloudFrontEvent) => void;
+};
+
 function extractTemplateCode(
   start: string,
   end: string,
@@ -47,23 +92,17 @@ const REQUEST_HANDLER_CODE = extractTemplateCode(
   },
 );
 
-function createContext(input: {
-  uri: string;
-  headers: Record<string, CloudFrontField>;
-  cookies?: Record<string, CloudFrontField>;
-  querystring?: Record<string, unknown>;
-  kvGet?: (key: string) => Promise<string>;
-  updateRequestOrigin?: (origin: any, event: any) => void;
-}) {
-  const event = {
+function createContext(input: CreateContextInput) {
+  const event: CloudFrontEvent = {
     request: {
-      cookies: {},
-      querystring: {},
-      ...input,
+      uri: input.uri,
+      headers: input.headers,
+      cookies: input.cookies ?? {},
+      querystring: input.querystring ?? {},
     },
   };
 
-  const context = {
+  const context: TestContext = {
     Promise,
     Math,
     JSON,
@@ -105,11 +144,8 @@ function loadRouteSite(input: {
 
   return {
     event,
-    routeSite: context.__routeSite as (
-      kvNamespace: string,
-      metadata: Record<string, any>,
-    ) => Promise<any>,
-    getRequestHeaderSize: (() => context.__getRequestHeaderSize()) as () => number,
+    routeSite: context.__routeSite!,
+    getRequestHeaderSize: () => context.__getRequestHeaderSize!(),
   };
 }
 
@@ -133,7 +169,7 @@ function loadRouteMatcher(input: {
     context,
   );
 
-  return context.__matchRoute as (routes: string[]) => Promise<any>;
+  return context.__matchRoute!;
 }
 
 function loadHandler(input: {
@@ -168,7 +204,7 @@ globalThis.__handler = handler;`).runInContext(
 
   return {
     event,
-    handler: context.__handler as (event: typeof event) => Promise<any>,
+    handler: context.__handler!,
   };
 }
 
