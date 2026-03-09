@@ -58,7 +58,7 @@ export interface QueueSubscribeArgs {
      * The maximum number of events that will be processed together in a single invocation
      * of the consumer function.
      *
-     * Value must be between 1 and 10000.
+     * Value must be between 1 and 100.
      *
      * :::note
      * When `size` is set to a value greater than 10, `window` must be set to at least `1 second`.
@@ -80,13 +80,13 @@ export interface QueueSubscribeArgs {
      * The maximum amount of time to wait for collecting events before sending the batch to
      * the consumer function, even if the batch size hasn't been reached.
      *
-     * Value must be between 0 seconds and 5 minutes (300 seconds).
-     * @default `"20 seconds"`
+     * Value must be between 0 seconds and 60 seconds.
+     * @default `"5 seconds"`
      * @example
      * ```js
      * {
      *   batch: {
-     *     window: "20 seconds"
+     *     window: "5 seconds"
      *   }
      * }
      * ```

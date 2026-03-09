@@ -59,7 +59,7 @@ export interface QueueWorkerSubscriberArgs {
      * The maximum number of events that will be processed together in a single invocation
      * of the consumer function.
      *
-     * Value must be between 1 and 10000.
+     * Value must be between 1 and 100.
      *
      * :::note
      * When `size` is set to a value greater than 10, `window` must be set to at least `1 second`.
@@ -72,8 +72,8 @@ export interface QueueWorkerSubscriberArgs {
      * The maximum amount of time to wait for collecting events before sending the batch to
      * the consumer function, even if the batch size hasn't been reached.
      *
-     * Value must be between 0 seconds and 5 minutes (300 seconds).
-     * @default `"20 seconds"`
+     * Value must be between 0 seconds and 60 seconds.
+     * @default `"5 seconds"`
      */
     window?: Input<DurationMinutes>;
   };
@@ -118,7 +118,7 @@ export class QueueWorkerSubscriber extends Component {
     const queue = output(args.queue);
     const worker = createWorker();
     const batchSize = output(args.batch?.size ?? 10);
-    const window = output(args.batch?.window ?? "20 seconds");
+    const window = output(args.batch?.window ?? "5 seconds");
     const retryDelay = output(args.dlq?.retryDelay ?? "0 seconds");
     const consumer = createConsumer();
 
