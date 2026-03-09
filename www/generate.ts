@@ -2212,6 +2212,7 @@ async function buildComponents() {
       "../platform/src/components/cloudflare/cron.ts",
       "../platform/src/components/cloudflare/d1.ts",
       "../platform/src/components/cloudflare/kv.ts",
+      "../platform/src/components/cloudflare/queue.ts",
       "../platform/src/components/cloudflare/worker.ts",
       // internal
       "../platform/src/components/aws/cdn.ts",
