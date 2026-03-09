@@ -25,12 +25,14 @@ export interface QueueArgs {
 export interface QueueSubscribeArgs {
   /**
    * The dead letter queue to send messages that fail processing.
+   *
+   * When `dlq` is configured, `dlq.queue` is required.
    */
   dlq?: {
     /**
      * The name of the dead letter queue.
      */
-    queue?: Input<string>;
+    queue: Input<string>;
     /**
      * The number of times the main queue will retry the message before sending it to the dead-letter queue.
      * @default `3`
@@ -269,6 +271,13 @@ export class Queue extends Component implements Link.Linkable {
         `Cannot subscribe to the "${this.constructorName}" queue multiple times. A Cloudflare Queue can only have one consumer.`,
       );
     }
+
+    if (args?.dlq && !args.dlq.queue) {
+      throw new VisibleError(
+        `Cannot configure "dlq" for the "${this.constructorName}" queue without setting "dlq.queue".`,
+      );
+    }
+
     this.isSubscribed = true;
 
     const parent = this;

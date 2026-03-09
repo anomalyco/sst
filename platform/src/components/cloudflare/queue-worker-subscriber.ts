@@ -7,6 +7,7 @@ import {
   DurationSeconds,
   toMilliSeconds,
 } from "../duration";
+import { VisibleError } from "../error";
 import { WorkerBuilder, workerBuilder } from "./helpers/worker-builder";
 import { WorkerArgs } from "./worker";
 import { DEFAULT_ACCOUNT_ID } from "./account-id";
@@ -27,12 +28,14 @@ export interface QueueWorkerSubscriberArgs {
   subscriber: Input<string | WorkerArgs>;
   /**
    * The dead letter queue to send messages that fail processing.
+   *
+   * When `dlq` is configured, `dlq.queue` is required.
    */
   dlq?: {
     /**
      * The name of the dead letter queue.
      */
-    queue?: Input<string>;
+    queue: Input<string>;
     /**
      * The number of times the main queue will retry the message before sending it to the dead-letter queue.
      * @default `3`
@@ -121,6 +124,12 @@ export class QueueWorkerSubscriber extends Component {
     opts?: ComponentResourceOptions,
   ) {
     super(__pulumiType, name, args, opts);
+
+    if (args.dlq && !args.dlq.queue) {
+      throw new VisibleError(
+        `Cannot configure "dlq" for the "${name}" queue subscriber without setting "dlq.queue".`,
+      );
+    }
 
     const self = this;
     const queue = output(args.queue);
