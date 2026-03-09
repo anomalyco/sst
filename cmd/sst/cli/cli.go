@@ -352,3 +352,12 @@ func guessStage() string {
 	}
 	return stage
 }
+
+// PersonalStage returns the stored or guessed personal stage for a project.
+func PersonalStage(cfgPath string) string {
+	stage := project.LoadPersonalStage(cfgPath)
+	if stage != "" {
+		return stage
+	}
+	return guessStage()
+}
