@@ -1,6 +1,5 @@
 # Specify the Python version as an ARG
 ARG PYTHON_VERSION=3.11
-ARG PYTHON_RUNTIME
 
 # Use the Lambda Python base image
 FROM public.ecr.aws/lambda/python:${PYTHON_VERSION}

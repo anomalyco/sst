@@ -280,6 +280,22 @@ func function(ctx context.Context, input input) {
 		return true
 	}
 
+	// restartOrDeferWorker checks if a worker should restart eagerly or be deferred
+	// for lazy startup on next invocation. Runtimes like Python return false from
+	// ShouldRunEagerly to prevent "startup storms" when many functions change at once.
+	restartOrDeferWorker := func(workerID string, info *WorkerInfo) {
+		target, ok := targets[info.FunctionID]
+		if !ok {
+			return
+		}
+		if input.project.Runtime.ShouldRunEagerly(target.Runtime) {
+			run(info.FunctionID, workerID)
+		} else {
+			log.Info("lazy startup: deferring worker restart until invoked", "workerID", workerID, "functionID", info.FunctionID)
+			delete(workers, workerID)
+		}
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -384,23 +400,8 @@ func function(ctx context.Context, input input) {
 					info.Worker.Stop()
 				}
 				builds = map[string]*runtime.BuildOutput{}
-				// Restart workers based on runtime's ShouldRunEagerly preference.
-				// Runtimes like Python return false to enable lazy startup - workers
-				// will restart on-demand when invoked instead of all at once.
-				// This prevents the "startup storm" when 50+ Python functions would
-				// otherwise all restart simultaneously after an infrastructure change.
 				for workerID, info := range workers {
-					target, ok := targets[info.FunctionID]
-					if !ok {
-						continue
-					}
-					if input.project.Runtime.ShouldRunEagerly(target.Runtime) {
-						run(info.FunctionID, workerID)
-					} else {
-						// Lazy startup: delete worker so it restarts on next invoke (MessageInit)
-						log.Info("lazy startup: deferring worker restart until invoked", "workerID", workerID, "functionID", info.FunctionID)
-						delete(workers, workerID)
-					}
+					restartOrDeferWorker(workerID, info)
 				}
 			case *runtime.BuildInput:
 				targets[evt.FunctionID] = evt
@@ -434,22 +435,7 @@ func function(ctx context.Context, input input) {
 
 				for workerID, info := range workers {
 					if toBuild[info.FunctionID] {
-						// Check if this runtime wants eager or lazy worker startup.
-						// Runtimes like Python return false to enable lazy startup - workers
-						// will restart on-demand when invoked instead of all at once.
-						// This prevents the "startup storm" when 50+ Python functions would
-						// otherwise all restart simultaneously after a shared file change.
-						target, ok := targets[info.FunctionID]
-						if !ok {
-							continue
-						}
-						if input.project.Runtime.ShouldRunEagerly(target.Runtime) {
-							run(info.FunctionID, workerID)
-						} else {
-							// Lazy startup: delete worker so it restarts on next invoke (MessageInit)
-							log.Info("lazy startup: deferring worker restart until invoked", "workerID", workerID, "functionID", info.FunctionID)
-							delete(workers, workerID)
-						}
+						restartOrDeferWorker(workerID, info)
 					}
 				}
 				break

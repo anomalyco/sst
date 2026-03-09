@@ -28,53 +28,15 @@ func TestWorkspaceDependencyIsolation(t *testing.T) {
 		t.Skip("python-modern-uv example not found, skipping test")
 	}
 
-	t.Run("worker has arrow dependency", func(t *testing.T) {
-		workerPyproject := filepath.Join(exampleDir, "packages", "worker", "pyproject.toml")
-		content, err := os.ReadFile(workerPyproject)
-		if err != nil {
-			t.Fatalf("Failed to read worker pyproject.toml: %v", err)
-		}
-
-		if !strings.Contains(string(content), "arrow") {
-			t.Error("Worker pyproject.toml should contain arrow dependency")
-		}
-	})
-
-	t.Run("api does not have arrow dependency", func(t *testing.T) {
-		apiPyproject := filepath.Join(exampleDir, "packages", "api", "pyproject.toml")
-		content, err := os.ReadFile(apiPyproject)
-		if err != nil {
-			t.Fatalf("Failed to read api pyproject.toml: %v", err)
-		}
-
-		if strings.Contains(string(content), "arrow") {
-			t.Error("API pyproject.toml should NOT contain arrow dependency")
-		}
-	})
-
-	t.Run("root does not have arrow dependency", func(t *testing.T) {
-		rootPyproject := filepath.Join(exampleDir, "pyproject.toml")
-		content, err := os.ReadFile(rootPyproject)
-		if err != nil {
-			t.Fatalf("Failed to read root pyproject.toml: %v", err)
-		}
-
-		if strings.Contains(string(content), "arrow") {
-			t.Error("Root pyproject.toml should NOT contain arrow dependency")
-		}
-	})
-
-	t.Run("worker handler imports arrow", func(t *testing.T) {
-		workerHandler := filepath.Join(exampleDir, "packages", "worker", "src", "worker", "handler.py")
-		content, err := os.ReadFile(workerHandler)
-		if err != nil {
-			t.Fatalf("Failed to read worker handler: %v", err)
-		}
-
-		if !strings.Contains(string(content), "import arrow") {
-			t.Error("Worker handler should import arrow")
-		}
-	})
+	// Verify the example fixture has the expected structure for the build test below
+	workerPyproject := filepath.Join(exampleDir, "packages", "worker", "pyproject.toml")
+	content, err := os.ReadFile(workerPyproject)
+	if err != nil {
+		t.Fatalf("Failed to read worker pyproject.toml: %v", err)
+	}
+	if !strings.Contains(string(content), "arrow") {
+		t.Fatal("Worker pyproject.toml should contain arrow dependency — example fixture is broken")
+	}
 }
 
 // TestWorkspaceDependencyIsolationBuild tests the actual build output to verify
@@ -111,7 +73,7 @@ func TestWorkspaceDependencyIsolationBuild(t *testing.T) {
 		}
 
 		// Create incremental builder for API
-		builder, err := NewIncrementalBuilder(IncrementalBuilderConfig{
+		builder, err := NewDeployBuilder(DeployBuilderConfig{
 			CacheDir:    cacheDir,
 			ArtifactDir: apiArtifactDir,
 			ProjectRoot: tempDir,
@@ -154,7 +116,7 @@ func TestWorkspaceDependencyIsolationBuild(t *testing.T) {
 		}
 
 		// Create incremental builder for Worker
-		builder, err := NewIncrementalBuilder(IncrementalBuilderConfig{
+		builder, err := NewDeployBuilder(DeployBuilderConfig{
 			CacheDir:    cacheDir,
 			ArtifactDir: workerArtifactDir,
 			ProjectRoot: tempDir,

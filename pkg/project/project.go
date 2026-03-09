@@ -125,11 +125,7 @@ func New(input *ProjectConfig) (*Project, error) {
 
 	// Create Python runtime with caching enabled
 	pythonCacheDir := filepath.Join(tmp, "python-cache")
-	pythonRuntime, pythonErr := python.NewWithCache(pythonCacheDir)
-	if pythonErr != nil {
-		// Fall back to non-cached runtime if cache creation fails
-		pythonRuntime = python.New()
-	}
+	pythonRuntime := python.NewWithCache(pythonCacheDir)
 
 	proj := &Project{
 		version: input.Version,

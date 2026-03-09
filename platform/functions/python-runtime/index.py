@@ -6,7 +6,6 @@ import sys
 import traceback
 import time
 import requests
-from pathlib import Path
 
 
 # Configure Python logging to output to stdout so it appears alongside print statements
@@ -16,14 +15,6 @@ logging.basicConfig(
     stream=sys.stdout,
     force=True  # Override any existing logging configuration
 )
-
-# Also ensure that all loggers use our configuration
-root_logger = logging.getLogger()
-root_logger.handlers.clear()
-handler = logging.StreamHandler(sys.stdout)
-handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-root_logger.addHandler(handler)
-root_logger.setLevel(logging.INFO)
 
 
 # Error handling function to report errors back to the Lambda runtime API
@@ -52,107 +43,69 @@ def log(message):
     sys.stderr.flush()
 
 
-def resolve_handler_simple(handler_path):
+def parse_handler_path(handler_path):
     """
-    Simple handler resolution using standard Python imports.
-    Works when PYTHONPATH is properly set (modern layouts).
+    Parse and validate a handler path like 'module.function'.
+    
+    Returns:
+        tuple: (python_module_path, function_name)
+    """
+    if "." not in handler_path:
+        raise ImportError(f"Invalid handler format: {handler_path}. Expected 'module.function'")
+    
+    module_path, function_name = handler_path.rsplit(".", 1)
+    
+    # Convert file path to module path (replace / with .)
+    python_module_path = module_path.replace("/", ".").replace("\\", ".").lstrip(".")
+    
+    return python_module_path, function_name
+
+
+def get_handler_function(module, function_name):
+    """
+    Get and validate a callable function from a module.
+    
+    Returns:
+        callable: The handler function
+    """
+    if not hasattr(module, function_name):
+        available_functions = [name for name in dir(module) if not name.startswith('_')]
+        raise ImportError(
+            f"Function '{function_name}' not found in module '{module.__name__}'. "
+            f"Available functions: {available_functions}"
+        )
+    
+    handler_function = getattr(module, function_name)
+    if not callable(handler_function):
+        raise ImportError(
+            f"'{function_name}' is not a callable function in module '{module.__name__}'"
+        )
+    
+    return handler_function
+
+
+def resolve_handler(handler_path, artifact_dir):
+    """
+    Resolve a handler by importing its module and returning the function.
+    
+    Uses PYTHONPATH for modern layouts. For legacy layouts (no PYTHONPATH),
+    adds the artifact directory to sys.path first.
     
     Args:
         handler_path: Handler path like 'services/api/handler.main'
-        
-    Returns:
-        tuple: (module, function) or raises ImportError
-    """
-    # Parse handler path
-    if "." not in handler_path:
-        raise ImportError(f"Invalid handler format: {handler_path}. Expected 'module.function'")
-    
-    module_path, function_name = handler_path.rsplit(".", 1)
-    
-    # If handler_path is an absolute path, extract just the relative portion
-    if os.path.isabs(module_path):
-        # For absolute paths, we need to find the relative path from PYTHONPATH
-        # Since we can't determine this reliably, just use the basename
-        # This shouldn't happen in modern layouts, but handle it gracefully
-        module_path = os.path.basename(module_path)
-        log(f"Warning: Absolute path detected, using basename: {module_path}")
-    
-    # Convert file path to module path (replace / with .)
-    # Remove any leading dots that might have been created
-    python_module_path = module_path.replace("/", ".").replace("\\", ".").lstrip(".")
-    
-    # Simple import - Python will use PYTHONPATH
-    module = importlib.import_module(python_module_path)
-    
-    # Get the function from the module
-    if not hasattr(module, function_name):
-        available_functions = [name for name in dir(module) if not name.startswith('_')]
-        raise ImportError(
-            f"Function '{function_name}' not found in module '{module.__name__}'. "
-            f"Available functions: {available_functions}"
-        )
-    
-    handler_function = getattr(module, function_name)
-    if not callable(handler_function):
-        raise ImportError(
-            f"'{function_name}' is not a callable function in module '{module.__name__}'"
-        )
-    
-    return module, handler_function
-
-
-def resolve_handler_legacy(handler_path, artifact_dir):
-    """
-    Legacy handler resolution for flattened artifact directories.
-    Used when files are copied and flattened (legacy layouts).
-    
-    Args:
-        handler_path: Handler path like 'handler.main' or 'functions/user/handler.main'
         artifact_dir: Root directory of the Lambda artifact
         
     Returns:
-        tuple: (module, function) or raises ImportError
+        tuple: (module, function)
     """
-    # Parse handler path
-    if "." not in handler_path:
-        raise ImportError(f"Invalid handler format: {handler_path}. Expected 'module.function'")
+    python_module_path, function_name = parse_handler_path(handler_path)
     
-    module_path, function_name = handler_path.rsplit(".", 1)
-    
-    # If handler_path is an absolute path, make it relative to artifact_dir
-    if os.path.isabs(module_path):
-        try:
-            module_path = os.path.relpath(module_path, artifact_dir)
-        except ValueError:
-            # If paths are on different drives (Windows), just use basename
-            module_path = os.path.basename(module_path)
-    
-    # Convert file path to module path (replace / with .)
-    # Remove any leading dots that might have been created
-    python_module_path = module_path.replace("/", ".").replace("\\", ".").lstrip(".")
-    
-    # Add artifact directory to sys.path
-    if artifact_dir not in sys.path:
+    # For legacy layouts without PYTHONPATH, add artifact dir to sys.path
+    if 'PYTHONPATH' not in os.environ and artifact_dir not in sys.path:
         sys.path.insert(0, artifact_dir)
     
-    # Import the module
     module = importlib.import_module(python_module_path)
-    
-    # Get the function from the module
-    if not hasattr(module, function_name):
-        available_functions = [name for name in dir(module) if not name.startswith('_')]
-        raise ImportError(
-            f"Function '{function_name}' not found in module '{module.__name__}'. "
-            f"Available functions: {available_functions}"
-        )
-    
-    handler_function = getattr(module, function_name)
-    if not callable(handler_function):
-        raise ImportError(
-            f"'{function_name}' is not a callable function in module '{module.__name__}'"
-        )
-    
-    return module, handler_function
+    return module, get_handler_function(module, function_name)
 
 
 # Parse the handler from command-line arguments
@@ -162,16 +115,8 @@ AWS_LAMBDA_RUNTIME_API = f"http://{os.environ['AWS_LAMBDA_RUNTIME_API']}/2018-06
 # Get the current working directory (artifact directory)
 artifact_dir = os.getcwd()
 
-# Check if PYTHONPATH is set - if so, use simple import (modern layout)
-# Otherwise use legacy import from artifact directory
-pythonpath_set = 'PYTHONPATH' in os.environ
-
 try:
-    if pythonpath_set:
-        module, handler_function = resolve_handler_simple(handler)
-    else:
-        module, handler_function = resolve_handler_legacy(handler, artifact_dir)
-    
+    module, handler_function = resolve_handler(handler, artifact_dir)
     log(f"Loaded {handler}")
     
 except Exception as ex:

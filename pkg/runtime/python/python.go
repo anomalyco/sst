@@ -22,31 +22,25 @@ import (
 	"github.com/sst/sst/v3/pkg/runtime"
 )
 
-// Global sync tracker shared across all builds
 var (
-	// Global build semaphore to limit concurrent builds
-	// This prevents system overload when Pulumi tries to build 100+ functions in parallel
-	// Respects SST_BUILD_CONCURRENCY_FUNCTION env var, defaults to 4
+	// Limits concurrent builds to prevent system overload when Pulumi builds 100+ functions in parallel.
+	// Respects SST_BUILD_CONCURRENCY_FUNCTION env var, defaults to 4.
 	globalBuildSemaphore = make(chan struct{}, parseConcurrency())
 
-	// Global dependency installation locks - ensures only ONE function installs per cache key
-	// Other functions wait for the installation to complete, then copy from disk cache
+	// Per-cache-key locks — only one function installs per cache key at a time
 	globalDependencyInstallLocks      = make(map[string]*sync.Mutex)
 	globalDependencyInstallLocksMutex sync.Mutex
 
-	// Global requirements.txt generation - generate once per workspace, reuse for all functions
-	globalRequirementsFiles      = make(map[string]string) // workspaceDir -> requirements.txt path
+	// Generate requirements.txt once per workspace, reuse for all functions
+	globalRequirementsFiles      = make(map[string]string)
 	globalRequirementsFilesMutex sync.Mutex
 
-	// Global deps cache clear - clears .deps/ directory once per SST run
-	// This ensures workspace package changes are picked up between deploys
-	// The deps cache is only meant to be shared within a single deploy run
+	// Clear .deps/ once per SST run so workspace package changes are picked up
 	globalDepsCacheClearOnce sync.Once
 )
 
-// parseConcurrency reads SST_BUILD_CONCURRENCY_FUNCTION (or the deprecated
-// SST_BUILD_CONCURRENCY) and returns the desired parallelism, defaulting to 4.
-// Panics if the env var is set but not a valid positive integer.
+// parseConcurrency reads SST_BUILD_CONCURRENCY_FUNCTION and returns the desired
+// parallelism, defaulting to 4.
 func parseConcurrency() int {
 	raw := flag.SST_BUILD_CONCURRENCY_FUNCTION
 	if raw == "" {
@@ -122,7 +116,7 @@ type PythonRuntime struct {
 	cacheDir string
 
 	// Cached incremental builder - reused across all function builds
-	incrementalBuilder *IncrementalBuilder
+	deployBuilder *DeployBuilder
 
 	// Mutex for thread-safe access
 	mutex sync.RWMutex
@@ -135,7 +129,7 @@ func New() *PythonRuntime {
 }
 
 // NewWithCache creates a new Python runtime with caching enabled
-func NewWithCache(cacheDir string) (*PythonRuntime, error) {
+func NewWithCache(cacheDir string) *PythonRuntime {
 	runtime := &PythonRuntime{
 		lastBuiltHandler: map[string]string{},
 	}
@@ -143,11 +137,9 @@ func NewWithCache(cacheDir string) (*PythonRuntime, error) {
 	// Initialize cache and detection systems
 	if err := runtime.initializeCacheSystem(cacheDir); err != nil {
 		slog.Warn("failed to initialize cache system, falling back to non-cached runtime", "error", err)
-		// Don't fail completely, just continue without caching
-		return runtime, nil
 	}
 
-	return runtime, nil
+	return runtime
 }
 
 // initializeCacheSystem sets up the build cache and change detection
@@ -176,9 +168,7 @@ func (r *PythonRuntime) initializeCacheSystem(cacheDir string) error {
 }
 
 func (r *PythonRuntime) Build(ctx context.Context, input *runtime.BuildInput) (*runtime.BuildOutput, error) {
-	// Clear the deps cache once per SST run (not per function build)
-	// This ensures workspace package changes are picked up between deploys
-	// The deps cache is only meant to be shared within a single deploy run
+	// Clear deps cache once per SST run
 	globalDepsCacheClearOnce.Do(func() {
 		artifactsDir := filepath.Dir(input.Out())
 		depsDir := filepath.Join(artifactsDir, ".deps")
@@ -189,24 +179,19 @@ func (r *PythonRuntime) Build(ctx context.Context, input *runtime.BuildInput) (*
 		}
 	})
 
-	// Acquire semaphore to limit concurrent builds (prevents system overload)
-	// This is critical because Pulumi calls Build() for all functions in parallel
-	// Note: artifact directories are cleared by runtime.go's Collection.Build() before this is called
-	globalBuildSemaphore <- struct{}{} // Acquire
+	// Acquire build semaphore (Pulumi calls Build() for all functions in parallel)
+	globalBuildSemaphore <- struct{}{}
 	defer func() {
 		<-globalBuildSemaphore
-	}() // Release
+	}()
 
-	// Fast path for dev mode: If we've already built this function, skip the expensive rebuild
-	// Check if we have a record of building this handler before
+	// Fast path for dev mode: skip rebuild if artifact is still valid
 	if input.Dev {
 		r.mutex.RLock()
 		lastBuilt, hasBuilt := r.lastBuiltHandler[input.FunctionID]
 		r.mutex.RUnlock()
 
 		if hasBuilt && lastBuilt != "" {
-			// We've built this before, verify the artifact is complete
-			// Check if the handler file exists in the artifact directory
 			handlerFile := filepath.Join(input.Out(), input.Handler+".py")
 			if _, err := os.Stat(handlerFile); err == nil {
 				return &runtime.BuildOutput{
@@ -218,23 +203,14 @@ func (r *PythonRuntime) Build(ctx context.Context, input *runtime.BuildInput) (*
 		}
 	}
 
-	/// Workspaces are the most challenging part of the build process
 	/// UV currently does not support --include-workspace-deps for builds
-	/// See: https://github.com/astral-sh/uv/issues/6935 hopefully this lands soon
-
-	/// As a result, we have to manually construct the dependency tree
-	/// So we need to:
+	/// See: https://github.com/astral-sh/uv/issues/6935
 	///
-	/// 1. Build all packages (future tree shaking would be nice)
-	/// 2. Ensure local packages are built for lambdaric acccess (remove src/ nesting)
-	///			To future readers: we need to do this because of the way python packages are resolved
-	///			if you have a package called "mypackage" and it contains a sub-package called "src/mypackage"
-	///			then within the package you can resolve code via "import mypackage" but not "import mypackage.src.mypackage"
-	///			this means that builds get a little strange for aws lambda which does module level imports via lambdaric
-	///			so we need to ensure that the package is built such that lambdaric can resolve paths in the output bundle
-	///			but the full package is available for local development
-	/// 3. Export the uv package index to requirements.txt
-	/// 4. Install the dependencies into the artifact directory as a target (local for zip and delegate to the dockerfile for containers)
+	/// So we manually:
+	/// 1. Build all packages
+	/// 2. Flatten src/ nesting for lambdaric module resolution
+	/// 3. Export uv package index to requirements.txt
+	/// 4. Install deps into artifact dir (local for zip, Dockerfile for containers)
 
 	file, err := r.getFile(input)
 	if err != nil {
@@ -264,28 +240,14 @@ func (r *PythonRuntime) Match(runtime string) bool {
 	return strings.HasPrefix(runtime, "python")
 }
 
-// ShouldRunEagerly returns false for Python to enable lazy worker startup.
-//
-// Unlike Node.js (which uses esbuild's metafile for precise per-function dependency tracking),
-// Python lacks static import analysis. A change to shared library code (e.g., backend/lib/)
-// triggers ShouldRebuild() returning true for ALL functions, not just the ones that import it.
-//
-// With 50+ functions, eager startup after every file change means:
-// - 50+ Python processes starting simultaneously
-// - Each takes ~1-2 seconds to import modules and become ready
-// - System becomes unresponsive during this startup storm
-//
-// By returning false, we opt into lazy startup:
-// - Workers are stopped and builds invalidated (normal behavior)
-// - Workers only restart when actually invoked (just-in-time)
-// - Only actively-used functions incur startup cost
-// - Idle functions stay stopped until needed
+// ShouldRunEagerly returns false to enable lazy worker startup.
+// Python lacks static import analysis, so any file change triggers ShouldRebuild()
+// for ALL functions. Lazy startup avoids a startup storm of 50+ processes.
 func (r *PythonRuntime) ShouldRunEagerly() bool {
 	return false
 }
 
 func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runtime.Worker, error) {
-	// Sync artifacts with source before starting the worker
 	if err := r.syncArtifactsIfNeeded(input); err != nil {
 		slog.Error("failed to sync artifacts",
 			"functionID", input.FunctionID,
@@ -293,20 +255,15 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 		return nil, fmt.Errorf("failed to sync artifacts: %v", err)
 	}
 
-	// We need the lambda bridge in the artifact directory so that we can run the handler
-	// without having to manually isolate the runtime, So if it is not present then we need to copy it from
-	// the platform directory into the artifact directory
-
-	// Check if the lambda bridge needs to be copied or updated
+	// Copy lambda bridge to artifact directory if missing or outdated
 	lambdaBridgePath := filepath.Join(input.Build.Out, "lambdaric_python_bridge.py")
 	sourceBridgePath := filepath.Join(path.ResolvePlatformDir(input.CfgPath), "/dist/python-runtime/index.py")
 
 	shouldCopy := false
 	if _, err := os.Stat(lambdaBridgePath); os.IsNotExist(err) {
-		// Bridge file doesn't exist, need to copy
 		shouldCopy = true
 	} else {
-		// Bridge file exists, check if source is newer
+		// Check if source is newer
 		if srcInfo, err := os.Stat(sourceBridgePath); err == nil {
 			if dstInfo, err := os.Stat(lambdaBridgePath); err == nil {
 				if srcInfo.ModTime().After(dstInfo.ModTime()) {
@@ -317,7 +274,6 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 	}
 
 	if shouldCopy {
-		// Copy the lambda bridge from the platform directory into the artifact directory
 		err := copyFile(sourceBridgePath, lambdaBridgePath)
 		if err != nil {
 			slog.Error("failed to copy lambda bridge",
@@ -336,13 +292,11 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 	var workingDir string
 
 	if isLegacyLayout {
-		// Legacy layout: files are copied and flattened in artifact directory
 		adjustedHandler := r.adjustHandlerForFlattenedLayout(input.Build.Handler)
 		handlerPath = filepath.Join(input.Build.Out, adjustedHandler)
 		workingDir = input.Build.Out
 	} else {
 		// Modern layout: run from source with PYTHONPATH
-		// Pass the relative handler path since PYTHONPATH is set to projectRoot
 		handlerPath = input.Build.Handler
 		workingDir = projectRoot
 	}
@@ -360,22 +314,19 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 	// Set up environment
 	env := append(input.Env, "AWS_LAMBDA_RUNTIME_API="+input.Server)
 
-	// For modern layouts, set PYTHONPATH to project root and point to resource.enc in artifact dir
 	if !isLegacyLayout {
-		// Build PYTHONPATH with common Python paths
 		pythonPaths := []string{projectRoot}
 
-		// Add src/ if it exists (common Python pattern)
+		// Add src/ if it exists
 		srcDir := filepath.Join(projectRoot, "src")
 		if _, err := os.Stat(srcDir); err == nil {
 			pythonPaths = append(pythonPaths, srcDir)
 		}
 
-		// Join paths with OS-specific separator (: on Unix, ; on Windows)
+		// Join paths
 		pythonPath := strings.Join(pythonPaths, string(os.PathListSeparator))
 		env = append(env, "PYTHONPATH="+pythonPath)
 
-		// Set SST_KEY_FILE to point to resource.enc in the artifact directory
 		resourceEncPath := filepath.Join(input.Build.Out, "resource.enc")
 		env = append(env, "SST_KEY_FILE="+resourceEncPath)
 	}
@@ -404,16 +355,9 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 }
 
 func (r *PythonRuntime) ShouldRebuild(functionID string, file string) bool {
-	// Simple implementation: rebuild if it's a relevant Python file that we shouldn't ignore.
-	//
-	// We intentionally don't do complex per-function dependency tracking here because:
-	// 1. Python imports are dynamic and hard to analyze statically
-	// 2. Build() is very fast (~50µs in dev mode)
-	// 3. With ShouldRunEagerly() returning false, workers start lazily on-demand
-	//    so we don't pay the ~1-2s Run() cost for idle functions
-	//
-	// The combination of fast builds + lazy startup means we can afford to rebuild
-	// all functions on any Python file change without performance issues.
+	// Rebuild on any relevant Python file change. We don't do per-function dependency
+	// tracking because Python imports are dynamic and Build() is fast (~50µs in dev).
+	// Combined with lazy startup (ShouldRunEagerly=false), this is efficient.
 
 	if r.shouldIgnoreFile(file) {
 		return false
@@ -426,29 +370,24 @@ func (r *PythonRuntime) ShouldRebuild(functionID string, file string) bool {
 	return true
 }
 
-// syncArtifactsIfNeeded checks if artifacts need to be synced with source and does it if necessary
 func (r *PythonRuntime) syncArtifactsIfNeeded(input *runtime.RunInput) error {
 	projectRoot := path.ResolveRootDir(input.CfgPath)
 	artifactDir := input.Build.Out
 
-	// Only sync files for legacy workspace layouts that need flattening
-	// Modern layouts (monorepo, standard) run directly from source via PYTHONPATH
+	// Only sync for legacy workspace layouts that need flattening
 	if r.hasWorkspaceLayoutPatterns(projectRoot) {
 		if err := r.syncPythonFiles(input.FunctionID, projectRoot, artifactDir); err != nil {
 			return err
 		}
 
-		// After syncing, flatten workspace layouts
-		// This ensures the artifact directory has the correct structure for Python imports
 		return r.flattenWorkspaceLayouts(artifactDir, input.FunctionID)
 	}
 
 	return nil
 }
 
-// syncPythonFiles syncs Python files from source to artifacts (adds, updates, deletes)
+// syncPythonFiles syncs Python files from source to artifacts (add, update, delete)
 func (r *PythonRuntime) syncPythonFiles(functionID, srcDir, destDir string) error {
-	// First, collect all Python files in source
 	sourceFiles := make(map[string]os.FileInfo)
 	err := filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -470,7 +409,6 @@ func (r *PythonRuntime) syncPythonFiles(functionID, srcDir, destDir string) erro
 			return nil
 		}
 
-		// Only track Python files
 		if strings.HasSuffix(path, ".py") {
 			sourceFiles[relPath] = info
 		}
@@ -481,7 +419,7 @@ func (r *PythonRuntime) syncPythonFiles(functionID, srcDir, destDir string) erro
 		return fmt.Errorf("failed to scan source files: %v", err)
 	}
 
-	// Collect all Python files in artifacts
+	// Collect Python files in artifacts
 	artifactFiles := make(map[string]os.FileInfo)
 	if _, err := os.Stat(destDir); err == nil {
 		err = filepath.Walk(destDir, func(path string, info os.FileInfo, err error) error {
@@ -505,7 +443,7 @@ func (r *PythonRuntime) syncPythonFiles(functionID, srcDir, destDir string) erro
 		}
 	}
 
-	// Delete files that exist in artifacts but not in source
+	// Delete files in artifacts that no longer exist in source
 	for relPath := range artifactFiles {
 		if _, exists := sourceFiles[relPath]; !exists {
 			artifactPath := filepath.Join(destDir, relPath)
@@ -515,12 +453,11 @@ func (r *PythonRuntime) syncPythonFiles(functionID, srcDir, destDir string) erro
 		}
 	}
 
-	// Copy/update files that exist in source
+	// Copy/update changed files
 	for relPath, sourceInfo := range sourceFiles {
 		sourcePath := filepath.Join(srcDir, relPath)
 		artifactPath := filepath.Join(destDir, relPath)
 
-		// Check if we need to copy (file doesn't exist or is older)
 		needsCopy := true
 		if artifactInfo, exists := artifactFiles[relPath]; exists {
 			if !sourceInfo.ModTime().After(artifactInfo.ModTime()) {
@@ -529,14 +466,12 @@ func (r *PythonRuntime) syncPythonFiles(functionID, srcDir, destDir string) erro
 		}
 
 		if needsCopy {
-			// Ensure destination directory exists
 			if err := os.MkdirAll(filepath.Dir(artifactPath), 0755); err != nil {
 				return fmt.Errorf("failed to create directory for %s: %v", artifactPath, err)
 			}
 
 			// Copy the file
 			if err := copyFile(sourcePath, artifactPath); err != nil {
-				return fmt.Errorf("failed to copy %s: %v", relPath, err)
 			}
 		}
 	}
@@ -544,104 +479,42 @@ func (r *PythonRuntime) syncPythonFiles(functionID, srcDir, destDir string) erro
 	return nil
 }
 
-// adjustPathForFlattenedLayout adjusts a file path to account for flattened workspace layouts
-// For example: package/src/package/file.py -> package/file.py
-func (r *PythonRuntime) adjustPathForFlattenedLayout(destDir, relPath string) string {
-	// Check if the path contains the package/src/package pattern
-	parts := strings.Split(relPath, string(filepath.Separator))
-
-	// Need at least 3 parts for package/src/package pattern
+// flattenSrcLayout removes the "src/pkg" segment from paths that follow the
+// PEP 517 src-layout convention (e.g., "pkg/src/pkg/module" -> "pkg/module").
+// Only flattens when the directory after "src" matches the directory before it.
+func flattenSrcLayout(filePath string) string {
+	parts := strings.Split(filePath, "/")
 	if len(parts) < 3 {
-		return filepath.Join(destDir, relPath)
+		return filePath
 	}
-
-	// Look for src in the path
 	for i := 0; i < len(parts)-1; i++ {
-		if parts[i] == "src" && i > 0 && i < len(parts)-1 {
-			// Check if the part after "src" matches the part before "src"
-			packageName := parts[i-1]
-			nextPart := parts[i+1]
-
-			if packageName == nextPart {
-				// This is a package/src/package pattern, flatten it
-				// Remove the "src/package" part
-				flattenedParts := append(parts[:i], parts[i+2:]...)
-				flattenedPath := filepath.Join(flattenedParts...)
-
-				return filepath.Join(destDir, flattenedPath)
-			}
+		if parts[i] == "src" && i > 0 && i+1 < len(parts) && parts[i-1] == parts[i+1] {
+			flattened := append([]string{}, parts[:i]...)
+			flattened = append(flattened, parts[i+2:]...)
+			return strings.Join(flattened, "/")
 		}
 	}
-
-	// No flattening needed
-	return filepath.Join(destDir, relPath)
+	return filePath
 }
 
 // adjustHandlerForFlattenedLayout adjusts a handler path to account for flattened workspace layouts
 // For example: functions/src/functions/user/handler.lambda_handler -> functions/user/handler.lambda_handler
 func (r *PythonRuntime) adjustHandlerForFlattenedLayout(handlerPath string) string {
-	// Split handler path into file path and function name
-	// Format: path/to/file.function_name
 	lastDot := strings.LastIndex(handlerPath, ".")
 	if lastDot == -1 {
-		// No function name, just adjust the path
-		return r.adjustHandlerPathOnly(handlerPath)
+		return flattenSrcLayout(handlerPath)
 	}
-
 	filePath := handlerPath[:lastDot]
 	functionName := handlerPath[lastDot+1:]
-
-	// Adjust the file path
-	adjustedFilePath := r.adjustHandlerPathOnly(filePath)
-
-	// Reconstruct handler path
-	adjustedHandler := adjustedFilePath + "." + functionName
-
-	return adjustedHandler
-}
-
-// adjustHandlerPathOnly adjusts just the path portion of a handler
-// For example: functions/src/functions/user/handler -> functions/user/handler
-func (r *PythonRuntime) adjustHandlerPathOnly(handlerPath string) string {
-	// Check if the path contains the package/src/package pattern
-	parts := strings.Split(handlerPath, "/")
-
-	// Need at least 3 parts for package/src/package pattern
-	if len(parts) < 3 {
-		return handlerPath
-	}
-
-	// Look for src in the path
-	for i := 0; i < len(parts)-1; i++ {
-		if parts[i] == "src" && i > 0 && i < len(parts)-1 {
-			// Check if the part after "src" matches the part before "src"
-			packageName := parts[i-1]
-			nextPart := parts[i+1]
-
-			if packageName == nextPart {
-				// This is a package/src/package pattern, flatten it
-				// Remove the "src/package" part
-				flattenedParts := append(parts[:i], parts[i+2:]...)
-				flattenedPath := strings.Join(flattenedParts, "/")
-
-				return flattenedPath
-			}
-		}
-	}
-
-	// No flattening needed
-	return handlerPath
+	return flattenSrcLayout(filePath) + "." + functionName
 }
 
 // isRelevantFile checks if a file change is relevant for Python functions
 func (r *PythonRuntime) isRelevantFile(file string) bool {
-	// Quick exclusions first - this prevents infinite rebuild loops
 	if r.shouldIgnoreFile(file) {
 		return false
 	}
 
-	// ONLY Python-related files are relevant for Python runtime
-	// Frontend/infrastructure files (.ts, .js, .json, .vue) are NOT relevant
 	relevantExtensions := []string{".py", ".toml", ".lock", ".cfg"}
 	relevantFiles := []string{"pyproject.toml", "requirements.txt", "uv.lock", "poetry.lock", "Pipfile.lock", "setup.py", "setup.cfg"}
 
@@ -663,42 +536,39 @@ func (r *PythonRuntime) isRelevantFile(file string) bool {
 	return false
 }
 
-// shouldIgnoreFile determines if a file should be ignored to prevent infinite rebuild loops
+// shouldIgnoreFile determines if a file should be ignored to prevent rebuild loops
 func (r *PythonRuntime) shouldIgnoreFile(file string) bool {
-	// Normalize path separators for consistent matching
 	normalizedFile := filepath.ToSlash(file)
 
-	// Ignore build artifacts and cache directories that could cause feedback loops
+	// Build artifacts and cache directories
 	ignorePaths := []string{
-		".sst",          // SST cache and build artifacts (matches .sst and .sst/*)
-		"__pycache__",   // Python bytecode cache
-		".pytest_cache", // Pytest cache
-		".mypy_cache",   // MyPy cache
-		".coverage",     // Coverage files
-		"build",         // Build directories
-		"dist",          // Distribution directories
-		".git",          // Git directory
-		"node_modules",  // Node modules
-		".venv",         // Virtual environments
+		".sst",
+		"__pycache__",
+		".pytest_cache",
+		".mypy_cache",
+		".coverage",
+		"build",
+		"dist",
+		".git",
+		"node_modules",
+		".venv",
 		"venv",
 		"env",
-		".tox",      // Tox cache
-		".eggs",     // Egg cache
-		".egg-info", // Egg info
+		".tox",
+		".eggs",
+		".egg-info",
 	}
 
-	// Ignore file extensions that are build artifacts
 	ignoreExtensions := []string{
-		".pyc", ".pyo", ".pyd", // Python bytecode
-		".log",          // Log files
-		".tmp", ".temp", // Temporary files
-		".swp", ".swo", // Vim swap files
-		".DS_Store", // macOS files
-		".coverage", // Coverage files
+		".pyc", ".pyo", ".pyd",
+		".log",
+		".tmp", ".temp",
+		".swp", ".swo",
+		".DS_Store",
+		".coverage",
 	}
 
-	// Check if file path contains any ignore patterns
-	// Split path into parts and check each part
+	// Check path components
 	pathParts := strings.Split(normalizedFile, "/")
 	for _, part := range pathParts {
 		for _, ignorePath := range ignorePaths {
@@ -708,18 +578,17 @@ func (r *PythonRuntime) shouldIgnoreFile(file string) bool {
 		}
 	}
 
-	// Check if file has an ignored extension
+	// Check extensions
 	for _, ext := range ignoreExtensions {
 		if strings.HasSuffix(file, ext) {
 			return true
 		}
 	}
 
-	// Ignore files in hidden directories (starting with .)
+	// Ignore hidden directories (except specific dotfiles)
 	parts := strings.Split(file, string(filepath.Separator))
 	for _, part := range parts {
 		if strings.HasPrefix(part, ".") && part != "." && part != ".." {
-			// Allow some specific dotfiles that are relevant
 			allowedDotFiles := []string{".env", ".gitignore", ".dockerignore"}
 			allowed := false
 			for _, allowedFile := range allowedDotFiles {
@@ -764,23 +633,21 @@ func (r *PythonRuntime) CreateBuildAsset(ctx context.Context, input *runtime.Bui
 	workingDir := path.ResolveRootDir(input.CfgPath)
 
 	// Always use incremental build system
-	result, err := r.createBuildAssetIncremental(ctx, input, arch, workingDir)
+	result, err := r.createBuildAssetDeploy(ctx, input, arch, workingDir)
 	if err != nil {
 		return nil, fmt.Errorf("incremental build failed: %w", err)
 	}
 	return result, nil
 }
 
-// createBuildAssetIncremental creates build assets using incremental building
-func (r *PythonRuntime) createBuildAssetIncremental(ctx context.Context, input *runtime.BuildInput, arch string, workingDir string) (*runtime.BuildOutput, error) {
+// createBuildAssetDeploy uses the shared IncrementalBuilder for all function builds
+func (r *PythonRuntime) createBuildAssetDeploy(ctx context.Context, input *runtime.BuildInput, arch string, workingDir string) (*runtime.BuildOutput, error) {
 	startTime := time.Now()
 
-	// CRITICAL OPTIMIZATION: Reuse the IncrementalBuilder across all function builds
-	// Creating a new IncrementalBuilder for each of 50+ functions was causing massive
-	// CPU/memory overhead. Reuse a single builder per (cacheDir, artifactDir) pair.
-
+	// CRITICAL: Reuse IncrementalBuilder across all function builds to avoid
+	// massive CPU/memory overhead from creating one per 50+ functions.
 	r.mutex.Lock()
-	if r.incrementalBuilder == nil {
+	if r.deployBuilder == nil {
 		cacheDir := r.cacheDir
 		if cacheDir == "" {
 			if input.Dev {
@@ -791,7 +658,7 @@ func (r *PythonRuntime) createBuildAssetIncremental(ctx context.Context, input *
 		}
 
 		var err error
-		r.incrementalBuilder, err = NewIncrementalBuilder(IncrementalBuilderConfig{
+		r.deployBuilder, err = NewDeployBuilder(DeployBuilderConfig{
 			CacheDir:    cacheDir,
 			ArtifactDir: input.Out(),
 			FunctionID:  input.FunctionID,
@@ -802,10 +669,10 @@ func (r *PythonRuntime) createBuildAssetIncremental(ctx context.Context, input *
 			return nil, fmt.Errorf("failed to create incremental builder: %w", err)
 		}
 	}
-	incrementalBuilder := r.incrementalBuilder
+	incrementalBuilder := r.deployBuilder
 	r.mutex.Unlock()
 
-	// Use the shared incremental builder
+	// Use the shared builder
 	result, err := incrementalBuilder.Build(ctx, input)
 
 	elapsed := time.Since(startTime)
@@ -836,7 +703,7 @@ func (r *PythonRuntime) getFile(input *runtime.BuildInput) (string, error) {
 		return pythonFile, nil
 	}
 
-	// No Python file found — list what exists to help debug
+	// No Python file found — list what exists for debugging
 	dirPath := filepath.Join(rootDir, filepath.Dir(filePath))
 	if entries, err := os.ReadDir(dirPath); err == nil {
 		var files []string
@@ -879,9 +746,8 @@ func copyFile(src, dst string) error {
 	return nil
 }
 
-// copyDir recursively copies a directory. If a ContentFilter is provided, it is used
-// to exclude files/directories. The optional filterPrefix is prepended to relative paths
-// when checking the filter (e.g. pass "backend" so "tests/" matches "backend/tests/**").
+// copyDir recursively copies a directory, applying ContentFilter if provided.
+// filterPrefix is prepended to relative paths for filter matching.
 func copyDir(src, dst string, filter *ContentFilter, filterPrefix string) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -898,7 +764,7 @@ func copyDir(src, dst string, filter *ContentFilter, filterPrefix string) error 
 			return nil
 		}
 
-		// Apply content filter if provided
+		// Apply content filter
 		if filter != nil {
 			filterPath := relPath
 			if filterPrefix != "" && relPath != "." {
@@ -922,9 +788,8 @@ func copyDir(src, dst string, filter *ContentFilter, filterPrefix string) error 
 	})
 }
 
-// copyDirUnfiltered copies a directory recursively without content filtering.
-// It only skips __pycache__, .venv, node_modules, and .git directories.
-// Used for container builds where pyproject.toml and metadata must be preserved.
+// copyDirUnfiltered copies a directory recursively, skipping only __pycache__,
+// .venv, node_modules, and .git. Used for container builds where metadata must be preserved.
 func copyDirUnfiltered(src, dst string) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -965,16 +830,13 @@ func hashFileContents(filePath string) (string, error) {
 	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
-// createSimpleDevBuild creates a simple build for development mode by doing nothing
-// All work is deferred to Run() for just-in-time execution
+// createSimpleDevBuild creates a minimal build for dev mode — all work deferred to Run()
 func (r *PythonRuntime) createSimpleDevBuild(ctx context.Context, input *runtime.BuildInput) (*runtime.BuildOutput, error) {
-	// Create artifact directory
 	if err := os.MkdirAll(input.Out(), 0755); err != nil {
 		return nil, fmt.Errorf("failed to create artifact directory: %v", err)
 	}
 
-	// In dev mode, don't copy any files during build
-	// All copying and flattening happens just-in-time in Run()
+	// In dev mode, all copying/flattening happens just-in-time in Run()
 	return &runtime.BuildOutput{
 		Handler:    input.Handler,
 		Sourcemaps: []string{},
@@ -983,9 +845,8 @@ func (r *PythonRuntime) createSimpleDevBuild(ctx context.Context, input *runtime
 	}, nil
 }
 
-// hasWorkspaceLayoutPatterns checks if the project has package/src/package patterns that need flattening
+// hasWorkspaceLayoutPatterns checks for package/src/package patterns that need flattening
 func (r *PythonRuntime) hasWorkspaceLayoutPatterns(projectRoot string) bool {
-	// Walk through the project looking for package/src/package patterns
 	var hasPatterns bool
 
 	filepath.Walk(projectRoot, func(path string, info os.FileInfo, err error) error {
@@ -1002,7 +863,7 @@ func (r *PythonRuntime) hasWorkspaceLayoutPatterns(projectRoot string) bool {
 			return filepath.SkipDir
 		}
 
-		// Check if this directory follows the package/src/package pattern
+		// Check for package/src/package pattern
 		srcDir := filepath.Join(path, "src")
 		if _, err := os.Stat(srcDir); err == nil {
 			// Check if there's a subdirectory in src with the same name as the parent
@@ -1010,7 +871,7 @@ func (r *PythonRuntime) hasWorkspaceLayoutPatterns(projectRoot string) bool {
 			innerPackageDir := filepath.Join(srcDir, packageName)
 			if _, err := os.Stat(innerPackageDir); err == nil {
 				hasPatterns = true
-				return filepath.SkipDir // Found one, no need to continue this branch
+				return filepath.SkipDir
 			}
 		}
 

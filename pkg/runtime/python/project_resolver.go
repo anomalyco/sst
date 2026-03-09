@@ -33,7 +33,6 @@ type ProjectInfo struct {
 }
 
 // PyprojectConfig represents the structure of a pyproject.toml file.
-// Only fields actually used by the runtime are included.
 type PyprojectConfig struct {
 	Project struct {
 		Name string `toml:"name"`
@@ -126,8 +125,7 @@ func (pr *ProjectResolver) findPythonFile(handlerPath string) (string, error) {
 	return "", NewHandlerNotFoundError(handlerPath, candidates, suggestions)
 }
 
-// extractFilePath extracts the file path from a handler path
-// Handler format: "path/to/file.function_name" -> "path/to/file"
+// extractFilePath extracts the file path from a handler path (e.g., "path/to/file.func" -> "path/to/file")
 func (pr *ProjectResolver) extractFilePath(handlerPath string) string {
 	if lastDot := strings.LastIndex(handlerPath, "."); lastDot != -1 {
 		return handlerPath[:lastDot]

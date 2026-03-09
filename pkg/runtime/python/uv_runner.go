@@ -19,7 +19,6 @@ type UvCommandRunner struct {
 
 // UvCommandRunnerConfig configures the UV command runner
 type UvCommandRunnerConfig struct {
-	// CommandTimeout is the timeout for individual commands
 	CommandTimeout time.Duration
 }
 
