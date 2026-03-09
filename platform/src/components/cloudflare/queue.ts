@@ -7,7 +7,7 @@ import { DEFAULT_ACCOUNT_ID } from "./account-id";
 import { WorkerArgs } from "./worker";
 import { VisibleError } from "../error";
 import { QueueWorkerSubscriber } from "./queue-worker-subscriber";
-import { DurationHours, DurationMinutes, DurationSeconds } from "../duration";
+import { DurationMinutes, DurationSeconds } from "../duration";
 
 export interface QueueArgs {
   /**
@@ -36,23 +36,6 @@ export interface QueueArgs {
    * @default `null`
    */
   maxConcurrency?: Input<number>;
-  /**
-   * Visibility timeout is a period of time during which a message is temporarily
-   * invisible to other consumers after a consumer has retrieved it from the queue.
-   * This mechanism prevents other consumers from processing the same message
-   * concurrently, ensuring that each message is processed only once.
-   *
-   * This timeout can range from 0 seconds to 12 hours.
-   *
-   * @default `"30 seconds"`
-   * @example
-   * ```js
-   * {
-   *   visibilityTimeout: "1 hour"
-   * }
-   * ```
-   */
-  visibilityTimeout?: Input<DurationHours>;
   /**
    * [Transform](/docs/components/#transform) how this component creates its underlying
    * resources.
@@ -273,7 +256,6 @@ export class Queue extends Component implements Link.Linkable {
         dlq: this.constructorArgs?.dlq,
         maxConcurrency: this.constructorArgs?.maxConcurrency,
         batch: args?.batch,
-        visibilityTimeout: this.constructorArgs?.visibilityTimeout,
         transform: args?.transform,
       },
       { parent, ...opts },

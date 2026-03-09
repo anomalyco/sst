@@ -2,12 +2,10 @@ import { ComponentResourceOptions, Input, output } from "@pulumi/pulumi";
 import * as cloudflare from "@pulumi/cloudflare";
 import { Component, Transform, transform } from "../component";
 import {
-  DurationHours,
   DurationMinutes,
   DurationSeconds,
   toMilliseconds,
 } from "../duration";
-import { VisibleError } from "../error";
 import { WorkerBuilder, workerBuilder } from "./helpers/worker-builder";
 import { WorkerArgs } from "./worker";
 import { DEFAULT_ACCOUNT_ID } from "./account-id";
@@ -80,15 +78,6 @@ export interface QueueWorkerSubscriberArgs {
     window?: Input<DurationMinutes>;
   };
   /**
-   * Visibility timeout is a period of time during which a message is temporarily
-   * invisible to other consumers after a consumer has retrieved it from the queue.
-   *
-   * This timeout can range from 0 seconds to 12 hours.
-   *
-   * @default `"30 seconds"`
-   */
-  visibilityTimeout?: Input<DurationHours>;
-  /**
    * [Transform](/docs/components/#transform) how this component creates its underlying
    * resources.
    */
@@ -125,18 +114,11 @@ export class QueueWorkerSubscriber extends Component {
   ) {
     super(__pulumiType, name, args, opts);
 
-    if (args.dlq && !args.dlq.queue) {
-      throw new VisibleError(
-        `Cannot configure "dlq" for the "${name}" queue subscriber without setting "dlq.queue".`,
-      );
-    }
-
     const self = this;
     const queue = output(args.queue);
     const worker = createWorker();
     const batchSize = output(args.batch?.size ?? 10);
     const window = output(args.batch?.window ?? "20 seconds");
-    const visibilityTimeout = output(args.visibilityTimeout ?? "30 seconds");
     const retryDelay = output(args.dlq?.retryDelay ?? "0 seconds");
     const consumer = createConsumer();
 
@@ -167,9 +149,6 @@ export class QueueWorkerSubscriber extends Component {
               maxConcurrency: args.maxConcurrency,
               maxRetries: args.dlq?.retry,
               retryDelay: retryDelay.apply((v) => toMilliseconds(v)),
-              visibilityTimeoutMs: visibilityTimeout.apply((v) =>
-                toMilliseconds(v),
-              ),
               maxWaitTimeMs: window.apply((v) => toMilliseconds(v)),
             },
             type: "worker",
