@@ -4,7 +4,7 @@ import { ComponentResourceOptions, interpolate, secret } from "@pulumi/pulumi";
 import { all, output } from "@pulumi/pulumi";
 import { Input } from "../input";
 import { Efs } from "./efs";
-import { FunctionArgs } from "./function";
+import { FunctionArgs } from "./function.js";
 import { RETENTION } from "./logging";
 import { toGBs, toMBs } from "../size";
 import { VisibleError } from "../error";

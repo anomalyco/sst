@@ -14,7 +14,7 @@ import {
 } from "../component";
 import { Link } from "../link";
 import type { Input } from "../input";
-import { FunctionArgs, FunctionArn } from "./function";
+import { FunctionArgs, FunctionArn } from "./function.js";
 import { hashStringToPrettyString, physicalName, logicalName } from "../naming";
 import { VisibleError } from "../error";
 import { RETENTION } from "./logging";

@@ -6,7 +6,7 @@ import {
   output,
 } from "@pulumi/pulumi";
 import { Component, transform } from "../component";
-import { Function, FunctionArgs } from "./function";
+import { Function, FunctionArgs } from "./function.js";
 import { BusBaseSubscriberArgs, createRule } from "./bus-base-subscriber";
 import { cloudwatch, lambda } from "@pulumi/aws";
 import { FunctionBuilder, functionBuilder } from "./helpers/function-builder";

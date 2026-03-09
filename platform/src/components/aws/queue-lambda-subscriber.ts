@@ -5,7 +5,7 @@ import {
   output,
 } from "@pulumi/pulumi";
 import { Component, transform, Transform } from "../component";
-import { Function, FunctionArgs } from "./function";
+import { Function, FunctionArgs } from "./function.js";
 import { QueueSubscriberArgs } from "./queue";
 import { lambda } from "@pulumi/aws";
 import { toSeconds } from "../duration";

@@ -6,7 +6,7 @@ import {
   output,
 } from "@pulumi/pulumi";
 import { Component, transform } from "../component";
-import { Function, FunctionArgs } from "./function";
+import { Function, FunctionArgs } from "./function.js";
 import { RealtimeSubscriberArgs } from "./realtime";
 import { lambda } from "@pulumi/aws";
 import { iot } from "@pulumi/aws";

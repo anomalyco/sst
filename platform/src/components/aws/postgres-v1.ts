@@ -320,6 +320,7 @@ export class Postgres extends Component implements Link.Linkable {
             masterUsername: "postgres",
             manageMasterUserPassword: true,
             serverlessv2ScalingConfiguration: scaling,
+            allowMajorVersionUpgrade: true,
             skipFinalSnapshot: true,
             enableHttpEndpoint: true,
             dbSubnetGroupName: subnetGroup?.name,
@@ -347,6 +348,7 @@ export class Postgres extends Component implements Link.Linkable {
             engine: rds.EngineType.AuroraPostgresql,
             engineVersion: cluster.engineVersion,
             dbSubnetGroupName: subnetGroup?.name,
+            autoMinorVersionUpgrade: false,
           },
           {
             parent,

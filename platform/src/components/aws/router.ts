@@ -22,7 +22,7 @@ import { VisibleError } from "../error";
 import { RouterUrlRoute } from "./router-url-route";
 import { RouterBucketRoute } from "./router-bucket-route";
 import { DurationSeconds, toSeconds } from "../duration";
-import { FunctionArn } from "./function";
+import { FunctionArn } from "./function.js";
 import { parseLambdaEdgeArn } from "./helpers/arn";
 import { Size, toMBs } from "../size";
 import { RETENTION } from "./logging";
