@@ -33,19 +33,6 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-func ensureDevRunsInPersonalStage(cfgPath, stage string) error {
-	personalStage := cli.PersonalStage(cfgPath)
-	if personalStage == "" {
-		return util.NewReadableError(nil, fmt.Sprintf("Cannot run `sst dev` with stage %q. Your personal stage is not set.", stage))
-	}
-
-	if stage != personalStage {
-		return util.NewReadableError(nil, fmt.Sprintf("Cannot run `sst dev` with stage %q. It can only be run in your personal stage %q.", stage, personalStage))
-	}
-
-	return nil
-}
-
 func CmdMosaic(c *cli.Cli) error {
 	cwd, _ := os.Getwd()
 	var wg errgroup.Group
@@ -175,8 +162,12 @@ func CmdMosaic(c *cli.Cli) error {
 		return err
 	}
 
-	if err := ensureDevRunsInPersonalStage(cfgPath, stage); err != nil {
-		return err
+	personalStage := cli.PersonalStage(cfgPath)
+	if personalStage == "" {
+		return util.NewReadableError(nil, fmt.Sprintf("Cannot run `sst dev` with stage %q. Your personal stage is not set.", stage))
+	}
+	if stage != personalStage {
+		return util.NewReadableError(nil, fmt.Sprintf("Cannot run `sst dev` with stage %q. It can only be run in your personal stage %q.", stage, personalStage))
 	}
 
 	p, err := c.InitProject()
