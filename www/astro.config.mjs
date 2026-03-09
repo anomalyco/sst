@@ -218,7 +218,6 @@ const sidebar = [
           "docs/component/cloudflare/d1",
           "docs/component/cloudflare/kv",
           "docs/component/cloudflare/queue",
-          "docs/component/cloudflare/static-site",
           "docs/component/cloudflare/worker",
         ],
       },
