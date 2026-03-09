@@ -2226,7 +2226,10 @@ async function handler(event) {
   }
   if (route.type === "url") setUrlOrigin(route.metadata.host, route.metadata.origin);
   if (route.type === "bucket") setS3Origin(route.metadata.domain, route.metadata.origin);
-  if (route.type === "site") await routeSite(route.routeNs, route.metadata);
+  if (route.type === "site") {
+    const response = await routeSite(route.routeNs, route.metadata);
+    return response || event.request;
+  }
   return event.request;
 }`,
             },
@@ -2718,6 +2721,11 @@ const __pulumiType = "sst:aws:Router";
 // @ts-expect-error
 Router.__pulumiType = __pulumiType;
 
+// CloudFront Functions have a 10KB limit on the total request size.
+// We reserve 512 bytes for CloudFront-added headers (e.g. x-forwarded-for, via, etc.)
+// and headers we add ourselves (e.g. x-open-next-cache-key, x-open-next-geo-*).
+const CLOUDFRONT_FUNCTION_SAFE_HEADER_LIMIT = 10240 - 512;
+
 export const CF_BLOCK_CLOUDFRONT_URL_INJECTION = `
 if (event.request.headers.host.value.includes('cloudfront.net')) {
   return {
@@ -2788,7 +2796,11 @@ async function routeSite(kvNamespace, metadata) {
 
   // Route to image optimizer
   if (metadata.image && baselessUri.startsWith(metadata.image.route)) {
+    // Add x-forwarded-host before measuring so the size check accounts for it.
+    // setUrlOrigin() also adds this, but we need to measure before calling it.
+    event.request.headers["x-forwarded-host"] = event.request.headers.host;
     setNextjsCacheKey();
+    if (isRequestHeaderTooLarge()) return buildOversizedHeadersResponse();
     setUrlOrigin(metadata.image.host, metadata.image.originAccessControlConfig ? { originAccessControlConfig: metadata.image.originAccessControlConfig } : undefined);
     return;
   }
@@ -2807,6 +2819,7 @@ async function routeSite(kvNamespace, metadata) {
     }
     setNextjsGeoHeaders();
     setNextjsCacheKey();
+    if (isRequestHeaderTooLarge()) return buildOversizedHeadersResponse();
     setUrlOrigin(findNearestServer(metadata.servers), metadata.origin);
   }
 
@@ -2852,6 +2865,58 @@ async function routeSite(kvNamespace, metadata) {
       }
     }
     return "";
+  }
+
+  function isRequestHeaderTooLarge() {
+    return getRequestHeaderSize() > ${CLOUDFRONT_FUNCTION_SAFE_HEADER_LIMIT};
+  }
+
+  function buildOversizedHeadersResponse() {
+    return {
+      statusCode: 431,
+      statusDescription: "Request Header Fields Too Large",
+      headers: {
+        "cache-control": { value: "no-store" },
+        "content-type": { value: "text/plain; charset=utf-8" },
+      },
+      body: {
+        encoding: "text",
+        data: "Request headers are too large. Reduce cookie size and try again.",
+      },
+    };
+  }
+
+  function getRequestHeaderSize() {
+    var size = 0;
+
+    for (var key in event.request.headers) {
+      var header = event.request.headers[key];
+      if (header.multiValue) {
+        for (var i=0; i<header.multiValue.length; i++) {
+          size += key.length + header.multiValue[i].value.length + 4;
+        }
+      } else if (header.value) {
+        size += key.length + header.value.length + 4;
+      }
+    }
+
+    var cookies = [];
+    for (var key in event.request.cookies) {
+      var cookie = event.request.cookies[key];
+      if (cookie.multiValue) {
+        for (var i=0; i<cookie.multiValue.length; i++) {
+          cookies.push(key + "=" + cookie.multiValue[i].value);
+        }
+      } else {
+        cookies.push(key + "=" + cookie.value);
+      }
+    }
+
+    if (cookies.length) {
+      size += 10 + cookies.join("; ").length;
+    }
+
+    return size;
   }
 
   function findNearestServer(servers) {
