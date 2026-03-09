@@ -2721,9 +2721,9 @@ const __pulumiType = "sst:aws:Router";
 // @ts-expect-error
 Router.__pulumiType = __pulumiType;
 
-// CloudFront Functions have a 10KB limit on the total request size.
-// We reserve 512 bytes for CloudFront-added headers (e.g. x-forwarded-for, via, etc.)
-// and headers we add ourselves (e.g. x-open-next-cache-key, x-open-next-geo-*).
+// CloudFront Functions have a 10KB limit on the forwarded request size.
+// We reserve 512 bytes for origin-request overhead CloudFront can still add after
+// this viewer-request function runs, so borderline requests fail with a clear 431.
 const CLOUDFRONT_FUNCTION_SAFE_HEADER_LIMIT = 10240 - 512;
 
 export const CF_BLOCK_CLOUDFRONT_URL_INJECTION = `
