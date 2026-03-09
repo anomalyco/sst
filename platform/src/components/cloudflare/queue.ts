@@ -11,19 +11,6 @@ import { DurationHours, DurationMinutes, DurationSeconds } from "../duration";
 
 export interface QueueArgs {
   /**
-   * [Transform](/docs/components/#transform) how this component creates its underlying
-   * resources.
-   */
-  transform?: {
-    /**
-     * Transform the Queue resource.
-     */
-    queue?: Transform<cloudflare.QueueArgs>;
-  };
-}
-
-export interface QueueSubscribeArgs {
-  /**
    * The dead letter queue to send messages that fail processing.
    *
    * When `dlq` is configured, `dlq.queue` is required.
@@ -49,6 +36,36 @@ export interface QueueSubscribeArgs {
    * @default `null`
    */
   maxConcurrency?: Input<number>;
+  /**
+   * Visibility timeout is a period of time during which a message is temporarily
+   * invisible to other consumers after a consumer has retrieved it from the queue.
+   * This mechanism prevents other consumers from processing the same message
+   * concurrently, ensuring that each message is processed only once.
+   *
+   * This timeout can range from 0 seconds to 12 hours.
+   *
+   * @default `"30 seconds"`
+   * @example
+   * ```js
+   * {
+   *   visibilityTimeout: "1 hour"
+   * }
+   * ```
+   */
+  visibilityTimeout?: Input<DurationHours>;
+  /**
+   * [Transform](/docs/components/#transform) how this component creates its underlying
+   * resources.
+   */
+  transform?: {
+    /**
+     * Transform the Queue resource.
+     */
+    queue?: Transform<cloudflare.QueueArgs>;
+  };
+}
+
+export interface QueueSubscribeArgs {
   /**
    * The maximum number of messages to include in a batch.
    * @default `10`
@@ -93,23 +110,6 @@ export interface QueueSubscribeArgs {
      */
     window?: Input<DurationMinutes>;
   };
-  /**
-   * Visibility timeout is a period of time during which a message is temporarily
-   * invisible to other consumers after a consumer has retrieved it from the queue.
-   * This mechanism prevents other consumers from processing the same message
-   * concurrently, ensuring that each message is processed only once.
-   *
-   * This timeout can range from 0 seconds to 12 hours.
-   *
-   * @default `"30 seconds"`
-   * @example
-   * ```js
-   * {
-   *   visibilityTimeout: "1 hour"
-   * }
-   * ```
-   */
-  visibilityTimeout?: Input<DurationHours>;
   /**
    * [Transform](/docs/components/#transform) how this component creates its underlying
    * resources.
@@ -184,12 +184,14 @@ export class Queue extends Component implements Link.Linkable {
   private queue: cloudflare.Queue;
   private isSubscribed = false;
   private constructorName: string;
+  private constructorArgs?: QueueArgs;
 
   constructor(name: string, args?: QueueArgs, opts?: ComponentResourceOptions) {
     super(__pulumiType, name, args, opts);
 
     const parent = this;
     this.constructorName = name;
+    this.constructorArgs = args;
 
     const queue = create();
 
@@ -236,27 +238,13 @@ export class Queue extends Component implements Link.Linkable {
    * });
    * ```
    *
-   * Configure batch and concurrency settings.
+   * Configure batch settings.
    *
    * ```ts title="sst.config.ts"
    * queue.subscribe("consumer.ts", {
    *   batch: {
    *     size: 10,
    *     window: "20 seconds",
-   *   },
-   *   maxConcurrency: 5,
-   * });
-   * ```
-   *
-   * Configure a dead letter queue.
-   *
-   * ```ts title="sst.config.ts"
-   * const dlq = new sst.cloudflare.Queue("DeadLetterQueue");
-   *
-   * queue.subscribe("consumer.ts", {
-   *   dlq: {
-   *     queue: dlq.nodes.queue.queueName,
-   *     retry: 3,
    *   },
    * });
    * ```
@@ -272,12 +260,6 @@ export class Queue extends Component implements Link.Linkable {
       );
     }
 
-    if (args?.dlq && !args.dlq.queue) {
-      throw new VisibleError(
-        `Cannot configure "dlq" for the "${this.constructorName}" queue without setting "dlq.queue".`,
-      );
-    }
-
     this.isSubscribed = true;
 
     const parent = this;
@@ -288,10 +270,10 @@ export class Queue extends Component implements Link.Linkable {
       {
         queue: { id: this.queue.id },
         subscriber,
-        dlq: args?.dlq,
-        maxConcurrency: args?.maxConcurrency,
+        dlq: this.constructorArgs?.dlq,
+        maxConcurrency: this.constructorArgs?.maxConcurrency,
         batch: args?.batch,
-        visibilityTimeout: args?.visibilityTimeout,
+        visibilityTimeout: this.constructorArgs?.visibilityTimeout,
         transform: args?.transform,
       },
       { parent, ...opts },

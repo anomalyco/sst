@@ -5,7 +5,7 @@ import {
   DurationHours,
   DurationMinutes,
   DurationSeconds,
-  toMilliSeconds,
+  toMilliseconds,
 } from "../duration";
 import { VisibleError } from "../error";
 import { WorkerBuilder, workerBuilder } from "./helpers/worker-builder";
@@ -166,11 +166,11 @@ export class QueueWorkerSubscriber extends Component {
               batchSize,
               maxConcurrency: args.maxConcurrency,
               maxRetries: args.dlq?.retry,
-              retryDelay: retryDelay.apply((v) => toMilliSeconds(v)),
+              retryDelay: retryDelay.apply((v) => toMilliseconds(v)),
               visibilityTimeoutMs: visibilityTimeout.apply((v) =>
-                toMilliSeconds(v),
+                toMilliseconds(v),
               ),
-              maxWaitTimeMs: window.apply((v) => toMilliSeconds(v)),
+              maxWaitTimeMs: window.apply((v) => toMilliseconds(v)),
             },
             type: "worker",
           },
