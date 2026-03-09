@@ -168,6 +168,7 @@ export class Queue extends Component implements Link.Linkable {
   private isSubscribed = false;
   private constructorName: string;
   private constructorArgs?: QueueArgs;
+  private constructorOpts?: ComponentResourceOptions;
 
   constructor(name: string, args?: QueueArgs, opts?: ComponentResourceOptions) {
     super(__pulumiType, name, args, opts);
@@ -175,6 +176,7 @@ export class Queue extends Component implements Link.Linkable {
     const parent = this;
     this.constructorName = name;
     this.constructorArgs = args;
+    this.constructorOpts = opts;
 
     const queue = create();
 
@@ -258,7 +260,7 @@ export class Queue extends Component implements Link.Linkable {
         batch: args?.batch,
         transform: args?.transform,
       },
-      { parent, ...opts },
+      { ...opts, provider: this.constructorOpts?.provider },
     );
   }
 
