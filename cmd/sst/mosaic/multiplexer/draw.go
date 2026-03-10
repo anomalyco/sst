@@ -57,13 +57,14 @@ func (s *Multiplexer) draw() {
 	if s.focused {
 		hotkeys["ctrl-z"] = "sidebar"
 	}
-	if selected != nil && selected.isScrolling() && (s.focused || !selected.killable) {
-		hotkeys["enter"] = "reset"
-	}
 	if selected != nil && selected.vt.HasSelection() {
 		hotkeys["enter"] = "copy"
 	}
 	hotkeys["ctrl-u/d"] = "scroll"
+	if selected != nil && selected.isScrolling() {
+		hotkeys["ctrl-g"] = "bottom"
+	}
+	hotkeys["ctrl-l"] = "clear"
 	// sort hotkeys
 	keys := make([]string, 0, len(hotkeys))
 	for key := range hotkeys {
@@ -137,6 +138,9 @@ func (s *Multiplexer) sort() {
 	}
 	key := s.selectedProcess().key
 	sort.Slice(s.processes, func(i, j int) bool {
+		if !s.processes[i].killable && s.processes[j].killable {
+			return true
+		}
 		if s.processes[i].killable && !s.processes[j].killable {
 			return false
 		}

@@ -14,7 +14,7 @@ import {
 } from "../component";
 import { Link } from "../link";
 import type { Input } from "../input";
-import { FunctionArgs, FunctionArn } from "./function";
+import { FunctionArgs, FunctionArn } from "./function.js";
 import { hashStringToPrettyString, physicalName, logicalName } from "../naming";
 import { DnsValidatedCertificate } from "./dns-validated-certificate";
 import { RETENTION } from "./logging";
@@ -701,6 +701,12 @@ export class ApiGatewayWebSocket extends Component implements Link.Linkable {
    * will look for the specific route defined by the user. If no route matches, the `$default`
    * route will be invoked.
    *
+   * :::caution
+   * [API Gateway has strict rate limits](https://docs.aws.amazon.com/apigateway/latest/developerguide/limits.html) for creating and updating resources. Creating one Lambda function for every route can significantly slow down your deployments.
+   *
+   * Use a single Lambda and handle routing in code if you don't need specific API Gateway features.
+   * :::
+   *
    * @param route The path for the route.
    * @param handler The function that'll be invoked.
    * @param args Configure the route.
@@ -819,7 +825,7 @@ export class ApiGatewayWebSocket extends Component implements Link.Linkable {
    * const authorizer = api.addAuthorizer({
    *   name: "myCognitoAuthorizer",
    *   jwt: {
-   *     issuer: $interpolate`https://cognito-idp.${aws.getRegionOutput().name}.amazonaws.com/${pool.id}`,
+   *     issuer: $interpolate`https://cognito-idp.${aws.getRegionOutput().region}.amazonaws.com/${pool.id}`,
    *     audiences: [poolClient.id]
    *   }
    * });

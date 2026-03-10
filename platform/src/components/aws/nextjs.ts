@@ -2,16 +2,19 @@ import fs from "fs";
 import path from "path";
 import { ComponentResourceOptions, Output, all, output } from "@pulumi/pulumi";
 import { Size } from "../size.js";
-import { Function } from "./function.js";
+import { Function, FunctionArgs } from "./function.js";
 import { VisibleError } from "../error.js";
 import type { Input } from "../input.js";
 import { Queue } from "./queue.js";
 import { dynamodb, getRegionOutput, lambda } from "@pulumi/aws";
-import { isALteB } from "../../util/compare-semver.js";
+import { isALteB, isALtB } from "../../util/compare-semver.js";
 import { Plan, SsrSite, SsrSiteArgs } from "./ssr-site.js";
-import { Bucket } from "./bucket.js";
+import { Bucket, BucketArgs } from "./bucket.js";
+import { CdnArgs } from "./cdn.js";
+import { transform, Transform } from "../component.js";
 
-const DEFAULT_OPEN_NEXT_VERSION = "3.9.8";
+const DEFAULT_OPEN_NEXT_VERSION = "3.9.14";
+const DEFAULT_OPEN_NEXT_VERSION_NEXT14 = "3.6.6";
 
 type BaseFunction = {
   handler: string;
@@ -399,13 +402,15 @@ export interface NextjsArgs extends SsrSiteArgs {
    * Configure the [OpenNext](https://opennext.js.org) version used to build the Next.js app.
    *
    * :::note
-   * This does not automatically update to the latest OpenNext version. It remains pinned to the version of SST you have.
+   * The default OpenNext version is auto-detected based on your Next.js version and pinned to the version of SST you have.
    * :::
    *
-   * By default, this is pinned to the version of OpenNext that was released with the SST version you are using. You can [find this in the source](https://github.com/sst/sst/blob/dev/platform/src/components/aws/nextjs.ts#L30) under `DEFAULT_OPEN_NEXT_VERSION`.
+   * By default, SST auto-detects the Next.js version from your `package.json` and picks a compatible OpenNext version. For Next.js 15+, it uses `3.9.14`. For Next.js 14, it uses `3.6.6` since newer versions of OpenNext dropped Next.js 14 support. If set, this overrides the auto-detection.
+   *
+   * You can [find the defaults in the source](https://github.com/sst/sst/blob/dev/platform/src/components/aws/nextjs.ts#L30) under `DEFAULT_OPEN_NEXT_VERSION`.
    * OpenNext changed its package name from `open-next` to `@opennextjs/aws` in version `3.1.4`. SST will choose the correct one based on the version you provide.
    *
-   * @default The latest version of OpenNext pinned to the version of SST you are using.
+   * @default Auto-detected based on your Next.js version.
    * @example
    * ```js
    * {
@@ -474,6 +479,36 @@ export interface NextjsArgs extends SsrSiteArgs {
    * ```
    */
   cachePolicy?: SsrSiteArgs["cachePolicy"];
+  /**
+   * [Transform](/docs/components#transform) how this component creates its underlying
+   * resources.
+   */
+  transform?: {
+    /**
+     * Transform the Bucket resource used for uploading the assets.
+     */
+    assets?: Transform<BucketArgs>;
+    /**
+     * Transform the server Function resource.
+     */
+    server?: Transform<FunctionArgs>;
+    /**
+     * Transform the image optimizer Function resource.
+     */
+    imageOptimizer?: Transform<FunctionArgs>;
+    /**
+     * Transform the CloudFront CDN resource.
+     */
+    cdn?: Transform<CdnArgs>;
+    /**
+     * Transform the revalidation seeder Function resource used for ISR.
+     */
+    revalidationSeeder?: Transform<FunctionArgs>;
+    /**
+     * Transform the revalidation events subscriber Function resource used for ISR.
+     */
+    revalidationEventsSubscriber?: Transform<FunctionArgs>;
+  };
 }
 
 /**
@@ -547,9 +582,9 @@ export interface NextjsArgs extends SsrSiteArgs {
  * ```
  */
 export class Nextjs extends SsrSite {
-  private revalidationQueue?: Output<Queue | undefined>;
-  private revalidationTable?: Output<dynamodb.Table | undefined>;
-  private revalidationFunction?: Output<Function | undefined>;
+  private declare revalidationQueue?: Output<Queue | undefined>;
+  private declare revalidationTable?: Output<dynamodb.Table | undefined>;
+  private declare revalidationFunction?: Output<Function | undefined>;
 
   constructor(
     name: string,
@@ -560,10 +595,26 @@ export class Nextjs extends SsrSite {
   }
 
   protected normalizeBuildCommand(args: NextjsArgs) {
-    return all([args?.buildCommand, args?.openNextVersion]).apply(
-      ([buildCommand, openNextVersion]) => {
+    return all([args?.buildCommand, args?.openNextVersion, args?.path]).apply(
+      ([buildCommand, openNextVersion, sitePath]) => {
         if (buildCommand) return buildCommand;
-        const version = openNextVersion ?? DEFAULT_OPEN_NEXT_VERSION;
+
+        function detectDefaultOpenNextVersion() {
+          try {
+            const pkgPath = path.join(sitePath ?? ".", "package.json");
+            const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+            const nextVersion =
+              pkg.dependencies?.next ?? pkg.devDependencies?.next;
+            if (nextVersion && isALtB(nextVersion, "15.0.0")) {
+              return DEFAULT_OPEN_NEXT_VERSION_NEXT14;
+            }
+          } catch {
+            console.warn(`Failed to detect Next.js version. Using OpenNext v${DEFAULT_OPEN_NEXT_VERSION} as default.`);
+          }
+          return DEFAULT_OPEN_NEXT_VERSION;
+        }
+
+        const version = openNextVersion ?? detectDefaultOpenNextVersion();
         const packageName = isALteB(version, "3.1.3")
           ? "open-next"
           : "@opennextjs/aws";
@@ -604,10 +655,10 @@ export class Nextjs extends SsrSite {
           revalidationTable?.name,
           bucket.arn,
           bucket.name,
-          getRegionOutput(undefined, { parent: bucket }).name,
+          getRegionOutput(undefined, { parent: bucket }).region,
           revalidationQueue?.arn,
           revalidationQueue?.url,
-          getRegionOutput(undefined, { parent: revalidationQueue }).name,
+          getRegionOutput(undefined, { parent: revalidationQueue }).region,
         ]).apply(
           ([
             tableArn,
@@ -625,7 +676,7 @@ export class Nextjs extends SsrSite {
               bundle: path.join(outputPath, serverOrigin.bundle),
               handler: serverOrigin.handler,
               streaming: serverOrigin.streaming,
-              runtime: "nodejs20.x" as const,
+              runtime: "nodejs24.x" as const,
               environment: {
                 CACHE_BUCKET_NAME: bucketName,
                 CACHE_BUCKET_KEY_PREFIX: "_cache",
@@ -650,36 +701,36 @@ export class Nextjs extends SsrSite {
                 },
                 ...(queueArn
                   ? [
-                      {
-                        actions: [
-                          "sqs:SendMessage",
-                          "sqs:GetQueueAttributes",
-                          "sqs:GetQueueUrl",
-                        ],
-                        resources: [queueArn],
-                      },
-                    ]
+                    {
+                      actions: [
+                        "sqs:SendMessage",
+                        "sqs:GetQueueAttributes",
+                        "sqs:GetQueueUrl",
+                      ],
+                      resources: [queueArn],
+                    },
+                  ]
                   : []),
                 ...(tableArn
                   ? [
-                      {
-                        actions: [
-                          "dynamodb:BatchGetItem",
-                          "dynamodb:GetRecords",
-                          "dynamodb:GetShardIterator",
-                          "dynamodb:Query",
-                          "dynamodb:GetItem",
-                          "dynamodb:Scan",
-                          "dynamodb:ConditionCheckItem",
-                          "dynamodb:BatchWriteItem",
-                          "dynamodb:PutItem",
-                          "dynamodb:UpdateItem",
-                          "dynamodb:DeleteItem",
-                          "dynamodb:DescribeTable",
-                        ],
-                        resources: [tableArn, `${tableArn}/*`],
-                      },
-                    ]
+                    {
+                      actions: [
+                        "dynamodb:BatchGetItem",
+                        "dynamodb:GetRecords",
+                        "dynamodb:GetShardIterator",
+                        "dynamodb:Query",
+                        "dynamodb:GetItem",
+                        "dynamodb:Scan",
+                        "dynamodb:ConditionCheckItem",
+                        "dynamodb:BatchWriteItem",
+                        "dynamodb:PutItem",
+                        "dynamodb:UpdateItem",
+                        "dynamodb:DeleteItem",
+                        "dynamodb:DescribeTable",
+                      ],
+                      resources: [tableArn, `${tableArn}/*`],
+                    },
+                  ]
                   : []),
               ],
               injections: [
@@ -708,7 +759,7 @@ export class Nextjs extends SsrSite {
                 description: `${name} image optimizer`,
                 handler: imageOptimizerOrigin.handler,
                 bundle: path.join(outputPath, imageOptimizerOrigin.bundle),
-                runtime: "nodejs20.x" as const,
+                runtime: "nodejs24.x" as const,
                 architecture: "arm64" as const,
                 environment: {
                   BUCKET_NAME: bucketName,
@@ -845,7 +896,7 @@ export class Nextjs extends SsrSite {
               description: `${name} ISR revalidator`,
               handler: revalidationFunction.handler,
               bundle: path.join(outputPath, revalidationFunction.bundle),
-              runtime: "nodejs20.x",
+              runtime: "nodejs24.x",
               timeout: "30 seconds",
               permissions: [
                 {
@@ -867,6 +918,7 @@ export class Nextjs extends SsrSite {
                 eventSourceMapping: (args) => {
                   args.batchSize = 5;
                 },
+                function: args.transform?.revalidationEventsSubscriber,
               },
             },
             { parent },
@@ -918,39 +970,42 @@ export class Nextjs extends SsrSite {
             prerenderManifest?.routes ?? {},
           ).length;
           const seedFn = new Function(
-            `${name}RevalidationSeeder`,
-            {
-              description: `${name} ISR revalidation data seeder`,
-              handler:
-                openNextOutput.additionalProps.initializationFunction.handler,
-              bundle: path.join(
-                outputPath,
-                openNextOutput.additionalProps.initializationFunction.bundle,
-              ),
-              runtime: "nodejs20.x",
-              timeout: "900 seconds",
-              memory: `${Math.min(
-                10240,
-                Math.max(128, Math.ceil(prerenderedRouteCount / 4000) * 128),
-              )} MB`,
-              permissions: [
-                {
-                  actions: [
-                    "dynamodb:BatchWriteItem",
-                    "dynamodb:PutItem",
-                    "dynamodb:DescribeTable",
-                  ],
-                  resources: [revalidationTable!.arn],
+            ...transform(
+              args.transform?.revalidationSeeder,
+              `${name}RevalidationSeeder`,
+              {
+                description: `${name} ISR revalidation data seeder`,
+                handler:
+                  openNextOutput.additionalProps.initializationFunction.handler,
+                bundle: path.join(
+                  outputPath,
+                  openNextOutput.additionalProps.initializationFunction.bundle,
+                ),
+                runtime: "nodejs24.x",
+                timeout: "900 seconds",
+                memory: `${Math.min(
+                  10240,
+                  Math.max(128, Math.ceil(prerenderedRouteCount / 4000) * 128),
+                )} MB`,
+                permissions: [
+                  {
+                    actions: [
+                      "dynamodb:BatchWriteItem",
+                      "dynamodb:PutItem",
+                      "dynamodb:DescribeTable",
+                    ],
+                    resources: [revalidationTable!.arn],
+                  },
+                ],
+                environment: {
+                  CACHE_DYNAMO_TABLE: revalidationTable!.name,
                 },
-              ],
-              environment: {
-                CACHE_DYNAMO_TABLE: revalidationTable!.name,
+                dev: false,
+                _skipMetadata: true,
+                _skipHint: true,
               },
-              dev: false,
-              _skipMetadata: true,
-              _skipHint: true,
-            },
-            { parent },
+              { parent },
+            ),
           );
           new lambda.Invocation(
             `${name}RevalidationSeed`,

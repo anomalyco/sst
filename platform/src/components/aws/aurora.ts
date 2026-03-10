@@ -735,7 +735,7 @@ export class Aurora extends Component implements Link.Linkable {
         { parent: self },
       );
 
-      const secretId = cluster.tags
+      const secretId = cluster.tagsAll
         .apply((tags) => tags?.["sst:ref:password"])
         .apply((passwordTag) => {
           if (!passwordTag)
@@ -759,7 +759,7 @@ export class Aurora extends Component implements Link.Linkable {
         (v) => v.password as string,
       );
 
-      const proxy = cluster.tags
+      const proxy = cluster.tagsAll
         .apply((tags) => tags?.["sst:ref:proxy"])
         .apply((proxyTag) =>
           proxyTag
@@ -982,6 +982,7 @@ Listening on "${dev.host}:${dev.port}"...`,
                 ? toSeconds(scaling.pauseAfter)
                 : undefined,
             })),
+            allowMajorVersionUpgrade: true,
             skipFinalSnapshot: true,
             storageEncrypted: true,
             enableHttpEndpoint: dataApi,
@@ -1008,6 +1009,7 @@ Listening on "${dev.host}:${dev.port}"...`,
         engineVersion: cluster.engineVersion,
         dbSubnetGroupName: cluster.dbSubnetGroupName,
         dbParameterGroupName: instanceParameterGroup.name,
+        autoMinorVersionUpgrade: false,
       };
 
       // Create primary instance

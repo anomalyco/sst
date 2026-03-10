@@ -179,7 +179,7 @@ func plugin(path string) api.Plugin {
 					result.PluginName = value.(string)
 				}
 				if value, ok := response["loader"]; ok {
-					loader, _ := loaderMap[value.(string)]
+					loader, _ := LoaderMap[value.(string)]
 					result.Loader = loader
 				}
 				if value, ok := response["contents"]; ok {

@@ -23,6 +23,7 @@ export type { PostgresArgs as PostgresV1Args } from "./postgres-v1";
 export interface PostgresArgs {
   /**
    * The Postgres engine version. Check out the [available versions in your region](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/PostgreSQL.Concepts.General.DBVersions.html).
+   *
    * @default `"17"`
    * @example
    * ```js
@@ -506,7 +507,7 @@ export class Postgres extends Component implements Link.Linkable {
         parent: self,
       });
 
-      const input = instance.tags.apply((tags) => {
+      const input = instance.tagsAll.apply((tags) => {
         registerVersion(
           tags?.["sst:component-version"]
             ? parseInt(tags["sst:component-version"])
@@ -726,6 +727,8 @@ Listening on "${dev.host}:${dev.port}"...`,
             username,
             password,
             parameterGroupName: parameterGroup.name,
+            allowMajorVersionUpgrade: true,
+            autoMinorVersionUpgrade: false,
             skipFinalSnapshot: true,
             storageEncrypted: true,
             storageType: "gp3",

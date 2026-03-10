@@ -9,7 +9,7 @@ import { hashStringToPrettyString, logicalName } from "../naming";
 import { Component, Prettify, Transform, transform } from "../component";
 import { Link } from "../link";
 import type { Input } from "../input";
-import { FunctionArgs, FunctionArn } from "./function";
+import { FunctionArgs, FunctionArn } from "./function.js";
 import { Duration, DurationDays, toSeconds } from "../duration";
 import { VisibleError } from "../error";
 import { parseBucketArn } from "./helpers/arn";
@@ -72,7 +72,7 @@ interface BucketCorsArgs {
   allowMethods?: Input<Input<"DELETE" | "GET" | "HEAD" | "POST" | "PUT">[]>;
   /**
    * The HTTP headers you want to expose to an origin that calls the bucket.
-   * @default `[]`
+   * @default `["ETag"]`
    * @example
    * ```js
    * {
@@ -439,7 +439,7 @@ export interface BucketArgs {
    *     allowHeaders: ["*"],
    *     allowOrigins: ["*"],
    *     allowMethods: ["DELETE", "GET", "HEAD", "POST", "PUT"],
-   *     exposeHeaders: [],
+   *     exposeHeaders: ["ETag"],
    *     maxAge: "0 seconds"
    *   }
    * }
@@ -505,11 +505,11 @@ export interface BucketArgs {
     /**
      * Transform the S3 Bucket resource.
      */
-    bucket?: Transform<s3.BucketV2Args>;
+    bucket?: Transform<s3.BucketArgs>;
     /**
      * Transform the S3 Bucket CORS configuration resource.
      */
-    cors?: Transform<s3.BucketCorsConfigurationV2Args>;
+    cors?: Transform<s3.BucketCorsConfigurationArgs>;
     /**
      * Transform the S3 Bucket Policy resource.
      */
@@ -517,11 +517,11 @@ export interface BucketArgs {
     /**
      * Transform the S3 Bucket versioning resource.
      */
-    versioning?: Transform<s3.BucketVersioningV2Args>;
+    versioning?: Transform<s3.BucketVersioningArgs>;
     /**
      * Transform the S3 Bucket lifecycle resource.
      * */
-    lifecycle?: Transform<s3.BucketLifecycleConfigurationV2Args>;
+    lifecycle?: Transform<s3.BucketLifecycleConfigurationArgs>;
     /**
      * Transform the public access block resource that's attached to the Bucket.
      *
@@ -792,7 +792,7 @@ export interface BucketSubscriberArgs {
 
 interface BucketRef {
   ref: boolean;
-  bucket: s3.BucketV2;
+  bucket: s3.Bucket;
 }
 
 /**
@@ -858,7 +858,7 @@ export class Bucket extends Component implements Link.Linkable {
   private constructorName: string;
   private constructorOpts: ComponentResourceOptions;
   private isSubscribed: boolean = false;
-  private bucket: Output<s3.BucketV2>;
+  private bucket: Output<s3.Bucket>;
 
   constructor(
     name: string,
@@ -891,7 +891,7 @@ export class Bucket extends Component implements Link.Linkable {
     // (ie. bucket.name). Also, a bucket can only have one policy. We want to ensure
     // the policy created here is created first. And SST will throw an error if
     // another policy is created after this one.
-    this.bucket = policy.urn.apply(() => bucket);
+    this.bucket = policy.apply(() => bucket);
 
     function normalizeAccess() {
       return all([args.public, args.access]).apply(([pub, access]) =>
@@ -925,7 +925,7 @@ export class Bucket extends Component implements Link.Linkable {
     }
 
     function createBucket() {
-      return new s3.BucketV2(
+      return new s3.Bucket(
         ...transform(
           args.transform?.bucket,
           `${name}Bucket`,
@@ -941,7 +941,7 @@ export class Bucket extends Component implements Link.Linkable {
       return output(args.versioning).apply((versioning) => {
         if (!versioning) return;
 
-        return new s3.BucketVersioningV2(
+        return new s3.BucketVersioning(
           ...transform(
             args.transform?.versioning,
             `${name}Versioning`,
@@ -990,7 +990,7 @@ export class Bucket extends Component implements Link.Linkable {
           return resolvedId;
         });
 
-        return new s3.BucketLifecycleConfigurationV2(
+        return new s3.BucketLifecycleConfiguration(
           ...transform(
             args.transform?.lifecycle,
             `${name}Lifecycle`,
@@ -1105,7 +1105,7 @@ export class Bucket extends Component implements Link.Linkable {
       return output(args.cors).apply((cors) => {
         if (cors === false) return;
 
-        return new s3.BucketCorsConfigurationV2(
+        return new s3.BucketCorsConfiguration(
           ...transform(
             args.transform?.cors,
             `${name}Cors`,
@@ -1122,7 +1122,7 @@ export class Bucket extends Component implements Link.Linkable {
                     "PUT",
                   ],
                   allowedOrigins: cors?.allowOrigins ?? ["*"],
-                  exposeHeaders: cors?.exposeHeaders,
+                  exposeHeaders: cors?.exposeHeaders ?? ["ETag"],
                   maxAgeSeconds: toSeconds(cors?.maxAge ?? "0 seconds"),
                 },
               ],
@@ -1206,7 +1206,7 @@ export class Bucket extends Component implements Link.Linkable {
   ) {
     return new Bucket(name, {
       ref: true,
-      bucket: s3.BucketV2.get(`${name}Bucket`, bucketName, undefined, opts),
+      bucket: s3.Bucket.get(`${name}Bucket`, bucketName, undefined, opts),
     } as BucketArgs);
   }
 

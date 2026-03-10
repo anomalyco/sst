@@ -2,7 +2,7 @@ import { ComponentResourceOptions, Output, output } from "@pulumi/pulumi";
 import { Component, Transform, transform } from "../component";
 import { Link } from "../link";
 import type { Input } from "../input";
-import { FunctionArgs, FunctionArn } from "./function";
+import { FunctionArgs, FunctionArn } from "./function.js";
 import { parseEventBusArn } from "./helpers/arn";
 import { BusLambdaSubscriber } from "./bus-lambda-subscriber";
 import { cloudwatch } from "@pulumi/aws";
@@ -11,6 +11,31 @@ import { Queue } from "./queue";
 import { BusQueueSubscriber } from "./bus-queue-subscriber";
 
 export interface BusArgs {
+  /**
+   * Configure logging for the EventBus.
+   *
+   * @example
+   *
+   * ```js
+   * new sst.aws.Bus("MyBus", {
+   *   logging: {
+   *     level: "error",
+   *     detail: true,
+   *   },
+   * });
+   * ```
+   */
+  logging?: Input<{
+    /**
+     * The level of logging.
+     */
+    level: Input<"error" | "info" | "trace">;
+    /**
+     * Whether to include the event detail in the log.
+     * @default `false`
+     */
+    detail?: Input<boolean>;
+  }>;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
@@ -220,7 +245,17 @@ export class Bus extends Component implements Link.Linkable {
 
     function createBus() {
       return new cloudwatch.EventBus(
-        ...transform(args.transform?.bus, `${name}Bus`, {}, { parent: self }),
+        ...transform(
+          args.transform?.bus,
+          `${name}Bus`,
+          {
+            logConfig: args.logging && output(args.logging).apply((l) => ({
+              level: l.level.toUpperCase(),
+              includeDetail: l.detail ? "FULL" : "NONE",
+            })),
+          },
+          { parent: self },
+        ),
       );
     }
   }

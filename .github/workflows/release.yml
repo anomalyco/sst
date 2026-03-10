@@ -17,38 +17,53 @@ jobs:
   goreleaser:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v3
         with:
           fetch-depth: 0
-      - uses: oven-sh/setup-bun@v1
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
         with:
           bun-version: latest
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
 
-      - uses: docker/login-action@v2
+      - name: Login to GHCR
+        uses: docker/login-action@v2
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - run: git fetch --force --tags
+      - name: Fetch tags
+        run: git fetch --force --tags
 
-      - uses: actions/setup-go@v5
+      - name: Setup Go
+        uses: actions/setup-go@v5
         with:
           go-version: ">=1.23.2"
 
-      - run: go mod download
-      - run: bun i --frozen-lockfile
-      - run: git reset --hard
-      - run: cd platform && bun tsc --noEmit
-      - run: ./platform/scripts/build
+      - name: Download Go modules
+        run: go mod download
+
+      - name: Install dependencies
+        run: bun i --frozen-lockfile
+
+      - name: TypeScript check
+        run: cd platform && bun tsc --noEmit
+
+      - name: Build platform
+        run: ./platform/scripts/build
         env:
           DOCKER_PUSH: true
-      - uses: goreleaser/goreleaser-action@v6
+
+      - name: Release
+        uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
           version: latest
@@ -58,7 +73,8 @@ jobs:
           AUR_KEY: ${{ secrets.AUR_KEY }}
           NPM_CONFIG_PROVENANCE: false
 
-      - run: |
+      - name: Release JS SDK
+        run: |
           cd sdk/js
           bun run release
         env:

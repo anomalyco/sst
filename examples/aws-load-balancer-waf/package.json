@@ -1,0 +1,7 @@
+{
+  "name": "aws-load-balancer-waf",
+  "version": "0.0.0",
+  "dependencies": {
+    "sst": "^4"
+  }
+}
