@@ -36,6 +36,12 @@ type ClusterVpcArgs = {
    */
   containerSubnets?: Input<Input<string>[]>;
   /**
+   * A list of public subnet IDs in the VPC.
+   *
+   * If a task has `publicIp: true`, it will be placed in these subnets.
+   */
+  publicSubnets?: Input<Input<string>[]>;
+  /**
    * A list of subnet IDs in the VPC to place the load balancer in.
    */
   loadBalancerSubnets: Input<Input<string>[]>;
