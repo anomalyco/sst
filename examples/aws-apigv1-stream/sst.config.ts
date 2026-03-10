@@ -16,28 +16,22 @@
  *
  * ```ts title="index.ts"
  * export const handler = awslambda.streamifyResponse(
- *   async (_event: unknown, responseStream: any) => {
- *     responseStream = awslambda.HttpResponseStream.from(responseStream, {
+ *   async (event, stream) => {
+ *     stream = awslambda.HttpResponseStream.from(stream, {
  *       statusCode: 200,
- *       headers: { "Content-Type": "text/plain" },
+ *       headers: {
+ *         "Content-Type": "text/plain; charset=UTF-8",
+ *         "X-Content-Type-Options": "nosniff",
+ *       },
  *     });
  *
- *     responseStream.write("Hello");
+ *     stream.write("Hello ");
  *     await new Promise((resolve) => setTimeout(resolve, 3000));
- *     responseStream.write(" World");
- *     responseStream.end();
+ *     stream.write("World");
+ *
+ *     stream.end();
  *   },
  * );
- * ```
- *
- * :::note
- * Streaming is currently not supported in `sst dev`.
- * :::
- *
- * To test this in your terminal, use the `curl` command with the `--no-buffer` option.
- *
- * ```bash "--no-buffer"
- * curl --no-buffer https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/prod
  * ```
  *
  */
