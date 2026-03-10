@@ -48,6 +48,14 @@ export class ApiGatewayV1LambdaRoute extends Component {
 
     const self = this;
     const api = output(args.api);
+    const fnStreaming = output(args.handler).apply((handler) =>
+      handler && typeof handler === "object" && "streaming" in handler
+        ? handler.streaming
+        : undefined,
+    );
+    const streaming = all([output(args.streaming), fnStreaming]).apply(
+      ([routeStreaming, fnStreaming]) => routeStreaming ?? fnStreaming ?? false,
+    );
 
     const method = createMethod(name, args, self);
     const fn = createFunction();
@@ -67,7 +75,7 @@ export class ApiGatewayV1LambdaRoute extends Component {
         args.handler,
         {
           description: interpolate`${api.name} route ${method} ${path}`,
-          streaming: args.streaming,
+          streaming,
         },
         args.handlerTransform,
         { parent: self },
@@ -89,7 +97,6 @@ export class ApiGatewayV1LambdaRoute extends Component {
     }
 
     function createIntegration() {
-      const streaming = output(args.streaming ?? false);
       return new apigateway.Integration(
         ...transform(
           args.transform?.integration,

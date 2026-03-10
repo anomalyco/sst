@@ -6,7 +6,8 @@
  * An example on how to enable streaming for API Gateway REST API routes.
  *
  * ```ts title="sst.config.ts"
- * api.route("GET /", "index.handler", {
+ * api.route("GET /", {
+ *   handler: "index.handler",
  *   streaming: true,
  * });
  * ```
@@ -45,10 +46,12 @@ export default $config({
   },
   async run() {
     const api = new sst.aws.ApiGatewayV1("MyApi");
-    api.route("GET /", "index.handler", {
+    api.route("GET /", {
+      handler: "index.handler",
       streaming: true,
     });
-    api.route("GET /hono", "hono.handler", {
+    api.route("GET /hono", {
+      handler: "hono.handler",
       streaming: true,
     });
     api.deploy();

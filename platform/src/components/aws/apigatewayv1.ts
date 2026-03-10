@@ -620,22 +620,7 @@ export interface ApiGatewayV1RouteArgs {
    */
   apiKey?: Input<boolean>;
   /**
-   * Enable streaming for the route.
-   *
-   * Streaming is only supported for API Gateway REST APIs, not HTTP APIs.
-   *
-   * You'll also need to [wrap your handler](https://docs.aws.amazon.com/lambda/latest/dg/configuration-response-streaming.html) with `awslambda.streamifyResponse` to enable streaming.
-   *
-   * Check out the [AWS API Gateway V1 streaming](/docs/examples/#aws-api-gateway-v1-streaming) for more
-   * details.
-   *
-   * @default `false`
-   * @example
-   * ```js
-   * {
-   *   streaming: true
-   * }
-   * ```
+   * @deprecated Set `streaming: true` on the function definition passed to `api.route()` instead.
    */
   streaming?: Input<boolean>;
   /**
