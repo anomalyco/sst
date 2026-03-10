@@ -84,7 +84,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
  * Simply uploads the current directory as a static site.
  *
  * ```js
- * new sst.aws.StaticSite("MyWeb");
+ * new sst.cloudflare.x.StaticSite("MyWeb");
  * ```
  *
  * #### Change the path
@@ -92,7 +92,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
  * Change the `path` that should be uploaded.
  *
  * ```js
- * new sst.aws.StaticSite("MyWeb", {
+ * new sst.cloudflare.x.StaticSite("MyWeb", {
  *   path: "path/to/site"
  * });
  * ```
@@ -102,7 +102,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
  * Use [Vite](https://vitejs.dev) to deploy a React/Vue/Svelte/etc. SPA by specifying the `build` config.
  *
  * ```js
- * new sst.aws.StaticSite("MyWeb", {
+ * new sst.cloudflare.x.StaticSite("MyWeb", {
  *   build: {
  *     command: "npm run build",
  *     output: "dist"
@@ -115,7 +115,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
  * Use [Jekyll](https://jekyllrb.com) to deploy a static site.
  *
  * ```js
- * new sst.aws.StaticSite("MyWeb", {
+ * new sst.cloudflare.x.StaticSite("MyWeb", {
  *   errorPage: "404.html",
  *   build: {
  *     command: "bundle exec jekyll build",
@@ -129,7 +129,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
  * Use [Gatsby](https://www.gatsbyjs.com) to deploy a static site.
  *
  * ```js
- * new sst.aws.StaticSite("MyWeb", {
+ * new sst.cloudflare.x.StaticSite("MyWeb", {
  *   errorPage: "404.html",
  *   build: {
  *     command: "npm run build",
@@ -143,7 +143,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
  * Use [Angular](https://angular.dev) to deploy a SPA.
  *
  * ```js
- * new sst.aws.StaticSite("MyWeb", {
+ * new sst.cloudflare.x.StaticSite("MyWeb", {
  *   build: {
  *     command: "ng build --output-path dist",
  *     output: "dist"
@@ -156,7 +156,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
  * Set a custom domain for your site.
  *
  * ```js {2}
- * new sst.aws.StaticSite("MyWeb", {
+ * new sst.cloudflare.x.StaticSite("MyWeb", {
  *   domain: "my-app.com"
  * });
  * ```
@@ -166,7 +166,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
  * Redirect `www.my-app.com` to `my-app.com`.
  *
  * ```js {4}
- * new sst.aws.StaticSite("MyWeb", {
+ * new sst.cloudflare.x.StaticSite("MyWeb", {
  *   domain: {
  *     name: "my-app.com",
  *     redirects: ["www.my-app.com"]
@@ -185,9 +185,9 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
  * For some static site generators like Vite, [environment variables](https://vitejs.dev/guide/env-and-mode) prefixed with `VITE_` can be accessed in the browser.
  *
  * ```ts {5-7}
- * const bucket = new sst.aws.Bucket("MyBucket");
+ * const bucket = new sst.cloudflare.Bucket("MyBucket");
  *
- * new sst.aws.StaticSite("MyWeb", {
+ * new sst.cloudflare.x.StaticSite("MyWeb", {
  *   environment: {
  *     BUCKET_NAME: bucket.name,
  *     // Accessible in the browser
