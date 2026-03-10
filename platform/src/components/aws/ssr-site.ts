@@ -1062,6 +1062,7 @@ async function handler(event) {
                 function: server.nodes.function.name,
                 principal: "cloudfront.amazonaws.com",
                 sourceArn: distributionArn,
+                invokedViaFunctionUrl: true,
               },
               { provider, parent: self },
             );
@@ -1102,6 +1103,7 @@ async function handler(event) {
                 function: imgOptimizer.nodes.function.name,
                 principal: "cloudfront.amazonaws.com",
                 sourceArn: distributionArn,
+                invokedViaFunctionUrl: true,
               },
               { parent: self },
             );
