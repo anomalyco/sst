@@ -3,7 +3,6 @@ package python
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -136,85 +135,4 @@ version = "1.0.0"
 
 	t.Logf("SourceRoot: %s", info.SourceRoot)
 	t.Logf("ProjectRoot: %s", info.ProjectRoot)
-}
-
-func TestCopySourceFilesSimple_MonorepoStructure(t *testing.T) {
-	// This test verifies that copySourceFilesSimple uses the correct workspaceDir
-	// when pyproject.toml is at the package level within the SST project root
-
-	tmpDir, err := os.MkdirTemp("", "sst-test-copy-monorepo")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tmpDir)
-
-	// Create monorepo structure:
-	// /tmp/root/                              <- workspace pyproject.toml here
-	// /tmp/root/apps/main/                    <- SST project root
-	// /tmp/root/apps/main/packages/api/       <- package pyproject.toml here
-	// /tmp/root/apps/main/packages/api/auth/  <- handler files
-	appsMainDir := filepath.Join(tmpDir, "apps", "main")
-	packagesApiDir := filepath.Join(appsMainDir, "packages", "api")
-	authDir := filepath.Join(packagesApiDir, "auth")
-	outputDir := filepath.Join(tmpDir, "output")
-
-	if err := os.MkdirAll(authDir, 0755); err != nil {
-		t.Fatalf("Failed to create auth dir: %v", err)
-	}
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
-		t.Fatalf("Failed to create output dir: %v", err)
-	}
-
-	// Create package-level pyproject.toml (what the resolver finds)
-	packagePyproject := filepath.Join(packagesApiDir, "pyproject.toml")
-	if err := os.WriteFile(packagePyproject, []byte(`[project]
-name = "gtf-api"
-version = "0.1.0"
-`), 0644); err != nil {
-		t.Fatalf("Failed to write package pyproject.toml: %v", err)
-	}
-
-	// Create handler file
-	handlerPath := filepath.Join(authDir, "login.py")
-	if err := os.WriteFile(handlerPath, []byte(`def handler(event, context):
-    return {"statusCode": 200}
-`), 0644); err != nil {
-		t.Fatalf("Failed to write handler: %v", err)
-	}
-
-	// Create __init__.py files for proper Python package structure
-	for _, dir := range []string{
-		filepath.Join(appsMainDir, "packages"),
-		packagesApiDir,
-		authDir,
-	} {
-		initPath := filepath.Join(dir, "__init__.py")
-		if err := os.WriteFile(initPath, []byte(""), 0644); err != nil {
-			t.Fatalf("Failed to write __init__.py: %v", err)
-		}
-	}
-
-	// Create ProjectInfo as it would be set by the resolver
-	// The resolver finds the package-level pyproject.toml, so SourceRoot = package dir
-	projectInfo := &ProjectInfo{
-		HandlerFile:   handlerPath,
-		ProjectRoot:   appsMainDir,
-		SourceRoot:    packagesApiDir,
-		PyprojectPath: packagePyproject,
-		PythonPath:    []string{packagesApiDir},
-	}
-
-	// Verify the key invariant: pyproject.toml is within the project root
-	pyprojectDir := filepath.Dir(projectInfo.PyprojectPath)
-	if !strings.HasPrefix(pyprojectDir, projectInfo.ProjectRoot) {
-		t.Errorf("pyproject.toml should be within project root. pyprojectDir=%s, ProjectRoot=%s",
-			pyprojectDir, projectInfo.ProjectRoot)
-	}
-
-	t.Logf("Test setup:")
-	t.Logf("  PyprojectPath: %s", projectInfo.PyprojectPath)
-	t.Logf("  PyprojectDir:  %s", pyprojectDir)
-	t.Logf("  ProjectRoot:   %s", projectInfo.ProjectRoot)
-	t.Logf("  SourceRoot:    %s", projectInfo.SourceRoot)
-	t.Logf("  HandlerFile:   %s", projectInfo.HandlerFile)
 }

@@ -12,8 +12,6 @@ import (
 // UVSource represents a UV source configuration
 type UVSource struct {
 	Path      string `toml:"path"`
-	URL       string `toml:"url"`
-	Git       string `toml:"git"`
 	Workspace bool   `toml:"workspace"`
 }
 
@@ -121,8 +119,7 @@ func (pr *ProjectResolver) findPythonFile(handlerPath string) (string, error) {
 		}
 	}
 
-	suggestions := GenerateHandlerSuggestions(handlerPath, "", candidates)
-	return "", NewHandlerNotFoundError(handlerPath, candidates, suggestions)
+	return "", fmt.Errorf("handler not found: %s (searched %d candidate paths)", handlerPath, len(candidates))
 }
 
 // extractFilePath extracts the file path from a handler path (e.g., "path/to/file.func" -> "path/to/file")
@@ -226,26 +223,16 @@ func (pr *ProjectResolver) generateModulePath(info *ProjectInfo) error {
 func (pr *ProjectResolver) ParsePyprojectToml(path string) (*PyprojectConfig, error) {
 	content, err := os.ReadFile(path)
 	if err != nil {
-		return nil, NewConfigurationError(
-			fmt.Sprintf("failed to read pyproject.toml: %v", err),
-			path, "file read error", "ensure the file exists and is readable",
-		)
+		return nil, fmt.Errorf("failed to read pyproject.toml at %s: %w", path, err)
 	}
 
 	var config PyprojectConfig
 	if err := toml.Unmarshal(content, &config); err != nil {
-		return nil, NewConfigurationError(
-			fmt.Sprintf("TOML parsing error: %s", err.Error()),
-			path, "TOML syntax error", "ensure the pyproject.toml file follows standard TOML format",
-		)
+		return nil, fmt.Errorf("TOML parsing error in %s: %w", path, err)
 	}
 
 	if config.Project.Name == "" && config.Tool.Poetry.Name == "" {
-		return nil, NewConfigurationError(
-			"project must have a name in either [project] or [tool.poetry] section",
-			path, "missing project name",
-			"ensure either [project] or [tool.poetry] section has a name field",
-		)
+		return nil, fmt.Errorf("pyproject.toml at %s must have a name in [project] or [tool.poetry]", path)
 	}
 
 	return &config, nil

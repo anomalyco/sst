@@ -123,9 +123,7 @@ func New(input *ProjectConfig) (*Project, error) {
 	rootPath := filepath.Dir(input.Config)
 	tmp := filepath.Join(rootPath, ".sst")
 
-	// Create Python runtime with caching enabled
-	pythonCacheDir := filepath.Join(tmp, "python-cache")
-	pythonRuntime := python.NewWithCache(pythonCacheDir)
+	pythonRuntime := python.New()
 
 	proj := &Project{
 		version: input.Version,

@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/BurntSushi/toml"
 	"github.com/sst/sst/v3/pkg/process"
 	"github.com/sst/sst/v3/pkg/project/path"
 	"github.com/sst/sst/v3/pkg/runtime"
@@ -23,40 +24,27 @@ type DeployBuilder struct {
 	projectResolver *ProjectResolver
 	uvRunner        *UvCommandRunner
 	contentFilter   *ContentFilter
-	mutex           sync.RWMutex
 	config          DeployBuilderConfig
 }
 
 type DeployBuilderConfig struct {
 	CacheDir    string
-	ArtifactDir string
 	ProjectRoot string
-	FunctionID  string
 }
 
 func NewDeployBuilder(config DeployBuilderConfig) (*DeployBuilder, error) {
 	if config.CacheDir == "" {
 		return nil, fmt.Errorf("cache directory is required")
 	}
-	if config.ArtifactDir == "" {
-		return nil, fmt.Errorf("artifact directory is required")
-	}
 
 	if err := os.MkdirAll(config.CacheDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
-	if err := os.MkdirAll(config.ArtifactDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create artifact directory: %w", err)
-	}
-
-	projectResolver := NewProjectResolver(config.CacheDir)
-	uvRunner := NewUvCommandRunner(UvCommandRunnerConfig{})
-	contentFilter := NewContentFilterForProject(config.ProjectRoot)
 
 	return &DeployBuilder{
-		projectResolver: projectResolver,
-		uvRunner:        uvRunner,
-		contentFilter:   contentFilter,
+		projectResolver: NewProjectResolver(config.ProjectRoot),
+		uvRunner:        NewUvCommandRunner(UvCommandRunnerConfig{}),
+		contentFilter:   NewContentFilterForProject(config.ProjectRoot),
 		config:          config,
 	}, nil
 }
@@ -99,29 +87,29 @@ func (ib *DeployBuilder) Build(ctx context.Context, input *runtime.BuildInput) (
 
 	projectInfo, err := ib.projectResolver.ResolveHandler(input.Handler)
 	if err != nil {
-		return nil, WrapError(err, "project resolution")
+		return nil, fmt.Errorf("project resolution: %w", err)
 	}
 
 	localPackages, err := discoverBuildablePackages(projectInfo, ib.projectResolver)
 	if err != nil {
-		return nil, WrapError(err, "package discovery")
+		return nil, fmt.Errorf("package discovery: %w", err)
 	}
 
 	var packagesBuilt []string
 	for _, pkg := range localPackages {
 		if err := ib.buildPackage(ctx, input, projectInfo, pkg); err != nil {
-			return nil, WrapError(err, "build execution")
+			return nil, fmt.Errorf("build %s: %w", pkg.Name, err)
 		}
 		packagesBuilt = append(packagesBuilt, pkg.Name)
 	}
 
 	if err := ib.installDependenciesForBuild(ctx, input, projectInfo); err != nil {
-		return nil, WrapError(err, "dependency installation")
+		return nil, fmt.Errorf("dependency installation: %w", err)
 	}
 
 	output, err := ib.createFinalBuildOutput(ctx, input, projectInfo)
 	if err != nil {
-		return nil, WrapError(err, "build output")
+		return nil, fmt.Errorf("build output: %w", err)
 	}
 
 	slog.Info("built",
@@ -146,21 +134,17 @@ func (ib *DeployBuilder) buildPackage(ctx context.Context, input *runtime.BuildI
 	}
 
 	if err := ib.uvRunner.ExecuteBuildCommand(ctx, buildCmd); err != nil {
-		return NewBuildFailedError(pkg.Name, err)
+		return fmt.Errorf("failed to build package %s: %w", pkg.Name, err)
 	}
 
 	if err := ib.postProcessPackageBuild(ctx, input, projectInfo, pkg); err != nil {
-		return WrapError(err, "package post-processing")
+		return fmt.Errorf("package post-processing: %w", err)
 	}
 
 	return nil
 }
 
 func (ib *DeployBuilder) createFinalBuildOutput(ctx context.Context, input *runtime.BuildInput, projectInfo *ProjectInfo) (*runtime.BuildOutput, error) {
-	if err := ib.cleanupAbsolutePaths(input.Out()); err != nil {
-		slog.Warn("failed to clean up absolute paths", "error", err)
-	}
-
 	adjustedHandler, err := ib.adjustHandlerPath(input, projectInfo)
 	if err != nil {
 		return nil, fmt.Errorf("failed to adjust handler path: %w", err)
@@ -605,25 +589,6 @@ func (ib *DeployBuilder) parseInputProperties(input *runtime.BuildInput) (*Input
 	return &props, nil
 }
 
-// cleanupAbsolutePaths removes any directories with absolute paths from the artifact directory
-func (ib *DeployBuilder) cleanupAbsolutePaths(artifactDir string) error {
-	entries, err := os.ReadDir(artifactDir)
-	if err != nil {
-		return fmt.Errorf("failed to read artifact directory: %w", err)
-	}
-
-	for _, entry := range entries {
-		if entry.IsDir() {
-			name := entry.Name()
-			if strings.Contains(name, ":") && (strings.Contains(name, "/Users/") || strings.Contains(name, "/home/") || strings.Contains(name, "C:\\")) {
-				os.RemoveAll(filepath.Join(artifactDir, name))
-			}
-		}
-	}
-
-	return nil
-}
-
 func (ib *DeployBuilder) installDependenciesForLambda(ctx context.Context, input *runtime.BuildInput, projectInfo *ProjectInfo, requirementsFile string, architecture string) error {
 	if err := ib.copySourceFilesSimple(ctx, input, projectInfo); err != nil {
 		return fmt.Errorf("failed to copy source files: %w", err)
@@ -797,7 +762,7 @@ func (ib *DeployBuilder) copySyncedDependencies(ctx context.Context, input *runt
 
 	// Filter editable installs from requirements
 	filteredRequirementsPath := filepath.Join(input.Out(), "requirements-filtered.txt")
-	err := ib.filterEditableInstalls(requirementsPath, filteredRequirementsPath, workspaceRoot)
+	err := ib.filterEditableInstalls(requirementsPath, filteredRequirementsPath)
 	if err != nil {
 		return fmt.Errorf("failed to filter requirements: %w", err)
 	}
@@ -998,7 +963,7 @@ func (ib *DeployBuilder) copySyncedDependencies(ctx context.Context, input *runt
 
 // filterEditableInstalls removes editable (-e) local path installs from requirements.txt.
 // Editable installs create symlinks which won't work in Lambda.
-func (ib *DeployBuilder) filterEditableInstalls(inputPath, outputPath string, workspaceRoot string) error {
+func (ib *DeployBuilder) filterEditableInstalls(inputPath, outputPath string) error {
 	content, err := os.ReadFile(inputPath)
 	if err != nil {
 		return fmt.Errorf("failed to read requirements file: %w", err)
@@ -1456,4 +1421,386 @@ func hasBuildConfig(dir string) bool {
 	}
 
 	return false
+}
+
+// --- UV command runner (merged from uv_runner.go) ---
+
+// UvCommandRunner executes uv commands
+type UvCommandRunner struct {
+	commandTimeout time.Duration
+}
+
+// UvCommandRunnerConfig configures the UV command runner
+type UvCommandRunnerConfig struct {
+	CommandTimeout time.Duration
+}
+
+// CommandResult represents the result of a UV command execution
+type CommandResult struct {
+	ExitCode int
+	Stdout   string
+	Stderr   string
+	Duration time.Duration
+	Success  bool
+}
+
+// UvBuildCommand represents a UV build command
+type UvBuildCommand struct {
+	PackageName  string
+	PackageDir   string
+	WorkspaceDir string
+	OutputDir    string
+	BuildType    string
+	AllPackages  bool
+	ExtraArgs    []string
+}
+
+// UvExportCommand represents a UV export command
+type UvExportCommand struct {
+	WorkspaceDir    string
+	PackageName     string
+	OutputFile      string
+	NoEmitWorkspace bool
+	NoDev           bool
+	NoEditable      bool
+	NoEmitProject   bool
+	AllPackages     bool
+	ExtraArgs       []string
+}
+
+// NewUvCommandRunner creates a new UV command runner
+func NewUvCommandRunner(config UvCommandRunnerConfig) *UvCommandRunner {
+	timeout := config.CommandTimeout
+	if timeout == 0 {
+		timeout = 1 * time.Minute
+	}
+	return &UvCommandRunner{commandTimeout: timeout}
+}
+
+// ExecuteBuildCommand executes a UV build command for a single package
+func (ur *UvCommandRunner) ExecuteBuildCommand(ctx context.Context, cmd *UvBuildCommand) error {
+	if ur == nil {
+		return fmt.Errorf("UV command runner is nil")
+	}
+	if cmd == nil {
+		return fmt.Errorf("UV build command is nil")
+	}
+
+	args := []string{"build"}
+
+	if cmd.AllPackages {
+		args = append(args, "--all")
+	} else if cmd.PackageName != "" {
+		args = append(args, "--package="+cmd.PackageName)
+	}
+
+	if cmd.BuildType == "wheel" {
+		args = append(args, "--wheel")
+	} else {
+		args = append(args, "--sdist")
+	}
+
+	if cmd.OutputDir != "" {
+		args = append(args, "--out-dir="+cmd.OutputDir)
+	}
+
+	args = append(args, "--no-sources")
+	args = append(args, cmd.ExtraArgs...)
+
+	workingDir := cmd.PackageDir
+	if cmd.AllPackages && cmd.WorkspaceDir != "" {
+		workingDir = cmd.WorkspaceDir
+	} else if workingDir == "" {
+		workingDir = "."
+	}
+
+	result, err := ur.executeCommand(ctx, "uv", args, workingDir)
+	if err != nil {
+		slog.Error("UV build command failed",
+			"package", cmd.PackageName,
+			"command", "uv "+strings.Join(args, " "),
+			"error", err)
+		return fmt.Errorf("uv build failed: %w", err)
+	}
+
+	if !result.Success {
+		return fmt.Errorf("uv build failed (exit code %d): %s", result.ExitCode, result.Stderr)
+	}
+
+	return nil
+}
+
+// ExecuteExportCommand executes a UV export command
+func (ur *UvCommandRunner) ExecuteExportCommand(ctx context.Context, cmd *UvExportCommand) error {
+	args := []string{"export"}
+
+	if cmd.AllPackages {
+		args = append(args, "--all-packages")
+	} else if cmd.PackageName != "" {
+		args = append(args, "--package="+cmd.PackageName)
+	}
+
+	if cmd.OutputFile != "" {
+		args = append(args, "--output-file="+cmd.OutputFile)
+	}
+	if cmd.NoEmitWorkspace {
+		args = append(args, "--no-emit-workspace")
+	}
+	if cmd.NoEditable {
+		args = append(args, "--no-editable")
+	}
+	if cmd.NoEmitProject {
+		args = append(args, "--no-emit-project")
+	}
+	if cmd.NoDev {
+		args = append(args, "--no-dev")
+	}
+
+	args = append(args, cmd.ExtraArgs...)
+
+	result, err := ur.executeCommand(ctx, "uv", args, cmd.WorkspaceDir)
+	if err != nil {
+		return fmt.Errorf("UV export failed: %w", err)
+	}
+
+	if !result.Success {
+		return ur.createDetailedExportError(result, cmd)
+	}
+
+	return nil
+}
+
+// createDetailedExportError creates a detailed error message for export failures
+func (ur *UvCommandRunner) createDetailedExportError(result *CommandResult, cmd *UvExportCommand) error {
+	errorMsg := fmt.Sprintf("UV export failed with exit code %d", result.ExitCode)
+
+	if cmd.PackageName != "" {
+		errorMsg += fmt.Sprintf(" (exporting package: %s)", cmd.PackageName)
+	}
+	if cmd.OutputFile != "" {
+		errorMsg += fmt.Sprintf(" to file: %s", cmd.OutputFile)
+	}
+	errorMsg += fmt.Sprintf(" in workspace: %s", cmd.WorkspaceDir)
+
+	if result.Stderr != "" {
+		errorMsg += fmt.Sprintf("\nError output: %s", result.Stderr)
+	}
+
+	if strings.Contains(result.Stderr, "package") && strings.Contains(result.Stderr, "not found") {
+		errorMsg += "\nSuggestion: Check if the package name is correct and exists in the workspace"
+	} else if strings.Contains(result.Stderr, "lock") {
+		errorMsg += "\nSuggestion: Run 'uv sync' first to ensure dependencies are resolved"
+	}
+
+	return fmt.Errorf("%s", errorMsg)
+}
+
+// executeCommand executes a command with timeout and progress logging
+func (ur *UvCommandRunner) executeCommand(ctx context.Context, command string, args []string, workingDir string) (*CommandResult, error) {
+	if ur == nil {
+		return nil, fmt.Errorf("UV command runner is nil")
+	}
+
+	startTime := time.Now()
+
+	cmdCtx, cancel := context.WithTimeout(ctx, ur.commandTimeout)
+	defer cancel()
+
+	cmd := process.CommandContext(cmdCtx, command, args...)
+	if workingDir != "" {
+		cmd.Dir = workingDir
+	}
+	cmd.Env = os.Environ()
+
+	done := make(chan bool)
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				slog.Warn("UV command still running",
+					"command", command,
+					"elapsed", time.Since(startTime),
+					"workingDir", workingDir)
+			}
+		}
+	}()
+
+	output, err := cmd.CombinedOutput()
+	duration := time.Since(startTime)
+	close(done)
+
+	result := &CommandResult{
+		Duration: duration,
+	}
+
+	if err != nil {
+		if exitError, ok := err.(*exec.ExitError); ok {
+			result.ExitCode = exitError.ExitCode()
+		} else {
+			result.ExitCode = -1
+		}
+		result.Success = false
+		result.Stderr = string(output)
+		slog.Error("command error output", "stderr", result.Stderr)
+	} else {
+		result.ExitCode = 0
+		result.Success = true
+		result.Stdout = string(output)
+	}
+
+	return result, nil
+}
+
+// --- Content filter (merged from content_filter.go) ---
+
+// ContentFilter filters out unnecessary files and directories from deployment artifacts
+type ContentFilter struct {
+	excludePatterns []string
+	projectRoot     string
+	pyprojectCache  *PyprojectConfig
+}
+
+// NewContentFilter creates a new content filter with default exclude patterns
+func NewContentFilter() *ContentFilter {
+	return &ContentFilter{
+		excludePatterns: getDefaultExcludePatterns(),
+	}
+}
+
+// NewContentFilterForProject creates a content filter for a specific project
+func NewContentFilterForProject(projectRoot string) *ContentFilter {
+	return &ContentFilter{
+		excludePatterns: getDefaultExcludePatterns(),
+		projectRoot:     projectRoot,
+	}
+}
+
+// getDefaultExcludePatterns returns patterns to exclude from deployment artifacts.
+// Directory names (e.g. ".git") match all files underneath them.
+func getDefaultExcludePatterns() []string {
+	return []string{
+		".sst", ".git", ".gitignore", ".gitattributes",
+
+		"__pycache__", "*.pyc", "*.pyo", "*.pyd",
+		".pytest_cache", "*.egg-info", ".coverage", "htmlcov",
+
+		".venv", "venv", ".env", "env",
+
+		".vscode", ".idea", "*.swp", "*.swo", "*~", ".DS_Store",
+
+		"node_modules", "package-lock.json", "yarn.lock", "bun.lockb",
+
+		"README.md", "README.rst", "README.txt",
+		"CHANGELOG.md", "CHANGELOG.rst", "CHANGELOG.txt",
+		"LICENSE", "LICENSE.txt", "MANIFEST.in",
+		"setup.cfg", "tox.ini", "Makefile",
+		"Dockerfile", "docker-compose.yml", "docker-compose.yaml",
+
+		"tests", "test",
+
+		"pyproject.toml", "setup.py",
+		"requirements-dev.txt", "requirements.dev.txt", "dev-requirements.txt",
+		".python-version", ".pre-commit-config.yaml",
+
+		"*.log", "*.tmp", "tmp", "temp",
+	}
+}
+
+// ShouldExclude checks if a file or directory should be excluded:
+// 1. Check pyproject.toml [tool.sst] overrides first
+// 2. Apply standard Python conventions
+func (cf *ContentFilter) ShouldExclude(path string) bool {
+	normalizedPath := filepath.ToSlash(path)
+
+	if shouldSkip, found := cf.checkPyprojectConfig(normalizedPath); found {
+		return shouldSkip
+	}
+
+	for _, pattern := range cf.excludePatterns {
+		if cf.matchesPattern(normalizedPath, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+// matchesPattern checks if a path matches a pattern.
+// Supports wildcards (*.pyc), directory names (.git matches .git/anything),
+// and ** glob patterns.
+func (cf *ContentFilter) matchesPattern(path, pattern string) bool {
+	if dir, ok := strings.CutSuffix(pattern, "/"); ok {
+		return strings.HasPrefix(path, dir+"/") || path == dir
+	}
+
+	if strings.Contains(pattern, "**") {
+		pattern = strings.ReplaceAll(pattern, "**/", "")
+		pattern = strings.ReplaceAll(pattern, "/**", "")
+		pattern = strings.ReplaceAll(pattern, "**", "")
+		if pattern == "" {
+			return true
+		}
+	}
+
+	for _, part := range strings.Split(path, "/") {
+		if part == pattern {
+			return true
+		}
+		if matched, err := filepath.Match(pattern, part); err == nil && matched {
+			return true
+		}
+	}
+
+	if matched, err := filepath.Match(pattern, path); err == nil && matched {
+		return true
+	}
+
+	return false
+}
+
+// checkPyprojectConfig checks [tool.sst] include/exclude configuration.
+func (cf *ContentFilter) checkPyprojectConfig(path string) (bool, bool) {
+	if cf.projectRoot == "" {
+		return false, false
+	}
+
+	if cf.pyprojectCache == nil {
+		cf.loadPyprojectConfig()
+	}
+	if cf.pyprojectCache == nil {
+		return false, false
+	}
+
+	for _, pattern := range cf.pyprojectCache.Tool.SST.Include {
+		if cf.matchesPattern(path, pattern) {
+			return false, true
+		}
+	}
+	for _, pattern := range cf.pyprojectCache.Tool.SST.Exclude {
+		if cf.matchesPattern(path, pattern) {
+			return true, true
+		}
+	}
+	return false, false
+}
+
+// loadPyprojectConfig loads and parses the pyproject.toml file
+func (cf *ContentFilter) loadPyprojectConfig() {
+	pyprojectPath := filepath.Join(cf.projectRoot, "pyproject.toml")
+	if _, err := os.Stat(pyprojectPath); os.IsNotExist(err) {
+		return
+	}
+
+	var config PyprojectConfig
+	if _, err := toml.DecodeFile(pyprojectPath, &config); err != nil {
+		slog.Warn("failed to parse pyproject.toml", "path", pyprojectPath, "error", err)
+		return
+	}
+
+	if len(config.Tool.SST.Include) > 0 || len(config.Tool.SST.Exclude) > 0 {
+		cf.pyprojectCache = &config
+	}
 }

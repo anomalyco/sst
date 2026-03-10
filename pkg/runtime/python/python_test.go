@@ -32,8 +32,13 @@ func TestWorkspacePackageIsolation(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to discover packages: %v", err)
 		}
-		if len(packages) == 0 {
-			t.Error("Expected at least one buildable package for api")
+
+		names := make(map[string]bool)
+		for _, pkg := range packages {
+			names[pkg.Name] = true
+		}
+		if !names["api"] {
+			t.Errorf("Expected 'api' in discovered packages, got: %v", names)
 		}
 	})
 
@@ -50,8 +55,13 @@ func TestWorkspacePackageIsolation(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to discover packages: %v", err)
 		}
-		if len(packages) == 0 {
-			t.Error("Expected at least one buildable package for worker")
+
+		names := make(map[string]bool)
+		for _, pkg := range packages {
+			names[pkg.Name] = true
+		}
+		if !names["worker"] {
+			t.Errorf("Expected 'worker' in discovered packages, got: %v", names)
 		}
 	})
 }

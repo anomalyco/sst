@@ -112,10 +112,7 @@ func (w *Worker) Logs() io.ReadCloser {
 type PythonRuntime struct {
 	lastBuiltHandler map[string]string
 
-	// Cache directory for sharing with incremental builder
-	cacheDir string
-
-	// Cached incremental builder - reused across all function builds
+	cacheDir      string
 	deployBuilder *DeployBuilder
 
 	// Mutex for thread-safe access
@@ -126,45 +123,6 @@ func New() *PythonRuntime {
 	return &PythonRuntime{
 		lastBuiltHandler: map[string]string{},
 	}
-}
-
-// NewWithCache creates a new Python runtime with caching enabled
-func NewWithCache(cacheDir string) *PythonRuntime {
-	runtime := &PythonRuntime{
-		lastBuiltHandler: map[string]string{},
-	}
-
-	// Initialize cache and detection systems
-	if err := runtime.initializeCacheSystem(cacheDir); err != nil {
-		slog.Warn("failed to initialize cache system, falling back to non-cached runtime", "error", err)
-	}
-
-	return runtime
-}
-
-// initializeCacheSystem sets up the build cache and change detection
-func (r *PythonRuntime) initializeCacheSystem(cacheDir string) error {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
-	if cacheDir == "" {
-		return fmt.Errorf("cache directory cannot be empty")
-	}
-
-	if err := os.MkdirAll(cacheDir, 0755); err != nil {
-		return fmt.Errorf("failed to create cache directory %s: %w", cacheDir, err)
-	}
-
-	// Test write permissions
-	testFile := filepath.Join(cacheDir, ".test_write")
-	if err := os.WriteFile(testFile, []byte("test"), 0644); err != nil {
-		return fmt.Errorf("cache directory %s is not writable: %w", cacheDir, err)
-	}
-	os.Remove(testFile)
-
-	r.cacheDir = cacheDir
-
-	return nil
 }
 
 func (r *PythonRuntime) Build(ctx context.Context, input *runtime.BuildInput) (*runtime.BuildOutput, error) {
@@ -292,8 +250,8 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 	var workingDir string
 
 	if isLegacyLayout {
-		adjustedHandler := r.adjustHandlerForFlattenedLayout(input.Build.Handler)
-		handlerPath = filepath.Join(input.Build.Out, adjustedHandler)
+		// Use relative handler since workingDir is the artifact directory
+		handlerPath = r.adjustHandlerForFlattenedLayout(input.Build.Handler)
 		workingDir = input.Build.Out
 	} else {
 		// Modern layout: run from source with PYTHONPATH
@@ -632,20 +590,19 @@ func (r *PythonRuntime) CreateBuildAsset(ctx context.Context, input *runtime.Bui
 	}
 	workingDir := path.ResolveRootDir(input.CfgPath)
 
-	// Always use incremental build system
 	result, err := r.createBuildAssetDeploy(ctx, input, arch, workingDir)
 	if err != nil {
-		return nil, fmt.Errorf("incremental build failed: %w", err)
+		return nil, fmt.Errorf("deploy build failed: %w", err)
 	}
 	return result, nil
 }
 
-// createBuildAssetDeploy uses the shared IncrementalBuilder for all function builds
+// createBuildAssetDeploy uses the shared DeployBuilder for all function builds
 func (r *PythonRuntime) createBuildAssetDeploy(ctx context.Context, input *runtime.BuildInput, arch string, workingDir string) (*runtime.BuildOutput, error) {
 	startTime := time.Now()
 
-	// CRITICAL: Reuse IncrementalBuilder across all function builds to avoid
-	// massive CPU/memory overhead from creating one per 50+ functions.
+	// Reuse DeployBuilder across all function builds to avoid overhead
+	// from creating one per 50+ functions.
 	r.mutex.Lock()
 	if r.deployBuilder == nil {
 		cacheDir := r.cacheDir
@@ -660,20 +617,17 @@ func (r *PythonRuntime) createBuildAssetDeploy(ctx context.Context, input *runti
 		var err error
 		r.deployBuilder, err = NewDeployBuilder(DeployBuilderConfig{
 			CacheDir:    cacheDir,
-			ArtifactDir: input.Out(),
-			FunctionID:  input.FunctionID,
 			ProjectRoot: workingDir,
 		})
 		if err != nil {
 			r.mutex.Unlock()
-			return nil, fmt.Errorf("failed to create incremental builder: %w", err)
+			return nil, fmt.Errorf("failed to create deploy builder: %w", err)
 		}
 	}
-	incrementalBuilder := r.deployBuilder
+	builder := r.deployBuilder
 	r.mutex.Unlock()
 
-	// Use the shared builder
-	result, err := incrementalBuilder.Build(ctx, input)
+	result, err := builder.Build(ctx, input)
 
 	elapsed := time.Since(startTime)
 	if err != nil {
