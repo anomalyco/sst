@@ -7,7 +7,7 @@ import {
   output,
 } from "@pulumi/pulumi";
 import { Component, Transform, transform } from "../component";
-import { FunctionArgs } from "./function";
+import { FunctionArgs } from "./function.js";
 import { apigateway, lambda } from "@pulumi/aws";
 import {
   ApiGatewayV1BaseRouteArgs,

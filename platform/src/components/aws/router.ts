@@ -22,7 +22,7 @@ import { VisibleError } from "../error";
 import { RouterUrlRoute } from "./router-url-route";
 import { RouterBucketRoute } from "./router-bucket-route";
 import { DurationSeconds, toSeconds } from "../duration";
-import { FunctionArn } from "./function";
+import { FunctionArn } from "./function.js";
 import { parseLambdaEdgeArn } from "./helpers/arn";
 import { Size, toMBs } from "../size";
 import { RETENTION } from "./logging";
@@ -2226,7 +2226,10 @@ async function handler(event) {
   }
   if (route.type === "url") setUrlOrigin(route.metadata.host, route.metadata.origin);
   if (route.type === "bucket") setS3Origin(route.metadata.domain, route.metadata.origin);
-  if (route.type === "site") await routeSite(route.routeNs, route.metadata);
+  if (route.type === "site") {
+    const response = await routeSite(route.routeNs, route.metadata);
+    return response || event.request;
+  }
   return event.request;
 }`,
             },
@@ -2718,6 +2721,11 @@ const __pulumiType = "sst:aws:Router";
 // @ts-expect-error
 Router.__pulumiType = __pulumiType;
 
+// CloudFront Functions have a 10KB limit on the forwarded request size.
+// We reserve 512 bytes for origin-request overhead CloudFront can still add after
+// this viewer-request function runs, so borderline requests fail with a clear 431.
+const CLOUDFRONT_FUNCTION_SAFE_HEADER_LIMIT = 10240 - 512;
+
 export const CF_BLOCK_CLOUDFRONT_URL_INJECTION = `
 if (event.request.headers.host.value.includes('cloudfront.net')) {
   return {
@@ -2788,14 +2796,16 @@ async function routeSite(kvNamespace, metadata) {
 
   // Route to image optimizer
   if (metadata.image && baselessUri.startsWith(metadata.image.route)) {
+    setForwardedHost();
     setNextjsCacheKey();
+    if (isRequestHeaderTooLarge()) return buildOversizedHeadersResponse();
     setUrlOrigin(metadata.image.host, metadata.image.originAccessControlConfig ? { originAccessControlConfig: metadata.image.originAccessControlConfig } : undefined);
     return;
   }
 
   // Route to servers
   if (metadata.servers){
-    event.request.headers["x-forwarded-host"] = event.request.headers.host;
+    setForwardedHost();
     // In SvelteKit, form action requests contain "/" in request query string
     // ie. POST request with query string "?/action"
     // CloudFront does not allow query string with "/". It needs to be encoded.
@@ -2807,6 +2817,7 @@ async function routeSite(kvNamespace, metadata) {
     }
     setNextjsGeoHeaders();
     setNextjsCacheKey();
+    if (isRequestHeaderTooLarge()) return buildOversizedHeadersResponse();
     setUrlOrigin(findNearestServer(metadata.servers), metadata.origin);
   }
 
@@ -2854,6 +2865,58 @@ async function routeSite(kvNamespace, metadata) {
     return "";
   }
 
+  function isRequestHeaderTooLarge() {
+    return getRequestHeaderSize() > ${CLOUDFRONT_FUNCTION_SAFE_HEADER_LIMIT};
+  }
+
+  function buildOversizedHeadersResponse() {
+    return {
+      statusCode: 431,
+      statusDescription: "Request Header Fields Too Large",
+      headers: {
+        "cache-control": { value: "no-store" },
+        "content-type": { value: "text/plain; charset=utf-8" },
+      },
+      body: {
+        encoding: "text",
+        data: "Request headers are too large. Reduce cookie size and try again.",
+      },
+    };
+  }
+
+  function getRequestHeaderSize() {
+    var size = 0;
+
+    for (var key in event.request.headers) {
+      var header = event.request.headers[key];
+      if (header.multiValue) {
+        for (var i=0; i<header.multiValue.length; i++) {
+          size += key.length + header.multiValue[i].value.length + 4;
+        }
+      } else if (header.value) {
+        size += key.length + header.value.length + 4;
+      }
+    }
+
+    var cookies = [];
+    for (var key in event.request.cookies) {
+      var cookie = event.request.cookies[key];
+      if (cookie.multiValue) {
+        for (var i=0; i<cookie.multiValue.length; i++) {
+          cookies.push(key + "=" + cookie.multiValue[i].value);
+        }
+      } else {
+        cookies.push(key + "=" + cookie.value);
+      }
+    }
+
+    if (cookies.length) {
+      size += 10 + cookies.join("; ").length;
+    }
+
+    return size;
+  }
+
   function findNearestServer(servers) {
     if (servers.length === 1) return servers[0][0];
 
@@ -2882,8 +2945,13 @@ async function routeSite(kvNamespace, metadata) {
   }
 }
 
-function setUrlOrigin(urlHost, override) {
+function setForwardedHost() {
+  // Lambda URLs expect the original viewer host in x-forwarded-host.
   event.request.headers["x-forwarded-host"] = event.request.headers.host;
+}
+
+function setUrlOrigin(urlHost, override) {
+  setForwardedHost();
   const origin = {
     domainName: urlHost,
     customOriginConfig: {

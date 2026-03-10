@@ -5,7 +5,7 @@ import {
   Output,
   output,
 } from "@pulumi/pulumi";
-import { Function, FunctionArn, FunctionArgs } from "../function";
+import { Function, FunctionArn, FunctionArgs } from "../function.js";
 import { transform, Transform } from "../../component";
 import { VisibleError } from "../../error";
 
