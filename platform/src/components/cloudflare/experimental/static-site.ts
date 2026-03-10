@@ -1,7 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
 import * as cf from "@pulumi/cloudflare";
-import { all, interpolate, output } from "@pulumi/pulumi";
+import { all, interpolate } from "@pulumi/pulumi";
 import type { ComponentResourceOptions } from "@pulumi/pulumi";
 import { Component } from "../../component.js";
 import { Link } from "../../link.js";
@@ -15,6 +15,46 @@ import {
   prepare,
 } from "../../base/base-static-site.js";
 import type { BaseStaticSiteArgs } from "../../base/base-static-site.js";
+
+type StaticSiteAssets = {
+  /**
+   * The SHA-256 hash of the asset manifest of files to upload.
+   */
+  assetManifestSha256?: Input<string>;
+  /**
+   * The directory containing assets. Defaults to this site's build output.
+   */
+  directory?: Input<string>;
+  /**
+   * Token provided upon successful upload of all files from a registered manifest.
+   */
+  jwt?: Input<string>;
+  /**
+   * The contents of a `_headers` file.
+   */
+  headers?: Input<string>;
+  /**
+   * The contents of a `_redirects` file.
+   */
+  redirects?: Input<string>;
+  /**
+   * Determines how HTML files are handled.
+   */
+  htmlHandling?: Input<
+    | "auto-trailing-slash"
+    | "force-trailing-slash"
+    | "drop-trailing-slash"
+    | "none"
+  >;
+  /**
+   * Determines how requests that don't match a static asset are handled.
+   */
+  notFoundHandling?: Input<"single-page-application" | "404-page" | "none">;
+  /**
+   * Controls whether the Worker script runs before serving static assets.
+   */
+  runWorkerFirst?: Input<boolean | string[]>;
+};
 
 export interface StaticSiteArgs extends BaseStaticSiteArgs {
   /**
@@ -77,56 +117,11 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
    */
   domain?: Input<string>;
   /**
-   * Configure how static assets are served. These map to
-   * [Cloudflare Workers static assets](https://developers.cloudflare.com/workers/static-assets/) routing options.
+   * Configure static assets uploaded with the Worker.
+   *
+   * Matches Cloudflare `workersScript.assets` options.
    */
-  assets?: Input<{
-    /**
-     * Determines how HTML files are handled, including trailing slash behavior.
-     *
-     * - `"auto-trailing-slash"` — Serves `/file` from `file.html` and `/folder/` from `folder/index.html`.
-     * - `"force-trailing-slash"` — Redirects to trailing slashes and serves from `.html` files.
-     * - `"drop-trailing-slash"` — Drops trailing slashes and serves from `.html` files.
-     * - `"none"` — No special HTML handling.
-     *
-     * @default `"auto-trailing-slash"`
-     * @example
-     * ```js
-     * {
-     *   assets: {
-     *     htmlHandling: "drop-trailing-slash"
-     *   }
-     * }
-     * ```
-     */
-    htmlHandling?: Input<
-      | "auto-trailing-slash"
-      | "force-trailing-slash"
-      | "drop-trailing-slash"
-      | "none"
-    >;
-    /**
-     * Determines how requests that don't match a static asset are handled.
-     *
-     * - `"single-page-application"` — Returns `index.html` with a 200 status for unmatched routes. Use this for SPAs.
-     * - `"404-page"` — Returns the nearest `404.html` with a 404 status.
-     * - `"none"` — No special handling.
-     *
-     * @default `"none"`
-     * @example
-     *
-     * For a single-page application like React or Vue.
-     *
-     * ```js
-     * {
-     *   assets: {
-     *     notFoundHandling: "single-page-application"
-     *   }
-     * }
-     * ```
-     */
-    notFoundHandling?: Input<"single-page-application" | "404-page" | "none">;
-  }>;
+  assets?: Input<StaticSiteAssets>;
 }
 
 /**
@@ -319,23 +314,41 @@ export class StaticSite extends Component implements Link.Linkable {
           mainModule: "worker.js",
           assets: all([outputPath, args.assets]).apply(
             async ([dir, assets]) => {
-              const directory = path.join($cli.paths.root, dir);
-              let headers;
-              try {
-                headers = await fs.readFile(
-                  path.join(directory, "_headers"),
-                  "utf-8",
-                );
-              } catch (e) {}
+              const directory = path.join(
+                $cli.paths.root,
+                assets?.directory ?? dir,
+              );
+              const htmlHandling = assets?.htmlHandling;
+              const notFoundHandling = assets?.notFoundHandling;
+              const runWorkerFirst = assets?.runWorkerFirst;
+
+              let headers = assets?.headers;
+              if (!headers) {
+                try {
+                  headers = await fs.readFile(
+                    path.join(directory, "_headers"),
+                    "utf-8",
+                  );
+                } catch (e) {}
+              }
+
               return {
                 directory,
+                ...(assets?.assetManifestSha256
+                  ? { assetManifestSha256: assets.assetManifestSha256 }
+                  : {}),
+                ...(assets?.jwt ? { jwt: assets.jwt } : {}),
                 config: {
-                  headers,
-                  ...(assets?.htmlHandling
-                    ? { htmlHandling: assets.htmlHandling }
+                  ...(headers ? { headers } : {}),
+                  ...(assets?.redirects ? { redirects: assets.redirects } : {}),
+                  ...(htmlHandling
+                    ? { htmlHandling }
                     : {}),
-                  ...(assets?.notFoundHandling
-                    ? { notFoundHandling: assets.notFoundHandling }
+                  ...(notFoundHandling
+                    ? { notFoundHandling }
+                    : {}),
+                  ...(runWorkerFirst !== undefined
+                    ? { runWorkerFirst }
                     : {}),
                 },
               };
