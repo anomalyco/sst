@@ -2594,6 +2594,16 @@ export class Function extends Component implements Link.Linkable {
             if (authorization !== "none") return;
 
             new lambda.Permission(
+              `${name}PublicFunctionUrlAccess`,
+              {
+                action: "lambda:InvokeFunctionUrl",
+                function: fn.name,
+                principal: "*",
+                functionUrlAuthType: "NONE",
+              },
+              { parent },
+            );
+            new lambda.Permission(
               `${name}InvokeFunction`,
               {
                 action: "lambda:InvokeFunction",
