@@ -130,117 +130,13 @@ export const supportedMemories = {
   },
 };
 
-export interface FargateContainerArgs {
+export interface FargateContainerArgs extends Pick<FargateBaseArgs, 'cpu' | 'memory' | 'image' | 'command' | 'entrypoint' | 'environment' | 'environmentFiles' | 'logging' | 'ssm' | 'volumes'> {
   /**
    * The name of the container.
    *
    * This is used as the `--name` option in the Docker run command.
    */
   name: Input<string>;
-  /**
-   * The amount of CPU allocated to the container.
-   *
-   * By default, a container can use up to all the CPU allocated to all the containers. If set,
-   * this container is capped at this allocation even if more idle CPU is available.
-   *
-   * The sum of all the containers' CPU must be less than or equal to the total available CPU.
-   *
-   * @example
-   * ```js
-   * {
-   *   cpu: "0.25 vCPU"
-   * }
-   * ```
-   */
-  cpu?: `${number} vCPU`;
-  /**
-   * The amount of memory allocated to the container.
-   *
-   * By default, a container can use up to all the memory allocated to all the containers. If
-   * set, the container is capped at this allocation. If exceeded, the container will be killed
-   * even if there is idle memory available.
-   *
-   * The sum of all the containers' memory must be less than or equal to the total available
-   * memory.
-   *
-   * @example
-   * ```js
-   * {
-   *   memory: "0.5 GB"
-   * }
-   * ```
-   */
-  memory?: `${number} GB`;
-  /**
-   * Configure the Docker image for the container. Same as the top-level [`image`](#image).
-   */
-  image?: Input<
-    | string
-    | {
-        /**
-         * The path to the Docker build context. Same as the top-level
-         * [`image.context`](#image-context).
-         */
-        context?: Input<string>;
-        /**
-         * The path to the Dockerfile. Same as the top-level
-         * [`image.dockerfile`](#image-dockerfile).
-         */
-        dockerfile?: Input<string>;
-        /**
-         * Key-value pairs of build args. Same as the top-level [`image.args`](#image-args).
-         */
-        args?: Input<Record<string, Input<string>>>;
-        /**
-         * The stage to build up to. Same as the top-level [`image.target`](#image-target).
-         */
-        target?: Input<string>;
-      }
-  >;
-  /**
-   * The command to override the default command in the container. Same as the top-level
-   * [`command`](#command).
-   */
-  command?: Input<string[]>;
-  /**
-   * The entrypoint to override the default entrypoint in the container. Same as the top-level
-   * [`entrypoint`](#entrypoint).
-   */
-  entrypoint?: Input<string[]>;
-  /**
-   * Key-value pairs of values that are set as container environment variables. Same as the
-   * top-level [`environment`](#environment).
-   */
-  environment?: FunctionArgs["environment"];
-  /**
-   * A list of Amazon S3 file paths of environment files to load environment variables
-   * from. Same as the top-level [`environmentFiles`](#environmentFiles).
-   */
-  environmentFiles?: Input<Input<string>[]>;
-  /**
-   * Configure the logs in CloudWatch. Same as the top-level [`logging`](#logging).
-   */
-  logging?: Input<{
-    /**
-     * The duration the logs are kept in CloudWatch. Same as the top-level [`logging.retention`](#logging-retention).
-     */
-    retention?: Input<keyof typeof RETENTION>;
-    /**
-     * The name of the CloudWatch log group. Same as the top-level [`logging.name`](#logging-name).
-     */
-    name?: Input<string>;
-  }>;
-  /**
-   * Key-value pairs of AWS Systems Manager Parameter Store parameter ARNs or AWS Secrets
-   * Manager secret ARNs. The values will be loaded into the container as environment
-   * variables. Same as the top-level [`ssm`](#ssm).
-   */
-  ssm?: FargateBaseArgs["ssm"];
-  /**
-   * Mount Amazon EFS file systems into the container. Same as the top-level
-   * [`efs`](#efs).
-   */
-  volumes?: FargateBaseArgs["volumes"];
 }
 
 export interface FargateBaseArgs {
