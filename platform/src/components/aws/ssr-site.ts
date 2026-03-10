@@ -1026,22 +1026,13 @@ async function handler(event) {
           : routeVal?.routerDistributionArn;
         if (!distributionArn) return;
 
-        // Server functions
+        // Server functions - add permissions for OAC mode
+        // Note: For protection.mode === "none", the Function component
+        // already creates the necessary permissions
         servers.forEach(({ region, server }) => {
           const provider = useProvider(region);
 
-          if (protection.mode === "none") {
-            new lambda.Permission(
-              `${name}PublicFunctionUrlAccess${logicalName(region)}`,
-              {
-                action: "lambda:InvokeFunctionUrl",
-                function: server.nodes.function.name,
-                principal: "*",
-                functionUrlAuthType: "NONE",
-              },
-              { provider, parent: self },
-            );
-          } else if (
+          if (
             protection.mode === "oac" ||
             protection.mode === "oac-with-edge-signing"
           ) {
@@ -1069,20 +1060,11 @@ async function handler(event) {
           }
         });
 
-        // Image optimizer
+        // Image optimizer - add permissions for OAC mode
+        // Note: For protection.mode === "none", the Function component
+        // already creates the necessary permissions
         if (imgOptimizer) {
-          if (protection.mode === "none") {
-            new lambda.Permission(
-              `${name}ImageOptimizerPublicFunctionUrlAccess`,
-              {
-                action: "lambda:InvokeFunctionUrl",
-                function: imgOptimizer.nodes.function.name,
-                principal: "*",
-                functionUrlAuthType: "NONE",
-              },
-              { parent: self },
-            );
-          } else if (
+          if (
             protection.mode === "oac" ||
             protection.mode === "oac-with-edge-signing"
           ) {
