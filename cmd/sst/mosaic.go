@@ -152,24 +152,6 @@ func CmdMosaic(c *cli.Cli) error {
 		return util.NewReadableError(nil, "The dev command for this process does not look right. Check your dev script in package.json to make sure it is simply starting your process and not running `sst dev`. More info here: https://sst.dev/docs/reference/cli/#dev")
 	}
 
-	cfgPath, err := c.Discover()
-	if err != nil {
-		return err
-	}
-
-	stage, err := c.Stage(cfgPath)
-	if err != nil {
-		return err
-	}
-
-	personalStage := cli.PersonalStage(cfgPath)
-	if personalStage == "" {
-		return util.NewReadableError(nil, fmt.Sprintf("Cannot run `sst dev` with stage %q. Your personal stage is not set.", stage))
-	}
-	if stage != personalStage {
-		return util.NewReadableError(nil, fmt.Sprintf("Cannot run `sst dev` with stage %q. It can only be run in your personal stage %q.", stage, personalStage))
-	}
-
 	p, err := c.InitProject()
 	if err != nil {
 		return err
