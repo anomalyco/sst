@@ -17,17 +17,10 @@ const python = new sst.aws.Function("MyPythonFunction", {
 });
 ```
 
+## Project Structure
+
 SST supports multiple project structures without requiring specific directory layouts:
 
-### Simple Structure
-```
-my-function/
-├── handler.py
-├── utils.py
-└── requirements.txt
-```
-
-### Modern Python Project
 ```
 my-project/
 ├── pyproject.toml
@@ -39,19 +32,16 @@ my-project/
     └── utils.py
 ```
 
-### Complex Application
+Or a simpler layout:
+
 ```
-my-app/
-├── pyproject.toml
-├── app/
-│   └── functions/
-│       └── api/
-│           └── handler.py
-└── shared/
-    └── utils.py
+my-function/
+├── handler.py
+├── utils.py
+└── requirements.txt
 ```
 
-## Dependency Management
+## Dependencies
 
 SST uses [uv](https://github.com/astral-sh/uv) for fast dependency management when available, with automatic fallback to pip. We recommend using `pyproject.toml` for modern Python packaging:
 
@@ -88,16 +78,7 @@ requests>=2.31.0
 boto3>=1.34.0
 ```
 
-## Performance Features
-
-SST's Python runtime includes several performance optimizations:
-
-- **Intelligent Caching**: Only rebuilds when files actually change (97% faster for unchanged code)
-- **Incremental Builds**: Only rebuilds changed packages in multi-package projects
-- **Parallel Processing**: Concurrent builds for independent packages
-- **Fast Dependencies**: UV provides 2-10x faster dependency installation
-
-## Live Development
+## Development
 
 During `sst dev`, Python functions run locally with hot reloading:
 
@@ -106,6 +87,13 @@ sst dev
 ```
 
 Changes to your Python code are automatically detected and the function is rebuilt in seconds, not minutes.
+
+SST's Python runtime includes several performance optimizations:
+
+- **Intelligent Caching**: Only rebuilds when files actually change (97% faster for unchanged code)
+- **Incremental Builds**: Only rebuilds changed packages in multi-package projects
+- **Parallel Processing**: Concurrent builds for independent packages
+- **Fast Dependencies**: UV provides 2-10x faster dependency installation
 
 ## Best Practices
 
@@ -184,7 +172,9 @@ project/
 
 SST automatically preserves your directory structure and includes static files, ensuring both module imports and file access work correctly in Lambda.
 
-## File Inclusion and Exclusion
+## Advanced
+
+### File Inclusion and Exclusion
 
 SST uses a smart two-layer system to determine which files are included in your Lambda deployment package, ensuring optimal package size while including everything your function needs.
 
@@ -219,7 +209,7 @@ exclude = [
 ]
 ```
 
-:::note[Include Priority]
+:::note
 Include patterns take precedence over exclude patterns. If a file matches both an include and exclude pattern, it will be included.
 :::
 
@@ -247,74 +237,13 @@ When no custom configuration is found, SST applies sensible defaults:
 - **Temporary files**: `*.log`, `*.tmp`, `tmp/`, `temp/`
 - **SST cache**: `.sst/`
 
-### Pattern Matching
+### Examples
 
-The system supports glob-style patterns:
-
-- `*` matches any characters within a single path segment
-- `**` matches any characters across multiple path segments (recursive)
-- `?` matches any single character
-- `[abc]` matches any character in the brackets
-- Directory patterns ending with `/` match directories and their contents
-
-**Pattern Examples:**
-
+**Include config files, exclude large data:**
 ```toml title="pyproject.toml"
 [tool.sst]
-include = [
-    "*.py",                   # All Python files in root
-    "config/**/*.json",       # All JSON files in config subdirectories
-    "static/css/main.css",    # Specific file
-    "templates/",             # Entire templates directory
-    "data/[0-9]*.csv",       # CSV files starting with digits
-]
-
-exclude = [
-    "test_*.py",              # Test files starting with test_
-    "**/*_test.py",           # Test files ending with _test.py anywhere
-    "temp/**",                # Everything in temp directory
-    "*.log",                  # All log files
-]
-```
-
-### Common Use Cases
-
-**Including Configuration Files:**
-```toml title="pyproject.toml"
-[tool.sst]
-include = [
-    "config/production.json",
-    "config/staging.json",
-    ".env.production",
-    "data/lookup-tables/*.csv"
-]
-```
-
-**Excluding Large Development Files:**
-```toml title="pyproject.toml"
-[tool.sst]
-exclude = [
-    "datasets/**",            # Large training datasets
-    "notebooks/**",           # Jupyter notebooks
-    "experiments/**",         # ML experiment files
-    "*.pkl",                  # Pickle files (often large)
-    "*.model"                 # Model files
-]
-```
-
-**Mixed Project (Python + Frontend):**
-```toml title="pyproject.toml"
-[tool.sst]
-include = [
-    "static/dist/**",         # Built frontend assets
-    "templates/**"            # Server-side templates
-]
-exclude = [
-    "frontend/src/**",        # Frontend source (not needed at runtime)
-    "frontend/node_modules/**", # Frontend dependencies
-    "*.scss",                 # Sass source files
-    "webpack.config.js"       # Build configuration
-]
+include = ["config/*.json", "data/**/*.csv"]
+exclude = ["datasets/**", "notebooks/**", "*.pkl"]
 ```
 
 ## Troubleshooting
@@ -400,16 +329,6 @@ FileNotFoundError: config.json not found in Lambda
 ### Debug Commands
 
 ```bash
-# Check project structure
-tree -I '__pycache__|*.pyc|.git'
-
-# Verify Python environment
-python --version
-which python
-
-# Test imports locally
-python -c "from src.mypackage import handler; print('OK')"
-
 # Enable debug logging
 export SST_DEBUG=python:*
 sst deploy
@@ -419,39 +338,11 @@ export SST_DEBUG=python:filter
 sst deploy
 ```
 
-### Performance Tips
+:::note
+On macOS, if deploys hang after the first successful deploy, clean the artifact cache: `rm -rf .sst/artifacts/*-src && sst deploy`. This is caused by a macOS/APFS filesystem quirk with hardlinked directories.
+:::
 
-1. **Use UV** for faster dependency installation
-2. **Pin dependency versions** for consistent caching
-3. **Enable caching** (enabled by default)
-4. **Use absolute imports** for better performance
-5. **Keep dependencies minimal** to reduce build times
-
-### macOS Troubleshooting
-
-If you're developing on macOS and experience issues after your first successful deploy (hangs, timeouts, or high CPU/memory usage), try cleaning the artifact cache:
-
-```bash
-rm -rf .sst/artifacts/*-src && sst deploy
-```
-
-This is caused by a macOS/APFS filesystem quirk where hardlinked directories can't be cleanly removed. The Python runtime uses hardlinks to speed up dependency caching across multiple functions, but macOS's `RemoveAll` operation can fail on subsequent deploys.
-
-**Symptoms:**
-- Deploy hangs after "Installing dependencies..."
-- High CPU usage or thousands of threads in the `sst` process
-- Timeout errors like "timed out waiting for dependency install lock"
-- Works fine on first deploy, fails on subsequent deploys
-
-**Workaround:** Add the cleanup command to your deploy workflow:
-```bash
-# Create an alias for easy use
-alias sst-deploy="rm -rf .sst/artifacts/*-src && sst deploy"
-```
-
-This issue does not affect Linux CI/CD environments.
-
-## Container Mode
+### Container Mode
 
 For large dependencies (numpy, pandas, ML libraries), use container mode:
 
@@ -467,13 +358,6 @@ new Function("MLFunction", {
 
 This bypasses Lambda's 250MB zip limit and provides more flexibility for complex dependencies.
 
-## Migration from Previous Versions
-
-If you're upgrading from an older version of SST, your projects will continue to work without changes. The new file inclusion system:
-
-- **Maintains backward compatibility** - All existing projects work without modification
-- **Uses the same sensible defaults** - Standard Python files and directories are included
-- **Provides better control** - Add `[tool.sst]` configuration only when you need custom behavior
-- **Eliminates brittle detection** - No more layout-specific logic that could break
-
-You only need to add `[tool.sst]` configuration to your `pyproject.toml` if you want to customize which files are included or excluded beyond the sensible defaults.
+:::note
+When migrating from previous versions, existing projects work without changes. Add `[tool.sst]` configuration only when you need to customize file inclusion.
+:::
