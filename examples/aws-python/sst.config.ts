@@ -73,31 +73,6 @@
  * ```
  *
  * This makes sure that your functions work the same in `sst dev` as `sst deploy`.
- *
- * ## Best Practices
- *
- * ### Module Imports
- * Use absolute imports for reliable behavior in Lambda:
- * ```py
- * # ✅ Recommended
- * from core import helper_function
- * from functions.utils import shared_utility
- * 
- * # ❌ Avoid relative imports
- * from .utils import helper_function
- * ```
- *
- * ### Static File Access
- * Use paths relative to your handler file for accessing static files:
- * ```py
- * import os
- * from pathlib import Path
- * 
- * # ✅ Recommended
- * config_path = Path(__file__).parent / "../config/settings.json"
- * # or
- * config_path = os.path.join(os.path.dirname(__file__), "../config/settings.json")
- * ```
  */
 export default $config({
 	app(input) {

@@ -111,24 +111,24 @@ Changes to your Python code are automatically detected and the function is rebui
 
 ### Module Imports
 
-**✅ Use Absolute Imports**
+**Use Absolute Imports**
 
 Always use absolute imports for reliable behavior in Lambda:
 
 ```python
-# ✅ Recommended - absolute imports work reliably
+# Recommended - absolute imports work reliably
 from shared.utils import helper_function
 from app.functions.auth.handler import auth_main
 from mypackage.submodule import MyClass
 from core.database import get_connection
 ```
 
-**❌ Avoid Relative Imports**
+**Avoid Relative Imports**
 
 Relative imports can be unreliable in Lambda environments:
 
 ```python
-# ❌ Not recommended - can fail in Lambda
+# Not recommended - can fail in Lambda
 from .utils import helper_function
 from ..shared import common_function
 ```
@@ -142,23 +142,23 @@ import json
 from pathlib import Path
 
 def load_config():
-    # ✅ Recommended - relative to handler file
+    # Recommended - relative to handler file
     config_path = Path(__file__).parent / "../../data/config.json"
     with open(config_path, 'r') as f:
         return json.load(f)
 
 def load_template():
-    # ✅ Also works - using os.path
+    # Also works - using os.path
     import os
     template_path = os.path.join(os.path.dirname(__file__), "../templates/email.html")
     with open(template_path, 'r') as f:
         return f.read()
 ```
 
-**❌ Avoid Working Directory Assumptions**
+**Avoid Working Directory Assumptions**
 
 ```python
-# ❌ Not recommended - assumes working directory
+# Not recommended - assumes working directory
 with open("config.json", 'r') as f:  # May fail
     config = json.load(f)
 ```
@@ -227,14 +227,14 @@ Include patterns take precedence over exclude patterns. If a file matches both a
 
 When no custom configuration is found, SST applies sensible defaults:
 
-**✅ Automatically Included:**
+**Automatically Included:**
 - All Python files (`.py`)
 - All directories containing Python files
 - Package structure files (`__init__.py`)
 - Static files in common directories (`data/`, `config/`, `templates/`, `static/`, `assets/`)
 - Essential configuration files (`requirements.txt`)
 
-**❌ Automatically Excluded:**
+**Automatically Excluded:**
 - **Build artifacts**: `__pycache__/`, `*.pyc`, `*.pyo`, `*.pyd`, `*.egg-info/` (from both source code and installed dependencies)
 - **Version control**: `.git/`, `.gitignore`, `.gitattributes`
 - **Virtual environments**: `.venv/`, `venv/`, `env/`
@@ -471,9 +471,9 @@ This bypasses Lambda's 250MB zip limit and provides more flexibility for complex
 
 If you're upgrading from an older version of SST, your projects will continue to work without changes. The new file inclusion system:
 
-- ✅ **Maintains backward compatibility** - All existing projects work without modification
-- ✅ **Uses the same sensible defaults** - Standard Python files and directories are included
-- ✅ **Provides better control** - Add `[tool.sst]` configuration only when you need custom behavior
-- ✅ **Eliminates brittle detection** - No more layout-specific logic that could break
+- **Maintains backward compatibility** - All existing projects work without modification
+- **Uses the same sensible defaults** - Standard Python files and directories are included
+- **Provides better control** - Add `[tool.sst]` configuration only when you need custom behavior
+- **Eliminates brittle detection** - No more layout-specific logic that could break
 
 You only need to add `[tool.sst]` configuration to your `pyproject.toml` if you want to customize which files are included or excluded beyond the sensible defaults.
