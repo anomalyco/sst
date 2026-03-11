@@ -219,7 +219,10 @@ func (c *CloudflareHome) listStages(app string) ([]string, error) {
 
 	for _, obj := range response.Result {
 		segments := strings.Split(obj.Key, "/")
-		stages = append(stages, segments[len(segments)-1])
+		stageName := segments[len(segments)-1]
+		if hasResources(c, app, stageName) {
+			stages = append(stages, stageName)
+		}
 	}
 
 	return stages, nil

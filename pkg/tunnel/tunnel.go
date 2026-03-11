@@ -10,11 +10,16 @@ import (
 	"github.com/sst/sst/v3/pkg/process"
 )
 
+func IsRunning() bool {
+	return impl.isRunning()
+}
+
 // Platform-specific interface
 type tunnelPlatform interface {
 	destroy() error
 	start(routes ...string) error
 	install() error
+	isRunning() bool
 }
 
 var impl tunnelPlatform

@@ -20,11 +20,11 @@ function parseACU(acu: ACU) {
 export interface PostgresArgs {
   /**
    * The Postgres engine version. Check out the [available versions in your region](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Concepts.Aurora_Fea_Regions_DB-eng.Feature.ServerlessV2.html#Concepts.Aurora_Fea_Regions_DB-eng.Feature.ServerlessV2.apg).
-   * @default `"15.5"`
+   * @default `"17"`
    * @example
    * ```js
    * {
-   *   version: "13.9"
+   *   version: "15.5"
    * }
    * ```
    */
@@ -284,7 +284,7 @@ export class Postgres extends Component implements Link.Linkable {
     }
 
     function normalizeVersion() {
-      return output(args.version).apply((version) => version ?? "15.5");
+      return output(args.version).apply((version) => version ?? "17");
     }
 
     function normalizeDatabaseName() {
@@ -320,6 +320,7 @@ export class Postgres extends Component implements Link.Linkable {
             masterUsername: "postgres",
             manageMasterUserPassword: true,
             serverlessv2ScalingConfiguration: scaling,
+            allowMajorVersionUpgrade: true,
             skipFinalSnapshot: true,
             enableHttpEndpoint: true,
             dbSubnetGroupName: subnetGroup?.name,
@@ -328,7 +329,10 @@ export class Postgres extends Component implements Link.Linkable {
                 ? undefined
                 : output(args.vpc).securityGroups,
           },
-          { parent },
+          {
+            parent,
+            ignoreChanges: args.version ? [] : ["engineVersion"],
+          },
         ),
       );
     }
@@ -344,8 +348,12 @@ export class Postgres extends Component implements Link.Linkable {
             engine: rds.EngineType.AuroraPostgresql,
             engineVersion: cluster.engineVersion,
             dbSubnetGroupName: subnetGroup?.name,
+            autoMinorVersionUpgrade: false,
           },
-          { parent },
+          {
+            parent,
+            ignoreChanges: args.version ? [] : ["engineVersion"],
+          },
         ),
       );
     }

@@ -24,8 +24,10 @@ export type DurationHours = `${number} ${
   | "hour"
   | "hours"}`;
 
+export type DurationDays = `${number} ${"day" | "days"}`;
+
 export function toSeconds(
-  duration: Duration | DurationMinutes | DurationSeconds,
+  duration: Duration | DurationMinutes | DurationSeconds | DurationDays,
 ) {
   const [count, unit] = duration.split(" ");
   const countNum = parseInt(count);
@@ -41,4 +43,10 @@ export function toSeconds(
   }
 
   throw new Error(`Invalid duration ${duration}`);
+}
+
+export function toMilliseconds(
+  duration: Duration | DurationMinutes | DurationSeconds | DurationDays,
+) {
+  return toSeconds(duration) * 1000;
 }

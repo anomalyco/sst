@@ -150,14 +150,14 @@ export module realtime {
             Statement: [
               {
                 Action: "iot:Connect",
-                Effect: "Allow",
+                Effect: "Allow" as const,
                 Resource: "*",
               },
               ...(subscribe
                 ? [
                     {
                       Action: "iot:Receive",
-                      Effect: "Allow",
+                      Effect: "Allow" as const,
                       Resource: subscribe.map(
                         (t) =>
                           `arn:${partition}:iot:${region}:${accountId}:topic/${t}`
@@ -169,7 +169,7 @@ export module realtime {
                 ? [
                     {
                       Action: "iot:Subscribe",
-                      Effect: "Allow",
+                      Effect: "Allow" as const,
                       Resource: subscribe.map(
                         (t) =>
                           `arn:${partition}:iot:${region}:${accountId}:topicfilter/${t}`
@@ -181,7 +181,7 @@ export module realtime {
                 ? [
                     {
                       Action: "iot:Publish",
-                      Effect: "Allow",
+                      Effect: "Allow" as const,
                       Resource: publish.map(
                         (t) =>
                           `arn:${partition}:iot:${region}:${accountId}:topic/${t}`

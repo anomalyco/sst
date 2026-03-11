@@ -12,6 +12,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/pulumi/pulumi/pkg/v3/resource/stack"
+	"github.com/pulumi/pulumi/sdk/v3/go/common/encoding"
 	"github.com/sst/sst/v3/internal/util"
 	"github.com/sst/sst/v3/pkg/flag"
 	"github.com/sst/sst/v3/pkg/id"
@@ -319,6 +321,25 @@ func ListStages(backend Home, app string) ([]string, error) {
 func Info(backend Home) (util.KeyValuePairs[string], error) {
 	slog.Info("fetching backend configuration info")
 	return backend.info()
+}
+
+func hasResources(backend Home, app, stage string) bool {
+	data, err := backend.getData("app", app, stage)
+	if err != nil {
+		return false
+	}
+
+	bytes, err := io.ReadAll(data)
+	if err != nil {
+		return false
+	}
+
+	checkpoint, _, _, err := stack.UnmarshalVersionedCheckpointToLatestCheckpoint(encoding.JSON, bytes)
+	if err != nil {
+		return false
+	}
+
+	return checkpoint != nil && checkpoint.Latest != nil && len(checkpoint.Latest.Resources) > 0
 }
 
 func putData(backend Home, key, app, stage string, encrypt bool, data interface{}) error {

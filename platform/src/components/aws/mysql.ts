@@ -21,6 +21,7 @@ import { RdsRoleLookup } from "./providers/rds-role-lookup";
 export interface MysqlArgs {
   /**
    * The MySQL engine version. Check out the [available versions in your region](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/MySQL.Concepts.VersionMgmt.html).
+   *
    * @default `"8.0.40"`
    * @example
    * ```js
@@ -497,7 +498,7 @@ export class Mysql extends Component implements Link.Linkable {
         parent: self,
       });
 
-      const input = instance.tags.apply((tags) => {
+      const input = instance.tagsAll.apply((tags) => {
         return {
           proxyId: output(ref.proxyId),
           passwordTag: tags?.["sst:ref:password"],
@@ -692,6 +693,8 @@ Listening on "${dev.host}:${dev.port}"...`,
             username,
             password,
             parameterGroupName: parameterGroup.name,
+            allowMajorVersionUpgrade: true,
+            autoMinorVersionUpgrade: false,
             skipFinalSnapshot: true,
             storageEncrypted: true,
             storageType: "gp3",

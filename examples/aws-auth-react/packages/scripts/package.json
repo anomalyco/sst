@@ -4,7 +4,7 @@
   "type": "module",
   "dependencies": {
     "@aws-auth-react/core": "*",
-    "sst": "*"
+    "sst": "^4"
   },
   "scripts": {
     "shell": "sst shell tsx"

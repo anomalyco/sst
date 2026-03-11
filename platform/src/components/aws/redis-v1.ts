@@ -428,10 +428,12 @@ Listening on "${dev.host}:${dev.port}"...`,
             numNodeGroups: nodes,
             replicasPerNodeGroup: 0,
             multiAzEnabled: false,
+            autoMinorVersionUpgrade: false,
             atRestEncryptionEnabled: true,
             transitEncryptionEnabled: true,
             transitEncryptionMode: "required",
             authToken,
+            authTokenUpdateStrategy: "ROTATE",
             subnetGroupName: subnetGroup.name,
             securityGroupIds: vpc.securityGroups,
             tags: {
@@ -553,7 +555,7 @@ Listening on "${dev.host}:${dev.port}"...`,
       undefined,
       opts,
     );
-    const secret = cluster.tags.apply((tags) =>
+    const secret = cluster.tagsAll.apply((tags) =>
       tags?.["sst:auth-token-ref"]
         ? secretsmanager.getSecretVersionOutput(
             {

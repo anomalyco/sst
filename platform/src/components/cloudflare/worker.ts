@@ -9,9 +9,11 @@ import {
   interpolate,
 } from "@pulumi/pulumi";
 import * as cf from "@pulumi/cloudflare";
-import type { Loader, BuildOptions } from "esbuild";
+import type { Loader } from "esbuild";
+import type { EsbuildOptions } from "../esbuild.js";
 import { Component, Transform, transform } from "../component";
 import { WorkerUrl } from "./providers/worker-url.js";
+import { WorkerPlacement } from "./providers/worker-placement.js";
 import { Link } from "../link.js";
 import type { Input } from "../input.js";
 import { ZoneLookup } from "./providers/zone-lookup.js";
@@ -21,7 +23,6 @@ import { binding } from "./binding.js";
 import { DEFAULT_ACCOUNT_ID } from "./account-id.js";
 import { rpc } from "../rpc/rpc.js";
 import { WorkerAssets } from "./providers/worker-assets";
-import { WorkerScript, WorkerScriptInputs } from "./providers/worker-script";
 import { globSync } from "glob";
 import { VisibleError } from "../error";
 import { getContentType } from "../base/base-site";
@@ -109,7 +110,7 @@ export interface WorkerArgs {
      * :::
      *
      */
-    esbuild?: Input<BuildOptions>;
+    esbuild?: Input<EsbuildOptions>;
     /**
      * Disable if the worker code should be minified when bundled.
      *
@@ -182,6 +183,36 @@ export interface WorkerArgs {
     directory: Input<string>;
   }>;
   /**
+   * Configure [placement](https://developers.cloudflare.com/workers/configuration/placement/)
+   * for your Worker.
+   *
+   * @example
+   *
+   * #### Smart Placement
+   * ```js
+   * {
+   *   placement: {
+   *     mode: "smart"
+   *   }
+   * }
+   * ```
+   *
+   * #### Explicit region
+   * ```js
+   * {
+   *   placement: {
+   *     region: "aws:us-east-1"
+   *   }
+   * }
+   * ```
+   */
+  placement?: Input<{
+    mode?: Input<string>;
+    region?: Input<string>;
+    host?: Input<string>;
+    hostname?: Input<string>;
+  }>;
+  /**
    * [Transform](/docs/components/#transform) how this component creates its underlying
    * resources.
    */
@@ -196,10 +227,6 @@ export interface WorkerArgs {
    * Placehodler for future feature.
    */
   dev?: boolean;
-  /**
-   * @internal
-   */
-  largePayload?: boolean;
 }
 
 /**
@@ -265,6 +292,7 @@ export interface WorkerArgs {
 export class Worker extends Component implements Link.Linkable {
   private script: cf.WorkersScript;
   private workerUrl: WorkerUrl;
+  private workerPlacement?: WorkerPlacement;
   private workerDomain?: cf.WorkerDomain;
 
   constructor(name: string, args: WorkerArgs, opts?: ComponentResourceOptions) {
@@ -292,13 +320,14 @@ export class Worker extends Component implements Link.Linkable {
       },
     );
     const build = buildHandler();
-    const assets = uploadAssets();
-    const script = args.largePayload ? createCustomScript() : createScript();
+    const script = createScript();
     const workerUrl = createWorkersUrl();
+    const workerPlacement = createWorkerPlacement();
     const workerDomain = createWorkersDomain();
 
     this.script = script;
     this.workerUrl = workerUrl;
+    this.workerPlacement = workerPlacement;
     this.workerDomain = workerDomain;
 
     all([dev, buildInput, script.scriptName]).apply(
@@ -367,6 +396,7 @@ export class Worker extends Component implements Link.Linkable {
             b
               ? {
                   type: {
+                    aiBindings: "ai",
                     plainTextBindings: "plain_text",
                     secretTextBindings: "secret_text",
                     queueBindings: "queue",
@@ -413,6 +443,16 @@ export class Worker extends Component implements Link.Linkable {
                 })(),
                 Action: p.actions,
                 Resource: p.resources,
+                ...("conditions" in p && p.conditions
+                  ? {
+                      Condition: Object.fromEntries(
+                        p.conditions.map((c) => [
+                          c.test,
+                          { [c.variable]: c.values },
+                        ]),
+                      ),
+                    }
+                  : {}),
               })),
             }),
           },
@@ -444,103 +484,46 @@ export class Worker extends Component implements Link.Linkable {
       return buildResult;
     }
 
-    function generateScriptName() {
-      return physicalName(64, `${name}Script`).toLowerCase();
-    }
-
-    function uploadAssets() {
-      if (!args.assets) return;
-
-      // Build asset manifest
-      const MAX_ASSET_COUNT = 20_000;
-      const MAX_ASSET_MB_SIZE = 25;
-      const MAX_ASSET_BYTE_SIZE = MAX_ASSET_MB_SIZE * 1024 * 1024;
-
-      const directory = output(args.assets).directory.apply((v) =>
-        path.resolve($cli.paths.root, v),
-      );
-
-      return new WorkerAssets(
-        `${name}Assets`,
-        {
-          scriptName: generateScriptName(),
-          directory,
-          manifest: directory.apply(async (dir) => {
-            // Parse .assetsignore file
-            const ignorePatterns = [".assetsignore"];
-            const ignorePath = path.join(dir, ".assetsignore");
-            if (await existsAsync(ignorePath)) {
-              const content = await fs.readFile(ignorePath, "utf-8");
-              const lines = content
-                .split("\n")
-                .filter((line) => line.trim() !== "");
-              ignorePatterns.push(...lines);
-            }
-
-            const files = globSync("**", {
-              cwd: dir,
-              nodir: true,
-              dot: true,
-              ignore: ignorePatterns,
-            });
-
-            if (files.length >= MAX_ASSET_COUNT) {
-              throw new VisibleError(
-                `Maximum number of assets exceeded.\n` +
-                  `Cloudflare Workers supports up to ${MAX_ASSET_COUNT} assets. We found ${files.length} files in the assets directory "${dir}".`,
-              );
-            }
-
-            const manifest: Record<
-              string,
-              { hash: string; size: number; contentType: string }
-            > = {};
-
-            await Promise.all(
-              files.map(async (file) => {
-                const source = path.resolve(dir, file);
-                const [stat, content] = await Promise.all([
-                  fs.stat(source),
-                  fs.readFile(source, "utf-8"),
-                ]);
-
-                if (stat.size > MAX_ASSET_BYTE_SIZE) {
-                  throw new VisibleError(
-                    `Asset too large.\n` +
-                      `Cloudflare Workers supports assets with sizes of up to ${MAX_ASSET_MB_SIZE}mb (${MAX_ASSET_BYTE_SIZE} bytes). We found a file "${source}" with a size of ${stat.size} bytes.`,
-                  );
-                }
-                manifest["/" + file.split(path.sep).join("/")] = {
-                  hash: crypto.createHash("md5").update(content).digest("hex"),
-                  size: stat.size,
-                  contentType: getContentType(source, "UTF-8"),
-                };
-              }),
-            );
-            return manifest;
-          }),
-        },
-        { parent, ignoreChanges: ["scriptName"] },
-      );
-    }
-
     function createScript() {
+      const contentFilePath = build.apply((build) =>
+        path.join(build.out, build.handler),
+      );
       return new cf.WorkersScript(
         ...transform(
           args.transform?.worker as Transform<cf.WorkersScriptArgs>,
           `${name}Script`,
           {
-            scriptName: assets?.scriptName ?? generateScriptName(),
+            scriptName: physicalName(64, `${name}Script`).toLowerCase(),
             mainModule: "placeholder",
             accountId: DEFAULT_ACCOUNT_ID,
-            content: build.apply(async (build) =>
-              (
-                await fs.readFile(path.join(build.out, build.handler))
-              ).toString(),
+            contentFile: contentFilePath,
+            contentSha256: contentFilePath.apply(async (p) =>
+              crypto
+                .createHash("sha256")
+                .update(await fs.readFile(p, "utf-8"))
+                .digest("hex"),
             ),
             compatibilityDate: "2025-05-05",
             compatibilityFlags: ["nodejs_compat"],
-            assets: assets ? { jwt: assets.jwt } : undefined,
+            assets: args.assets
+              ? output(args.assets).apply(async (assets) => {
+                  const directory = path.join(
+                    $cli.paths.root,
+                    assets.directory,
+                  );
+                  let headers;
+                  try {
+                    headers = await fs.readFile(
+                      path.join(directory, "_headers"),
+                      "utf-8",
+                    );
+                  } catch (e) {}
+                  return {
+                    directory,
+                    config: { headers },
+                  };
+                })
+              : undefined,
             bindings: all([args.environment, iamCredentials, bindings]).apply(
               ([environment, iamCredentials, bindings]) => [
                 ...bindings,
@@ -577,65 +560,6 @@ export class Worker extends Component implements Link.Linkable {
           { parent, ignoreChanges: ["scriptName"] },
         ),
       );
-    }
-
-    function createCustomScript() {
-      const script = new WorkerScript(
-        ...transform(
-          args.transform?.worker as Transform<WorkerScriptInputs>,
-          `${name}CustomScript`,
-          {
-            scriptName: assets?.scriptName ?? generateScriptName(),
-            mainModule: "placeholder",
-            accountId: DEFAULT_ACCOUNT_ID,
-            content: build.apply(async (build) => {
-              const filename = path.join(build.out, build.handler);
-              const content = await fs.readFile(filename, "utf-8");
-              return {
-                filename,
-                hash: crypto.createHash("md5").update(content).digest("hex"),
-              };
-            }),
-            compatibilityDate: "2025-05-05",
-            compatibilityFlags: ["nodejs_compat"],
-            assets: assets ? { jwt: assets.jwt } : undefined,
-            bindings: all([args.environment, iamCredentials, bindings]).apply(
-              ([environment, iamCredentials, bindings]) => [
-                ...bindings,
-                ...(iamCredentials
-                  ? [
-                      {
-                        type: "plain_text",
-                        name: "AWS_ACCESS_KEY_ID",
-                        text: iamCredentials.id,
-                      },
-                      {
-                        type: "secret_text",
-                        name: "AWS_SECRET_ACCESS_KEY",
-                        text: iamCredentials.secret,
-                      },
-                    ]
-                  : []),
-                ...(args.assets
-                  ? [
-                      {
-                        type: "assets",
-                        name: "ASSETS",
-                      },
-                    ]
-                  : []),
-                ...Object.entries(environment ?? {}).map(([key, value]) => ({
-                  type: "plain_text",
-                  name: key,
-                  text: value,
-                })),
-              ],
-            ),
-          },
-          { parent, ignoreChanges: ["scriptName"] },
-        ),
-      );
-      return script as cf.WorkersScript;
     }
 
     function createWorkersUrl() {
@@ -645,6 +569,22 @@ export class Worker extends Component implements Link.Linkable {
           accountId: DEFAULT_ACCOUNT_ID,
           scriptName: script.scriptName,
           enabled: urlEnabled,
+        },
+        { parent },
+      );
+    }
+
+    // workaround: pulumi cloudflare provider marks placement as read-only,
+    // so we use the CF API directly until upstream support lands
+    function createWorkerPlacement() {
+      if (!args.placement) return;
+
+      return new WorkerPlacement(
+        `${name}Placement`,
+        {
+          accountId: DEFAULT_ACCOUNT_ID,
+          scriptName: script.scriptName,
+          ...args.placement,
         },
         { parent },
       );
