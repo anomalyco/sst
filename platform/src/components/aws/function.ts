@@ -2538,7 +2538,7 @@ export class Function extends Component implements Link.Linkable {
                   ),
                 }),
             },
-            { parent, ignoreChanges: args.runtime ? [] : ["runtime"] },
+            { parent },
           );
           return new lambda.Function(
             transformed[0],
