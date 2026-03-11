@@ -2,7 +2,6 @@
 /* tslint:disable */
 /* eslint-disable */
 /* deno-fmt-ignore-file */
-/* biome-ignore-all lint: auto-generated */
 
 declare module "sst" {
   export interface Resource {
