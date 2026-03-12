@@ -11,8 +11,8 @@
  * is currently not supported.
  *
  * :::note
- * Builds currently do not tree shake so lots of workspaces can make the build
- * larger than necessary.
+ * Each function is packaged with only the dependencies from its own `pyproject.toml`
+ * and any workspace packages it depends on.
  * :::
  * 
  * In this example we deploy a handler from the `functions/` directory. It depends

@@ -8,12 +8,11 @@ import time
 import requests
 
 
-# Configure Python logging to output to stdout so it appears alongside print statements
+# Ensure Python logging goes to stdout so it appears in the dev TUI
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     stream=sys.stdout,
-    force=True  # Override any existing logging configuration
+    force=True,
 )
 
 

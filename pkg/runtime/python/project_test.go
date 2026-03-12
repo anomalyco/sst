@@ -86,12 +86,6 @@ requires-python = ">=3.13"
 	if info.ProjectRoot != appsMainDir {
 		t.Errorf("Expected ProjectRoot=%s, got %s", appsMainDir, info.ProjectRoot)
 	}
-
-	t.Logf("PyprojectPath: %s", info.PyprojectPath)
-	t.Logf("SourceRoot: %s", info.SourceRoot)
-	t.Logf("ProjectRoot: %s", info.ProjectRoot)
-	t.Logf("HandlerFile: %s", info.HandlerFile)
-	t.Logf("ModulePath: %s", info.ModulePath)
 }
 
 func TestSetupSourceRoot_PyprojectInProjectRoot(t *testing.T) {
@@ -133,6 +127,8 @@ version = "1.0.0"
 		t.Errorf("Expected SourceRoot=%s, got %s", tmpDir, info.SourceRoot)
 	}
 
-	t.Logf("SourceRoot: %s", info.SourceRoot)
-	t.Logf("ProjectRoot: %s", info.ProjectRoot)
+	// PyprojectPath should be found at the project root
+	if info.PyprojectPath != pyprojectPath {
+		t.Errorf("Expected PyprojectPath=%s, got %s", pyprojectPath, info.PyprojectPath)
+	}
 }

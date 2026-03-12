@@ -9,6 +9,7 @@ dependencies = [
     "fastapi>=0.104.0",
     "pydantic>=2.5.0",
     "shared",
+    "sst",
 ]
 
 [project.optional-dependencies]
@@ -28,8 +29,7 @@ packages = ["services", "shared"]
 
 [tool.uv.sources]
 shared = { workspace = true }
+sst = { git = "https://github.com/sst/sst.git", subdirectory = "sdk/python", branch = "dev" }
 
-# UV workspace: services/* are workspace members, shared is also a member
-# Each service can reference 'shared' using { workspace = true } in their pyproject.toml
 [tool.uv.workspace]
 members = ["services/*", "shared"]

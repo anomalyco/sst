@@ -35,20 +35,15 @@ export default $config({
     };
   },
   async run() {
-    // Simple API function
     const api = new sst.aws.Function("ApiFunction", {
       handler: "handler.main",
       runtime: "python3.11",
-      timeout: "30 seconds",
-      url: true  // Enable function URL
+      url: true,
     });
 
-    // Simple worker function
     const worker = new sst.aws.Function("WorkerFunction", {
       handler: "handler.worker",
       runtime: "python3.11",
-      timeout: "2 minutes"
-      // No URL needed for worker function
     });
 
     return {

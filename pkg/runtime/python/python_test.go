@@ -40,6 +40,9 @@ func TestWorkspacePackageIsolation(t *testing.T) {
 		if !names["api"] {
 			t.Errorf("Expected 'api' in discovered packages, got: %v", names)
 		}
+		if names["worker"] {
+			t.Errorf("api package should not include sibling 'worker' package, got: %v", names)
+		}
 	})
 
 	t.Run("worker package discovers its own packages", func(t *testing.T) {
@@ -62,6 +65,9 @@ func TestWorkspacePackageIsolation(t *testing.T) {
 		}
 		if !names["worker"] {
 			t.Errorf("Expected 'worker' in discovered packages, got: %v", names)
+		}
+		if names["api"] {
+			t.Errorf("worker package should not include sibling 'api' package, got: %v", names)
 		}
 	})
 }

@@ -61,28 +61,25 @@ export default $config({
     };
   },
   async run() {
-    // Auth service - has its own pyproject.toml in services/auth/
+    // Auth service
     const auth = new sst.aws.Function("AuthService", {
       handler: "services/auth/handler.main",
       runtime: "python3.12",
-      timeout: "15 seconds",
-      url: true, // Enable function URL for auth endpoints
+      url: true,
     });
 
-    // API service - uses root pyproject.toml
+    // API service
     const api = new sst.aws.Function("ApiService", {
       handler: "services/api/handler.main",
       runtime: "python3.12",
-      timeout: "30 seconds",
-      url: true, // Enable function URL
+      url: true,
     });
 
-    // Worker service - has its own pyproject.toml in services/worker/
+    // Worker service
     const worker = new sst.aws.Function("WorkerService", {
       handler: "services/worker/handler.main",
       runtime: "python3.12",
       timeout: "5 minutes",
-      // No URL needed for worker function
     });
 
     return {

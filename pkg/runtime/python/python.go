@@ -31,10 +31,6 @@ var (
 	globalDependencyInstallLocks      = make(map[string]*sync.Mutex)
 	globalDependencyInstallLocksMutex sync.Mutex
 
-	// Generate requirements.txt once per workspace, reuse for all functions
-	globalRequirementsFiles      = make(map[string]string)
-	globalRequirementsFilesMutex sync.Mutex
-
 	// Clear .deps/ once per SST run so workspace package changes are picked up
 	globalDepsCacheClearOnce sync.Once
 )
@@ -206,7 +202,8 @@ func (r *PythonRuntime) ShouldRunEagerly() bool {
 }
 
 func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runtime.Worker, error) {
-	if err := r.syncArtifactsIfNeeded(input); err != nil {
+	isLegacyLayout, err := r.syncArtifactsIfNeeded(input)
+	if err != nil {
 		slog.Error("failed to sync artifacts",
 			"functionID", input.FunctionID,
 			"error", err)
@@ -244,7 +241,6 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 	}
 
 	projectRoot := path.ResolveRootDir(input.CfgPath)
-	isLegacyLayout := r.hasWorkspaceLayoutPatterns(projectRoot)
 
 	var handlerPath string
 	var workingDir string
@@ -328,20 +324,20 @@ func (r *PythonRuntime) ShouldRebuild(functionID string, file string) bool {
 	return true
 }
 
-func (r *PythonRuntime) syncArtifactsIfNeeded(input *runtime.RunInput) error {
+func (r *PythonRuntime) syncArtifactsIfNeeded(input *runtime.RunInput) (bool, error) {
 	projectRoot := path.ResolveRootDir(input.CfgPath)
 	artifactDir := input.Build.Out
 
 	// Only sync for legacy workspace layouts that need flattening
 	if r.hasWorkspaceLayoutPatterns(projectRoot) {
 		if err := r.syncPythonFiles(input.FunctionID, projectRoot, artifactDir); err != nil {
-			return err
+			return true, err
 		}
 
-		return r.flattenWorkspaceLayouts(artifactDir, input.FunctionID)
+		return true, r.flattenWorkspaceLayouts(artifactDir, input.FunctionID)
 	}
 
-	return nil
+	return false, nil
 }
 
 // syncPythonFiles syncs Python files from source to artifacts (add, update, delete)
@@ -428,8 +424,8 @@ func (r *PythonRuntime) syncPythonFiles(functionID, srcDir, destDir string) erro
 				return fmt.Errorf("failed to create directory for %s: %v", artifactPath, err)
 			}
 
-			// Copy the file
 			if err := copyFile(sourcePath, artifactPath); err != nil {
+				return fmt.Errorf("failed to copy %s to %s: %w", sourcePath, artifactPath, err)
 			}
 		}
 	}

@@ -569,10 +569,10 @@ func (u *UI) functionName(functionID string) string {
 	}
 	for _, resource := range u.complete.Resources {
 		if resource.Type == "sst:aws:Function" && resource.URN.Name() == functionID {
-			return resource.Outputs["_metadata"].(map[string]interface{})["handler"].(string)
+			return strings.TrimPrefix(resource.Outputs["_metadata"].(map[string]interface{})["handler"].(string), "./")
 		}
 		if resource.Type == "sst:cloudflare:Worker" && resource.URN.Name() == functionID {
-			return resource.Outputs["_metadata"].(map[string]interface{})["handler"].(string)
+			return strings.TrimPrefix(resource.Outputs["_metadata"].(map[string]interface{})["handler"].(string), "./")
 		}
 	}
 	return functionID

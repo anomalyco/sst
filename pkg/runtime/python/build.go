@@ -246,11 +246,6 @@ func (ib *DeployBuilder) adjustHandlerPath(input *runtime.BuildInput, projectInf
 		}
 	}
 
-	expectedFile := filepath.Join(input.Out(), filePath+".py")
-	if _, err := os.Stat(expectedFile); err == nil {
-		return handler, nil
-	}
-
 	return handler, nil
 }
 
@@ -439,8 +434,8 @@ func (ib *DeployBuilder) flattenPackageToRoot(extractedDir, outputDir string) er
 		fileName := filepath.Base(srcFile)
 		destFile := filepath.Join(outputDir, fileName)
 
-		// Copy the file
 		if err := copyFile(srcFile, destFile); err != nil {
+			return fmt.Errorf("failed to copy %s to %s: %w", srcFile, destFile, err)
 		}
 	}
 
@@ -539,37 +534,11 @@ func (ib *DeployBuilder) generateOrCopyRequirementsFile(ctx context.Context, inp
 		NoEditable:      true,
 	}
 
-	// Cache key includes package name for per-package exports
-	cacheKey := workspaceRoot
-	if packageName != "" {
-		cacheKey = workspaceRoot + ":" + packageName
-	}
-
-	// Check if we've already generated requirements.txt for this workspace/package
-	globalRequirementsFilesMutex.Lock()
-	sharedRequirementsFile, exists := globalRequirementsFiles[cacheKey]
-	globalRequirementsFilesMutex.Unlock()
-
-	if exists {
-		data, err := os.ReadFile(sharedRequirementsFile)
-		if err != nil {
-			return fmt.Errorf("failed to read shared requirements.txt: %w", err)
-		}
-		if err := os.WriteFile(outputFile, data, 0644); err != nil {
-			return fmt.Errorf("failed to write requirements.txt: %w", err)
-		}
-		return nil
-	}
-
-	// First function for this workspace — generate requirements.txt
+	// uv export is fast (~300ms, no network/installs) so we run it per function
+	// rather than caching. The .deps disk cache handles the expensive uv pip install.
 	if err := ib.uvRunner.ExecuteExportCommand(ctx, exportCmd); err != nil {
 		return err
 	}
-
-	// Store as shared for this workspace
-	globalRequirementsFilesMutex.Lock()
-	globalRequirementsFiles[cacheKey] = outputFile
-	globalRequirementsFilesMutex.Unlock()
 
 	return nil
 }

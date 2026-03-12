@@ -10,29 +10,6 @@ import (
 	"github.com/sst/sst/v3/pkg/runtime"
 )
 
-func TestNewDeployBuilder(t *testing.T) {
-	tempDir := t.TempDir()
-
-	config := DeployBuilderConfig{
-		CacheDir: tempDir,
-	}
-
-	builder, err := NewDeployBuilder(config)
-	if err != nil {
-		t.Fatalf("Failed to create deploy builder: %v", err)
-	}
-
-	if builder == nil {
-		t.Fatal("Builder is nil")
-	}
-	if builder.projectResolver == nil {
-		t.Error("Project resolver is nil")
-	}
-	if builder.uvRunner == nil {
-		t.Error("UV runner is nil")
-	}
-}
-
 func TestIncrementalBuilder_CleanupInstalledDependencies(t *testing.T) {
 	tempDir := t.TempDir()
 
@@ -132,8 +109,8 @@ func TestLegacyStructureRegressionFixes(t *testing.T) {
 		}
 	})
 
-	// Test 2: Requirements filtering - local paths are now passed through to uv pip install
-	t.Run("Local dependency passthrough to uv", func(t *testing.T) {
+	// Test 2: filterEditableInstalls keeps non-editable requirements unchanged
+	t.Run("filterEditableInstalls preserves standard requirements", func(t *testing.T) {
 		tempDir, err := os.MkdirTemp("", "sst-requirements-test-*")
 		if err != nil {
 			t.Fatalf("Failed to create temp dir: %v", err)

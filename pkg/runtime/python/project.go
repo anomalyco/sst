@@ -22,12 +22,10 @@ type ProjectResolver struct {
 
 // ProjectInfo contains resolved project information
 type ProjectInfo struct {
-	HandlerFile   string   `json:"handlerFile"`
-	ProjectRoot   string   `json:"projectRoot"`
-	SourceRoot    string   `json:"sourceRoot"`
-	PythonPath    []string `json:"pythonPath"`
-	ModulePath    string   `json:"modulePath"`
-	PyprojectPath string   `json:"pyprojectPath"`
+	HandlerFile   string `json:"handlerFile"`
+	ProjectRoot   string `json:"projectRoot"`
+	SourceRoot    string `json:"sourceRoot"`
+	PyprojectPath string `json:"pyprojectPath"`
 }
 
 // PyprojectConfig represents the structure of a pyproject.toml file.
@@ -95,11 +93,6 @@ func (pr *ProjectResolver) ResolveHandler(handlerPath string) (*ProjectInfo, err
 	}
 
 	pr.setupSourceRoot(info)
-	pr.setupPythonPaths(info)
-
-	if err := pr.generateModulePath(info); err != nil {
-		return nil, fmt.Errorf("failed to generate module path: %w", err)
-	}
 
 	return info, nil
 }
@@ -193,30 +186,6 @@ func (pr *ProjectResolver) setupSourceRoot(info *ProjectInfo) {
 		return
 	}
 	info.SourceRoot = pr.projectRoot
-}
-
-// setupPythonPaths configures Python paths for module resolution
-func (pr *ProjectResolver) setupPythonPaths(info *ProjectInfo) {
-	info.PythonPath = append(info.PythonPath, info.SourceRoot)
-	if info.PyprojectPath != "" {
-		if pyprojectDir := filepath.Dir(info.PyprojectPath); pyprojectDir != info.SourceRoot {
-			info.PythonPath = append(info.PythonPath, pyprojectDir)
-		}
-	}
-	if pr.projectRoot != info.SourceRoot {
-		info.PythonPath = append(info.PythonPath, pr.projectRoot)
-	}
-}
-
-// generateModulePath creates the Python import path for the handler
-func (pr *ProjectResolver) generateModulePath(info *ProjectInfo) error {
-	relPath, err := filepath.Rel(info.SourceRoot, info.HandlerFile)
-	if err != nil {
-		return fmt.Errorf("failed to calculate relative path: %w", err)
-	}
-	modulePath := strings.TrimSuffix(relPath, ".py")
-	info.ModulePath = strings.ReplaceAll(modulePath, string(filepath.Separator), ".")
-	return nil
 }
 
 // ParsePyprojectToml reads and parses a pyproject.toml file
