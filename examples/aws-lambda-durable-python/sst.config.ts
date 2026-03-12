@@ -15,21 +15,21 @@ export default $config({
   },
   async run() {
     const durableFunction = new sst.aws.Function("Durable", {
-      handler: "src/main.handler",
+      handler: "durable/main.handler",
 			runtime: "python3.13",
       durable: true,
       url: true
     });
 
     new sst.aws.Function("Resolver", {
-      handler: "src/resolver.handler",
+      handler: "resolver/main.handler",
 			runtime: "python3.13",
       url: true,
       link: [durableFunction],
     });
 
     new sst.aws.Function("Invoker", {
-      handler: "src/invoker.handler",
+      handler: "invoker/main.handler",
 			runtime: "python3.13",
       url: true,
       link: [durableFunction],
