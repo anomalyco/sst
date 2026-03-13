@@ -3,18 +3,73 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
 	"github.com/pulumi/pulumi/sdk/v3/go/common/apitype"
 	"github.com/sst/sst/v3/cmd/sst/cli"
 	"github.com/sst/sst/v3/cmd/sst/mosaic/ui"
+	"github.com/sst/sst/v3/internal/util"
 	"github.com/sst/sst/v3/pkg/bus"
 	"github.com/sst/sst/v3/pkg/project"
 	"github.com/sst/sst/v3/pkg/server"
 	"github.com/yalp/jsonpath"
 	"golang.org/x/sync/errgroup"
 )
+
+type DiffOutput struct {
+	Changes []DiffChange `json:"changes"`
+}
+
+type DiffChange struct {
+	URN        string               `json:"urn"`
+	Type       string               `json:"type"`
+	Operation  string               `json:"operation"`
+	Properties []DiffPropertyChange `json:"properties,omitempty"`
+}
+
+type DiffPropertyChange struct {
+	Path     string      `json:"path"`
+	Kind     string      `json:"kind"`
+	NewValue interface{} `json:"newValue,omitempty"`
+}
+
+func opToString(op apitype.OpType) string {
+	switch op {
+	case apitype.OpCreate:
+		return "create"
+	case apitype.OpUpdate:
+		return "update"
+	case apitype.OpDelete:
+		return "delete"
+	case apitype.OpReplace:
+		return "replace"
+	case apitype.OpImport:
+		return "import"
+	default:
+		return ""
+	}
+}
+
+func diffKindToString(kind apitype.DiffKind) string {
+	switch kind {
+	case apitype.DiffAdd:
+		return "add"
+	case apitype.DiffDelete:
+		return "delete"
+	case apitype.DiffUpdate:
+		return "update"
+	case apitype.DiffAddReplace:
+		return "add-replace"
+	case apitype.DiffUpdateReplace:
+		return "update-replace"
+	case apitype.DiffDeleteReplace:
+		return "delete-replace"
+	default:
+		return ""
+	}
+}
 
 var CmdDiff = &cli.Command{
 	Name: "diff",
@@ -90,6 +145,21 @@ var CmdDiff = &cli.Command{
 				Long:  "Run policy pack validation against the preview changes.",
 			},
 		},
+		{
+			Name: "output",
+			Type: "string",
+			Description: cli.Description{
+				Short: "Output format (json)",
+				Long: strings.Join([]string{
+					"Set the output format.",
+					"",
+					"Supported values: `json`.",
+					"",
+					"When set to `json`, the diff result is printed as a JSON object to stdout.",
+					"This is useful for CI pipelines and scripting.",
+				}, "\n"),
+			},
+		},
 	},
 	Examples: []cli.Example{
 		{
@@ -104,8 +174,19 @@ var CmdDiff = &cli.Command{
 				Short: "See changes to production with policy validation",
 			},
 		},
+		{
+			Content: "sst diff --output json",
+			Description: cli.Description{
+				Short: "Output changes as JSON",
+			},
+		},
 	},
 	Run: func(c *cli.Cli) error {
+		outputFormat := c.String("output")
+		if outputFormat != "" && outputFormat != "json" {
+			return util.NewReadableError(nil, "Unsupported output format: "+outputFormat+". Supported values: json")
+		}
+
 		p, err := c.InitProject()
 		if err != nil {
 			return err
@@ -161,90 +242,139 @@ var CmdDiff = &cli.Command{
 		if err != nil {
 			return err
 		}
-		if len(outputs) == 0 {
-			fmt.Println(
-				ui.TEXT_HIGHLIGHT_BOLD.Render("➜"),
-				ui.TEXT_NORMAL_BOLD.Render(" No changes"),
-			)
-			fmt.Println()
-			return nil
-		}
-		for _, output := range outputs {
-			icon := ""
-			if output.Metadata.Op == apitype.OpImport {
-				icon = ui.TEXT_SUCCESS_BOLD.Render("+")
-			}
-			if output.Metadata.Op == apitype.OpDelete {
-				icon = ui.TEXT_DANGER_BOLD.Render("-")
-			}
-			if output.Metadata.Op == apitype.OpReplace {
-				icon = ui.TEXT_SUCCESS_BOLD.Render("+")
-			}
-			if output.Metadata.Op == apitype.OpUpdate {
-				icon = ui.TEXT_WARNING_BOLD.Render("*")
-			}
-			if output.Metadata.Op == apitype.OpCreate {
-				icon = ui.TEXT_SUCCESS_BOLD.Render("+")
-			}
-			if icon == "" {
-				continue
-			}
 
-			fmt.Println(icon, "", ui.TEXT_NORMAL_BOLD.Render(u.FormatURN(output.Metadata.URN)))
-			sorted := make([]string, 0, len(output.Metadata.DetailedDiff))
-			for path := range output.Metadata.DetailedDiff {
-				sorted = append(sorted, path)
-			}
-			sort.Strings(sorted)
-			for _, path := range sorted {
-				diff := output.Metadata.DetailedDiff[path]
-				label := ""
-				if diff.Kind == apitype.DiffUpdate {
-					label = ui.TEXT_WARNING_BOLD.Render("*")
-				}
-				if diff.Kind == apitype.DiffDelete {
-					label = ui.TEXT_DANGER_BOLD.Render("-")
-				}
-				if diff.Kind == apitype.DiffAdd {
-					label = ui.TEXT_SUCCESS_BOLD.Render("+")
-				}
-				if diff.Kind == apitype.DiffAddReplace {
-					label = ui.TEXT_SUCCESS_BOLD.Render("+")
-				}
-				if diff.Kind == apitype.DiffUpdateReplace {
-					label = ui.TEXT_WARNING_BOLD.Render("*")
-				}
-				if diff.Kind == apitype.DiffDeleteReplace {
-					label = ui.TEXT_DANGER_BOLD.Render("-")
-				}
-				fmt.Print("   ", label+" ", strings.TrimSpace(path))
-				value, _ := jsonpath.Read(output.Metadata.New.Outputs, "$."+path)
-				if path == "__provider" {
-					value = "code changed"
-				}
-				if value != nil {
-					formatted := ""
-					switch value.(type) {
-					case string:
-						formatted = value.(string)
-					default:
-						bytes, _ := json.MarshalIndent(value, "", "  ")
-						formatted = string(bytes)
-					}
-					lines := strings.Split(string(formatted), "\n")
-					fmt.Print(" = ")
-					for index, line := range lines {
-						if index > 0 {
-							fmt.Print("     ")
-						}
-						fmt.Print(ui.TEXT_DIM.Render(line) + "\n")
-					}
-				} else {
-					fmt.Println()
-				}
-			}
-			fmt.Println()
+		if outputFormat == "json" {
+			return renderDiffJSON(outputs)
 		}
-		return nil
+		return renderDiffText(outputs, u)
 	},
+}
+
+func renderDiffJSON(outputs []*apitype.ResOutputsEvent) error {
+	result := DiffOutput{
+		Changes: []DiffChange{},
+	}
+	for _, output := range outputs {
+		op := opToString(output.Metadata.Op)
+		if op == "" {
+			continue
+		}
+		change := DiffChange{
+			URN:       string(output.Metadata.URN),
+			Type:      string(output.Metadata.Type),
+			Operation: op,
+		}
+		sorted := make([]string, 0, len(output.Metadata.DetailedDiff))
+		for path := range output.Metadata.DetailedDiff {
+			sorted = append(sorted, path)
+		}
+		sort.Strings(sorted)
+		for _, path := range sorted {
+			diff := output.Metadata.DetailedDiff[path]
+			prop := DiffPropertyChange{
+				Path: strings.TrimSpace(path),
+				Kind: diffKindToString(diff.Kind),
+			}
+			value, _ := jsonpath.Read(output.Metadata.New.Outputs, "$."+path)
+			if path == "__provider" {
+				value = "code changed"
+			}
+			if value != nil {
+				prop.NewValue = value
+			}
+			change.Properties = append(change.Properties, prop)
+		}
+		result.Changes = append(result.Changes, change)
+	}
+	encoder := json.NewEncoder(os.Stdout)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(result)
+}
+
+func renderDiffText(outputs []*apitype.ResOutputsEvent, u *ui.UI) error {
+	if len(outputs) == 0 {
+		fmt.Println(
+			ui.TEXT_HIGHLIGHT_BOLD.Render("➜"),
+			ui.TEXT_NORMAL_BOLD.Render(" No changes"),
+		)
+		fmt.Println()
+		return nil
+	}
+	for _, output := range outputs {
+		icon := ""
+		if output.Metadata.Op == apitype.OpImport {
+			icon = ui.TEXT_SUCCESS_BOLD.Render("+")
+		}
+		if output.Metadata.Op == apitype.OpDelete {
+			icon = ui.TEXT_DANGER_BOLD.Render("-")
+		}
+		if output.Metadata.Op == apitype.OpReplace {
+			icon = ui.TEXT_SUCCESS_BOLD.Render("+")
+		}
+		if output.Metadata.Op == apitype.OpUpdate {
+			icon = ui.TEXT_WARNING_BOLD.Render("*")
+		}
+		if output.Metadata.Op == apitype.OpCreate {
+			icon = ui.TEXT_SUCCESS_BOLD.Render("+")
+		}
+		if icon == "" {
+			continue
+		}
+
+		fmt.Println(icon, "", ui.TEXT_NORMAL_BOLD.Render(u.FormatURN(output.Metadata.URN)))
+		sorted := make([]string, 0, len(output.Metadata.DetailedDiff))
+		for path := range output.Metadata.DetailedDiff {
+			sorted = append(sorted, path)
+		}
+		sort.Strings(sorted)
+		for _, path := range sorted {
+			diff := output.Metadata.DetailedDiff[path]
+			label := ""
+			if diff.Kind == apitype.DiffUpdate {
+				label = ui.TEXT_WARNING_BOLD.Render("*")
+			}
+			if diff.Kind == apitype.DiffDelete {
+				label = ui.TEXT_DANGER_BOLD.Render("-")
+			}
+			if diff.Kind == apitype.DiffAdd {
+				label = ui.TEXT_SUCCESS_BOLD.Render("+")
+			}
+			if diff.Kind == apitype.DiffAddReplace {
+				label = ui.TEXT_SUCCESS_BOLD.Render("+")
+			}
+			if diff.Kind == apitype.DiffUpdateReplace {
+				label = ui.TEXT_WARNING_BOLD.Render("*")
+			}
+			if diff.Kind == apitype.DiffDeleteReplace {
+				label = ui.TEXT_DANGER_BOLD.Render("-")
+			}
+			fmt.Print("   ", label+" ", strings.TrimSpace(path))
+			value, _ := jsonpath.Read(output.Metadata.New.Outputs, "$."+path)
+			if path == "__provider" {
+				value = "code changed"
+			}
+			if value != nil {
+				formatted := ""
+				switch value.(type) {
+				case string:
+					formatted = value.(string)
+				default:
+					bytes, _ := json.MarshalIndent(value, "", "  ")
+					formatted = string(bytes)
+				}
+				lines := strings.Split(string(formatted), "\n")
+				fmt.Print(" = ")
+				for index, line := range lines {
+					if index > 0 {
+						fmt.Print("     ")
+					}
+					fmt.Print(ui.TEXT_DIM.Render(line) + "\n")
+				}
+			} else {
+				fmt.Println()
+			}
+		}
+		fmt.Println()
+	}
+	return nil
 }
