@@ -205,15 +205,9 @@ func PushSnapshot(backend Home, updateID, app, stage string, data []byte) error 
 	return backend.putData("snapshot", app, stage+"/"+updateID, bytes.NewReader(data))
 }
 
-// validateStateJSON checks that data is a non-empty, valid JSON object.
-// Pulumi state files are always JSON objects (VersionedCheckpoint structs);
-// anything else indicates corruption or a truncated write.
 func validateStateJSON(data []byte) error {
 	if len(data) == 0 {
 		return fmt.Errorf("something has corrupted the state file - refusing to upload: file is empty")
-	}
-	if data[0] != '{' {
-		return fmt.Errorf("something has corrupted the state file - refusing to upload: expected JSON object, got %q", data[0])
 	}
 	if !json.Valid(data) {
 		// Use Unmarshal on the failure path only to recover the parse error detail
