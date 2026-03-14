@@ -18,6 +18,7 @@ import { Postgres as PostgresV1 } from "./postgres-v1";
 import { SizeGbTb, toGBs } from "../size";
 import { DevCommand } from "../experimental/dev-command.js";
 import { RdsRoleLookup } from "./providers/rds-role-lookup";
+import { prefixName } from "../naming.js";
 export type { PostgresArgs as PostgresV1Args } from "./postgres-v1";
 
 export interface PostgresArgs {
@@ -663,12 +664,25 @@ Listening on "${dev.host}:${dev.port}"...`,
     }
 
     function createParameterGroup() {
+      const family = engineVersion.apply((v) => `postgres${v.split(".")[0]}`);
+
       return new rds.ParameterGroup(
         ...transform(
           args.transform?.parameterGroup,
           `${name}ParameterGroup`,
           {
-            family: engineVersion.apply((v) => `postgres${v.split(".")[0]}`),
+            family,
+            // Keep a family-specific physical name so major version upgrades can
+            // create the replacement parameter group before deleting the old one.
+            name:
+              args.version === undefined
+                ? undefined
+                : family.apply((family) =>
+                    `${prefixName(
+                      255 - family.length - 1,
+                      `${name}ParameterGroup`,
+                    )}-${family}`.toLowerCase(),
+                  ),
             parameters: [
               {
                 name: "rds.force_ssl",
