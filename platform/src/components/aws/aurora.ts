@@ -982,7 +982,7 @@ Listening on "${dev.host}:${dev.port}"...`,
                 ? toSeconds(scaling.pauseAfter)
                 : undefined,
             })),
-            allowMajorVersionUpgrade: true,
+            allowMajorVersionUpgrade: false,
             skipFinalSnapshot: true,
             storageEncrypted: true,
             enableHttpEndpoint: dataApi,
