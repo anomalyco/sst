@@ -320,7 +320,7 @@ export class Postgres extends Component implements Link.Linkable {
             masterUsername: "postgres",
             manageMasterUserPassword: true,
             serverlessv2ScalingConfiguration: scaling,
-            allowMajorVersionUpgrade: true,
+            allowMajorVersionUpgrade: false,
             skipFinalSnapshot: true,
             enableHttpEndpoint: true,
             dbSubnetGroupName: subnetGroup?.name,
