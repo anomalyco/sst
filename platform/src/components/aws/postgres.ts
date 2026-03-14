@@ -685,6 +685,7 @@ Listening on "${dev.host}:${dev.port}"...`,
             parent: self,
             ignoreChanges: args.version ? [] : ["family"],
             // Necessary for the parameter group to be deleted AFTER deploying the new RDS instance.
+            // This is either a Pulumi bug or an undocumented feature.
             deleteBeforeReplace: false,
           },
         ),
@@ -747,7 +748,6 @@ Listening on "${dev.host}:${dev.port}"...`,
           {
             parent: self,
             deleteBeforeReplace: true,
-            // dependsOn: [parameterGroup],
             ignoreChanges: args.version ? [] : ["engineVersion"],
           },
         ),
