@@ -672,17 +672,6 @@ Listening on "${dev.host}:${dev.port}"...`,
           `${name}ParameterGroup`,
           {
             family,
-            // Keep a family-specific physical name so major version upgrades can
-            // create the replacement parameter group before deleting the old one.
-            name:
-              args.version === undefined
-                ? undefined
-                : family.apply((family) =>
-                    `${prefixName(
-                      255 - family.length - 1,
-                      `${name}ParameterGroup`,
-                    )}-${family}`.toLowerCase(),
-                  ),
             parameters: [
               {
                 name: "rds.force_ssl",
@@ -698,6 +687,7 @@ Listening on "${dev.host}:${dev.port}"...`,
           {
             parent: self,
             ignoreChanges: args.version ? [] : ["family"],
+            deleteBeforeReplace: false,
           },
         ),
       );
@@ -741,6 +731,7 @@ Listening on "${dev.host}:${dev.port}"...`,
             username,
             password,
             parameterGroupName: parameterGroup.name,
+            applyImmediately: true,
             allowMajorVersionUpgrade: true,
             autoMinorVersionUpgrade: false,
             skipFinalSnapshot: true,
@@ -759,6 +750,7 @@ Listening on "${dev.host}:${dev.port}"...`,
           {
             parent: self,
             deleteBeforeReplace: true,
+            // dependsOn: [parameterGroup],
             ignoreChanges: args.version ? [] : ["engineVersion"],
           },
         ),
