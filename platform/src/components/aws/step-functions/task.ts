@@ -353,8 +353,16 @@ export interface LambdaInvokeArgs extends TaskBaseArgs {
    *   }
    * }
    * ```
+   *
+   * Or, you can pass in a JSONata expression that evaluates to the full payload.
+   *
+   * ```ts
+   * {
+   *   payload: "{% $states.input %}"
+   * }
+   * ```
    */
-  payload?: Record<string, Input<unknown>>;
+  payload?: Input<JSONata | Record<string, Input<unknown>>>;
 }
 
 export interface SnsPublishArgs extends TaskBaseArgs {
