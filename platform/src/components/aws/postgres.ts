@@ -18,7 +18,6 @@ import { Postgres as PostgresV1 } from "./postgres-v1";
 import { SizeGbTb, toGBs } from "../size";
 import { DevCommand } from "../experimental/dev-command.js";
 import { RdsRoleLookup } from "./providers/rds-role-lookup";
-import { prefixName } from "../naming.js";
 export type { PostgresArgs as PostgresV1Args } from "./postgres-v1";
 
 export interface PostgresArgs {
@@ -664,14 +663,12 @@ Listening on "${dev.host}:${dev.port}"...`,
     }
 
     function createParameterGroup() {
-      const family = engineVersion.apply((v) => `postgres${v.split(".")[0]}`);
-
       return new rds.ParameterGroup(
         ...transform(
           args.transform?.parameterGroup,
           `${name}ParameterGroup`,
           {
-            family,
+            family: engineVersion.apply((v) => `postgres${v.split(".")[0]}`),
             parameters: [
               {
                 name: "rds.force_ssl",
