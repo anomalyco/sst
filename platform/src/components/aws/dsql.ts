@@ -16,7 +16,7 @@ export interface DsqlArgs {
   /**
    * Configure multi-region cluster peering.
    *
-   * Creates a primary cluster in the current region and a peer cluster in another region,
+   * Creates a cluster in the current region and a peer cluster in another region,
    * linked via a witness region. The witness must differ from both cluster regions.
    *
    * Learn more about [AWS DSQL regions](https://docs.aws.amazon.com/aurora-dsql/latest/userguide/what-is-aurora-dsql.html#region-availability).
@@ -24,21 +24,19 @@ export interface DsqlArgs {
    * @example
    *
    * ```ts
-   * const cluster = new sst.aws.Dsql("MyCluster", {
-   *   regions: {
-   *     witness: "us-west-2",
-   *     peer: { region: "us-east-2" }
-   *   }
-   * });
-   * ```
-   */
+ * const cluster = new sst.aws.Dsql("MyCluster", {
+ *   regions: {
+ *     witness: "us-west-2",
+ *     peer: "us-east-2"
+ *   }
+ * });
+ * ```
+ */
   regions?: {
     /** The witness region. Must differ from both cluster regions. */
     witness: Input<string>;
-    peer: {
-      /** The AWS region for the peer cluster. */
-      region: Input<string>;
-    };
+    /** The AWS region for the peer cluster. */
+    peer: Input<string>;
   };
 
   /**
@@ -101,10 +99,10 @@ export interface DsqlArgs {
    * resources.
    */
   transform?: {
-    /**
-     * Transform the primary DSQL cluster resource.
-     */
-    cluster?: Transform<dsql.ClusterArgs>;
+     /**
+      * Transform the DSQL cluster resource.
+      */
+     cluster?: Transform<dsql.ClusterArgs>;
     /**
      * Transform the peer DSQL cluster resource.
      */
@@ -147,7 +145,7 @@ interface DsqlRef {
  * const cluster = new sst.aws.Dsql("MyCluster", {
  *   regions: {
  *     witness: "us-west-2",
- *     peer: { region: "us-east-2" }
+ *     peer: "us-east-2"
  *   }
  * });
  * ```
@@ -200,7 +198,7 @@ export class Dsql extends Component implements Link.Linkable {
 
     const vpc = normalizeVpc();
 
-    const cluster = createPrimaryCluster();
+    const cluster = createCluster();
     const peerCluster = createPeerCluster();
     const endpoints = createVpcEndpoints();
 
@@ -208,7 +206,7 @@ export class Dsql extends Component implements Link.Linkable {
     this.peerCluster = peerCluster;
     this.connectionEndpoint = endpoints?.connection;
 
-    function createPrimaryCluster() {
+    function createCluster() {
       return new dsql.Cluster(
         ...transform(
           args.transform?.cluster,
@@ -226,7 +224,7 @@ export class Dsql extends Component implements Link.Linkable {
     function createPeerCluster() {
       if (!regions) return;
 
-      const peerProvider = useProvider(regions.peer.region as Region);
+      const peerProvider = useProvider(regions.peer as Region);
 
       const peerCluster = new dsql.Cluster(
         ...transform(
@@ -243,7 +241,7 @@ export class Dsql extends Component implements Link.Linkable {
 
       // DSQL requires both clusters to declare each other — two-way handshake.
       new dsql.ClusterPeering(
-        `${name}PrimaryPeering`,
+        `${name}Peering1`,
         {
           identifier: cluster.identifier,
           clusters: [peerCluster.arn],
@@ -253,7 +251,7 @@ export class Dsql extends Component implements Link.Linkable {
       );
 
       new dsql.ClusterPeering(
-        `${name}PeerPeering`,
+        `${name}Peering2`,
         {
           identifier: peerCluster.identifier,
           clusters: [cluster.arn],
@@ -377,7 +375,7 @@ export class Dsql extends Component implements Link.Linkable {
     }
   }
 
-  /** The ARN of the primary cluster. */
+  /** The ARN of the cluster. */
   public get arn() {
     return this.cluster.arn;
   }
@@ -387,7 +385,7 @@ export class Dsql extends Component implements Link.Linkable {
     return this.peerCluster?.arn;
   }
 
-  /** The identifier of the primary cluster. */
+  /** The identifier of the cluster. */
   public get identifier() {
     return this.cluster.identifier;
   }
@@ -397,7 +395,7 @@ export class Dsql extends Component implements Link.Linkable {
     return this.peerCluster?.identifier;
   }
 
-  /** The public endpoint of the primary cluster. */
+  /** The public endpoint of the cluster. */
   public get publicEndpoint() {
     return this.cluster.arn.apply(parseDsqlPublicEndpoint);
   }
@@ -409,12 +407,12 @@ export class Dsql extends Component implements Link.Linkable {
       : undefined;
   }
 
-  /** The region of the primary cluster. */
+  /** The region of the cluster. */
   public get region() {
     return this.cluster.region;
   }
 
-  /** The endpoint of the primary cluster. */
+  /** The endpoint of the cluster. */
   public get endpoint() {
     // Use the private VPC endpoint hostname when available so linked functions
     // inside the VPC don't route through the public IP.

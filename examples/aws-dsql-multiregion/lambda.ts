@@ -16,16 +16,16 @@ async function connectToCluster(endpoint: string) {
 
 export const handler = async () => {
   try {
-    const primaryTime = await connectToCluster(Resource.MultiRegion.endpoint);
+    const usEast1Time = await connectToCluster(Resource.MultiRegion.endpoint);
 
-    const peerTime = await connectToCluster(Resource.MultiRegion.peer.endpoint);
+    const usEast2Time = await connectToCluster(Resource.MultiRegion.peer.endpoint);
 
     return {
       statusCode: 200,
       body: JSON.stringify({
         message: "Successfully connected to both DSQL clusters.",
-        primaryTime,
-        peerTime,
+        usEast1Time,
+        usEast2Time,
       }),
     };
   } catch (error) {

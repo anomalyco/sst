@@ -4,7 +4,7 @@
  * ## AWS Aurora DSQL Multi-Region
  *
  * In this example, we deploy a multi-region Aurora DSQL cluster and connect to both
- * the primary and peer clusters from a Lambda function.
+ * clusters from a Lambda function.
  *
  * :::note
  * Multi-region with VPCs is not currently supported.
@@ -17,7 +17,7 @@
  * const cluster = new sst.aws.Dsql("MultiRegion", {
  *   regions: {
  *     witness: "us-west-2",
- *     peer: { region: "us-east-2" },
+ *     peer: "us-east-2",
  *   },
  * });
  * ```
@@ -35,11 +35,11 @@
  *   return client;
  * }
  *
- * // Primary cluster (us-east-1)
- * const primary = await connectToCluster(Resource.MultiRegion.endpoint);
+ * // Cluster in us-east-1
+ * const usEast1 = await connectToCluster(Resource.MultiRegion.endpoint);
  *
- * // Peer cluster (us-east-2)
- * const peer = await connectToCluster(Resource.MultiRegion.peer.endpoint);
+ * // Cluster in us-east-2
+ * const usEast2 = await connectToCluster(Resource.MultiRegion.peer.endpoint);
  * ```
  */
 
@@ -58,7 +58,7 @@ export default $config({
     const cluster = new sst.aws.Dsql("MultiRegion", {
       regions: {
         witness: "us-west-2",
-        peer: { region: "us-east-2" },
+        peer: "us-east-2",
       },
     });
 
@@ -69,10 +69,10 @@ export default $config({
     });
 
     return {
-      primaryArn: cluster.arn,
-      primaryIdentifier: cluster.identifier,
-      primaryEndpoint: cluster.publicEndpoint,
-      primaryRegion: cluster.region,
+      arn: cluster.arn,
+      identifier: cluster.identifier,
+      endpoint: cluster.publicEndpoint,
+      region: cluster.region,
       peerArn: cluster.peerArn,
       peerIdentifier: cluster.peerIdentifier,
       peerEndpoint: cluster.peerPublicEndpoint,
