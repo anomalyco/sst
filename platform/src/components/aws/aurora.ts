@@ -44,10 +44,6 @@ export interface AuroraArgs {
    *
    * Check out the [available Postgres versions](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Concepts.Aurora_Fea_Regions_DB-eng.Feature.ServerlessV2.html#Concepts.Aurora_Fea_Regions_DB-eng.Feature.ServerlessV2.apg) and [available MySQL versions](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Concepts.Aurora_Fea_Regions_DB-eng.Feature.ServerlessV2.html#Concepts.Aurora_Fea_Regions_DB-eng.Feature.ServerlessV2.amy) in your region.
    *
-   * :::note
-   * Changing the version will **immediately** apply the update on the next `sst deploy`.
-   * :::
-   *
    * :::tip
    * Not all versions support scaling to 0 with auto-pause and resume.
    * :::
@@ -58,6 +54,10 @@ export interface AuroraArgs {
    * - Aurora PostgresSQL 14.12 and higher
    * - Aurora PostgresSQL 13.15 and higher
    * - Aurora MySQL 3.08.0 and higher
+   *
+   * :::caution
+   * Changing the version will **immediately** apply the update on the next `sst deploy` possibly causing downtime.
+   * :::
    *
    * @default `"17"` for Postgres, `"3.08.0"` for MySQL
    * @example
