@@ -23,6 +23,10 @@ export interface RedisArgs {
    * - `"redis"`: The open-source version of Redis.
    * - `"valkey"`: [Valkey](https://valkey.io/) is a Redis-compatible in-memory key-value store.
    *
+   * :::danger
+   * Changing the engine will cause the database to be destroyed and recreated.
+   * :::
+   *
    * @default `"redis"`
    */
   engine?: Input<"redis" | "valkey">;
@@ -542,7 +546,12 @@ Listening on "${dev.host}:${dev.port}"...`,
               ],
             ),
           },
-          { parent: self },
+          {
+            parent: self,
+            // Necessary for the parameter group to be deleted AFTER upgrading the instance.
+            // This is either a Pulumi bug or an undocumented feature.
+            deleteBeforeReplace: false,
+          },
         ),
       );
     }

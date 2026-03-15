@@ -40,7 +40,7 @@ export interface PostgresArgs {
   /**
    * The username of the master user.
    *
-   * :::caution
+   * :::danger
    * Changing the username will cause the database to be destroyed and recreated.
    * :::
    *
@@ -78,6 +78,10 @@ export interface PostgresArgs {
    * The name must begin with a letter and contain only lowercase letters, numbers, or
    * underscores. By default, it takes the name of the app, and replaces the hyphens with
    * underscores.
+   *
+   * :::danger
+   * Changing the database name will cause the database to be destroyed and recreated.
+   * :::
    *
    * @default Based on the name of the current app
    * @example
@@ -688,7 +692,7 @@ Listening on "${dev.host}:${dev.port}"...`,
           {
             parent: self,
             ignoreChanges: args.version ? [] : ["family"],
-            // Necessary for the parameter group to be deleted AFTER deploying the new RDS instance.
+            // Necessary for the parameter group to be deleted AFTER upgrading the instance.
             // This is either a Pulumi bug or an undocumented feature.
             deleteBeforeReplace: false,
           },
@@ -734,6 +738,7 @@ Listening on "${dev.host}:${dev.port}"...`,
             username,
             password,
             parameterGroupName: parameterGroup.name,
+            applyImmediately: true,
             allowMajorVersionUpgrade: true,
             autoMinorVersionUpgrade: false,
             skipFinalSnapshot: true,

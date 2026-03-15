@@ -29,6 +29,10 @@ export interface AuroraArgs {
   /**
    * The Aurora engine to use.
    *
+   * :::danger
+   * Changing the engine will cause the database to be destroyed and recreated.
+   * :::
+   *
    * @example
    * ```js
    * {
@@ -110,6 +114,10 @@ export interface AuroraArgs {
    * underscores.
    *
    * By default, it takes the name of the app, and replaces the hyphens with underscores.
+   *
+   * :::danger
+   * Changing the database name will cause the database to be destroyed and recreated.
+   * :::
    *
    * @default Based on the name of the current app
    * @example
@@ -930,6 +938,9 @@ Listening on "${dev.host}:${dev.port}"...`,
           {
             parent: self,
             ignoreChanges: args.version ? [] : ["family"],
+            // Necessary for the subnet to be deleted after the instance.
+            // This is either a Pulumi bug or an undocumented feature.
+            deleteBeforeReplace: false,
           },
         ),
       );
@@ -950,7 +961,13 @@ Listening on "${dev.host}:${dev.port}"...`,
             }),
             parameters: [],
           },
-          { parent: self, ignoreChanges: args.version ? [] : ["family"] },
+          {
+            parent: self,
+            ignoreChanges: args.version ? [] : ["family"],
+            // Necessary for the subnet to be deleted after the instance.
+            // This is either a Pulumi bug or an undocumented feature.
+            deleteBeforeReplace: false,
+          },
         ),
       );
     }
