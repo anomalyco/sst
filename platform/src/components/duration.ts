@@ -44,3 +44,9 @@ export function toSeconds(
 
   throw new Error(`Invalid duration ${duration}`);
 }
+
+export function toMilliseconds(
+  duration: Duration | DurationMinutes | DurationSeconds | DurationDays,
+) {
+  return toSeconds(duration) * 1000;
+}

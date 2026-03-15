@@ -726,7 +726,9 @@ func (a *AwsHome) listStages(app string) ([]string, error) {
 		filename := path.Base(*obj.Key)
 		if strings.HasSuffix(filename, ".json") {
 			stageName := strings.TrimSuffix(filename, ".json")
-			stages = append(stages, stageName)
+			if hasResources(a, app, stageName) {
+				stages = append(stages, stageName)
+			}
 		}
 	}
 

@@ -987,6 +987,7 @@ Listening on "${dev.host}:${dev.port}"...`,
                 : undefined,
             })),
             applyImmediately: true,
+            allowMajorVersionUpgrade: false,
             skipFinalSnapshot: true,
             storageEncrypted: true,
             enableHttpEndpoint: dataApi,
@@ -1013,6 +1014,7 @@ Listening on "${dev.host}:${dev.port}"...`,
         engineVersion: cluster.engineVersion,
         dbSubnetGroupName: cluster.dbSubnetGroupName,
         dbParameterGroupName: instanceParameterGroup.name,
+        autoMinorVersionUpgrade: false,
       };
 
       // Create primary instance

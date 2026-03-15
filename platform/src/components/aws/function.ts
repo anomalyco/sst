@@ -2538,7 +2538,7 @@ export class Function extends Component implements Link.Linkable {
                   ),
                 }),
             },
-            { parent, ignoreChanges: args.runtime ? [] : ["runtime"] },
+            { parent },
           );
           return new lambda.Function(
             transformed[0],
@@ -2566,16 +2566,20 @@ export class Function extends Component implements Link.Linkable {
       return url.apply((url) => {
         if (url === undefined) return output(undefined);
 
+        const authorization = output(url.authorization ?? "none");
         const isOac = output(url.route?.routerProtection).apply(
           (p) => p?.mode === "oac" || p?.mode === "oac-with-edge-signing",
+        );
+        const isIam = all([isOac, authorization]).apply(
+          ([oac, authorization]) => oac || authorization === "iam",
         );
 
         const fnUrl = new lambda.FunctionUrl(
           `${name}Url`,
           {
             functionName: fn.name,
-            authorizationType: isOac.apply((oac) =>
-              (oac || url.authorization === "iam") ? "AWS_IAM" : "NONE",
+            authorizationType: isIam.apply((isIam) =>
+              isIam ? "AWS_IAM" : "NONE",
             ),
             invokeMode: streaming.apply((streaming) =>
               streaming ? "RESPONSE_STREAM" : "BUFFERED",
@@ -2586,23 +2590,36 @@ export class Function extends Component implements Link.Linkable {
         );
 
         if (!url.route) {
-          if (url.authorization === "none") {
+          authorization.apply((authorization) => {
+            if (authorization !== "none") return;
+
+            new lambda.Permission(
+              `${name}PublicFunctionUrlAccess`,
+              {
+                action: "lambda:InvokeFunctionUrl",
+                function: fn.name,
+                principal: "*",
+                functionUrlAuthType: "NONE",
+              },
+              { parent },
+            );
             new lambda.Permission(
               `${name}InvokeFunction`,
               {
                 action: "lambda:InvokeFunction",
                 function: fn.name,
                 principal: "*",
+                invokedViaFunctionUrl: true,
               },
               { parent },
             );
-          }
+          });
           return fnUrl.functionUrl;
         }
 
         // Create permissions based on Router protection mode
-        all([isOac, url.route.routerDistributionArn]).apply(
-          ([oac, distributionArn]) => {
+        all([isOac, authorization, url.route.routerDistributionArn]).apply(
+          ([oac, authorization, distributionArn]) => {
             if (oac && distributionArn) {
               new lambda.Permission(
                 `${name}CloudFrontFunctionUrlAccess`,
@@ -2621,10 +2638,11 @@ export class Function extends Component implements Link.Linkable {
                   function: fn.name,
                   principal: "cloudfront.amazonaws.com",
                   sourceArn: distributionArn,
+                  invokedViaFunctionUrl: true,
                 },
                 { parent },
               );
-            } else {
+            } else if (authorization === "none") {
               new lambda.Permission(
                 `${name}PublicFunctionUrlAccess`,
                 {
@@ -2632,6 +2650,16 @@ export class Function extends Component implements Link.Linkable {
                   function: fn.name,
                   principal: "*",
                   functionUrlAuthType: "NONE",
+                },
+                { parent },
+              );
+              new lambda.Permission(
+                `${name}PublicInvokeFunction`,
+                {
+                  action: "lambda:InvokeFunction",
+                  function: fn.name,
+                  principal: "*",
+                  invokedViaFunctionUrl: true,
                 },
                 { parent },
               );

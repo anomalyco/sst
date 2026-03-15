@@ -184,6 +184,7 @@ export class Component extends ComponentResource {
               "cloudflare:index/dnsRecord:DnsRecord",
               "cloudflare:index/workersCronTrigger:WorkersCronTrigger",
               "cloudflare:index/workersCustomDomain:WorkersCustomDomain",
+              "cloudflare:index/queueConsumer:QueueConsumer",
               "docker-build:index:Image",
               "vercel:index/dnsRecord:DnsRecord",
             ].includes(args.type)

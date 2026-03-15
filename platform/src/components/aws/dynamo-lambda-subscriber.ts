@@ -1,6 +1,6 @@
 import { ComponentResourceOptions, Input, output } from "@pulumi/pulumi";
 import { Component, transform } from "../component";
-import { FunctionArgs } from "./function";
+import { FunctionArgs } from "./function.js";
 import { DynamoSubscriberArgs } from "./dynamo";
 import { lambda } from "@pulumi/aws";
 import { FunctionBuilder, functionBuilder } from "./helpers/function-builder";
