@@ -55,6 +55,10 @@ export interface AuroraArgs {
    * - Aurora PostgresSQL 13.15 and higher
    * - Aurora MySQL 3.08.0 and higher
    *
+   * :::caution
+   * Changing the version will **immediately** apply the update on the next `sst deploy` possibly causing downtime.
+   * :::
+   *
    * @default `"17"` for Postgres, `"3.08.0"` for MySQL
    * @example
    * ```js
@@ -982,6 +986,7 @@ Listening on "${dev.host}:${dev.port}"...`,
                 ? toSeconds(scaling.pauseAfter)
                 : undefined,
             })),
+            applyImmediately: true,
             allowMajorVersionUpgrade: false,
             skipFinalSnapshot: true,
             storageEncrypted: true,
