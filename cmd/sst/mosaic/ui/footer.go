@@ -225,6 +225,8 @@ func (m *footer) Destroy() {
 var TEXT_HIGHLIGHT = lipgloss.NewStyle().Foreground(lipgloss.Color("14"))
 var TEXT_HIGHLIGHT_BOLD = TEXT_HIGHLIGHT.Copy().Bold(true)
 
+var SPINNER_STYLE = lipgloss.NewStyle().Foreground(lipgloss.Color("14"))
+
 var TEXT_DIM = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 var TEXT_DIM_BOLD = TEXT_DIM.Copy().Bold(true)
 
@@ -247,7 +249,7 @@ func (m *footer) View(width int) string {
 	if !m.started || m.complete != nil {
 		return ""
 	}
-	spinner := spinner.MiniDot.Frames[m.spinner%len(spinner.MiniDot.Frames)]
+	spinner := SPINNER_STYLE.Render(spinner.MiniDot.Frames[m.spinner%len(spinner.MiniDot.Frames)])
 	result := []string{}
 	keys := make([]string, 0, len(m.downloading))
 	for k := range m.downloading {

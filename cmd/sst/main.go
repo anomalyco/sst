@@ -107,6 +107,7 @@ func run() error {
 
 	if !flag.SST_SKIP_DEPENDENCY_CHECK {
 		spin := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
+		spin.Color("cyan")
 		spin.Suffix = "  Download dependencies..."
 		if global.NeedsPulumi() {
 			spin.Suffix = "  Installing pulumi..."
@@ -566,6 +567,7 @@ var root = &cli.Command{
 			Run: func(cli *cli.Cli) error {
 				pkg := cli.Positional(0)
 				spin := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
+				spin.Color("cyan")
 				spin.Suffix = "  Adding provider..."
 				spin.Start()
 				defer spin.Stop()
@@ -665,6 +667,7 @@ var root = &cli.Command{
 				}
 
 				spin := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
+				spin.Color("cyan")
 				defer spin.Stop()
 				spin.Suffix = "  Installing providers..."
 				spin.Start()

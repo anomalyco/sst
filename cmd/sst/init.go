@@ -213,6 +213,7 @@ func CmdInit(cli *cli.Cli) error {
 	var cmd *exec.Cmd
 
 	spin := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
+	spin.Color("cyan")
 	spin.Suffix = "  Installing providers..."
 	spin.Start()
 
