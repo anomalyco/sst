@@ -2180,6 +2180,7 @@ async function buildComponents() {
       "../platform/src/components/aws/astro.ts",
       "../platform/src/components/aws/nextjs.ts",
       "../platform/src/components/aws/nuxt.ts",
+      "../platform/src/components/aws/dsql.ts",
       "../platform/src/components/aws/realtime.ts",
       "../platform/src/components/aws/realtime-lambda-subscriber.ts",
       "../platform/src/components/aws/react.ts",

@@ -29,6 +29,7 @@ function addTransformationToRetainResourcesOnDelete() {
         [
           "aws:dynamodb/table:Table",
           "aws:rds/instance:Instance",
+          "aws:dsql/cluster:Cluster",
           "aws:s3/bucket:Bucket",
           "aws:s3/bucketV2:BucketV2",
           "planetscale:index/database:Database",

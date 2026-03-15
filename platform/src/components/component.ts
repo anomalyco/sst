@@ -186,6 +186,9 @@ export class Component extends ComponentResource {
               "cloudflare:index/workersCustomDomain:WorkersCustomDomain",
               "docker-build:index:Image",
               "vercel:index/dnsRecord:DnsRecord",
+              "aws:dsql/cluster:Cluster",
+              "aws:dsql/clusterPeering:ClusterPeering",
+              "aws:ec2/vpcEndpoint:VpcEndpoint"
             ].includes(args.type)
           )
             return;

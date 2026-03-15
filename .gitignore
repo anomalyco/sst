@@ -13,3 +13,9 @@ Pulumi.yaml
 tmp
 .termai
 .opencode
+
+# SST Env files from examples
+examples/*/sst-env.d.ts
+
+# build outputs
+/sst
