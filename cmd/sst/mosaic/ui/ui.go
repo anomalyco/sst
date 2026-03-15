@@ -47,7 +47,6 @@ type UI struct {
 	dedupe     map[string]bool
 	timing     map[string]time.Time
 	parents    map[string]string
-	colors     map[string]lipgloss.Style
 	workerTime map[string]time.Time
 	complete   *project.CompleteEvent
 	footer     *footer
@@ -88,7 +87,6 @@ func New(ctx context.Context, options ...Option) *UI {
 	isTTY := terminal.IsTerminal(int(os.Stdout.Fd()))
 	slog.Info("initializing ui", "isTTY", isTTY)
 	result := &UI{
-		colors:     map[string]lipgloss.Style{},
 		workerTime: map[string]time.Time{},
 		hasBlank:   false,
 		options:    opts,
@@ -155,38 +153,38 @@ func (u *UI) Event(unknown interface{}) {
 		u.println(evt.Line)
 
 	case *aws.TaskProvisionEvent:
-		u.printEvent(u.getColor(""), fmt.Sprintf("%-11s", "Provision"), evt.Name)
+		u.printEvent(GetColor(""), fmt.Sprintf("%-11s", "Provision"), evt.Name)
 
 	case *aws.TaskStartEvent:
 		u.workerTime[evt.WorkerID] = time.Now()
-		u.printEvent(u.getColor(evt.WorkerID), fmt.Sprintf("%-11s", "Start"), evt.Command)
+		u.printEvent(GetColor(evt.WorkerID), fmt.Sprintf("%-11s", "Start"), evt.Command)
 
 	case *aws.TaskLogEvent:
 		duration := time.Since(u.workerTime[evt.WorkerID]).Round(time.Millisecond)
 		formattedDuration := fmt.Sprintf("%.9s", fmt.Sprintf("+%v", duration))
-		u.printEvent(u.getColor(evt.WorkerID), formattedDuration, evt.Line)
+		u.printEvent(GetColor(evt.WorkerID), formattedDuration, evt.Line)
 
 	case *aws.TaskCompleteEvent:
 		duration := time.Since(u.workerTime[evt.WorkerID]).Round(time.Millisecond)
 		formattedDuration := fmt.Sprintf("took %.9s", fmt.Sprintf("+%v", duration))
-		u.printEvent(u.getColor(evt.WorkerID), "Done", formattedDuration)
+		u.printEvent(GetColor(evt.WorkerID), "Done", formattedDuration)
 
 	case *aws.TaskMissingCommandEvent:
 		u.printEvent(TEXT_DANGER, fmt.Sprintf("%-11s", "Missing"), fmt.Sprintf("Dev command not configured for the \"%s\" task. Set `dev.command` to configure how the task works in `sst dev`.", evt.Name))
 
 	case *aws.FunctionInvokedEvent:
 		u.workerTime[evt.WorkerID] = time.Now()
-		u.printEvent(u.getColor(evt.WorkerID), TEXT_NORMAL_BOLD.Render(fmt.Sprintf("%-11s", "Invoke")), u.functionName(evt.FunctionID))
+		u.printEvent(GetColor(evt.WorkerID), TEXT_NORMAL_BOLD.Render(fmt.Sprintf("%-11s", "Invoke")), u.functionName(evt.FunctionID))
 
 	case *aws.FunctionResponseEvent:
 		duration := time.Since(u.workerTime[evt.WorkerID]).Round(time.Millisecond)
 		formattedDuration := fmt.Sprintf("took %.9s", fmt.Sprintf("+%v", duration))
-		u.printEvent(u.getColor(evt.WorkerID), "Done", formattedDuration)
+		u.printEvent(GetColor(evt.WorkerID), "Done", formattedDuration)
 
 	case *aws.FunctionLogEvent:
 		duration := time.Since(u.workerTime[evt.WorkerID]).Round(time.Millisecond)
 		formattedDuration := fmt.Sprintf("%.9s", fmt.Sprintf("+%v", duration))
-		u.printEvent(u.getColor(evt.WorkerID), formattedDuration, evt.Line)
+		u.printEvent(GetColor(evt.WorkerID), formattedDuration, evt.Line)
 
 	case *aws.FunctionBuildEvent:
 		if len(evt.Errors) > 0 {
@@ -199,13 +197,13 @@ func (u *UI) Event(unknown interface{}) {
 		u.printEvent(TEXT_SUCCESS, "Build", u.functionName(evt.FunctionID))
 
 	case *aws.FunctionErrorEvent:
-		u.printEvent(u.getColor(evt.WorkerID), TEXT_DANGER.Render(fmt.Sprintf("%-11s", "Error")), u.functionName(evt.FunctionID))
-		u.printEvent(u.getColor(evt.WorkerID), "", evt.ErrorMessage)
+		u.printEvent(GetColor(evt.WorkerID), TEXT_DANGER.Render(fmt.Sprintf("%-11s", "Error")), u.functionName(evt.FunctionID))
+		u.printEvent(GetColor(evt.WorkerID), "", evt.ErrorMessage)
 		for _, item := range evt.Trace {
 			if strings.Contains(item, "Error:") {
 				continue
 			}
-			u.printEvent(u.getColor(evt.WorkerID), "", "↳ "+strings.TrimSpace(item))
+			u.printEvent(GetColor(evt.WorkerID), "", "↳ "+strings.TrimSpace(item))
 		}
 
 	case *project.ConcurrentUpdateEvent:
@@ -519,7 +517,7 @@ func (u *UI) Event(unknown interface{}) {
 	case *cloudflare.WorkerInvokedEvent:
 		url, _ := url.Parse(evt.TailEvent.Event.Request.URL)
 		u.printEvent(
-			u.getColor(evt.WorkerID),
+			GetColor(evt.WorkerID),
 			TEXT_NORMAL_BOLD.Render(fmt.Sprintf("%-11s", "Invoke")),
 			u.functionName(evt.WorkerID)+" "+evt.TailEvent.Event.Request.Method+" "+url.Path,
 		)
@@ -539,28 +537,27 @@ func (u *UI) Event(unknown interface{}) {
 			}
 
 			for _, item := range strings.Split(strings.Join(line, " "), "\n") {
-				u.printEvent(u.getColor(evt.WorkerID), formattedDuration, item)
+				u.printEvent(GetColor(evt.WorkerID), formattedDuration, item)
 			}
 		}
-		u.printEvent(u.getColor(evt.WorkerID), "Done", evt.TailEvent.Outcome)
+		u.printEvent(GetColor(evt.WorkerID), "Done", evt.TailEvent.Outcome)
 	}
 
 }
 
-var COLORS = []lipgloss.Style{
+var Colors = []lipgloss.Style{
 	lipgloss.NewStyle().Foreground(lipgloss.Color("13")),
 	lipgloss.NewStyle().Foreground(lipgloss.Color("14")),
 	lipgloss.NewStyle().Foreground(lipgloss.Color("2")),
 	lipgloss.NewStyle().Foreground(lipgloss.Color("12")),
 }
 
-func (u *UI) getColor(input string) lipgloss.Style {
-	result, ok := u.colors[input]
-	if !ok {
-		result = COLORS[len(u.colors)%len(COLORS)]
-		u.colors[input] = result
+func GetColor(input string) lipgloss.Style {
+	hash := 0
+	for _, c := range input {
+		hash += int(c)
 	}
-	return result
+	return Colors[hash%len(Colors)]
 }
 
 func (u *UI) functionName(functionID string) string {
