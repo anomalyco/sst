@@ -22,11 +22,8 @@ pulumi.runtime.setMocks(
           arn: `arn:aws:elasticloadbalancing:us-east-1:123456789:${args.type}/${args.inputs.name}`,
           dnsName: `${args.inputs.name}.us-east-1.elb.amazonaws.com`,
           zoneId: "Z1234567890",
-          tags: {
-            "sst:ref:version": "1",
-            "sst:ref:sg": "sg-mock-id",
-            "sst:ref:vpc-id": "vpc-mock-id",
-          },
+          vpcId: "vpc-mock-id",
+          securityGroups: ["sg-mock-id"],
         },
       };
     },

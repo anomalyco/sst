@@ -24,13 +24,13 @@
  * ```ts title="sst.config.ts"
  * new sst.aws.Service("Api", {
  *   cluster,
- *   image: { context: "api/" },
+ *   image: "api:latest",
  *   loadBalancer: {
  *     instance: alb,
  *     rules: [
  *       {
  *         listen: "443/https",
- *         forward: "3000/http",
+ *         forward: "8080/http",
  *         conditions: { path: "/api/*" },
  *         priority: 100,
  *       },
@@ -43,6 +43,12 @@
  * - A shared ALB with a single HTTP listener (no domain/cert needed)
  * - An API service that handles `/api/*` requests
  * - A Web service that handles `/app/*` requests
+ *
+ * Deploy the "creator" stage first, then deploy "consumer" to test Alb.get():
+ * ```sh
+ * go run ../../cmd/sst deploy --stage creator
+ * go run ../../cmd/sst deploy --stage consumer
+ * ```
  */
 export default $config({
   app(input) {
@@ -58,10 +64,43 @@ export default $config({
     };
   },
   async run() {
+    // "creator" stage: creates VPC, Cluster, ALB, and the API service
+    // "consumer" stage: references the ALB via Alb.get() and attaches a Web service
+    if ($app.stage === "consumer") {
+      // Reference the ALB created by the "creator" stage.
+      const alb = sst.aws.Alb.get("SharedAlb", process.env.ALB_ARN!);
+
+      const vpc = sst.aws.Vpc.get("MyVpc", process.env.VPC_ID!);
+      const cluster = sst.aws.Cluster.get("MyCluster", {
+        id: process.env.CLUSTER_ID!,
+        vpc,
+      });
+
+      new sst.aws.Service("Web", {
+        cluster,
+        image: { context: "web/" },
+        loadBalancer: {
+          instance: alb,
+          rules: [
+            {
+              listen: "80/http",
+              forward: "3000/http",
+              conditions: { path: "/app/*" },
+              priority: 200,
+            },
+          ],
+        },
+      });
+
+      return {
+        url: alb.url,
+      };
+    }
+
+    // Default ("creator") stage
     const vpc = new sst.aws.Vpc("MyVpc");
     const cluster = new sst.aws.Cluster("MyCluster", { vpc });
 
-    // Create a shared ALB with a single HTTP listener (no domain/cert needed)
     const alb = new sst.aws.Alb("SharedAlb", {
       vpc,
       listeners: [
@@ -86,25 +125,11 @@ export default $config({
       },
     });
 
-    // Web service — handles /app/* on the shared ALB
-    new sst.aws.Service("Web", {
-      cluster,
-      image: { context: "web/" },
-      loadBalancer: {
-        instance: alb,
-        rules: [
-          {
-            listen: "80/http",
-            forward: "3000/http",
-            conditions: { path: "/app/*" },
-            priority: 200,
-          },
-        ],
-      },
-    });
-
     return {
       url: alb.url,
+      albArn: alb.arn,
+      vpcId: vpc.id,
+      clusterId: cluster.nodes.cluster.id,
     };
   },
 });

@@ -251,7 +251,6 @@ export class Alb extends Component implements Link.Linkable {
   private _listeners: Record<string, lb.Listener> = {};
   private _certificateArn?: Output<string | undefined>;
   private _vpcId!: Output<string>;
-  private _domain?: Output<string | undefined>;
   private _url!: Output<string>;
   private _name: string;
   private _isRef = false;
@@ -285,10 +284,9 @@ export class Alb extends Component implements Link.Linkable {
     this._securityGroup = securityGroup;
     this._certificateArn = certificateArn;
     this._vpcId = vpcId;
-    this._domain = domain.apply((d) => d?.name);
-    this._url = all([this._domain, loadBalancer.dnsName]).apply(
+    this._url = all([domain, loadBalancer.dnsName]).apply(
       ([domain, dnsName]) =>
-        domain ? `https://${domain}/` : `http://${dnsName}`,
+        domain ? `https://${domain.name}/` : `http://${dnsName}`,
     );
 
     this.registerOutputs({ _hint: this._url });
@@ -302,21 +300,16 @@ export class Alb extends Component implements Link.Linkable {
         { parent: self },
       );
 
-      const tags = loadBalancer.tags.apply((tags) => {
-        if (!tags) {
-          throw new VisibleError(
-            `Could not find tags on the referenced ALB "${name}". Make sure the ALB was created by SST.`,
-          );
-        }
-        return {
-          sgId: tags["sst:ref:sg"]!,
-          vpcId: tags["sst:ref:vpc-id"]!,
-        };
-      });
-
       const securityGroup = ec2.SecurityGroup.get(
         `${name}SecurityGroup`,
-        tags.sgId,
+        loadBalancer.securityGroups.apply((sgs) => {
+          if (!sgs?.length) {
+            throw new VisibleError(
+              `No security groups found on the referenced ALB "${name}".`,
+            );
+          }
+          return sgs[0];
+        }),
         {},
         { parent: self },
       );
@@ -328,13 +321,9 @@ export class Alb extends Component implements Link.Linkable {
       self._loadBalancer = loadBalancer;
       self._securityGroup = securityGroup;
       self._listeners = resolvedListeners;
-      self._vpcId = tags.vpcId;
-      self._domain = loadBalancer.tags.apply(
-        (tags) => tags?.["sst:ref:domain"] || undefined,
-      );
-      self._url = all([self._domain, loadBalancer.dnsName]).apply(
-        ([domain, dnsName]) =>
-          domain ? `https://${domain}/` : `http://${dnsName}`,
+      self._vpcId = loadBalancer.vpcId;
+      self._url = loadBalancer.dnsName.apply(
+        (dnsName) => `http://${dnsName}`,
       );
 
       self.registerOutputs({ _hint: self._url });
@@ -437,11 +426,7 @@ export class Alb extends Component implements Link.Linkable {
             subnets,
             securityGroups: [securityGroup.id],
             enableCrossZoneLoadBalancing: true,
-            tags: all([domain]).apply(([d]) => ({
-              "sst:ref:sg": securityGroup.id,
-              "sst:ref:vpc-id": vpcId,
-              ...(d ? { "sst:ref:domain": d.name } : {}),
-            })),
+
           },
           { parent: self },
         ),
