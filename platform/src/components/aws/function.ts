@@ -23,7 +23,7 @@ import { Component, Prettify, Transform, transform } from "../component.js";
 import { Link } from "../link.js";
 import { VisibleError } from "../error.js";
 import type { Input } from "../input.js";
-import { physicalName } from "../naming.js";
+import { logicalName, physicalName } from "../naming.js";
 import { RETENTION } from "./logging.js";
 import {
   cloudwatch,
@@ -2443,7 +2443,7 @@ export class Function extends Component implements Link.Linkable {
 
             return new s3.BucketObjectv2(
               dev
-                ? `DevBridgeCode${regionName.replace(/[^a-zA-Z0-9]/g, "")}`
+                ? `DevBridgeCode${logicalName(regionName)}`
                 : `${name}Code`,
               {
                 key: dev
