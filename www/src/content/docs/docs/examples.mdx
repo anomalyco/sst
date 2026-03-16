@@ -60,6 +60,63 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-apig-au
 
 
 ---
+## AWS API Gateway V1 streaming
+
+An example on how to enable streaming for API Gateway REST API routes.
+
+```ts title="sst.config.ts"
+api.route("GET /", "index.handler", {
+  streaming: true,
+});
+```
+
+The handler uses the native `awslambda.streamifyResponse` and
+`awslambda.HttpResponseStream.from` to stream responses through API Gateway.
+
+```ts title="index.ts"
+export const handler = awslambda.streamifyResponse(
+  async (_event: unknown, responseStream: any) => {
+    responseStream = awslambda.HttpResponseStream.from(responseStream, {
+      statusCode: 200,
+      headers: { "Content-Type": "text/plain" },
+    });
+
+    responseStream.write("Hello");
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    responseStream.write(" World");
+    responseStream.end();
+  },
+);
+```
+
+:::note
+Streaming is currently not supported in `sst dev`.
+:::
+
+To test this in your terminal, use the `curl` command with the `--no-buffer` option.
+
+```bash "--no-buffer"
+curl --no-buffer https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/prod
+```
+```ts title="sst.config.ts"
+const api = new sst.aws.ApiGatewayV1("MyApi");
+api.route("GET /", "index.handler", {
+  streaming: true,
+});
+api.route("GET /hono", "hono.handler", {
+  streaming: true,
+});
+api.deploy();
+
+return {
+  api: api.url,
+};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-apigv1-stream).
+
+
+---
 ## AWS Astro container with Redis
 
 Creates a hit counter app with Astro and Redis.
@@ -1086,9 +1143,12 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-cluster
 ---
 ## AWS Cognito User Pool
 
-Create a Cognito user pool with triggers and identity pool.
+Create a Cognito User Pool with a hosted UI domain, client, and identity pool.
 ```ts title="sst.config.ts"
 const userPool = new sst.aws.CognitoUserPool("MyUserPool", {
+  domain: {
+    prefix: `my-app-${$app.stage}`,
+  },
   triggers: {
     preSignUp: {
       handler: "index.handler",
@@ -1113,6 +1173,7 @@ return {
   UserPool: userPool.id,
   Client: client.id,
   IdentityPool: identityPool.id,
+  DomainUrl: userPool.domainUrl,
 };
 ```
 
@@ -1298,6 +1359,302 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-drizzle
 
 
 ---
+## AWS Aurora DSQL with Drizzle
+
+In this example, we use Drizzle ORM with an Aurora DSQL cluster.
+
+```ts title="sst.config.ts"
+const cluster = new sst.aws.Dsql("MyCluster");
+```
+
+And link it to a Lambda function.
+
+```ts title="sst.config.ts" {4}
+new sst.aws.Function("MyApi", {
+  handler: "src/api.handler",
+  link: [cluster],
+  url: true,
+});
+```
+
+Push the Drizzle schema to the database.
+
+```bash
+sst shell -- bun run push.ts
+```
+
+Now in the function we can connect to the cluster using Drizzle with the DSQL connector.
+Learn more about [DSQL Node.js connectors](https://docs.aws.amazon.com/aurora-dsql/latest/userguide/SECTION_Node-js-connectors.html).
+
+```ts title="src/drizzle.ts"
+import { drizzle } from "drizzle-orm/node-postgres";
+import { AuroraDSQLPool } from "@aws/aurora-dsql-node-postgres-connector";
+import { Resource } from "sst";
+
+const pool = new AuroraDSQLPool({
+  host: Resource.MyCluster.endpoint,
+  user: "admin",
+});
+
+export const db = drizzle(pool, { schema });
+```
+```ts title="sst.config.ts"
+const cluster = new sst.aws.Dsql("MyCluster");
+
+new sst.aws.Function("MyApi", {
+  handler: "src/api.handler",
+  link: [cluster],
+  url: true,
+});
+
+return {
+  endpoint: cluster.endpoint,
+  region: cluster.region,
+};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-dsql-drizzle).
+
+
+---
+## AWS Aurora DSQL Multi-Region
+
+In this example, we deploy a multi-region Aurora DSQL cluster and connect to both
+clusters from a Lambda function.
+
+:::note
+Multi-region with VPCs is not currently supported.
+:::
+
+Create the cluster with a witness region and a peer region. The witness must differ
+from both cluster regions.
+
+```ts title="sst.config.ts"
+const cluster = new sst.aws.Dsql("MultiRegion", {
+  regions: {
+    witness: "us-west-2",
+    peer: "us-east-2",
+  },
+});
+```
+
+Connect to both clusters from your function using the DSQL connector.
+Learn more about [DSQL Node.js connectors](https://docs.aws.amazon.com/aurora-dsql/latest/userguide/SECTION_Node-js-connectors.html).
+
+```ts title="lambda.ts"
+import { AuroraDSQLClient } from "@aws/aurora-dsql-node-postgres-connector";
+import { Resource } from "sst";
+
+async function connectToCluster(endpoint: string) {
+  const client = new AuroraDSQLClient({ host: endpoint, user: "admin" });
+  await client.connect();
+  return client;
+}
+
+// Cluster in us-east-1
+const usEast1 = await connectToCluster(Resource.MultiRegion.endpoint);
+
+// Cluster in us-east-2
+const usEast2 = await connectToCluster(Resource.MultiRegion.peer.endpoint);
+```
+```ts title="sst.config.ts"
+const cluster = new sst.aws.Dsql("MultiRegion", {
+  regions: {
+    witness: "us-west-2",
+    peer: "us-east-2",
+  },
+});
+
+const fn = new sst.aws.Function("MyFunction", {
+  handler: "lambda.handler",
+  link: [cluster],
+  url: true,
+});
+
+return {
+  endpoint: cluster.endpoint,
+  region: cluster.region,
+  peerEndpoint: cluster.peer.endpoint,
+  peerRegion: cluster.peer.region,
+};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-dsql-multiregion).
+
+
+---
+## AWS Aurora DSQL in a VPC
+
+In this example, we connect to an Aurora DSQL cluster privately from a Lambda
+function using VPC endpoints, without routing traffic over the public internet.
+
+Create a VPC, then create the cluster with a connection endpoint inside it.
+
+```ts title="sst.config.ts"
+const vpc = new sst.aws.Vpc("MyVpc");
+
+const cluster = new sst.aws.Dsql("MyCluster", {
+  vpc: {
+    instance: vpc,
+    endpoints: { connection: true },
+  },
+});
+```
+
+Link the cluster to a function that's also in the VPC. The linked `endpoint` will
+automatically resolve to the private VPC endpoint hostname instead of the public one.
+
+```ts title="sst.config.ts"
+new sst.aws.Function("MyFunction", {
+  handler: "lambda.handler",
+  vpc,
+  link: [cluster],
+});
+```
+
+Connect from your function using the DSQL connector — no config changes needed.
+Learn more about [DSQL Node.js connectors](https://docs.aws.amazon.com/aurora-dsql/latest/userguide/SECTION_Node-js-connectors.html).
+
+```ts title="lambda.ts"
+import { AuroraDSQLClient } from "@aws/aurora-dsql-node-postgres-connector";
+import { Resource } from "sst";
+
+const client = new AuroraDSQLClient({
+  host: Resource.MyCluster.endpoint,
+  user: "admin",
+});
+
+await client.connect();
+const result = await client.query("SELECT NOW()");
+await client.end();
+```
+```ts title="sst.config.ts"
+const vpc = new sst.aws.Vpc("singleClusterVpc");
+
+const cluster = new sst.aws.Dsql("MyCluster", {
+  vpc: {
+    instance: vpc,
+    endpoints: {
+      connection: true,
+      management: false,
+    },
+  },
+});
+
+const fn = new sst.aws.Function("MyFunction", {
+  handler: "lambda.handler",
+  vpc,
+  link: [cluster],
+  url: true,
+});
+
+return {
+  endpoint: cluster.endpoint,
+  region: cluster.region,
+};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-dsql-vpc).
+
+
+---
+## AWS Aurora DSQL
+
+In this example, we deploy an Aurora DSQL cluster.
+
+```ts title="sst.config.ts"
+const cluster = new sst.aws.Dsql("MyCluster");
+```
+
+And link it to a Lambda function.
+
+```ts title="sst.config.ts" {4}
+new sst.aws.Function("MyFunction", {
+  handler: "lambda.handler",
+  link: [cluster],
+  url: true,
+});
+```
+
+Now in the function we can connect to the cluster using the DSQL connector.
+Learn more about [DSQL Node.js connectors](https://docs.aws.amazon.com/aurora-dsql/latest/userguide/SECTION_Node-js-connectors.html).
+
+```ts title="lambda.ts"
+import { AuroraDSQLClient } from "@aws/aurora-dsql-node-postgres-connector";
+import { Resource } from "sst";
+
+const client = new AuroraDSQLClient({
+  host: Resource.MyCluster.endpoint,
+  user: "admin",
+});
+
+await client.connect();
+const result = await client.query("SELECT NOW()");
+await client.end();
+```
+```ts title="sst.config.ts"
+const cluster = new sst.aws.Dsql("MyCluster", {});
+
+const fn = new sst.aws.Function("MyFunction", {
+  handler: "lambda.handler",
+  link: [cluster],
+  url: true,
+});
+
+return {
+  endpoint: cluster.endpoint,
+  region: cluster.region,
+};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-dsql).
+
+
+---
+## DynamoDB composite keys
+
+Create a DynamoDB table with multi-attribute composite keys in a global secondary index.
+```ts title="sst.config.ts"
+const table = new sst.aws.Dynamo("MyTable", {
+  fields: {
+    userId: "string",
+    noteId: "string",
+    region: "string",
+    category: "string",
+    createdAt: "number",
+  },
+  primaryIndex: { hashKey: "userId", rangeKey: "noteId" },
+  globalIndexes: {
+    RegionCategoryIndex: {
+      hashKey: ["region", "category"],
+      rangeKey: "createdAt",
+    },
+  },
+});
+
+const creator = new sst.aws.Function("MyCreator", {
+  handler: "creator.handler",
+  link: [table],
+  url: true,
+});
+
+const reader = new sst.aws.Function("MyReader", {
+  handler: "reader.handler",
+  link: [table],
+  url: true,
+});
+
+return {
+  creator: creator.url,
+  reader: reader.url,
+  table: table.name,
+};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-dynamo-composite-keys).
+
+
+---
 ## DynamoDB streams
 
 Create a DynamoDB table, enable streams, and subscribe to it with a function.
@@ -1323,14 +1680,21 @@ table.subscribe("MySubscriber", "subscriber.handler", {
   ],
 });
 
-const app = new sst.aws.Function("MyApp", {
-  handler: "publisher.handler",
+const creator = new sst.aws.Function("MyCreator", {
+  handler: "creator.handler",
+  link: [table],
+  url: true,
+});
+
+const reader = new sst.aws.Function("MyReader", {
+  handler: "reader.handler",
   link: [table],
   url: true,
 });
 
 return {
-  app: app.url,
+  creator: creator.url,
+  reader: reader.url,
   table: table.name,
 };
 ```
@@ -1994,7 +2358,7 @@ To test this in your terminal, use the `curl` command with the `--no-buffer` opt
 curl --no-buffer https://u3dyblk457ghskwbmzrbylpxoi0ayrbb.lambda-url.us-east-1.on.aws
 ```
 
-Here we are using a Function URL directly because API Gateway doesn't support streaming.
+Streaming is also supported through API Gateway REST API.
 ```ts title="sst.config.ts"
 const hono = new sst.aws.Function("Hono", {
   url: true,
@@ -2604,7 +2968,7 @@ To test this in your terminal, use the `curl` command with the `--no-buffer` opt
 curl --no-buffer https://u3dyblk457ghskwbmzrbylpxoi0ayrbb.lambda-url.us-east-1.on.aws
 ```
 
-Here we are using a Function URL directly because API Gateway doesn't support streaming.
+Streaming is also supported through API Gateway REST API.
 ```ts title="sst.config.ts"
 const fn = new sst.aws.Function("MyFunction", {
   url: true,
@@ -3322,6 +3686,84 @@ new sst.aws.Nextjs("MyWeb");
 ```
 
 View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-nextjs-stream).
+
+
+---
+## AWS Nuxt streaming
+
+An example of how to use streaming with Nuxt.js. Uses `createEventStream` to stream data from a server API.
+
+```ts title="server/api/streaming.ts"
+export default defineEventHandler(async (event) => {
+  const eventStream = createEventStream(event);
+  eventStream.push("Start\n\n");
+
+  // Send a message every second
+  const interval = setInterval(async () => {
+    await eventStream.push(`Random: ${Math.random().toFixed(5)} `);
+  }, 1000);
+}
+```
+
+The client uses the Fetch API to consume the stream.
+
+```vue title="app.vue"
+<script setup lang="ts">
+const output = ref('')
+
+async function stream() {
+  output.value = ''
+  const response = await fetch('/api/streaming')
+  const reader = response.body?.getReader()
+  const decoder = new TextDecoder()
+  let done = false
+
+  while (!done && reader) {
+    const { value, done: readerDone } = await reader.read()
+    done = readerDone
+    if (value) {
+      output.value += decoder.decode(value, { stream: true })
+    }
+  }
+}
+</script>
+
+<template>
+  <div>
+    <pre>{{ output }}</pre>
+    <button @click="stream">Call API</button>
+    <button @click="output = ''">Clear Output</button>
+  </div>
+</template>
+```
+
+Make sure to have your nuxt.config.ts set up to handle the streaming API correctly.
+
+```ts title="nuxt.config.ts" {4-6}
+export default defineNuxtConfig({
+ nitro: {
+  preset: 'aws-lambda',
+  awsLambda: {
+    streaming: true
+  }
+ }
+});
+```
+
+You should see random numbers streamed to the page every second for 10 seconds.
+
+:::note
+Safari handles streaming differently than other browsers.
+:::
+
+Safari uses a [different heuristic](https://bugs.webkit.org/show_bug.cgi?id=252413) to
+determine when to stream data. You need to render _enough_ initial HTML to trigger streaming.
+This is typically only a problem for demo apps.
+```ts title="sst.config.ts"
+new sst.aws.Nuxt("MyWeb");
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-nuxt-stream).
 
 
 ---
@@ -4531,6 +4973,71 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-router-
 
 
 ---
+## Router protection with OAC
+
+Creates a router with Origin Access Control (OAC) to secure Lambda function URLs
+behind CloudFront. Direct access to the Lambda URL returns 403.
+```ts title="sst.config.ts"
+const router = new sst.aws.Router("MyRouter", {
+  protection: "oac",
+});
+
+const api = new sst.aws.Function("MyApi", {
+  handler: "api.handler",
+  url: {
+    router: { instance: router, path: "/api" },
+  },
+});
+
+return {
+  router: router.url,
+  api: api.url,
+};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-router-protection).
+
+
+---
+## Router with WAF
+
+Enable WAF (Web Application Firewall) for a Router to protect against common
+web exploits and bots.
+
+WAF includes rate limiting per IP, and AWS managed rules for core rule set,
+known bad inputs, and SQL injection protection.
+
+You can also enable WAF logging to CloudWatch to monitor requests.
+```ts title="sst.config.ts"
+const api = new sst.aws.Function("MyApi", {
+  handler: "api.handler",
+  url: true,
+});
+
+const router = new sst.aws.Router("MyRouter", {
+  routes: {
+    "/*": api.url,
+  },
+  waf: {
+    rateLimitPerIp: 1000,
+    managedRules: {
+      coreRuleSet: true,
+      knownBadInputs: true,
+      sqlInjection: true,
+    },
+    logging: true,
+  },
+});
+
+return {
+  url: router.url,
+};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-router-waf).
+
+
+---
 ## Router and function URL
 
 Creates a router that routes all requests to a function with a URL.
@@ -4543,7 +5050,6 @@ const bucket = new sst.aws.Bucket("MyBucket", {
   access: "public",
 });
 const router = new sst.aws.Router("MyRouter", {
-  domain: "router.ion.dev.sst.dev",
   routes: {
     "/api/*": api.url,
     "/*": $interpolate`https://${bucket.domain}`,

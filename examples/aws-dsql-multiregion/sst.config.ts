@@ -69,14 +69,10 @@ export default $config({
     });
 
     return {
-      arn: cluster.arn,
-      identifier: cluster.identifier,
-      endpoint: cluster.publicEndpoint,
+      endpoint: cluster.endpoint,
       region: cluster.region,
-      peerArn: cluster.peerArn,
-      peerIdentifier: cluster.peerIdentifier,
-      peerEndpoint: cluster.peerPublicEndpoint,
-      peerRegion: cluster.peerRegion,
+      peerEndpoint: cluster.peer.endpoint,
+      peerRegion: cluster.peer.region,
     };
   },
 });

@@ -77,9 +77,8 @@ export default $config({
     });
 
     return {
-      clusterArn: cluster.arn,
-      clusterIdentifier: cluster.identifier,
-      clusterEndpoint: cluster.publicEndpoint,
+      endpoint: cluster.endpoint,
+      region: cluster.region,
     };
   },
 });

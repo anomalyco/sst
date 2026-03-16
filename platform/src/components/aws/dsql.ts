@@ -178,6 +178,7 @@ export class Dsql extends Component implements Link.Linkable {
   private cluster: dsql.Cluster;
   private peerCluster: dsql.Cluster | undefined;
   private connectionEndpoint: ec2.VpcEndpoint | undefined;
+  private constructorName: string;
 
   constructor(
     name: string,
@@ -185,6 +186,7 @@ export class Dsql extends Component implements Link.Linkable {
     opts: ComponentResourceOptions = {},
   ) {
     super(__pulumiType, name, args, opts);
+    this.constructorName = name;
 
     if (args && "ref" in args) {
       const ref = args as unknown as DsqlRef;
@@ -380,38 +382,6 @@ export class Dsql extends Component implements Link.Linkable {
     }
   }
 
-  /** The ARN of the cluster. */
-  public get arn() {
-    return this.cluster.arn;
-  }
-
-  /** The ARN of the peer cluster (multi-region only). */
-  public get peerArn(): Output<string> | undefined {
-    return this.peerCluster?.arn;
-  }
-
-  /** The identifier of the cluster. */
-  public get identifier() {
-    return this.cluster.identifier;
-  }
-
-  /** The identifier of the peer cluster (multi-region only). */
-  public get peerIdentifier(): Output<string> | undefined {
-    return this.peerCluster?.identifier;
-  }
-
-  /** The public endpoint of the cluster. */
-  public get publicEndpoint() {
-    return this.cluster.arn.apply(parseDsqlPublicEndpoint);
-  }
-
-  /** The public endpoint of the peer cluster (multi-region only). */
-  public get peerPublicEndpoint(): Output<string> | undefined {
-    return this.peerCluster
-      ? this.peerCluster.arn.apply(parseDsqlPublicEndpoint)
-      : undefined;
-  }
-
   /** The region of the cluster. */
   public get region() {
     return this.cluster.region;
@@ -431,15 +401,33 @@ export class Dsql extends Component implements Link.Linkable {
     );
   }
 
-  /** The endpoint of the peer cluster. */
-  public get peerEndpoint() {
-    // The peer cluster is always accessed via its public endpoint.
-    return this.peerCluster?.arn.apply(parseDsqlPublicEndpoint);
-  }
-
-  /** The region of the peer cluster (multi-region only). */
-  public get peerRegion(): Output<string> | undefined {
-    return this.peerCluster?.region;
+  /**
+   * The peer cluster info. Only available for multi-region clusters.
+   *
+   * @example
+   * ```ts title="sst.config.ts"
+   * const cluster = new sst.aws.Dsql("MyCluster", {
+   *   regions: { peer: "us-east-2" },
+   * });
+   *
+   * return {
+   *   peerRegion: cluster.peer.region,
+   *   peerEndpoint: cluster.peer.endpoint,
+   * };
+   * ```
+   */
+  public get peer() {
+    if (!this.peerCluster)
+      throw new VisibleError(
+        `Cannot access "peer" on "${this.constructorName}" because it is a single-region cluster. Set "regions.peer" to enable multi-region.`,
+      );
+    const peerCluster = this.peerCluster;
+    return {
+      /** The region of the peer cluster. */
+      region: peerCluster.region,
+      /** The endpoint of the peer cluster. */
+      endpoint: peerCluster.arn.apply(parseDsqlPublicEndpoint),
+    };
   }
 
   /** The underlying [resources](/docs/components/#nodes) this component creates. */
@@ -520,15 +508,18 @@ export class Dsql extends Component implements Link.Linkable {
         region: this.region,
         endpoint: this.endpoint,
         peer: this.peerCluster
-          ? { region: this.peerCluster.region, endpoint: this.peerEndpoint }
+          ? {
+              region: this.peerCluster.region,
+              endpoint: this.peerCluster.arn.apply(parseDsqlPublicEndpoint),
+            }
           : undefined,
       },
       include: [
         permission({
           actions: ["dsql:DbConnect", "dsql:DbConnectAdmin", "dsql:GetCluster"],
           resources: this.peerCluster
-            ? [this.arn, this.peerCluster.arn]
-            : [this.arn],
+            ? [this.cluster.arn, this.peerCluster.arn]
+            : [this.cluster.arn],
         }),
       ],
     };
