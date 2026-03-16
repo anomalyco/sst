@@ -13,6 +13,7 @@ import { ec2, lb, getRegionOutput } from "@pulumi/aws";
 import { Vpc } from "./vpc.js";
 import { Input } from "../input.js";
 import { Dns } from "../dns.js";
+import { listenerKey } from "./helpers/load-balancer.js";
 
 export interface AlbListenerArgs {
   /**
@@ -431,7 +432,7 @@ export class Alb extends Component implements Link.Linkable {
       for (const l of args.listeners) {
         const protocol = l.protocol.toUpperCase();
         const port = l.port;
-        const key = `${protocol}:${port}`;
+        const key = listenerKey(protocol, port);
         const defaultAction = l.defaultAction ?? "fixed-404";
 
         const defaultActions = buildDefaultActions(defaultAction, protocol);
@@ -567,7 +568,7 @@ export class Alb extends Component implements Link.Linkable {
        */
       securityGroup: this._securityGroup,
       /**
-       * The AWS Listener resources, keyed by "PROTOCOL:PORT" (e.g. "HTTPS:443").
+       * The AWS Listener resources, keyed by "PROTOCOLPORT" (e.g. "HTTPS443").
        */
       listeners: this._listeners,
     };
@@ -595,7 +596,7 @@ export class Alb extends Component implements Link.Linkable {
     protocol: string,
     port: number,
   ): lb.Listener {
-    const key = `${protocol.toUpperCase()}:${port}`;
+    const key = listenerKey(protocol, port);
     if (this._listeners[key]) return this._listeners[key];
 
     if (this._isRef) {
@@ -613,7 +614,7 @@ export class Alb extends Component implements Link.Linkable {
     }
 
     throw new VisibleError(
-      `Listener "${key}" not found on ALB "${this._name}". Available: ${Object.keys(this._listeners).join(", ") || "none"}.`,
+      `Listener "${key}" not found on ALB "${this._name}". Available: ${Object.keys(this._listeners).join(", ") || "none"}`,
     );
   }
 

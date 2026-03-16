@@ -39,6 +39,7 @@ import {
 import { Dns } from "../dns.js";
 import { hashStringToPrettyString } from "../naming.js";
 import { Alb } from "./alb.js";
+import { listenerKey, targetKey } from "./helpers/load-balancer.js";
 
 type Port = `${number}/${"http" | "https" | "tcp" | "udp" | "tcp_udp" | "tls"}`;
 
@@ -2174,7 +2175,7 @@ export class Service extends Component implements Link.Linkable {
           const container = r.container;
           const forwardProtocol = r.forwardProtocol.toUpperCase();
           const forwardPort = r.forwardPort;
-          const targetId = `${container}${forwardProtocol}${forwardPort}`;
+          const targetId = targetKey(container!, forwardProtocol, forwardPort);
           const target =
             targets[targetId] ??
             new lb.TargetGroup(
@@ -2216,7 +2217,7 @@ export class Service extends Component implements Link.Linkable {
         const seen = new Set<string>();
         for (const rule of rules) {
           if (rule.type !== "forward") continue;
-          const targetId = `${rule.container}${rule.forwardProtocol.toUpperCase()}${rule.forwardPort}`;
+          const targetId = targetKey(rule.container!, rule.forwardProtocol, rule.forwardPort);
           if (seen.has(targetId)) continue;
           seen.add(targetId);
           entries.push({
@@ -2241,7 +2242,7 @@ export class Service extends Component implements Link.Linkable {
           rules.forEach((r) => {
             const listenProtocol = r.listenProtocol.toUpperCase();
             const listenPort = r.listenPort;
-            const listenerId = `${listenProtocol}${listenPort}`;
+            const listenerId = listenerKey(listenProtocol, listenPort);
             listenersById[listenerId] = listenersById[listenerId] ?? [];
             listenersById[listenerId].push(r);
           });
@@ -2649,7 +2650,7 @@ export class Service extends Component implements Link.Linkable {
             const forwardProtocol = parts[1].toUpperCase();
             const containerName =
               (rule.container as string | undefined) ?? ctrs[0].name;
-            const targetId = `${containerName}${forwardProtocol}${forwardPort}`;
+            const targetId = targetKey(containerName, forwardProtocol, forwardPort);
 
             if (!targets[targetId]) {
               const healthKey = `${forwardPort}/${parts[1]}`;
@@ -2756,7 +2757,7 @@ export class Service extends Component implements Link.Linkable {
             const forwardPort = parseInt(forwardParts[0]);
             const forwardProtocol = forwardParts[1].toUpperCase();
             const containerName = container ?? ctrs[0].name;
-            const targetId = `${containerName}${forwardProtocol}${forwardPort}`;
+            const targetId = targetKey(containerName, forwardProtocol, forwardPort);
 
             const targetGroup = targets[targetId];
             if (!targetGroup) {
