@@ -442,9 +442,12 @@ export class Dsql extends Component implements Link.Linkable {
     return this.peerCluster?.region;
   }
 
+  /** The underlying [resources](/docs/components/#nodes) this component creates. */
   public get nodes() {
     return {
+      /** The DSQL cluster. */
       cluster: this.cluster,
+      /** The peer DSQL cluster (multi-region only). */
       peerCluster: this.peerCluster,
     };
   }
@@ -503,7 +506,11 @@ export class Dsql extends Component implements Link.Linkable {
         })
       : undefined;
 
-    return new Dsql(name, { ref: true, cluster, peerCluster } as DsqlArgs, opts);
+    return new Dsql(
+      name,
+      { ref: true, cluster, peerCluster } satisfies DsqlRef as unknown as DsqlArgs,
+      opts,
+    );
   }
 
   /** @internal */
