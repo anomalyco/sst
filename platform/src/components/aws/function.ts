@@ -2329,15 +2329,18 @@ export class Function extends Component implements Link.Linkable {
           if (isContainer) return;
 
           if (dev) {
-            const cacheKey = `${regionName}:${bundle}`;
-            const cache = Function.devBridgeCode();
-            const existing = cache.get(cacheKey);
-            if (existing) return existing;
+            if (!opts?.provider) {
+              const cacheKey = `${regionName}:${bundle}`;
+              const cache = Function.devBridgeCode();
+              const existing = cache.get(cacheKey);
+              if (existing) return existing;
 
-            const created = createCode();
-            cache.set(cacheKey, created);
-            created.catch(() => cache.delete(cacheKey));
-            return created;
+              const created = createCode();
+              cache.set(cacheKey, created);
+              created.catch(() => cache.delete(cacheKey));
+              return created;
+            }
+            return createCode();
           }
 
           return createCode();
