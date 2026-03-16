@@ -2306,10 +2306,6 @@ export class Function extends Component implements Link.Linkable {
       //       b/c the folder contains node_modules. And pnpm node_modules
       //       contains symlinks. Pulumi cannot zip symlinks correctly.
       //       We will zip the folder ourselves.
-      const providerKey = all([
-        region,
-        opts?.provider?.id ?? "",
-      ]).apply(([r, id]) => ({ regionName: r, providerId: id }));
       return all([
         bundle,
         wrapper,
@@ -2318,7 +2314,7 @@ export class Function extends Component implements Link.Linkable {
         isContainer,
         logGroup.apply((l) => l?.arn),
         dev,
-        providerKey,
+        region,
       ]).apply(
         async ([
           bundle,
@@ -2328,12 +2324,12 @@ export class Function extends Component implements Link.Linkable {
           isContainer,
           logGroupArn,
           dev,
-          { regionName, providerId },
+          regionName,
         ]) => {
           if (isContainer) return;
 
           if (dev) {
-            const cacheKey = `${providerId}:${regionName}:${bundle}`;
+            const cacheKey = `${regionName}:${bundle}`;
             const cache = Function.devBridgeCode();
             const existing = cache.get(cacheKey);
             if (existing) return existing;
