@@ -2709,10 +2709,9 @@ export class Service extends Component implements Link.Linkable {
             all(rawRules.map((r) => output(r))),
             albTargetGroups,
             containers,
-            attachment.instance._resolvedListeners,
           ]),
         )
-        .apply(([rules, targets, ctrs, resolvedListeners]) => {
+        .apply(([rules, targets, ctrs]) => {
           const prioritiesByListener = new Map<string, Set<number>>();
           const createdRules: lb.ListenerRule[] = [];
 
@@ -2766,9 +2765,7 @@ export class Service extends Component implements Link.Linkable {
               );
             }
 
-            const listenerKey = `${listenerProtocol.toUpperCase()}:${listenerPort}`;
             const listenerResource =
-              resolvedListeners[listenerKey] ??
               attachment.instance.getListener(listenerProtocol, listenerPort);
 
             const listenerRule = new lb.ListenerRule(

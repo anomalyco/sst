@@ -25,7 +25,7 @@ export interface AlbListenerArgs {
    * }
    * ```
    */
-  port: Input<number>;
+  port: number;
   /**
    * The protocol to listen on. Only `http` and `https` are supported (ALB-only).
    *
@@ -36,7 +36,7 @@ export interface AlbListenerArgs {
    * }
    * ```
    */
-  protocol: Input<"http" | "https">;
+  protocol: "http" | "https";
   /**
    * The default action when no listener rules match. Defaults to returning a fixed 404 response.
    *
@@ -59,13 +59,12 @@ export interface AlbListenerArgs {
    * }
    * ```
    */
-  defaultAction?: Input<
+  defaultAction?:
     | "fixed-404"
     | "fixed-403"
     | "fixed-500"
     | "fixed-503"
-    | { redirect: { port: Input<number>; protocol: Input<"http" | "https"> } }
-  >;
+    | { redirect: { port: number; protocol: "http" | "https" } };
 }
 
 export interface AlbArgs {
@@ -178,7 +177,7 @@ export interface AlbArgs {
    * }
    * ```
    */
-  listeners: Input<Input<AlbListenerArgs>[]>;
+  listeners: AlbListenerArgs[];
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying resources.
    */
@@ -254,7 +253,6 @@ export class Alb extends Component implements Link.Linkable {
   private _url!: Output<string>;
   private _name: string;
   private _isRef = false;
-  private _listenersOutput!: Output<Record<string, lb.Listener>>;
 
   constructor(
     name: string,
@@ -314,13 +312,9 @@ export class Alb extends Component implements Link.Linkable {
         { parent: self },
       );
 
-      const resolvedListeners: Record<string, lb.Listener> = {};
-
       self._isRef = true;
-      self._listenersOutput = output(resolvedListeners);
       self._loadBalancer = loadBalancer;
       self._securityGroup = securityGroup;
-      self._listeners = resolvedListeners;
       self._vpcId = loadBalancer.vpcId;
       self._url = loadBalancer.dnsName.apply(
         (dnsName) => `http://${dnsName}`,
@@ -434,40 +428,33 @@ export class Alb extends Component implements Link.Linkable {
     }
 
     function createListeners() {
-      // Unwrap Input<Input<AlbListenerArgs>[]> in two steps:
-      // first the outer array, then each element.
-      self._listenersOutput = output(args.listeners)
-        .apply((rawListeners) => all(rawListeners.map((l) => output(l))))
-        .apply((listeners) => {
-          for (const l of listeners) {
-            const protocol = l.protocol.toUpperCase();
-            const port = l.port;
-            const key = `${protocol}:${port}`;
-            const defaultAction = l.defaultAction ?? "fixed-404";
+      for (const l of args.listeners) {
+        const protocol = l.protocol.toUpperCase();
+        const port = l.port;
+        const key = `${protocol}:${port}`;
+        const defaultAction = l.defaultAction ?? "fixed-404";
 
-            const defaultActions = buildDefaultActions(defaultAction, protocol);
+        const defaultActions = buildDefaultActions(defaultAction, protocol);
 
-            const listener = new lb.Listener(
-              ...transform(
-                args.transform?.listener,
-                `${name}Listener${protocol}${port}`,
-                {
-                  loadBalancerArn: loadBalancer.arn,
-                  port,
-                  protocol,
-                  certificateArn: protocol === "HTTPS"
-                    ? certificateArn.apply((arn) => arn!) as Output<string>
-                    : undefined,
-                  defaultActions,
-                },
-                { parent: self },
-              ),
-            );
+        const listener = new lb.Listener(
+          ...transform(
+            args.transform?.listener,
+            `${name}Listener${protocol}${port}`,
+            {
+              loadBalancerArn: loadBalancer.arn,
+              port,
+              protocol,
+              certificateArn: protocol === "HTTPS"
+                ? certificateArn.apply((arn) => arn!) as Output<string>
+                : undefined,
+              defaultActions,
+            },
+            { parent: self },
+          ),
+        );
 
-            self._listeners[key] = listener;
-          }
-          return self._listeners;
-        });
+        self._listeners[key] = listener;
+      }
     }
 
     function buildDefaultActions(
@@ -594,11 +581,6 @@ export class Alb extends Component implements Link.Linkable {
   /** @internal */
   public get _vpc(): Output<string> {
     return this._vpcId;
-  }
-
-  /** @internal */
-  public get _resolvedListeners(): Output<Record<string, lb.Listener>> {
-    return this._listenersOutput;
   }
 
   /**
