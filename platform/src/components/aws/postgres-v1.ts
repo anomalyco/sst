@@ -20,6 +20,11 @@ function parseACU(acu: ACU) {
 export interface PostgresArgs {
   /**
    * The Postgres engine version. Check out the [available versions in your region](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Concepts.Aurora_Fea_Regions_DB-eng.Feature.ServerlessV2.html#Concepts.Aurora_Fea_Regions_DB-eng.Feature.ServerlessV2.apg).
+   *
+   * :::caution
+   * Changing the version will **immediately** apply the update on the next `sst deploy` possibly causing downtime.
+   * :::
+   *
    * @default `"17"`
    * @example
    * ```js
@@ -320,6 +325,8 @@ export class Postgres extends Component implements Link.Linkable {
             masterUsername: "postgres",
             manageMasterUserPassword: true,
             serverlessv2ScalingConfiguration: scaling,
+            applyImmediately: true,
+            allowMajorVersionUpgrade: true,
             skipFinalSnapshot: true,
             enableHttpEndpoint: true,
             dbSubnetGroupName: subnetGroup?.name,
@@ -347,6 +354,7 @@ export class Postgres extends Component implements Link.Linkable {
             engine: rds.EngineType.AuroraPostgresql,
             engineVersion: cluster.engineVersion,
             dbSubnetGroupName: subnetGroup?.name,
+            autoMinorVersionUpgrade: false,
           },
           {
             parent,

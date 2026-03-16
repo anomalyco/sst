@@ -898,8 +898,8 @@ async function handler(event) {
     metadata = JSON.parse(v);
   } catch (e) {}
 
-  await routeSite(kvNamespace, metadata);
-  return event.request;
+  const response = await routeSite(kvNamespace, metadata);
+  return response || event.request;
 }`,
           },
           { parent: self },
@@ -1062,6 +1062,7 @@ async function handler(event) {
                 function: server.nodes.function.name,
                 principal: "cloudfront.amazonaws.com",
                 sourceArn: distributionArn,
+                invokedViaFunctionUrl: true,
               },
               { provider, parent: self },
             );
@@ -1102,6 +1103,7 @@ async function handler(event) {
                 function: imgOptimizer.nodes.function.name,
                 principal: "cloudfront.amazonaws.com",
                 sourceArn: distributionArn,
+                invokedViaFunctionUrl: true,
               },
               { parent: self },
             );

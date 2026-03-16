@@ -60,6 +60,63 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-apig-au
 
 
 ---
+## AWS API Gateway V1 streaming
+
+An example on how to enable streaming for API Gateway REST API routes.
+
+```ts title="sst.config.ts"
+api.route("GET /", "index.handler", {
+  streaming: true,
+});
+```
+
+The handler uses the native `awslambda.streamifyResponse` and
+`awslambda.HttpResponseStream.from` to stream responses through API Gateway.
+
+```ts title="index.ts"
+export const handler = awslambda.streamifyResponse(
+  async (_event: unknown, responseStream: any) => {
+    responseStream = awslambda.HttpResponseStream.from(responseStream, {
+      statusCode: 200,
+      headers: { "Content-Type": "text/plain" },
+    });
+
+    responseStream.write("Hello");
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    responseStream.write(" World");
+    responseStream.end();
+  },
+);
+```
+
+:::note
+Streaming is currently not supported in `sst dev`.
+:::
+
+To test this in your terminal, use the `curl` command with the `--no-buffer` option.
+
+```bash "--no-buffer"
+curl --no-buffer https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/prod
+```
+```ts title="sst.config.ts"
+const api = new sst.aws.ApiGatewayV1("MyApi");
+api.route("GET /", "index.handler", {
+  streaming: true,
+});
+api.route("GET /hono", "hono.handler", {
+  streaming: true,
+});
+api.deploy();
+
+return {
+  api: api.url,
+};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-apigv1-stream).
+
+
+---
 ## AWS Astro container with Redis
 
 Creates a hit counter app with Astro and Redis.
@@ -1086,9 +1143,12 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-cluster
 ---
 ## AWS Cognito User Pool
 
-Create a Cognito user pool with triggers and identity pool.
+Create a Cognito User Pool with a hosted UI domain, client, and identity pool.
 ```ts title="sst.config.ts"
 const userPool = new sst.aws.CognitoUserPool("MyUserPool", {
+  domain: {
+    prefix: `my-app-${$app.stage}`,
+  },
   triggers: {
     preSignUp: {
       handler: "index.handler",
@@ -1113,6 +1173,7 @@ return {
   UserPool: userPool.id,
   Client: client.id,
   IdentityPool: identityPool.id,
+  DomainUrl: userPool.domainUrl,
 };
 ```
 
@@ -1298,6 +1359,50 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-drizzle
 
 
 ---
+## DynamoDB composite keys
+
+Create a DynamoDB table with multi-attribute composite keys in a global secondary index.
+```ts title="sst.config.ts"
+const table = new sst.aws.Dynamo("MyTable", {
+  fields: {
+    userId: "string",
+    noteId: "string",
+    region: "string",
+    category: "string",
+    createdAt: "number",
+  },
+  primaryIndex: { hashKey: "userId", rangeKey: "noteId" },
+  globalIndexes: {
+    RegionCategoryIndex: {
+      hashKey: ["region", "category"],
+      rangeKey: "createdAt",
+    },
+  },
+});
+
+const creator = new sst.aws.Function("MyCreator", {
+  handler: "creator.handler",
+  link: [table],
+  url: true,
+});
+
+const reader = new sst.aws.Function("MyReader", {
+  handler: "reader.handler",
+  link: [table],
+  url: true,
+});
+
+return {
+  creator: creator.url,
+  reader: reader.url,
+  table: table.name,
+};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-dynamo-composite-keys).
+
+
+---
 ## DynamoDB streams
 
 Create a DynamoDB table, enable streams, and subscribe to it with a function.
@@ -1323,14 +1428,21 @@ table.subscribe("MySubscriber", "subscriber.handler", {
   ],
 });
 
-const app = new sst.aws.Function("MyApp", {
-  handler: "publisher.handler",
+const creator = new sst.aws.Function("MyCreator", {
+  handler: "creator.handler",
+  link: [table],
+  url: true,
+});
+
+const reader = new sst.aws.Function("MyReader", {
+  handler: "reader.handler",
   link: [table],
   url: true,
 });
 
 return {
-  app: app.url,
+  creator: creator.url,
+  reader: reader.url,
   table: table.name,
 };
 ```
@@ -1970,23 +2082,15 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-hono-re
 
 An example on how to enable streaming for Lambda functions using Hono.
 
-While `sst dev` doesn't support streaming, we can conditionally enable it on deploy.
-
 ```ts title="sst.config.ts"
 {
-  streaming: $dev ? false : true
+  streaming: true
 }
 ```
 
 ```ts title="index.ts"
-export const handler = process.env.SST_LIVE ? handle(app) : streamHandle(app);
+export const handler = streamHandle(app);
 ```
-
-This will return the standard handler for `sst dev`.
-
-:::note
-Streaming is currently not supported in `sst dev`.
-:::
 
 To test this in your terminal, use the `curl` command with the `--no-buffer` option.
 
@@ -1994,11 +2098,11 @@ To test this in your terminal, use the `curl` command with the `--no-buffer` opt
 curl --no-buffer https://u3dyblk457ghskwbmzrbylpxoi0ayrbb.lambda-url.us-east-1.on.aws
 ```
 
-Here we are using a Function URL directly because API Gateway doesn't support streaming.
+Streaming is also supported through API Gateway REST API.
 ```ts title="sst.config.ts"
 const hono = new sst.aws.Function("Hono", {
   url: true,
-  streaming: $dev ? false : true,
+  streaming: true,
   timeout: "15 minutes",
   handler: "index.handler",
 });
@@ -2187,6 +2291,76 @@ return {
 ```
 
 View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-kinesis-stream).
+
+
+---
+## AWS Lambda AI streaming
+
+An example on how to stream AI responses from a Lambda function using the
+[AI SDK](https://ai-sdk.dev).
+
+Uses `streamText` from the AI SDK to stream a response
+through a Lambda function URL.
+
+```ts title="sst.config.ts"
+{
+  streaming: true
+}
+```
+
+The handler uses `awslambda.streamifyResponse` to stream the AI response
+back to the client as it's generated.
+
+```ts title="index.ts"
+export const handler = awslambda.streamifyResponse(
+  async (_event, responseStream) => {
+    const result = streamText({
+      model: "amazon/nova-micro",
+      prompt: "Write a poem about clouds that is twenty paragraphs long.",
+    });
+
+    responseStream.setContentType("text/plain");
+    for await (const chunk of result.textStream) {
+      responseStream.write(chunk);
+    }
+    responseStream.end();
+  },
+);
+```
+
+Set the API key for the AI gateway.
+
+```bash
+sst secret set AiGatewayApiKey your-api-key-here
+```
+
+Use the "Run Client" dev command in the multiplexer to invoke the server and see
+the streamed response.
+```ts title="sst.config.ts"
+const server = new sst.aws.Function("Server", {
+  url: true,
+  streaming: true,
+  timeout: "15 minutes",
+  handler: "index.handler",
+  environment: {
+    AI_GATEWAY_API_KEY: new sst.Secret("AiGatewayApiKey").value,
+  },
+});
+
+new sst.x.DevCommand("Client", {
+  dev: {
+    autostart: false,
+    command: $interpolate`curl --no-buffer ${server.url}`,
+    title: "Run Client",
+  },
+});
+
+return {
+  url: server.url,
+};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-lambda-ai-stream).
 
 
 ---
@@ -2561,24 +2735,19 @@ An example on how to enable streaming for Lambda functions.
 }
 ```
 
-While `sst dev` doesn't support streaming, you can use the
-[`lambda-stream`](https://github.com/astuyve/lambda-stream) package to test locally.
-
-```bash
-npm install lambda-stream
-```
-
-Then, you can use the `streamifyResponse` function to wrap your handler:
+Use the `awslambda.streamifyResponse` function to wrap your handler. The `awslambda`
+global is provided by the Lambda execution environment at runtime, and SST provides it
+automatically during `sst dev` as well. For TypeScript types, importing from
+`@types/aws-lambda` will augment the global namespace.
 
 ```ts title="index.ts"
 import { APIGatewayProxyEventV2 } from "aws-lambda";
-import { streamifyResponse, ResponseStream } from "lambda-stream";
 
-export const handler = streamifyResponse(myHandler);
+export const handler = awslambda.streamifyResponse(myHandler);
 
 async function myHandler(
   _event: APIGatewayProxyEventV2,
-  responseStream: ResponseStream
+  responseStream: awslambda.HttpResponseStream
 ): Promise<void> {
   return new Promise((resolve, _reject) => {
     responseStream.setContentType('text/plain')
@@ -2592,19 +2761,13 @@ async function myHandler(
 }
 ```
 
-When deployed, this will use the `awslambda.streamifyResponse`.
-
-:::note
-Streaming is currently not supported in `sst dev`.
-:::
-
 To test this in your terminal, use the `curl` command with the `--no-buffer` option.
 
 ```bash "--no-buffer"
 curl --no-buffer https://u3dyblk457ghskwbmzrbylpxoi0ayrbb.lambda-url.us-east-1.on.aws
 ```
 
-Here we are using a Function URL directly because API Gateway doesn't support streaming.
+Streaming is also supported through API Gateway REST API.
 ```ts title="sst.config.ts"
 const fn = new sst.aws.Function("MyFunction", {
   url: true,
@@ -2619,6 +2782,45 @@ return {
 ```
 
 View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-lambda-stream).
+
+
+---
+## AWS Lambda tRPC streaming
+
+An example on how to use tRPC with Lambda streaming.
+
+Uses `@trpc/server`'s `awsLambdaStreamingRequestHandler` adapter to handle
+streaming responses through Lambda function URLs.
+
+The `trpc-server` function defines a tRPC router and streams responses.
+The `trpc-client` function invokes the server using `httpBatchStreamLink`.
+
+Streaming is supported in both `sst dev` and `sst deploy`.
+```ts title="sst.config.ts"
+const trpcServer = new sst.aws.Function('TrpcServer', {
+  handler: 'trpc-server.handler',
+  streaming: true,
+  url: true,
+  runtime: 'nodejs24.x',
+});
+
+new sst.x.DevCommand('Client', {
+  dev: {
+    autostart: false,
+    command: $interpolate`npx tsx trpc-client.ts`,
+    title: 'Run Client',
+  },
+  environment: {
+    TRPC_SERVER_URL: trpcServer.url,
+  },
+});
+
+return {
+  serverUrl: trpcServer.url,
+};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-lambda-trpc-stream).
 
 
 ---
@@ -3322,6 +3524,84 @@ new sst.aws.Nextjs("MyWeb");
 ```
 
 View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-nextjs-stream).
+
+
+---
+## AWS Nuxt streaming
+
+An example of how to use streaming with Nuxt.js. Uses `createEventStream` to stream data from a server API.
+
+```ts title="server/api/streaming.ts"
+export default defineEventHandler(async (event) => {
+  const eventStream = createEventStream(event);
+  eventStream.push("Start\n\n");
+
+  // Send a message every second
+  const interval = setInterval(async () => {
+    await eventStream.push(`Random: ${Math.random().toFixed(5)} `);
+  }, 1000);
+}
+```
+
+The client uses the Fetch API to consume the stream.
+
+```vue title="app.vue"
+<script setup lang="ts">
+const output = ref('')
+
+async function stream() {
+  output.value = ''
+  const response = await fetch('/api/streaming')
+  const reader = response.body?.getReader()
+  const decoder = new TextDecoder()
+  let done = false
+
+  while (!done && reader) {
+    const { value, done: readerDone } = await reader.read()
+    done = readerDone
+    if (value) {
+      output.value += decoder.decode(value, { stream: true })
+    }
+  }
+}
+</script>
+
+<template>
+  <div>
+    <pre>{{ output }}</pre>
+    <button @click="stream">Call API</button>
+    <button @click="output = ''">Clear Output</button>
+  </div>
+</template>
+```
+
+Make sure to have your nuxt.config.ts set up to handle the streaming API correctly.
+
+```ts title="nuxt.config.ts" {4-6}
+export default defineNuxtConfig({
+ nitro: {
+  preset: 'aws-lambda',
+  awsLambda: {
+    streaming: true
+  }
+ }
+});
+```
+
+You should see random numbers streamed to the page every second for 10 seconds.
+
+:::note
+Safari handles streaming differently than other browsers.
+:::
+
+Safari uses a [different heuristic](https://bugs.webkit.org/show_bug.cgi?id=252413) to
+determine when to stream data. You need to render _enough_ initial HTML to trigger streaming.
+This is typically only a problem for demo apps.
+```ts title="sst.config.ts"
+new sst.aws.Nuxt("MyWeb");
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-nuxt-stream).
 
 
 ---
@@ -4531,6 +4811,71 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-router-
 
 
 ---
+## Router protection with OAC
+
+Creates a router with Origin Access Control (OAC) to secure Lambda function URLs
+behind CloudFront. Direct access to the Lambda URL returns 403.
+```ts title="sst.config.ts"
+const router = new sst.aws.Router("MyRouter", {
+  protection: "oac",
+});
+
+const api = new sst.aws.Function("MyApi", {
+  handler: "api.handler",
+  url: {
+    router: { instance: router, path: "/api" },
+  },
+});
+
+return {
+  router: router.url,
+  api: api.url,
+};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-router-protection).
+
+
+---
+## Router with WAF
+
+Enable WAF (Web Application Firewall) for a Router to protect against common
+web exploits and bots.
+
+WAF includes rate limiting per IP, and AWS managed rules for core rule set,
+known bad inputs, and SQL injection protection.
+
+You can also enable WAF logging to CloudWatch to monitor requests.
+```ts title="sst.config.ts"
+const api = new sst.aws.Function("MyApi", {
+  handler: "api.handler",
+  url: true,
+});
+
+const router = new sst.aws.Router("MyRouter", {
+  routes: {
+    "/*": api.url,
+  },
+  waf: {
+    rateLimitPerIp: 1000,
+    managedRules: {
+      coreRuleSet: true,
+      knownBadInputs: true,
+      sqlInjection: true,
+    },
+    logging: true,
+  },
+});
+
+return {
+  url: router.url,
+};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-router-waf).
+
+
+---
 ## Router and function URL
 
 Creates a router that routes all requests to a function with a URL.
@@ -4543,7 +4888,6 @@ const bucket = new sst.aws.Bucket("MyBucket", {
   access: "public",
 });
 const router = new sst.aws.Router("MyRouter", {
-  domain: "router.ion.dev.sst.dev",
   routes: {
     "/api/*": api.url,
     "/*": $interpolate`https://${bucket.domain}`,
@@ -4872,6 +5216,7 @@ the `site/` directory.
 ```ts title="sst.config.ts"
 new sst.aws.StaticSite("MySite", {
   path: "site",
+  errorPage: "404.html",
 });
 ```
 
@@ -5440,6 +5785,29 @@ return {
 ```
 
 View the [full example](https://github.com/sst/sst/tree/dev/examples/cloudflare-kv).
+
+
+---
+## Cloudflare Queue
+
+This example creates a Cloudflare Queue with a producer and consumer worker.
+```ts title="sst.config.ts"
+const queue = new sst.cloudflare.Queue("MyQueue");
+
+queue.subscribe("consumer.ts");
+
+const producer = new sst.cloudflare.Worker("Producer", {
+  handler: "producer.ts",
+  link: [queue],
+  url: true,
+});
+
+return {
+  url: producer.url,
+};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/cloudflare-queue).
 
 
 ---

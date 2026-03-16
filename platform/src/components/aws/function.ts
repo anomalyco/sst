@@ -671,13 +671,6 @@ export interface FunctionArgs {
    *
    * You'll also need to [wrap your handler](https://docs.aws.amazon.com/lambda/latest/dg/configuration-response-streaming.html) with `awslambda.streamifyResponse` to enable streaming.
    *
-   * :::note
-   * Streaming is currently not supported in `sst dev`.
-   * :::
-   *
-   * While `sst dev` doesn't support streaming, you can use the
-   * [`lambda-stream`](https://github.com/astuyve/lambda-stream) package to test locally.
-   *
    * Check out the [AWS Lambda streaming example](/docs/examples/#aws-lambda-streaming) for more
    * details.
    *
@@ -1842,7 +1835,8 @@ export class Function extends Component implements Link.Linkable {
         bootstrapData,
         Function.encryptionKey().base64,
         args.link,
-      ]).apply(async ([environment, dev, bootstrap, key, link]) => {
+        args.streaming,
+      ]).apply(async ([environment, dev, bootstrap, key, link, streaming]) => {
         const result = environment ?? {};
         result.SST_RESOURCE_App = JSON.stringify({
           name: $app.name,
@@ -1868,6 +1862,9 @@ export class Function extends Component implements Link.Linkable {
           result.SST_ASSET_BUCKET = bootstrap.asset;
           if (process.env.SST_FUNCTION_TIMEOUT) {
             result.SST_FUNCTION_TIMEOUT = process.env.SST_FUNCTION_TIMEOUT;
+          }
+          if (streaming) {
+            result.SST_FUNCTION_STREAMING = "true";
           }
         }
         return result;
@@ -2619,7 +2616,7 @@ export class Function extends Component implements Link.Linkable {
                   ),
                 }),
             },
-            { parent, ignoreChanges: args.runtime ? [] : ["runtime"] },
+            { parent },
           );
           return new lambda.Function(
             transformed[0],
@@ -2647,16 +2644,20 @@ export class Function extends Component implements Link.Linkable {
       return url.apply((url) => {
         if (url === undefined) return output(undefined);
 
+        const authorization = output(url.authorization ?? "none");
         const isOac = output(url.route?.routerProtection).apply(
           (p) => p?.mode === "oac" || p?.mode === "oac-with-edge-signing",
+        );
+        const isIam = all([isOac, authorization]).apply(
+          ([oac, authorization]) => oac || authorization === "iam",
         );
 
         const fnUrl = new lambda.FunctionUrl(
           `${name}Url`,
           {
             functionName: fn.name,
-            authorizationType: isOac.apply((oac) =>
-              (oac || url.authorization === "iam") ? "AWS_IAM" : "NONE",
+            authorizationType: isIam.apply((isIam) =>
+              isIam ? "AWS_IAM" : "NONE",
             ),
             invokeMode: streaming.apply((streaming) =>
               streaming ? "RESPONSE_STREAM" : "BUFFERED",
@@ -2667,23 +2668,36 @@ export class Function extends Component implements Link.Linkable {
         );
 
         if (!url.route) {
-          if (url.authorization === "none") {
+          authorization.apply((authorization) => {
+            if (authorization !== "none") return;
+
+            new lambda.Permission(
+              `${name}PublicFunctionUrlAccess`,
+              {
+                action: "lambda:InvokeFunctionUrl",
+                function: fn.name,
+                principal: "*",
+                functionUrlAuthType: "NONE",
+              },
+              { parent },
+            );
             new lambda.Permission(
               `${name}InvokeFunction`,
               {
                 action: "lambda:InvokeFunction",
                 function: fn.name,
                 principal: "*",
+                invokedViaFunctionUrl: true,
               },
               { parent },
             );
-          }
+          });
           return fnUrl.functionUrl;
         }
 
         // Create permissions based on Router protection mode
-        all([isOac, url.route.routerDistributionArn]).apply(
-          ([oac, distributionArn]) => {
+        all([isOac, authorization, url.route.routerDistributionArn]).apply(
+          ([oac, authorization, distributionArn]) => {
             if (oac && distributionArn) {
               new lambda.Permission(
                 `${name}CloudFrontFunctionUrlAccess`,
@@ -2702,10 +2716,11 @@ export class Function extends Component implements Link.Linkable {
                   function: fn.name,
                   principal: "cloudfront.amazonaws.com",
                   sourceArn: distributionArn,
+                  invokedViaFunctionUrl: true,
                 },
                 { parent },
               );
-            } else {
+            } else if (authorization === "none") {
               new lambda.Permission(
                 `${name}PublicFunctionUrlAccess`,
                 {
@@ -2713,6 +2728,16 @@ export class Function extends Component implements Link.Linkable {
                   function: fn.name,
                   principal: "*",
                   functionUrlAuthType: "NONE",
+                },
+                { parent },
+              );
+              new lambda.Permission(
+                `${name}PublicInvokeFunction`,
+                {
+                  action: "lambda:InvokeFunction",
+                  function: fn.name,
+                  principal: "*",
+                  invokedViaFunctionUrl: true,
                 },
                 { parent },
               );

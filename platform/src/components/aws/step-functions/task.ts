@@ -7,7 +7,7 @@ import {
   FunctionArgs,
   FunctionArn,
   FunctionPermissionArgs,
-} from "../function";
+} from "../function.js";
 import {
   CatchArgs,
   Failable,

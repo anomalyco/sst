@@ -184,6 +184,7 @@ export class Component extends ComponentResource {
               "cloudflare:index/dnsRecord:DnsRecord",
               "cloudflare:index/workersCronTrigger:WorkersCronTrigger",
               "cloudflare:index/workersCustomDomain:WorkersCustomDomain",
+              "cloudflare:index/queueConsumer:QueueConsumer",
               "docker-build:index:Image",
               "vercel:index/dnsRecord:DnsRecord",
             ].includes(args.type)
@@ -294,6 +295,7 @@ export class Component extends ComponentResource {
               64,
               { lower: true },
             ],
+            "aws:scheduler/schedule:Schedule": ["name", 64],
             "aws:sfn/stateMachine:StateMachine": ["name", 80],
             "aws:sns/topic:Topic": [
               "name",
