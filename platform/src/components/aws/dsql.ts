@@ -139,6 +139,8 @@ interface DsqlRef {
  * const cluster = new sst.aws.Dsql("MyCluster");
  * ```
  *
+ * [Check out the full example](/docs/examples/#aws-dsql).
+ *
  * #### Multi-region cluster
  *
  * ```ts title="sst.config.ts"
@@ -149,6 +151,8 @@ interface DsqlRef {
  *   }
  * });
  * ```
+ *
+ * [Check out the full example](/docs/examples/#aws-dsql-multiregion).
  *
  * #### With private VPC endpoints
  *
@@ -163,6 +167,8 @@ interface DsqlRef {
  * });
  * ```
  *
+ * [Check out the full example](/docs/examples/#aws-dsql-vpc).
+ *
  * #### Link to a function
  *
  * ```ts title="sst.config.ts"
@@ -171,6 +177,25 @@ interface DsqlRef {
  *   link: [cluster]
  * });
  * ```
+ *
+ * You can also use Drizzle ORM to query your DSQL cluster.
+ * [Check out the Drizzle example](/docs/examples/#aws-dsql-drizzle).
+ *
+ * ---
+ *
+ * ### Cost
+ *
+ * Aurora DSQL is serverless and uses a pay-per-use pricing model. You are charged for
+ * database activity measured in _Distributed Processing Units_ (DPUs) at $8 per million
+ * DPUs, and storage at $0.33 per GB-month. When idle, usage scales to zero and you incur
+ * no DPU charges.
+ *
+ * There is a free tier of 100,000 DPUs and 1 GB of storage per month.
+ *
+ * For example, a single-region cluster averaging 1.3M DPUs per month with 15 GB of storage
+ * costs roughly 1.3 x $8 + 15 x $0.33 or **$15 per month**.
+ *
+ * Check out the [Aurora DSQL pricing](https://aws.amazon.com/rds/aurora/dsql/pricing/) for more details.
  *
  */
 
