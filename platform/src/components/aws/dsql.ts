@@ -139,7 +139,21 @@ interface DsqlRef {
  * const cluster = new sst.aws.Dsql("MyCluster");
  * ```
  *
- * [Check out the full example](/docs/examples/#aws-dsql).
+ * Once linked, you can connect to it from your function code.
+ *
+ * ```ts title="src/lambda.ts"
+ * import { Resource } from "sst";
+ * import { AuroraDSQLClient } from "@aws/aurora-dsql-node-postgres-connector";
+ *
+ * const client = new AuroraDSQLClient({
+ *   host: Resource.MyCluster.endpoint,
+ *   user: "admin",
+ * });
+ *
+ * await client.connect();
+ * const result = await client.query("SELECT NOW() as now");
+ * await client.end();
+ * ```
  *
  * #### Multi-region cluster
  *
