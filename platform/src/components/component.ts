@@ -186,7 +186,6 @@ export class Component extends ComponentResource {
               "cloudflare:index/workersCustomDomain:WorkersCustomDomain",
               "docker-build:index:Image",
               "vercel:index/dnsRecord:DnsRecord",
-              "aws:dsql/cluster:Cluster",
               "aws:dsql/clusterPeering:ClusterPeering"
             ].includes(args.type)
           )
@@ -226,6 +225,7 @@ export class Component extends ComponentResource {
               { lower: true },
             ],
             "aws:dynamodb/table:Table": ["name", 255],
+            "aws:dsql/cluster:Cluster": ["tags", 255],
             "aws:ec2/keyPair:KeyPair": ["keyName", 255],
             "aws:ec2/eip:Eip": ["tags", 255],
             "aws:ec2/instance:Instance": ["tags", 255],
