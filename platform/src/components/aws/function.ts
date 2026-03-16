@@ -2334,180 +2334,129 @@ export class Function extends Component implements Link.Linkable {
             const existing = cache.get(cacheKey);
             if (existing) return existing;
 
-            const created = (async () => {
-              const zipPath = path.resolve(
-                $cli.paths.work,
-                "artifacts",
-                "bridge",
-                regionName,
-                "code.zip",
-              );
-              await fs.promises.mkdir(path.dirname(zipPath), {
-                recursive: true,
-              });
-
-              await new Promise(async (resolve, reject) => {
-                const ws = fs.createWriteStream(zipPath);
-                const archive = archiver("zip", {
-                  // Ensure deterministic zip file hashes
-                  // https://github.com/archiverjs/node-archiver/issues/397#issuecomment-554327338
-                  statConcurrency: 1,
-                });
-                archive.on("warning", reject);
-                archive.on("error", reject);
-                // archive has been finalized and the output file descriptor has closed, resolve promise
-                // this has to be done before calling `finalize` since the events may fire immediately after.
-                // see https://www.npmjs.com/package/archiver
-                ws.once("close", () => {
-                  resolve(zipPath);
-                });
-                archive.pipe(ws);
-
-                const files = await glob("**", {
-                  cwd: bundle,
-                  dot: true,
-                });
-                files.sort((a, b) => a.localeCompare(b));
-                for (const file of files) {
-                  archive.file(path.join(bundle, file), {
-                    name: file,
-                    date: new Date(0),
-                  });
-                }
-
-                await archive.finalize();
-              });
-
-              const hash = crypto.createHash("sha256");
-              hash.update(await fs.promises.readFile(zipPath, "utf-8"));
-              const hashValue = hash.digest("hex");
-              const assetBucket = (await bootstrap.forRegion(regionName)).asset;
-
-              return new s3.BucketObjectv2(
-                `DevBridgeCode${regionName.replace(/[^a-zA-Z0-9]/g, "")}`,
-                {
-                  key: `assets/dev-bridge-code-${hashValue}.zip`,
-                  bucket: assetBucket,
-                  source: new asset.FileArchive(zipPath),
-                },
-                { parent: rootStackResource, provider: opts?.provider },
-              );
-            })();
-
+            const created = createCode();
             cache.set(cacheKey, created);
             created.catch(() => cache.delete(cacheKey));
             return created;
           }
 
-          const zipPath = path.resolve(
-            $cli.paths.work,
-            "artifacts",
-            name,
-            "code.zip",
-          );
-          await fs.promises.mkdir(path.dirname(zipPath), {
-            recursive: true,
-          });
+          return createCode();
 
-          await new Promise(async (resolve, reject) => {
-            const ws = fs.createWriteStream(zipPath);
-            const archive = archiver("zip", {
-              // Ensure deterministic zip file hashes
-              // https://github.com/archiverjs/node-archiver/issues/397#issuecomment-554327338
-              statConcurrency: 1,
+          async function createCode() {
+            const zipPath = path.resolve(
+              $cli.paths.work,
+              "artifacts",
+              dev ? `bridge/${regionName}` : name,
+              "code.zip",
+            );
+            await fs.promises.mkdir(path.dirname(zipPath), {
+              recursive: true,
             });
-            archive.on("warning", reject);
-            archive.on("error", reject);
-            // archive has been finalized and the output file descriptor has closed, resolve promise
-            // this has to be done before calling `finalize` since the events may fire immediately after.
-            // see https://www.npmjs.com/package/archiver
-            ws.once("close", () => {
-              resolve(zipPath);
-            });
-            archive.pipe(ws);
 
-            const files = [];
+            await new Promise(async (resolve, reject) => {
+              const ws = fs.createWriteStream(zipPath);
+              const archive = archiver("zip", {
+                // Ensure deterministic zip file hashes
+                // https://github.com/archiverjs/node-archiver/issues/397#issuecomment-554327338
+                statConcurrency: 1,
+              });
+              archive.on("warning", reject);
+              archive.on("error", reject);
+              // archive has been finalized and the output file descriptor has closed, resolve promise
+              // this has to be done before calling `finalize` since the events may fire immediately after.
+              // see https://www.npmjs.com/package/archiver
+              ws.once("close", () => {
+                resolve(zipPath);
+              });
+              archive.pipe(ws);
 
-            for (const item of [
-              {
-                from: bundle,
-                to: ".",
-                isDir: true,
-              },
-              ...(!dev ? copyFiles : []),
-            ]) {
-              if (!item.isDir) {
-                files.push({
-                  from: item.from,
-                  to: item.to,
+              const files = [];
+
+              for (const item of [
+                {
+                  from: bundle,
+                  to: ".",
+                  isDir: true,
+                },
+                ...(!dev ? copyFiles : []),
+              ]) {
+                if (!item.isDir) {
+                  files.push({
+                    from: item.from,
+                    to: item.to,
+                  });
+                }
+                const found = await glob("**", {
+                  cwd: item.from,
+                  dot: true,
+                  ignore: sourcemaps?.map((item) => path.relative(bundle, item)) || [],
+                });
+                files.push(
+                  ...found.map((file) => ({
+                    from: path.join(item.from, file),
+                    to: path.join(item.to, file),
+                  })),
+                );
+              }
+              files.sort((a, b) => a.to.localeCompare(b.to));
+              for (const file of files) {
+                archive.file(file.from, {
+                  name: file.to,
+                  date: new Date(0),
                 });
               }
-              const found = await glob("**", {
-                cwd: item.from,
-                dot: true,
-                ignore:
-                  sourcemaps?.map((item) => path.relative(bundle, item)) || [],
-              });
-              files.push(
-                ...found.map((file) => ({
-                  from: path.join(item.from, file),
-                  to: path.join(item.to, file),
-                })),
-              );
-            }
-            files.sort((a, b) => a.to.localeCompare(b.to));
-            for (const file of files) {
-              archive.file(file.from, {
-                name: file.to,
-                date: new Date(0),
-              });
+
+              // Add handler wrapper into the zip
+              if (wrapper) {
+                archive.append(wrapper.content, {
+                  name: wrapper.name,
+                  date: new Date(0),
+                });
+              }
+
+              await archive.finalize();
+            });
+
+            const hash = crypto.createHash("sha256");
+            hash.update(await fs.promises.readFile(zipPath));
+            const hashValue = hash.digest("hex");
+            const assetBucket = region.apply((region) =>
+              bootstrap.forRegion(region).then((d) => d.asset),
+            );
+            if (logGroupArn && sourcemaps) {
+              let index = 0;
+              for (const file of sourcemaps) {
+                new s3.BucketObjectv2(
+                  `${name}Sourcemap${index}`,
+                  {
+                    key: interpolate`sourcemap/${logGroupArn}/${hashValue}.${path.basename(
+                      file,
+                    )}`,
+                    bucket: assetBucket,
+                    source: new asset.FileAsset(file),
+                  },
+                  { parent, retainOnDelete: true },
+                );
+                index++;
+              }
             }
 
-            // Add handler wrapper into the zip
-            if (wrapper) {
-              archive.append(wrapper.content, {
-                name: wrapper.name,
-                date: new Date(0),
-              });
-            }
-
-            await archive.finalize();
-          });
-
-          // Calculate hash of the zip file
-          const hash = crypto.createHash("sha256");
-          hash.update(await fs.promises.readFile(zipPath, "utf-8"));
-          const hashValue = hash.digest("hex");
-          const assetBucket = region.apply((region) =>
-            bootstrap.forRegion(region).then((d) => d.asset),
-          );
-          if (logGroupArn && sourcemaps) {
-            let index = 0;
-            for (const file of sourcemaps) {
-              new s3.BucketObjectv2(
-                `${name}Sourcemap${index}`,
-                {
-                  key: interpolate`sourcemap/${logGroupArn}/${hashValue}.${path.basename(
-                    file,
-                  )}`,
-                  bucket: assetBucket,
-                  source: new asset.FileAsset(file),
-                },
-                { parent, retainOnDelete: true },
-              );
-              index++;
-            }
+            return new s3.BucketObjectv2(
+              dev
+                ? `DevBridgeCode${regionName.replace(/[^a-zA-Z0-9]/g, "")}`
+                : `${name}Code`,
+              {
+                key: dev
+                  ? `assets/dev-bridge-code-${hashValue}.zip`
+                  : interpolate`assets/${name}-code-${hashValue}.zip`,
+                bucket: assetBucket,
+                source: new asset.FileArchive(zipPath),
+              },
+              dev
+                ? { parent: rootStackResource, provider: opts?.provider }
+                : { parent },
+            );
           }
-
-          return new s3.BucketObjectv2(
-            `${name}Code`,
-            {
-              key: interpolate`assets/${name}-code-${hashValue}.zip`,
-              bucket: assetBucket,
-              source: new asset.FileArchive(zipPath),
-            },
-            { parent },
-          );
         },
       );
     }
