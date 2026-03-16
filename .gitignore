@@ -14,3 +14,4 @@ tmp
 .opencode
 
 examples/*/sst-env.d.ts
+www/src/content/docs/docs/examples.mdx
