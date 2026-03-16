@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { streamText } from "hono/streaming";
-import { handle, streamHandle } from "hono/aws-lambda";
+import { streamHandle } from "hono/aws-lambda";
 
 const app = new Hono()
   .get("/", (c) => {
@@ -11,4 +11,4 @@ const app = new Hono()
     })
   });
 
-export const handler = process.env.SST_LIVE ? handle(app) : streamHandle(app);
+export const handler = streamHandle(app);

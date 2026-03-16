@@ -1051,6 +1051,32 @@ export interface ServiceArgs extends FargateBaseArgs {
      * ```
      */
     requestCount?: Input<false | number>;
+    /**
+     * The amount of time, in seconds, after a scale-in activity completes before another scale-in activity can start.
+     * This prevents the auto scaler from removing too many tasks too quickly.
+     * @example
+     * ```js
+     * {
+     *   scaling: {
+     *     scaleInCooldown: "60 seconds"
+     *   }
+     * }
+     * ```
+     */
+    scaleInCooldown?: Input<DurationMinutes>;
+    /**
+     * The amount of time, in seconds, after a scale-out activity completes before another scale-out activity can start.
+     * This prevents the auto scaler from adding too many tasks too quickly.
+     * @example
+     * ```js
+     * {
+     *   scaling: {
+     *     scaleOutCooldown: "60 seconds"
+     *   }
+     * }
+     * ```
+     */
+    scaleOutCooldown?: Input<DurationMinutes>;
   }>;
   /**
    * Configure the capacity provider; regular Fargate or Fargate Spot, for this service.
@@ -1614,7 +1640,7 @@ export class Service extends Component implements Link.Linkable {
     const self = this;
     const clusterArn = args.cluster.nodes.cluster.arn;
     const clusterName = args.cluster.nodes.cluster.name;
-    const region = getRegionOutput({}, opts).name;
+    const region = getRegionOutput({}, opts).region;
     const dev = normalizeDev();
     const wait = output(args.wait ?? false);
     const architecture = normalizeArchitecture(args);
@@ -1727,6 +1753,8 @@ export class Service extends Component implements Link.Linkable {
           cpuUtilization: v?.cpuUtilization ?? 70,
           memoryUtilization: v?.memoryUtilization ?? 70,
           requestCount: v?.requestCount ?? false,
+          scaleInCooldown: v?.scaleInCooldown ? toSeconds(v.scaleInCooldown) : undefined,
+          scaleOutCooldown: v?.scaleOutCooldown ? toSeconds(v.scaleOutCooldown) : undefined,
         };
       });
     }
@@ -1969,14 +1997,9 @@ export class Service extends Component implements Link.Linkable {
                 args.transform?.target,
                 `${name}Target${targetId}`,
                 {
-                  // TargetGroup names allow for 32 chars, but an 8 letter suffix
-                  // ie. "-1234567" is automatically added.
-                  // - If we don't specify "name" or "namePrefix", we need to ensure
-                  //   the component name is less than 24 chars. Hard to guarantee.
-                  // - If we specify "name", we need to ensure the $app-$stage-$name
-                  //   if less than 32 chars. Hard to guarantee.
-                  // - Hence we will use "namePrefix".
-                  namePrefix: forwardProtocol,
+                  // AWS enforces a 6-char limit on namePrefix for target groups.
+                  // "TCP_UDP" is 7 chars, so strip the underscore to fit.
+                  namePrefix: forwardProtocol.replace("_", ""),
                   port: forwardPort,
                   protocol: forwardProtocol,
                   targetType: "ip",
@@ -2245,48 +2268,56 @@ export class Service extends Component implements Link.Linkable {
         ),
       );
 
-      output(scaling.cpuUtilization).apply((cpuUtilization) => {
-        if (cpuUtilization === false) return;
-        new appautoscaling.Policy(
-          `${name}AutoScalingCpuPolicy`,
-          {
-            serviceNamespace: target.serviceNamespace,
-            scalableDimension: target.scalableDimension,
-            resourceId: target.resourceId,
-            policyType: "TargetTrackingScaling",
-            targetTrackingScalingPolicyConfiguration: {
-              predefinedMetricSpecification: {
-                predefinedMetricType: "ECSServiceAverageCPUUtilization",
+      all([scaling.cpuUtilization, scaling.scaleInCooldown, scaling.scaleOutCooldown]).apply(
+        ([cpuUtilization, scaleInCooldown, scaleOutCooldown]) => {
+          if (cpuUtilization === false) return;
+          new appautoscaling.Policy(
+            `${name}AutoScalingCpuPolicy`,
+            {
+              serviceNamespace: target.serviceNamespace,
+              scalableDimension: target.scalableDimension,
+              resourceId: target.resourceId,
+              policyType: "TargetTrackingScaling",
+              targetTrackingScalingPolicyConfiguration: {
+                predefinedMetricSpecification: {
+                  predefinedMetricType: "ECSServiceAverageCPUUtilization",
+                },
+                targetValue: cpuUtilization,
+                scaleInCooldown,
+                scaleOutCooldown,
               },
-              targetValue: cpuUtilization,
             },
-          },
-          { parent: self },
-        );
-      });
+            { parent: self },
+          );
+        }
+      );
 
-      output(scaling.memoryUtilization).apply((memoryUtilization) => {
-        if (memoryUtilization === false) return;
-        new appautoscaling.Policy(
-          `${name}AutoScalingMemoryPolicy`,
-          {
-            serviceNamespace: target.serviceNamespace,
-            scalableDimension: target.scalableDimension,
-            resourceId: target.resourceId,
-            policyType: "TargetTrackingScaling",
-            targetTrackingScalingPolicyConfiguration: {
-              predefinedMetricSpecification: {
-                predefinedMetricType: "ECSServiceAverageMemoryUtilization",
+      all([scaling.memoryUtilization, scaling.scaleInCooldown, scaling.scaleOutCooldown]).apply(
+        ([memoryUtilization, scaleInCooldown, scaleOutCooldown]) => {
+          if (memoryUtilization === false) return;
+          new appautoscaling.Policy(
+            `${name}AutoScalingMemoryPolicy`,
+            {
+              serviceNamespace: target.serviceNamespace,
+              scalableDimension: target.scalableDimension,
+              resourceId: target.resourceId,
+              policyType: "TargetTrackingScaling",
+              targetTrackingScalingPolicyConfiguration: {
+                predefinedMetricSpecification: {
+                  predefinedMetricType: "ECSServiceAverageMemoryUtilization",
+                },
+                targetValue: memoryUtilization,
+                scaleInCooldown,
+                scaleOutCooldown,
               },
-              targetValue: memoryUtilization,
             },
-          },
-          { parent: self },
-        );
-      });
+            { parent: self },
+          );
+        }
+      );
 
-      all([scaling.requestCount, targetGroups]).apply(
-        ([requestCount, targetGroups]) => {
+      all([scaling.requestCount, scaling.scaleInCooldown, scaling.scaleOutCooldown, targetGroups]).apply(
+        ([requestCount, scaleInCooldown, scaleOutCooldown, targetGroups]) => {
           if (requestCount === false) return;
           if (!targetGroups) return;
 
@@ -2321,6 +2352,8 @@ export class Service extends Component implements Link.Linkable {
                   }),
                 },
                 targetValue: requestCount,
+                scaleInCooldown,
+                scaleOutCooldown,
               },
             },
             { parent: self },

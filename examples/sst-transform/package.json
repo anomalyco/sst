@@ -1,0 +1,7 @@
+{
+  "name": "sst-transform",
+  "version": "0.0.0",
+  "dependencies": {
+    "sst": "^4"
+  }
+}

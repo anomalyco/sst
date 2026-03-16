@@ -1,4 +1,10 @@
 /// <reference path="./.sst/platform/config.d.ts" />
+
+/**
+ * ## Rails container
+ *
+ * Deploy a Ruby on Rails app in a container with a linked public S3 bucket.
+ */
 export default $config({
   app(input) {
     return {

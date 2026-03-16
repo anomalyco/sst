@@ -23,9 +23,10 @@ import (
 )
 
 type Server struct {
-	Port int
-	Mux  *http.ServeMux
-	Rpc  *rpc.Server
+	Port  int
+	Mux   *http.ServeMux
+	Rpc   *rpc.Server
+	Ready chan struct{}
 }
 
 func New() (*Server, error) {
@@ -35,9 +36,10 @@ func New() (*Server, error) {
 		return nil, err
 	}
 	result := &Server{
-		Port: port,
-		Mux:  http.NewServeMux(),
-		Rpc:  rpc.NewServer(),
+		Port:  port,
+		Mux:   http.NewServeMux(),
+		Rpc:   rpc.NewServer(),
+		Ready: make(chan struct{}),
 	}
 	result.Mux.HandleFunc("/rpc", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
@@ -69,7 +71,19 @@ func (s *Server) Start(ctx context.Context, p *project.Project) error {
 	u, _ := url.Parse("http://" + server.Addr)
 	os.WriteFile(serverPath, []byte(u.String()), 0644)
 	defer os.Remove(serverPath)
-	go server.ListenAndServe()
+
+	listener, err := net.Listen("tcp", server.Addr)
+	if err != nil {
+		close(s.Ready)
+		return fmt.Errorf("failed to listen on %s: %w", server.Addr, err)
+	}
+
+	go func() {
+		server.Serve(listener)
+	}()
+
+	close(s.Ready)
+	log.Info("server ready to accept connections")
 
 	keyPath := filepath.Join(global.CertPath(), "key.pem")
 	certPath := filepath.Join(global.CertPath(), "cert.pem")

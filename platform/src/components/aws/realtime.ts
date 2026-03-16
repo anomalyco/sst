@@ -2,7 +2,7 @@ import { ComponentResourceOptions, Output, all } from "@pulumi/pulumi";
 import { Component, Transform, transform } from "../component";
 import { Link } from "../link";
 import type { Input } from "../input";
-import { Function, FunctionArgs, FunctionArn } from "./function";
+import { Function, FunctionArgs, FunctionArn } from "./function.js";
 import { hashStringToPrettyString, logicalName } from "../naming";
 import { RealtimeLambdaSubscriber } from "./realtime-lambda-subscriber";
 import { iot, lambda } from "@pulumi/aws";

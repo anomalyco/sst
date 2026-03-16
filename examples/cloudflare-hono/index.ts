@@ -21,6 +21,12 @@ const app = new Hono()
     const result = await Resource.MyBucket.get(first.key);
     c.header("content-type", result.httpMetadata.contentType);
     return c.body(result.body);
+  })
+  .get("/ai", async (c) => {
+    const result = await Resource.Ai.run("@cf/meta/llama-3-8b-instruct", {
+      prompt: "What is the origin of the phrase 'Hello, World'",
+    });
+    return c.json(result.response);
   });
 
 export default app;

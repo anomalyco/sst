@@ -1,0 +1,74 @@
+---
+title: Migrate From v3
+description: Migrate your SST v3 apps to v4.
+---
+
+SST v4 upgrades the underlying [Pulumi AWS provider](https://www.pulumi.com/registry/packages/aws/) from v6 to v7. This guide covers migrating your SST v3 apps to v4.
+
+For the full list of upstream changes, refer to the [Pulumi AWS v7 migration guide](https://www.pulumi.com/registry/packages/aws/how-to-guides/7-0-migration).
+
+:::tip
+SST components are already updated for v7. Most users only need to run `sst refresh` and deploy.
+:::
+
+---
+
+## Breaking changes
+
+No code changes are needed if you are only using SST components without transforms or direct `@pulumi/aws` usage. Otherwise, refer to the [Pulumi AWS v7 migration guide](https://www.pulumi.com/registry/packages/aws/how-to-guides/7-0-migration) for the full list of breaking changes.
+
+The internal changes to SST components were minimal: mostly S3 resource renames (dropping the `V2` suffix) and switching from `tags` to `tagsAll`. You can see the full list of changes in the [upgrade PR](https://github.com/anomalyco/sst/pull/6259/).
+
+---
+
+## Migration steps
+
+When you update SST and the AWS provider version changes, `sst deploy` will be blocked until you migrate your state:
+
+1. **Update your config**
+
+   If you have any breaking changes from above, update your `sst.config.ts` accordingly.
+
+2. **Review changes**
+
+    Run `sst diff` to preview what will change. This is a **one-way migration**, so it's worth reviewing first.
+
+    ```bash frame="none"
+    sst diff
+    ```
+
+3. **Migrate state**
+
+    Run `sst refresh` to migrate your state.
+
+    :::caution
+    Do not use the `--target` flag during migration. The state refresh must cover all resources to ensure a consistent migration.
+    :::
+
+    ```bash frame="none"
+    sst refresh
+    ```
+
+    Repeat for each stage.
+
+    ```bash frame="none"
+    sst refresh --stage production
+    ```
+
+    If the stage was deployed using `sst dev`, use the `--dev` flag.
+
+    ```bash frame="none"
+    sst refresh --dev
+    ```
+
+    If you [share resources across stages](/docs/share-across-stages), run `sst refresh` on the stage where the resource is created first — not the stage that references it via `.get()`.
+
+4. **Deploy**
+
+    Once refreshed, deploy as usual.
+
+    ```bash frame="none"
+    sst deploy
+    ```
+
+That's it — once refreshed and deployed, your app is fully migrated to v4.

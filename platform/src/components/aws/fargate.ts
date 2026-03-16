@@ -4,7 +4,7 @@ import { ComponentResourceOptions, interpolate, secret } from "@pulumi/pulumi";
 import { all, output } from "@pulumi/pulumi";
 import { Input } from "../input";
 import { Efs } from "./efs";
-import { FunctionArgs } from "./function";
+import { FunctionArgs } from "./function.js";
 import { RETENTION } from "./logging";
 import { toGBs, toMBs } from "../size";
 import { VisibleError } from "../error";
@@ -192,9 +192,53 @@ export interface FargateContainerArgs {
          */
         args?: Input<Record<string, Input<string>>>;
         /**
+         * Key-value pairs of [build secrets](https://docs.docker.com/build/building/secrets/) to pass to the Docker build.
+         *
+         * Unlike build args, secrets are not persisted in the final image. They are
+         * available in the Dockerfile via [`--mount=type=secret`](https://docs.docker.com/build/building/secrets/#secret-mounts).
+         *
+         * @example
+         * ```js
+         * {
+         *   secrets: {
+         *     MY_TOKEN: "my-secret-token",
+         *   }
+         * }
+         * ```
+         *
+         * Then in the Dockerfile, reference it as a file:
+         * ```dockerfile title="Dockerfile"
+         * RUN --mount=type=secret,id=MY_TOKEN \
+         *   cat /run/secrets/MY_TOKEN
+         * ```
+         *
+         * Or as an environment variable:
+         * ```dockerfile title="Dockerfile"
+         * RUN --mount=type=secret,id=MY_TOKEN,env=MY_TOKEN \
+         *   echo $MY_TOKEN
+         * ```
+         */
+        secrets?: Input<Record<string, Input<string>>>;
+        /**
+         * Tags to apply to the Docker image.
+         * @example
+         * ```js
+         * {
+         *   tags: ["v1.0.0", "commit-613c1b2"]
+         * }
+         * ```
+         */
+        tags?: Input<Input<string>[]>;
+        /**
          * The stage to build up to. Same as the top-level [`image.target`](#image-target).
          */
         target?: Input<string>;
+        /**
+         * Controls whether Docker build cache is enabled. Same as the top-level
+         * [`image.cache`](#image-cache).
+         * @default `true`
+         */
+        cache?: Input<boolean>;
       }
   >;
   /**
@@ -238,7 +282,7 @@ export interface FargateContainerArgs {
   ssm?: FargateBaseArgs["ssm"];
   /**
    * Mount Amazon EFS file systems into the container. Same as the top-level
-   * [`efs`](#efs).
+   * [`volumes`](#volumes).
    */
   volumes?: FargateBaseArgs["volumes"];
 }
@@ -461,6 +505,34 @@ export interface FargateBaseArgs {
          */
         args?: Input<Record<string, Input<string>>>;
         /**
+         * Key-value pairs of [build secrets](https://docs.docker.com/build/building/secrets/) to pass to the Docker build.
+         *
+         * Unlike build args, secrets are not persisted in the final image. They are
+         * available in the Dockerfile via [`--mount=type=secret`](https://docs.docker.com/build/building/secrets/#secret-mounts).
+         *
+         * @example
+         * ```js
+         * {
+         *   secrets: {
+         *     MY_TOKEN: "my-secret-token",
+         *   }
+         * }
+         * ```
+         *
+         * Then in the Dockerfile, reference it as a file:
+         * ```dockerfile title="Dockerfile"
+         * RUN --mount=type=secret,id=MY_TOKEN \
+         *   cat /run/secrets/MY_TOKEN
+         * ```
+         *
+         * Or as an environment variable:
+         * ```dockerfile title="Dockerfile"
+         * RUN --mount=type=secret,id=MY_TOKEN,env=MY_TOKEN \
+         *   echo $MY_TOKEN
+         * ```
+         */
+        secrets?: Input<Record<string, Input<string>>>;
+        /**
          * Tags to apply to the Docker image.
          * @example
          * ```js
@@ -480,6 +552,21 @@ export interface FargateBaseArgs {
          * ```
          */
         target?: Input<string>;
+        /**
+         * Controls whether Docker build cache is enabled.
+         * @default `true`
+         * @example
+         * Disable Docker build caching, useful for environments like Localstack where
+         * ECR cache export is not supported.
+         * ```js
+         * {
+         *   image: {
+         *     cache: false
+         *   }
+         * }
+         * ```
+         */
+        cache?: Input<boolean>;
       }
   >;
   /**
@@ -896,6 +983,7 @@ export function createTaskRole(
         })(),
         actions: item.actions,
         resources: item.resources,
+        conditions: "conditions" in item ? item.conditions : undefined,
       })),
     }),
   );
@@ -993,7 +1081,7 @@ export function createTaskDefinition(
   executionRole: ReturnType<typeof createExecutionRole>,
 ) {
   const clusterName = args.cluster.nodes.cluster.name;
-  const region = getRegionOutput({}, opts).name;
+  const region = getRegionOutput({}, opts).region;
   const bootstrapData = region.apply((region) => bootstrap.forRegion(region));
   const linkEnvs = Link.propertiesToEnv(Link.getProperties(args.link));
   const containerDefinitions = output(containers).apply((containers) =>
@@ -1032,7 +1120,9 @@ export function createTaskDefinition(
               context: { location: contextPath },
               dockerfile: { location: dockerfilePath },
               buildArgs: containerImage.args,
-              secrets: linkEnvs,
+              secrets: all([linkEnvs, containerImage.secrets ?? {}]).apply(
+                ([link, secrets]) => ({ ...link, ...secrets }),
+              ),
               target: container.image.target,
               platforms: [container.image.platform],
               tags: [container.name, ...(container.image.tags ?? [])].map(
@@ -1052,23 +1142,27 @@ export function createTaskDefinition(
                     username: authToken.userName,
                   })),
               ],
-              cacheFrom: [
-                {
-                  registry: {
-                    ref: interpolate`${bootstrapData.assetEcrUrl}:${container.name}-cache`,
-                  },
-                },
-              ],
-              cacheTo: [
-                {
-                  registry: {
-                    ref: interpolate`${bootstrapData.assetEcrUrl}:${container.name}-cache`,
-                    imageManifest: true,
-                    ociMediaTypes: true,
-                    mode: "max",
-                  },
-                },
-              ],
+              ...(container.image.cache !== false
+                ? {
+                    cacheFrom: [
+                      {
+                        registry: {
+                          ref: interpolate`${bootstrapData.assetEcrUrl}:${container.name}-cache`,
+                        },
+                      },
+                    ],
+                    cacheTo: [
+                      {
+                        registry: {
+                          ref: interpolate`${bootstrapData.assetEcrUrl}:${container.name}-cache`,
+                          imageManifest: true,
+                          ociMediaTypes: true,
+                          mode: "max",
+                        },
+                      },
+                    ],
+                  }
+                : {}),
               push: true,
             },
             { parent },

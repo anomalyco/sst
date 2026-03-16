@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"os"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -133,7 +134,7 @@ func task(ctx context.Context, input input) {
 				}
 				cmd := process.Command(fields[0], fields[1:]...)
 				cmd.Dir = task.Directory
-				cmd.Env = body.Environment
+				cmd.Env = append(os.Environ(), body.Environment...)
 				stdout, _ := cmd.StdoutPipe()
 				stderr, _ := cmd.StderrPipe()
 				go func() {

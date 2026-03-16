@@ -36,6 +36,12 @@ func Exists(path string) bool {
 	return err == nil
 }
 
+func IsGitSubmodule(dir string) bool {
+	gitPath := filepath.Join(dir, ".git")
+	info, err := os.Stat(gitPath)
+	return err == nil && !info.IsDir()
+}
+
 func FindDown(dir, filename string) []string {
 	var result []string
 
@@ -46,6 +52,9 @@ func FindDown(dir, filename string) []string {
 		if info.IsDir() {
 			name := info.Name()
 			if name == "node_modules" || strings.HasPrefix(name, ".") {
+				return filepath.SkipDir
+			}
+			if path != dir && IsGitSubmodule(path) {
 				return filepath.SkipDir
 			}
 		}

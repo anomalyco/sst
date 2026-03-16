@@ -322,7 +322,7 @@ declare global {
    * ```ts title="sst.config.ts"
    * $transform(sst.aws.Function, (args, opts, name) => {
    *   // Set the default if it's not set by the component
-   *   args.runtime ??= "nodejs20.x";
+   *   args.runtime ??= "nodejs24.x";
    * });
    * ```
    *

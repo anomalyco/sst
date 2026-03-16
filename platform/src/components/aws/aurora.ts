@@ -29,6 +29,10 @@ export interface AuroraArgs {
   /**
    * The Aurora engine to use.
    *
+   * :::danger
+   * Changing the engine will cause the database to be destroyed and recreated.
+   * :::
+   *
    * @example
    * ```js
    * {
@@ -40,7 +44,7 @@ export interface AuroraArgs {
   /**
    * The version of the Aurora engine.
    *
-   * The default is `"16.4"` for Postgres and `"3.08.0"` for MySQL.
+   * The default is `"17"` for Postgres and `"3.08.0"` for MySQL.
    *
    * Check out the [available Postgres versions](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Concepts.Aurora_Fea_Regions_DB-eng.Feature.ServerlessV2.html#Concepts.Aurora_Fea_Regions_DB-eng.Feature.ServerlessV2.apg) and [available MySQL versions](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Concepts.Aurora_Fea_Regions_DB-eng.Feature.ServerlessV2.html#Concepts.Aurora_Fea_Regions_DB-eng.Feature.ServerlessV2.amy) in your region.
    *
@@ -55,11 +59,15 @@ export interface AuroraArgs {
    * - Aurora PostgresSQL 13.15 and higher
    * - Aurora MySQL 3.08.0 and higher
    *
-   * @default `"16.4"` for Postgres, `"3.08.0"` for MySQL
+   * :::caution
+   * Changing the version will **immediately** apply the update on the next `sst deploy` possibly causing downtime.
+   * :::
+   *
+   * @default `"17"` for Postgres, `"3.08.0"` for MySQL
    * @example
    * ```js
    * {
-   *   version: "16.3"
+   *   version: "17.3"
    * }
    * ```
    */
@@ -106,6 +114,10 @@ export interface AuroraArgs {
    * underscores.
    *
    * By default, it takes the name of the app, and replaces the hyphens with underscores.
+   *
+   * :::danger
+   * Changing the database name will cause the database to be destroyed and recreated.
+   * :::
    *
    * @default Based on the name of the current app
    * @example
@@ -576,7 +588,7 @@ interface AuroraRef {
  *   -e POSTGRES_USER=postgres \
  *   -e POSTGRES_PASSWORD=password \
  *   -e POSTGRES_DB=local \
- *   postgres:16.4
+ *   postgres:17
  * ```
  *
  * You can connect to it in `sst dev` by configuring the `dev` prop.
@@ -667,7 +679,7 @@ export class Aurora extends Component implements Link.Linkable {
     const engine = output(args.engine);
     const version = all([args.version, engine]).apply(
       ([version, engine]) =>
-        version ?? { postgres: "16.4", mysql: "3.08.0" }[engine],
+        version ?? { postgres: "17", mysql: "3.08.0" }[engine],
     );
     const username = all([args.username, engine]).apply(
       ([username, engine]) =>
@@ -735,7 +747,7 @@ export class Aurora extends Component implements Link.Linkable {
         { parent: self },
       );
 
-      const secretId = cluster.tags
+      const secretId = cluster.tagsAll
         .apply((tags) => tags?.["sst:ref:password"])
         .apply((passwordTag) => {
           if (!passwordTag)
@@ -759,7 +771,7 @@ export class Aurora extends Component implements Link.Linkable {
         (v) => v.password as string,
       );
 
-      const proxy = cluster.tags
+      const proxy = cluster.tagsAll
         .apply((tags) => tags?.["sst:ref:proxy"])
         .apply((proxyTag) =>
           proxyTag
@@ -923,7 +935,13 @@ Listening on "${dev.host}:${dev.port}"...`,
             }),
             parameters: [],
           },
-          { parent: self },
+          {
+            parent: self,
+            ignoreChanges: args.version ? [] : ["family"],
+            // Necessary for the subnet to be deleted after the instance.
+            // This is either a Pulumi bug or an undocumented feature.
+            deleteBeforeReplace: false,
+          },
         ),
       );
     }
@@ -943,7 +961,13 @@ Listening on "${dev.host}:${dev.port}"...`,
             }),
             parameters: [],
           },
-          { parent: self },
+          {
+            parent: self,
+            ignoreChanges: args.version ? [] : ["family"],
+            // Necessary for the subnet to be deleted after the instance.
+            // This is either a Pulumi bug or an undocumented feature.
+            deleteBeforeReplace: false,
+          },
         ),
       );
     }
@@ -979,6 +1003,8 @@ Listening on "${dev.host}:${dev.port}"...`,
                 ? toSeconds(scaling.pauseAfter)
                 : undefined,
             })),
+            applyImmediately: true,
+            allowMajorVersionUpgrade: true,
             skipFinalSnapshot: true,
             storageEncrypted: true,
             enableHttpEndpoint: dataApi,
@@ -989,7 +1015,10 @@ Listening on "${dev.host}:${dev.port}"...`,
               ...(proxy ? { "sst:ref:proxy": proxy.id } : {}),
             })),
           },
-          { parent: self },
+          {
+            parent: self,
+            ignoreChanges: args.version ? [] : ["engineVersion"],
+          },
         ),
       );
     }
@@ -1002,6 +1031,7 @@ Listening on "${dev.host}:${dev.port}"...`,
         engineVersion: cluster.engineVersion,
         dbSubnetGroupName: cluster.dbSubnetGroupName,
         dbParameterGroupName: instanceParameterGroup.name,
+        autoMinorVersionUpgrade: false,
       };
 
       // Create primary instance
@@ -1022,7 +1052,10 @@ Listening on "${dev.host}:${dev.port}"...`,
                 ...props,
                 promotionTier: 15,
               },
-              { parent: self },
+              {
+                parent: self,
+                ignoreChanges: args.version ? [] : ["engineVersion"],
+              },
             ),
           );
         }

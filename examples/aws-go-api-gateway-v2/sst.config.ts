@@ -38,7 +38,7 @@
 export default $config({
   app(input) {
     return {
-      name: "sst-v3-go-api",
+      name: "aws-go-api-gateway-v2",
       removal: input?.stage === "production" ? "retain" : "remove",
       home: "aws",
     };

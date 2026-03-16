@@ -13,6 +13,7 @@ import (
 )
 
 var mapping = map[string]string{
+	"aiBindings":          "Ai",
 	"r2BucketBindings":    "R2Bucket",
 	"d1DatabaseBindings":  "D1Database",
 	"kvNamespaceBindings": "KVNamespace",
@@ -37,6 +38,7 @@ func Generate(root string, links common.Links) error {
 		"/* tslint:disable */",
 		"/* eslint-disable */",
 		"/* deno-fmt-ignore-file */",
+		"/* biome-ignore-all lint: auto-generated */",
 		"",
 		"",
 	}, "\n"))

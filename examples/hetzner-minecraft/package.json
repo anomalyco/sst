@@ -1,0 +1,7 @@
+{
+  "name": "hetzner-minecraft",
+  "version": "0.0.0",
+  "dependencies": {
+    "sst": "^4"
+  }
+}

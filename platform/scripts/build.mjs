@@ -3,7 +3,7 @@ import fs from "fs/promises";
 
 // Require transpile
 await Promise.all(
-  ["ssr-warmer", "vector-handler"].map((file) =>
+  ["ssr-warmer", "vector-handler", "oac-edge-signer"].map((file) =>
     esbuild.build({
       bundle: true,
       minify: true,
