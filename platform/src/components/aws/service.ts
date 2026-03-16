@@ -1761,7 +1761,6 @@ export class Service extends Component implements Link.Linkable {
   private readonly taskDefinition?: Output<ecs.TaskDefinition>;
   private readonly loadBalancer?: lb.LoadBalancer;
   private readonly autoScalingTarget?: appautoscaling.Target;
-  private readonly _externalAlb?: Alb;
   private readonly domain?: Output<string | undefined>;
   private readonly _url?: Output<string>;
   private readonly devUrl?: Output<string>;
@@ -1820,9 +1819,12 @@ export class Service extends Component implements Link.Linkable {
     );
     let loadBalancer: lb.LoadBalancer | undefined;
     let targetGroups: ReturnType<typeof createTargets>;
+    let targetEntries: Output<{ targetGroup: lb.TargetGroup; containerName: string; containerPort: number }[]>;
+    let effectiveLbArn: Output<string> | undefined;
+    let effectiveDomain: Output<string | undefined>;
+    let effectiveDnsName: Output<string> | undefined;
     const certificateArn = albAttachment ? output(undefined) : createSsl();
     if (albAttachment) {
-      // Validate that the ALB's VPC matches the cluster's VPC
       all([albAttachment.instance._vpc, vpc.id]).apply(
         ([albVpcId, clusterVpcId]) => {
           if (albVpcId !== clusterVpcId) {
@@ -1832,15 +1834,24 @@ export class Service extends Component implements Link.Linkable {
           }
         },
       );
-      // External ALB path — service attaches to an existing Alb component
-      targetGroups = createAlbTargets(albAttachment);
-      createAlbListenerRules(albAttachment, targetGroups!);
+      const albResult = createAlbTargetsAndEntries(albAttachment);
+      targetGroups = albResult.apply((r) => r.targetGroups);
+      targetEntries = albResult.apply((r) => r.entries);
+      createAlbListenerRules(albAttachment, targetGroups);
+      effectiveLbArn = albAttachment.instance.arn;
+      effectiveDomain = output(undefined);
+      effectiveDnsName = albAttachment.instance.dnsName;
     } else {
-      // Inline LB path — unchanged
       loadBalancer = createLoadBalancer();
       targetGroups = createTargets();
+      targetEntries = computeTargetEntries();
       createListeners();
       createDnsRecords();
+      if (loadBalancer) {
+        effectiveLbArn = loadBalancer.arn;
+        effectiveDnsName = loadBalancer.dnsName;
+      }
+      effectiveDomain = lbArgs?.domain?.apply((d) => d?.name) ?? output(undefined);
     }
     const cloudmapService = createCloudmapService();
     const service = createService();
@@ -1850,22 +1861,15 @@ export class Service extends Component implements Link.Linkable {
     this.cloudmapService = cloudmapService;
     this.executionRole = executionRole;
     this.taskDefinition = taskDefinition;
-    this.loadBalancer = loadBalancer;
-    this._externalAlb = albAttachment?.instance;
+    this.loadBalancer = loadBalancer ?? albAttachment?.instance.nodes.loadBalancer;
     this.autoScalingTarget = autoScalingTarget;
-    this.domain = albAttachment
-      ? output(undefined)
-      : lbArgs?.domain
-        ? lbArgs.domain.apply((domain) => domain?.name)
-        : output(undefined);
-    this._url = albAttachment
-      ? albAttachment.instance.url
-      : !self.loadBalancer
-        ? undefined
-        : all([self.domain, self.loadBalancer?.dnsName]).apply(
-            ([domain, loadBalancer]) =>
-              domain ? `https://${domain}/` : `http://${loadBalancer}`,
-          );
+    this.domain = effectiveDomain;
+    this._url = effectiveDnsName
+      ? all([effectiveDomain, effectiveDnsName]).apply(
+          ([domain, dnsName]) =>
+            domain ? `https://${domain}/` : `http://${dnsName}`,
+        )
+      : undefined;
 
     this.registerOutputs({ _hint: this._url });
     registerReceiver();
@@ -2173,8 +2177,6 @@ export class Service extends Component implements Link.Linkable {
                 args.transform?.target,
                 `${name}Target${targetId}`,
                 {
-                  // AWS enforces a 6-char limit on namePrefix for target groups.
-                  // "TCP_UDP" is 7 chars, so strip the underscore to fit.
                   namePrefix: forwardProtocol.replace("_", ""),
                   port: forwardPort,
                   protocol: forwardProtocol,
@@ -2188,6 +2190,37 @@ export class Service extends Component implements Link.Linkable {
           targets[targetId] = target;
         });
         return targets;
+      });
+    }
+
+    function computeTargetEntries() {
+      if (!lbArgs || !targetGroups)
+        return output(
+          [] as {
+            targetGroup: lb.TargetGroup;
+            containerName: string;
+            containerPort: number;
+          }[],
+        );
+      return all([lbArgs.rules, targetGroups]).apply(([rules, targets]) => {
+        const entries: {
+          targetGroup: lb.TargetGroup;
+          containerName: string;
+          containerPort: number;
+        }[] = [];
+        const seen = new Set<string>();
+        for (const rule of rules) {
+          if (rule.type !== "forward") continue;
+          const targetId = `${rule.container}${rule.forwardProtocol.toUpperCase()}${rule.forwardPort}`;
+          if (seen.has(targetId)) continue;
+          seen.add(targetId);
+          entries.push({
+            targetGroup: targets[targetId],
+            containerName: rule.container!,
+            containerPort: rule.forwardPort,
+          });
+        }
+        return entries;
       });
     }
 
@@ -2401,40 +2434,13 @@ export class Service extends Component implements Link.Linkable {
                   enable: true,
                   rollback: true,
                 },
-                loadBalancers: albAttachment
-                  ? targetGroups &&
-                    all([albAttachment.rules, targetGroups, containers]).apply(
-                      ([rules, targets, ctrs]) =>
-                        Object.entries(targets).map(([targetId, target]) => {
-                          // targetId format: containerNamePROTOCOLport
-                          // We need to extract containerName from the rules
-                          const matchingRule = rules.find((r) => {
-                            const fwd = (r.forward as string).split("/");
-                            const fwdPort = parseInt(fwd[0]);
-                            const fwdProto = fwd[1].toUpperCase();
-                            const cn = (r.container as string | undefined) ?? ctrs[0].name;
-                            return targetId === `${cn}${fwdProto}${fwdPort}`;
-                          })!;
-                          const fwd = (matchingRule.forward as string).split("/");
-                          const cn = (matchingRule.container as string | undefined) ?? ctrs[0].name;
-                          return {
-                            targetGroupArn: target.arn,
-                            containerName: cn,
-                            containerPort: parseInt(fwd[0]),
-                          };
-                        }),
-                    )
-                  : lbArgs &&
-                    all([lbArgs.rules, targetGroups!]).apply(([rules, targets]) =>
-                      Object.values(targets).map((target) => ({
-                        targetGroupArn: target.arn,
-                        containerName: target.port.apply(
-                          (port) =>
-                            rules.find((r) => r.forwardPort === port)!.container!,
-                        ),
-                        containerPort: target.port.apply((port) => port!),
-                      })),
-                    ),
+                loadBalancers: targetEntries.apply((entries) =>
+                  entries.map((e) => ({
+                    targetGroupArn: e.targetGroup.arn,
+                    containerName: e.containerName,
+                    containerPort: e.containerPort,
+                  })),
+                ),
                 enableExecuteCommand: true,
                 serviceRegistries: cloudmapService && {
                   registryArn: cloudmapService.arn,
@@ -2531,25 +2537,18 @@ export class Service extends Component implements Link.Linkable {
               targetTrackingScalingPolicyConfiguration: {
                 predefinedMetricSpecification: {
                   predefinedMetricType: "ALBRequestCountPerTarget",
-                  resourceLabel: all([
-                    loadBalancer?.arn,
-                    albAttachment?.instance.arn,
-                    targetGroup.arn,
-                  ]).apply(([ownLbArn, externalLbArn, targetGroupArn]) => {
-                    const loadBalancerArn = ownLbArn ?? externalLbArn;
-                    // arn:...:loadbalancer/app/frank-MyServiceLoadBalan/005af2ad12da1e52
-                    // => app/frank-MyServiceLoadBalan/005af2ad12da1e52
-                    const lbPart = loadBalancerArn
-                      ?.split(":")
-                      .pop()
-                      ?.split("/")
-                      .slice(1)
-                      .join("/");
-                    // arn:...:targetgroup/HTTP20250103004618450100000001/e0811b8cf3a60762
-                    // => targetgroup/HTTP20250103004618450100000001
-                    const tgPart = targetGroupArn?.split(":").pop();
-                    return `${lbPart}/${tgPart}`;
-                  }),
+                  resourceLabel: all([effectiveLbArn!, targetGroup.arn]).apply(
+                    ([lbArn, targetGroupArn]) => {
+                      const lbPart = lbArn
+                        .split(":")
+                        .pop()
+                        ?.split("/")
+                        .slice(1)
+                        .join("/");
+                      const tgPart = targetGroupArn.split(":").pop();
+                      return `${lbPart}/${tgPart}`;
+                    },
+                  ),
                 },
                 targetValue: requestCount,
                 scaleInCooldown,
@@ -2599,11 +2598,9 @@ export class Service extends Component implements Link.Linkable {
       return undefined;
     }
 
-    function createAlbTargets(
+    function createAlbTargetsAndEntries(
       albAttachment: NonNullable<ReturnType<typeof detectAlbAttachment>>,
     ) {
-      // Resolve the outer rules array, then resolve each individual rule and
-      // containers in a single all() so everything is available synchronously.
       return output(albAttachment.rules)
         .apply((rawRules) =>
           all([
@@ -2613,14 +2610,12 @@ export class Service extends Component implements Link.Linkable {
           ]),
         )
         .apply(([rules, health, ctrs]) => {
-          // Fix 2: Validate rules are not empty
           if (rules.length === 0) {
             throw new VisibleError(
               `You must provide at least one rule in "loadBalancer.rules" when using an external ALB in Service "${name}".`,
             );
           }
 
-          // Fix 3: Validate container names
           const containerNames = new Set(ctrs.map((c) => c.name));
           if (ctrs.length > 1) {
             for (const rule of rules) {
@@ -2641,6 +2636,7 @@ export class Service extends Component implements Link.Linkable {
           }
 
           const targets: Record<string, lb.TargetGroup> = {};
+          const entries: { targetGroup: lb.TargetGroup; containerName: string; containerPort: number }[] = [];
 
           for (const rule of rules) {
             const parts = (rule.forward as string).split("/");
@@ -2671,7 +2667,7 @@ export class Service extends Component implements Link.Linkable {
                     matcher: "200",
                   };
 
-              targets[targetId] = new lb.TargetGroup(
+              const tg = new lb.TargetGroup(
                 ...transform(
                   args.transform?.target,
                   `${name}Target${targetId}`,
@@ -2686,17 +2682,22 @@ export class Service extends Component implements Link.Linkable {
                   { parent: self },
                 ),
               );
+              targets[targetId] = tg;
+              entries.push({
+                targetGroup: tg,
+                containerName,
+                containerPort: forwardPort,
+              });
             }
           }
-          return targets;
+          return { targetGroups: targets, entries };
         });
     }
 
     function createAlbListenerRules(
       albAttachment: NonNullable<ReturnType<typeof detectAlbAttachment>>,
-      albTargetGroups: ReturnType<typeof createAlbTargets>,
+      albTargetGroups: Output<Record<string, lb.TargetGroup>>,
     ) {
-      if (!albTargetGroups) return;
 
       // Resolve the outer rules array, then resolve each individual rule,
       // target groups, and containers together in a single all().
@@ -2911,12 +2912,11 @@ export class Service extends Component implements Link.Linkable {
           throw new VisibleError(
             "Cannot access `nodes.loadBalancer` in dev mode.",
           );
-        const lb = self.loadBalancer ?? self._externalAlb?.nodes.loadBalancer;
-        if (!lb)
+        if (!self.loadBalancer)
           throw new VisibleError(
             "Cannot access `nodes.loadBalancer` when no public ports are exposed.",
           );
-        return lb;
+        return self.loadBalancer;
       },
       /**
        * The Amazon Application Auto Scaling target.
@@ -2932,7 +2932,6 @@ export class Service extends Component implements Link.Linkable {
        * The Amazon Cloud Map service.
        */
       get cloudmapService() {
-        console.log("NODES GETTER");
         if (self.dev)
           throw new VisibleError(
             "Cannot access `nodes.cloudmapService` in dev mode.",
