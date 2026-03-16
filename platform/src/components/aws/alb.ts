@@ -256,8 +256,6 @@ export class Alb extends Component implements Link.Linkable {
   private _name: string;
   private _isRef = false;
 
-  static _refVersion = 1;
-
   constructor(
     name: string,
     args: AlbArgs,
@@ -307,14 +305,6 @@ export class Alb extends Component implements Link.Linkable {
         if (!tags) {
           throw new VisibleError(
             `Could not find tags on the referenced ALB "${name}". Make sure the ALB was created by SST.`,
-          );
-        }
-        if (tags["sst:ref:version"] !== Alb._refVersion.toString()) {
-          throw new VisibleError(
-            [
-              `There have been some minor changes to the "Alb" component that's being referenced by "${name}".\n`,
-              `To update, you'll need to redeploy the stage where the Alb was created. And then redeploy this stage.`,
-            ].join("\n"),
           );
         }
         return {
@@ -446,7 +436,6 @@ export class Alb extends Component implements Link.Linkable {
             securityGroups: [securityGroup.id],
             enableCrossZoneLoadBalancing: true,
             tags: all([domain]).apply(([d]) => ({
-              "sst:ref:version": Alb._refVersion.toString(),
               "sst:ref:sg": securityGroup.id,
               "sst:ref:vpc-id": vpcId,
               ...(d ? { "sst:ref:domain": d.name } : {}),
