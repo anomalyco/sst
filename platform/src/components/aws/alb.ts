@@ -38,34 +38,6 @@ export interface AlbListenerArgs {
    * ```
    */
   protocol: "http" | "https";
-  /**
-   * The default action when no listener rules match. Defaults to returning a fixed 404 response.
-   *
-   * @default "fixed-404"
-   * @example
-   *
-   * Redirect HTTP to HTTPS:
-   * ```js
-   * {
-   *   defaultAction: {
-   *     redirect: { port: 443, protocol: "https" }
-   *   }
-   * }
-   * ```
-   *
-   * Return a 403 Forbidden:
-   * ```js
-   * {
-   *   defaultAction: "fixed-403"
-   * }
-   * ```
-   */
-  defaultAction?:
-    | "fixed-404"
-    | "fixed-403"
-    | "fixed-500"
-    | "fixed-503"
-    | { redirect: { port: number; protocol: "http" | "https" } };
 }
 
 export interface AlbArgs {
@@ -172,9 +144,9 @@ export interface AlbArgs {
    * ```js
    * {
    *   listeners: [
-   *     { port: 80, protocol: "http", defaultAction: { redirect: { port: 443, protocol: "https" } } },
-   *     { port: 443, protocol: "https" }
-   *   ]
+ *     { port: 80, protocol: "http" },
+ *     { port: 443, protocol: "https" }
+ *   ]
    * }
    * ```
    */
@@ -218,7 +190,7 @@ interface AlbRef {
  *   vpc,
  *   domain: "app.example.com",
  *   listeners: [
- *     { port: 80, protocol: "http", defaultAction: { redirect: { port: 443, protocol: "https" } } },
+ *     { port: 80, protocol: "http" },
  *     { port: 443, protocol: "https" },
  *   ],
  * });
@@ -433,9 +405,6 @@ export class Alb extends Component implements Link.Linkable {
         const protocol = l.protocol.toUpperCase();
         const port = l.port;
         const key = listenerKey(protocol, port);
-        const defaultAction = l.defaultAction ?? "fixed-404";
-
-        const defaultActions = buildDefaultActions(defaultAction, protocol);
 
         const listener = new lb.Listener(
           ...transform(
@@ -448,7 +417,16 @@ export class Alb extends Component implements Link.Linkable {
               certificateArn: protocol === "HTTPS"
                 ? certificateArn.apply((arn) => arn!) as Output<string>
                 : undefined,
-              defaultActions,
+              defaultActions: [
+                {
+                  type: "fixed-response",
+                  fixedResponse: {
+                    statusCode: "403",
+                    contentType: "text/plain",
+                    messageBody: "Forbidden",
+                  },
+                },
+              ],
             },
             { parent: self },
           ),
@@ -456,45 +434,6 @@ export class Alb extends Component implements Link.Linkable {
 
         self._listeners[key] = listener;
       }
-    }
-
-    function buildDefaultActions(
-      defaultAction: "fixed-404" | "fixed-403" | "fixed-500" | "fixed-503" | { redirect: { port: number; protocol: string } },
-      _protocol: string,
-    ) {
-      const fixedResponses: Record<string, { statusCode: string; messageBody: string }> = {
-        "fixed-403": { statusCode: "403", messageBody: "Forbidden" },
-        "fixed-404": { statusCode: "404", messageBody: "Not Found" },
-        "fixed-500": { statusCode: "500", messageBody: "Internal Server Error" },
-        "fixed-503": { statusCode: "503", messageBody: "Service Unavailable" },
-      };
-
-      if (typeof defaultAction === "string" && defaultAction in fixedResponses) {
-        const { statusCode, messageBody } = fixedResponses[defaultAction];
-        return [
-          {
-            type: "fixed-response",
-            fixedResponse: {
-              statusCode,
-              contentType: "text/plain",
-              messageBody,
-            },
-          },
-        ];
-      }
-
-      // redirect
-      const redirect = (defaultAction as { redirect: { port: number; protocol: string } }).redirect;
-      return [
-        {
-          type: "redirect",
-          redirect: {
-            port: redirect.port.toString(),
-            protocol: redirect.protocol.toUpperCase(),
-            statusCode: "HTTP_301",
-          },
-        },
-      ];
     }
 
     function createDnsRecords() {
