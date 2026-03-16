@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Test the shared ALB + domain example endpoints after deployment.
+# Test the shared ALB example endpoints after deployment.
 #
 # Usage:
 #   ./test.sh [alb-url]
 #
 # If no URL is provided, attempts to read it from sst output.
-# The URL should be your custom domain, e.g. https://app.example.com
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -21,7 +20,7 @@ else
   if [ -z "$ALB_URL" ]; then
     echo "ERROR: Could not determine ALB URL."
     echo "Usage: ./test.sh <alb-url>"
-    echo "  e.g. ./test.sh https://app.example.com"
+    echo "  e.g. ./test.sh http://SharedAlb-123456.us-east-1.elb.amazonaws.com"
     exit 1
   fi
 fi
@@ -29,7 +28,7 @@ fi
 # Strip trailing slash
 ALB_URL="${ALB_URL%/}"
 
-echo "=== Testing Shared ALB + Domain Example ==="
+echo "=== Testing Shared ALB Example ==="
 echo "ALB URL: $ALB_URL"
 echo ""
 
@@ -90,29 +89,6 @@ if [ "$HTTP_CODE" = "404" ]; then
   PASS=$((PASS + 1))
 else
   echo "FAIL (expected 404, got HTTP $HTTP_CODE)"
-  FAIL=$((FAIL + 1))
-fi
-
-# Test 8: HTTPS verification — check that SSL works on custom domain
-echo -n "TEST: SSL certificate valid ... "
-SSL_RESULT=$(curl -s -o /dev/null -w "%{ssl_verify_result}" --max-time 10 "$ALB_URL/" 2>/dev/null || echo "999")
-if [ "$SSL_RESULT" = "0" ]; then
-  echo "PASS (SSL verified)"
-  PASS=$((PASS + 1))
-else
-  echo "FAIL (SSL verify result: $SSL_RESULT)"
-  FAIL=$((FAIL + 1))
-fi
-
-# Test 9: HTTP -> HTTPS redirect
-HTTP_URL=$(echo "$ALB_URL" | sed 's|^https://|http://|')
-echo -n "TEST: HTTP->HTTPS redirect ... "
-REDIRECT_URL=$(curl -s -o /dev/null -w "%{redirect_url}" --max-time 10 "$HTTP_URL/" 2>/dev/null || echo "")
-if echo "$REDIRECT_URL" | grep -q "https://"; then
-  echo "PASS (redirects to $REDIRECT_URL)"
-  PASS=$((PASS + 1))
-else
-  echo "FAIL (no HTTPS redirect detected)"
   FAIL=$((FAIL + 1))
 fi
 
