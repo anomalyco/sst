@@ -42,7 +42,7 @@ export interface DsqlArgs {
   /**
    *
    * Create AWS PrivateLink interface endpoints in a VPC for private connectivity.
-   * This allows lambdas placed inside a VPC wihout NAT gateways to connect to the DSQL instance.
+   * This allows lambdas placed inside a VPC without NAT gateways to connect to the DSQL instance.
    *
    * :::note
    * Currently only single region VPC is supported.
@@ -99,10 +99,10 @@ export interface DsqlArgs {
    * resources.
    */
   transform?: {
-     /**
-      * Transform the DSQL cluster resource.
-      */
-     cluster?: Transform<dsql.ClusterArgs>;
+    /**
+     * Transform the DSQL cluster resource.
+     */
+    cluster?: Transform<dsql.ClusterArgs>;
     /**
      * Transform the peer DSQL cluster resource.
      */
@@ -195,6 +195,11 @@ export class Dsql extends Component implements Link.Linkable {
 
     const parent = this;
     const regions = args.regions;
+
+    if (regions && args.vpc)
+      throw new VisibleError(
+        `Cannot use "vpc" with multi-region "regions". VPC endpoints are only supported for single-region clusters.`,
+      );
 
     const vpc = normalizeVpc();
 
@@ -419,7 +424,7 @@ export class Dsql extends Component implements Link.Linkable {
     return all([this.cluster.arn, this.connectionEndpoint?.dnsEntries]).apply(
       ([arn, dns]) => {
         if (!dns) {
-          return this.publicEndpoint;
+          return parseDsqlPublicEndpoint(arn);
         }
         return parseDsqlPrivateEndpoint(arn, dns);
       },
@@ -468,7 +473,7 @@ export class Dsql extends Component implements Link.Linkable {
    *   id: "app-dev-mycluster",
    *   peer: {
    *     id: "kzttrvbdg4k2o5ze2m2rrwdj7u",
-   *     region: "kzttrvbdg4k2o5ze2m2rrwdj7u",
+   *     region: "us-east-2",
    *   }
    * });
    * ```
@@ -477,7 +482,7 @@ export class Dsql extends Component implements Link.Linkable {
     name: string,
     args: {
       id: Input<string>;
-      peer: {
+      peer?: {
         id: string;
         region: string;
       };
@@ -498,7 +503,7 @@ export class Dsql extends Component implements Link.Linkable {
         })
       : undefined;
 
-    return new Dsql(name, { ref: true, cluster, peerCluster } as DsqlArgs);
+    return new Dsql(name, { ref: true, cluster, peerCluster } as DsqlArgs, opts);
   }
 
   /** @internal */
@@ -507,10 +512,9 @@ export class Dsql extends Component implements Link.Linkable {
       properties: {
         region: this.region,
         endpoint: this.endpoint,
-        peer: {
-          region: this.peerCluster?.region,
-          endpoint: this.peerEndpoint,
-        },
+        peer: this.peerCluster
+          ? { region: this.peerCluster.region, endpoint: this.peerEndpoint }
+          : undefined,
       },
       include: [
         permission({
