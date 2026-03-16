@@ -1,7 +1,0 @@
-{
-  "name": "aws-shared-alb-domain",
-  "version": "1.0.0",
-  "dependencies": {
-    "sst": "latest"
-  }
-}

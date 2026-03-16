@@ -3,36 +3,35 @@
 /**
  * ## AWS Shared ALB
  *
- * Creates a standalone ALB that is shared across multiple services. Each service
- * attaches to the ALB with its own routing rules via the `loadBalancer.instance` prop.
- *
- * The ALB owns the listeners and default actions. Services attach by specifying
- * path-based (or header/query-based) conditions and explicit priorities.
+ * Creates a standalone ALB shared across multiple services.
+ * Shows advanced routing with path conditions, header conditions, and health checks.
  *
  * ```ts title="sst.config.ts"
  * const alb = new sst.aws.Alb("SharedAlb", {
  *   vpc,
  *   listeners: [
- *     { port: 80, protocol: "http", defaultAction: { redirect: { port: 443, protocol: "https" } } },
- *     { port: 443, protocol: "https" },
+ *     { port: 80, protocol: "http" },
  *   ],
  * });
  * ```
  *
- * Services attach to the ALB with routing rules:
+ * Services can use header-based routing in addition to path-based:
  *
  * ```ts title="sst.config.ts"
- * new sst.aws.Service("Api", {
+ * new sst.aws.Service("InternalApi", {
  *   cluster,
- *   image: "api:latest",
+ *   image: { context: "api/" },
  *   loadBalancer: {
  *     instance: alb,
  *     rules: [
  *       {
- *         listen: "443/https",
- *         forward: "8080/http",
- *         conditions: { path: "/api/*" },
- *         priority: 100,
+ *         listen: "80/http",
+ *         forward: "3000/http",
+ *         conditions: {
+ *           path: "/api/*",
+ *           header: { name: "x-internal", values: ["true"] },
+ *         },
+ *         priority: 50,
  *       },
  *     ],
  *   },
@@ -40,20 +39,15 @@
  * ```
  *
  * This example creates:
- * - A shared ALB with a single HTTP listener (no domain/cert needed)
- * - An API service that handles `/api/*` requests
- * - A Web service that handles `/app/*` requests
- *
- * Deploy the "creator" stage first, then deploy "consumer" to test Alb.get():
- * ```sh
- * go run ../../cmd/sst deploy --stage creator
- * go run ../../cmd/sst deploy --stage consumer
- * ```
+ * - A shared ALB with an HTTP listener
+ * - An API service with path-based routing and custom health check
+ * - A Web service with path-based routing
+ * - Both services share the same ALB
  */
 export default $config({
   app(input) {
     return {
-      name: "aws-shared-alb",
+      name: "aws-shared-alb-domain",
       removal: input?.stage === "production" ? "retain" : "remove",
       home: "aws",
       providers: {
@@ -64,51 +58,24 @@ export default $config({
     };
   },
   async run() {
-    // "creator" stage: creates VPC, Cluster, ALB, and the API service
-    // "consumer" stage: references the ALB via Alb.get() and attaches a Web service
-    if ($app.stage === "consumer") {
-      // Reference the ALB created by the "creator" stage.
-      const alb = sst.aws.Alb.get("SharedAlb", process.env.ALB_ARN!);
-
-      const vpc = sst.aws.Vpc.get("MyVpc", process.env.VPC_ID!);
-      const cluster = sst.aws.Cluster.get("MyCluster", {
-        id: process.env.CLUSTER_ID!,
-        vpc,
-      });
-
-      new sst.aws.Service("Web", {
-        cluster,
-        image: { context: "web/" },
-        loadBalancer: {
-          instance: alb,
-          rules: [
-            {
-              listen: "80/http",
-              forward: "3000/http",
-              conditions: { path: "/app/*" },
-              priority: 200,
-            },
-          ],
-        },
-      });
-
-      return {
-        url: alb.url,
-      };
-    }
-
-    // Default ("creator") stage
     const vpc = new sst.aws.Vpc("MyVpc");
     const cluster = new sst.aws.Cluster("MyCluster", { vpc });
 
+    // Create a shared ALB with a custom domain
     const alb = new sst.aws.Alb("SharedAlb", {
       vpc,
+      domain: "example.com",
       listeners: [
-        { port: 80, protocol: "http" },
+        {
+          port: 80,
+          protocol: "http",
+          defaultAction: { redirect: { port: 443, protocol: "https" } },
+        },
+        { port: 443, protocol: "https" },
       ],
     });
 
-    // API service — handles /api/* on the shared ALB
+    // API service — handles /api/* with a custom health check path
     new sst.aws.Service("Api", {
       cluster,
       image: { context: "api/" },
@@ -116,20 +83,50 @@ export default $config({
         instance: alb,
         rules: [
           {
-            listen: "80/http",
+            listen: "443/https",
             forward: "3000/http",
             conditions: { path: "/api/*" },
             priority: 100,
           },
         ],
+        health: {
+          "3000/http": {
+            path: "/api/health",
+            interval: "10 seconds",
+            timeout: "5 seconds",
+            healthyThreshold: 2,
+            unhealthyThreshold: 3,
+          },
+        },
+      },
+    });
+
+    // Web service — handles everything else under /app/*
+    new sst.aws.Service("Web", {
+      cluster,
+      image: { context: "web/" },
+      loadBalancer: {
+        instance: alb,
+        rules: [
+          {
+            listen: "443/https",
+            forward: "3000/http",
+            conditions: { path: "/app/*" },
+            priority: 200,
+          },
+        ],
+        health: {
+          "3000/http": {
+            path: "/app/health",
+            interval: "10 seconds",
+            timeout: "5 seconds",
+          },
+        },
       },
     });
 
     return {
       url: alb.url,
-      albArn: alb.arn,
-      vpcId: vpc.id,
-      clusterId: cluster.nodes.cluster.id,
     };
   },
 });
