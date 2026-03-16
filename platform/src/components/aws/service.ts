@@ -1837,8 +1837,8 @@ export class Service extends Component implements Link.Linkable {
       const albResult = createAlbTargetsAndEntries(albAttachment);
       targetGroups = albResult.apply((r) => r.targetGroups);
       targetEntries = albResult.apply((r) => r.entries);
-      createAlbListenerRules(albAttachment, targetGroups);
-      effectiveLbArn = albAttachment.instance.arn;
+      const albListenerRules = createAlbListenerRules(albAttachment, targetGroups);
+      effectiveLbArn = all([albAttachment.instance.arn, albListenerRules]).apply(([arn]) => arn);
       effectiveDomain = output(undefined);
       effectiveDnsName = albAttachment.instance.dnsName;
     } else {
@@ -2703,10 +2703,7 @@ export class Service extends Component implements Link.Linkable {
       attachment: NonNullable<typeof albAttachment>,
       albTargetGroups: Output<Record<string, lb.TargetGroup>>,
     ) {
-
-      // Resolve the outer rules array, then resolve each individual rule,
-      // target groups, and containers together in a single all().
-      output(attachment.rules)
+      return output(attachment.rules)
         .apply((rawRules) =>
           all([
             all(rawRules.map((r) => output(r))),
@@ -2717,6 +2714,7 @@ export class Service extends Component implements Link.Linkable {
         )
         .apply(([rules, targets, ctrs, resolvedListeners]) => {
           const prioritiesByListener = new Map<string, Set<number>>();
+          const createdRules: lb.ListenerRule[] = [];
 
           for (const rule of rules) {
             const listenerStr = rule.listen as string;
@@ -2725,14 +2723,12 @@ export class Service extends Component implements Link.Linkable {
             const conditions = rule.conditions as any;
             const container = rule.container as string | undefined;
 
-            // Validate priority range
             if (priorityNum < 1 || priorityNum > 50000) {
               throw new VisibleError(
                 `Priority ${priorityNum} must be between 1 and 50000 in Service "${name}". When sharing an ALB, ensure non-overlapping priority ranges across services.`,
               );
             }
 
-            // Validate priority uniqueness per listener
             const seen =
               prioritiesByListener.get(listenerStr) ?? new Set();
             if (seen.has(priorityNum)) {
@@ -2743,7 +2739,6 @@ export class Service extends Component implements Link.Linkable {
             seen.add(priorityNum);
             prioritiesByListener.set(listenerStr, seen);
 
-            // Validate at least one condition is set
             if (
               !conditions?.path &&
               !conditions?.query &&
@@ -2754,7 +2749,6 @@ export class Service extends Component implements Link.Linkable {
               );
             }
 
-            // Parse listener and forward
             const listenerParts = listenerStr.split("/");
             const listenerPort = parseInt(listenerParts[0]);
             const listenerProtocol = listenerParts[1];
@@ -2777,7 +2771,7 @@ export class Service extends Component implements Link.Linkable {
               resolvedListeners[listenerKey] ??
               attachment.instance.getListener(listenerProtocol, listenerPort);
 
-            new lb.ListenerRule(
+            const listenerRule = new lb.ListenerRule(
               ...transform(
                 args.transform?.listenerRule,
                 `${name}AlbRule${listenerProtocol.toUpperCase()}${listenerPort}P${priorityNum}`,
@@ -2808,7 +2802,9 @@ export class Service extends Component implements Link.Linkable {
                 { parent: self },
               ),
             );
+            createdRules.push(listenerRule);
           }
+          return createdRules;
         });
     }
 
