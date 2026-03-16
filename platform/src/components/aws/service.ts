@@ -1939,23 +1939,24 @@ export class Service extends Component implements Link.Linkable {
     }
 
     function normalizeLoadBalancer() {
-      const loadBalancer = ((args.loadBalancer ??
-        args.public) as typeof args.loadBalancer)!;
+      const loadBalancer = args.loadBalancer ?? args.public;
       if (!loadBalancer) return;
-
-      // This function is only called in the inline path (when albAttachment is undefined).
-      // Cast to the inline shape to satisfy TypeScript.
-      type InlineLbConfig = {
-        public?: Input<boolean>;
-        domain?: Input<string | { name: Input<string>; aliases?: Input<string[]>; cert?: Input<string>; dns?: Input<false | (Dns & {})> }>;
-        ports?: Input<Prettify<ServiceRules>[]>;
-        rules?: Input<Prettify<ServiceRules>[]>;
-        health?: Input<Record<Port, Input<any>>>;
-      };
-      const loadBalancerInline = loadBalancer as Input<InlineLbConfig>;
+      const inlineLoadBalancer = output(loadBalancer).apply((lb) => {
+        if (
+          lb &&
+          typeof lb === "object" &&
+          "instance" in lb &&
+          lb.instance instanceof Alb
+        ) {
+          throw new VisibleError(
+            `Cannot combine "loadBalancer.instance" with inline load balancer settings in Service "${name}".`,
+          );
+        }
+        return lb as Exclude<typeof lb, { instance: Alb }>;
+      });
 
       // normalize rules
-      const rules = all([loadBalancerInline, containers]).apply(
+      const rules = all([inlineLoadBalancer, containers]).apply(
         ([lb, containers]) => {
           // validate rules
           const lbRules = lb.rules ?? lb.ports;
@@ -2053,7 +2054,7 @@ export class Service extends Component implements Link.Linkable {
       );
 
       // normalize domain
-      const domain = output(loadBalancerInline).apply((lb) => {
+      const domain = output(inlineLoadBalancer).apply((lb) => {
         if (!lb.domain) return undefined;
 
         // normalize domain
@@ -2073,37 +2074,41 @@ export class Service extends Component implements Link.Linkable {
       );
 
       // normalize public/private
-      const pub = output(loadBalancerInline).apply((lb) => lb?.public ?? true);
+      const pub = output(inlineLoadBalancer).apply((lb) =>
+        "public" in lb ? lb.public ?? true : true,
+      );
 
       // normalize health check
-      const health = all([type, rules, loadBalancerInline]).apply(
+      const health = all([type, rules, inlineLoadBalancer]).apply(
         ([type, rules, lb]) =>
           Object.fromEntries(
-            Object.entries(lb?.health ?? {}).map(([k, v]) => {
-              if (
-                !rules.find(
-                  (r) => `${r.forwardPort}/${r.forwardProtocol}` === k,
+            Object.entries(("health" in lb ? lb.health : {}) ?? {}).map(
+              ([k, v]) => {
+                if (
+                  !rules.find(
+                    (r) => `${r.forwardPort}/${r.forwardProtocol}` === k,
+                  )
                 )
-              )
-                throw new VisibleError(
-                  `Cannot configure health check for "${k}". Make sure it is defined in "loadBalancer.ports".`,
-                );
-              return [
-                k,
-                {
-                  path: v.path ?? (type === "application" ? "/" : undefined),
-                  interval: v.interval ? toSeconds(v.interval) : 30,
-                  timeout: v.timeout
-                    ? toSeconds(v.timeout)
-                    : type === "application"
-                      ? 5
-                      : 6,
-                  healthyThreshold: v.healthyThreshold ?? 5,
-                  unhealthyThreshold: v.unhealthyThreshold ?? 2,
-                  matcher: v.successCodes ?? "200",
-                },
-              ];
-            }),
+                  throw new VisibleError(
+                    `Cannot configure health check for "${k}". Make sure it is defined in "loadBalancer.ports".`,
+                  );
+                return [
+                  k,
+                  {
+                    path: v.path ?? (type === "application" ? "/" : undefined),
+                    interval: v.interval ? toSeconds(v.interval) : 30,
+                    timeout: v.timeout
+                      ? toSeconds(v.timeout)
+                      : type === "application"
+                        ? 5
+                        : 6,
+                    healthyThreshold: v.healthyThreshold ?? 5,
+                    unhealthyThreshold: v.unhealthyThreshold ?? 2,
+                    matcher: v.successCodes ?? "200",
+                  },
+                ];
+              },
+            ),
           ),
       );
 
@@ -2586,26 +2591,26 @@ export class Service extends Component implements Link.Linkable {
     }
 
     function detectAlbAttachment() {
-      if (!args.loadBalancer) return undefined;
-      const raw = args.loadBalancer as any;
-      if (raw && typeof raw === "object" && "instance" in raw && raw.instance instanceof Alb) {
-        return raw as {
-          instance: Alb;
-          rules: Input<Input<ServiceAlbRule>[]>;
-          health?: Input<Record<AlbPort, Input<any>>>;
-        };
+      const loadBalancer = args.loadBalancer;
+      if (
+        !loadBalancer ||
+        typeof loadBalancer !== "object" ||
+        !("instance" in loadBalancer) ||
+        !(loadBalancer.instance instanceof Alb)
+      ) {
+        return undefined;
       }
-      return undefined;
+      return loadBalancer;
     }
 
     function createAlbTargetsAndEntries(
-      albAttachment: NonNullable<ReturnType<typeof detectAlbAttachment>>,
+      attachment: NonNullable<typeof albAttachment>,
     ) {
-      return output(albAttachment.rules)
+      return output(attachment.rules)
         .apply((rawRules) =>
           all([
             all(rawRules.map((r) => output(r))),
-            output(albAttachment.health ?? {}),
+            output(attachment.health ?? {}),
             containers,
           ]),
         )
@@ -2650,7 +2655,7 @@ export class Service extends Component implements Link.Linkable {
               const healthKey = `${forwardPort}/${parts[1]}`;
               const healthCheck = health[healthKey as AlbPort];
               const normalizedHealth = healthCheck
-                ? output(healthCheck).apply((h: any) => ({
+                ? output(healthCheck).apply((h) => ({
                     path: h.path ?? "/",
                     interval: h.interval ? toSeconds(h.interval) : 30,
                     timeout: h.timeout ? toSeconds(h.timeout) : 5,
@@ -2676,7 +2681,7 @@ export class Service extends Component implements Link.Linkable {
                     port: forwardPort,
                     protocol: forwardProtocol,
                     targetType: "ip",
-                    vpcId: albAttachment.instance._vpc,
+                    vpcId: attachment.instance._vpc,
                     healthCheck: normalizedHealth,
                   },
                   { parent: self },
@@ -2695,19 +2700,19 @@ export class Service extends Component implements Link.Linkable {
     }
 
     function createAlbListenerRules(
-      albAttachment: NonNullable<ReturnType<typeof detectAlbAttachment>>,
+      attachment: NonNullable<typeof albAttachment>,
       albTargetGroups: Output<Record<string, lb.TargetGroup>>,
     ) {
 
       // Resolve the outer rules array, then resolve each individual rule,
       // target groups, and containers together in a single all().
-      output(albAttachment.rules)
+      output(attachment.rules)
         .apply((rawRules) =>
           all([
             all(rawRules.map((r) => output(r))),
             albTargetGroups,
             containers,
-            albAttachment.instance._resolvedListeners,
+            attachment.instance._resolvedListeners,
           ]),
         )
         .apply(([rules, targets, ctrs, resolvedListeners]) => {
@@ -2770,7 +2775,7 @@ export class Service extends Component implements Link.Linkable {
             const listenerKey = `${listenerProtocol.toUpperCase()}:${listenerPort}`;
             const listenerResource =
               resolvedListeners[listenerKey] ??
-              albAttachment.instance.getListener(listenerProtocol, listenerPort);
+              attachment.instance.getListener(listenerProtocol, listenerPort);
 
             new lb.ListenerRule(
               ...transform(
