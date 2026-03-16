@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 
 	"github.com/sst/sst/v3/pkg/process"
@@ -52,7 +53,7 @@ func New() *Monoplexer {
 	}
 }
 
-func (m *Monoplexer) AddProcess(name string, command []string, directory string, title string) {
+func (m *Monoplexer) AddProcess(name string, command []string, directory string, title string, env ...string) {
 	exists, ok := m.processes[name]
 	if ok {
 		if !exists.IsDifferent(title, command, directory) {
@@ -73,6 +74,9 @@ func (m *Monoplexer) AddProcess(name string, command []string, directory string,
 	cmd.Stderr = w
 	if directory != "" {
 		cmd.Dir = directory
+	}
+	if len(env) > 0 {
+		cmd.Env = append(os.Environ(), env...)
 	}
 	go func() {
 		// read r line by line

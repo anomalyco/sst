@@ -1,7 +1,7 @@
 import { randomBytes } from "crypto";
 import { Duration, toSeconds } from "../../duration";
 import { Input } from "../../input";
-import { FunctionPermissionArgs } from "../function";
+import { FunctionPermissionArgs } from "../function.js";
 
 export type JSONata = `{% ${string} %}`;
 

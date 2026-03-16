@@ -11,6 +11,6 @@
   "license": "ISC",
   "dependencies": {
     "hono": "^4.6.2",
-    "sst": "^3"
+    "sst": "^4"
   }
 }

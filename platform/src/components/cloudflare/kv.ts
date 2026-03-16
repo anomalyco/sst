@@ -18,6 +18,18 @@ export interface KvArgs {
   };
 }
 
+export interface KvGetArgs {
+  /**
+   * The ID of the existing KV namespace.
+   */
+  namespaceId: string;
+}
+
+interface KvRef {
+  ref: true;
+  namespace: cloudflare.WorkersKvNamespace;
+}
+
 /**
  * The `Kv` component lets you add a [Cloudflare KV storage namespace](https://developers.cloudflare.com/kv/) to
  * your app.
@@ -58,6 +70,12 @@ export class Kv extends Component implements Link.Linkable {
 
     const parent = this;
 
+    if (args && "ref" in args) {
+      const ref = args as unknown as KvRef;
+      this.namespace = ref.namespace;
+      return;
+    }
+
     const namespace = createNamespace();
 
     this.namespace = namespace;
@@ -78,6 +96,51 @@ export class Kv extends Component implements Link.Linkable {
   }
 
   /**
+   * Reference an existing KV namespace with the given name. This is useful when you
+   * create a KV namespace in one stage and want to share it in another.
+   *
+   * :::tip
+   * You can use the `static get` method to share KV namespaces across stages.
+   * :::
+   *
+   * @param name The name of the component.
+   * @param args The arguments to get the KV namespace.
+   * @param opts? Resource options.
+   *
+   * @example
+   * Imagine you create a KV namespace in the `dev` stage. And in your personal stage `frank`,
+   * instead of creating a new namespace, you want to share the same one from `dev`.
+   *
+   * ```ts title="sst.config.ts"
+   * const storage = $app.stage === "frank"
+   *   ? sst.cloudflare.Kv.get("MyStorage", {
+   *       namespaceId: "a1b2c3d4e5f6",
+   *     })
+   *   : new sst.cloudflare.Kv("MyStorage");
+   * ```
+   */
+  public static get(
+    name: string,
+    args: KvGetArgs,
+    opts?: ComponentResourceOptions,
+  ) {
+    const namespace = cloudflare.WorkersKvNamespace.get(
+      `${name}Namespace`,
+      `${DEFAULT_ACCOUNT_ID}/${args.namespaceId}`,
+      undefined,
+      opts,
+    );
+    return new Kv(
+      name,
+      {
+        ref: true,
+        namespace,
+      } as unknown as KvArgs,
+      opts,
+    );
+  }
+
+  /**
    * When you link a KV storage, the storage will be available to the worker and you can
    * interact with it using its [API methods](https://developers.cloudflare.com/kv/api/).
    *
@@ -93,13 +156,13 @@ export class Kv extends Component implements Link.Linkable {
   getSSTLink() {
     return {
       properties: {
-        namespaceId: this.namespace.id,
+        namespaceId: this.namespaceId,
       },
       include: [
         binding({
           type: "kvNamespaceBindings",
           properties: {
-            namespaceId: this.namespace.id,
+            namespaceId: this.namespaceId,
           },
         }),
       ],
@@ -108,16 +171,20 @@ export class Kv extends Component implements Link.Linkable {
 
   /**
    * The generated ID of the KV namespace.
+   * @deprecated Use `namespaceId` instead.
    */
   public get id() {
-    return this.namespace.id;
+    return this.namespaceId;
   }
 
   /**
    * The generated ID of the KV namespace.
    */
   public get namespaceId() {
-    return this.namespace.id;
+    // Pulumi returns "accountId/namespaceId" for imported namespaces
+    return this.namespace.id.apply((id) =>
+      id.includes("/") ? id.split("/")[1] : id,
+    );
   }
 
   /**

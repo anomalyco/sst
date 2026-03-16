@@ -1778,7 +1778,7 @@ export class Service extends Component implements Link.Linkable {
     const self = this;
     const clusterArn = args.cluster.nodes.cluster.arn;
     const clusterName = args.cluster.nodes.cluster.name;
-    const region = getRegionOutput({}, opts).name;
+    const region = getRegionOutput({}, opts).region;
     const dev = normalizeDev();
     const wait = output(args.wait ?? false);
     const architecture = normalizeArchitecture(args);
@@ -2173,14 +2173,9 @@ export class Service extends Component implements Link.Linkable {
                 args.transform?.target,
                 `${name}Target${targetId}`,
                 {
-                  // TargetGroup names allow for 32 chars, but an 8 letter suffix
-                  // ie. "-1234567" is automatically added.
-                  // - If we don't specify "name" or "namePrefix", we need to ensure
-                  //   the component name is less than 24 chars. Hard to guarantee.
-                  // - If we specify "name", we need to ensure the $app-$stage-$name
-                  //   if less than 32 chars. Hard to guarantee.
-                  // - Hence we will use "namePrefix".
-                  namePrefix: forwardProtocol,
+                  // AWS enforces a 6-char limit on namePrefix for target groups.
+                  // "TCP_UDP" is 7 chars, so strip the underscore to fit.
+                  namePrefix: forwardProtocol.replace("_", ""),
                   port: forwardPort,
                   protocol: forwardProtocol,
                   targetType: "ip",

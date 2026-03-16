@@ -1,0 +1,9 @@
+{
+  "name": "aws-apigv1-stream",
+  "version": "1.0.0",
+  "dependencies": {
+    "@types/aws-lambda": "^8.10.161",
+    "hono": "^4",
+    "sst": "^4"
+  }
+}

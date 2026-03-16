@@ -9,7 +9,7 @@ export const handler: CloudFrontRequestHandler = async (event) => {
   const request = event.Records[0].cf.request;
 
   // Only process requests that need SHA256 signing (methods with body)
-  if (!["POST", "PUT", "PATCH", "DELETE"].includes(request.method)) {
+  if (!["POST", "PUT", "PATCH"].includes(request.method)) {
     return request;
   }
 
@@ -46,13 +46,8 @@ export const handler: CloudFrontRequestHandler = async (event) => {
         value: hash,
       },
     ];
-
-    console.log(
-      `Added SHA256 header for ${request.method} request to ${request.uri}: ${hash}`,
-    );
   } catch (error) {
     console.error("Error computing SHA256 hash:", error);
-    // Continue without the header rather than failing the request
   }
 
   return request;

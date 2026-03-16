@@ -1,5 +1,5 @@
 import { VisibleError } from "../error";
-import { FunctionPermissionArgs } from "./function";
+import { FunctionPermissionArgs } from "./function.js";
 
 export const URL_UNAVAILABLE = "http://url-unavailable-in-dev.mode";
 

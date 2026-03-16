@@ -12,7 +12,7 @@
   "license": "ISC",
   "dependencies": {
     "@aws-sdk/client-sesv2": "^3.515.0",
-    "sst": "^3"
+    "sst": "^4"
   },
   "devDependencies": {
     "@types/aws-lambda": "8.10.142"

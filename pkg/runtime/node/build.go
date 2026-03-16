@@ -22,6 +22,7 @@ var forceExternal = []string{
 }
 
 var targetMap = map[string]esbuild.Target{
+	"nodejs24.x": esbuild.ES2024,
 	"nodejs22.x": esbuild.ES2023,
 	"nodejs20.x": esbuild.ES2023,
 	"nodejs18.x": esbuild.ES2022,

@@ -50,7 +50,7 @@
  *     {
  *       actions: ["lambda:GetFunction", "lambda:InvokeFunction"],
  *       resources: [
- *         $interpolate`arn:aws:lambda:${aws.getRegionOutput().name}:${
+ *         $interpolate`arn:aws:lambda:${aws.getRegionOutput().region}:${
  *           aws.getCallerIdentityOutput().accountId
  *         }:function:*`,
  *       ],
@@ -199,7 +199,7 @@ export default $config({
         {
           actions: ["lambda:GetFunction", "lambda:InvokeFunction"],
           resources: [
-            $interpolate`arn:aws:lambda:${aws.getRegionOutput().name}:${
+            $interpolate`arn:aws:lambda:${aws.getRegionOutput().region}:${
               aws.getCallerIdentityOutput().accountId
             }:function:*`,
           ],

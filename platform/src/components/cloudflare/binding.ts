@@ -18,6 +18,11 @@
 
 import { Input } from "../input";
 
+export interface AiBinding {
+  type: "aiBindings";
+  properties: Record<string, never>;
+}
+
 export interface KvBinding {
   type: "kvNamespaceBindings";
   properties: {
@@ -63,6 +68,7 @@ export interface D1DatabaseBinding {
 }
 
 export type Binding =
+  | AiBinding
   | KvBinding
   | SecretTextBinding
   | ServiceBinding

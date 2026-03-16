@@ -107,6 +107,7 @@ func run() error {
 
 	if !flag.SST_SKIP_DEPENDENCY_CHECK {
 		spin := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
+		spin.Color("cyan")
 		spin.Suffix = "  Download dependencies..."
 		if global.NeedsPulumi() {
 			spin.Suffix = "  Installing pulumi..."
@@ -458,6 +459,14 @@ var root = &cli.Command{
 						Long:  "Defaults to using `multi` mode. Use `mono` to get a single stream of all child process logs or `basic` to not spawn any child processes.",
 					},
 				},
+				{
+					Name: "policy",
+					Type: "string",
+					Description: cli.Description{
+						Short: "Path to policy pack",
+						Long:  "Run policy pack validation against the preview changes.",
+					},
+				},
 			},
 			Args: []cli.Argument{
 				{
@@ -541,6 +550,8 @@ var root = &cli.Command{
 					"```bash frame=\"none\"",
 					"NPM_REGISTRY=https://my-registry.com sst add aws",
 					"```",
+					"",
+					"You can also set the registry in your `.npmrc` file. If your registry requires authentication, SST supports `_authToken`, `_auth`, and `username`/`_password` from `.npmrc`.",
 				}, "\n"),
 			},
 			Args: []cli.Argument{
@@ -556,6 +567,7 @@ var root = &cli.Command{
 			Run: func(cli *cli.Cli) error {
 				pkg := cli.Positional(0)
 				spin := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
+				spin.Color("cyan")
 				spin.Suffix = "  Adding provider..."
 				spin.Start()
 				defer spin.Stop()
@@ -581,13 +593,21 @@ var root = &cli.Command{
 						return err
 					}
 				}
-				entry, err := project.FindProvider(pkg, "latest")
+				entry, err := project.FindProvider(pkg, "latest", pkg)
 				if err != nil {
 					return util.NewReadableError(err, "Could not find provider "+pkg)
 				}
-				err = p.Add(entry.Name, entry.Version)
+				// When the user passed a full package name (e.g. @paynearme/pulumi-jetstream),
+				// use the alias as the config key and set the package override
+				providerName := entry.Name
+				pkgOverride := ""
+				if entry.Name == entry.Package {
+					providerName = entry.Alias
+					pkgOverride = entry.Package
+				}
+				err = p.Add(providerName, entry.Version, pkgOverride)
 				if err != nil {
-					return err
+					return util.NewReadableError(err, err.Error())
 				}
 				spin.Suffix = "  Downloading provider..."
 				p, err = project.New(&project.ProjectConfig{
@@ -647,6 +667,7 @@ var root = &cli.Command{
 				}
 
 				spin := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
+				spin.Color("cyan")
 				defer spin.Stop()
 				spin.Suffix = "  Installing providers..."
 				spin.Start()
@@ -962,6 +983,13 @@ var root = &cli.Command{
 					":::note",
 					"The `sst refresh` does not make changes to the resources in the cloud provider.",
 					":::",
+					"",
+					"By default, this refreshes the stage as it would be deployed using `sst deploy`. If the stage was deployed using `sst dev`, use the `--dev` flag.",
+					"",
+					"```bash frame=\"none\"",
+					"sst refresh --dev",
+					"```",
+					"",
 					"You can also refresh a specific component by passing in the name of the component.",
 					"",
 					"```bash frame=\"none\"",
@@ -992,6 +1020,14 @@ var root = &cli.Command{
 					Description: cli.Description{
 						Short: "Exclude a component",
 						Long:  "Exclude the specified component from the operation.",
+					},
+				},
+				{
+					Name: "dev",
+					Type: "bool",
+					Description: cli.Description{
+						Short: "Refresh in dev mode",
+						Long:  "Refresh the dev version of this stage.",
 					},
 				},
 			},

@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "devDependencies": {
-    "sst": "^3"
+    "sst": "^4"
   },
   "scripts": {
     "dev": "npx --yes serve ./site"

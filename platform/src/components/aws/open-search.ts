@@ -306,7 +306,7 @@ export class OpenSearch extends Component implements Link.Linkable {
       //});
       const domain = opensearch.Domain.get(`${name}Domain`, ref.id);
 
-      const input = domain.tags.apply((tags) => {
+      const input = domain.tagsAll.apply((tags) => {
         if (!tags?.["sst:ref:username"])
           throw new VisibleError(
             `Failed to get username for OpenSearch ${name}.`,

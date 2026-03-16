@@ -29,7 +29,7 @@ import { Input } from "../input";
 import { RETENTION } from "./logging";
 import { physicalName } from "../naming";
 import { functionBuilder } from "./helpers/function-builder";
-import { Function } from "./function";
+import { Function } from "./function.js";
 
 export interface StepFunctionsArgs {
   /**

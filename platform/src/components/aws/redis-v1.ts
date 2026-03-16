@@ -32,6 +32,10 @@ export interface RedisArgs {
    *
    * Check out the [supported versions](https://docs.aws.amazon.com/AmazonElastiCache/latest/red-ug/supported-engine-versions.html).
    *
+   * :::caution
+   * Changing the version will **immediately** apply the update on the next `sst deploy` possibly causing downtime.
+   * :::
+   *
    * @default `"7.1"` for Redis, `"7.2"` for Valkey
    * @example
    * ```js
@@ -43,6 +47,10 @@ export interface RedisArgs {
   version?: Input<string>;
   /**
    * The type of instance to use for the nodes of the Redis cluster. Check out the [supported instance types](https://docs.aws.amazon.com/AmazonElastiCache/latest/red-ug/CacheNodes.SupportedTypes.html).
+   *
+   * :::caution
+   * Changing the instance type will **immediately** apply the update on the next `sst deploy` possibly causing downtime.
+   * :::
    *
    * @default `"t4g.micro"`
    * @example
@@ -428,10 +436,13 @@ Listening on "${dev.host}:${dev.port}"...`,
             numNodeGroups: nodes,
             replicasPerNodeGroup: 0,
             multiAzEnabled: false,
+            applyImmediately: true,
+            autoMinorVersionUpgrade: false,
             atRestEncryptionEnabled: true,
             transitEncryptionEnabled: true,
             transitEncryptionMode: "required",
             authToken,
+            authTokenUpdateStrategy: "ROTATE",
             subnetGroupName: subnetGroup.name,
             securityGroupIds: vpc.securityGroups,
             tags: {
@@ -553,7 +564,7 @@ Listening on "${dev.host}:${dev.port}"...`,
       undefined,
       opts,
     );
-    const secret = cluster.tags.apply((tags) =>
+    const secret = cluster.tagsAll.apply((tags) =>
       tags?.["sst:auth-token-ref"]
         ? secretsmanager.getSecretVersionOutput(
             {
