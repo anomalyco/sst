@@ -1712,7 +1712,7 @@ export class Function extends Component implements Link.Linkable {
         : true,
     );
     const partition = getPartitionOutput({}, opts).partition;
-    const region = getRegionOutput({}, opts).region;
+    const region = getRegionOutput({}, opts).name;
     const bootstrapData = region.apply((region) => bootstrap.forRegion(region));
     const injections = normalizeInjections();
     const runtime = output(args.runtime ?? "nodejs24.x");
