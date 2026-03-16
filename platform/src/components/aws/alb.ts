@@ -255,6 +255,7 @@ export class Alb extends Component implements Link.Linkable {
   private _url!: Output<string>;
   private _name: string;
   private _isRef = false;
+  private _listenersOutput!: Output<Record<string, lb.Listener>>;
 
   constructor(
     name: string,
@@ -323,6 +324,7 @@ export class Alb extends Component implements Link.Linkable {
       const resolvedListeners: Record<string, lb.Listener> = {};
 
       self._isRef = true;
+      self._listenersOutput = output(resolvedListeners);
       self._loadBalancer = loadBalancer;
       self._securityGroup = securityGroup;
       self._listeners = resolvedListeners;
@@ -449,7 +451,7 @@ export class Alb extends Component implements Link.Linkable {
     function createListeners() {
       // Unwrap Input<Input<AlbListenerArgs>[]> in two steps:
       // first the outer array, then each element.
-      output(args.listeners)
+      self._listenersOutput = output(args.listeners)
         .apply((rawListeners) => all(rawListeners.map((l) => output(l))))
         .apply((listeners) => {
           for (const l of listeners) {
@@ -479,6 +481,7 @@ export class Alb extends Component implements Link.Linkable {
 
             self._listeners[key] = listener;
           }
+          return self._listeners;
         });
     }
 
@@ -606,6 +609,11 @@ export class Alb extends Component implements Link.Linkable {
   /** @internal */
   public get _vpc(): Output<string> {
     return this._vpcId;
+  }
+
+  /** @internal */
+  public get _resolvedListeners(): Output<Record<string, lb.Listener>> {
+    return this._listenersOutput;
   }
 
   /**
