@@ -1,5 +1,5 @@
 import { all, ComponentResourceOptions, Output, output } from "@pulumi/pulumi";
-import { Component, Prettify, Transform, transform } from "../component.js";
+import { Component, Prettify } from "../component.js";
 import { Link } from "../link.js";
 import { Cluster } from "./cluster.js";
 import { ec2, ecs, iam } from "@pulumi/aws";
@@ -72,13 +72,11 @@ export interface TaskArgs extends FargateBaseArgs {
    */
   containers?: Input<Prettify<FargateContainerArgs>>[];
   /**
-   * Assign a public IP address to the task.
+   * Make the task publicly accessible. When enabled, the task is placed in public subnets,
+   * assigned a public IP, and given a security group that allows inbound traffic from
+   * the internet.
    *
-   * Defaults:
-   * - If an SST VPC component is passed to the `vpc` property, tasks run in public subnets
-   * by default and `publicIp` defaults to `true`.
-   * - If a non-SST VPC is used, tasks run in the specified subnets and `publicIp` defaults
-   * to `false`.
+   * @default false
    *
    * @example
    * ```ts
@@ -87,7 +85,7 @@ export interface TaskArgs extends FargateBaseArgs {
    * }
    * ```
    */
-  publicIp?: Input<boolean>;
+  publicIp?: boolean;
   /**
    * Configure how this component works in `sst dev`.
    *
@@ -135,16 +133,6 @@ export interface TaskArgs extends FargateBaseArgs {
          */
         directory?: Input<string>;
       };
-  /**
-   * [Transform](/docs/components#transform) how this component creates its underlying
-   * resources.
-   */
-  transform?: {
-    /**
-     * Transform the AWS Security Group resource created for public tasks.
-     */
-    securityGroup?: Transform<ec2.SecurityGroupArgs>;
-  };
 }
 
 /**
@@ -277,18 +265,17 @@ export interface TaskArgs extends FargateBaseArgs {
  */
 export class Task extends Component implements Link.Linkable {
   private readonly _cluster: Cluster;
-  private readonly publicSecurityGroup: ec2.SecurityGroup;
+  private readonly publicSecurityGroup?: ec2.SecurityGroup;
   private readonly vpc: {
     id: Input<string>;
-    isSstVpc: boolean;
-    containerSubnets: Output<Input<string>[]>;
-    publicSubnets: Output<Input<string>[] | undefined>;
+    publicSubnets: Output<Input<string>[]>;
+    privateSubnets: Output<Input<string>[]>;
     securityGroups: Output<Input<string>[]>;
   };
   private readonly executionRole: iam.Role;
   private readonly taskRole: iam.Role;
   private readonly _taskDefinition: Output<ecs.TaskDefinition>;
-  private readonly _publicIp: Output<boolean>;
+  private readonly isPublic: boolean;
   private readonly containerNames: Output<Output<string>[]>;
   private readonly dev: boolean;
 
@@ -307,7 +294,7 @@ export class Task extends Component implements Link.Linkable {
     const storage = normalizeStorage(args);
     const containers = normalizeContainers("task", args, name, architecture);
     const vpc = normalizeVpc();
-    const publicIp = normalizePublicIp();
+    const isPublic = args.publicIp ?? false;
     const publicSecurityGroup = createPublicSecurityGroup();
 
     const taskRole = createTaskRole(
@@ -367,7 +354,7 @@ export class Task extends Component implements Link.Linkable {
     this.vpc = vpc;
     this.executionRole = executionRole;
     this._taskDefinition = taskDefinition;
-    this._publicIp = publicIp;
+    this.isPublic = isPublic;
     this.containerNames = containers.apply((v) => v.map((v) => output(v.name)));
     this.registerOutputs({
       _task: all([args.dev, containers]).apply(([v, containers]) => ({
@@ -393,9 +380,8 @@ export class Task extends Component implements Link.Linkable {
         const vpc = args.cluster.vpc;
         return {
           id: vpc.id,
-          isSstVpc: true,
-          containerSubnets: vpc.privateSubnets,
           publicSubnets: vpc.publicSubnets,
+          privateSubnets: vpc.privateSubnets,
           securityGroups: vpc.securityGroups,
         };
       }
@@ -403,12 +389,11 @@ export class Task extends Component implements Link.Linkable {
       // "vpc" is object
       return {
         id: output(args.cluster.vpc).apply((v) => v.id),
-        isSstVpc: false,
-        containerSubnets: output(args.cluster.vpc).apply((v) =>
-          v.containerSubnets.map((v) => output(v)),
-        ),
         publicSubnets: output(args.cluster.vpc).apply((v) =>
-          v.publicSubnets?.map((v) => output(v)),
+          (v.publicSubnets ?? v.containerSubnets ?? []).map((v) => output(v)),
+        ),
+        privateSubnets: output(args.cluster.vpc).apply((v) =>
+          (v.privateSubnets ?? v.containerSubnets ?? []).map((v) => output(v)),
         ),
         securityGroups: output(args.cluster.vpc).apply((v) =>
           v.securityGroups.map((v) => output(v)),
@@ -416,39 +401,31 @@ export class Task extends Component implements Link.Linkable {
       };
     }
 
-    function normalizePublicIp() {
-      return all([args.publicIp, vpc.isSstVpc]).apply(
-        ([publicIp, isSstVpc]) => publicIp ?? isSstVpc,
-      );
-    }
-
     function createPublicSecurityGroup() {
+      if (!isPublic) return;
       return new ec2.SecurityGroup(
-        ...transform(
-          args.transform?.securityGroup,
-          `${name}PublicSecurityGroup`,
-          {
-            description: "Managed by SST",
-            vpcId: vpc.id,
-            egress: [
-              {
-                fromPort: 0,
-                toPort: 0,
-                protocol: "-1",
-                cidrBlocks: ["0.0.0.0/0"],
-              },
-            ],
-            ingress: [
-              {
-                fromPort: 0,
-                toPort: 0,
-                protocol: "-1",
-                cidrBlocks: ["0.0.0.0/0"],
-              },
-            ],
-          },
-          { parent: self },
-        ),
+        `${name}PublicSecurityGroup`,
+        {
+          description: "Managed by SST",
+          vpcId: vpc.id,
+          egress: [
+            {
+              fromPort: 0,
+              toPort: 0,
+              protocol: "-1",
+              cidrBlocks: ["0.0.0.0/0"],
+            },
+          ],
+          ingress: [
+            {
+              fromPort: 0,
+              toPort: 0,
+              protocol: "-1",
+              cidrBlocks: ["0.0.0.0/0"],
+            },
+          ],
+        },
+        { parent: self },
       );
     }
   }
@@ -481,17 +458,11 @@ export class Task extends Component implements Link.Linkable {
    * @internal
    */
   public get securityGroups() {
-    return all([
-      this._publicIp,
-      this.vpc.publicSubnets,
-      this.vpc.securityGroups,
-      this.publicSecurityGroup.id,
-    ]).apply(
-      ([publicIp, publicSubnets, securityGroups, taskSecurityGroup]) => {
-        if (!publicIp || !publicSubnets?.length) return securityGroups;
-        return [taskSecurityGroup];
-      },
-    );
+    if (this.isPublic && this.publicSecurityGroup)
+      return all([this.vpc.securityGroups, this.publicSecurityGroup.id]).apply(
+        ([sgs, publicSgId]) => [...sgs, publicSgId],
+      );
+    return this.vpc.securityGroups;
   }
 
   /**
@@ -499,14 +470,7 @@ export class Task extends Component implements Link.Linkable {
    * @internal
    */
   public get subnets() {
-    return all([
-      this._publicIp,
-      this.vpc.publicSubnets,
-      this.vpc.containerSubnets,
-    ]).apply(([publicIp, publicSubnets, containerSubnets]) => {
-      if (publicIp && publicSubnets?.length) return publicSubnets;
-      return containerSubnets;
-    });
+    return this.isPublic ? this.vpc.publicSubnets : this.vpc.privateSubnets;
   }
 
   /**
@@ -514,7 +478,7 @@ export class Task extends Component implements Link.Linkable {
    * @internal
    */
   public get assignPublicIp() {
-    return this._publicIp;
+    return this.isPublic;
   }
 
   /**
@@ -535,7 +499,8 @@ export class Task extends Component implements Link.Linkable {
        */
       taskDefinition: this._taskDefinition,
       /**
-       * The AWS Security Group used for public tasks.
+       * The AWS Security Group for public tasks. Only created when `publicIp`
+       * is `true`.
        */
       publicSecurityGroup: this.publicSecurityGroup,
     };
