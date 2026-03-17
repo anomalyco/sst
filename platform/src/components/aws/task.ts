@@ -306,7 +306,11 @@ export class Task extends Component implements Link.Linkable {
     const memory = normalizeMemory(cpu, args);
     const storage = normalizeStorage(args);
     const containers = normalizeContainers("task", args, name, architecture);
-    const isPublic = normalizePublic();
+    if (args.public !== undefined && args.publicIp !== undefined)
+      throw new VisibleError(
+        `Do not set both "public" and "publicIp" for the "${name}" Task. "publicIp" has been deprecated, use "public" instead.`,
+      );
+    const isPublic = args.public ?? false;
     const vpc = normalizeVpc();
     const hasPublicIp = isPublic || (args.publicIp ?? vpc.isSstVpc);
     const publicSecurityGroup = createPublicSecurityGroup();
@@ -422,13 +426,6 @@ export class Task extends Component implements Link.Linkable {
       };
     }
 
-    function normalizePublic() {
-      if (args.public !== undefined && args.publicIp !== undefined)
-        throw new VisibleError(
-          `Do not set both "public" and "publicIp" for the "${name}" Task. "publicIp" has been deprecated, use "public" instead.`,
-        );
-      return args.public ?? false;
-    }
 
     function createPublicSecurityGroup() {
       if (!isPublic) return;
