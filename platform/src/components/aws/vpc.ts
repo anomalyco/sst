@@ -1232,15 +1232,11 @@ export class Vpc extends Component implements Link.Linkable {
           all([natGateways, natInstances]).apply(
             ([natGateways, natInstances]) => {
               if (natGateways[i]) {
-                new ec2.Route(
-                  `${name}PrivateNatGatewayRoute${i + 1}`,
-                  {
-                    routeTableId: routeTable.id,
-                    destinationCidrBlock: "0.0.0.0/0",
-                    natGatewayId: natGateways[i].id,
-                  },
-                  { parent: self },
-                );
+                new ec2.Route(`${name}PrivateNatGatewayRoute${i + 1}`, {
+                  routeTableId: routeTable.id,
+                  destinationCidrBlock: "0.0.0.0/0",
+                  natGatewayId: natGateways[i].id,
+                });
               }
 
               if (natInstances[i]) {
