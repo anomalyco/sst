@@ -15,7 +15,6 @@ import {
   route53,
   servicediscovery,
   ssm,
-  vpc as _vpc,
 } from "@pulumi/aws";
 import { Vpc as VpcV1 } from "./vpc-v1";
 import { Link } from "../link";
@@ -936,33 +935,34 @@ export class Vpc extends Component implements Link.Linkable {
     }
 
     function createSecurityGroup() {
-      const defaultSecurityGroup = new ec2.DefaultSecurityGroup(
+      return new ec2.DefaultSecurityGroup(
         ...transform(
           args.transform?.securityGroup,
           `${name}SecurityGroup`,
           {
             description: "Managed by SST",
             vpcId: vpc.id,
-            egress: [],
-            ingress: [],
+            egress: [
+              {
+                fromPort: 0,
+                toPort: 0,
+                protocol: "-1",
+                cidrBlocks: ["0.0.0.0/0"],
+              },
+            ],
+            ingress: [
+              {
+                fromPort: 0,
+                toPort: 0,
+                protocol: "-1",
+                // Restricts inbound traffic to only within the VPC
+                cidrBlocks: [vpc.cidrBlock],
+              },
+            ],
           },
           { parent: self },
         ),
       );
-
-      new _vpc.SecurityGroupEgressRule(`${name}SecurityGroupEgressRule`, {
-        securityGroupId: defaultSecurityGroup.id,
-        ipProtocol: "-1",
-        cidrIpv4: "0.0.0.0/0",
-      });
-
-      new _vpc.SecurityGroupIngressRule(`${name}SecurityGroupIngressRule`, {
-        securityGroupId: defaultSecurityGroup.id,
-        ipProtocol: "-1",
-        cidrIpv4: vpc.cidrBlock,
-      });
-
-      return defaultSecurityGroup;
     }
 
     function createElasticIps() {
