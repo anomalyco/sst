@@ -1170,16 +1170,16 @@ export class Vpc extends Component implements Link.Linkable {
               `${name}PublicRouteTable${i + 1}`,
               {
                 vpcId: vpc.id,
-                routes: [
-                  {
-                    cidrBlock: "0.0.0.0/0",
-                    gatewayId: internetGateway.id,
-                  },
-                ],
               },
               { parent: self },
             ),
           );
+
+          new ec2.Route(`${name}PublicRoute${i + 1}`, {
+            routeTableId: routeTable.id,
+            destinationCidrBlock: "0.0.0.0/0",
+            gatewayId: internetGateway.id,
+          });
 
           new ec2.RouteTableAssociation(
             `${name}PublicRouteTableAssociation${i + 1}`,
