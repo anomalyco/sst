@@ -40,10 +40,6 @@ type ClusterVpcArgs = {
    */
   publicSubnets?: Input<Input<string>[]>;
   /**
-   * A list of private subnet IDs in the VPC.
-   */
-  privateSubnets?: Input<Input<string>[]>;
-  /**
    * A list of subnet IDs in the VPC to place the load balancer in.
    */
   loadBalancerSubnets: Input<Input<string>[]>;

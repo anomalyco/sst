@@ -76,7 +76,7 @@ export interface TaskArgs extends FargateBaseArgs {
    * assigned a public IP, and given a security group that allows inbound traffic from
    * the internet.
    *
-   * @default false
+   * @default `true` for SST VPC, `false` for custom VPC
    *
    * @example
    * ```ts
@@ -250,8 +250,8 @@ export interface TaskArgs extends FargateBaseArgs {
  *
  * By default, this uses a _Linux/X86_ _Fargate_ container with 0.25 vCPUs at $0.04048 per
  * vCPU per hour and 0.5 GB of memory at $0.004445 per GB per hour. It includes 20GB of
- * _Ephemeral Storage_ for free with additional storage at $0.000111 per GB per hour. Each
- * container also gets a public IPv4 address at $0.005 per hour.
+ * _Ephemeral Storage_ for free with additional storage at $0.000111 per GB per hour. When
+ * using an SST VPC, each task also gets a public IPv4 address at $0.005 per hour.
  *
  * It works out to $0.04048 x 0.25 + $0.004445 x 0.5 + $0.005. Or **$0.02 per hour**
  * your task runs for.
@@ -268,8 +268,9 @@ export class Task extends Component implements Link.Linkable {
   private readonly publicSecurityGroup?: ec2.SecurityGroup;
   private readonly vpc: {
     id: Input<string>;
+    isSstVpc: boolean;
     publicSubnets: Output<Input<string>[]>;
-    privateSubnets: Output<Input<string>[]>;
+    containerSubnets: Output<Input<string>[]>;
     securityGroups: Output<Input<string>[]>;
   };
   private readonly executionRole: iam.Role;
@@ -294,7 +295,8 @@ export class Task extends Component implements Link.Linkable {
     const storage = normalizeStorage(args);
     const containers = normalizeContainers("task", args, name, architecture);
     const vpc = normalizeVpc();
-    const isPublic = args.publicIp ?? false;
+    const isPublic = args.publicIp ?? vpc.isSstVpc;
+    const isExplicitlyPublic = args.publicIp === true;
     const publicSecurityGroup = createPublicSecurityGroup();
 
     const taskRole = createTaskRole(
@@ -380,8 +382,9 @@ export class Task extends Component implements Link.Linkable {
         const vpc = args.cluster.vpc;
         return {
           id: vpc.id,
+          isSstVpc: true,
           publicSubnets: vpc.publicSubnets,
-          privateSubnets: vpc.privateSubnets,
+          containerSubnets: vpc.privateSubnets,
           securityGroups: vpc.securityGroups,
         };
       }
@@ -389,11 +392,12 @@ export class Task extends Component implements Link.Linkable {
       // "vpc" is object
       return {
         id: output(args.cluster.vpc).apply((v) => v.id),
+        isSstVpc: false,
         publicSubnets: output(args.cluster.vpc).apply((v) =>
           (v.publicSubnets ?? v.containerSubnets ?? []).map((v) => output(v)),
         ),
-        privateSubnets: output(args.cluster.vpc).apply((v) =>
-          (v.privateSubnets ?? v.containerSubnets ?? []).map((v) => output(v)),
+        containerSubnets: output(args.cluster.vpc).apply((v) =>
+          v.containerSubnets.map((v) => output(v)),
         ),
         securityGroups: output(args.cluster.vpc).apply((v) =>
           v.securityGroups.map((v) => output(v)),
@@ -402,7 +406,7 @@ export class Task extends Component implements Link.Linkable {
     }
 
     function createPublicSecurityGroup() {
-      if (!isPublic) return;
+      if (!isExplicitlyPublic) return;
       return new ec2.SecurityGroup(
         `${name}PublicSecurityGroup`,
         {
@@ -470,7 +474,7 @@ export class Task extends Component implements Link.Linkable {
    * @internal
    */
   public get subnets() {
-    return this.isPublic ? this.vpc.publicSubnets : this.vpc.privateSubnets;
+    return this.isPublic ? this.vpc.publicSubnets : this.vpc.containerSubnets;
   }
 
   /**
@@ -478,7 +482,7 @@ export class Task extends Component implements Link.Linkable {
    * @internal
    */
   public get assignPublicIp() {
-    return this.isPublic;
+    return output(this.isPublic);
   }
 
   /**

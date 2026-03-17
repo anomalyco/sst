@@ -688,9 +688,9 @@ export class StepFunctions extends Component implements Link.Linkable {
           AwsvpcConfiguration: {
             Subnets: args.task.subnets,
             SecurityGroups: args.task.securityGroups,
-            AssignPublicIp: args.task.assignPublicIp
-              ? "ENABLED"
-              : "DISABLED",
+            AssignPublicIp: args.task.assignPublicIp.apply((v) =>
+              v ? "ENABLED" : "DISABLED",
+            ),
           },
         },
         Overrides:
