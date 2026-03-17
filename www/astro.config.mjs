@@ -125,6 +125,7 @@ const sidebar = [
             label: "Internal",
             collapsed: true,
             items: [
+              "docs/component/aws/alb",
               "docs/component/aws/cdn",
               "docs/component/aws/app-sync-resolver",
               "docs/component/aws/app-sync-function",
