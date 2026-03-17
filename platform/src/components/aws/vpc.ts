@@ -1182,7 +1182,7 @@ export class Vpc extends Component implements Link.Linkable {
               destinationCidrBlock: "0.0.0.0/0",
               gatewayId: internetGateway.id,
             },
-            { parent: self },
+            { parent: self, deleteBeforeReplace: true },
           );
 
           new ec2.RouteTableAssociation(
