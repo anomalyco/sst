@@ -288,6 +288,7 @@ export class Task extends Component implements Link.Linkable {
   private readonly taskRole: iam.Role;
   private readonly _taskDefinition: Output<ecs.TaskDefinition>;
   private readonly isPublic: boolean;
+  private readonly hasPublicIp: boolean;
   private readonly containerNames: Output<Output<string>[]>;
   private readonly dev: boolean;
 
@@ -307,6 +308,7 @@ export class Task extends Component implements Link.Linkable {
     const containers = normalizeContainers("task", args, name, architecture);
     const isPublic = normalizePublic();
     const vpc = normalizeVpc();
+    const hasPublicIp = isPublic || (args.publicIp ?? vpc.isSstVpc);
     const publicSecurityGroup = createPublicSecurityGroup();
 
     const taskRole = createTaskRole(
@@ -367,6 +369,7 @@ export class Task extends Component implements Link.Linkable {
     this.executionRole = executionRole;
     this._taskDefinition = taskDefinition;
     this.isPublic = isPublic;
+    this.hasPublicIp = hasPublicIp;
     this.containerNames = containers.apply((v) => v.map((v) => output(v.name)));
     this.registerOutputs({
       _task: all([args.dev, containers]).apply(([v, containers]) => ({
@@ -394,7 +397,7 @@ export class Task extends Component implements Link.Linkable {
           id: vpc.id,
           isSstVpc: true,
           publicSubnets: vpc.publicSubnets,
-          containerSubnets: vpc.privateSubnets,
+          containerSubnets: vpc.publicSubnets,
           securityGroups: vpc.securityGroups,
         };
       }
@@ -424,7 +427,7 @@ export class Task extends Component implements Link.Linkable {
         throw new VisibleError(
           `Do not set both "public" and "publicIp" for the "${name}" Task. "publicIp" has been deprecated, use "public" instead.`,
         );
-      return args.public ?? args.publicIp ?? false;
+      return args.public ?? false;
     }
 
     function createPublicSecurityGroup() {
@@ -505,7 +508,7 @@ export class Task extends Component implements Link.Linkable {
    * @internal
    */
   public get assignPublicIp() {
-    return output(this.isPublic || this.vpc.isSstVpc);
+    return output(this.hasPublicIp);
   }
 
   /**
