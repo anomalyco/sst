@@ -5,6 +5,7 @@ import { Cluster } from "./cluster.js";
 import { ec2, ecs, iam } from "@pulumi/aws";
 import { permission } from "./permission.js";
 import { Vpc } from "./vpc.js";
+import { VisibleError } from "../error.js";
 import { Function } from "./function.js";
 import {
   FargateBaseArgs,
@@ -73,17 +74,27 @@ export interface TaskArgs extends FargateBaseArgs {
   containers?: Input<Prettify<FargateContainerArgs>>[];
   /**
    * Make the task publicly accessible. When enabled, the task is placed in public subnets,
-   * assigned a public IP, and given a security group that allows inbound traffic from
-   * the internet.
+   * assigned a public IP, and given a security group that allows all inbound traffic.
    *
-   * @default `true` for SST VPC, `false` for custom VPC
+   * :::note
+   * All tasks in an SST VPC are assigned a public IP for outbound internet access.
+   * The `public` property controls whether the task is _reachable_ from the internet.
+   * :::
+   *
+   * If you are using a custom VPC, you must also set `vpc.publicSubnets` on the Cluster.
+   *
+   * @default false
    *
    * @example
    * ```ts
    * {
-   *   publicIp: true
+   *   public: true
    * }
    * ```
+   */
+  public?: boolean;
+  /**
+   * @deprecated Use `public` instead.
    */
   publicIp?: boolean;
   /**
@@ -294,9 +305,8 @@ export class Task extends Component implements Link.Linkable {
     const memory = normalizeMemory(cpu, args);
     const storage = normalizeStorage(args);
     const containers = normalizeContainers("task", args, name, architecture);
+    const isPublic = normalizePublic();
     const vpc = normalizeVpc();
-    const isPublic = args.publicIp ?? vpc.isSstVpc;
-    const isExplicitlyPublic = args.publicIp === true;
     const publicSecurityGroup = createPublicSecurityGroup();
 
     const taskRole = createTaskRole(
@@ -393,9 +403,13 @@ export class Task extends Component implements Link.Linkable {
       return {
         id: output(args.cluster.vpc).apply((v) => v.id),
         isSstVpc: false,
-        publicSubnets: output(args.cluster.vpc).apply((v) =>
-          (v.publicSubnets ?? v.containerSubnets ?? []).map((v) => output(v)),
-        ),
+        publicSubnets: output(args.cluster.vpc).apply((v) => {
+          if (isPublic && !v.publicSubnets?.length)
+            throw new VisibleError(
+              `Set "vpc.publicSubnets" on the Cluster to use "public" on the "${name}" Task.`,
+            );
+          return (v.publicSubnets ?? []).map((v) => output(v));
+        }),
         containerSubnets: output(args.cluster.vpc).apply((v) =>
           v.containerSubnets.map((v) => output(v)),
         ),
@@ -405,8 +419,16 @@ export class Task extends Component implements Link.Linkable {
       };
     }
 
+    function normalizePublic() {
+      if (args.public !== undefined && args.publicIp !== undefined)
+        throw new VisibleError(
+          `Do not set both "public" and "publicIp" for the "${name}" Task. "publicIp" has been deprecated, use "public" instead.`,
+        );
+      return args.public ?? args.publicIp ?? false;
+    }
+
     function createPublicSecurityGroup() {
-      if (!isExplicitlyPublic) return;
+      if (!isPublic) return;
       return new ec2.SecurityGroup(
         `${name}PublicSecurityGroup`,
         {
@@ -474,7 +496,8 @@ export class Task extends Component implements Link.Linkable {
    * @internal
    */
   public get subnets() {
-    return this.isPublic ? this.vpc.publicSubnets : this.vpc.containerSubnets;
+    if (this.isPublic || this.vpc.isSstVpc) return this.vpc.publicSubnets;
+    return this.vpc.containerSubnets;
   }
 
   /**
@@ -482,7 +505,7 @@ export class Task extends Component implements Link.Linkable {
    * @internal
    */
   public get assignPublicIp() {
-    return output(this.isPublic);
+    return output(this.isPublic || this.vpc.isSstVpc);
   }
 
   /**
@@ -503,7 +526,7 @@ export class Task extends Component implements Link.Linkable {
        */
       taskDefinition: this._taskDefinition,
       /**
-       * The AWS Security Group for public tasks. Only created when `publicIp`
+       * The AWS Security Group for public tasks. Only created when `public`
        * is `true`.
        */
       publicSecurityGroup: this.publicSecurityGroup,
