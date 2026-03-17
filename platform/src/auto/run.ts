@@ -36,6 +36,7 @@ function addTransformationToRetainResourcesOnDelete() {
           "aws:rds/instance:Instance",
           "aws:rds/parameterGroup:ParameterGroup",
           "aws:rds/subnetGroup:SubnetGroup",
+          "aws:dsql/cluster:Cluster",
           "aws:s3/bucket:Bucket",
           "aws:s3/bucketV2:BucketV2",
           "planetscale:index/database:Database",

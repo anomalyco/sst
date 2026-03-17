@@ -88,6 +88,7 @@ const sidebar = [
           "docs/component/aws/cron-v2",
           "docs/component/aws/auth",
           "docs/component/aws/nuxt",
+          "docs/component/aws/dsql",
           "docs/component/aws/astro",
           "docs/component/aws/redis",
           "docs/component/aws/email",

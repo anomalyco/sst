@@ -13,6 +13,8 @@ import {
   parseLambdaEdgeArn,
   parseElasticSearch,
   parseOpenSearch,
+  parseDsqlPublicEndpoint,
+  parseDsqlPrivateEndpoint,
 } from "../../src/components/aws/helpers/arn";
 
 describe("parseFunctionArn", () => {
@@ -264,5 +266,62 @@ describe("parseOpenSearch", () => {
 
   it("throws on invalid ARN", () => {
     expect(() => parseOpenSearch("not-an-arn")).toThrow();
+  });
+});
+
+describe("parseDsqlPublicEndpoint", () => {
+  it("generates public endpoint from cluster ARN", () => {
+    expect(
+      parseDsqlPublicEndpoint(
+        "arn:aws:dsql:us-east-1:123456789012:cluster/abc123def456",
+      ),
+    ).toBe("abc123def456.dsql.us-east-1.on.aws");
+  });
+
+  it("handles different regions", () => {
+    expect(
+      parseDsqlPublicEndpoint(
+        "arn:aws:dsql:eu-west-1:123456789012:cluster/mycluster",
+      ),
+    ).toBe("mycluster.dsql.eu-west-1.on.aws");
+  });
+
+  it("throws on invalid ARN", () => {
+    expect(() => parseDsqlPublicEndpoint("not-an-arn")).toThrow();
+  });
+});
+
+describe("parseDsqlPrivateEndpoint", () => {
+  it("replaces wildcard with cluster ID", () => {
+    const clusterArn =
+      "arn:aws:dsql:us-east-1:123456789012:cluster/abc123def456";
+    const dnsEntries = [
+      { dnsName: "*.dsql-q73m.us-east-1.on.aws" },
+      { dnsName: "vpce-123.dsql-q73m.us-east-1.on.aws" },
+    ];
+    expect(parseDsqlPrivateEndpoint(clusterArn, dnsEntries)).toBe(
+      "abc123def456.dsql-q73m.us-east-1.on.aws",
+    );
+  });
+
+  it("uses first DNS entry when no wildcard", () => {
+    const clusterArn =
+      "arn:aws:dsql:us-east-1:123456789012:cluster/abc123def456";
+    const dnsEntries = [{ dnsName: "vpce-123.dsql-q73m.us-east-1.on.aws" }];
+    expect(parseDsqlPrivateEndpoint(clusterArn, dnsEntries)).toBe(
+      "vpce-123.dsql-q73m.us-east-1.on.aws",
+    );
+  });
+
+  it("throws on invalid ARN", () => {
+    expect(() =>
+      parseDsqlPrivateEndpoint("not-an-arn", [{ dnsName: "test" }]),
+    ).toThrow();
+  });
+
+  it("throws on empty DNS entries", () => {
+    const clusterArn =
+      "arn:aws:dsql:us-east-1:123456789012:cluster/abc123def456";
+    expect(() => parseDsqlPrivateEndpoint(clusterArn, [])).toThrow();
   });
 });
