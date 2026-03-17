@@ -1129,20 +1129,20 @@ export class Vpc extends Component implements Link.Linkable {
                 ),
               );
 
-            new ec2.EipAssociation(
-              `${name}NatInstanceEipAssociation${i + 1}`,
-              {
-                instanceId: instance.id,
-                allocationId: elasticIps[i]?.id ?? nat.ip![i],
-              },
-              {
-                parent: self,
-                aliases: [{ parent: rootStackResource }],
-              },
-            );
+              new ec2.EipAssociation(
+                `${name}NatInstanceEipAssociation${i + 1}`,
+                {
+                  instanceId: instance.id,
+                  allocationId: elasticIps[i]?.id ?? nat.ip![i],
+                },
+                {
+                  parent: self,
+                  aliases: [{ parent: rootStackResource }],
+                },
+              );
 
-            return instance;
-          }),
+              return instance;
+            }),
         );
       });
     }
@@ -1222,30 +1222,29 @@ export class Vpc extends Component implements Link.Linkable {
               `${name}PrivateRouteTable${i + 1}`,
               {
                 vpcId: vpc.id,
-                routes: all([natGateways, natInstances]).apply(
-                  ([natGateways, natInstances]) => [
-                    ...(natGateways[i]
-                      ? [
-                          {
-                            cidrBlock: "0.0.0.0/0",
-                            natGatewayId: natGateways[i].id,
-                          },
-                        ]
-                      : []),
-                    ...(natInstances[i]
-                      ? [
-                          {
-                            cidrBlock: "0.0.0.0/0",
-                            networkInterfaceId:
-                              natInstances[i].primaryNetworkInterfaceId,
-                          },
-                        ]
-                      : []),
-                  ],
-                ),
               },
               { parent: self },
             ),
+          );
+
+          all([natGateways, natInstances]).apply(
+            ([natGateways, natInstances]) => {
+              if (natGateways[i]) {
+                new ec2.Route(`${name}PrivateNatGatewayRoute${i + 1}`, {
+                  routeTableId: routeTable.id,
+                  destinationCidrBlock: "0.0.0.0/0",
+                  natGatewayId: natGateways[i].id,
+                });
+              }
+
+              if (natInstances[i]) {
+                new ec2.Route(`${name}PrivateNetworkInterfaceRoute${i + 1}`, {
+                  routeTableId: routeTable.id,
+                  destinationCidrBlock: "0.0.0.0/0",
+                  networkInterfaceId: natInstances[i].primaryNetworkInterfaceId,
+                });
+              }
+            },
           );
 
           new ec2.RouteTableAssociation(
@@ -1301,53 +1300,53 @@ export class Vpc extends Component implements Link.Linkable {
             ),
           );
 
-          const instanceProfile = output(
-            bastion.instanceProfileName,
-          ).apply((instanceProfileName) => {
-            if (instanceProfileName) {
-              if (instanceProfileName.startsWith("arn:")) {
-                throw new VisibleError(
-                  "Bastion instance profile must be a name, not an ARN.",
+          const instanceProfile = output(bastion.instanceProfileName).apply(
+            (instanceProfileName) => {
+              if (instanceProfileName) {
+                if (instanceProfileName.startsWith("arn:")) {
+                  throw new VisibleError(
+                    "Bastion instance profile must be a name, not an ARN.",
+                  );
+                }
+
+                return iam.InstanceProfile.get(
+                  `${name}BastionProfile`,
+                  instanceProfileName,
+                  {},
+                  { parent: self },
                 );
               }
 
-              return iam.InstanceProfile.get(
-                `${name}BastionProfile`,
-                instanceProfileName,
-                {},
+              const role = new iam.Role(
+                `${name}BastionRole`,
+                {
+                  assumeRolePolicy: iam.getPolicyDocumentOutput({
+                    statements: [
+                      {
+                        actions: ["sts:AssumeRole"],
+                        principals: [
+                          {
+                            type: "Service",
+                            identifiers: ["ec2.amazonaws.com"],
+                          },
+                        ],
+                      },
+                    ],
+                  }).json,
+                  managedPolicyArns: [
+                    interpolate`arn:${partition}:iam::aws:policy/AmazonSSMManagedInstanceCore`,
+                  ],
+                },
                 { parent: self },
               );
-            }
 
-            const role = new iam.Role(
-              `${name}BastionRole`,
-              {
-                assumeRolePolicy: iam.getPolicyDocumentOutput({
-                  statements: [
-                    {
-                      actions: ["sts:AssumeRole"],
-                      principals: [
-                        {
-                          type: "Service",
-                          identifiers: ["ec2.amazonaws.com"],
-                        },
-                      ],
-                    },
-                  ],
-                }).json,
-                managedPolicyArns: [
-                  interpolate`arn:${partition}:iam::aws:policy/AmazonSSMManagedInstanceCore`,
-                ],
-              },
-              { parent: self },
-            );
-
-            return new iam.InstanceProfile(
-              `${name}BastionProfile`,
-              { role: role.name },
-              { parent: self },
-            );
-          });
+              return new iam.InstanceProfile(
+                `${name}BastionProfile`,
+                { role: role.name },
+                { parent: self },
+              );
+            },
+          );
 
           const ami = ec2.getAmiOutput(
             {
@@ -1376,9 +1375,7 @@ export class Vpc extends Component implements Link.Linkable {
                 ami: ami.id,
                 subnetId: publicSubnets.apply((v) => v[0].id),
                 vpcSecurityGroupIds: [sg.id],
-                iamInstanceProfile: instanceProfile.apply(
-                  (ip) => ip.name,
-                ),
+                iamInstanceProfile: instanceProfile.apply((ip) => ip.name),
                 keyName: keyPair?.keyName,
                 tags: {
                   "sst:is-bastion": "true",
