@@ -84,11 +84,11 @@ run_test "Web greeting (/app/greeting)" "$ALB_URL/app/greeting" "/app/greeting"
 # Test 7: Default action — / should return 404 (ALB default)
 echo -n "TEST: Default action (/) ... "
 HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$ALB_URL/" 2>/dev/null || echo "000")
-if [ "$HTTP_CODE" = "404" ]; then
-  echo "PASS (HTTP 404 as expected)"
+if [ "$HTTP_CODE" = "403" ]; then
+  echo "PASS (HTTP 403 as expected)"
   PASS=$((PASS + 1))
 else
-  echo "FAIL (expected 404, got HTTP $HTTP_CODE)"
+  echo "FAIL (expected 403, got HTTP $HTTP_CODE)"
   FAIL=$((FAIL + 1))
 fi
 

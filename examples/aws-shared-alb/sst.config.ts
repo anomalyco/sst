@@ -47,7 +47,7 @@
 export default $config({
   app(input) {
     return {
-      name: "aws-shared-alb-domain",
+      name: "aws-shared-alb",
       removal: input?.stage === "production" ? "retain" : "remove",
       home: "aws",
       providers: {
@@ -61,18 +61,10 @@ export default $config({
     const vpc = new sst.aws.Vpc("MyVpc");
     const cluster = new sst.aws.Cluster("MyCluster", { vpc });
 
-    // Create a shared ALB with a custom domain
+    // Create a shared ALB with an HTTP listener
     const alb = new sst.aws.Alb("SharedAlb", {
       vpc,
-      domain: "example.com",
-      listeners: [
-        {
-          port: 80,
-          protocol: "http",
-          defaultAction: { redirect: { port: 443, protocol: "https" } },
-        },
-        { port: 443, protocol: "https" },
-      ],
+      listeners: [{ port: 80, protocol: "http" }],
     });
 
     // API service — handles /api/* with a custom health check path
@@ -83,7 +75,7 @@ export default $config({
         instance: alb,
         rules: [
           {
-            listen: "443/https",
+            listen: "80/http",
             forward: "3000/http",
             conditions: { path: "/api/*" },
             priority: 100,
@@ -109,7 +101,7 @@ export default $config({
         instance: alb,
         rules: [
           {
-            listen: "443/https",
+            listen: "80/http",
             forward: "3000/http",
             conditions: { path: "/app/*" },
             priority: 200,

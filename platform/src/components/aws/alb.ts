@@ -9,7 +9,7 @@ import { dns as awsDns } from "./dns.js";
 import { VisibleError } from "../error.js";
 import { DnsValidatedCertificate } from "./dns-validated-certificate.js";
 import { Link } from "../link.js";
-import { ec2, lb, getRegionOutput } from "@pulumi/aws";
+import { ec2, lb } from "@pulumi/aws";
 import { Vpc } from "./vpc.js";
 import { Input } from "../input.js";
 import { Dns } from "../dns.js";
