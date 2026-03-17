@@ -73,12 +73,12 @@ export interface TaskArgs extends FargateBaseArgs {
    */
   containers?: Input<Prettify<FargateContainerArgs>>[];
   /**
-   * Make the task publicly accessible. When enabled, the task is placed in public subnets,
-   * assigned a public IP, and given a security group that allows all inbound traffic.
+   * Make the task publicly accessible from the internet.
    *
    * :::note
-   * All tasks in an SST VPC are assigned a public IP for outbound internet access.
-   * The `public` property controls whether the task is _reachable_ from the internet.
+   * Tasks in an SST VPC are placed in public subnets with a public IP by default for
+   * outbound internet access. The `public` property controls whether the task is
+   * _reachable_ from the internet.
    * :::
    *
    * If you are using a custom VPC, you must also set `vpc.publicSubnets` on the Cluster.
