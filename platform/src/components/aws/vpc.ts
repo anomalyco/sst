@@ -1170,7 +1170,6 @@ export class Vpc extends Component implements Link.Linkable {
               `${name}PublicRouteTable${i + 1}`,
               {
                 vpcId: vpc.id,
-                routes: [],
               },
               { parent: self },
             ),
@@ -1223,7 +1222,6 @@ export class Vpc extends Component implements Link.Linkable {
               `${name}PrivateRouteTable${i + 1}`,
               {
                 vpcId: vpc.id,
-                routes: [],
               },
               { parent: self },
             ),
