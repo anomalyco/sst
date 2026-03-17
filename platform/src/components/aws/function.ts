@@ -1512,7 +1512,7 @@ export interface FunctionArgs {
    * }
    * ```
    */
-  durable?: Input<boolean | Prettify<DurableFunctionArgs>>;
+  durable?: boolean | Prettify<DurableFunctionArgs>;
   /**
    * @internal
    */
@@ -1705,6 +1705,7 @@ export interface FunctionArgs {
  */
 export class Function extends Component implements Link.Linkable {
   private constructorName: string;
+  private durable: boolean;
   private function: Output<lambda.Function>;
   private role: iam.Role;
   private logGroup: Output<cloudwatch.LogGroup | undefined>;
@@ -1729,6 +1730,7 @@ export class Function extends Component implements Link.Linkable {
   ) {
     super(__pulumiType, name, args, opts);
     this.constructorName = name;
+    this.durable = Boolean(args.durable);
 
     const parent = this;
     const dev = normalizeDev();
@@ -1755,7 +1757,7 @@ export class Function extends Component implements Link.Linkable {
     const volume = normalizeVolume();
     const url = normalizeUrl();
     const copyFiles = normalizeCopyFiles();
-    const durable = normalizeDurableConfig();
+    const durable = normalizeDurable();
     const policies = output(args.policies ?? []);
     const vpc = normalizeVpc();
 
@@ -1906,22 +1908,22 @@ export class Function extends Component implements Link.Linkable {
     }
 
     function normalizeLogging() {
-      return all([args.logging, args.durable]).apply(([logging, durable]) => {
+      return output(args.logging).apply((logging) => {
         if (logging === false) return undefined;
 
-        if (logging?.retention && logging?.logGroup) {
+        if (logging?.logGroup) {
           throw new VisibleError(
             `Cannot set both "logging.retention" and "logging.logGroup"`,
           );
         }
 
-        if(durable && logging?.format && logging?.format != "json"){
+        if(args.durable && logging?.format && logging?.format != "json"){
           throw new VisibleError(
             `Durable functions require "logging.format" to be set to "json"`,
           )
         }
 
-        const defaultFormat = durable ? "json" : "text";
+        const defaultFormat = args.durable ? "json" : "text";
 
         return {
           logGroup: logging?.logGroup,
@@ -2036,20 +2038,17 @@ export class Function extends Component implements Link.Linkable {
       });
     }
 
-    function normalizeDurableConfig() {
-      if (args.durable === false || args.durable === undefined) return;
-      return output(args.durable).apply((durable) => {
-        if (durable === false || durable === undefined) return;
-
-        if (durable === true) {
-          durable = {};
-        }
-
-        return {
-          timeout: durable.timeout ?? "15 minutes",
-          retention: durable.retention ?? "14 days",
-        };
-      });
+    function normalizeDurable() {
+      if (!args.durable) return;
+      const config = args.durable === true ? {} : args.durable;
+      return {
+        timeout: output(config.timeout).apply((v) =>
+          toSeconds(v ?? "15 minutes"),
+        ),
+        retention: output(config.retention).apply((v) =>
+          toDays(v ?? "14 days"),
+        ),
+      };
     }
 
     function buildLinkData() {
@@ -2061,8 +2060,8 @@ export class Function extends Component implements Link.Linkable {
     }
 
     function buildHandler() {
-      return all([runtime, dev, isContainer, durable]).apply(
-        async ([runtime, dev, isContainer, durable]) => {
+      return all([runtime, dev, isContainer]).apply(
+        async ([runtime, dev, isContainer]) => {
           if (dev) {
             return resolveDevBridge();
           }
@@ -2278,8 +2277,8 @@ export class Function extends Component implements Link.Linkable {
             inlinePolicies: policy.apply(({ statements }) =>
               statements ? [{ name: "inline", policy: policy.json }] : [],
             ),
-            managedPolicyArns: all([logging, policies, durable]).apply(
-              ([logging, policies, durable]) => [
+            managedPolicyArns: all([logging, policies]).apply(
+              ([logging, policies]) => [
                 ...policies,
                 ...(logging
                   ? [
@@ -2540,7 +2539,6 @@ export class Function extends Component implements Link.Linkable {
         zipAsset,
         args.concurrency,
         dev,
-        durable,
       ]).apply(
         ([
           logging,
@@ -2550,7 +2548,6 @@ export class Function extends Component implements Link.Linkable {
           zipAsset,
           concurrency,
           dev,
-          durable,
         ]) => {
           // This is a hack to avoid handler being marked as having propertyDependencies.
           // There is an unresolved bug in pulumi that causes issues when it does
@@ -2587,8 +2584,8 @@ export class Function extends Component implements Link.Linkable {
               publish: output(args.versioning).apply((v) => v ?? false),
               reservedConcurrentExecutions: concurrency?.reserved,
               durableConfig: durable && {
-                executionTimeout: toSeconds(durable.timeout),
-                retentionPeriod: toDays(durable.retention),
+                executionTimeout: durable.timeout,
+                retentionPeriod: durable.retention,
               },
               ...(isContainer
                 ? {
@@ -2671,13 +2668,18 @@ export class Function extends Component implements Link.Linkable {
           * as described [here](https://github.com/anomalyco/sst/pull/6510#discussion_r2880575195).
           * To solve this, we need to create an alias and use it as the qualifier when Durable is enabled.
          */
-        const needsQualifiedArn = output(durable).apply(Boolean);
-        
+        const qualifier = durable
+          ? new lambda.Alias(`${name}Durable`, {
+              functionName: fn.arn,
+              functionVersion: fn.version,
+            }).name
+          : undefined;
+
         const fnUrl = new lambda.FunctionUrl(
           `${name}Url`,
           {
             functionName: fn.arn,
-            qualifier: needsQualifiedArn.apply((needs) => (needs ? createDurableAlias().name : output(''))),
+            qualifier,
             authorizationType: isIam.apply((isIam) =>
               isIam ? "AWS_IAM" : "NONE",
             ),
@@ -2819,12 +2821,6 @@ export class Function extends Component implements Link.Linkable {
       });
     }
 
-    function createDurableAlias(version = fn.version) {
-      return new lambda.Alias(`${name}DurableAlias`, {
-        functionName: fn.arn,
-        functionVersion: version,
-      });
-    }
 
     function createProvisioned() {
       return all([args.concurrency, fn.publish]).apply(
@@ -2924,13 +2920,6 @@ export class Function extends Component implements Link.Linkable {
   }
 
   /**
-   * Whether the Lambda function is a [Durable Function](https://docs.aws.amazon.com/lambda/latest/dg/durable-functions.html).
-   */
-  public get isDurable() {
-    return this.function.durableConfig.apply(Boolean);
-  }
-
-  /**
    * Add environment variables lazily to the function after the function is created.
    *
    * This is useful for adding environment variables that are only available after the
@@ -3008,9 +2997,6 @@ export class Function extends Component implements Link.Linkable {
 
   /** @internal */
   public getSSTLink() {
-    const needsQualifiedArn = this.isDurable;
-    const arnReference = needsQualifiedArn.apply((needs) => (needs ? interpolate`${this.arn}:*` : this.arn));
-
     return {
       properties: {
         name: this.name,
@@ -3020,11 +3006,13 @@ export class Function extends Component implements Link.Linkable {
         permission({
           actions: [
             "lambda:InvokeFunction",
-            "lambda:SendDurableExecutionCallbackSuccess",
-            "lambda:SendDurableExecutionCallbackFailure",
-            "lambda:SendDurableExecutionCallbackHeartbeat",
+            ...(this.durable ? [
+              "lambda:SendDurableExecutionCallbackSuccess",
+              "lambda:SendDurableExecutionCallbackFailure",
+              "lambda:SendDurableExecutionCallbackHeartbeat",
+            ] : []),
           ],
-          resources: [arnReference],
+          resources: [this.durable ? interpolate`${this.arn}:*` : this.arn],
         }),
       ],
     };
