@@ -1175,11 +1175,15 @@ export class Vpc extends Component implements Link.Linkable {
             ),
           );
 
-          new ec2.Route(`${name}PublicRoute${i + 1}`, {
-            routeTableId: routeTable.id,
-            destinationCidrBlock: "0.0.0.0/0",
-            gatewayId: internetGateway.id,
-          });
+          new ec2.Route(
+            `${name}PublicRoute${i + 1}`,
+            {
+              routeTableId: routeTable.id,
+              destinationCidrBlock: "0.0.0.0/0",
+              gatewayId: internetGateway.id,
+            },
+            { parent: self },
+          );
 
           new ec2.RouteTableAssociation(
             `${name}PublicRouteTableAssociation${i + 1}`,
@@ -1230,19 +1234,28 @@ export class Vpc extends Component implements Link.Linkable {
           all([natGateways, natInstances]).apply(
             ([natGateways, natInstances]) => {
               if (natGateways[i]) {
-                new ec2.Route(`${name}PrivateNatGatewayRoute${i + 1}`, {
-                  routeTableId: routeTable.id,
-                  destinationCidrBlock: "0.0.0.0/0",
-                  natGatewayId: natGateways[i].id,
-                });
+                new ec2.Route(
+                  `${name}PrivateNatGatewayRoute${i + 1}`,
+                  {
+                    routeTableId: routeTable.id,
+                    destinationCidrBlock: "0.0.0.0/0",
+                    natGatewayId: natGateways[i].id,
+                  },
+                  { parent: self },
+                );
               }
 
               if (natInstances[i]) {
-                new ec2.Route(`${name}PrivateNetworkInterfaceRoute${i + 1}`, {
-                  routeTableId: routeTable.id,
-                  destinationCidrBlock: "0.0.0.0/0",
-                  networkInterfaceId: natInstances[i].primaryNetworkInterfaceId,
-                });
+                new ec2.Route(
+                  `${name}PrivateNetworkInterfaceRoute${i + 1}`,
+                  {
+                    routeTableId: routeTable.id,
+                    destinationCidrBlock: "0.0.0.0/0",
+                    networkInterfaceId:
+                      natInstances[i].primaryNetworkInterfaceId,
+                  },
+                  { parent: self },
+                );
               }
             },
           );
