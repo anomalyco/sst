@@ -810,7 +810,7 @@ export function normalizeStorage(args: FargateBaseArgs) {
 
 export function normalizeContainers(
   type: "service" | "task",
-  args: ServiceArgs,
+  args: Omit<ServiceArgs, "public">,
   name: string,
   architecture: ReturnType<typeof normalizeArchitecture>,
 ) {
@@ -1031,7 +1031,7 @@ export function createExecutionRole(
 
 export function createTaskDefinition(
   name: string,
-  args: ServiceArgs,
+  args: Omit<ServiceArgs, "public">,
   opts: ComponentResourceOptions,
   parent: Component,
   containers: ReturnType<typeof normalizeContainers>,
