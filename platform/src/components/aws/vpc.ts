@@ -1170,20 +1170,17 @@ export class Vpc extends Component implements Link.Linkable {
               `${name}PublicRouteTable${i + 1}`,
               {
                 vpcId: vpc.id,
+                routes: [],
               },
               { parent: self },
             ),
           );
 
-          new ec2.Route(
-            `${name}PublicRoute${i + 1}`,
-            {
-              routeTableId: routeTable.id,
-              destinationCidrBlock: "0.0.0.0/0",
-              gatewayId: internetGateway.id,
-            },
-            { parent: self, deleteBeforeReplace: true },
-          );
+          new ec2.Route(`${name}PublicRoute${i + 1}`, {
+            routeTableId: routeTable.id,
+            destinationCidrBlock: "0.0.0.0/0",
+            gatewayId: internetGateway.id,
+          });
 
           new ec2.RouteTableAssociation(
             `${name}PublicRouteTableAssociation${i + 1}`,
@@ -1226,6 +1223,7 @@ export class Vpc extends Component implements Link.Linkable {
               `${name}PrivateRouteTable${i + 1}`,
               {
                 vpcId: vpc.id,
+                routes: [],
               },
               { parent: self },
             ),
@@ -1246,16 +1244,11 @@ export class Vpc extends Component implements Link.Linkable {
               }
 
               if (natInstances[i]) {
-                new ec2.Route(
-                  `${name}PrivateNetworkInterfaceRoute${i + 1}`,
-                  {
-                    routeTableId: routeTable.id,
-                    destinationCidrBlock: "0.0.0.0/0",
-                    networkInterfaceId:
-                      natInstances[i].primaryNetworkInterfaceId,
-                  },
-                  { parent: self },
-                );
+                new ec2.Route(`${name}PrivateNetworkInterfaceRoute${i + 1}`, {
+                  routeTableId: routeTable.id,
+                  destinationCidrBlock: "0.0.0.0/0",
+                  networkInterfaceId: natInstances[i].primaryNetworkInterfaceId,
+                });
               }
             },
           );
