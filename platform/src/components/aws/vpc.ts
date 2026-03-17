@@ -952,8 +952,6 @@ export class Vpc extends Component implements Link.Linkable {
 
       new _vpc.SecurityGroupEgressRule(`${name}SecurityGroupEgressRule`, {
         securityGroupId: defaultSecurityGroup.id,
-        fromPort: 0,
-        toPort: 0,
         ipProtocol: "-1",
         cidrIpv4: "0.0.0.0/0",
       });
