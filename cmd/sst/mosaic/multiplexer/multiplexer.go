@@ -19,7 +19,7 @@ import (
 
 var PAD_HEIGHT = 0
 var PAD_WIDTH = 0
-var SIDEBAR_WIDTH = 20
+var SIDEBAR_WIDTH = 24
 
 type Multiplexer struct {
 	focused   bool
@@ -329,7 +329,7 @@ func (s *Multiplexer) Start() {
 				return
 
 			case *tcell.EventKey:
-				if s.filtering {
+				if s.filtering && evt.Key() != tcell.KeyCtrlC {
 					s.handleFilterKey(evt)
 					return
 				}
