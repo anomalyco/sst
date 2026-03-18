@@ -565,9 +565,9 @@ func (s *Multiplexer) refilterOptions() {
 }
 
 func (s *Multiplexer) filterVisibleRows() int {
-	// header (y=1) + blank + subtitle (y=3) + blank + ↑/blank (y=5) = list starts at y=6
+	// header (y=0) + blank + subtitle (y=2) + blank + ↑/blank (y=4) = list starts at y=5
 	// reserve 1 row at bottom for ↓ indicator + 6 rows padding
-	rows := s.height - 6 - 1 - 6
+	rows := s.height - 5 - 1 - 6
 	if rows < 1 {
 		rows = 1
 	}

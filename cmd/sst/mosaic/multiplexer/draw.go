@@ -181,33 +181,33 @@ func (s *Multiplexer) drawFilterSelect() {
 		}
 	}
 
-	y := 1
-	s.drawLine(startX, y, " Functions", tcell.StyleDefault.Foreground(tcell.ColorTeal).Bold(true), mainW)
+	y := 0
+	s.drawLine(startX, y, "Functions", tcell.StyleDefault.Foreground(tcell.ColorTeal).Bold(true), mainW)
 	y += 2
 
 	// subtitle or search line (same row)
 	if s.filterSearching {
-		x := s.drawLine(startX, y, " Search: ", dimStyle, mainW)
+		x := s.drawLine(startX, y, "Search: ", dimStyle, mainW)
 		x = s.drawLine(x, y, s.filterQuery, tcell.StyleDefault.Foreground(tcell.ColorWhite), mainW-(x-startX))
 		s.screen.ShowCursor(x, y)
 	} else if s.filterQuery != "" {
-		x := s.drawLine(startX, y, " Search: ", dimStyle, mainW)
+		x := s.drawLine(startX, y, "Search: ", dimStyle, mainW)
 		s.drawLine(x, y, s.filterQuery, tcell.StyleDefault.Foreground(tcell.ColorWhite).Italic(true), mainW-(x-startX))
 	} else {
-		s.drawLine(startX, y, " Select a function to filter logs", dimStyle, mainW)
+		s.drawLine(startX, y, "Select a function to filter logs", dimStyle, mainW)
 	}
 	total := len(s.filterFiltered)
 	y += 2
 
 	// ↑ indicator on the line before the list
 	if total > 0 && s.filterScroll > 0 {
-		s.drawLine(startX, y, fmt.Sprintf(" ↑ %d more", s.filterScroll), dimStyle, mainW)
+		s.drawLine(startX, y, fmt.Sprintf("↑ %d more", s.filterScroll), dimStyle, mainW)
 	}
 	y++
 
 	// options (only filtered indices) with viewport scrolling
 	if total == 0 {
-		s.drawLine(startX, y, " No results found.", dimStyle, mainW)
+		s.drawLine(startX, y, "No results found.", dimStyle, mainW)
 		return
 	}
 
@@ -230,7 +230,7 @@ func (s *Multiplexer) drawFilterSelect() {
 			descStyle = selDimStyle
 			prefix = "> "
 		}
-		x := s.drawLine(startX, y, " "+prefix+opt.Label, style, mainW)
+		x := s.drawLine(startX, y, prefix+opt.Label, style, mainW)
 		if opt.Description != "" {
 			s.drawLine(x, y, "  "+opt.Description, descStyle, mainW-(x-startX))
 		}
@@ -238,7 +238,7 @@ func (s *Multiplexer) drawFilterSelect() {
 	}
 
 	if end < total {
-		s.drawLine(startX, y, fmt.Sprintf(" ↓ %d more", total-end), dimStyle, mainW)
+		s.drawLine(startX, y, fmt.Sprintf("↓ %d more", total-end), dimStyle, mainW)
 	}
 }
 
