@@ -161,10 +161,10 @@ describe("Service with external ALB", function () {
     });
   });
 
-  // Note: Empty rules, invalid container names, and out-of-range priorities
-  // throw VisibleError inside .apply() (async Pulumi resolution). These can't
-  // be caught synchronously in tests — they fire at deploy time. The validation
-  // logic is verified by code review and integration testing.
+  // Note: Empty rules, out-of-range priorities, duplicate priorities, and
+  // missing conditions now throw synchronously. Container name validation
+  // still fires inside .apply() (async Pulumi resolution) since container
+  // names are resolved asynchronously.
 
   describe("validation: priority", () => {
     it("creates rules with valid priority", async () => {
@@ -234,13 +234,7 @@ describe("Service with external ALB", function () {
         },
       });
 
-      // The target group should be created — verify it exists in created resources
-      // (the health check defaults are applied inside .apply() and verified at deploy time)
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      const targetGroups = createdResources.filter(
-        (r) => r.type === "aws:alb/targetGroup:TargetGroup",
-      );
-      // Target group will be created asynchronously via .apply()
+      // Target groups are now created synchronously (plain loop, no apply)
       expect(true).toBe(true); // Construction didn't throw
     });
 

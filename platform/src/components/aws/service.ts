@@ -236,7 +236,7 @@ export interface ServiceAlbRule {
    * }
    * ```
    */
-  listen: Input<AlbPort>;
+  listen: AlbPort;
   /**
    * The container port and protocol to forward traffic to. Uses the format `{port}/{protocol}`.
    *
@@ -250,12 +250,12 @@ export interface ServiceAlbRule {
    * }
    * ```
    */
-  forward: Input<AlbPort>;
+  forward: AlbPort;
   /**
    * The name of the container to forward the traffic to. Required when multiple containers
    * are configured.
    */
-  container?: Input<string>;
+  container?: string;
   /**
    * The conditions for the listener rule. At least one condition (path, query, or header)
    * must be specified. The ALB owns the default action — services only add conditional rules.
@@ -269,7 +269,7 @@ export interface ServiceAlbRule {
    * }
    * ```
    */
-  conditions: Input<{
+  conditions: {
     /**
      * Path pattern to match. Supports wildcards (`*` and `?`).
      */
@@ -290,7 +290,7 @@ export interface ServiceAlbRule {
       name: Input<string>;
       values: Input<Input<string>>[];
     }>;
-  }>;
+  };
   /**
    * Explicit priority for the listener rule (1–50000).
    * Must be unique per listener across ALL services sharing the ALB.
@@ -303,7 +303,7 @@ export interface ServiceAlbRule {
    * }
    * ```
    */
-  priority: Input<number>;
+  priority: number;
 }
 
 interface ServiceContainerArgs extends FargateContainerArgs {
@@ -1053,23 +1053,21 @@ export interface ServiceArgs extends FargateBaseArgs {
      * The rules for routing traffic from the ALB to this service's containers.
      * Each rule must have explicit conditions and priority.
      */
-    rules: Input<Input<Prettify<ServiceAlbRule>>[]>;
+    rules: Prettify<ServiceAlbRule>[];
     /**
      * Configure health checks for the target groups. Uses the same format as the inline
      * health check config, keyed by `{port}/{protocol}`.
      */
-    health?: Input<
-      Record<
-        AlbPort,
-        Input<{
-          path?: Input<string>;
-          interval?: Input<DurationMinutes>;
-          timeout?: Input<DurationMinutes>;
-          healthyThreshold?: Input<number>;
-          unhealthyThreshold?: Input<number>;
-          successCodes?: Input<string>;
-        }>
-      >
+    health?: Record<
+      AlbPort,
+      Input<{
+        path?: Input<string>;
+        interval?: Input<DurationMinutes>;
+        timeout?: Input<DurationMinutes>;
+        healthyThreshold?: Input<number>;
+        unhealthyThreshold?: Input<number>;
+        successCodes?: Input<string>;
+      }>
     >;
   }
   >;
@@ -1835,11 +1833,11 @@ export class Service extends Component implements Link.Linkable {
           }
         },
       );
-      const albResult = createAlbTargetsAndEntries(albAttachment);
-      targetGroups = albResult.apply((r) => r.targetGroups);
-      targetEntries = albResult.apply((r) => r.entries);
-      const albListenerRules = createAlbListenerRules(albAttachment, targetGroups);
-      effectiveLbArn = all([albAttachment.instance.arn, albListenerRules]).apply(([arn]) => arn);
+      const { targets: albTargets, entries: albEntries } = createAlbTargetsAndEntries(albAttachment);
+      targetGroups = output(albTargets);
+      targetEntries = albEntries;
+      createAlbListenerRules(albAttachment, albTargets);
+      effectiveLbArn = albAttachment.instance.arn;
       effectiveDomain = output(undefined);
       effectiveDnsName = albAttachment.instance.dnsName;
     } else {
@@ -2604,203 +2602,196 @@ export class Service extends Component implements Link.Linkable {
     function createAlbTargetsAndEntries(
       attachment: NonNullable<typeof albAttachment>,
     ) {
-      return output(attachment.rules)
-        .apply((rawRules) =>
-          all([
-            all(rawRules.map((r) => output(r))),
-            output(attachment.health ?? {}),
-            containers,
-          ]),
-        )
-        .apply(([rules, health, ctrs]) => {
-          if (rules.length === 0) {
+      const rules = attachment.rules;
+      const health = attachment.health ?? {};
+
+      if (rules.length === 0) {
+        throw new VisibleError(
+          `You must provide at least one rule in "loadBalancer.rules" when using an external ALB in Service "${name}".`,
+        );
+      }
+
+      // Validate container names (no resources created here)
+      containers.apply((ctrs) => {
+        const containerNames = new Set(ctrs.map((c) => c.name));
+        if (ctrs.length > 1) {
+          for (const rule of rules) {
+            if (!rule.container) {
+              throw new VisibleError(
+                `You must provide a "container" name in each rule when there is more than one container in Service "${name}".`,
+              );
+            }
+          }
+        }
+        for (const rule of rules) {
+          const cn = rule.container ?? ctrs[0].name;
+          if (!containerNames.has(cn)) {
             throw new VisibleError(
-              `You must provide at least one rule in "loadBalancer.rules" when using an external ALB in Service "${name}".`,
+              `Container "${cn}" in "loadBalancer.rules" does not match any container in Service "${name}". Available: ${[...containerNames].join(", ")}.`,
             );
           }
+        }
+      });
 
-          const containerNames = new Set(ctrs.map((c) => c.name));
-          if (ctrs.length > 1) {
-            for (const rule of rules) {
-              if (!rule.container) {
-                throw new VisibleError(
-                  `You must provide a "container" name in each rule when there is more than one container in Service "${name}".`,
-                );
-              }
-            }
-          }
-          for (const rule of rules) {
-            const cn = (rule.container as string | undefined) ?? ctrs[0].name;
-            if (!containerNames.has(cn)) {
-              throw new VisibleError(
-                `Container "${cn}" in "loadBalancer.rules" does not match any container in Service "${name}". Available: ${[...containerNames].join(", ")}.`,
-              );
-            }
-          }
+      // Create target groups in a plain loop (no apply)
+      const targets: Record<string, lb.TargetGroup> = {};
+      const rawEntries: {
+        targetGroup: lb.TargetGroup;
+        explicitContainer: string | undefined;
+        containerPort: number;
+      }[] = [];
 
-          const targets: Record<string, lb.TargetGroup> = {};
-          const entries: { targetGroup: lb.TargetGroup; containerName: string; containerPort: number }[] = [];
+      for (const rule of rules) {
+        const parts = rule.forward.split("/");
+        const forwardPort = parseInt(parts[0]);
+        const forwardProtocol = parts[1].toUpperCase();
+        // Use explicit container or component name for keying/naming
+        const containerNameForKey = rule.container ?? name;
+        const tgtId = targetKey(containerNameForKey, forwardProtocol, forwardPort);
 
-          for (const rule of rules) {
-            const parts = (rule.forward as string).split("/");
-            const forwardPort = parseInt(parts[0]);
-            const forwardProtocol = parts[1].toUpperCase();
-            const containerName =
-              (rule.container as string | undefined) ?? ctrs[0].name;
-            const targetId = targetKey(containerName, forwardProtocol, forwardPort);
+        if (!targets[tgtId]) {
+          const healthKey = `${forwardPort}/${parts[1]}` as AlbPort;
+          const healthCheck = health[healthKey];
+          const normalizedHealth = healthCheck
+            ? output(healthCheck).apply((h) => ({
+                path: h.path ?? "/",
+                interval: h.interval ? toSeconds(h.interval) : 30,
+                timeout: h.timeout ? toSeconds(h.timeout) : 5,
+                healthyThreshold: h.healthyThreshold ?? 5,
+                unhealthyThreshold: h.unhealthyThreshold ?? 2,
+                matcher: h.successCodes ?? "200",
+              }))
+            : {
+                path: "/",
+                interval: 30,
+                timeout: 5,
+                healthyThreshold: 5,
+                unhealthyThreshold: 2,
+                matcher: "200",
+              };
 
-            if (!targets[targetId]) {
-              const healthKey = `${forwardPort}/${parts[1]}`;
-              const healthCheck = health[healthKey as AlbPort];
-              const normalizedHealth = healthCheck
-                ? output(healthCheck).apply((h) => ({
-                    path: h.path ?? "/",
-                    interval: h.interval ? toSeconds(h.interval) : 30,
-                    timeout: h.timeout ? toSeconds(h.timeout) : 5,
-                    healthyThreshold: h.healthyThreshold ?? 5,
-                    unhealthyThreshold: h.unhealthyThreshold ?? 2,
-                    matcher: h.successCodes ?? "200",
-                  }))
-                : {
-                    path: "/",
-                    interval: 30,
-                    timeout: 5,
-                    healthyThreshold: 5,
-                    unhealthyThreshold: 2,
-                    matcher: "200",
-                  };
+          const tg = new lb.TargetGroup(
+            ...transform(
+              args.transform?.target,
+              `${name}Target${tgtId}`,
+              {
+                namePrefix: forwardProtocol,
+                port: forwardPort,
+                protocol: forwardProtocol,
+                targetType: "ip",
+                vpcId: attachment.instance._vpc,
+                healthCheck: normalizedHealth,
+              },
+              { parent: self },
+            ),
+          );
+          targets[tgtId] = tg;
+          rawEntries.push({
+            targetGroup: tg,
+            explicitContainer: rule.container,
+            containerPort: forwardPort,
+          });
+        }
+      }
 
-              const tg = new lb.TargetGroup(
-                ...transform(
-                  args.transform?.target,
-                  `${name}Target${targetId}`,
-                  {
-                    namePrefix: forwardProtocol,
-                    port: forwardPort,
-                    protocol: forwardProtocol,
-                    targetType: "ip",
-                    vpcId: attachment.instance._vpc,
-                    healthCheck: normalizedHealth,
-                  },
-                  { parent: self },
-                ),
-              );
-              targets[targetId] = tg;
-              entries.push({
-                targetGroup: tg,
-                containerName,
-                containerPort: forwardPort,
-              });
-            }
-          }
-          return { targetGroups: targets, entries };
-        });
+      // Resolve actual container names for ECS registration
+      const entries = containers.apply((ctrs) =>
+        rawEntries.map((e) => ({
+          targetGroup: e.targetGroup,
+          containerName: e.explicitContainer ?? ctrs[0].name,
+          containerPort: e.containerPort,
+        })),
+      );
+
+      return { targets, entries };
     }
 
     function createAlbListenerRules(
       attachment: NonNullable<typeof albAttachment>,
-      albTargetGroups: Output<Record<string, lb.TargetGroup>>,
+      albTargets: Record<string, lb.TargetGroup>,
     ) {
-      return output(attachment.rules)
-        .apply((rawRules) =>
-          all([
-            all(rawRules.map((r) => output(r))),
-            albTargetGroups,
-            containers,
-          ]),
-        )
-        .apply(([rules, targets, ctrs]) => {
-          const prioritiesByListener = new Map<string, Set<number>>();
-          const createdRules: lb.ListenerRule[] = [];
+      const rules = attachment.rules;
+      const prioritiesByListener = new Map<string, Set<number>>();
 
-          for (const rule of rules) {
-            const listenerStr = rule.listen as string;
-            const forwardStr = rule.forward as string;
-            const priorityNum = rule.priority as number;
-            const conditions = rule.conditions as any;
-            const container = rule.container as string | undefined;
+      for (const rule of rules) {
+        if (rule.priority < 1 || rule.priority > 50000) {
+          throw new VisibleError(
+            `Priority ${rule.priority} must be between 1 and 50000 in Service "${name}". When sharing an ALB, ensure non-overlapping priority ranges across services.`,
+          );
+        }
 
-            if (priorityNum < 1 || priorityNum > 50000) {
-              throw new VisibleError(
-                `Priority ${priorityNum} must be between 1 and 50000 in Service "${name}". When sharing an ALB, ensure non-overlapping priority ranges across services.`,
-              );
-            }
+        const seen =
+          prioritiesByListener.get(rule.listen) ?? new Set();
+        if (seen.has(rule.priority)) {
+          throw new VisibleError(
+            `Duplicate priority ${rule.priority} on listener "${rule.listen}" in Service "${name}".`,
+          );
+        }
+        seen.add(rule.priority);
+        prioritiesByListener.set(rule.listen, seen);
 
-            const seen =
-              prioritiesByListener.get(listenerStr) ?? new Set();
-            if (seen.has(priorityNum)) {
-              throw new VisibleError(
-                `Duplicate priority ${priorityNum} on listener "${listenerStr}" in Service "${name}".`,
-              );
-            }
-            seen.add(priorityNum);
-            prioritiesByListener.set(listenerStr, seen);
+        if (
+          !rule.conditions?.path &&
+          !rule.conditions?.query &&
+          !rule.conditions?.header
+        ) {
+          throw new VisibleError(
+            `At least one condition (path, query, or header) must be set for rules on an external ALB in Service "${name}".`,
+          );
+        }
 
-            if (
-              !conditions?.path &&
-              !conditions?.query &&
-              !conditions?.header
-            ) {
-              throw new VisibleError(
-                `At least one condition (path, query, or header) must be set for rules on an external ALB in Service "${name}".`,
-              );
-            }
+        const listenerParts = rule.listen.split("/");
+        const listenerPort = parseInt(listenerParts[0]);
+        const listenerProtocol = listenerParts[1];
 
-            const listenerParts = listenerStr.split("/");
-            const listenerPort = parseInt(listenerParts[0]);
-            const listenerProtocol = listenerParts[1];
+        const forwardParts = rule.forward.split("/");
+        const forwardPort = parseInt(forwardParts[0]);
+        const forwardProtocol = forwardParts[1].toUpperCase();
+        const containerNameForKey = rule.container ?? name;
+        const tgtId = targetKey(containerNameForKey, forwardProtocol, forwardPort);
 
-            const forwardParts = forwardStr.split("/");
-            const forwardPort = parseInt(forwardParts[0]);
-            const forwardProtocol = forwardParts[1].toUpperCase();
-            const containerName = container ?? ctrs[0].name;
-            const targetId = targetKey(containerName, forwardProtocol, forwardPort);
+        const targetGroup = albTargets[tgtId];
+        if (!targetGroup) {
+          throw new VisibleError(
+            `Target group "${tgtId}" not found. Ensure the forward port matches in Service "${name}".`,
+          );
+        }
 
-            const targetGroup = targets[targetId];
-            if (!targetGroup) {
-              throw new VisibleError(
-                `Target group "${targetId}" not found. Ensure the forward port matches in Service "${name}".`,
-              );
-            }
+        const listenerResource =
+          attachment.instance.getListener(listenerProtocol, listenerPort);
 
-            const listenerResource =
-              attachment.instance.getListener(listenerProtocol, listenerPort);
-
-            const listenerRule = new lb.ListenerRule(
-              ...transform(
-                args.transform?.listenerRule,
-                `${name}AlbRule${listenerProtocol.toUpperCase()}${listenerPort}P${priorityNum}`,
+        new lb.ListenerRule(
+          ...transform(
+            args.transform?.listenerRule,
+            `${name}AlbRule${listenerProtocol.toUpperCase()}${listenerPort}P${rule.priority}`,
+            {
+              listenerArn: listenerResource.arn,
+              priority: rule.priority,
+              actions: [
                 {
-                  listenerArn: listenerResource.arn,
-                  priority: priorityNum,
-                  actions: [
-                    {
-                      type: "forward",
-                      targetGroupArn: targetGroup.arn,
-                    },
-                  ],
-                  conditions: [
-                    {
-                      pathPattern: conditions.path
-                        ? { values: [conditions.path] }
-                        : undefined,
-                      queryStrings: conditions.query,
-                      httpHeader: conditions.header
-                        ? {
-                            httpHeaderName: conditions.header.name,
-                            values: conditions.header.values,
-                          }
-                        : undefined,
-                    },
-                  ],
+                  type: "forward",
+                  targetGroupArn: targetGroup.arn,
                 },
-                { parent: self },
-              ),
-            );
-            createdRules.push(listenerRule);
-          }
-          return createdRules;
-        });
+              ],
+              conditions: [
+                {
+                  pathPattern: rule.conditions.path
+                    ? { values: [rule.conditions.path] }
+                    : undefined,
+                  queryStrings: rule.conditions.query,
+                  httpHeader: rule.conditions.header
+                    ? {
+                        httpHeaderName: rule.conditions.header.name,
+                        values: rule.conditions.header.values,
+                      }
+                    : undefined,
+                },
+              ],
+            },
+            { parent: self },
+          ),
+        );
+      }
     }
 
     function registerReceiver() {

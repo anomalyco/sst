@@ -1,7 +1,6 @@
 import {
   ComponentResourceOptions,
   Output,
-  all,
   output,
 } from "@pulumi/pulumi";
 import { Component, Transform, transform } from "../component.js";
@@ -111,17 +110,17 @@ export interface AlbArgs {
    * }
    * ```
    */
-  domain?: Input<
+  domain?:
     | string
     | {
         /**
          * The custom domain name.
          */
-        name: Input<string>;
+        name: string;
         /**
          * Alias domains that should also point to this load balancer.
          */
-        aliases?: Input<string[]>;
+        aliases?: string[];
         /**
          * The ARN of an ACM certificate that proves ownership of the domain.
          * By default, a certificate is created and validated automatically.
@@ -133,9 +132,8 @@ export interface AlbArgs {
          *
          * @default `sst.aws.dns`
          */
-        dns?: Input<false | (Dns & {})>;
-      }
-  >;
+        dns?: false | (Dns & {});
+      };
   /**
    * The listeners for the load balancer. Each entry creates a listener on the specified
    * port and protocol.
@@ -280,10 +278,9 @@ export class Alb extends Component implements Link.Linkable {
     this.securityGroup = securityGroup;
     this.certificateArn = certificateArn;
     this.vpcId = vpcId;
-    this._url = all([domain, loadBalancer.dnsName]).apply(
-      ([domain, dnsName]) =>
-        domain ? `https://${domain.name}/` : `http://${dnsName}`,
-    );
+    this._url = domain
+      ? output(`https://${domain.name}/`)
+      : loadBalancer.dnsName.apply((dnsName) => `http://${dnsName}`);
 
     this.registerOutputs({ _hint: this._url });
 
@@ -309,21 +306,15 @@ export class Alb extends Component implements Link.Linkable {
     }
 
     function normalizeDomain() {
-      return output(args.domain).apply((domain) => {
-        if (!domain) return undefined;
-
-        const normalized =
-          typeof domain === "string" ? { name: domain } : domain;
-        return {
-          name: normalized.name,
-          aliases: normalized.aliases ?? [],
-          dns:
-            normalized.dns === false
-              ? undefined
-              : normalized.dns ?? awsDns(),
-          cert: normalized.cert,
-        };
-      });
+      if (!args.domain) return undefined;
+      const raw =
+        typeof args.domain === "string" ? { name: args.domain } : args.domain;
+      return {
+        name: raw.name,
+        aliases: raw.aliases ?? [],
+        dns: raw.dns === false ? undefined : raw.dns ?? awsDns(),
+        cert: raw.cert,
+      };
     }
 
     function createSecurityGroup() {
@@ -357,20 +348,18 @@ export class Alb extends Component implements Link.Linkable {
     }
 
     function createSsl(): Output<string | undefined> {
-      return domain.apply((domain) => {
-        if (!domain) return output(undefined);
-        if (domain.cert) return output(domain.cert);
+      if (!domain) return output(undefined);
+      if (domain.cert) return output(domain.cert);
 
-        return new DnsValidatedCertificate(
-          `${name}Ssl`,
-          {
-            domainName: domain.name,
-            alternativeNames: domain.aliases,
-            dns: domain.dns!,
-          },
-          { parent: self },
-        ).arn;
-      });
+      return new DnsValidatedCertificate(
+        `${name}Ssl`,
+        {
+          domainName: domain.name,
+          alternativeNames: domain.aliases,
+          dns: domain.dns!,
+        },
+        { parent: self },
+      ).arn;
     }
 
     function createLoadBalancer() {
@@ -428,23 +417,21 @@ export class Alb extends Component implements Link.Linkable {
     }
 
     function createDnsRecords() {
-      domain.apply((domain) => {
-        if (!domain?.dns) return;
+      if (!domain?.dns) return;
 
-        for (const recordName of [domain.name, ...domain.aliases]) {
-          const namePrefix =
-            recordName === domain.name ? name : `${name}${recordName}`;
-          domain.dns.createAlias(
-            namePrefix,
-            {
-              name: recordName,
-              aliasName: loadBalancer.dnsName,
-              aliasZone: loadBalancer.zoneId,
-            },
-            { parent: self },
-          );
-        }
-      });
+      for (const recordName of [domain.name, ...domain.aliases]) {
+        const namePrefix =
+          recordName === domain.name ? name : `${name}${recordName}`;
+        domain.dns.createAlias(
+          namePrefix,
+          {
+            name: recordName,
+            aliasName: loadBalancer.dnsName,
+            aliasZone: loadBalancer.zoneId,
+          },
+          { parent: self },
+        );
+      }
     }
   }
 
