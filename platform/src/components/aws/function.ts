@@ -129,17 +129,6 @@ export type FunctionPermissionArgs = {
   >;
 };
 
-export type DurableFunctionArgs = {
-  /**
-   * Maximum execution time for the durable function
-   */
-  timeout?: Input<Duration>;
-  /**
-   * Number of days to retain the function's execution state.
-   */
-  retention?: Input<DurationDays>;
-};
-
 interface FunctionUrlCorsArgs {
   /**
    * Allow cookies or other credentials in requests to the function URL.
@@ -1506,13 +1495,22 @@ export interface FunctionArgs {
    * ```js
    * {
    *   durable: {
-   *     executionTimeout: "10 minutes",
-   *     retentionPeriod: "2 weeks"
+    *     timeout: "10 minutes",
+    *     retention: "2 weeks"
    *   }
    * }
    * ```
    */
-  durable?: boolean | Prettify<DurableFunctionArgs>;
+  durable?: boolean | Prettify<{
+    /**
+     * Maximum execution time for the durable function
+     */
+    timeout?: Input<Duration>;
+    /**
+     * Number of days to retain the function's execution state.
+     */
+    retention?: Input<DurationDays>;
+  }>;
   /**
    * @internal
    */
@@ -2663,10 +2661,10 @@ export class Function extends Component implements Link.Linkable {
         );
 
         /**
-          * Durable Functions needs a qualifier ARN to work. A qualifier like `fn.version`
-          * should be enough, but Pulumi has a broken regex that doesn't match `$LATEST`,
-          * as described [here](https://github.com/anomalyco/sst/pull/6510#discussion_r2880575195).
-          * To solve this, we need to create an alias and use it as the qualifier when Durable is enabled.
+          * Durable Functions needs a qualified ARN to work. The AWS API rejects `$LATEST`
+          * as a qualifier due to a server-side regex that doesn't allow `$`.
+          * See https://github.com/hashicorp/terraform-provider-aws/issues/31459
+          * To work around this, we create an alias and use it as the qualifier.
          */
         const qualifier = durable
           ? new lambda.Alias(`${name}Durable`, {
