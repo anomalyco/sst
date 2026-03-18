@@ -256,8 +256,8 @@ func CmdMosaic(c *cli.Cli) error {
 			fmt.Sprintf("SST_SERVER=http://localhost:%v", server.Port),
 			"SST_STAGE="+p.App().Stage,
 		)
-		multi.AddProcess("deploy", []string{currentExecutable, "ui", "--filter=sst"}, "⑆", "SST", "", false, true, append(multiEnv, "SST_LOG="+p.PathLog("ui-deploy"))...)
-		multi.AddProcess("function", []string{currentExecutable, "ui", "--filter=function"}, "λ", "Functions", "", false, true, append(multiEnv, "SST_LOG="+p.PathLog("ui-function"))...)
+		multi.AddProcess("deploy", []string{currentExecutable, "ui", "--filter=sst"}, "⑆", "SST", "", false, false, true, append(multiEnv, "SST_LOG="+p.PathLog("ui-deploy"))...)
+		multi.AddProcess("function", []string{currentExecutable, "ui", "--filter=function"}, "λ", "Functions", "", false, true, true, append(multiEnv, "SST_LOG="+p.PathLog("ui-function"))...)
 		serverURL := fmt.Sprintf("http://localhost:%v", server.Port)
 		multi.SetOnFilterChanged(func(functionID string) {
 			bus.Publish(&ui.FunctionFilterEvent{FunctionID: functionID})
@@ -317,18 +317,19 @@ func CmdMosaic(c *cli.Cli) error {
 							title,
 							dir,
 							true,
+							false,
 							d.Autostart,
 							append([]string{"SST_CHILD=" + d.Name}, multiEnv...)...,
 						)
 					}
 					for name := range evt.Tunnels {
-						multi.AddProcess("tunnel", []string{currentExecutable, "tunnel", "--stage", p.App().Stage}, "⇌", "Tunnel", "", true, true, append(
+						multi.AddProcess("tunnel", []string{currentExecutable, "tunnel", "--stage", p.App().Stage}, "⇌", "Tunnel", "", true, false, true, append(
 							multiEnv,
 							"SST_LOG="+p.PathLog("tunnel_"+name),
 						)...)
 					}
 					if len(evt.Tasks) > 0 {
-						multi.AddProcess("task", []string{currentExecutable, "ui", "--filter=task"}, "⧉", "Tasks", "", false, true, append(multiEnv, "SST_LOG="+p.PathLog("ui-task"))...)
+						multi.AddProcess("task", []string{currentExecutable, "ui", "--filter=task"}, "⧉", "Tasks", "", false, false, true, append(multiEnv, "SST_LOG="+p.PathLog("ui-task"))...)
 					}
 					var fnNames []string
 					for _, r := range evt.Resources {

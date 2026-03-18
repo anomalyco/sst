@@ -146,7 +146,7 @@ func (s *Multiplexer) Start() {
 
 		case *EventCheckFilter:
 			for _, p := range s.processes {
-				if p.filter == "" || !p.isFilterable() {
+				if p.filter == "" || !p.filterable {
 					continue
 				}
 				found := false
@@ -174,13 +174,14 @@ func (s *Multiplexer) Start() {
 					}
 				}
 				proc := &pane{
-					icon:     evt.Icon,
-					key:      evt.Key,
-					dir:      evt.Cwd,
-					title:    evt.Title,
-					args:     evt.Args,
-					killable: evt.Killable,
-					env:      evt.Env,
+					icon:       evt.Icon,
+					key:        evt.Key,
+					dir:        evt.Cwd,
+					title:      evt.Title,
+					args:       evt.Args,
+					killable:   evt.Killable,
+					filterable: evt.Filterable,
+					env:        evt.Env,
 				}
 				term := tcellterm.New()
 				term.SetSurface(s.main)
@@ -351,7 +352,7 @@ func (s *Multiplexer) Start() {
 							selected.Kill()
 						}
 				case 'f':
-					if !s.focused && selected != nil && selected.isFilterable() && s.listFunctions != nil {
+					if !s.focused && selected != nil && selected.filterable && s.listFunctions != nil {
 						options := s.listFunctions()
 						if len(options) == 0 {
 							return
