@@ -2676,7 +2676,7 @@ export class Function extends Component implements Link.Linkable {
         const fnUrl = new lambda.FunctionUrl(
           `${name}Url`,
           {
-            functionName: fn.arn,
+            functionName: durable ? fn.arn : fn.name,
             qualifier,
             authorizationType: isIam.apply((isIam) =>
               isIam ? "AWS_IAM" : "NONE",
