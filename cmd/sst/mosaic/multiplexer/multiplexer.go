@@ -38,6 +38,26 @@ type Multiplexer struct {
 	scrollDone     chan struct{}
 	scrollDir      int
 	lastDragX      int
+
+	filtering       bool
+	filterOptions   []FilterOption
+	filterFiltered  []int
+	filterSelected  int
+	filterScroll    int
+	filterSearching bool
+	filterQuery     string
+	listFunctions   func() []FilterOption
+	needsFullDraw   bool
+}
+
+type FilterOption struct {
+	Label       string
+	Description string
+	Value       string
+}
+
+func (s *Multiplexer) SetListFunctions(fn func() []FilterOption) {
+	s.listFunctions = fn
 }
 
 func New() (*Multiplexer, error) {
@@ -116,11 +136,29 @@ func (s *Multiplexer) Start() {
 				}
 				return
 
-			case *EventExit:
-				shouldBreak = true
-				return
+		case *EventExit:
+			shouldBreak = true
+			return
 
-			case *EventProcess:
+		case *EventCheckFilter:
+			for _, p := range s.processes {
+				if p.filter == "" || !p.isFilterable() {
+					continue
+				}
+				found := false
+				for _, name := range evt.FunctionNames {
+					if name == p.filter {
+						found = true
+						break
+					}
+				}
+				if !found {
+					s.clearPaneFilter(p)
+				}
+			}
+			return
+
+		case *EventProcess:
 				for _, p := range s.processes {
 					if p.key == evt.Key {
 						if p.dead && evt.Autostart {
@@ -261,9 +299,17 @@ func (s *Multiplexer) Start() {
 				return
 
 			case *tcellterm.EventRedraw:
+				if s.filtering {
+					return
+				}
 				if selected != nil && selected.vt == evt.VT() {
-					selected.vt.Draw()
-					s.screen.Show()
+					if s.needsFullDraw {
+						s.needsFullDraw = false
+						s.draw()
+					} else {
+						selected.vt.Draw()
+						s.screen.Show()
+					}
 				}
 				return
 
@@ -271,6 +317,12 @@ func (s *Multiplexer) Start() {
 				for index, proc := range s.processes {
 					if proc.vt == evt.VT() {
 						if !proc.dead {
+							if proc.pendingRestart {
+								proc.pendingRestart = false
+								s.needsFullDraw = true
+								proc.start()
+								return
+							}
 							proc.vt.Start(process.Command("echo", "\n"+ui.TEXT_DIM.Render("[process exited]")))
 							proc.dead = true
 							s.sort()
@@ -284,6 +336,10 @@ func (s *Multiplexer) Start() {
 				return
 
 			case *tcell.EventKey:
+				if s.filtering {
+					s.handleFilterKey(evt)
+					return
+				}
 				switch evt.Key() {
 				case 256:
 					switch evt.Rune() {
@@ -301,6 +357,32 @@ func (s *Multiplexer) Start() {
 						if selected.killable && !selected.dead && !s.focused {
 							selected.Kill()
 						}
+				case 'f':
+					if !s.focused && selected != nil && selected.isFilterable() && s.listFunctions != nil {
+						options := s.listFunctions()
+						if len(options) == 0 {
+							return
+						}
+						s.filterOptions = options
+						s.filterFiltered = make([]int, len(options))
+						for i := range options {
+							s.filterFiltered[i] = i
+						}
+						s.filterSelected = 0
+						for i, opt := range s.filterOptions {
+							if opt.Value == selected.filter {
+								s.filterSelected = i
+								break
+							}
+						}
+						s.filterScroll = 0
+						s.filterSearching = false
+						s.filterQuery = ""
+						s.filtering = true
+						s.filterEnsureVisible()
+						s.draw()
+						return
+					}
 					}
 				case tcell.KeyUp:
 					if !s.focused {
@@ -381,6 +463,187 @@ func (s *Multiplexer) Start() {
 	}
 }
 
+func (s *Multiplexer) handleFilterKey(evt *tcell.EventKey) {
+	if s.filterSearching {
+		s.handleFilterSearchKey(evt)
+		return
+	}
+	switch evt.Key() {
+	case tcell.KeyEscape:
+		selected := s.selectedProcess()
+		if selected != nil && selected.filter != "" {
+			s.clearPaneFilter(selected)
+		}
+		s.filtering = false
+		s.draw()
+	case tcell.KeyEnter:
+		if len(s.filterFiltered) == 0 {
+			return
+		}
+		value := s.filterOptions[s.filterFiltered[s.filterSelected]].Value
+		selected := s.selectedProcess()
+		if selected != nil && selected.filter == value {
+			value = ""
+		}
+		s.applyFilter(value)
+		s.filtering = false
+		s.draw()
+	case tcell.KeyUp:
+		if s.filterSelected > 0 {
+			s.filterSelected--
+			s.filterEnsureVisible()
+			s.draw()
+		}
+	case tcell.KeyDown:
+		if s.filterSelected < len(s.filterFiltered)-1 {
+			s.filterSelected++
+			s.filterEnsureVisible()
+			s.draw()
+		}
+	case tcell.KeyRune:
+		switch evt.Rune() {
+		case 'j':
+			if s.filterSelected < len(s.filterFiltered)-1 {
+				s.filterSelected++
+				s.filterEnsureVisible()
+				s.draw()
+			}
+		case 'k':
+			if s.filterSelected > 0 {
+				s.filterSelected--
+				s.filterEnsureVisible()
+				s.draw()
+			}
+		case '/':
+			s.filterSearching = true
+			s.filterQuery = ""
+			s.draw()
+		}
+	}
+}
+
+func (s *Multiplexer) handleFilterSearchKey(evt *tcell.EventKey) {
+	switch evt.Key() {
+	case tcell.KeyEscape:
+		s.filterSearching = false
+		s.filterQuery = ""
+		s.refilterOptions()
+		s.draw()
+	case tcell.KeyEnter:
+		if len(s.filterFiltered) == 1 {
+			value := s.filterOptions[s.filterFiltered[0]].Value
+			selected := s.selectedProcess()
+			if selected != nil && selected.filter == value {
+				value = ""
+			}
+			s.applyFilter(value)
+			s.filtering = false
+			s.filterSearching = false
+			s.draw()
+			return
+		}
+		s.filterSearching = false
+		s.draw()
+	case tcell.KeyBackspace, tcell.KeyBackspace2:
+		if len(s.filterQuery) > 0 {
+			s.filterQuery = s.filterQuery[:len(s.filterQuery)-1]
+			s.refilterOptions()
+			s.draw()
+		}
+	case tcell.KeyRune:
+		s.filterQuery += string(evt.Rune())
+		s.refilterOptions()
+		s.draw()
+	}
+}
+
+func (s *Multiplexer) refilterOptions() {
+	q := strings.ToLower(s.filterQuery)
+	s.filterFiltered = s.filterFiltered[:0]
+	for i, opt := range s.filterOptions {
+		if q == "" || strings.Contains(strings.ToLower(opt.Label), q) || strings.Contains(strings.ToLower(opt.Description), q) {
+			s.filterFiltered = append(s.filterFiltered, i)
+		}
+	}
+	if s.filterSelected >= len(s.filterFiltered) {
+		s.filterSelected = max(0, len(s.filterFiltered)-1)
+	}
+	s.filterEnsureVisible()
+}
+
+func (s *Multiplexer) filterVisibleRows() int {
+	// header (y=1) + blank + subtitle (y=3) + blank + ↑/blank (y=5) = list starts at y=6
+	// reserve 1 row at bottom for ↓ indicator + 6 rows padding
+	rows := s.height - 6 - 1 - 6
+	if rows < 1 {
+		rows = 1
+	}
+	return rows
+}
+
+func (s *Multiplexer) filterEnsureVisible() {
+	visible := s.filterVisibleRows()
+	if s.filterSelected < s.filterScroll {
+		s.filterScroll = s.filterSelected
+	}
+	if s.filterSelected >= s.filterScroll+visible {
+		s.filterScroll = s.filterSelected - visible + 1
+	}
+	if s.filterScroll < 0 {
+		s.filterScroll = 0
+	}
+}
+
+func (s *Multiplexer) clearPaneFilter(p *pane) {
+	if p.filter == "" {
+		return
+	}
+	newArgs := make([]string, 0, len(p.args))
+	for _, arg := range p.args {
+		if !strings.HasPrefix(arg, "--function-id") {
+			newArgs = append(newArgs, arg)
+		}
+	}
+	p.args = newArgs
+	p.filter = ""
+	if !p.dead {
+		p.pendingRestart = true
+		p.Kill()
+	} else {
+		p.start()
+		s.sort()
+	}
+	s.draw()
+}
+
+func (s *Multiplexer) applyFilter(value string) {
+	selected := s.selectedProcess()
+	if selected == nil {
+		return
+	}
+	if selected.filter == value {
+		return
+	}
+	newArgs := make([]string, 0, len(selected.args))
+	for _, arg := range selected.args {
+		if !strings.HasPrefix(arg, "--function-id") {
+			newArgs = append(newArgs, arg)
+		}
+	}
+	if value != "" {
+		newArgs = append(newArgs, "--function-id="+value)
+	}
+	selected.args = newArgs
+	selected.filter = value
+	if !selected.dead {
+		selected.pendingRestart = true
+		selected.Kill()
+	} else {
+		selected.start()
+		s.sort()
+	}
+}
+
 type EventExit struct {
 	when time.Time
 }
@@ -391,6 +654,15 @@ func (e *EventExit) When() time.Time {
 
 func (s *Multiplexer) Exit() {
 	s.screen.PostEvent(&EventExit{})
+}
+
+type EventCheckFilter struct {
+	tcell.EventTime
+	FunctionNames []string
+}
+
+func (s *Multiplexer) CheckFilter(names []string) {
+	s.screen.PostEvent(&EventCheckFilter{FunctionNames: names})
 }
 
 func (s *Multiplexer) stopAutoScroll() {

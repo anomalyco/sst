@@ -365,6 +365,14 @@ var root = &cli.Command{
 						Long:  "Filter events.",
 					},
 				},
+				{
+					Name: "function-id",
+					Type: "string",
+					Description: cli.Description{
+						Short: "Filter by function name",
+						Long:  "Filter function logs by function name substring match.",
+					},
+				},
 			},
 		},
 		{

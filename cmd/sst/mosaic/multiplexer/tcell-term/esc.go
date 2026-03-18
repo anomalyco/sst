@@ -155,6 +155,7 @@ func (vt *VT) decrc() {
 
 // Reset Initial State (RIS) ESC-c
 func (vt *VT) ris() {
+	vt.dirty = false
 	w := vt.width()
 	h := vt.height()
 	vt.altScreen = make([][]cell, h)

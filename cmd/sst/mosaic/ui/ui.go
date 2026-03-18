@@ -59,9 +59,10 @@ type UI struct {
 }
 
 type Options struct {
-	Silent bool
-	Log    *os.File
-	Dev    bool
+	Silent         bool
+	Log            *os.File
+	Dev            bool
+	FunctionFilter string
 }
 
 type Option func(*Options)
@@ -72,6 +73,12 @@ func WithSilent(u *Options) {
 
 func WithDev(u *Options) {
 	u.Dev = true
+}
+
+func WithFunctionFilter(filter string) Option {
+	return func(opts *Options) {
+		opts.FunctionFilter = filter
+	}
 }
 
 func WithLog(file *os.File) Option {
@@ -175,20 +182,32 @@ func (u *UI) Event(unknown interface{}) {
 		u.printEvent(TEXT_DANGER, fmt.Sprintf("%-11s", "Missing"), fmt.Sprintf("Dev command not configured for the \"%s\" task. Set `dev.command` to configure how the task works in `sst dev`.", evt.Name))
 
 	case *aws.FunctionInvokedEvent:
+		if !u.matchFunction(evt.FunctionID) {
+			return
+		}
 		u.workerTime[evt.WorkerID] = time.Now()
 		u.printEvent(u.getColor(evt.WorkerID), TEXT_NORMAL_BOLD.Render(fmt.Sprintf("%-11s", "Invoke")), u.functionName(evt.FunctionID))
 
 	case *aws.FunctionResponseEvent:
+		if !u.matchFunction(evt.FunctionID) {
+			return
+		}
 		duration := time.Since(u.workerTime[evt.WorkerID]).Round(time.Millisecond)
 		formattedDuration := fmt.Sprintf("took %.9s", fmt.Sprintf("+%v", duration))
 		u.printEvent(u.getColor(evt.WorkerID), "Done", formattedDuration)
 
 	case *aws.FunctionLogEvent:
+		if !u.matchFunction(evt.FunctionID) {
+			return
+		}
 		duration := time.Since(u.workerTime[evt.WorkerID]).Round(time.Millisecond)
 		formattedDuration := fmt.Sprintf("%.9s", fmt.Sprintf("+%v", duration))
 		u.printEvent(u.getColor(evt.WorkerID), formattedDuration, evt.Line)
 
 	case *aws.FunctionBuildEvent:
+		if !u.matchFunction(evt.FunctionID) {
+			return
+		}
 		if len(evt.Errors) > 0 {
 			u.printEvent(TEXT_DANGER, "Build Error", u.functionName(evt.FunctionID))
 			for _, item := range evt.Errors {
@@ -199,6 +218,9 @@ func (u *UI) Event(unknown interface{}) {
 		u.printEvent(TEXT_SUCCESS, "Build", u.functionName(evt.FunctionID))
 
 	case *aws.FunctionErrorEvent:
+		if !u.matchFunction(evt.FunctionID) {
+			return
+		}
 		u.printEvent(u.getColor(evt.WorkerID), TEXT_DANGER.Render(fmt.Sprintf("%-11s", "Error")), u.functionName(evt.FunctionID))
 		u.printEvent(u.getColor(evt.WorkerID), "", evt.ErrorMessage)
 		for _, item := range evt.Trace {
@@ -678,4 +700,19 @@ func Success(msg string) {
 
 func Error(msg string) {
 	fmt.Fprintln(os.Stderr, strings.TrimSpace(TEXT_DANGER_BOLD.Render(IconX)+"  "+TEXT_NORMAL.Render(msg)))
+}
+
+func (u *UI) matchFunction(functionID string) bool {
+	if u.options.FunctionFilter == "" {
+		return true
+	}
+	filter := strings.ToLower(u.options.FunctionFilter)
+	if strings.Contains(strings.ToLower(functionID), filter) {
+		return true
+	}
+	name := u.functionName(functionID)
+	if strings.Contains(strings.ToLower(name), filter) {
+		return true
+	}
+	return false
 }

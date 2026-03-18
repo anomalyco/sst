@@ -23,13 +23,21 @@ func CmdUI(c *cli.Cli) error {
 	}
 	types := []interface{}{}
 	filter := c.String("filter")
+	functionID := c.String("function-id")
 	var u *ui.UI
 	opts := []ui.Option{
 		ui.WithDev,
 	}
+	if functionID != "" {
+		opts = append(opts, ui.WithFunctionFilter(functionID))
+	}
 	if filter == "function" || filter == "" {
 		if filter != "" {
-			fmt.Println(ui.TEXT_HIGHLIGHT_BOLD.Render("Function Logs"))
+			if functionID != "" {
+				fmt.Println(ui.TEXT_HIGHLIGHT_BOLD.Copy().Italic(true).Render(functionID) + ui.TEXT_HIGHLIGHT_BOLD.Render(" Logs"))
+			} else {
+				fmt.Println(ui.TEXT_HIGHLIGHT_BOLD.Render("Function Logs"))
+			}
 			fmt.Println()
 			fmt.Println(ui.TEXT_DIM.Render("Waiting for invocations..."))
 			fmt.Println()

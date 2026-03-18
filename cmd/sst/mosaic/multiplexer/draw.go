@@ -1,6 +1,7 @@
 package multiplexer
 
 import (
+	"fmt"
 	"slices"
 	"sort"
 	"strings"
@@ -17,11 +18,21 @@ func (s *Multiplexer) draw() {
 	}
 	selected := s.selectedProcess()
 
+	type filteredRow struct {
+		y     int
+		icon  string
+		label string
+		style tcell.Style
+	}
+	var filteredRows []filteredRow
+	row := 0
+
 	for index, item := range s.processes {
 		if index > 0 && !s.processes[index-1].dead && item.dead {
 			spacer := views.NewTextBar()
 			spacer.SetLeft("──────────────────────", tcell.StyleDefault.Foreground(tcell.ColorGray))
 			s.stack.AddWidget(spacer, 0)
+			row++
 		}
 		style := tcell.StyleDefault
 		if item.dead {
@@ -33,38 +44,62 @@ func (s *Multiplexer) draw() {
 				style = style.Foreground(tcell.ColorOrange)
 			}
 		}
+		label := item.title
+		if item.filter != "" {
+			label = item.filter
+			filteredRows = append(filteredRows, filteredRow{
+				y:     row,
+				icon:  item.icon,
+				label: label,
+				style: style,
+			})
+		}
 		title := views.NewTextBar()
 		title.SetStyle(style)
-		title.SetLeft(" "+item.icon+" "+item.title, tcell.StyleDefault)
+		title.SetLeft(" "+item.icon+" "+label, tcell.StyleDefault)
 		s.stack.AddWidget(title, 0)
+		row++
 	}
 	s.stack.AddWidget(views.NewSpacer(), 1)
 
 	hotkeys := map[string]string{}
-	if selected != nil && selected.killable && !s.focused {
-		if !selected.dead {
-			hotkeys["x"] = "kill"
-			hotkeys["enter"] = "focus"
-		}
+	if s.filtering && s.filterSearching {
+		hotkeys["esc"] = "cancel"
+		hotkeys["enter"] = "confirm"
+	} else if s.filtering {
+		hotkeys["j/k/↓/↑"] = "move"
+		hotkeys["enter"] = "select"
+		hotkeys["/"] = "search"
+		hotkeys["esc"] = "clear"
+	} else {
+		if selected != nil && selected.killable && !s.focused {
+			if !selected.dead {
+				hotkeys["x"] = "kill"
+				hotkeys["enter"] = "focus"
+			}
 
-		if selected.dead {
-			hotkeys["enter"] = "start"
+			if selected.dead {
+				hotkeys["enter"] = "start"
+			}
+		}
+		if !s.focused {
+			hotkeys["j/k/↓/↑"] = "up/down"
+		}
+		if s.focused {
+			hotkeys["ctrl-z"] = "sidebar"
+		}
+		if selected != nil && selected.vt.HasSelection() {
+			hotkeys["enter"] = "copy"
+		}
+		hotkeys["ctrl-u/d"] = "scroll"
+		if selected != nil && selected.isScrolling() {
+			hotkeys["ctrl-g"] = "bottom"
+		}
+		hotkeys["ctrl-l"] = "clear"
+		if selected != nil && !s.focused && selected.isFilterable() {
+			hotkeys["f"] = "filter"
 		}
 	}
-	if !s.focused {
-		hotkeys["j/k/↓/↑"] = "up/down"
-	}
-	if s.focused {
-		hotkeys["ctrl-z"] = "sidebar"
-	}
-	if selected != nil && selected.vt.HasSelection() {
-		hotkeys["enter"] = "copy"
-	}
-	hotkeys["ctrl-u/d"] = "scroll"
-	if selected != nil && selected.isScrolling() {
-		hotkeys["ctrl-g"] = "bottom"
-	}
-	hotkeys["ctrl-l"] = "clear"
 	// sort hotkeys
 	keys := make([]string, 0, len(hotkeys))
 	for key := range hotkeys {
@@ -87,13 +122,31 @@ func (s *Multiplexer) draw() {
 		s.stack.AddWidget(title, 0)
 	}
 	s.stack.Draw()
+
+	// overdraw filtered pane titles: icon non-italic, label italic
+	for _, fr := range filteredRows {
+		x := 1
+		for _, ch := range fr.icon {
+			s.screen.SetContent(x, fr.y, ch, nil, fr.style)
+			x++
+		}
+		x++ // space
+		italicStyle := fr.style.Italic(true)
+		for _, ch := range fr.label {
+			if x >= SIDEBAR_WIDTH-1 {
+				break
+			}
+			s.screen.SetContent(x, fr.y, ch, nil, italicStyle)
+			x++
+		}
+	}
 	borderStyle := tcell.StyleDefault.Foreground(tcell.ColorGray)
 	for i := 0; i < s.height; i++ {
 		s.screen.SetContent(SIDEBAR_WIDTH-1, i, '│', nil, borderStyle)
 	}
 
 	// render virtual terminal
-	if selected != nil {
+	if selected != nil && !s.filtering {
 		selected.vt.Draw()
 		if s.focused {
 			y, x, _, _ := selected.vt.Cursor()
@@ -103,6 +156,102 @@ func (s *Multiplexer) draw() {
 			s.screen.HideCursor()
 		}
 	}
+
+	if s.filtering {
+		if !s.filterSearching {
+			s.screen.HideCursor()
+		}
+		s.drawFilterSelect()
+	}
+}
+
+func (s *Multiplexer) drawFilterSelect() {
+	startX := SIDEBAR_WIDTH + 1
+	mainW := s.width - startX
+	bgStyle := tcell.StyleDefault
+	dimStyle := tcell.StyleDefault.Foreground(tcell.ColorGray)
+	selStyle := tcell.StyleDefault.Foreground(tcell.ColorTeal).Bold(true)
+	selDimStyle := tcell.StyleDefault.Foreground(tcell.ColorTeal).Dim(true)
+	normalStyle := tcell.StyleDefault.Foreground(tcell.ColorWhite)
+
+	// clear main area
+	for y := 0; y < s.height; y++ {
+		for x := startX; x < s.width; x++ {
+			s.screen.SetContent(x, y, ' ', nil, bgStyle)
+		}
+	}
+
+	y := 1
+	s.drawLine(startX, y, " Functions", tcell.StyleDefault.Foreground(tcell.ColorTeal).Bold(true), mainW)
+	y += 2
+
+	// subtitle or search line (same row)
+	if s.filterSearching {
+		x := s.drawLine(startX, y, " Search: ", dimStyle, mainW)
+		x = s.drawLine(x, y, s.filterQuery, tcell.StyleDefault.Foreground(tcell.ColorWhite), mainW-(x-startX))
+		s.screen.ShowCursor(x, y)
+	} else if s.filterQuery != "" {
+		x := s.drawLine(startX, y, " Search: ", dimStyle, mainW)
+		s.drawLine(x, y, s.filterQuery, tcell.StyleDefault.Foreground(tcell.ColorWhite).Italic(true), mainW-(x-startX))
+	} else {
+		s.drawLine(startX, y, " Select a function to filter logs", dimStyle, mainW)
+	}
+	total := len(s.filterFiltered)
+	y += 2
+
+	// ↑ indicator on the line before the list
+	if total > 0 && s.filterScroll > 0 {
+		s.drawLine(startX, y, fmt.Sprintf(" ↑ %d more", s.filterScroll), dimStyle, mainW)
+	}
+	y++
+
+	// options (only filtered indices) with viewport scrolling
+	if total == 0 {
+		s.drawLine(startX, y, " No results found.", dimStyle, mainW)
+		return
+	}
+
+	visible := s.filterVisibleRows()
+	end := s.filterScroll + visible
+	if end > total {
+		end = total
+	}
+
+	for fi := s.filterScroll; fi < end; fi++ {
+		if y >= s.height-1 {
+			break
+		}
+		opt := s.filterOptions[s.filterFiltered[fi]]
+		style := normalStyle
+		descStyle := dimStyle
+		prefix := "  "
+		if fi == s.filterSelected {
+			style = selStyle
+			descStyle = selDimStyle
+			prefix = "> "
+		}
+		x := s.drawLine(startX, y, " "+prefix+opt.Label, style, mainW)
+		if opt.Description != "" {
+			s.drawLine(x, y, "  "+opt.Description, descStyle, mainW-(x-startX))
+		}
+		y++
+	}
+
+	if end < total {
+		s.drawLine(startX, y, fmt.Sprintf(" ↓ %d more", total-end), dimStyle, mainW)
+	}
+}
+
+func (s *Multiplexer) drawLine(startX, y int, text string, style tcell.Style, maxW int) int {
+	x := startX
+	for _, ch := range text {
+		if x-startX >= maxW {
+			break
+		}
+		s.screen.SetContent(x, y, ch, nil, style)
+		x++
+	}
+	return x
 }
 
 func (s *Multiplexer) move(offset int) {

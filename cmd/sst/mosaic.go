@@ -258,6 +258,31 @@ func CmdMosaic(c *cli.Cli) error {
 		)
 		multi.AddProcess("deploy", []string{currentExecutable, "ui", "--filter=sst"}, "⑆", "SST", "", false, true, append(multiEnv, "SST_LOG="+p.PathLog("ui-deploy"))...)
 		multi.AddProcess("function", []string{currentExecutable, "ui", "--filter=function"}, "λ", "Functions", "", false, true, append(multiEnv, "SST_LOG="+p.PathLog("ui-function"))...)
+		serverURL := fmt.Sprintf("http://localhost:%v", server.Port)
+		multi.SetListFunctions(func() []multiplexer.FilterOption {
+			completed, err := dev.Completed(c.Context, serverURL)
+			if err != nil || completed == nil {
+				return nil
+			}
+			var options []multiplexer.FilterOption
+			for _, r := range completed.Resources {
+				if string(r.Type) == "sst:aws:Function" || string(r.Type) == "sst:cloudflare:Worker" {
+					name := r.URN.Name()
+					handler := name
+					if meta, ok := r.Outputs["_metadata"].(map[string]interface{}); ok {
+						if h, ok := meta["handler"].(string); ok {
+							handler = h
+						}
+					}
+					options = append(options, multiplexer.FilterOption{
+						Label:       name,
+						Description: handler,
+						Value:       name,
+					})
+				}
+			}
+			return options
+		})
 		defer func() {
 			multi.Exit()
 		}()
@@ -272,37 +297,44 @@ func CmdMosaic(c *cli.Cli) error {
 					return nil
 				case unknown := <-evts:
 					switch evt := unknown.(type) {
-					case *project.CompleteEvent:
-						for _, d := range evt.Devs {
-							if d.Command == "" {
-								continue
-							}
-							dir := filepath.Join(cwd, d.Directory)
-							title := d.Title
-							if title == "" {
-								title = d.Name
-							}
-							multi.AddProcess(
-								d.Name,
-								[]string{currentExecutable, "dev"},
-								"→",
-								title,
-								dir,
-								true,
-								d.Autostart,
-								append([]string{"SST_CHILD=" + d.Name}, multiEnv...)...,
-							)
+				case *project.CompleteEvent:
+					for _, d := range evt.Devs {
+						if d.Command == "" {
+							continue
 						}
-						for name := range evt.Tunnels {
-							multi.AddProcess("tunnel", []string{currentExecutable, "tunnel", "--stage", p.App().Stage}, "⇌", "Tunnel", "", true, true, append(
-								multiEnv,
-								"SST_LOG="+p.PathLog("tunnel_"+name),
-							)...)
+						dir := filepath.Join(cwd, d.Directory)
+						title := d.Title
+						if title == "" {
+							title = d.Name
 						}
-						if len(evt.Tasks) > 0 {
-							multi.AddProcess("task", []string{currentExecutable, "ui", "--filter=task"}, "⧉", "Tasks", "", false, true, append(multiEnv, "SST_LOG="+p.PathLog("ui-task"))...)
+						multi.AddProcess(
+							d.Name,
+							[]string{currentExecutable, "dev"},
+							"→",
+							title,
+							dir,
+							true,
+							d.Autostart,
+							append([]string{"SST_CHILD=" + d.Name}, multiEnv...)...,
+						)
+					}
+					for name := range evt.Tunnels {
+						multi.AddProcess("tunnel", []string{currentExecutable, "tunnel", "--stage", p.App().Stage}, "⇌", "Tunnel", "", true, true, append(
+							multiEnv,
+							"SST_LOG="+p.PathLog("tunnel_"+name),
+						)...)
+					}
+					if len(evt.Tasks) > 0 {
+						multi.AddProcess("task", []string{currentExecutable, "ui", "--filter=task"}, "⧉", "Tasks", "", false, true, append(multiEnv, "SST_LOG="+p.PathLog("ui-task"))...)
+					}
+					var fnNames []string
+					for _, r := range evt.Resources {
+						if string(r.Type) == "sst:aws:Function" || string(r.Type) == "sst:cloudflare:Worker" {
+							fnNames = append(fnNames, r.URN.Name())
 						}
-						break
+					}
+					multi.CheckFilter(fnNames)
+					break
 					}
 				}
 			}

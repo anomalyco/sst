@@ -14,16 +14,22 @@ type vterm struct {
 }
 
 type pane struct {
-	icon     string
-	key      string
-	args     []string
-	title    string
-	dir      string
-	killable bool
-	env      []string
-	vt       *tcellterm.VT
-	dead     bool
-	cmd      *exec.Cmd
+	icon           string
+	key            string
+	args           []string
+	title          string
+	dir            string
+	killable       bool
+	env            []string
+	vt             *tcellterm.VT
+	dead           bool
+	cmd            *exec.Cmd
+	filter         string
+	pendingRestart bool
+}
+
+func (p *pane) isFilterable() bool {
+	return p.key == "function"
 }
 
 type EventProcess struct {
