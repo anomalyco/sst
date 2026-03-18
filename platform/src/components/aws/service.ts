@@ -1942,19 +1942,10 @@ export class Service extends Component implements Link.Linkable {
     function normalizeLoadBalancer() {
       const loadBalancer = args.loadBalancer ?? args.public;
       if (!loadBalancer) return;
-      const inlineLoadBalancer = output(loadBalancer).apply((lb) => {
-        if (
-          lb &&
-          typeof lb === "object" &&
-          "instance" in lb &&
-          lb.instance instanceof Alb
-        ) {
-          throw new VisibleError(
-            `Cannot combine "loadBalancer.instance" with inline load balancer settings in Service "${name}".`,
-          );
-        }
-        return lb as Exclude<typeof lb, { instance: Alb }>;
-      });
+      // ALB attachment case is handled by detectAlbAttachment() before this is called
+      const inlineLoadBalancer = output(loadBalancer).apply(
+        (lb) => lb as Exclude<typeof lb, { instance: Alb }>,
+      );
 
       // normalize rules
       const rules = all([inlineLoadBalancer, containers]).apply(

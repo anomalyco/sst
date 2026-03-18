@@ -218,14 +218,13 @@ interface AlbRef {
  * ```
  */
 export class Alb extends Component implements Link.Linkable {
-  private _loadBalancer!: lb.LoadBalancer;
-  private _securityGroup!: ec2.SecurityGroup;
-  private _listeners: Record<string, lb.Listener> = {};
-  private _certificateArn?: Output<string | undefined>;
-  private _vpcId!: Output<string>;
-  private _url!: Output<string>;
-  private _name: string;
-  private _isRef = false;
+  private loadBalancer: lb.LoadBalancer;
+  private securityGroup: ec2.SecurityGroup;
+  private listeners: Record<string, lb.Listener> = {};
+  private certificateArn?: Output<string | undefined>;
+  private vpcId: Output<string>;
+  private _url: Output<string>;
+  private constructorName: string;
 
   constructor(
     name: string,
@@ -234,43 +233,16 @@ export class Alb extends Component implements Link.Linkable {
   ) {
     super(__pulumiType, name, args, opts);
 
-    this._name = name;
-    const self = this;
+    this.constructorName = name;
 
     if (args && "ref" in args) {
-      reference();
-      return;
-    }
-
-    const pub = output(args.public ?? true);
-    const { vpcId, subnets } = normalizeVpc();
-    const domain = normalizeDomain();
-    const securityGroup = createSecurityGroup();
-    const certificateArn = createSsl();
-    const loadBalancer = createLoadBalancer();
-    createListeners();
-    createDnsRecords();
-
-    this._loadBalancer = loadBalancer;
-    this._securityGroup = securityGroup;
-    this._certificateArn = certificateArn;
-    this._vpcId = vpcId;
-    this._url = all([domain, loadBalancer.dnsName]).apply(
-      ([domain, dnsName]) =>
-        domain ? `https://${domain.name}/` : `http://${dnsName}`,
-    );
-
-    this.registerOutputs({ _hint: this._url });
-
-    function reference() {
       const ref = args as unknown as AlbRef;
       const loadBalancer = lb.LoadBalancer.get(
         `${name}LoadBalancer`,
         output(ref.loadBalancerArn),
         {},
-        { parent: self },
+        { parent: this },
       );
-
       const securityGroup = ec2.SecurityGroup.get(
         `${name}SecurityGroup`,
         loadBalancer.securityGroups.apply((sgs) => {
@@ -282,19 +254,38 @@ export class Alb extends Component implements Link.Linkable {
           return sgs[0];
         }),
         {},
-        { parent: self },
+        { parent: this },
       );
-
-      self._isRef = true;
-      self._loadBalancer = loadBalancer;
-      self._securityGroup = securityGroup;
-      self._vpcId = loadBalancer.vpcId;
-      self._url = loadBalancer.dnsName.apply(
+      this.loadBalancer = loadBalancer;
+      this.securityGroup = securityGroup;
+      this.vpcId = loadBalancer.vpcId;
+      this._url = loadBalancer.dnsName.apply(
         (dnsName) => `http://${dnsName}`,
       );
-
-      self.registerOutputs({ _hint: self._url });
+      this.registerOutputs({ _hint: this._url });
+      return;
     }
+
+    const self = this;
+    const pub = output(args.public ?? true);
+    const { vpcId, subnets } = normalizeVpc();
+    const domain = normalizeDomain();
+    const securityGroup = createSecurityGroup();
+    const certificateArn = createSsl();
+    const loadBalancer = createLoadBalancer();
+    createListeners();
+    createDnsRecords();
+
+    this.loadBalancer = loadBalancer;
+    this.securityGroup = securityGroup;
+    this.certificateArn = certificateArn;
+    this.vpcId = vpcId;
+    this._url = all([domain, loadBalancer.dnsName]).apply(
+      ([domain, dnsName]) =>
+        domain ? `https://${domain.name}/` : `http://${dnsName}`,
+    );
+
+    this.registerOutputs({ _hint: this._url });
 
     function normalizeVpc() {
       if (args.vpc instanceof Vpc) {
@@ -432,7 +423,7 @@ export class Alb extends Component implements Link.Linkable {
           ),
         );
 
-        self._listeners[key] = listener;
+        self.listeners[key] = listener;
       }
     }
 
@@ -469,28 +460,28 @@ export class Alb extends Component implements Link.Linkable {
    * The ARN of the load balancer.
    */
   public get arn(): Output<string> {
-    return this._loadBalancer.arn;
+    return this.loadBalancer.arn;
   }
 
   /**
    * The DNS name of the load balancer.
    */
   public get dnsName(): Output<string> {
-    return this._loadBalancer.dnsName;
+    return this.loadBalancer.dnsName;
   }
 
   /**
    * The zone ID of the load balancer.
    */
   public get zoneId(): Output<string> {
-    return this._loadBalancer.zoneId;
+    return this.loadBalancer.zoneId;
   }
 
   /**
    * The security group ID of the load balancer.
    */
   public get securityGroupId(): Output<string> {
-    return this._securityGroup.id;
+    return this.securityGroup.id;
   }
 
   /**
@@ -501,26 +492,26 @@ export class Alb extends Component implements Link.Linkable {
       /**
        * The AWS Load Balancer resource.
        */
-      loadBalancer: this._loadBalancer,
+      loadBalancer: this.loadBalancer,
       /**
        * The AWS Security Group resource.
        */
-      securityGroup: this._securityGroup,
+      securityGroup: this.securityGroup,
       /**
        * The AWS Listener resources, keyed by "PROTOCOLPORT" (e.g. "HTTPS443").
        */
-      listeners: this._listeners,
+      listeners: this.listeners,
     };
   }
 
   /** @internal */
   public get _certArn(): Output<string | undefined> {
-    return this._certificateArn ?? output(undefined);
+    return this.certificateArn ?? output(undefined);
   }
 
   /** @internal */
   public get _vpc(): Output<string> {
-    return this._vpcId;
+    return this.vpcId;
   }
 
   /**
@@ -536,25 +527,19 @@ export class Alb extends Component implements Link.Linkable {
     port: number,
   ): lb.Listener {
     const key = listenerKey(protocol, port);
-    if (this._listeners[key]) return this._listeners[key];
+    if (this.listeners[key]) return this.listeners[key];
 
-    if (this._isRef) {
-      const discovered = lb.Listener.get(
-        `${this._name}Listener${protocol.toUpperCase()}${port}`,
-        lb.getListenerOutput({
-          loadBalancerArn: this._loadBalancer.arn,
-          port,
-        }).arn,
-        {},
-        { parent: this },
-      );
-      this._listeners[key] = discovered;
-      return discovered;
-    }
-
-    throw new VisibleError(
-      `Listener "${key}" not found on ALB "${this._name}". Available: ${Object.keys(this._listeners).join(", ") || "none"}`,
+    const discovered = lb.Listener.get(
+      `${this.constructorName}Listener${protocol.toUpperCase()}${port}`,
+      lb.getListenerOutput({
+        loadBalancerArn: this.loadBalancer.arn,
+        port,
+      }).arn,
+      {},
+      { parent: this },
     );
+    this.listeners[key] = discovered;
+    return discovered;
   }
 
   /** @internal */
