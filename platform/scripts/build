@@ -9,7 +9,7 @@ bun build ./functions/cf-static-site-router-worker/index.ts --target=node --outd
 bun build ./functions/cf-ssr-site-router-worker/index.ts --target=node --outdir ./dist/cf-ssr-site-router-worker/
 bun build ./functions/nodejs-runtime/index.ts --target=node --outdir ./dist/nodejs-runtime/
 bun build ./functions/nodejs-runtime/loop.ts --target=node --outdir ./dist/nodejs-runtime/
-GOARCH=amd64 GOOS=linux go build -trimpath -mod=readonly -ldflags="-buildid=" -o ./dist/bridge/bootstrap ./functions/bridge 
+GOARCH=amd64 GOOS=linux go build -trimpath -buildvcs=false -mod=readonly -ldflags="-buildid=" -o ./dist/bridge/bootstrap ./functions/bridge
 node ./scripts/build.mjs
 
 mkdir -p ./dist/python-runtime/
