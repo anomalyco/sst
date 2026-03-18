@@ -2183,6 +2183,8 @@ export class Service extends Component implements Link.Linkable {
                 args.transform?.target,
                 `${name}Target${targetId}`,
                 {
+                  // AWS enforces a 6-char limit on namePrefix for target groups.
+                  // "TCP_UDP" is 7 chars, so strip the underscore to fit.
                   namePrefix: forwardProtocol.replace("_", ""),
                   port: forwardPort,
                   protocol: forwardProtocol,
@@ -2545,12 +2547,16 @@ export class Service extends Component implements Link.Linkable {
                   predefinedMetricType: "ALBRequestCountPerTarget",
                   resourceLabel: all([effectiveLbArn!, targetGroup.arn]).apply(
                     ([lbArn, targetGroupArn]) => {
+                      // arn:...:loadbalancer/app/frank-MyServiceLoadBalan/005af2ad12da1e52
+                      // => app/frank-MyServiceLoadBalan/005af2ad12da1e52
                       const lbPart = lbArn
                         .split(":")
                         .pop()
                         ?.split("/")
                         .slice(1)
                         .join("/");
+                      // arn:...:targetgroup/HTTP20250103004618450100000001/e0811b8cf3a60762
+                      // => targetgroup/HTTP20250103004618450100000001
                       const tgPart = targetGroupArn.split(":").pop();
                       return `${lbPart}/${tgPart}`;
                     },
