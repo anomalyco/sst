@@ -47,7 +47,7 @@ type Multiplexer struct {
 	filterSearching bool
 	filterQuery     string
 	listFunctions   func() []FilterOption
-	needsFullDraw   bool
+	onFilterChanged func(string)
 }
 
 type FilterOption struct {
@@ -58,6 +58,10 @@ type FilterOption struct {
 
 func (s *Multiplexer) SetListFunctions(fn func() []FilterOption) {
 	s.listFunctions = fn
+}
+
+func (s *Multiplexer) SetOnFilterChanged(fn func(string)) {
+	s.onFilterChanged = fn
 }
 
 func New() (*Multiplexer, error) {
@@ -303,13 +307,8 @@ func (s *Multiplexer) Start() {
 					return
 				}
 				if selected != nil && selected.vt == evt.VT() {
-					if s.needsFullDraw {
-						s.needsFullDraw = false
-						s.draw()
-					} else {
-						selected.vt.Draw()
-						s.screen.Show()
-					}
+					selected.vt.Draw()
+					s.screen.Show()
 				}
 				return
 
@@ -317,12 +316,6 @@ func (s *Multiplexer) Start() {
 				for index, proc := range s.processes {
 					if proc.vt == evt.VT() {
 						if !proc.dead {
-							if proc.pendingRestart {
-								proc.pendingRestart = false
-								s.needsFullDraw = true
-								proc.start()
-								return
-							}
 							proc.vt.Start(process.Command("echo", "\n"+ui.TEXT_DIM.Render("[process exited]")))
 							proc.dead = true
 							s.sort()
@@ -598,20 +591,9 @@ func (s *Multiplexer) clearPaneFilter(p *pane) {
 	if p.filter == "" {
 		return
 	}
-	newArgs := make([]string, 0, len(p.args))
-	for _, arg := range p.args {
-		if !strings.HasPrefix(arg, "--function-id") {
-			newArgs = append(newArgs, arg)
-		}
-	}
-	p.args = newArgs
 	p.filter = ""
-	if !p.dead {
-		p.pendingRestart = true
-		p.Kill()
-	} else {
-		p.start()
-		s.sort()
+	if s.onFilterChanged != nil {
+		s.onFilterChanged("")
 	}
 	s.draw()
 }
@@ -624,23 +606,9 @@ func (s *Multiplexer) applyFilter(value string) {
 	if selected.filter == value {
 		return
 	}
-	newArgs := make([]string, 0, len(selected.args))
-	for _, arg := range selected.args {
-		if !strings.HasPrefix(arg, "--function-id") {
-			newArgs = append(newArgs, arg)
-		}
-	}
-	if value != "" {
-		newArgs = append(newArgs, "--function-id="+value)
-	}
-	selected.args = newArgs
 	selected.filter = value
-	if !selected.dead {
-		selected.pendingRestart = true
-		selected.Kill()
-	} else {
-		selected.start()
-		s.sort()
+	if s.onFilterChanged != nil {
+		s.onFilterChanged(value)
 	}
 }
 

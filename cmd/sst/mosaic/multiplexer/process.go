@@ -25,7 +25,6 @@ type pane struct {
 	dead           bool
 	cmd            *exec.Cmd
 	filter         string
-	pendingRestart bool
 }
 
 func (p *pane) isFilterable() bool {

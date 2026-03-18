@@ -65,6 +65,10 @@ type Options struct {
 	FunctionFilter string
 }
 
+type FunctionFilterEvent struct {
+	FunctionID string `json:"functionID"`
+}
+
 type Option func(*Options)
 
 func WithSilent(u *Options) {
@@ -75,10 +79,8 @@ func WithDev(u *Options) {
 	u.Dev = true
 }
 
-func WithFunctionFilter(filter string) Option {
-	return func(opts *Options) {
-		opts.FunctionFilter = filter
-	}
+func (u *UI) SetFunctionFilter(filter string) {
+	u.options.FunctionFilter = filter
 }
 
 func WithLog(file *os.File) Option {

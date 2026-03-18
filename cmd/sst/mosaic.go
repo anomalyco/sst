@@ -259,6 +259,9 @@ func CmdMosaic(c *cli.Cli) error {
 		multi.AddProcess("deploy", []string{currentExecutable, "ui", "--filter=sst"}, "⑆", "SST", "", false, true, append(multiEnv, "SST_LOG="+p.PathLog("ui-deploy"))...)
 		multi.AddProcess("function", []string{currentExecutable, "ui", "--filter=function"}, "λ", "Functions", "", false, true, append(multiEnv, "SST_LOG="+p.PathLog("ui-function"))...)
 		serverURL := fmt.Sprintf("http://localhost:%v", server.Port)
+		multi.SetOnFilterChanged(func(functionID string) {
+			bus.Publish(&ui.FunctionFilterEvent{FunctionID: functionID})
+		})
 		multi.SetListFunctions(func() []multiplexer.FilterOption {
 			completed, err := dev.Completed(c.Context, serverURL)
 			if err != nil || completed == nil {

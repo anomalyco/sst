@@ -23,21 +23,13 @@ func CmdUI(c *cli.Cli) error {
 	}
 	types := []interface{}{}
 	filter := c.String("filter")
-	functionID := c.String("function-id")
 	var u *ui.UI
 	opts := []ui.Option{
 		ui.WithDev,
 	}
-	if functionID != "" {
-		opts = append(opts, ui.WithFunctionFilter(functionID))
-	}
 	if filter == "function" || filter == "" {
 		if filter != "" {
-			if functionID != "" {
-				fmt.Println(ui.TEXT_HIGHLIGHT_BOLD.Copy().Italic(true).Render(functionID) + ui.TEXT_HIGHLIGHT_BOLD.Render(" Logs"))
-			} else {
-				fmt.Println(ui.TEXT_HIGHLIGHT_BOLD.Render("Function Logs"))
-			}
+			fmt.Println(ui.TEXT_HIGHLIGHT_BOLD.Render("Function Logs"))
 			fmt.Println()
 			fmt.Println(ui.TEXT_DIM.Render("Waiting for invocations..."))
 			fmt.Println()
@@ -52,6 +44,7 @@ func CmdUI(c *cli.Cli) error {
 			aws.FunctionErrorEvent{},
 			aws.FunctionLogEvent{},
 			aws.FunctionBuildEvent{},
+			ui.FunctionFilterEvent{},
 		)
 	}
 	if filter == "task" || filter == "" {
@@ -109,7 +102,12 @@ func CmdUI(c *cli.Cli) error {
 				c.Cancel()
 				return nil
 			}
-			u.Event(evt)
+			switch e := evt.(type) {
+			case *ui.FunctionFilterEvent:
+				u.SetFunctionFilter(e.FunctionID)
+			default:
+				u.Event(evt)
+			}
 		}
 	}
 }
