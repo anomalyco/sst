@@ -13,45 +13,49 @@ type vterm struct {
 	Start  func(cmd *exec.Cmd) error
 }
 
+type PaneConfig struct {
+	Key             string
+	Args            []string
+	Icon            string
+	Title           string
+	Cwd             string
+	Killable        bool
+	Autostart       bool
+	Env             []string
+	Filterable      bool
+	FilterTitle     string
+	FilterSubtitle  string
+	ListOptions     func() []FilterOption
+	OnFilterChanged func(string)
+}
+
 type pane struct {
-	icon       string
-	key        string
-	args       []string
-	title      string
-	dir        string
-	killable   bool
-	filterable bool
-	env        []string
-	vt         *tcellterm.VT
-	dead       bool
-	cmd        *exec.Cmd
-	filter     string
+	icon            string
+	key             string
+	args            []string
+	title           string
+	dir             string
+	killable        bool
+	filterable      bool
+	filterTitle     string
+	filterSubtitle  string
+	listOptions     func() []FilterOption
+	onFilterChanged func(string)
+	env             []string
+	vt              *tcellterm.VT
+	dead            bool
+	cmd             *exec.Cmd
+	filter          string
 }
 
 type EventProcess struct {
 	tcell.EventTime
-	Key        string
-	Args       []string
-	Icon       string
-	Title      string
-	Cwd        string
-	Killable   bool
-	Filterable bool
-	Autostart  bool
-	Env        []string
+	PaneConfig
 }
 
-func (s *Multiplexer) AddProcess(key string, args []string, icon string, title string, cwd string, killable bool, filterable bool, autostart bool, env ...string) {
+func (s *Multiplexer) AddProcess(cfg PaneConfig) {
 	s.screen.PostEventWait(&EventProcess{
-		Key:        key,
-		Args:       args,
-		Icon:       icon,
-		Title:      title,
-		Cwd:        cwd,
-		Killable:   killable,
-		Filterable: filterable,
-		Autostart:  autostart,
-		Env:        env,
+		PaneConfig: cfg,
 	})
 }
 

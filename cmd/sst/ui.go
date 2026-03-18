@@ -44,7 +44,7 @@ func CmdUI(c *cli.Cli) error {
 			aws.FunctionErrorEvent{},
 			aws.FunctionLogEvent{},
 			aws.FunctionBuildEvent{},
-			ui.FunctionFilterEvent{},
+			ui.PaneFilterEvent{},
 		)
 	}
 	if filter == "task" || filter == "" {
@@ -60,6 +60,7 @@ func CmdUI(c *cli.Cli) error {
 			aws.TaskLogEvent{},
 			aws.TaskCompleteEvent{},
 			aws.TaskMissingCommandEvent{},
+			ui.PaneFilterEvent{},
 		)
 	}
 	if filter == "sst" || filter == "" {
@@ -102,12 +103,15 @@ func CmdUI(c *cli.Cli) error {
 				c.Cancel()
 				return nil
 			}
-			switch e := evt.(type) {
-			case *ui.FunctionFilterEvent:
-				u.SetFunctionFilter(e.FunctionID)
-			default:
-				u.Event(evt)
+		switch e := evt.(type) {
+		case *ui.PaneFilterEvent:
+			if e.PaneKey == filter {
+				icons := map[string]string{"function": "λ", "task": "⧉"}
+				u.SetFilter(e.Value, icons[e.PaneKey])
 			}
+		default:
+			u.Event(evt)
+		}
 		}
 	}
 }

@@ -166,6 +166,7 @@ func (s *Multiplexer) draw() {
 }
 
 func (s *Multiplexer) drawFilterSelect() {
+	selected := s.selectedProcess()
 	startX := SIDEBAR_WIDTH + 1
 	mainW := s.width - startX
 	bgStyle := tcell.StyleDefault
@@ -181,8 +182,17 @@ func (s *Multiplexer) drawFilterSelect() {
 		}
 	}
 
+	title := "Filter"
+	if selected != nil && selected.filterTitle != "" {
+		title = selected.filterTitle
+	}
+	subtitle := "Select an item to filter logs"
+	if selected != nil && selected.filterSubtitle != "" {
+		subtitle = selected.filterSubtitle
+	}
+
 	y := 0
-	s.drawLine(startX, y, "Functions", tcell.StyleDefault.Foreground(tcell.ColorTeal).Bold(true), mainW)
+	s.drawLine(startX, y, title, tcell.StyleDefault.Foreground(tcell.ColorTeal).Bold(true), mainW)
 	y += 2
 
 	// subtitle or search line (same row)
@@ -194,7 +204,7 @@ func (s *Multiplexer) drawFilterSelect() {
 		x := s.drawLine(startX, y, "Search: ", dimStyle, mainW)
 		s.drawLine(x, y, s.filterQuery, tcell.StyleDefault.Foreground(tcell.ColorWhite).Italic(true), mainW-(x-startX))
 	} else {
-		s.drawLine(startX, y, "Select a function to filter logs", dimStyle, mainW)
+		s.drawLine(startX, y, subtitle, dimStyle, mainW)
 	}
 	total := len(s.filterFiltered)
 	y += 2

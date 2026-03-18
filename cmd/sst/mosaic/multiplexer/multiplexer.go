@@ -46,22 +46,12 @@ type Multiplexer struct {
 	filterScroll    int
 	filterSearching bool
 	filterQuery     string
-	listFunctions   func() []FilterOption
-	onFilterChanged func(string)
 }
 
 type FilterOption struct {
 	Label       string
 	Description string
 	Value       string
-}
-
-func (s *Multiplexer) SetListFunctions(fn func() []FilterOption) {
-	s.listFunctions = fn
-}
-
-func (s *Multiplexer) SetOnFilterChanged(fn func(string)) {
-	s.onFilterChanged = fn
 }
 
 func New() (*Multiplexer, error) {
@@ -146,11 +136,11 @@ func (s *Multiplexer) Start() {
 
 		case *EventCheckFilter:
 			for _, p := range s.processes {
-				if p.filter == "" || !p.filterable {
+				if p.key != evt.PaneKey || p.filter == "" || !p.filterable {
 					continue
 				}
 				found := false
-				for _, name := range evt.FunctionNames {
+				for _, name := range evt.Names {
 					if name == p.filter {
 						found = true
 						break
@@ -174,14 +164,18 @@ func (s *Multiplexer) Start() {
 					}
 				}
 				proc := &pane{
-					icon:       evt.Icon,
-					key:        evt.Key,
-					dir:        evt.Cwd,
-					title:      evt.Title,
-					args:       evt.Args,
-					killable:   evt.Killable,
-					filterable: evt.Filterable,
-					env:        evt.Env,
+					icon:            evt.Icon,
+					key:             evt.Key,
+					dir:             evt.Cwd,
+					title:           evt.Title,
+					args:            evt.Args,
+					killable:        evt.Killable,
+					filterable:      evt.Filterable,
+					filterTitle:     evt.FilterTitle,
+					filterSubtitle:  evt.FilterSubtitle,
+					listOptions:     evt.ListOptions,
+					onFilterChanged: evt.OnFilterChanged,
+					env:             evt.Env,
 				}
 				term := tcellterm.New()
 				term.SetSurface(s.main)
@@ -352,8 +346,8 @@ func (s *Multiplexer) Start() {
 							selected.Kill()
 						}
 				case 'f':
-					if !s.focused && selected != nil && selected.filterable && s.listFunctions != nil {
-						options := s.listFunctions()
+					if !s.focused && selected != nil && selected.filterable && selected.listOptions != nil {
+						options := selected.listOptions()
 						if len(options) == 0 {
 							return
 						}
@@ -593,8 +587,8 @@ func (s *Multiplexer) clearPaneFilter(p *pane) {
 		return
 	}
 	p.filter = ""
-	if s.onFilterChanged != nil {
-		s.onFilterChanged("")
+	if p.onFilterChanged != nil {
+		p.onFilterChanged("")
 	}
 	s.draw()
 }
@@ -608,8 +602,8 @@ func (s *Multiplexer) applyFilter(value string) {
 		return
 	}
 	selected.filter = value
-	if s.onFilterChanged != nil {
-		s.onFilterChanged(value)
+	if selected.onFilterChanged != nil {
+		selected.onFilterChanged(value)
 	}
 }
 
@@ -627,11 +621,12 @@ func (s *Multiplexer) Exit() {
 
 type EventCheckFilter struct {
 	tcell.EventTime
-	FunctionNames []string
+	PaneKey string
+	Names   []string
 }
 
-func (s *Multiplexer) CheckFilter(names []string) {
-	s.screen.PostEvent(&EventCheckFilter{FunctionNames: names})
+func (s *Multiplexer) CheckFilter(paneKey string, names []string) {
+	s.screen.PostEvent(&EventCheckFilter{PaneKey: paneKey, Names: names})
 }
 
 func (s *Multiplexer) stopAutoScroll() {
