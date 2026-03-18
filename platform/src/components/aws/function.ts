@@ -1911,7 +1911,7 @@ export class Function extends Component implements Link.Linkable {
       return output(args.logging).apply((logging) => {
         if (logging === false) return undefined;
 
-        if (logging?.logGroup) {
+        if (logging?.retention && logging?.logGroup) {
           throw new VisibleError(
             `Cannot set both "logging.retention" and "logging.logGroup"`,
           );
