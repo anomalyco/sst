@@ -81,6 +81,13 @@ func WithDev(u *Options) {
 
 func (u *UI) SetFunctionFilter(filter string) {
 	u.options.FunctionFilter = filter
+	u.blank()
+	if filter != "" {
+		u.println(TEXT_HIGHLIGHT.Render("λ"), "  ", TEXT_NORMAL_BOLD.Render("Filter"), "   ", filter)
+	} else {
+		u.println(TEXT_HIGHLIGHT.Render("λ"), "  ", TEXT_NORMAL_BOLD.Render("Filter"), "   ", TEXT_DIM.Render("Removed"))
+	}
+	u.blank()
 }
 
 func WithLog(file *os.File) Option {
