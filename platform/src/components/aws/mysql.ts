@@ -23,7 +23,9 @@ export interface MysqlArgs {
    * The MySQL engine version. Check out the [available versions in your region](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/MySQL.Concepts.VersionMgmt.html).
    *
    * :::caution
-   * Changing the version will **immediately** apply the update on the next `sst deploy` possibly causing downtime.
+   * Changing the version will **immediately** apply the update on the next `sst deploy`,
+   * possibly causing downtime. Set `upgrade` to `"blue-green"` to minimize downtime using
+   * [Blue/Green deployments](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/blue-green-deployments.html).
    * :::
    *
    * @default `"8.0.40"`
@@ -215,6 +217,26 @@ export interface MysqlArgs {
    * ```
    */
   multiAz?: Input<boolean>;
+  /**
+   * The upgrade strategy for the database. [Read more about upgrading databases](/docs/upgrade-databases/).
+   *
+   * When set to `"blue-green"`, version and parameter group upgrades use
+   * [AWS RDS Blue/Green deployments](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/blue-green-deployments.html)
+   * for low-downtime updates. A staging (green) instance is created, updated,
+   * verified, then promoted to replace the production (blue) instance.
+   *
+   * When set to `"in-place"`, upgrades are applied directly to the running instance
+   * which may cause downtime.
+   *
+   * @default `"in-place"`
+   * @example
+   * ```js
+   * {
+   *   upgrade: "blue-green"
+   * }
+   * ```
+   */
+  upgrade?: Input<"blue-green" | "in-place">;
   /**
    * @internal
    */
@@ -477,6 +499,7 @@ export class Mysql extends Component implements Link.Linkable {
     const instanceType = output(args.instance).apply((v) => v ?? "t4g.micro");
     const username = output(args.username).apply((v) => v ?? "root");
     const storage = normalizeStorage();
+    const upgradeStrategy = output(args.upgrade ?? "in-place");
     const dbName = output(args.database).apply(
       (v) => v ?? $app.name.replaceAll("-", "_"),
     );
@@ -660,6 +683,7 @@ Listening on "${dev.host}:${dev.port}"...`,
           },
           {
             parent: self,
+            ignoreChanges: args.version ? [] : ["family"],
             // Necessary for the parameter group to be deleted AFTER upgrading the instance.
             // This is either a Pulumi bug or an undocumented feature.
             deleteBeforeReplace: false,
@@ -713,7 +737,12 @@ Listening on "${dev.host}:${dev.port}"...`,
             storageEncrypted: true,
             storageType: "gp3",
             allocatedStorage: 20,
-            maxAllocatedStorage: storage,
+            // Blue/green deployments require maxAllocatedStorage to be at least
+            // 10% higher than allocatedStorage for autoscaling headroom.
+            maxAllocatedStorage: all([storage, upgradeStrategy]).apply(
+              ([s, u]) =>
+                u === "blue-green" ? Math.max(s, Math.ceil(20 * 1.1)) : s,
+            ),
             multiAz,
             backupRetentionPeriod: 7,
             // performance insights is only supported on .micro and .small MySQL instances
@@ -721,12 +750,19 @@ Listening on "${dev.host}:${dev.port}"...`,
             performanceInsightsEnabled: instanceType.apply(
               (v) => !v.endsWith(".micro") && !v.endsWith(".small"),
             ),
+            blueGreenUpdate: upgradeStrategy.apply((s) =>
+              s === "blue-green" ? { enabled: true } : { enabled: false },
+            ),
             tags: {
               "sst:component-version": _version.toString(),
               "sst:ref:password": secret.id,
             },
           },
-          { parent: self, deleteBeforeReplace: true },
+          {
+            parent: self,
+            deleteBeforeReplace: true,
+            ignoreChanges: args.version ? [] : ["engineVersion"],
+          },
         ),
       );
     }
@@ -757,7 +793,10 @@ Listening on "${dev.host}:${dev.port}"...`,
                   (v) => v!,
                 ),
               },
-              { parent: self },
+              {
+                parent: self,
+                ignoreChanges: args.version ? [] : ["engineVersion"],
+              },
             ),
         ),
       );
