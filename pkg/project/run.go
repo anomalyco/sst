@@ -421,7 +421,7 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	}
 	exited := make(chan struct{})
 	go func() {
-		cmd.Wait()
+		err := cmd.Wait()
 		log.Info("pulumi exited", "err", err)
 		close(exited)
 	}()
@@ -603,6 +603,31 @@ loop:
 				if json.Unmarshal([]byte(line), &ev) == nil && ev.SummaryEvent != nil {
 					finished = true
 					break
+				}
+			}
+		}
+	}
+
+	// if pulumi exited without completing and no resource errors were captured,
+	// check stderr for the actual error (e.g. snapshot integrity failures)
+	if !finished && len(errors) == 0 {
+		if data, err := os.ReadFile(pulumiStderr.Name()); err == nil {
+			stderr := strings.TrimSpace(string(data))
+			if stderr != "" {
+				if strings.Contains(stderr, "snapshot integrity") {
+					errors = append(errors, Error{
+						Message: "Your app state is corrupted.",
+						Help: []string{
+							"Run `sst state repair` to fix state integrity issues",
+							"Learn more: https://sst.dev/docs/reference/cli/#state-repair",
+						},
+					})
+				} else {
+					msg := strings.SplitN(stderr, "\n", 2)[0]
+					msg = strings.TrimPrefix(msg, "error: ")
+					errors = append(errors, Error{
+						Message: msg,
+					})
 				}
 			}
 		}

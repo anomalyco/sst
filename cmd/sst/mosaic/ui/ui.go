@@ -62,6 +62,12 @@ type Options struct {
 	Silent bool
 	Log    *os.File
 	Dev    bool
+	Filter string
+}
+
+type PaneFilterEvent struct {
+	PaneKey string `json:"paneKey"`
+	Value   string `json:"value"`
 }
 
 type Option func(*Options)
@@ -72,6 +78,19 @@ func WithSilent(u *Options) {
 
 func WithDev(u *Options) {
 	u.Dev = true
+}
+
+func (u *UI) SetFilter(filter string, paneKey string) {
+	icons := map[string]string{"function": "λ", "task": "⧉"}
+	icon := icons[paneKey]
+	u.options.Filter = filter
+	u.blank()
+	if filter != "" {
+		u.println(TEXT_HIGHLIGHT.Render(icon), "  ", TEXT_NORMAL_BOLD.Render("Filter"), "   ", filter)
+	} else {
+		u.println(TEXT_DANGER.Render(icon), "  ", TEXT_NORMAL_BOLD.Render("Filter"), "   ", TEXT_DIM.Render("Removed"))
+	}
+	u.blank()
 }
 
 func WithLog(file *os.File) Option {
@@ -155,40 +174,67 @@ func (u *UI) Event(unknown interface{}) {
 		u.println(evt.Line)
 
 	case *aws.TaskProvisionEvent:
+		if !u.matchFilter(evt.Name) {
+			return
+		}
 		u.printEvent(u.getColor(""), fmt.Sprintf("%-11s", "Provision"), evt.Name)
 
 	case *aws.TaskStartEvent:
+		if !u.matchFilter(evt.TaskID) {
+			return
+		}
 		u.workerTime[evt.WorkerID] = time.Now()
 		u.printEvent(u.getColor(evt.WorkerID), fmt.Sprintf("%-11s", "Start"), evt.Command)
 
 	case *aws.TaskLogEvent:
+		if !u.matchFilter(evt.TaskID) {
+			return
+		}
 		duration := time.Since(u.workerTime[evt.WorkerID]).Round(time.Millisecond)
 		formattedDuration := fmt.Sprintf("%.9s", fmt.Sprintf("+%v", duration))
 		u.printEvent(u.getColor(evt.WorkerID), formattedDuration, evt.Line)
 
 	case *aws.TaskCompleteEvent:
+		if !u.matchFilter(evt.TaskID) {
+			return
+		}
 		duration := time.Since(u.workerTime[evt.WorkerID]).Round(time.Millisecond)
 		formattedDuration := fmt.Sprintf("took %.9s", fmt.Sprintf("+%v", duration))
 		u.printEvent(u.getColor(evt.WorkerID), "Done", formattedDuration)
 
 	case *aws.TaskMissingCommandEvent:
+		if !u.matchFilter(evt.Name) {
+			return
+		}
 		u.printEvent(TEXT_DANGER, fmt.Sprintf("%-11s", "Missing"), fmt.Sprintf("Dev command not configured for the \"%s\" task. Set `dev.command` to configure how the task works in `sst dev`.", evt.Name))
 
 	case *aws.FunctionInvokedEvent:
+		if !u.matchFilter(evt.FunctionID) {
+			return
+		}
 		u.workerTime[evt.WorkerID] = time.Now()
 		u.printEvent(u.getColor(evt.WorkerID), TEXT_NORMAL_BOLD.Render(fmt.Sprintf("%-11s", "Invoke")), u.functionName(evt.FunctionID))
 
 	case *aws.FunctionResponseEvent:
+		if !u.matchFilter(evt.FunctionID) {
+			return
+		}
 		duration := time.Since(u.workerTime[evt.WorkerID]).Round(time.Millisecond)
 		formattedDuration := fmt.Sprintf("took %.9s", fmt.Sprintf("+%v", duration))
 		u.printEvent(u.getColor(evt.WorkerID), "Done", formattedDuration)
 
 	case *aws.FunctionLogEvent:
+		if !u.matchFilter(evt.FunctionID) {
+			return
+		}
 		duration := time.Since(u.workerTime[evt.WorkerID]).Round(time.Millisecond)
 		formattedDuration := fmt.Sprintf("%.9s", fmt.Sprintf("+%v", duration))
 		u.printEvent(u.getColor(evt.WorkerID), formattedDuration, evt.Line)
 
 	case *aws.FunctionBuildEvent:
+		if !u.matchFilter(evt.FunctionID) {
+			return
+		}
 		if len(evt.Errors) > 0 {
 			u.printEvent(TEXT_DANGER, "Build Error", u.functionName(evt.FunctionID))
 			for _, item := range evt.Errors {
@@ -199,6 +245,9 @@ func (u *UI) Event(unknown interface{}) {
 		u.printEvent(TEXT_SUCCESS, "Build", u.functionName(evt.FunctionID))
 
 	case *aws.FunctionErrorEvent:
+		if !u.matchFilter(evt.FunctionID) {
+			return
+		}
 		u.printEvent(u.getColor(evt.WorkerID), TEXT_DANGER.Render(fmt.Sprintf("%-11s", "Error")), u.functionName(evt.FunctionID))
 		u.printEvent(u.getColor(evt.WorkerID), "", evt.ErrorMessage)
 		for _, item := range evt.Trace {
@@ -678,4 +727,19 @@ func Success(msg string) {
 
 func Error(msg string) {
 	fmt.Fprintln(os.Stderr, strings.TrimSpace(TEXT_DANGER_BOLD.Render(IconX)+"  "+TEXT_NORMAL.Render(msg)))
+}
+
+func (u *UI) matchFilter(id string) bool {
+	if u.options.Filter == "" {
+		return true
+	}
+	filter := strings.ToLower(u.options.Filter)
+	if strings.Contains(strings.ToLower(id), filter) {
+		return true
+	}
+	name := u.functionName(id)
+	if strings.Contains(strings.ToLower(name), filter) {
+		return true
+	}
+	return false
 }

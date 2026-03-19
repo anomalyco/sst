@@ -309,18 +309,8 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 }
 
 func (r *PythonRuntime) ShouldRebuild(functionID string, file string) bool {
-	// Rebuild on any relevant Python file change. We don't do per-function dependency
-	// tracking because Python imports are dynamic and Build() is fast (~50µs in dev).
-	// Combined with lazy startup (ShouldRunEagerly=false), this is efficient.
-
-	if r.shouldIgnoreFile(file) {
-		return false
-	}
-
-	if !r.isRelevantFile(file) {
-		return false
-	}
-
+	// Always rebuild — Python imports are dynamic so we can't track per-function deps.
+	// This is negligible for now and will get faster when we can move to uv's native build system.
 	return true
 }
 
@@ -461,103 +451,6 @@ func (r *PythonRuntime) adjustHandlerForFlattenedLayout(handlerPath string) stri
 	filePath := handlerPath[:lastDot]
 	functionName := handlerPath[lastDot+1:]
 	return flattenSrcLayout(filePath) + "." + functionName
-}
-
-// isRelevantFile checks if a file change is relevant for Python functions
-func (r *PythonRuntime) isRelevantFile(file string) bool {
-	if r.shouldIgnoreFile(file) {
-		return false
-	}
-
-	relevantExtensions := []string{".py", ".toml", ".lock", ".cfg"}
-	relevantFiles := []string{"pyproject.toml", "requirements.txt", "uv.lock", "poetry.lock", "Pipfile.lock", "setup.py", "setup.cfg"}
-
-	// Check Python file extensions
-	for _, ext := range relevantExtensions {
-		if strings.HasSuffix(file, ext) {
-			return true
-		}
-	}
-
-	// Check specific filenames
-	basename := filepath.Base(file)
-	for _, relevantFile := range relevantFiles {
-		if basename == relevantFile {
-			return true
-		}
-	}
-
-	return false
-}
-
-// shouldIgnoreFile determines if a file should be ignored to prevent rebuild loops
-func (r *PythonRuntime) shouldIgnoreFile(file string) bool {
-	normalizedFile := filepath.ToSlash(file)
-
-	// Build artifacts and cache directories
-	ignorePaths := []string{
-		".sst",
-		"__pycache__",
-		".pytest_cache",
-		".mypy_cache",
-		".coverage",
-		"build",
-		"dist",
-		".git",
-		"node_modules",
-		".venv",
-		"venv",
-		"env",
-		".tox",
-		".eggs",
-		".egg-info",
-	}
-
-	ignoreExtensions := []string{
-		".pyc", ".pyo", ".pyd",
-		".log",
-		".tmp", ".temp",
-		".swp", ".swo",
-		".DS_Store",
-		".coverage",
-	}
-
-	// Check path components
-	pathParts := strings.Split(normalizedFile, "/")
-	for _, part := range pathParts {
-		for _, ignorePath := range ignorePaths {
-			if part == ignorePath || strings.HasPrefix(part, ignorePath) {
-				return true
-			}
-		}
-	}
-
-	// Check extensions
-	for _, ext := range ignoreExtensions {
-		if strings.HasSuffix(file, ext) {
-			return true
-		}
-	}
-
-	// Ignore hidden directories (except specific dotfiles)
-	parts := strings.Split(file, string(filepath.Separator))
-	for _, part := range parts {
-		if strings.HasPrefix(part, ".") && part != "." && part != ".." {
-			allowedDotFiles := []string{".env", ".gitignore", ".dockerignore"}
-			allowed := false
-			for _, allowedFile := range allowedDotFiles {
-				if part == allowedFile {
-					allowed = true
-					break
-				}
-			}
-			if !allowed {
-				return true
-			}
-		}
-	}
-
-	return false
 }
 
 func (r *PythonRuntime) CreateBuildAsset(ctx context.Context, input *runtime.BuildInput) (*runtime.BuildOutput, error) {

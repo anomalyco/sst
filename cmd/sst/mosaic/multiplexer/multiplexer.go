@@ -19,7 +19,7 @@ import (
 
 var PAD_HEIGHT = 0
 var PAD_WIDTH = 0
-var SIDEBAR_WIDTH = 20
+var SIDEBAR_WIDTH = 24
 
 type Multiplexer struct {
 	focused   bool
@@ -38,6 +38,20 @@ type Multiplexer struct {
 	scrollDone     chan struct{}
 	scrollDir      int
 	lastDragX      int
+
+	filtering       bool
+	filterOptions   []FilterOption
+	filterFiltered  []int
+	filterSelected  int
+	filterScroll    int
+	filterSearching bool
+	filterQuery     string
+}
+
+type FilterOption struct {
+	Label       string
+	Description string
+	Value       string
 }
 
 func New() (*Multiplexer, error) {
@@ -116,13 +130,36 @@ func (s *Multiplexer) Start() {
 				}
 				return
 
-			case *EventExit:
-				shouldBreak = true
-				return
+		case *EventExit:
+			shouldBreak = true
+			return
 
-			case *EventProcess:
+		case *EventCheckFilter:
+			for _, p := range s.processes {
+				if p.Key != evt.PaneKey || !p.Filterable {
+					continue
+				}
+				p.filterAvailable = len(evt.Names) > 0
+				if p.filter == "" {
+					continue
+				}
+				found := false
+				for _, name := range evt.Names {
+					if name == p.filter {
+						found = true
+						break
+					}
+				}
+				if !found {
+					s.clearPaneFilter(p)
+				}
+			}
+			s.draw()
+			return
+
+		case *EventProcess:
 				for _, p := range s.processes {
-					if p.key == evt.Key {
+					if p.Key == evt.Key {
 						if p.dead && evt.Autostart {
 							p.start()
 							s.sort()
@@ -131,15 +168,7 @@ func (s *Multiplexer) Start() {
 						return
 					}
 				}
-				proc := &pane{
-					icon:     evt.Icon,
-					key:      evt.Key,
-					dir:      evt.Cwd,
-					title:    evt.Title,
-					args:     evt.Args,
-					killable: evt.Killable,
-					env:      evt.Env,
-				}
+				proc := &pane{PaneConfig: evt.PaneConfig}
 				term := tcellterm.New()
 				term.SetSurface(s.main)
 				term.Attach(func(ev tcell.Event) {
@@ -261,6 +290,9 @@ func (s *Multiplexer) Start() {
 				return
 
 			case *tcellterm.EventRedraw:
+				if s.filtering {
+					return
+				}
 				if selected != nil && selected.vt == evt.VT() {
 					selected.vt.Draw()
 					s.screen.Show()
@@ -284,6 +316,10 @@ func (s *Multiplexer) Start() {
 				return
 
 			case *tcell.EventKey:
+				if s.filtering && evt.Key() != tcell.KeyCtrlC {
+					s.handleFilterKey(evt)
+					return
+				}
 				switch evt.Key() {
 				case 256:
 					switch evt.Rune() {
@@ -298,9 +334,35 @@ func (s *Multiplexer) Start() {
 							return
 						}
 					case 'x':
-						if selected.killable && !selected.dead && !s.focused {
+						if selected.Killable && !selected.dead && !s.focused {
 							selected.Kill()
 						}
+				case 'f':
+					if !s.focused && selected != nil && selected.Filterable && selected.filterAvailable && selected.ListOptions != nil {
+						options := selected.ListOptions()
+						if len(options) == 0 {
+							return
+						}
+						s.filterOptions = options
+						s.filterFiltered = make([]int, len(options))
+						for i := range options {
+							s.filterFiltered[i] = i
+						}
+						s.filterSelected = 0
+						for i, opt := range s.filterOptions {
+							if opt.Value == selected.filter {
+								s.filterSelected = i
+								break
+							}
+						}
+						s.filterScroll = 0
+						s.filterSearching = false
+						s.filterQuery = ""
+						s.filtering = true
+						s.filterEnsureVisible()
+						s.draw()
+						return
+					}
 					}
 				case tcell.KeyUp:
 					if !s.focused {
@@ -330,7 +392,7 @@ func (s *Multiplexer) Start() {
 						return
 					}
 					if !s.focused {
-						if selected.killable {
+						if selected.Killable {
 							if selected.dead {
 								selected.start()
 								s.sort()
@@ -349,11 +411,16 @@ func (s *Multiplexer) Start() {
 						process.Signal(syscall.SIGINT)
 						return
 					}
-				case tcell.KeyCtrlZ:
-					if s.focused {
-						s.blur()
-						return
-					}
+			case tcell.KeyEscape:
+				if !s.focused && selected != nil && selected.filter != "" {
+					s.clearPaneFilter(selected)
+					return
+				}
+			case tcell.KeyCtrlZ:
+				if s.focused {
+					s.blur()
+					return
+				}
 				case tcell.KeyCtrlG:
 					if selected != nil && selected.isScrolling() {
 						selected.scrollReset()
@@ -381,6 +448,162 @@ func (s *Multiplexer) Start() {
 	}
 }
 
+func (s *Multiplexer) handleFilterKey(evt *tcell.EventKey) {
+	if s.filterSearching {
+		s.handleFilterSearchKey(evt)
+		return
+	}
+	switch evt.Key() {
+	case tcell.KeyEscape:
+		selected := s.selectedProcess()
+		if selected != nil && selected.filter != "" {
+			s.clearPaneFilter(selected)
+		}
+		s.filtering = false
+		s.draw()
+	case tcell.KeyEnter:
+		if len(s.filterFiltered) == 0 {
+			return
+		}
+		value := s.filterOptions[s.filterFiltered[s.filterSelected]].Value
+		selected := s.selectedProcess()
+		if selected != nil && selected.filter == value {
+			value = ""
+		}
+		s.applyFilter(value)
+		s.filtering = false
+		s.draw()
+	case tcell.KeyUp:
+		if s.filterSelected > 0 {
+			s.filterSelected--
+			s.filterEnsureVisible()
+			s.draw()
+		}
+	case tcell.KeyDown:
+		if s.filterSelected < len(s.filterFiltered)-1 {
+			s.filterSelected++
+			s.filterEnsureVisible()
+			s.draw()
+		}
+	case tcell.KeyRune:
+		switch evt.Rune() {
+		case 'j':
+			if s.filterSelected < len(s.filterFiltered)-1 {
+				s.filterSelected++
+				s.filterEnsureVisible()
+				s.draw()
+			}
+		case 'k':
+			if s.filterSelected > 0 {
+				s.filterSelected--
+				s.filterEnsureVisible()
+				s.draw()
+			}
+		case '/':
+			s.filterSearching = true
+			s.filterQuery = ""
+			s.draw()
+		}
+	}
+}
+
+func (s *Multiplexer) handleFilterSearchKey(evt *tcell.EventKey) {
+	switch evt.Key() {
+	case tcell.KeyEscape:
+		s.filterSearching = false
+		s.filterQuery = ""
+		s.refilterOptions()
+		s.draw()
+	case tcell.KeyEnter:
+		if len(s.filterFiltered) == 1 {
+			value := s.filterOptions[s.filterFiltered[0]].Value
+			selected := s.selectedProcess()
+			if selected != nil && selected.filter == value {
+				value = ""
+			}
+			s.applyFilter(value)
+			s.filtering = false
+			s.filterSearching = false
+			s.draw()
+			return
+		}
+		s.filterSearching = false
+		s.draw()
+	case tcell.KeyBackspace, tcell.KeyBackspace2:
+		if len(s.filterQuery) > 0 {
+			s.filterQuery = s.filterQuery[:len(s.filterQuery)-1]
+			s.refilterOptions()
+			s.draw()
+		}
+	case tcell.KeyRune:
+		s.filterQuery += string(evt.Rune())
+		s.refilterOptions()
+		s.draw()
+	}
+}
+
+func (s *Multiplexer) refilterOptions() {
+	q := strings.ToLower(s.filterQuery)
+	s.filterFiltered = s.filterFiltered[:0]
+	for i, opt := range s.filterOptions {
+		if q == "" || strings.Contains(strings.ToLower(opt.Label), q) || strings.Contains(strings.ToLower(opt.Description), q) {
+			s.filterFiltered = append(s.filterFiltered, i)
+		}
+	}
+	if s.filterSelected >= len(s.filterFiltered) {
+		s.filterSelected = max(0, len(s.filterFiltered)-1)
+	}
+	s.filterEnsureVisible()
+}
+
+func (s *Multiplexer) filterVisibleRows() int {
+	// header (y=0) + blank + subtitle (y=2) + blank + ↑/blank (y=4) = list starts at y=5
+	// reserve 1 row at bottom for ↓ indicator + 6 rows padding
+	rows := s.height - 5 - 1 - 6
+	if rows < 1 {
+		rows = 1
+	}
+	return rows
+}
+
+func (s *Multiplexer) filterEnsureVisible() {
+	visible := s.filterVisibleRows()
+	if s.filterSelected < s.filterScroll {
+		s.filterScroll = s.filterSelected
+	}
+	if s.filterSelected >= s.filterScroll+visible {
+		s.filterScroll = s.filterSelected - visible + 1
+	}
+	if s.filterScroll < 0 {
+		s.filterScroll = 0
+	}
+}
+
+func (s *Multiplexer) clearPaneFilter(p *pane) {
+	if p.filter == "" {
+		return
+	}
+	p.filter = ""
+	if p.OnFilterChanged != nil {
+		p.OnFilterChanged("")
+	}
+	s.draw()
+}
+
+func (s *Multiplexer) applyFilter(value string) {
+	selected := s.selectedProcess()
+	if selected == nil {
+		return
+	}
+	if selected.filter == value {
+		return
+	}
+	selected.filter = value
+	if selected.OnFilterChanged != nil {
+		selected.OnFilterChanged(value)
+	}
+}
+
 type EventExit struct {
 	when time.Time
 }
@@ -391,6 +614,16 @@ func (e *EventExit) When() time.Time {
 
 func (s *Multiplexer) Exit() {
 	s.screen.PostEvent(&EventExit{})
+}
+
+type EventCheckFilter struct {
+	tcell.EventTime
+	PaneKey string
+	Names   []string
+}
+
+func (s *Multiplexer) CheckFilter(paneKey string, names []string) {
+	s.screen.PostEvent(&EventCheckFilter{PaneKey: paneKey, Names: names})
 }
 
 func (s *Multiplexer) stopAutoScroll() {

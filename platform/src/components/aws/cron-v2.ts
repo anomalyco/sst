@@ -1,6 +1,6 @@
 import { all, ComponentResourceOptions, output, Output } from "@pulumi/pulumi";
 import { Component, Transform, transform } from "../component";
-import { FunctionArgs, FunctionArn } from "./function";
+import { FunctionArgs, FunctionArn } from "./function.js";
 import { Input } from "../input.js";
 import { iam, scheduler } from "@pulumi/aws";
 import { functionBuilder, FunctionBuilder } from "./helpers/function-builder";
@@ -122,7 +122,7 @@ export interface CronV2Args {
    * console.log(event.foo);
    * ```
    */
-  event?: Input<Record<string, Input<string>>>;
+  event?: Input<any>;
   /**
    * The schedule for the cron job.
    *

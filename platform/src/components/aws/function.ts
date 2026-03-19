@@ -14,15 +14,16 @@ import {
   output,
   secret,
   unsecret,
+  rootStackResource
 } from "@pulumi/pulumi";
 import { bootstrap } from "./helpers/bootstrap.js";
-import { Duration, DurationMinutes, toSeconds } from "../duration.js";
+import { Duration, DurationDays, DurationMinutes, toDays, toSeconds } from "../duration.js";
 import { Size, toMBs } from "../size.js";
 import { Component, Prettify, Transform, transform } from "../component.js";
 import { Link } from "../link.js";
 import { VisibleError } from "../error.js";
 import type { Input } from "../input.js";
-import { physicalName } from "../naming.js";
+import { logicalName, physicalName } from "../naming.js";
 import { RETENTION } from "./logging.js";
 import {
   cloudwatch,
@@ -1480,6 +1481,38 @@ export interface FunctionArgs {
      */
     eventInvokeConfig?: Transform<lambda.FunctionEventInvokeConfigArgs>;
   };
+
+  /**
+   * Configure the function as a [Durable Function](https://docs.aws.amazon.com/lambda/latest/dg/durable-functions.html).
+   *
+   * @example
+   * Enable with defaults.
+   * ```js
+   * {
+   *   durable: true
+   * }
+   * ```
+   *
+   * Customize the execution timeout and retention period.
+   * ```js
+   * {
+   *   durable: {
+    *     timeout: "10 minutes",
+    *     retention: "2 weeks"
+   *   }
+   * }
+   * ```
+   */
+  durable?: boolean | Prettify<{
+    /**
+     * Maximum execution time for the durable function
+     */
+    timeout?: Input<Duration>;
+    /**
+     * Number of days to retain the function's execution state.
+     */
+    retention?: Input<DurationDays>;
+  }>;
   /**
    * @internal
    */
@@ -1672,6 +1705,7 @@ export interface FunctionArgs {
  */
 export class Function extends Component implements Link.Linkable {
   private constructorName: string;
+  private durable: boolean;
   private function: Output<lambda.Function>;
   private role: iam.Role;
   private logGroup: Output<cloudwatch.LogGroup | undefined>;
@@ -1685,6 +1719,10 @@ export class Function extends Component implements Link.Linkable {
       }),
   );
 
+  private static readonly devBridgeCode = lazy(
+    () => new Map<string, Promise<s3.BucketObjectv2>>(),
+  );
+
   public static readonly appsync = lazy(() =>
     rpc.call("Provider.Aws.Appsync", {}),
   );
@@ -1696,6 +1734,7 @@ export class Function extends Component implements Link.Linkable {
   ) {
     super(__pulumiType, name, args, opts);
     this.constructorName = name;
+    this.durable = Boolean(args.durable);
 
     const parent = this;
     const dev = normalizeDev();
@@ -1722,6 +1761,7 @@ export class Function extends Component implements Link.Linkable {
     const volume = normalizeVolume();
     const url = normalizeUrl();
     const copyFiles = normalizeCopyFiles();
+    const durable = normalizeDurable();
     const policies = output(args.policies ?? []);
     const vpc = normalizeVpc();
 
@@ -1881,10 +1921,18 @@ export class Function extends Component implements Link.Linkable {
           );
         }
 
+        if(args.durable && logging?.format && logging?.format != "json"){
+          throw new VisibleError(
+            `Durable functions require "logging.format" to be set to "json"`,
+          )
+        }
+
+        const defaultFormat = args.durable ? "json" : "text";
+
         return {
           logGroup: logging?.logGroup,
           retention: logging?.retention ?? "1 month",
-          format: logging?.format ?? "text",
+          format: logging?.format ?? defaultFormat,
         };
       });
     }
@@ -1994,6 +2042,19 @@ export class Function extends Component implements Link.Linkable {
       });
     }
 
+    function normalizeDurable() {
+      if (!args.durable) return;
+      const config = args.durable === true ? {} : args.durable;
+      return {
+        timeout: output(config.timeout).apply((v) =>
+          toSeconds(v ?? "15 minutes"),
+        ),
+        retention: output(config.retention).apply((v) =>
+          toDays(v ?? "14 days"),
+        ),
+      };
+    }
+
     function buildLinkData() {
       return output(args.link || []).apply((links) => Link.build(links));
     }
@@ -2006,10 +2067,7 @@ export class Function extends Component implements Link.Linkable {
       return all([runtime, dev, isContainer]).apply(
         async ([runtime, dev, isContainer]) => {
           if (dev) {
-            return {
-              handler: "bootstrap",
-              bundle: path.join($cli.paths.platform, "dist", "bridge"),
-            };
+            return resolveDevBridge();
           }
 
           const buildResult = buildInput.apply(async (input) => {
@@ -2031,6 +2089,22 @@ export class Function extends Component implements Link.Linkable {
             bundle: buildResult.out,
             sourcemaps: buildResult.sourcemaps,
           };
+
+          function resolveDevBridge() {
+            if (durable) {
+              return {
+                handler: "index.handler",
+                bundle: path.join($cli.paths.platform, "dist", "nodejs-bridge"),
+                sourcemaps: undefined,
+              };
+            }
+
+            return {
+              handler: "bootstrap",
+              bundle: path.join($cli.paths.platform, "dist", "bridge"),
+              sourcemaps: undefined,
+            };
+          }
         },
       );
     }
@@ -2220,6 +2294,11 @@ export class Function extends Component implements Link.Linkable {
                     interpolate`arn:${partition}:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole`,
                   ]
                   : []),
+                ...(durable
+                  ? [
+                    interpolate`arn:${partition}:iam::aws:policy/service-role/AWSLambdaBasicDurableExecutionRolePolicy`,
+                  ]
+                  : []),
               ],
             ),
           },
@@ -2310,6 +2389,7 @@ export class Function extends Component implements Link.Linkable {
         isContainer,
         logGroup.apply((l) => l?.arn),
         dev,
+        region,
       ]).apply(
         async ([
           bundle,
@@ -2319,118 +2399,139 @@ export class Function extends Component implements Link.Linkable {
           isContainer,
           logGroupArn,
           dev,
+          regionName,
         ]) => {
           if (isContainer) return;
 
-          const zipPath = path.resolve(
-            $cli.paths.work,
-            "artifacts",
-            name,
-            "code.zip",
-          );
-          await fs.promises.mkdir(path.dirname(zipPath), {
-            recursive: true,
-          });
+          if (dev) {
+            const cacheKey = `${regionName}:${bundle}`;
+            const cache = Function.devBridgeCode();
+            const existing = cache.get(cacheKey);
+            if (existing) return existing;
 
-          await new Promise(async (resolve, reject) => {
-            const ws = fs.createWriteStream(zipPath);
-            const archive = archiver("zip", {
-              // Ensure deterministic zip file hashes
-              // https://github.com/archiverjs/node-archiver/issues/397#issuecomment-554327338
-              statConcurrency: 1,
-            });
-            archive.on("warning", reject);
-            archive.on("error", reject);
-            // archive has been finalized and the output file descriptor has closed, resolve promise
-            // this has to be done before calling `finalize` since the events may fire immediately after.
-            // see https://www.npmjs.com/package/archiver
-            ws.once("close", () => {
-              resolve(zipPath);
-            });
-            archive.pipe(ws);
-
-            const files = [];
-
-            for (const item of [
-              {
-                from: bundle,
-                to: ".",
-                isDir: true,
-              },
-              ...(!dev ? copyFiles : []),
-            ]) {
-              if (!item.isDir) {
-                files.push({
-                  from: item.from,
-                  to: item.to,
-                });
-              }
-              const found = await glob("**", {
-                cwd: item.from,
-                dot: true,
-                ignore:
-                  sourcemaps?.map((item) => path.relative(bundle, item)) || [],
-              });
-              files.push(
-                ...found.map((file) => ({
-                  from: path.join(item.from, file),
-                  to: path.join(item.to, file),
-                })),
-              );
-            }
-            files.sort((a, b) => a.to.localeCompare(b.to));
-            for (const file of files) {
-              archive.file(file.from, {
-                name: file.to,
-                date: new Date(0),
-              });
-            }
-
-            // Add handler wrapper into the zip
-            if (wrapper) {
-              archive.append(wrapper.content, {
-                name: wrapper.name,
-                date: new Date(0),
-              });
-            }
-
-            await archive.finalize();
-          });
-
-          // Calculate hash of the zip file
-          const hash = crypto.createHash("sha256");
-          hash.update(await fs.promises.readFile(zipPath, "utf-8"));
-          const hashValue = hash.digest("hex");
-          const assetBucket = region.apply((region) =>
-            bootstrap.forRegion(region).then((d) => d.asset),
-          );
-          if (logGroupArn && sourcemaps) {
-            let index = 0;
-            for (const file of sourcemaps) {
-              new s3.BucketObjectv2(
-                `${name}Sourcemap${index}`,
-                {
-                  key: interpolate`sourcemap/${logGroupArn}/${hashValue}.${path.basename(
-                    file,
-                  )}`,
-                  bucket: assetBucket,
-                  source: new asset.FileAsset(file),
-                },
-                { parent, retainOnDelete: true },
-              );
-              index++;
-            }
+            const created = createCode();
+            cache.set(cacheKey, created);
+            created.catch(() => cache.delete(cacheKey));
+            return created;
           }
 
-          return new s3.BucketObjectv2(
-            `${name}Code`,
-            {
-              key: interpolate`assets/${name}-code-${hashValue}.zip`,
-              bucket: assetBucket,
-              source: new asset.FileArchive(zipPath),
-            },
-            { parent },
-          );
+          return createCode();
+
+          async function createCode() {
+            const zipPath = path.resolve(
+              $cli.paths.work,
+              "artifacts",
+              dev ? `dev-bridge-${regionName}` : name,
+              "code.zip",
+            );
+            await fs.promises.mkdir(path.dirname(zipPath), {
+              recursive: true,
+            });
+
+            await new Promise(async (resolve, reject) => {
+              const ws = fs.createWriteStream(zipPath);
+              const archive = archiver("zip", {
+                // Ensure deterministic zip file hashes
+                // https://github.com/archiverjs/node-archiver/issues/397#issuecomment-554327338
+                statConcurrency: 1,
+              });
+              archive.on("warning", reject);
+              archive.on("error", reject);
+              // archive has been finalized and the output file descriptor has closed, resolve promise
+              // this has to be done before calling `finalize` since the events may fire immediately after.
+              // see https://www.npmjs.com/package/archiver
+              ws.once("close", () => {
+                resolve(zipPath);
+              });
+              archive.pipe(ws);
+
+              const files = [];
+
+              for (const item of [
+                {
+                  from: bundle,
+                  to: ".",
+                  isDir: true,
+                },
+                ...(!dev ? copyFiles : []),
+              ]) {
+                if (!item.isDir) {
+                  files.push({
+                    from: item.from,
+                    to: item.to,
+                  });
+                }
+                const found = await glob("**", {
+                  cwd: item.from,
+                  dot: true,
+                  ignore: sourcemaps?.map((item) => path.relative(bundle, item)) || [],
+                });
+                files.push(
+                  ...found.map((file) => ({
+                    from: path.join(item.from, file),
+                    to: path.join(item.to, file),
+                  })),
+                );
+              }
+              files.sort((a, b) => a.to.localeCompare(b.to));
+              for (const file of files) {
+                archive.file(file.from, {
+                  name: file.to,
+                  date: new Date(0),
+                });
+              }
+
+              // Add handler wrapper into the zip
+              if (wrapper) {
+                archive.append(wrapper.content, {
+                  name: wrapper.name,
+                  date: new Date(0),
+                });
+              }
+
+              await archive.finalize();
+            });
+
+            const hash = crypto.createHash("sha256");
+            hash.update(await fs.promises.readFile(zipPath));
+            const hashValue = hash.digest("hex");
+            const assetBucket = region.apply((region) =>
+              bootstrap.forRegion(region).then((d) => d.asset),
+            );
+            if (logGroupArn && sourcemaps) {
+              let index = 0;
+              for (const file of sourcemaps) {
+                new s3.BucketObjectv2(
+                  `${name}Sourcemap${index}`,
+                  {
+                    key: interpolate`sourcemap/${logGroupArn}/${hashValue}.${path.basename(
+                      file,
+                    )}`,
+                    bucket: assetBucket,
+                    source: new asset.FileAsset(file),
+                  },
+                  { parent, retainOnDelete: true },
+                );
+                index++;
+              }
+            }
+
+            return new s3.BucketObjectv2(
+              dev
+                ? `DevBridgeCode${logicalName(regionName)}`
+                : `${name}Code`,
+              {
+                key: dev
+                  ? `assets/dev-bridge-code-${hashValue}.zip`
+                  : interpolate`assets/${name}-code-${hashValue}.zip`,
+                bucket: assetBucket,
+                source: new asset.FileArchive(zipPath),
+              },
+              dev
+                ? { parent: rootStackResource, provider: opts?.provider }
+                : { parent },
+            );
+          }
         },
       );
     }
@@ -2508,6 +2609,10 @@ export class Function extends Component implements Link.Linkable {
               tags: args.tags,
               publish: output(args.versioning).apply((v) => v ?? false),
               reservedConcurrentExecutions: concurrency?.reserved,
+              durableConfig: durable && {
+                executionTimeout: durable.timeout,
+                retentionPeriod: durable.retention,
+              },
               ...(isContainer
                 ? {
                   packageType: "Image",
@@ -2539,7 +2644,7 @@ export class Function extends Component implements Link.Linkable {
                   ),
                 }),
             },
-            { parent, ignoreChanges: args.runtime ? [] : ["runtime"] },
+            { parent },
           );
           return new lambda.Function(
             transformed[0],
@@ -2552,13 +2657,21 @@ export class Function extends Component implements Link.Linkable {
                       (v) => `${v.substring(0, 240)} (live)`,
                     )
                     : "live",
-                  runtime: "provided.al2023",
+                  runtime: resolveDevRuntime(),
                   architectures: ["x86_64"],
                 }
                 : {}),
             },
             transformed[2],
           );
+
+          function resolveDevRuntime() {
+            if (durable) {
+              return "nodejs24.x";
+            }
+
+            return "provided.al2023";
+          }
         },
       );
     }
@@ -2567,16 +2680,34 @@ export class Function extends Component implements Link.Linkable {
       return url.apply((url) => {
         if (url === undefined) return output(undefined);
 
+        const authorization = output(url.authorization ?? "none");
         const isOac = output(url.route?.routerProtection).apply(
           (p) => p?.mode === "oac" || p?.mode === "oac-with-edge-signing",
         );
+        const isIam = all([isOac, authorization]).apply(
+          ([oac, authorization]) => oac || authorization === "iam",
+        );
+
+        /**
+          * Durable Functions needs a qualified ARN to work. The AWS API rejects `$LATEST`
+          * as a qualifier due to a server-side regex that doesn't allow `$`.
+          * See https://github.com/hashicorp/terraform-provider-aws/issues/31459
+          * To work around this, we create an alias and use it as the qualifier.
+         */
+        const qualifier = durable
+          ? new lambda.Alias(`${name}Durable`, {
+              functionName: fn.arn,
+              functionVersion: fn.version,
+            }).name
+          : undefined;
 
         const fnUrl = new lambda.FunctionUrl(
           `${name}Url`,
           {
-            functionName: fn.name,
-            authorizationType: isOac.apply((oac) =>
-              (oac || url.authorization === "iam") ? "AWS_IAM" : "NONE",
+            functionName: durable ? fn.arn : fn.name,
+            qualifier,
+            authorizationType: isIam.apply((isIam) =>
+              isIam ? "AWS_IAM" : "NONE",
             ),
             invokeMode: streaming.apply((streaming) =>
               streaming ? "RESPONSE_STREAM" : "BUFFERED",
@@ -2587,23 +2718,36 @@ export class Function extends Component implements Link.Linkable {
         );
 
         if (!url.route) {
-          if (url.authorization === "none") {
+          authorization.apply((authorization) => {
+            if (authorization !== "none") return;
+
+            new lambda.Permission(
+              `${name}PublicFunctionUrlAccess`,
+              {
+                action: "lambda:InvokeFunctionUrl",
+                function: fn.name,
+                principal: "*",
+                functionUrlAuthType: "NONE",
+              },
+              { parent },
+            );
             new lambda.Permission(
               `${name}InvokeFunction`,
               {
                 action: "lambda:InvokeFunction",
                 function: fn.name,
                 principal: "*",
+                invokedViaFunctionUrl: true,
               },
               { parent },
             );
-          }
+          });
           return fnUrl.functionUrl;
         }
 
         // Create permissions based on Router protection mode
-        all([isOac, url.route.routerDistributionArn]).apply(
-          ([oac, distributionArn]) => {
+        all([isOac, authorization, url.route.routerDistributionArn]).apply(
+          ([oac, authorization, distributionArn]) => {
             if (oac && distributionArn) {
               new lambda.Permission(
                 `${name}CloudFrontFunctionUrlAccess`,
@@ -2622,10 +2766,11 @@ export class Function extends Component implements Link.Linkable {
                   function: fn.name,
                   principal: "cloudfront.amazonaws.com",
                   sourceArn: distributionArn,
+                  invokedViaFunctionUrl: true,
                 },
                 { parent },
               );
-            } else {
+            } else if (authorization === "none") {
               new lambda.Permission(
                 `${name}PublicFunctionUrlAccess`,
                 {
@@ -2633,6 +2778,16 @@ export class Function extends Component implements Link.Linkable {
                   function: fn.name,
                   principal: "*",
                   functionUrlAuthType: "NONE",
+                },
+                { parent },
+              );
+              new lambda.Permission(
+                `${name}PublicInvokeFunction`,
+                {
+                  action: "lambda:InvokeFunction",
+                  function: fn.name,
+                  principal: "*",
+                  invokedViaFunctionUrl: true,
                 },
                 { parent },
               );
@@ -2691,6 +2846,7 @@ export class Function extends Component implements Link.Linkable {
         return url.route.routerUrl;
       });
     }
+
 
     function createProvisioned() {
       return all([args.concurrency, fn.publish]).apply(
@@ -2874,14 +3030,20 @@ export class Function extends Component implements Link.Linkable {
       },
       include: [
         permission({
-          actions: ["lambda:InvokeFunction"],
-          resources: [this.function.arn],
+          actions: [
+            "lambda:InvokeFunction",
+            ...(this.durable ? [
+              "lambda:SendDurableExecutionCallbackSuccess",
+              "lambda:SendDurableExecutionCallbackFailure",
+              "lambda:SendDurableExecutionCallbackHeartbeat",
+            ] : []),
+          ],
+          resources: [this.durable ? interpolate`${this.arn}:*` : this.arn],
         }),
       ],
     };
   }
 }
-
 const __pulumiType = "sst:aws:Function";
 // @ts-expect-error
 Function.__pulumiType = __pulumiType;

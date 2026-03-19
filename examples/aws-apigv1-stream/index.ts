@@ -1,13 +1,17 @@
 export const handler = awslambda.streamifyResponse(
-  async (_event: unknown, responseStream: any) => {
-    responseStream = awslambda.HttpResponseStream.from(responseStream, {
+  async (event, stream) => {
+    stream = awslambda.HttpResponseStream.from(stream, {
       statusCode: 200,
-      headers: { "Content-Type": "text/plain" },
+      headers: {
+        "Content-Type": "text/plain; charset=UTF-8",
+        "X-Content-Type-Options": "nosniff",
+      },
     });
 
-    responseStream.write("Hello");
+    stream.write("Hello ");
     await new Promise((resolve) => setTimeout(resolve, 3000));
-    responseStream.write(" World");
-    responseStream.end();
+    stream.write("World");
+
+    stream.end();
   },
 );

@@ -25,11 +25,15 @@ The internal changes to SST components were minimal: mostly S3 resource renames 
 
 When you update SST and the AWS provider version changes, `sst deploy` will be blocked until you migrate your state:
 
-1. **Update your config**
+1. **Install the latest v4**
+
+    Make sure you're on the latest v4 version before running any commands.
+
+2. **Update your config**
 
    If you have any breaking changes from above, update your `sst.config.ts` accordingly.
 
-2. **Review changes**
+3. **Review changes**
 
     Run `sst diff` to preview what will change. This is a **one-way migration**, so it's worth reviewing first.
 
@@ -37,7 +41,7 @@ When you update SST and the AWS provider version changes, `sst deploy` will be b
     sst diff
     ```
 
-3. **Migrate state**
+4. **Migrate state**
 
     Run `sst refresh` to migrate your state.
 
@@ -63,7 +67,7 @@ When you update SST and the AWS provider version changes, `sst deploy` will be b
 
     If you [share resources across stages](/docs/share-across-stages), run `sst refresh` on the stage where the resource is created first — not the stage that references it via `.get()`.
 
-4. **Deploy**
+5. **Deploy**
 
     Once refreshed, deploy as usual.
 

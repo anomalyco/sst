@@ -88,6 +88,7 @@ const sidebar = [
           "docs/component/aws/cron-v2",
           "docs/component/aws/auth",
           "docs/component/aws/nuxt",
+          "docs/component/aws/dsql",
           "docs/component/aws/astro",
           "docs/component/aws/redis",
           "docs/component/aws/email",
@@ -125,6 +126,7 @@ const sidebar = [
             label: "Internal",
             collapsed: true,
             items: [
+              "docs/component/aws/alb",
               "docs/component/aws/cdn",
               "docs/component/aws/app-sync-resolver",
               "docs/component/aws/app-sync-function",
@@ -217,8 +219,15 @@ const sidebar = [
           "docs/component/cloudflare/cron",
           "docs/component/cloudflare/d1",
           "docs/component/cloudflare/kv",
-          "docs/component/cloudflare/static-site",
+          "docs/component/cloudflare/queue",
           "docs/component/cloudflare/worker",
+          {
+            label: "Internal",
+            collapsed: true,
+            items: [
+              "docs/component/cloudflare/queue-worker-subscriber",
+            ],
+          },
         ],
       },
       {
