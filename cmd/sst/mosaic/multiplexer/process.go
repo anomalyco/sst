@@ -8,11 +8,6 @@ import (
 	"github.com/sst/sst/v3/pkg/process"
 )
 
-type vterm struct {
-	Resize func(int, int)
-	Start  func(cmd *exec.Cmd) error
-}
-
 type PaneConfig struct {
 	Key             string
 	Args            []string
@@ -30,23 +25,12 @@ type PaneConfig struct {
 }
 
 type pane struct {
-	icon            string
-	key             string
-	args            []string
-	title           string
-	dir             string
-	killable        bool
-	filterable      bool
-	filterTitle     string
-	filterSubtitle  string
-	listOptions     func() []FilterOption
-	onFilterChanged  func(string)
-	filterAvailable  bool
-	env              []string
-	vt               *tcellterm.VT
-	dead             bool
-	cmd              *exec.Cmd
-	filter           string
+	PaneConfig
+	filterAvailable bool
+	vt              *tcellterm.VT
+	dead            bool
+	cmd             *exec.Cmd
+	filter          string
 }
 
 type EventProcess struct {
@@ -61,10 +45,10 @@ func (s *Multiplexer) AddProcess(cfg PaneConfig) {
 }
 
 func (p *pane) start() error {
-	p.cmd = process.Command(p.args[0], p.args[1:]...)
-	p.cmd.Env = p.env
-	if p.dir != "" {
-		p.cmd.Dir = p.dir
+	p.cmd = process.Command(p.Args[0], p.Args[1:]...)
+	p.cmd.Env = p.Env
+	if p.Cwd != "" {
+		p.cmd.Dir = p.Cwd
 	}
 	p.vt.Clear()
 	err := p.vt.Start(p.cmd)

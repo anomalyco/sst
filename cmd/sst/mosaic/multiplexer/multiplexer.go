@@ -136,7 +136,7 @@ func (s *Multiplexer) Start() {
 
 		case *EventCheckFilter:
 			for _, p := range s.processes {
-				if p.key != evt.PaneKey || !p.filterable {
+				if p.Key != evt.PaneKey || !p.Filterable {
 					continue
 				}
 				p.filterAvailable = len(evt.Names) > 0
@@ -159,7 +159,7 @@ func (s *Multiplexer) Start() {
 
 		case *EventProcess:
 				for _, p := range s.processes {
-					if p.key == evt.Key {
+					if p.Key == evt.Key {
 						if p.dead && evt.Autostart {
 							p.start()
 							s.sort()
@@ -168,20 +168,7 @@ func (s *Multiplexer) Start() {
 						return
 					}
 				}
-				proc := &pane{
-					icon:            evt.Icon,
-					key:             evt.Key,
-					dir:             evt.Cwd,
-					title:           evt.Title,
-					args:            evt.Args,
-					killable:        evt.Killable,
-					filterable:      evt.Filterable,
-					filterTitle:     evt.FilterTitle,
-					filterSubtitle:  evt.FilterSubtitle,
-					listOptions:     evt.ListOptions,
-					onFilterChanged: evt.OnFilterChanged,
-					env:             evt.Env,
-				}
+				proc := &pane{PaneConfig: evt.PaneConfig}
 				term := tcellterm.New()
 				term.SetSurface(s.main)
 				term.Attach(func(ev tcell.Event) {
@@ -347,12 +334,12 @@ func (s *Multiplexer) Start() {
 							return
 						}
 					case 'x':
-						if selected.killable && !selected.dead && !s.focused {
+						if selected.Killable && !selected.dead && !s.focused {
 							selected.Kill()
 						}
 				case 'f':
-					if !s.focused && selected != nil && selected.filterable && selected.filterAvailable && selected.listOptions != nil {
-						options := selected.listOptions()
+					if !s.focused && selected != nil && selected.Filterable && selected.filterAvailable && selected.ListOptions != nil {
+						options := selected.ListOptions()
 						if len(options) == 0 {
 							return
 						}
@@ -405,7 +392,7 @@ func (s *Multiplexer) Start() {
 						return
 					}
 					if !s.focused {
-						if selected.killable {
+						if selected.Killable {
 							if selected.dead {
 								selected.start()
 								s.sort()
@@ -592,8 +579,8 @@ func (s *Multiplexer) clearPaneFilter(p *pane) {
 		return
 	}
 	p.filter = ""
-	if p.onFilterChanged != nil {
-		p.onFilterChanged("")
+	if p.OnFilterChanged != nil {
+		p.OnFilterChanged("")
 	}
 	s.draw()
 }
@@ -607,8 +594,8 @@ func (s *Multiplexer) applyFilter(value string) {
 		return
 	}
 	selected.filter = value
-	if selected.onFilterChanged != nil {
-		selected.onFilterChanged(value)
+	if selected.OnFilterChanged != nil {
+		selected.OnFilterChanged(value)
 	}
 }
 

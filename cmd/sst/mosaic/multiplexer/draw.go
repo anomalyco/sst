@@ -44,19 +44,19 @@ func (s *Multiplexer) draw() {
 				style = style.Foreground(tcell.ColorOrange)
 			}
 		}
-		label := item.title
+		label := item.Title
 		if item.filter != "" {
 			label = item.filter
 			filteredRows = append(filteredRows, filteredRow{
 				y:     row,
-				icon:  item.icon,
+				icon:  item.Icon,
 				label: label,
 				style: style,
 			})
 		}
 		title := views.NewTextBar()
 		title.SetStyle(style)
-		title.SetLeft(" "+item.icon+" "+label, tcell.StyleDefault)
+		title.SetLeft(" "+item.Icon+" "+label, tcell.StyleDefault)
 		s.stack.AddWidget(title, 0)
 		row++
 	}
@@ -72,7 +72,7 @@ func (s *Multiplexer) draw() {
 		hotkeys["/"] = "search"
 		hotkeys["esc"] = "clear"
 	} else {
-		if selected != nil && selected.killable && !s.focused {
+		if selected != nil && selected.Killable && !s.focused {
 			if !selected.dead {
 				hotkeys["x"] = "kill"
 				hotkeys["enter"] = "focus"
@@ -96,7 +96,7 @@ func (s *Multiplexer) draw() {
 			hotkeys["ctrl-g"] = "bottom"
 		}
 		hotkeys["ctrl-l"] = "clear"
-		if selected != nil && !s.focused && selected.filterable && selected.filterAvailable {
+		if selected != nil && !s.focused && selected.Filterable && selected.filterAvailable {
 			hotkeys["f"] = "filter"
 		}
 	}
@@ -161,83 +161,66 @@ func (s *Multiplexer) draw() {
 		if !s.filterSearching {
 			s.screen.HideCursor()
 		}
-		s.drawFilterSelect()
+		s.drawFilterSelect(selected)
 	}
 }
 
-func (s *Multiplexer) drawFilterSelect() {
-	selected := s.selectedProcess()
+func (s *Multiplexer) drawFilterSelect(selected *pane) {
 	startX := SIDEBAR_WIDTH + 1
 	mainW := s.width - startX
-	bgStyle := tcell.StyleDefault
 	dimStyle := tcell.StyleDefault.Foreground(tcell.ColorGray)
-	selStyle := tcell.StyleDefault.Foreground(tcell.ColorTeal).Bold(true)
-	selDimStyle := tcell.StyleDefault.Foreground(tcell.ColorTeal).Dim(true)
+	tealStyle := tcell.StyleDefault.Foreground(tcell.ColorTeal).Bold(true)
+	tealDimStyle := tcell.StyleDefault.Foreground(tcell.ColorTeal).Dim(true)
 	normalStyle := tcell.StyleDefault.Foreground(tcell.ColorWhite)
 
 	// clear main area
 	for y := 0; y < s.height; y++ {
 		for x := startX; x < s.width; x++ {
-			s.screen.SetContent(x, y, ' ', nil, bgStyle)
+			s.screen.SetContent(x, y, ' ', nil, tcell.StyleDefault)
 		}
 	}
 
-	title := "Filter"
-	if selected != nil && selected.filterTitle != "" {
-		title = selected.filterTitle
-	}
-	subtitle := "Select an item to filter logs"
-	if selected != nil && selected.filterSubtitle != "" {
-		subtitle = selected.filterSubtitle
-	}
-
 	y := 0
-	s.drawLine(startX, y, title, tcell.StyleDefault.Foreground(tcell.ColorTeal).Bold(true), mainW)
-	y += 2
+	s.drawLine(startX, y, selected.FilterTitle, tealStyle, mainW)
+	y++ // blank
+	y++
 
-	// subtitle or search line (same row)
 	if s.filterSearching {
 		x := s.drawLine(startX, y, "Search: ", dimStyle, mainW)
-		x = s.drawLine(x, y, s.filterQuery, tcell.StyleDefault.Foreground(tcell.ColorWhite), mainW-(x-startX))
+		x = s.drawLine(x, y, s.filterQuery, normalStyle, mainW-(x-startX))
 		s.screen.ShowCursor(x, y)
 	} else if s.filterQuery != "" {
 		x := s.drawLine(startX, y, "Search: ", dimStyle, mainW)
-		s.drawLine(x, y, s.filterQuery, tcell.StyleDefault.Foreground(tcell.ColorWhite).Italic(true), mainW-(x-startX))
+		s.drawLine(x, y, s.filterQuery, normalStyle.Italic(true), mainW-(x-startX))
 	} else {
-		s.drawLine(startX, y, subtitle, dimStyle, mainW)
+		s.drawLine(startX, y, selected.FilterSubtitle, dimStyle, mainW)
 	}
-	total := len(s.filterFiltered)
-	y += 2
+	y++ // blank
+	y++
 
-	// ↑ indicator on the line before the list
+	total := len(s.filterFiltered)
+
 	if total > 0 && s.filterScroll > 0 {
 		s.drawLine(startX, y, fmt.Sprintf("↑ %d more", s.filterScroll), dimStyle, mainW)
 	}
 	y++
 
-	// options (only filtered indices) with viewport scrolling
 	if total == 0 {
 		s.drawLine(startX, y, "No results found.", dimStyle, mainW)
 		return
 	}
 
 	visible := s.filterVisibleRows()
-	end := s.filterScroll + visible
-	if end > total {
-		end = total
-	}
+	end := min(s.filterScroll+visible, total)
 
-	for fi := s.filterScroll; fi < end; fi++ {
-		if y >= s.height-1 {
-			break
-		}
+	for fi := s.filterScroll; fi < end && y < s.height-1; fi++ {
 		opt := s.filterOptions[s.filterFiltered[fi]]
 		style := normalStyle
 		descStyle := dimStyle
 		prefix := "  "
 		if fi == s.filterSelected {
-			style = selStyle
-			descStyle = selDimStyle
+			style = tealStyle
+			descStyle = tealDimStyle
 			prefix = "> "
 		}
 		x := s.drawLine(startX, y, prefix+opt.Label, style, mainW)
@@ -295,12 +278,12 @@ func (s *Multiplexer) sort() {
 	if len(s.processes) == 0 {
 		return
 	}
-	key := s.selectedProcess().key
+	key := s.selectedProcess().Key
 	sort.Slice(s.processes, func(i, j int) bool {
-		if !s.processes[i].killable && s.processes[j].killable {
+		if !s.processes[i].Killable && s.processes[j].Killable {
 			return true
 		}
-		if s.processes[i].killable && !s.processes[j].killable {
+		if s.processes[i].Killable && !s.processes[j].Killable {
 			return false
 		}
 		if !s.processes[i].dead && s.processes[j].dead {
@@ -309,10 +292,10 @@ func (s *Multiplexer) sort() {
 		if s.processes[i].dead && !s.processes[j].dead {
 			return false
 		}
-		return len(s.processes[i].title) < len(s.processes[j].title)
+		return len(s.processes[i].Title) < len(s.processes[j].Title)
 	})
 	for i, p := range s.processes {
-		if p.key == key {
+		if p.Key == key {
 			s.selected = i
 			return
 		}

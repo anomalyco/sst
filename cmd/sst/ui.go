@@ -44,7 +44,6 @@ func CmdUI(c *cli.Cli) error {
 			aws.FunctionErrorEvent{},
 			aws.FunctionLogEvent{},
 			aws.FunctionBuildEvent{},
-			ui.PaneFilterEvent{},
 		)
 	}
 	if filter == "task" || filter == "" {
@@ -60,8 +59,10 @@ func CmdUI(c *cli.Cli) error {
 			aws.TaskLogEvent{},
 			aws.TaskCompleteEvent{},
 			aws.TaskMissingCommandEvent{},
-			ui.PaneFilterEvent{},
 		)
+	}
+	if filter == "function" || filter == "task" {
+		types = append(types, ui.PaneFilterEvent{})
 	}
 	if filter == "sst" || filter == "" {
 		u = ui.New(c.Context, ui.WithDev)
