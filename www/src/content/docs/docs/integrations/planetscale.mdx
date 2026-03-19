@@ -26,19 +26,9 @@ Then set the `PLANETSCALE_SERVICE_TOKEN` and `PLANETSCALE_SERVICE_TOKEN_ID` envi
 
 ## Features
 
-### Create a database
+### Reference a database
 
-You can create a PlanetScale database directly from your SST config.
-
-```ts title="sst.config.ts"
-const db = new planetscale.Database("Database", {
-  name: "mydb",
-  organization: "myorg",
-  clusterSize: "PS_10",
-});
-```
-
-Or reference an existing one.
+Reference an existing PlanetScale database directly from your SST config.
 
 ```ts title="sst.config.ts"
 const db = planetscale.getDatabaseOutput({
@@ -132,7 +122,3 @@ export const db = drizzle({
 ```
 
 You can use any other ORM or database driver the same way.
-
----
-
-View the [full example](https://github.com/anomalyco/sst/tree/dev/examples/aws-planetscale-drizzle) on GitHub.
