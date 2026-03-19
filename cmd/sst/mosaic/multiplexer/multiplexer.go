@@ -136,7 +136,11 @@ func (s *Multiplexer) Start() {
 
 		case *EventCheckFilter:
 			for _, p := range s.processes {
-				if p.key != evt.PaneKey || p.filter == "" || !p.filterable {
+				if p.key != evt.PaneKey || !p.filterable {
+					continue
+				}
+				p.filterAvailable = len(evt.Names) > 0
+				if p.filter == "" {
 					continue
 				}
 				found := false
@@ -150,6 +154,7 @@ func (s *Multiplexer) Start() {
 					s.clearPaneFilter(p)
 				}
 			}
+			s.draw()
 			return
 
 		case *EventProcess:
@@ -346,7 +351,7 @@ func (s *Multiplexer) Start() {
 							selected.Kill()
 						}
 				case 'f':
-					if !s.focused && selected != nil && selected.filterable && selected.listOptions != nil {
+					if !s.focused && selected != nil && selected.filterable && selected.filterAvailable && selected.listOptions != nil {
 						options := selected.listOptions()
 						if len(options) == 0 {
 							return

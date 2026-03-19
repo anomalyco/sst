@@ -96,7 +96,7 @@ func (s *Multiplexer) draw() {
 			hotkeys["ctrl-g"] = "bottom"
 		}
 		hotkeys["ctrl-l"] = "clear"
-		if selected != nil && !s.focused && selected.filterable {
+		if selected != nil && !s.focused && selected.filterable && selected.filterAvailable {
 			hotkeys["f"] = "filter"
 		}
 	}

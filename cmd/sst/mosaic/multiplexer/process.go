@@ -40,12 +40,13 @@ type pane struct {
 	filterTitle     string
 	filterSubtitle  string
 	listOptions     func() []FilterOption
-	onFilterChanged func(string)
-	env             []string
-	vt              *tcellterm.VT
-	dead            bool
-	cmd             *exec.Cmd
-	filter          string
+	onFilterChanged  func(string)
+	filterAvailable  bool
+	env              []string
+	vt               *tcellterm.VT
+	dead             bool
+	cmd              *exec.Cmd
+	filter           string
 }
 
 type EventProcess struct {
