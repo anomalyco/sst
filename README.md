@@ -77,7 +77,7 @@ cd examples/aws-api
 go run ../../cmd/sst <command>
 ```
 
-If you want to build the CLI binary, run `bun run build:cli`.
+If you want to build the CLI binary, run `bun run build:cli`. This will create a `sst` binary that you can use.
 
 For building the docs, run `bun run docs:generate` and `bun run docs:dev`.
 
