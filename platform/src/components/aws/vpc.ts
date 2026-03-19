@@ -503,26 +503,27 @@ export class Vpc extends Component implements Link.Linkable {
       );
       const securityGroup = ec2.SecurityGroup.get(
         `${name}SecurityGroup`,
-        ec2
-          .getSecurityGroupsOutput(
-            {
-              filters: [
-                { name: "group-name", values: ["default"] },
-                { name: "vpc-id", values: [vpcId] },
-              ],
-            },
-            { parent: self },
-          )
-          .ids.apply((ids) => {
-            if (!ids.length) {
-              vpcId.apply(vpcId => {
-                throw new VisibleError(
-                  `Security group not found in VPC ${vpcId}`,
-                );
-              });
-            }
-            return ids[0];
-          }),
+        all([
+          ec2
+            .getSecurityGroupsOutput(
+              {
+                filters: [
+                  { name: "group-name", values: ["default"] },
+                  { name: "vpc-id", values: [vpcId] },
+                ],
+              },
+              { parent: self },
+            )
+            .ids,
+          vpcId,
+        ]).apply(([ids, vpcId]) => {
+          if (!ids.length) {
+            throw new VisibleError(
+              `Security group not found in VPC ${vpcId}`,
+            );
+          }
+          return ids[0];
+        }),
         undefined,
         { parent: self },
       );
@@ -1321,8 +1322,8 @@ export class Vpc extends Component implements Link.Linkable {
     }
 
     function createBastion() {
-      return all([bastion, natInstances, keyPair]).apply(
-        ([bastion, natInstances, keyPair]) => {
+      return all([bastion, natInstances, natSecurityGroup, keyPair]).apply(
+        ([bastion, natInstances, natSecurityGroup, keyPair]) => {
           if (!bastion.enabled)
             return {
               bastionSecurityGroup: undefined,
@@ -1359,7 +1360,7 @@ export class Vpc extends Component implements Link.Linkable {
                 ],
                 tags: {
                   "sst:is-bastion-sg": "true",
-                }
+                },
               },
               { parent: self },
             ),
