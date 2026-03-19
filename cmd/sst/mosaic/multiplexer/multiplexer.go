@@ -411,11 +411,16 @@ func (s *Multiplexer) Start() {
 						process.Signal(syscall.SIGINT)
 						return
 					}
-				case tcell.KeyCtrlZ:
-					if s.focused {
-						s.blur()
-						return
-					}
+			case tcell.KeyEscape:
+				if !s.focused && selected != nil && selected.filter != "" {
+					s.clearPaneFilter(selected)
+					return
+				}
+			case tcell.KeyCtrlZ:
+				if s.focused {
+					s.blur()
+					return
+				}
 				case tcell.KeyCtrlG:
 					if selected != nil && selected.isScrolling() {
 						selected.scrollReset()
