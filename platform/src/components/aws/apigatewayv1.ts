@@ -14,7 +14,7 @@ import {
 } from "../component";
 import { Link } from "../link";
 import type { Input } from "../input";
-import { FunctionArgs, FunctionArn } from "./function";
+import { FunctionArgs, FunctionArn } from "./function.js";
 import { hashStringToPrettyString, physicalName, logicalName } from "../naming";
 import { VisibleError } from "../error";
 import { RETENTION } from "./logging";
@@ -620,6 +620,10 @@ export interface ApiGatewayV1RouteArgs {
    */
   apiKey?: Input<boolean>;
   /**
+   * @deprecated Set `streaming: true` on the function definition passed to `api.route()` instead.
+   */
+  streaming?: Input<boolean>;
+  /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
    */
@@ -782,7 +786,7 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
     this.endpointType = endpoint.types;
 
     function normalizeRegion() {
-      return getRegionOutput(undefined, { parent }).name;
+      return getRegionOutput(undefined, { parent }).region;
     }
 
     function normalizeEndpoint() {
@@ -828,7 +832,7 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
         ([domain, key]) =>
           key ? `https://${domain}/${key}/` : `https://${domain}`,
       )
-      : interpolate`https://${this.api.id}.execute-api.${this.region}.amazonaws.com/${$app.stage}/`;
+      : interpolate`https://${this.api.id}.execute-api.${this.region}.amazonaws.com/${this.stage?.stageName ?? $app.stage}/`;
   }
 
   /**
@@ -866,10 +870,16 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
     };
   }
 
-  /**
-   * Add a route to the API Gateway REST API. The route is a combination of an HTTP method and a path, `{METHOD} /{path}`.
-   *
-   * A method could be one of `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS`, or `ANY`. Here `ANY` matches any HTTP method.
+   /**
+    * Add a route to the API Gateway REST API. The route is a combination of an HTTP method and a path, `{METHOD} /{path}`.
+    *
+    * :::caution
+    * [API Gateway has strict rate limits](https://docs.aws.amazon.com/apigateway/latest/developerguide/limits.html) for creating and updating resources. Creating one Lambda function for every endpoint can significantly slow down your deployments.
+    *
+    * Use a single Lambda and handle routing in code if you don't need specific API Gateway features.
+    * :::
+    *
+    * A method could be one of `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS`, or `ANY`. Here `ANY` matches any HTTP method.
    *
    * The path can be a combination of
    * - Literal segments, `/notes`, `/notes/new`, etc.

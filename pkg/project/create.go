@@ -146,7 +146,8 @@ func Create(templateName string, home string) ([]string, error) {
 			version := npmStep.Version
 			if version == "" {
 				slog.Info("fetching latest version", "package", npmStep.Package)
-				data, err := npm.Get(npmStep.Package, "latest")
+				registry := npm.LoadRegistry()
+				data, err := npm.Get(registry, npmStep.Package, "latest")
 				if err != nil {
 					return nil, err
 				}
@@ -235,8 +236,11 @@ func Create(templateName string, home string) ([]string, error) {
 			break
 
 		case "copy":
-			templateFilesPath := filepath.Join("templates", templateName, "files")
+			templateFilesPath := path.Join("templates", templateName, "files")
 			err = fs.WalkDir(platform.Templates, templateFilesPath, func(path string, d fs.DirEntry, err error) error {
+				if err != nil {
+					return err
+				}
 				if d.IsDir() {
 					// Create the directory if it doesn't exist
 					dir := filepath.Join(".", strings.TrimPrefix(path, templateFilesPath))

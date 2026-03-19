@@ -1,5 +1,11 @@
 /// <reference path="./.sst/platform/config.d.ts" />
 
+/**
+ * ## Rust Loco
+ *
+ * Deploy a Rust Loco app with a Postgres database, Redis, and a background worker
+ * service.
+ */
 export default $config({
   app(input) {
     return {

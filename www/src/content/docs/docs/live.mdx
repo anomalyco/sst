@@ -144,6 +144,25 @@ To create a tunnel, you'll need to:
 
    This needs _sudo_ to create the network interface on your machine. You only need to do this once.
 
+    :::note
+    For NixOS users you will also need to declare the following sudo configuration to complete the setup:
+
+    ```nix
+      security.sudo.extraRules = [
+        {
+          users = ["jay"]; # Your user
+          commands = [
+            {
+              command = "/opt/sst/tunnel tunnel start *";
+              options = ["NOPASSWD" "SETENV"];
+            }
+          ];
+        }
+      ];
+    ```
+    :::
+
+
 3. Run `sst dev`.
 
    ```bash

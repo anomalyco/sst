@@ -1,3 +1,4 @@
+export * from "./alb.js";
 export * from "./analog.js";
 export * from "./apigatewayv1.js";
 export * from "./apigatewayv2.js";
@@ -12,7 +13,9 @@ export * from "./cluster.js";
 export * from "./cognito-identity-pool.js";
 export * from "./cognito-user-pool.js";
 export * from "./cron.js";
+export * from "./cron-v2.js";
 export * from "./dns.js";
+export * from "./dsql.js";
 export * from "./dynamo.js";
 export * from "./efs.js";
 export * from "./email.js";

@@ -1,35 +1,29 @@
-# CLAUDE.md
+## Layout
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+- `platform/` — TS Pulumi components embedded via `//go:embed` (`platform/platform.go:16`)
+- `examples/` — sample apps
+- `cmd/sst/` — Go CLI entry, orchestrates everything
+- `cmd/sst/mosaic/` — live dev TUI
+- `pkg/server/` — JSON-RPC bridge for custom Pulumi dynamic providers (`rpc/rpc.ts` ↔ `pkg/server`)
+- `pkg/bus/` — pub/sub event bus
+- `sdk/js/` — runtime SDK for reading linked resources
+- `www/` — docs site (auto-generated from JSDoc comments in platform and extracted from the Go CLI)
 
-## Build, Lint, and Test Commands
+## Commands
 
-- **Build**: Go - `go build`, TypeScript - `bun run build` (in respective directories)
-- **Test**: Go - `go test ./pkg/...`, TypeScript - `cd platform && bun run test`
-- **Single test**: Go - `go test ./pkg/path/file_test.go`, TS - `cd platform && bun run test path/to/test.test.ts`
-- **Type check**: `cd platform && bun run dev` (watches for changes)
-- **Generate docs**: `cd www && bun run generate`
+- **Setup**: `bun run setup`
+- **Build platform**: `bun run build:platform`
+- **Build CLI**: `bun run build:cli`
+- **Run CLI locally**: `cd examples/<app> && go run ../../cmd/sst <command>`
+- **Go tests**: `bun run test:cli`
+- **Typecheck**: `bun run typecheck`
+- **Generate docs**: `bun run docs:generate`
+- **Run docs locally**: `bun run docs:dev`
 
-## Code Style Guidelines
+## Verification
 
-### Go
-- Standard Go formatting
-- Error handling with `if err != nil` pattern
-- Packages use lowercase names
-- CamelCase for functions, ALL_CAPS for constants
-- Tests in separate `_test` packages
-
-### TypeScript
-- Strict typing with TypeScript
-- camelCase for variables and functions, PascalCase for classes
-- ES modules with explicit imports/exports
-- Concise JSDoc comments for complex types
-- Error handling with proper type guards
-
-## Project Structure
-- Monorepo with Go and TypeScript code
-- Main directories: `cmd/`, `pkg/`, `platform/`, `sdk/`, `www/`
-- Tests placed alongside implementation files
-- Examples in the `examples/` directory
-
-Run linting and type checking before submitting changes. Follow existing patterns when adding new code.
+1. Build the platform
+2. `cd examples/<app> && bun install`
+3. `go run ../../cmd/sst deploy`
+4. Verify with `curl` or AWS CLI
+5. Don't clean up unless told to

@@ -1,4 +1,4 @@
-import { all, ComponentResourceOptions } from "@pulumi/pulumi";
+import { output, ComponentResourceOptions } from "@pulumi/pulumi";
 import { Semaphore } from "../../../util/semaphore";
 import { Image, ImageArgs } from "@pulumi/docker-build";
 
@@ -11,9 +11,10 @@ export function imageBuilder(
   args: ImageArgs,
   opts?: ComponentResourceOptions,
 ) {
-  // Wait for the all args values to be resolved before acquiring the semaphore
-  return all([args]).apply(async ([args]) => {
+  // Wait for all arg values to be resolved before acquiring the semaphore.
+  return output(args).apply(async (args) => {
     await limiter.acquire(name);
+
     const image = new Image(
       name,
       {
