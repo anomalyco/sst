@@ -25,9 +25,8 @@ export interface PostgresArgs {
    * The Postgres engine version. Check out the [available versions in your region](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/PostgreSQL.Concepts.General.DBVersions.html).
    *
    * :::caution
-   * Changing the version will **immediately** apply the update on the next `sst deploy`,
-   * possibly causing downtime. Set `upgrade` to `"blue-green"` to minimize downtime using
-   * [Blue/Green deployments](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/blue-green-deployments.html).
+   * Changing the version will cause the database to restart on the next `sst deploy`,
+   * possibly causing downtime. [Read more about upgrading databases](/docs/upgrade-databases/).
    * :::
    *
    * @default `"17"`
@@ -98,7 +97,8 @@ export interface PostgresArgs {
    * The type of instance to use for the database. Check out the [supported instance types](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.DBInstanceClass.Types.html).
    *
    * :::caution
-   * Changing the instance type will **immediately** apply the update on the next `sst deploy` possibly causing downtime.
+   * Changing the instance type will cause the database to restart on the next `sst deploy`,
+   * possibly causing downtime. [Read more about upgrading databases](/docs/upgrade-databases/).
    * :::
    *
    * @default `"t4g.micro"`
@@ -771,8 +771,7 @@ Listening on "${dev.host}:${dev.port}"...`,
             // Blue/green deployments require maxAllocatedStorage to be at least
             // 10% higher than allocatedStorage for autoscaling headroom.
             maxAllocatedStorage: all([storage, upgradeStrategy]).apply(
-              ([s, u]) =>
-                u === "blue-green" ? Math.max(s, Math.ceil(20 * 1.1)) : s,
+              ([s, u]) => (u === "blue-green" ? Math.max(s, 22) : s),
             ),
             multiAz,
             backupRetentionPeriod: 7,
