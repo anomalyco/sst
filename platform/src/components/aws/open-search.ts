@@ -17,6 +17,12 @@ import { DevCommand } from "../experimental/dev-command.js";
 export interface OpenSearchArgs {
   /**
    * The OpenSearch engine version. Check out the [available versions](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/what-is.html#choosing-version).
+   *
+   * :::caution
+   * Changing the version will cause the domain to restart on the next `sst deploy`,
+   * possibly causing downtime. [Learn more about upgrading databases](/docs/upgrade-databases/).
+   * :::
+   *
    * @default `"OpenSearch_2.17"`
    * @example
    * ```js
@@ -29,7 +35,7 @@ export interface OpenSearchArgs {
   /**
    * The username of the master user.
    *
-   * :::caution
+   * :::danger
    * Changing the username will cause the domain to be destroyed and recreated.
    * :::
    *
@@ -62,6 +68,11 @@ export interface OpenSearchArgs {
   password?: Input<string>;
   /**
    * The type of instance to use for the domain. Check out the [supported instance types](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/supported-instance-types.html).
+   *
+   * :::caution
+   * Changing the instance type will cause the domain to restart on the next `sst deploy`,
+   * possibly causing downtime. [Learn more about upgrading databases](/docs/upgrade-databases/).
+   * :::
    *
    * @default `"t3.small"`
    * @example
