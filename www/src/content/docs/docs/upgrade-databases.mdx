@@ -1,0 +1,127 @@
+---
+title: Upgrade Databases
+description: How to upgrade your RDS database engine versions with minimal downtime.
+---
+
+When you change the `version` prop of your [`Postgres`](/docs/component/aws/postgres/) or [`Mysql`](/docs/component/aws/mysql/) database, SST applies the update immediately on the next `sst deploy`. By default, upgrades are applied **in-place**, meaning the database may be unavailable during the update.
+
+For production databases, you can use **Blue/Green deployments** to minimize downtime.
+
+---
+
+## In-place upgrades
+
+This is the default behavior. When you change the `version` prop and deploy, the update is applied directly to the running instance.
+
+```ts title="sst.config.ts" {3}
+const database = new sst.aws.Postgres("MyDatabase", {
+  vpc,
+  version: "17",
+});
+```
+
+In-place upgrades are simpler and faster, but the database may be unavailable while the update is being applied. This is fine for dev and staging environments.
+
+---
+
+## Blue/Green upgrades
+
+Set the `upgrade` prop to `"blue-green"` to use [AWS RDS Blue/Green deployments](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/blue-green-deployments.html).
+
+```ts title="sst.config.ts" {4}
+const database = new sst.aws.Postgres("MyDatabase", {
+  vpc,
+  version: "17",
+  upgrade: "blue-green",
+});
+```
+
+This works the same way for [`Mysql`](/docs/component/aws/mysql/).
+
+```ts title="sst.config.ts" {4}
+const database = new sst.aws.Mysql("MyDatabase", {
+  vpc,
+  version: "8.4.4",
+  upgrade: "blue-green",
+});
+```
+
+---
+
+### How it works
+
+When you deploy with `upgrade: "blue-green"`, the following happens:
+
+1. A **staging (green)** copy of your database is created from the current **production (blue)** instance.
+2. The requested changes (engine version, parameter group, etc.) are applied to the green instance.
+3. AWS runs [guardrail checks](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/blue-green-deployments-switching.html#blue-green-deployments-switching-guardrails) to verify the green instance is healthy.
+4. The green instance is **promoted** to become the production instance.
+5. The old blue instance and the blue/green deployment are cleaned up.
+
+Your database endpoint stays the same throughout this process, so no application changes are needed.
+
+---
+
+### Things to know
+
+There are a few things to keep in mind when using Blue/Green upgrades.
+
+- **Longer deploy times.** Blue/Green upgrades take significantly longer than in-place upgrades because of the staging instance creation and switchover process. Expect 20-30 minutes.
+- **No read replicas.** Blue/Green deployments are not compatible with databases that have read replicas configured. AWS will reject the deployment.
+- **No custom health checks.** The switchover happens automatically after AWS's guardrail checks pass. You won't be able to run custom checks on the green instance before it's promoted.
+- **Manual cleanup on failure.** If the deployment fails midway, the green instance and the Blue/Green deployment may need to be cleaned up manually in the AWS console. Delete the blue/green deployment and the green instance to get back to a clean state.
+- **Resource ID may change.** The RDS resource ID may change after the switchover since a new instance is created. The endpoint and connection details are preserved, so your application should continue to work without changes.
+- **Instance-only.** Blue/Green deployments only work with standalone RDS instances ([`Postgres`](/docs/component/aws/postgres/) and [`Mysql`](/docs/component/aws/mysql/)). They are not supported for Aurora clusters ([`Aurora`](/docs/component/aws/aurora/)) due to a [Pulumi provider limitation](https://github.com/pulumi/pulumi-aws/issues/6145).
+
+---
+
+## Upgrading step by step
+
+Here's the recommended workflow for upgrading a production database.
+
+---
+
+### 1. Check compatibility
+
+Review the [AWS docs for PostgreSQL](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_UpgradeDBInstance.PostgreSQL.html) or [MySQL](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_UpgradeDBInstance.MySQL.html) to confirm the upgrade path between your current and target versions is supported.
+
+---
+
+### 2. Test in a non-production stage
+
+Deploy the version change to a dev or staging stage first.
+
+```ts title="sst.config.ts"
+const database = new sst.aws.Postgres("MyDatabase", {
+  vpc,
+  version: "17",
+});
+```
+
+---
+
+### 3. Deploy to production with Blue/Green
+
+Once you've verified the upgrade works, set `upgrade: "blue-green"` for the production deploy.
+
+```ts title="sst.config.ts" {4}
+const database = new sst.aws.Postgres("MyDatabase", {
+  vpc,
+  version: "17",
+  upgrade: "blue-green",
+});
+```
+
+:::tip
+You can set `upgrade` conditionally based on the stage so dev environments use in-place upgrades while production uses Blue/Green.
+
+```ts
+upgrade: $app.stage === "production" ? "blue-green" : "in-place",
+```
+:::
+
+---
+
+### 4. Remove the upgrade prop
+
+After the upgrade is complete, you can remove the `upgrade` prop or set it back to the default. The `upgrade` setting only affects how future version changes are applied.
