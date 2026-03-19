@@ -1,7 +1,6 @@
 """
 Simple Lambda handler for flat layout example.
 """
-import json
 import logging
 from typing import Any, Dict
 

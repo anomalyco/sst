@@ -1,7 +1,6 @@
 """
 API Lambda handler for the workspace layout example.
 """
-import json
 import logging
 from typing import Any, Dict
 

@@ -9,34 +9,33 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-// UVSource represents a UV source configuration
-type UVSource struct {
+// uvSource represents a UV source configuration
+type uvSource struct {
 	Path      string `toml:"path"`
 	Workspace bool   `toml:"workspace"`
 }
 
-// ProjectResolver provides Python project resolution
-type ProjectResolver struct {
+// projectResolver provides Python project resolution
+type projectResolver struct {
 	projectRoot string
 }
 
-// ProjectInfo contains resolved project information
-type ProjectInfo struct {
-	HandlerFile   string `json:"handlerFile"`
-	ProjectRoot   string `json:"projectRoot"`
-	SourceRoot    string `json:"sourceRoot"`
-	PyprojectPath string `json:"pyprojectPath"`
+// projectInfo contains resolved project information
+type projectInfo struct {
+	ProjectRoot   string
+	SourceRoot    string
+	PyprojectPath string
 }
 
-// PyprojectConfig represents the structure of a pyproject.toml file.
-type PyprojectConfig struct {
+// pyprojectConfig represents the structure of a pyproject.toml file.
+type pyprojectConfig struct {
 	Project struct {
 		Name string `toml:"name"`
 	} `toml:"project"`
 
 	Tool struct {
 		UV struct {
-			Sources   map[string]UVSource `toml:"sources"`
+			Sources   map[string]uvSource `toml:"sources"`
 			Workspace struct {
 				Members []string `toml:"members"`
 			} `toml:"workspace"`
@@ -72,13 +71,13 @@ type PyprojectConfig struct {
 	} `toml:"tool"`
 }
 
-// NewProjectResolver creates a new project resolver
-func NewProjectResolver(projectRoot string) *ProjectResolver {
-	return &ProjectResolver{projectRoot: projectRoot}
+// newProjectResolver creates a new project resolver
+func newProjectResolver(projectRoot string) *projectResolver {
+	return &projectResolver{projectRoot: projectRoot}
 }
 
 // ResolveHandler finds and resolves a Python handler
-func (pr *ProjectResolver) ResolveHandler(handlerPath string) (*ProjectInfo, error) {
+func (pr *projectResolver) ResolveHandler(handlerPath string) (*projectInfo, error) {
 	handlerFile, err := pr.findPythonFile(handlerPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find Python file for handler %s: %w", handlerPath, err)
@@ -86,8 +85,7 @@ func (pr *ProjectResolver) ResolveHandler(handlerPath string) (*ProjectInfo, err
 
 	pyprojectPath, _ := pr.findPyprojectToml(handlerFile)
 
-	info := &ProjectInfo{
-		HandlerFile:   handlerFile,
+	info := &projectInfo{
 		ProjectRoot:   pr.projectRoot,
 		PyprojectPath: pyprojectPath,
 	}
@@ -98,7 +96,7 @@ func (pr *ProjectResolver) ResolveHandler(handlerPath string) (*ProjectInfo, err
 }
 
 // findPythonFile locates the Python file for the given handler path
-func (pr *ProjectResolver) findPythonFile(handlerPath string) (string, error) {
+func (pr *projectResolver) findPythonFile(handlerPath string) (string, error) {
 	filePath := pr.extractFilePath(handlerPath)
 	candidates := pr.generateCandidatePaths(filePath)
 
@@ -116,7 +114,7 @@ func (pr *ProjectResolver) findPythonFile(handlerPath string) (string, error) {
 }
 
 // extractFilePath extracts the file path from a handler path (e.g., "path/to/file.func" -> "path/to/file")
-func (pr *ProjectResolver) extractFilePath(handlerPath string) string {
+func (pr *projectResolver) extractFilePath(handlerPath string) string {
 	if lastDot := strings.LastIndex(handlerPath, "."); lastDot != -1 {
 		return handlerPath[:lastDot]
 	}
@@ -124,7 +122,7 @@ func (pr *ProjectResolver) extractFilePath(handlerPath string) string {
 }
 
 // generateCandidatePaths creates a list of potential file locations
-func (pr *ProjectResolver) generateCandidatePaths(handlerPath string) []string {
+func (pr *projectResolver) generateCandidatePaths(handlerPath string) []string {
 	var candidates []string
 
 	// Direct path and with .py extension
@@ -157,7 +155,7 @@ func (pr *ProjectResolver) generateCandidatePaths(handlerPath string) []string {
 }
 
 // findPyprojectToml searches for pyproject.toml starting from the handler file directory
-func (pr *ProjectResolver) findPyprojectToml(handlerFile string) (string, error) {
+func (pr *projectResolver) findPyprojectToml(handlerFile string) (string, error) {
 	currentDir := filepath.Dir(handlerFile)
 	for {
 		pyprojectPath := filepath.Join(currentDir, "pyproject.toml")
@@ -174,7 +172,7 @@ func (pr *ProjectResolver) findPyprojectToml(handlerFile string) (string, error)
 }
 
 // setupSourceRoot determines the source root directory
-func (pr *ProjectResolver) setupSourceRoot(info *ProjectInfo) {
+func (pr *projectResolver) setupSourceRoot(info *projectInfo) {
 	if info.PyprojectPath != "" {
 		pyprojectDir := filepath.Dir(info.PyprojectPath)
 		srcDir := filepath.Join(pyprojectDir, "src")
@@ -189,13 +187,13 @@ func (pr *ProjectResolver) setupSourceRoot(info *ProjectInfo) {
 }
 
 // ParsePyprojectToml reads and parses a pyproject.toml file
-func (pr *ProjectResolver) ParsePyprojectToml(path string) (*PyprojectConfig, error) {
+func (pr *projectResolver) ParsePyprojectToml(path string) (*pyprojectConfig, error) {
 	content, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read pyproject.toml at %s: %w", path, err)
 	}
 
-	var config PyprojectConfig
+	var config pyprojectConfig
 	if err := toml.Unmarshal(content, &config); err != nil {
 		return nil, fmt.Errorf("TOML parsing error in %s: %w", path, err)
 	}

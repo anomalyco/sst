@@ -2,7 +2,6 @@
 Test: Package with [tool.uv] package = true
 This tests if the package is importable and can use shared workspace deps
 """
-import requests
 from shared import models
 
 

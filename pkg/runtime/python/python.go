@@ -55,18 +55,18 @@ func parseConcurrency() int {
 	return n
 }
 
-type Worker struct {
+type worker struct {
 	stdout io.ReadCloser
 	stderr io.ReadCloser
 	cmd    *exec.Cmd
 }
 
-func (w *Worker) Stop() {
+func (w *worker) Stop() {
 	// Terminate the whole process group
 	process.Kill(w.cmd.Process)
 }
 
-func (w *Worker) Logs() io.ReadCloser {
+func (w *worker) Logs() io.ReadCloser {
 	reader, writer := io.Pipe()
 
 	go func() {
@@ -108,8 +108,7 @@ func (w *Worker) Logs() io.ReadCloser {
 type PythonRuntime struct {
 	lastBuiltHandler map[string]string
 
-	cacheDir      string
-	deployBuilder *DeployBuilder
+	deployBuilder *deployBuilder
 
 	// Mutex for thread-safe access
 	mutex sync.RWMutex
@@ -300,7 +299,7 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 		return nil, fmt.Errorf("failed to start worker process: %v", err)
 	}
 
-	return &Worker{
+	return &worker{
 		stdout,
 		stderr,
 		cmd,
@@ -320,18 +319,18 @@ func (r *PythonRuntime) syncArtifactsIfNeeded(input *runtime.RunInput) (bool, er
 
 	// Only sync for legacy workspace layouts that need flattening
 	if r.hasWorkspaceLayoutPatterns(projectRoot) {
-		if err := r.syncPythonFiles(input.FunctionID, projectRoot, artifactDir); err != nil {
+		if err := r.syncPythonFiles(projectRoot, artifactDir); err != nil {
 			return true, err
 		}
 
-		return true, r.flattenWorkspaceLayouts(artifactDir, input.FunctionID)
+		return true, r.flattenWorkspaceLayouts(artifactDir)
 	}
 
 	return false, nil
 }
 
 // syncPythonFiles syncs Python files from source to artifacts (add, update, delete)
-func (r *PythonRuntime) syncPythonFiles(functionID, srcDir, destDir string) error {
+func (r *PythonRuntime) syncPythonFiles(srcDir, destDir string) error {
 	sourceFiles := make(map[string]os.FileInfo)
 	err := filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -471,7 +470,7 @@ func (r *PythonRuntime) CreateBuildAsset(ctx context.Context, input *runtime.Bui
 
 	arch := props.Architecture
 	if arch == "" {
-		arch = "x86_64" // Default to x86_64
+		arch = "x86_64"
 	}
 
 	if arch != "x86_64" && arch != "arm64" {
@@ -479,32 +478,30 @@ func (r *PythonRuntime) CreateBuildAsset(ctx context.Context, input *runtime.Bui
 	}
 	workingDir := path.ResolveRootDir(input.CfgPath)
 
-	result, err := r.createBuildAssetDeploy(ctx, input, arch, workingDir)
+	result, err := r.createBuildAssetDeploy(ctx, input, workingDir)
 	if err != nil {
 		return nil, fmt.Errorf("deploy build failed: %w", err)
 	}
 	return result, nil
 }
 
-// createBuildAssetDeploy uses the shared DeployBuilder for all function builds
-func (r *PythonRuntime) createBuildAssetDeploy(ctx context.Context, input *runtime.BuildInput, arch string, workingDir string) (*runtime.BuildOutput, error) {
+// createBuildAssetDeploy uses the shared deployBuilder for all function builds
+func (r *PythonRuntime) createBuildAssetDeploy(ctx context.Context, input *runtime.BuildInput, workingDir string) (*runtime.BuildOutput, error) {
 	startTime := time.Now()
 
-	// Reuse DeployBuilder across all function builds to avoid overhead
+	// Reuse deployBuilder across all function builds to avoid overhead
 	// from creating one per 50+ functions.
 	r.mutex.Lock()
 	if r.deployBuilder == nil {
-		cacheDir := r.cacheDir
-		if cacheDir == "" {
-			if input.Dev {
-				cacheDir = filepath.Join(workingDir, ".sst/cache/dev")
-			} else {
-				cacheDir = filepath.Join(workingDir, ".sst/cache/deploy")
-			}
+		var cacheDir string
+		if input.Dev {
+			cacheDir = filepath.Join(workingDir, ".sst/cache/dev")
+		} else {
+			cacheDir = filepath.Join(workingDir, ".sst/cache/deploy")
 		}
 
 		var err error
-		r.deployBuilder, err = NewDeployBuilder(DeployBuilderConfig{
+		r.deployBuilder, err = newDeployBuilder(deployBuilderConfig{
 			CacheDir:    cacheDir,
 			ProjectRoot: workingDir,
 		})
@@ -591,7 +588,7 @@ func copyFile(src, dst string) error {
 
 // copyDir recursively copies a directory, applying ContentFilter if provided.
 // filterPrefix is prepended to relative paths for filter matching.
-func copyDir(src, dst string, filter *ContentFilter, filterPrefix string) error {
+func copyDir(src, dst string, filter *contentFilter, filterPrefix string) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -725,9 +722,8 @@ func (r *PythonRuntime) hasWorkspaceLayoutPatterns(projectRoot string) bool {
 }
 
 // flattenWorkspaceLayouts detects and flattens package/src/package structures for all legacy projects
-func (r *PythonRuntime) flattenWorkspaceLayouts(artifactDir, functionID string) error {
-	contentFilter := NewContentFilter()
-	var flattened []string
+func (r *PythonRuntime) flattenWorkspaceLayouts(artifactDir string) error {
+	contentFilter := newContentFilter()
 
 	// flattenDir checks all immediate subdirectories of dir for the package/src/package pattern
 	flattenDir := func(dir string) error {
@@ -779,8 +775,6 @@ func (r *PythonRuntime) flattenWorkspaceLayouts(artifactDir, functionID string) 
 					slog.Warn("failed to remove src/ after flattening", "package", packageName, "error", err)
 				}
 
-				relPath, _ := filepath.Rel(artifactDir, packageDir)
-				flattened = append(flattened, relPath)
 			}
 		}
 		return nil

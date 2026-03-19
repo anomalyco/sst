@@ -1,4 +1,3 @@
-import json
 from shared.utils import format_response, get_current_time
 
 

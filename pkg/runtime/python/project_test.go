@@ -63,7 +63,7 @@ requires-python = ">=3.13"
 	}
 
 	// Create resolver with apps/main as project root (simulating SST app location)
-	resolver := NewProjectResolver(appsMainDir)
+	resolver := newProjectResolver(appsMainDir)
 
 	// Resolve the handler
 	info, err := resolver.ResolveHandler("packages/api/auth/login.handler")
@@ -116,7 +116,7 @@ version = "1.0.0"
 		t.Fatalf("Failed to write handler: %v", err)
 	}
 
-	resolver := NewProjectResolver(tmpDir)
+	resolver := newProjectResolver(tmpDir)
 	info, err := resolver.ResolveHandler("packages/api/handler.handler")
 	if err != nil {
 		t.Fatalf("Failed to resolve handler: %v", err)

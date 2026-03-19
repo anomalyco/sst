@@ -10,7 +10,7 @@ import (
 	"github.com/sst/sst/v3/pkg/runtime"
 )
 
-func TestIncrementalBuilder_CleanupInstalledDependencies(t *testing.T) {
+func TestDeployBuilder_CleanupInstalledDependencies(t *testing.T) {
 	tempDir := t.TempDir()
 
 	testFiles := map[string]string{
@@ -29,7 +29,7 @@ func TestIncrementalBuilder_CleanupInstalledDependencies(t *testing.T) {
 		os.WriteFile(fullPath, []byte(content), 0644)
 	}
 
-	builder := &DeployBuilder{}
+	builder := &deployBuilder{}
 	if err := builder.cleanupInstalledDependencies(tempDir, nil); err != nil {
 		t.Fatalf("cleanupInstalledDependencies failed: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestLegacyStructureRegressionFixes(t *testing.T) {
 			t.Fatalf("Failed to create handler file: %v", err)
 		}
 
-		projectInfo := &ProjectInfo{
+		projectInfo := &projectInfo{
 			SourceRoot: functionsDir, // This used to cause path duplication
 		}
 
@@ -96,7 +96,7 @@ func TestLegacyStructureRegressionFixes(t *testing.T) {
 			t.Fatalf("Failed to create output dir: %v", err)
 		}
 
-		ib := &DeployBuilder{}
+		ib := &deployBuilder{}
 		err = ib.copySourceFilesSimple(context.Background(), input, projectInfo)
 		if err != nil {
 			t.Fatalf("copySourceFilesSimple failed: %v", err)
@@ -132,7 +132,7 @@ boto3>=1.34.0`
 			t.Fatalf("Failed to write requirements.txt: %v", err)
 		}
 
-		ib := &DeployBuilder{}
+		ib := &deployBuilder{}
 		err = ib.filterEditableInstalls(inputPath, outputPath)
 		if err != nil {
 			t.Fatalf("filterEditableInstalls failed: %v", err)
@@ -157,9 +157,9 @@ boto3>=1.34.0`
 
 // --- Content filter tests (merged from content_filter_test.go) ---
 
-// newContentFilterWithPatterns creates a ContentFilter with the given exclude patterns for testing
-func newContentFilterWithPatterns(patterns []string) *ContentFilter {
-	filter := NewContentFilter()
+// newContentFilterWithPatterns creates a contentFilter with the given exclude patterns for testing
+func newContentFilterWithPatterns(patterns []string) *contentFilter {
+	filter := newContentFilter()
 	filter.excludePatterns = patterns
 	return filter
 }

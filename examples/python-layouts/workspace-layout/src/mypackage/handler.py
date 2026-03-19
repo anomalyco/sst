@@ -5,7 +5,6 @@ import json
 import logging
 from typing import Any, Dict
 
-import boto3
 import requests
 
 from src.mypackage.utils import format_response, get_current_time
