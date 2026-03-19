@@ -4,8 +4,6 @@ title: PlanetScale
 
 [PlanetScale](https://planetscale.com) is a cloud database platform built for speed and scalability, with built-in branching. This guide covers how to set it up with SST.
 
-This is a pattern used in production by [terminal.shop](https://github.com/terminaldotshop/terminal) and [OpenCode](https://github.com/anomalyco/opencode).
-
 ## Install
 
 Add the PlanetScale provider to your SST app.
@@ -53,10 +51,6 @@ const db = planetscale.getDatabaseOutput({
 
 PlanetScale supports database branching natively. Combined with SST, every stage and every pull request can get its own isolated database branch automatically.
 
-:::tip
-Configure [Autodeploy](/docs/console/#autodeploy) in the SST Console to do this automatically on every pull request.
-:::
-
 Conditionally create or reference a branch based on the current stage.
 
 ```ts title="sst.config.ts"
@@ -76,6 +70,12 @@ const branch =
 ```
 
 In production, it references the existing `production` branch. In any other stage, it creates a new branch from production. So `sst deploy --stage pr-42` creates a `pr-42` branch in PlanetScale.
+
+:::tip
+Configure [Autodeploy](/docs/console/#autodeploy) in the SST Console to do this automatically on every pull request.
+:::
+
+This is a pattern used in production by [terminal.shop](https://github.com/terminaldotshop/terminal) and [OpenCode](https://github.com/anomalyco/opencode).
 
 ## Usage
 
