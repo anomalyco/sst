@@ -61,7 +61,7 @@ export interface AuroraArgs {
    *
    * :::caution
    * Changing the version will cause the database to restart on the next `sst deploy`,
-   * possibly causing downtime. [Read more about upgrading databases](/docs/upgrade-databases/).
+   * possibly causing downtime. [Learn more about upgrading databases](/docs/upgrade-databases/).
    * :::
    *
    * @default `"17"` for Postgres, `"3.08.0"` for MySQL

@@ -32,7 +32,7 @@ This is the default for [`Postgres`](/docs/component/aws/postgres/), [`Mysql`](/
 
 ### Multi-AZ
 
-[`Postgres`](/docs/component/aws/postgres/) and [`Mysql`](/docs/component/aws/mysql/) support [Multi-AZ deployments](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.MultiAZ.html). When enabled, AWS maintains a standby replica in a different availability zone. During an upgrade, AWS applies the changes to the standby first, then fails over to it. This reduces downtime to around **60 seconds** — the time it takes for the failover — instead of the full duration of the upgrade.
+[`Postgres`](/docs/component/aws/postgres/), [`Mysql`](/docs/component/aws/mysql/), and [`Redis`](/docs/component/aws/redis/) support Multi-AZ deployments. When enabled, AWS maintains a standby replica in a different availability zone. During an upgrade, AWS applies the changes to the standby first, then fails over to it. This reduces downtime to around **60 seconds** — the time it takes for the failover — instead of the full duration of the upgrade.
 
 ```ts title="sst.config.ts" {4}
 const database = new sst.aws.Postgres("MyDatabase", {
@@ -42,15 +42,13 @@ const database = new sst.aws.Postgres("MyDatabase", {
 });
 ```
 
-Multi-AZ roughly doubles the cost of the database since two instances are running at all times. But it also provides automatic failover if the primary instance fails, making it a good idea for production databases regardless of upgrades.
+Multi-AZ roughly doubles the cost since a standby instance is running at all times. But it also provides automatic failover if the primary fails, making it a good idea for production workloads regardless of upgrades.
 
 If you don't want to keep Multi-AZ enabled permanently, you can enable it temporarily for the upgrade. Deploy with `multiAz: true` first and wait for the standby to be created and synced. Then change the `version` and deploy again. After the upgrade completes, you can set `multiAz` back to `false`.
 
 :::note
-[`Aurora`](/docs/component/aws/aurora/) does not currently support the `multiAz` prop, but Aurora clusters inherently store data across multiple AZs. Adding replicas through the `replicas` prop provides similar failover behavior during upgrades. If you'd like first-class `multiAz` support for Aurora, [let us know](https://github.com/sst/sst/issues/0000).
+[`Aurora`](/docs/component/aws/aurora/) does not currently support the `multiAz` prop, but Aurora clusters inherently store data across multiple AZs. Adding replicas through the `replicas` prop provides similar failover behavior during upgrades. If you'd like first-class `multiAz` support for Aurora, [let us know](https://github.com/anomalyco/sst/issues/6615).
 :::
-
----
 
 ### Blue/Green deployments
 
@@ -99,8 +97,6 @@ There are some things to keep in mind when using Blue/Green deployments:
 
 Here's the recommended workflow for upgrading a production database.
 
----
-
 ### 1. Check compatibility
 
 Make sure the upgrade path is supported. Not all version jumps are allowed — you might need to go through intermediate versions.
@@ -110,8 +106,6 @@ Make sure the upgrade path is supported. Not all version jumps are allowed — y
 - [Aurora PostgreSQL upgrade paths](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_UpgradeDBInstance.PostgreSQL.html)
 - [Aurora MySQL upgrade paths](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/AuroraMySQL.Updates.MajorVersionUpgrade.html)
 
----
-
 ### 2. Pick a strategy
 
 Decide how you want to handle the upgrade based on your downtime tolerance.
@@ -119,8 +113,6 @@ Decide how you want to handle the upgrade based on your downtime tolerance.
 - **In-place** — simplest, but plan for downtime during the upgrade. Good for dev and staging.
 - **Multi-AZ** — reduces downtime to about 60 seconds by failing over to an upgraded standby. Can be enabled temporarily for the upgrade.
 - **Blue/Green** — minimizes downtime by creating a staging copy and switching over. The overall deploy takes longer (20-30 min) but the application sees very little interruption. Only available for `Postgres` and `Mysql`.
-
----
 
 ### 3. Test in a non-production stage
 
@@ -133,8 +125,6 @@ Deploy the version change to a dev or staging stage first to make sure everythin
 +   version: "17",
   });
 ```
-
----
 
 ### 4. Deploy to production
 

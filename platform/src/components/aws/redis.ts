@@ -39,7 +39,7 @@ export interface RedisArgs {
    *
    * :::caution
    * Changing the version will cause the instance to restart on the next `sst deploy`,
-   * possibly causing downtime. [Read more about upgrading databases](/docs/upgrade-databases/).
+   * possibly causing downtime. [Learn more about upgrading databases](/docs/upgrade-databases/).
    * :::
    *
    * @default `"7.1"` for Redis, `"7.2"` for Valkey
@@ -56,7 +56,7 @@ export interface RedisArgs {
    *
    * :::caution
    * Changing the instance type will cause the instance to restart on the next `sst deploy`,
-   * possibly causing downtime. [Read more about upgrading databases](/docs/upgrade-databases/).
+   * possibly causing downtime. [Learn more about upgrading databases](/docs/upgrade-databases/).
    * :::
    *
    * @default `"t4g.micro"`
@@ -68,6 +68,29 @@ export interface RedisArgs {
    * ```
    */
   instance?: Input<string>;
+  /**
+   * Enable [Multi-AZ](https://docs.aws.amazon.com/AmazonElastiCache/latest/red-ug/AutoFailover.html)
+   * for the Redis instance.
+   *
+   * When enabled, ElastiCache maintains a replica in a different availability zone
+   * and automatically fails over to it if the primary node fails. This also reduces
+   * downtime during version and instance upgrades.
+   * [Learn more about upgrading databases](/docs/upgrade-databases/).
+   *
+   * :::caution
+   * Using Multi-AZ will approximately double the cost of the instance since a
+   * replica is running at all times.
+   * :::
+   *
+   * @default `false`
+   * @example
+   * ```js
+   * {
+   *   multiAz: true
+   * }
+   * ```
+   */
+  multiAz?: Input<boolean>;
   /**
    * @deprecated The `cluster.nodes` prop is now the recommended way to configure the
    * number of nodes in the cluster.
@@ -349,6 +372,7 @@ export class Redis extends Component implements Link.Linkable {
       ([engine, v]) => v ?? (engine === "redis" ? "7.1" : "7.2"),
     );
     const instance = output(args.instance).apply((v) => v ?? "t4g.micro");
+    const multiAz = output(args.multiAz).apply((v) => v ?? false);
     const argsCluster = normalizeCluster();
     const vpc = normalizeVpc();
 
@@ -584,7 +608,7 @@ Listening on "${dev.host}:${dev.port}"...`,
                   : {
                       clusterMode: "disabled",
                     }),
-                multiAzEnabled: false,
+                multiAzEnabled: multiAz,
                 applyImmediately: true,
                 autoMinorVersionUpgrade: false,
                 atRestEncryptionEnabled: true,

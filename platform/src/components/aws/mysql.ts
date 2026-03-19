@@ -24,7 +24,7 @@ export interface MysqlArgs {
    *
    * :::caution
    * Changing the version will cause the database to restart on the next `sst deploy`,
-   * possibly causing downtime. [Read more about upgrading databases](/docs/upgrade-databases/).
+   * possibly causing downtime. [Learn more about upgrading databases](/docs/upgrade-databases/).
    * :::
    *
    * @default `"8.0.40"`
@@ -96,7 +96,7 @@ export interface MysqlArgs {
    *
    * :::caution
    * Changing the instance type will cause the database to restart on the next `sst deploy`,
-   * possibly causing downtime. [Read more about upgrading databases](/docs/upgrade-databases/).
+   * possibly causing downtime. [Learn more about upgrading databases](/docs/upgrade-databases/).
    * :::
    *
    * @default `"t4g.micro"`
@@ -218,7 +218,7 @@ export interface MysqlArgs {
    */
   multiAz?: Input<boolean>;
   /**
-   * The upgrade strategy for the database. [Read more about upgrading databases](/docs/upgrade-databases/).
+   * The upgrade strategy for the database. [Learn more about upgrading databases](/docs/upgrade-databases/).
    *
    * When set to `"blue-green"`, version and parameter group upgrades use
    * [AWS RDS Blue/Green deployments](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/blue-green-deployments.html)
