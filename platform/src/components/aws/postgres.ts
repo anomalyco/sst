@@ -220,25 +220,23 @@ export interface PostgresArgs {
    */
   multiAz?: Input<boolean>;
   /**
-   * The upgrade strategy for the database. [Learn more about upgrading databases](/docs/upgrade-databases/).
+   * Enable [Blue/Green deployments](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/blue-green-deployments.html)
+   * for version and parameter group upgrades.
+   * [Learn more about upgrading databases](/docs/upgrade-databases/).
    *
-   * When set to `"blue-green"`, version and parameter group upgrades use
-   * [AWS RDS Blue/Green deployments](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/blue-green-deployments.html)
-   * for low-downtime updates. A staging (green) instance is created, updated,
+   * When enabled, a staging (green) instance is created, updated,
    * verified, then promoted to replace the production (blue) instance.
+   * This minimizes downtime during upgrades.
    *
-   * When set to `"in-place"`, upgrades are applied directly to the running instance
-   * which may cause downtime.
-   *
-   * @default `"in-place"`
+   * @default `false`
    * @example
    * ```js
    * {
-   *   upgrade: "blue-green"
+   *   blueGreen: true
    * }
    * ```
    */
-  upgrade?: Input<"blue-green" | "in-place">;
+  blueGreen?: Input<boolean>;
   /**
    * @internal
    */
@@ -508,7 +506,7 @@ export class Postgres extends Component implements Link.Linkable {
     const instanceType = output(args.instance).apply((v) => v ?? "t4g.micro");
     const username = output(args.username).apply((v) => v ?? "postgres");
     const storage = normalizeStorage();
-    const upgradeStrategy = output(args.upgrade ?? "in-place");
+    const blueGreen = output(args.blueGreen).apply((v) => v ?? false);
     const dbName = output(args.database).apply(
       (v) => v ?? $app.name.replaceAll("-", "_"),
     );
@@ -770,15 +768,13 @@ Listening on "${dev.host}:${dev.port}"...`,
             allocatedStorage: 20,
             // Blue/green deployments require maxAllocatedStorage to be at least
             // 10% higher than allocatedStorage for autoscaling headroom.
-            maxAllocatedStorage: all([storage, upgradeStrategy]).apply(
-              ([s, u]) => (u === "blue-green" ? Math.max(s, 22) : s),
+            maxAllocatedStorage: all([storage, blueGreen]).apply(
+              ([s, bg]) => (bg ? Math.max(s, 22) : s),
             ),
             multiAz,
             backupRetentionPeriod: 7,
             performanceInsightsEnabled: true,
-            blueGreenUpdate: upgradeStrategy.apply((s) =>
-              s === "blue-green" ? { enabled: true } : { enabled: false },
-            ),
+            blueGreenUpdate: blueGreen.apply((bg) => ({ enabled: bg })),
             tags: {
               "sst:component-version": _version.toString(),
               "sst:lookup:password": secret.id,

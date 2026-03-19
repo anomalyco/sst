@@ -52,13 +52,13 @@ If you don't want to keep Multi-AZ enabled permanently, you can enable it tempor
 
 ### Blue/Green deployments
 
-[`Postgres`](/docs/component/aws/postgres/) and [`Mysql`](/docs/component/aws/mysql/) support [AWS RDS Blue/Green deployments](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/blue-green-deployments.html) through the `upgrade` prop. This creates a complete staging copy of your database, applies the changes there, and then switches over with minimal downtime.
+[`Postgres`](/docs/component/aws/postgres/) and [`Mysql`](/docs/component/aws/mysql/) support [AWS RDS Blue/Green deployments](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/blue-green-deployments.html) through the `blueGreen` prop. This creates a complete staging copy of your database, applies the changes there, and then switches over with minimal downtime.
 
 ```ts title="sst.config.ts" {4}
 const database = new sst.aws.Postgres("MyDatabase", {
   vpc,
   version: "17",
-  upgrade: "blue-green",
+  blueGreen: true,
 });
 ```
 
@@ -68,11 +68,11 @@ This works the same way for [`Mysql`](/docs/component/aws/mysql/).
 const database = new sst.aws.Mysql("MyDatabase", {
   vpc,
   version: "8.4.4",
-  upgrade: "blue-green",
+  blueGreen: true,
 });
 ```
 
-When you deploy with `upgrade: "blue-green"`, the following happens:
+When you deploy with `blueGreen: true`, the following happens:
 
 1. A **staging (green)** copy of your database is created from the current **production (blue)** instance.
 2. The requested changes are applied to the green instance.
@@ -134,14 +134,14 @@ Apply your chosen strategy to the production deploy.
 const database = new sst.aws.Postgres("MyDatabase", {
   vpc,
   version: "17",
-  upgrade: "blue-green",
+  blueGreen: true,
 });
 ```
 
 :::tip
-You can set `upgrade` conditionally so dev environments use in-place upgrades while production uses Blue/Green.
+You can set `blueGreen` conditionally so only production uses Blue/Green deployments.
 
 ```ts
-upgrade: $app.stage === "production" ? "blue-green" : "in-place",
+blueGreen: $app.stage === "production",
 ```
 :::
