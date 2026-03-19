@@ -18,21 +18,11 @@ func (s *Multiplexer) draw() {
 	}
 	selected := s.selectedProcess()
 
-	type filteredRow struct {
-		y     int
-		icon  string
-		label string
-		style tcell.Style
-	}
-	var filteredRows []filteredRow
-	row := 0
-
 	for index, item := range s.processes {
 		if index > 0 && !s.processes[index-1].dead && item.dead {
 			spacer := views.NewTextBar()
 			spacer.SetLeft("──────────────────────", tcell.StyleDefault.Foreground(tcell.ColorGray))
 			s.stack.AddWidget(spacer, 0)
-			row++
 		}
 		style := tcell.StyleDefault
 		if item.dead {
@@ -45,20 +35,15 @@ func (s *Multiplexer) draw() {
 			}
 		}
 		label := item.Title
+		textStyle := style
 		if item.filter != "" {
 			label = item.filter
-			filteredRows = append(filteredRows, filteredRow{
-				y:     row,
-				icon:  item.Icon,
-				label: label,
-				style: style,
-			})
+			textStyle = textStyle.Italic(true)
 		}
 		title := views.NewTextBar()
 		title.SetStyle(style)
-		title.SetLeft(" "+item.Icon+" "+label, tcell.StyleDefault)
+		title.SetLeft(" "+item.Icon+" "+label, textStyle)
 		s.stack.AddWidget(title, 0)
-		row++
 	}
 	s.stack.AddWidget(views.NewSpacer(), 1)
 
@@ -123,23 +108,6 @@ func (s *Multiplexer) draw() {
 	}
 	s.stack.Draw()
 
-	// overdraw filtered pane titles: icon non-italic, label italic
-	for _, fr := range filteredRows {
-		x := 1
-		for _, ch := range fr.icon {
-			s.screen.SetContent(x, fr.y, ch, nil, fr.style)
-			x++
-		}
-		x++ // space
-		italicStyle := fr.style.Italic(true)
-		for _, ch := range fr.label {
-			if x >= SIDEBAR_WIDTH-1 {
-				break
-			}
-			s.screen.SetContent(x, fr.y, ch, nil, italicStyle)
-			x++
-		}
-	}
 	borderStyle := tcell.StyleDefault.Foreground(tcell.ColorGray)
 	for i := 0; i < s.height; i++ {
 		s.screen.SetContent(SIDEBAR_WIDTH-1, i, '│', nil, borderStyle)

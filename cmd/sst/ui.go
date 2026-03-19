@@ -107,8 +107,7 @@ func CmdUI(c *cli.Cli) error {
 		switch e := evt.(type) {
 		case *ui.PaneFilterEvent:
 			if e.PaneKey == filter {
-				icons := map[string]string{"function": "λ", "task": "⧉"}
-				u.SetFilter(e.Value, icons[e.PaneKey])
+				u.SetFilter(e.Value, e.PaneKey)
 			}
 		default:
 			u.Event(evt)

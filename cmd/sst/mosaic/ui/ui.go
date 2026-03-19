@@ -80,7 +80,9 @@ func WithDev(u *Options) {
 	u.Dev = true
 }
 
-func (u *UI) SetFilter(filter string, icon string) {
+func (u *UI) SetFilter(filter string, paneKey string) {
+	icons := map[string]string{"function": "λ", "task": "⧉"}
+	icon := icons[paneKey]
 	u.options.Filter = filter
 	u.blank()
 	if filter != "" {
