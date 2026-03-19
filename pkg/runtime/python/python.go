@@ -47,10 +47,14 @@ func parseConcurrency() int {
 	}
 	n, err := strconv.Atoi(raw)
 	if err != nil {
-		panic(fmt.Sprintf("SST_BUILD_CONCURRENCY_FUNCTION=%q is not a valid integer", raw))
+		slog.Warn("invalid SST_BUILD_CONCURRENCY_FUNCTION, using default",
+			"value", raw, "default", 4)
+		return 4
 	}
 	if n < 1 {
-		panic(fmt.Sprintf("SST_BUILD_CONCURRENCY_FUNCTION=%d must be >= 1", n))
+		slog.Warn("SST_BUILD_CONCURRENCY_FUNCTION must be >= 1, using default",
+			"value", n, "default", 4)
+		return 4
 	}
 	return n
 }
@@ -106,8 +110,6 @@ func (w *worker) Logs() io.ReadCloser {
 }
 
 type PythonRuntime struct {
-	lastBuiltHandler map[string]string
-
 	deployBuilder *deployBuilder
 
 	// Mutex for thread-safe access
@@ -115,9 +117,7 @@ type PythonRuntime struct {
 }
 
 func New() *PythonRuntime {
-	return &PythonRuntime{
-		lastBuiltHandler: map[string]string{},
-	}
+	return &PythonRuntime{}
 }
 
 func (r *PythonRuntime) Build(ctx context.Context, input *runtime.BuildInput) (*runtime.BuildOutput, error) {
@@ -138,34 +138,7 @@ func (r *PythonRuntime) Build(ctx context.Context, input *runtime.BuildInput) (*
 		<-globalBuildSemaphore
 	}()
 
-	// Fast path for dev mode: skip rebuild if artifact is still valid
-	if input.Dev {
-		r.mutex.RLock()
-		lastBuilt, hasBuilt := r.lastBuiltHandler[input.FunctionID]
-		r.mutex.RUnlock()
-
-		if hasBuilt && lastBuilt != "" {
-			handlerFile := filepath.Join(input.Out(), input.Handler+".py")
-			if _, err := os.Stat(handlerFile); err == nil {
-				return &runtime.BuildOutput{
-					Out:     input.Out(),
-					Handler: input.Handler,
-					Errors:  []string{},
-				}, nil
-			}
-		}
-	}
-
-	/// UV currently does not support --include-workspace-deps for builds
-	/// See: https://github.com/astral-sh/uv/issues/6935
-	///
-	/// So we manually:
-	/// 1. Build all packages
-	/// 2. Flatten src/ nesting for lambdaric module resolution
-	/// 3. Export uv package index to requirements.txt
-	/// 4. Install deps into artifact dir (local for zip, Dockerfile for containers)
-
-	file, err := r.getFile(input)
+	_, err := r.getFile(input)
 	if err != nil {
 		slog.Error("handler not found",
 			"functionID", input.FunctionID,
@@ -178,12 +151,6 @@ func (r *PythonRuntime) Build(ctx context.Context, input *runtime.BuildInput) (*
 	result, err := r.CreateBuildAsset(ctx, input)
 	if err != nil {
 		return nil, err
-	}
-
-	if input.Dev {
-		r.mutex.Lock()
-		r.lastBuiltHandler[input.FunctionID] = file
-		r.mutex.Unlock()
 	}
 
 	return result, nil

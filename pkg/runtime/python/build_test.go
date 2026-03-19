@@ -342,3 +342,76 @@ func TestContentFilter_PatternMatching(t *testing.T) {
 		})
 	}
 }
+
+func TestHasBuildConfig(t *testing.T) {
+	tests := []struct {
+		name     string
+		files    map[string]string // filename -> content
+		expected bool
+	}{
+		{
+			name: "setup.py makes it buildable",
+			files: map[string]string{
+				"setup.py": "from setuptools import setup\nsetup()",
+			},
+			expected: true,
+		},
+		{
+			name: "pyproject.toml with build-system is buildable",
+			files: map[string]string{
+				"pyproject.toml": "[project]\nname = \"my-pkg\"\n\n[build-system]\nrequires = [\"hatchling\"]\n",
+			},
+			expected: true,
+		},
+		{
+			name: "pyproject.toml without build-system is not buildable",
+			files: map[string]string{
+				"pyproject.toml": "[project]\nname = \"my-app\"\ndependencies = [\"requests\"]\n",
+			},
+			expected: false,
+		},
+		{
+			name: "tool.sst.buildable = false overrides build-system",
+			files: map[string]string{
+				"pyproject.toml": "[project]\nname = \"my-app\"\n\n[build-system]\nrequires = [\"hatchling\"]\n\n[tool.sst]\nbuildable = false\n",
+			},
+			expected: false,
+		},
+		{
+			name: "tool.sst.buildable = true marks as buildable without build-system",
+			files: map[string]string{
+				"pyproject.toml": "[project]\nname = \"my-app\"\n\n[tool.sst]\nbuildable = true\n",
+			},
+			expected: true,
+		},
+		{
+			name:     "empty directory is not buildable",
+			files:    map[string]string{},
+			expected: false,
+		},
+		{
+			name: "legacy magic string still works",
+			files: map[string]string{
+				"pyproject.toml": "[project]\nname = \"my-app\"\n# NOT a buildable package\n\n[build-system]\nrequires = [\"hatchling\"]\n",
+			},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			for filename, content := range tt.files {
+				path := filepath.Join(dir, filename)
+				if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+					t.Fatalf("failed to write %s: %v", filename, err)
+				}
+			}
+
+			got := hasBuildConfig(dir)
+			if got != tt.expected {
+				t.Errorf("hasBuildConfig() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}

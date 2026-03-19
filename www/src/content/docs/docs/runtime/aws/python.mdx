@@ -43,7 +43,7 @@ my-function/
 
 ## Dependencies
 
-SST uses [uv](https://github.com/astral-sh/uv) for fast dependency management when available, with automatic fallback to pip. We recommend using `pyproject.toml` for modern Python packaging:
+SST uses [uv](https://github.com/astral-sh/uv) for fast dependency management. We recommend using `pyproject.toml` for modern Python packaging:
 
 ```toml title="pyproject.toml"
 [project]
@@ -306,11 +306,7 @@ Unzipped size must be smaller than 262144000 bytes
    ]
    ```
 2. Use container mode for large dependencies
-3. Check what files are being included:
-   ```bash
-   export SST_DEBUG=python:filter
-   sst deploy
-   ```
+3. Check what files are being included by reviewing the build output in `.sst/artifacts/`
 
 **Required File Missing from Package**
 ```
@@ -325,18 +321,6 @@ FileNotFoundError: config.json not found in Lambda
    ```
 2. Move the file to a standard location (`data/`, `config/`, `static/`)
 3. Verify the file path is correct relative to your handler
-
-### Debug Commands
-
-```bash
-# Enable debug logging
-export SST_DEBUG=python:*
-sst deploy
-
-# Debug file filtering specifically
-export SST_DEBUG=python:filter
-sst deploy
-```
 
 :::note
 On macOS, if deploys hang after the first successful deploy, clean the artifact cache: `rm -rf .sst/artifacts/*-src && sst deploy`. This is caused by a macOS/APFS filesystem quirk with hardlinked directories.

@@ -1,9 +1,13 @@
 package python
 
 import (
+	"archive/tar"
+	"archive/zip"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -51,6 +55,11 @@ func newDeployBuilder(config deployBuilderConfig) (*deployBuilder, error) {
 
 // findWorkspaceRoot walks up from PyprojectPath to find the UV workspace root
 // ([tool.uv.workspace]). Falls back to the pyproject dir, or SourceRoot if unset.
+//
+// Intentionally walks above the SST project root (sst.config.ts directory) because
+// UV workspaces can legitimately live above it — e.g. a monorepo where sst.config.ts
+// is nested inside a larger Python workspace. The [tool.uv.workspace] declaration
+// acts as the natural stop condition for well-configured projects.
 func (ib *deployBuilder) findWorkspaceRoot(projectInfo *projectInfo) string {
 	if projectInfo.PyprojectPath == "" {
 		return projectInfo.SourceRoot
@@ -292,15 +301,13 @@ func (ib *deployBuilder) extractAndProcessPackageArchive(outputDir string, proje
 // processPackageArchive extracts and cleans up a single package archive
 func (ib *deployBuilder) processPackageArchive(archiveFile, outputDir string, projectInfo *projectInfo) error {
 	if strings.HasSuffix(archiveFile, ".whl") {
-		// Wheels are zip archives
-		extractCmd := []string{"unzip", "-o", "-q", archiveFile, "-d", outputDir}
-		if err := ib.executeCommand(extractCmd, outputDir); err != nil {
+		if err := extractZip(archiveFile, outputDir); err != nil {
 			return fmt.Errorf("failed to extract wheel: %w", err)
 		}
 
-		// Remove .dist-info directories (not needed for Lambda)
 		os.Remove(archiveFile)
 
+		// Remove .dist-info directories (not needed for Lambda)
 		distInfoPattern := filepath.Join(outputDir, "*.dist-info")
 		distInfoDirs, _ := filepath.Glob(distInfoPattern)
 		for _, distInfoDir := range distInfoDirs {
@@ -311,8 +318,7 @@ func (ib *deployBuilder) processPackageArchive(archiveFile, outputDir string, pr
 	}
 
 	// Extract tar.gz
-	extractCmd := []string{"tar", "-xzf", archiveFile, "-C", outputDir}
-	if err := ib.executeCommand(extractCmd, outputDir); err != nil {
+	if err := extractTarGz(archiveFile, outputDir); err != nil {
 		return fmt.Errorf("failed to extract archive: %w", err)
 	}
 
@@ -336,6 +342,107 @@ func (ib *deployBuilder) processPackageArchive(archiveFile, outputDir string, pr
 	// Remove the original archive
 	os.Remove(archiveFile)
 
+	return nil
+}
+
+// extractZip extracts a zip archive (used for .whl files) to the destination directory.
+func extractZip(archiveFile, destDir string) error {
+	r, err := zip.OpenReader(archiveFile)
+	if err != nil {
+		return fmt.Errorf("failed to open zip: %w", err)
+	}
+	defer r.Close()
+
+	for _, f := range r.File {
+		// Guard against zip slip
+		target := filepath.Join(destDir, f.Name)
+		if !strings.HasPrefix(filepath.Clean(target), filepath.Clean(destDir)+string(os.PathSeparator)) {
+			return fmt.Errorf("illegal file path in zip: %s", f.Name)
+		}
+
+		if f.FileInfo().IsDir() {
+			if err := os.MkdirAll(target, 0755); err != nil {
+				return err
+			}
+			continue
+		}
+
+		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+			return err
+		}
+
+		rc, err := f.Open()
+		if err != nil {
+			return err
+		}
+
+		out, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
+		if err != nil {
+			rc.Close()
+			return err
+		}
+
+		if _, err := io.Copy(out, rc); err != nil {
+			out.Close()
+			rc.Close()
+			return err
+		}
+		out.Close()
+		rc.Close()
+	}
+	return nil
+}
+
+// extractTarGz extracts a .tar.gz archive to the destination directory.
+func extractTarGz(archiveFile, destDir string) error {
+	f, err := os.Open(archiveFile)
+	if err != nil {
+		return fmt.Errorf("failed to open archive: %w", err)
+	}
+	defer f.Close()
+
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		return fmt.Errorf("failed to create gzip reader: %w", err)
+	}
+	defer gz.Close()
+
+	tr := tar.NewReader(gz)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("failed to read tar entry: %w", err)
+		}
+
+		target := filepath.Join(destDir, hdr.Name)
+		// Guard against tar slip
+		if !strings.HasPrefix(filepath.Clean(target), filepath.Clean(destDir)+string(os.PathSeparator)) {
+			return fmt.Errorf("illegal file path in tar: %s", hdr.Name)
+		}
+
+		switch hdr.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, 0755); err != nil {
+				return err
+			}
+		case tar.TypeReg:
+			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+				return err
+			}
+			out, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(hdr.Mode))
+			if err != nil {
+				return err
+			}
+			if _, err := io.Copy(out, tr); err != nil {
+				out.Close()
+				return err
+			}
+			out.Close()
+		}
+	}
 	return nil
 }
 
@@ -436,25 +543,6 @@ func (ib *deployBuilder) flattenPackageToRoot(extractedDir, outputDir string) er
 	return nil
 }
 
-// executeCommand runs a shell command in the given directory
-func (ib *deployBuilder) executeCommand(args []string, workingDir string) error {
-	if len(args) == 0 {
-		return fmt.Errorf("no command specified")
-	}
-
-	cmd := exec.Command(args[0], args[1:]...)
-	if workingDir != "" {
-		cmd.Dir = workingDir
-	}
-
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("command failed: %s\nOutput: %s", err, string(output))
-	}
-
-	return nil
-}
-
 func (ib *deployBuilder) installDependenciesForBuild(ctx context.Context, input *runtime.BuildInput, projectInfo *projectInfo) error {
 	if err := os.MkdirAll(input.Out(), 0755); err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
@@ -485,12 +573,20 @@ func (ib *deployBuilder) generateOrCopyRequirementsFile(ctx context.Context, inp
 	// Include dev dependencies for non-buildable source-only projects
 	noDev := true
 	if projectInfo.PyprojectPath != "" {
-		if content, err := os.ReadFile(projectInfo.PyprojectPath); err == nil {
-			contentStr := string(content)
-			if strings.Contains(contentStr, "NOT a buildable package") ||
-				strings.Contains(contentStr, "Development environment - not a buildable package") ||
-				strings.Contains(contentStr, "SST will treat this as source code") {
+		if config, err := ib.projectResolver.ParsePyprojectToml(projectInfo.PyprojectPath); err == nil {
+			if config.Tool.SST.Buildable != nil && !*config.Tool.SST.Buildable {
 				noDev = false
+			}
+		}
+		// Legacy: magic comment strings for backwards compatibility
+		if noDev {
+			if content, err := os.ReadFile(projectInfo.PyprojectPath); err == nil {
+				contentStr := string(content)
+				if strings.Contains(contentStr, "NOT a buildable package") ||
+					strings.Contains(contentStr, "Development environment - not a buildable package") ||
+					strings.Contains(contentStr, "SST will treat this as source code") {
+					noDev = false
+				}
 			}
 		}
 	}
@@ -1356,7 +1452,15 @@ func hasBuildConfig(dir string) bool {
 
 	contentStr := string(content)
 
-	// Explicit markers that this is NOT buildable
+	// Check [tool.sst].buildable first (structured config, preferred)
+	var config pyprojectConfig
+	if err := toml.Unmarshal(content, &config); err == nil {
+		if config.Tool.SST.Buildable != nil {
+			return *config.Tool.SST.Buildable
+		}
+	}
+
+	// Legacy: magic comment strings for backwards compatibility
 	if strings.Contains(contentStr, "NOT a buildable package") ||
 		strings.Contains(contentStr, "Development environment - not a buildable package") ||
 		strings.Contains(contentStr, "SST will treat this as source code") {
