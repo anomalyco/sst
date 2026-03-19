@@ -2780,10 +2780,10 @@ export class Service extends Component implements Link.Linkable {
                     : undefined,
                   queryStrings: rule.conditions.query,
                   httpHeader: rule.conditions.header
-                    ? {
-                        httpHeaderName: rule.conditions.header.name,
-                        values: rule.conditions.header.values,
-                      }
+                    ? output(rule.conditions.header).apply((h) => ({
+                        httpHeaderName: h.name,
+                        values: h.values,
+                      }))
                     : undefined,
                 },
               ],
