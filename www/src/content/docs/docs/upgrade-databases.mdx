@@ -3,10 +3,10 @@ title: Upgrade Databases
 description: What to expect when upgrading your database engine version or instance type, and how to minimize downtime.
 ---
 
-When you change the `version` or `instance` of your database component, SST applies the update immediately on the next `sst deploy`. This applies to [`Postgres`](/docs/component/aws/postgres/), [`Mysql`](/docs/component/aws/mysql/), and [`Aurora`](/docs/component/aws/aurora/).
+When you change the `version` or `instance` of your database component, SST applies the update immediately on the next `sst deploy`. This applies to [`Postgres`](/docs/component/aws/postgres/), [`Mysql`](/docs/component/aws/mysql/), [`Aurora`](/docs/component/aws/aurora/), [`Redis`](/docs/component/aws/redis/), and [`OpenSearch`](/docs/component/aws/open-search/).
 
 :::note
-Other settings like `storage` or `password` do not cause downtime.
+Not all settings cause downtime. Check the component docs for which fields trigger a restart.
 :::
 
 This page covers what to expect during these upgrades and the different strategies for handling them.
@@ -24,7 +24,7 @@ const database = new sst.aws.Postgres("MyDatabase", {
 });
 ```
 
-This is the default for all database components: [`Postgres`](/docs/component/aws/postgres/), [`Mysql`](/docs/component/aws/mysql/), and [`Aurora`](/docs/component/aws/aurora/). If you're upgrading a production database, read on for strategies to reduce downtime.
+This is the default for [`Postgres`](/docs/component/aws/postgres/), [`Mysql`](/docs/component/aws/mysql/), [`Aurora`](/docs/component/aws/aurora/), [`Redis`](/docs/component/aws/redis/), and [`OpenSearch`](/docs/component/aws/open-search/). If you're upgrading a production database, read on for strategies to reduce downtime.
 
 ---
 
@@ -116,9 +116,9 @@ Make sure the upgrade path is supported. Not all version jumps are allowed — y
 
 Decide how you want to handle the upgrade based on your downtime tolerance.
 
-- **In-place** — simplest, but expect downtime during the upgrade. Good for dev and staging.
+- **In-place** — simplest, but plan for downtime during the upgrade. Good for dev and staging.
 - **Multi-AZ** — reduces downtime to about 60 seconds by failing over to an upgraded standby. Can be enabled temporarily for the upgrade.
-- **Blue/Green** — minimizes downtime by creating a staging copy and switching over. Takes longer overall (20-30 min) but the application sees very little interruption. Only available for `Postgres` and `Mysql`.
+- **Blue/Green** — minimizes downtime by creating a staging copy and switching over. The overall deploy takes longer (20-30 min) but the application sees very little interruption. Only available for `Postgres` and `Mysql`.
 
 ---
 
@@ -126,11 +126,12 @@ Decide how you want to handle the upgrade based on your downtime tolerance.
 
 Deploy the version change to a dev or staging stage first to make sure everything works.
 
-```ts title="sst.config.ts"
-const database = new sst.aws.Postgres("MyDatabase", {
-  vpc,
-  version: "17",
-});
+```diff lang="ts" title="sst.config.ts"
+  const database = new sst.aws.Postgres("MyDatabase", {
+    vpc,
+-   version: "16",
++   version: "17",
+  });
 ```
 
 ---
