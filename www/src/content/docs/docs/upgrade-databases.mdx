@@ -1,23 +1,21 @@
 ---
 title: Upgrade Databases
-description: What to expect when upgrading your database engine version, instance type, or other settings.
+description: What to expect when upgrading your database engine version or instance type, and how to minimize downtime.
 ---
 
-When you change the `version`, `instance`, or other settings of your database component, SST applies the update immediately on the next `sst deploy`. This applies to all database components: [`Postgres`](/docs/component/aws/postgres/), [`Mysql`](/docs/component/aws/mysql/), and [`Aurora`](/docs/component/aws/aurora/).
+When you change the `version` or `instance` of your database component, SST applies the update immediately on the next `sst deploy`. This applies to [`Postgres`](/docs/component/aws/postgres/), [`Mysql`](/docs/component/aws/mysql/), and [`Aurora`](/docs/component/aws/aurora/).
 
-This page covers what happens during these upgrades and how to minimize downtime.
+:::note
+Other settings like `storage` or `password` do not cause downtime.
+:::
+
+This page covers what to expect during these upgrades and the different strategies for handling them.
 
 ---
 
-## What happens during an upgrade
+## In-place upgrades
 
-When you change a prop like `version` or `instance` and run `sst deploy`, the database instance is modified in-place. During this time:
-
-- The database **restarts**, so there will be some downtime.
-- Depending on the change, this can take anywhere from a few minutes to **30 minutes or more**.
-- Your application will get connection errors until the database is back up.
-
-This is the default behavior for all database components.
+By default, when you change the `version` or `instance` prop and deploy, the update is applied directly to the running instance. The database restarts while the update is being applied, so your application will lose connectivity for a period of time. Depending on the change, this can take anywhere from a few minutes up to 30 minutes or more.
 
 ```ts title="sst.config.ts" {3}
 const database = new sst.aws.Postgres("MyDatabase", {
@@ -26,19 +24,15 @@ const database = new sst.aws.Postgres("MyDatabase", {
 });
 ```
 
-For dev and staging environments, this is usually fine.
+This is the default for all database components: [`Postgres`](/docs/component/aws/postgres/), [`Mysql`](/docs/component/aws/mysql/), and [`Aurora`](/docs/component/aws/aurora/). If you're upgrading a production database, read on for strategies to reduce downtime.
 
 ---
 
 ## Reducing downtime
 
-There are a couple of strategies to reduce or avoid downtime during upgrades.
-
----
-
 ### Multi-AZ
 
-[`Postgres`](/docs/component/aws/postgres/) and [`Mysql`](/docs/component/aws/mysql/) support [Multi-AZ deployments](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.MultiAZ.html). When enabled, AWS maintains a standby replica in a different availability zone. During upgrades, AWS can failover to the standby to reduce downtime.
+[`Postgres`](/docs/component/aws/postgres/) and [`Mysql`](/docs/component/aws/mysql/) support [Multi-AZ deployments](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.MultiAZ.html). When enabled, AWS maintains a standby replica in a different availability zone. During an upgrade, AWS applies the changes to the standby first, then fails over to it. This reduces downtime to around **60 seconds** — the time it takes for the failover — instead of the full duration of the upgrade.
 
 ```ts title="sst.config.ts" {4}
 const database = new sst.aws.Postgres("MyDatabase", {
@@ -48,13 +42,19 @@ const database = new sst.aws.Postgres("MyDatabase", {
 });
 ```
 
-Multi-AZ roughly doubles the cost of the database since two instances are running at all times. But it also provides automatic failover if the primary instance fails, so it's a good idea for production databases regardless of upgrades.
+Multi-AZ roughly doubles the cost of the database since two instances are running at all times. But it also provides automatic failover if the primary instance fails, making it a good idea for production databases regardless of upgrades.
+
+If you don't want to keep Multi-AZ enabled permanently, you can enable it temporarily for the upgrade. Deploy with `multiAz: true` first and wait for the standby to be created and synced. Then change the `version` and deploy again. After the upgrade completes, you can set `multiAz` back to `false`.
+
+:::note
+[`Aurora`](/docs/component/aws/aurora/) does not currently support the `multiAz` prop, but Aurora clusters inherently store data across multiple AZs. Adding replicas through the `replicas` prop provides similar failover behavior during upgrades. If you'd like first-class `multiAz` support for Aurora, [let us know](https://github.com/sst/sst/issues/0000).
+:::
 
 ---
 
 ### Blue/Green deployments
 
-[`Postgres`](/docs/component/aws/postgres/) and [`Mysql`](/docs/component/aws/mysql/) support [AWS RDS Blue/Green deployments](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/blue-green-deployments.html) through the `upgrade` prop.
+[`Postgres`](/docs/component/aws/postgres/) and [`Mysql`](/docs/component/aws/mysql/) support [AWS RDS Blue/Green deployments](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/blue-green-deployments.html) through the `upgrade` prop. This creates a complete staging copy of your database, applies the changes there, and then switches over with minimal downtime.
 
 ```ts title="sst.config.ts" {4}
 const database = new sst.aws.Postgres("MyDatabase", {
@@ -84,18 +84,14 @@ When you deploy with `upgrade: "blue-green"`, the following happens:
 
 Your database endpoint stays the same throughout this process, so no application changes are needed.
 
----
+There are some things to keep in mind when using Blue/Green deployments:
 
-#### Trade-offs
-
-Blue/Green deployments minimize downtime but come with some trade-offs.
-
-- **Longer deploy times.** Expect 20-30 minutes because of the staging instance creation and switchover process.
+- **Longer deploy times.** Expect 20-30 minutes because of the staging instance creation and switchover process. The actual downtime during the switchover is brief, but the overall deploy takes significantly longer than in-place.
 - **No read replicas.** Blue/Green deployments are not compatible with databases that have read replicas. AWS will reject the deployment.
-- **No custom health checks.** The switchover happens automatically after AWS's guardrail checks pass. You won't be able to run your own checks on the green instance before it's promoted.
+- **No custom health checks.** The switchover happens automatically after AWS's guardrail checks pass. You can't run your own checks on the green instance before it's promoted.
 - **Manual cleanup on failure.** If the deployment fails midway, the green instance and the deployment may need to be cleaned up manually in the AWS console.
 - **Resource ID may change.** The RDS resource ID may change after the switchover. The endpoint and connection details are preserved by AWS.
-- **Instance-only.** Blue/Green deployments only work with standalone RDS instances ([`Postgres`](/docs/component/aws/postgres/) and [`Mysql`](/docs/component/aws/mysql/)). They are not supported for [`Aurora`](/docs/component/aws/aurora/) clusters due to a [Pulumi provider limitation](https://github.com/pulumi/pulumi-aws/issues/6145).
+- **Instance-only.** Blue/Green deployments only work with [`Postgres`](/docs/component/aws/postgres/) and [`Mysql`](/docs/component/aws/mysql/). They are not supported for [`Aurora`](/docs/component/aws/aurora/) clusters due to a [Pulumi provider limitation](https://github.com/pulumi/pulumi-aws/issues/6145).
 
 ---
 
@@ -107,7 +103,7 @@ Here's the recommended workflow for upgrading a production database.
 
 ### 1. Check compatibility
 
-Make sure the upgrade path is supported. Not all version jumps are allowed — for example, you might need to go through intermediate versions.
+Make sure the upgrade path is supported. Not all version jumps are allowed — you might need to go through intermediate versions.
 
 - [PostgreSQL upgrade paths](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_UpgradeDBInstance.PostgreSQL.html)
 - [MySQL upgrade paths](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_UpgradeDBInstance.MySQL.html)
@@ -116,7 +112,17 @@ Make sure the upgrade path is supported. Not all version jumps are allowed — f
 
 ---
 
-### 2. Test in a non-production stage
+### 2. Pick a strategy
+
+Decide how you want to handle the upgrade based on your downtime tolerance.
+
+- **In-place** — simplest, but expect downtime during the upgrade. Good for dev and staging.
+- **Multi-AZ** — reduces downtime to about 60 seconds by failing over to an upgraded standby. Can be enabled temporarily for the upgrade.
+- **Blue/Green** — minimizes downtime by creating a staging copy and switching over. Takes longer overall (20-30 min) but the application sees very little interruption. Only available for `Postgres` and `Mysql`.
+
+---
+
+### 3. Test in a non-production stage
 
 Deploy the version change to a dev or staging stage first to make sure everything works.
 
@@ -129,9 +135,9 @@ const database = new sst.aws.Postgres("MyDatabase", {
 
 ---
 
-### 3. Deploy to production
+### 4. Deploy to production
 
-For production, consider using Blue/Green deployments to minimize downtime.
+Apply your chosen strategy to the production deploy.
 
 ```ts title="sst.config.ts" {4}
 const database = new sst.aws.Postgres("MyDatabase", {
@@ -148,9 +154,3 @@ You can set `upgrade` conditionally so dev environments use in-place upgrades wh
 upgrade: $app.stage === "production" ? "blue-green" : "in-place",
 ```
 :::
-
----
-
-### 4. Clean up
-
-After the upgrade is complete, you can remove the `upgrade` prop. It only affects how future changes are applied.
