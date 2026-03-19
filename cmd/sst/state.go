@@ -23,10 +23,21 @@ var CmdState = &cli.Command{
 	},
 	Children: []*cli.Command{
 		{
-			Name:   "edit",
-			Hidden: true,
+			Name: "edit",
 			Description: cli.Description{
 				Short: "Edit the state of your app",
+				Long: strings.Join([]string{
+					"Edit the raw state of your app directly.",
+					"",
+					"This opens your state file in your local editor (`$EDITOR`, or `vim` by default).",
+					"When you save and exit, SST pushes those changes back to your backend.",
+					"",
+					":::danger",
+					"This command is dangerous. If you make an invalid change, you can corrupt your state and break deploys.",
+					"Only use this if you understand the state format and know exactly what you are changing.",
+					"Consider using safer commands like `sst state remove` or `sst state repair` first.",
+					":::",
+				}, "\n"),
 			},
 			Run: func(c *cli.Cli) error {
 				p, err := c.InitProject()

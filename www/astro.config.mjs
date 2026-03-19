@@ -63,12 +63,15 @@ const sidebar = [
       { label: "AWS Accounts", slug: "docs/aws-accounts" },
       { label: "IAM Credentials", slug: "docs/iam-credentials" },
       { label: "Migrate From v2", slug: "docs/migrate-from-v2" },
+      { label: "Migrate From v3", slug: "docs/migrate-from-v3" },
       { label: "Custom Domains", slug: "docs/custom-domains" },
       { label: "Import Resources", slug: "docs/import-resources" },
       { label: "Set up a Monorepo", slug: "docs/set-up-a-monorepo" },
+      { label: "Configure a Router", slug: "docs/configure-a-router" },
       { label: "Share Across Stages", slug: "docs/share-across-stages" },
       { label: "Reference Resources", slug: "docs/reference-resources" },
       { label: "Environment Variables", slug: "docs/environment-variables" },
+      { label: "Policy Packs", slug: "docs/policy-packs" },
     ],
   },
   {
@@ -82,13 +85,15 @@ const sidebar = [
           "docs/component/aws/bus",
           "docs/component/aws/vpc",
           "docs/component/aws/task",
-          "docs/component/aws/cron",
+          "docs/component/aws/cron-v2",
           "docs/component/aws/auth",
           "docs/component/aws/nuxt",
+          "docs/component/aws/dsql",
           "docs/component/aws/astro",
           "docs/component/aws/redis",
           "docs/component/aws/email",
           "docs/component/aws/react",
+          "docs/component/aws/mysql",
           "docs/component/aws/remix",
           "docs/component/aws/nextjs",
           "docs/component/aws/queue",
@@ -108,11 +113,12 @@ const sidebar = [
           "docs/component/aws/svelte-kit",
           "docs/component/aws/static-site",
           "docs/component/aws/solid-start",
-          "docs/component/aws/opencontrol",
+          "docs/component/aws/open-search",
           "docs/component/aws/tan-stack-start",
           "docs/component/aws/kinesis-stream",
           "docs/component/aws/apigatewayv1",
           "docs/component/aws/apigatewayv2",
+          "docs/component/aws/step-functions",
           "docs/component/aws/cognito-user-pool",
           "docs/component/aws/cognito-identity-pool",
           "docs/component/aws/apigateway-websocket",
@@ -120,6 +126,7 @@ const sidebar = [
             label: "Internal",
             collapsed: true,
             items: [
+              "docs/component/aws/alb",
               "docs/component/aws/cdn",
               "docs/component/aws/app-sync-resolver",
               "docs/component/aws/app-sync-function",
@@ -144,14 +151,59 @@ const sidebar = [
               "docs/component/aws/providers/function-environment-update",
               "docs/component/aws/apigatewayv1-integration-route",
               "docs/component/aws/kinesis-stream-lambda-subscriber",
+              {
+                label: "StepFunctions",
+                collapsed: true,
+                items: [
+                  {
+                    label: "Fail",
+                    slug: "docs/component/aws/step-functions/fail",
+                  },
+                  {
+                    label: "Map",
+                    slug: "docs/component/aws/step-functions/map",
+                  },
+                  {
+                    label: "Wait",
+                    slug: "docs/component/aws/step-functions/wait",
+                  },
+                  {
+                    label: "Task",
+                    slug: "docs/component/aws/step-functions/task",
+                  },
+                  {
+                    label: "Pass",
+                    slug: "docs/component/aws/step-functions/pass",
+                  },
+                  {
+                    label: "State",
+                    slug: "docs/component/aws/step-functions/state",
+                  },
+                  {
+                    label: "Choice",
+                    slug: "docs/component/aws/step-functions/choice",
+                  },
+                  {
+                    label: "Parallel",
+                    slug: "docs/component/aws/step-functions/parallel",
+                  },
+                  {
+                    label: "Succeed",
+                    slug: "docs/component/aws/step-functions/succeed",
+                  },
+                ],
+              },
             ],
           },
           {
             label: "Deprecated",
             collapsed: true,
             items: [
+              { label: "Cron", slug: "docs/component/aws/cron" },
+              { label: "OpenControl", slug: "docs/component/aws/opencontrol" },
               { label: "Vpc.v1", slug: "docs/component/aws/vpc-v1" },
               { label: "Redis.v1", slug: "docs/component/aws/redis-v1" },
+              { label: "Service.v1", slug: "docs/component/aws/service-v1" },
               { label: "Cluster.v1", slug: "docs/component/aws/cluster-v1" },
               { label: "Postgres.v1", slug: "docs/component/aws/postgres-v1" },
             ],
@@ -162,10 +214,20 @@ const sidebar = [
         label: "Cloudflare",
         collapsed: true,
         items: [
-          "docs/component/cloudflare/kv",
-          "docs/component/cloudflare/d1",
-          "docs/component/cloudflare/worker",
+          "docs/component/cloudflare/ai",
           "docs/component/cloudflare/bucket",
+          "docs/component/cloudflare/cron",
+          "docs/component/cloudflare/d1",
+          "docs/component/cloudflare/kv",
+          "docs/component/cloudflare/queue",
+          "docs/component/cloudflare/worker",
+          {
+            label: "Internal",
+            collapsed: true,
+            items: [
+              "docs/component/cloudflare/queue-worker-subscriber",
+            ],
+          },
         ],
       },
       {
@@ -223,6 +285,7 @@ export default defineConfig({
   server: {
     host: "0.0.0.0",
   },
+  prefetch: import.meta.env.DEV ? false : true,
   devToolbar: {
     enabled: false,
   },
@@ -246,6 +309,10 @@ export default defineConfig({
       lastUpdated: true,
       favicon: "/favicon.svg",
       pagination: false,
+      markdown: {
+        // Use custom heading links
+        headingLinks: false,
+      },
       customCss: [
         "@fontsource-variable/rubik",
         "@fontsource-variable/roboto-mono",
@@ -261,11 +328,11 @@ export default defineConfig({
         "./src/styles/tsdoc.css",
         "./src/styles/heading.css",
       ],
-      social: {
-        "x.com": config.twitter,
-        discord: config.discord,
-        github: config.github,
-      },
+      social: [
+        { icon: "discord", label: "Discord", href: config.discord },
+        { icon: "github", label: "GitHub", href: config.github },
+        { icon: "twitter", label: "X.com", href: config.twitter },
+      ],
       editLink: {
         baseUrl: "https://github.com/sst/sst/edit/dev/www",
       },

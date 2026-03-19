@@ -73,7 +73,7 @@
 export default $config({
   app(input) {
     return {
-      name: "aws-hono-container",
+      name: "aws-hono-redis",
       removal: input?.stage === "production" ? "retain" : "remove",
       home: "aws",
     };

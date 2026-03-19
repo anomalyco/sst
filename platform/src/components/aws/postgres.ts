@@ -23,11 +23,16 @@ export type { PostgresArgs as PostgresV1Args } from "./postgres-v1";
 export interface PostgresArgs {
   /**
    * The Postgres engine version. Check out the [available versions in your region](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/PostgreSQL.Concepts.General.DBVersions.html).
-   * @default `"16.4"`
+   *
+   * :::caution
+   * Changing the version will **immediately** apply the update on the next `sst deploy` possibly causing downtime.
+   * :::
+   *
+   * @default `"17"`
    * @example
    * ```js
    * {
-   *   version: "17.2"
+   *   version: "17.1"
    * }
    * ```
    */
@@ -35,7 +40,7 @@ export interface PostgresArgs {
   /**
    * The username of the master user.
    *
-   * :::caution
+   * :::danger
    * Changing the username will cause the database to be destroyed and recreated.
    * :::
    *
@@ -58,7 +63,8 @@ export interface PostgresArgs {
    * }
    * ```
    *
-   * Use [Secrets](/docs/component/secret) to manage the password.
+   * You can use a `Secret` to manage the password.
+   *
    * ```js
    * {
    *   password: new sst.Secret("MyDBPassword").value
@@ -73,6 +79,10 @@ export interface PostgresArgs {
    * underscores. By default, it takes the name of the app, and replaces the hyphens with
    * underscores.
    *
+   * :::danger
+   * Changing the database name will cause the database to be destroyed and recreated.
+   * :::
+   *
    * @default Based on the name of the current app
    * @example
    * ```js
@@ -85,6 +95,10 @@ export interface PostgresArgs {
   /**
    * The type of instance to use for the database. Check out the [supported instance types](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.DBInstanceClass.Types.html).
    *
+   * :::caution
+   * Changing the instance type will **immediately** apply the update on the next `sst deploy` possibly causing downtime.
+   * :::
+   *
    * @default `"t4g.micro"`
    * @example
    * ```js
@@ -92,10 +106,6 @@ export interface PostgresArgs {
    *   instance: "m7g.xlarge"
    * }
    * ```
-   *
-   * By default, these changes are not applied immediately by RDS. Instead, they are
-   * applied in the next maintenance window. Check out the [full list](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_ModifyInstance.Settings.html)
-   * of props that are not applied immediately.
    */
   instance?: Input<string>;
   /**
@@ -109,8 +119,8 @@ export interface PostgresArgs {
    * :::
    *
    * By default, [gp3 storage volumes](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/CHAP_Storage.html#Concepts.Storage.GeneralSSD)
-   * are used without additional provisioned IOPS. This provides a good baseline performance
-   * for most use cases.
+   * are used without additional provisioned IOPS. This provides good baseline
+   * performance for most use cases.
    *
    * The minimum storage size is 20 GB. And the maximum storage size is 64 TB.
    *
@@ -136,52 +146,53 @@ export interface PostgresArgs {
   proxy?: Input<
     | boolean
     | {
-      /**
-       * Additional credentials the proxy can use to connect to the database. You don't
-       * need to specify the master user credentials as they are always added by default.
-       *
-       * :::note
-       * This component will not create the Postgres users listed here. You need to
-       * create them manually in the database.
-       * :::
-       *
-       * @example
-       * ```js
-       * {
-       *   credentials: [
-       *     {
-       *       username: "metabase",
-       *       password: "Passw0rd!",
-       *     }
-       *   ]
-       * }
-       * ```
-       *
-       * Use [Secrets](/docs/component/secret) to manage the password.
-       * ```js
-       * {
-       *   credentials: [
-       *     {
-       *       username: "metabase",
-       *       password: new sst.Secret("MyDBPassword").value,
-       *     }
-       *   ]
-       * }
-       * ```
-       */
-      credentials?: Input<
-        Input<{
-          /**
-           * The username of the user.
-           */
-          username: Input<string>;
-          /**
-           * The password of the user.
-           */
-          password: Input<string>;
-        }>[]
-      >;
-    }
+        /**
+         * Additional credentials the proxy can use to connect to the database. You don't
+         * need to specify the master user credentials as they are always added by default.
+         *
+         * :::note
+         * This component will not create the Postgres users listed here. You need to
+         * create them manually in the database.
+         * :::
+         *
+         * @example
+         * ```js
+         * {
+         *   credentials: [
+         *     {
+         *       username: "metabase",
+         *       password: "Passw0rd!"
+         *     }
+         *   ]
+         * }
+         * ```
+         *
+         * You can use a `Secret` to manage the password.
+         *
+         * ```js
+         * {
+         *   credentials: [
+         *     {
+         *       username: "metabase",
+         *       password: new sst.Secret("MyDBPassword").value
+         *     }
+         *   ]
+         * }
+         * ```
+         */
+        credentials?: Input<
+          Input<{
+            /**
+             * The username of the user.
+             */
+            username: Input<string>;
+            /**
+             * The password of the user.
+             */
+            password: Input<string>;
+          }>[]
+        >;
+      }
   >;
   /**
    * Enable [Multi-AZ](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.MultiAZ.html)
@@ -217,14 +228,14 @@ export interface PostgresArgs {
    * ```js
    * {
    *   vpc: {
-   *     subnets: ["subnet-0db7376a7ad4db5fd ", "subnet-06fc7ee8319b2c0ce"],
+   *     subnets: ["subnet-0db7376a7ad4db5fd ", "subnet-06fc7ee8319b2c0ce"]
    *   }
    * }
    * ```
    *
    * Or create a `Vpc` component.
    *
-   * ```js
+   * ```ts title="sst.config.ts"
    * const myVpc = new sst.aws.Vpc("MyVpc");
    * ```
    *
@@ -237,13 +248,13 @@ export interface PostgresArgs {
    * ```
    */
   vpc:
-  | Vpc
-  | Input<{
-    /**
-     * A list of subnet IDs in the VPC.
-     */
-    subnets: Input<Input<string>[]>;
-  }>;
+    | Vpc
+    | Input<{
+        /**
+         * A list of subnet IDs in the VPC.
+         */
+        subnets: Input<Input<string>[]>;
+      }>;
   /**
    * Configure how this component works in `sst dev`.
    *
@@ -251,7 +262,7 @@ export interface PostgresArgs {
    * connect to a locally running Postgres database, you can configure the `dev` prop.
    *
    * :::note
-   * By default, this creates a new RDS database even in `sst dev`.
+   * This will not create an RDS database in `sst dev`.
    * :::
    *
    * This will skip deploying an RDS database and link to the locally running Postgres database
@@ -395,7 +406,7 @@ interface PostgresRef {
  *   -e POSTGRES_USER=postgres \
  *   -e POSTGRES_PASSWORD=password \
  *   -e POSTGRES_DB=local \
- *   postgres:16.4
+ *   postgres:18
  * ```
  *
  * You can connect to it in `sst dev` by configuring the `dev` prop.
@@ -435,7 +446,7 @@ interface PostgresRef {
  *
  * That works out to an **additional** $0.015 x 2 x 24 x 30 or **$22 per month**.
  *
- * The above are rough estimates for _us-east-1_, check out the
+ * This is a rough estimate for _us-east-1_, check out the
  * [RDS Proxy pricing](https://aws.amazon.com/rds/proxy/pricing/) for more details.
  */
 export class Postgres extends Component implements Link.Linkable {
@@ -471,7 +482,7 @@ export class Postgres extends Component implements Link.Linkable {
 
     registerVersion();
     const multiAz = output(args.multiAz).apply((v) => v ?? false);
-    const engineVersion = output(args.version).apply((v) => v ?? "16.4");
+    const engineVersion = output(args.version).apply((v) => v ?? "17");
     const instanceType = output(args.instance).apply((v) => v ?? "t4g.micro");
     const username = output(args.username).apply((v) => v ?? "postgres");
     const storage = normalizeStorage();
@@ -504,7 +515,7 @@ export class Postgres extends Component implements Link.Linkable {
         parent: self,
       });
 
-      const input = instance.tags.apply((tags) => {
+      const input = instance.tagsAll.apply((tags) => {
         registerVersion(
           tags?.["sst:component-version"]
             ? parseInt(tags["sst:component-version"])
@@ -520,8 +531,8 @@ export class Postgres extends Component implements Link.Linkable {
       const proxy = input.proxyId.apply((proxyId) =>
         proxyId
           ? rds.Proxy.get(`${name}Proxy`, proxyId, undefined, {
-            parent: self,
-          })
+              parent: self,
+            })
           : undefined,
       );
 
@@ -637,13 +648,13 @@ Listening on "${dev.host}:${dev.port}"...`,
       return args.password
         ? output(args.password)
         : new RandomPassword(
-          `${name}Password`,
-          {
-            length: 32,
-            special: false,
-          },
-          { parent: self },
-        ).result;
+            `${name}Password`,
+            {
+              length: 32,
+              special: false,
+            },
+            { parent: self },
+          ).result;
     }
 
     function createSubnetGroup() {
@@ -678,7 +689,13 @@ Listening on "${dev.host}:${dev.port}"...`,
               },
             ],
           },
-          { parent: self },
+          {
+            parent: self,
+            ignoreChanges: args.version ? [] : ["family"],
+            // Necessary for the parameter group to be deleted AFTER upgrading the instance.
+            // This is either a Pulumi bug or an undocumented feature.
+            deleteBeforeReplace: false,
+          },
         ),
       );
     }
@@ -721,6 +738,9 @@ Listening on "${dev.host}:${dev.port}"...`,
             username,
             password,
             parameterGroupName: parameterGroup.name,
+            applyImmediately: true,
+            allowMajorVersionUpgrade: true,
+            autoMinorVersionUpgrade: false,
             skipFinalSnapshot: true,
             storageEncrypted: true,
             storageType: "gp3",
@@ -734,7 +754,11 @@ Listening on "${dev.host}:${dev.port}"...`,
               "sst:lookup:password": secret.id,
             },
           },
-          { parent: self, deleteBeforeReplace: true },
+          {
+            parent: self,
+            deleteBeforeReplace: true,
+            ignoreChanges: args.version ? [] : ["engineVersion"],
+          },
         ),
       );
     }
@@ -756,6 +780,7 @@ Listening on "${dev.host}:${dev.port}"...`,
                 username: instance.username,
                 password: instance.password.apply((v) => v!),
                 parameterGroupName: instance.parameterGroupName,
+                applyImmediately: true,
                 skipFinalSnapshot: true,
                 storageEncrypted: instance.storageEncrypted.apply((v) => v!),
                 storageType: instance.storageType,
@@ -764,14 +789,17 @@ Listening on "${dev.host}:${dev.port}"...`,
                   (v) => v!,
                 ),
               },
-              { parent: self },
+              {
+                parent: self,
+                ignoreChanges: args.version ? [] : ["engineVersion"],
+              },
             ),
         ),
       );
     }
 
     function createProxy() {
-      return all([args.proxy]).apply(([proxy]) => {
+      return output(args.proxy).apply((proxy) => {
         if (!proxy) return;
 
         const credentials = proxy === true ? [] : proxy.credentials ?? [];
@@ -980,10 +1008,10 @@ Listening on "${dev.host}:${dev.port}"...`,
    * const database = $app.stage === "frank"
    *   ? sst.aws.Postgres.get("MyDatabase", {
    *       id: "app-dev-mydatabase",
-   *       proxyId: "app-dev-mydatabase-proxy",
+   *       proxyId: "app-dev-mydatabase-proxy"
    *     })
    *   : new sst.aws.Postgres("MyDatabase", {
-   *       proxy: true,
+   *       proxy: true
    *     });
    * ```
    *
@@ -994,7 +1022,7 @@ Listening on "${dev.host}:${dev.port}"...`,
    * ```ts title="sst.config.ts"
    * return {
    *   id: database.id,
-   *   proxyId: database.proxyId,
+   *   proxyId: database.proxyId
    * };
    * ```
    */

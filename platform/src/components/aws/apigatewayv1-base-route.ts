@@ -40,7 +40,7 @@ export function createMethod(
   args: ApiGatewayV1BaseRouteArgs,
   parent: Component,
 ) {
-  const { api, method, resourceId, auth } = args;
+  const { api, method, resourceId, auth, apiKey } = args;
 
   const authArgs = output(auth).apply((auth) => {
     if (!auth) return { authorization: "NONE" };
@@ -69,6 +69,7 @@ export function createMethod(
             authorization: authArgs.authorization,
             authorizerId: authArgs.authorizerId,
             authorizationScopes: authArgs.authorizationScopes,
+            apiKeyRequired: apiKey,
           },
           { parent },
         ),

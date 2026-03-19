@@ -8,7 +8,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/fatih/color"
 	"github.com/sst/sst/v3/cmd/sst/cli"
 	"github.com/sst/sst/v3/cmd/sst/mosaic/dev"
 	"github.com/sst/sst/v3/cmd/sst/mosaic/ui"
@@ -79,13 +78,16 @@ var CmdSecretList = &cli.Command{
 			return util.NewReadableError(nil, "No secrets found")
 		}
 		if len(fallback) > 0 {
-			color.White("# fallback")
+			fmt.Println(ui.TEXT_DIM.Render("# fallback"))
 			for key, value := range fallback {
 				fmt.Println(key + "=" + value)
 			}
 		}
 		if len(secrets) > 0 {
-			color.White("# %s/%s", p.App().Name, p.App().Stage)
+			if len(fallback) > 0 {
+				fmt.Println()
+			}
+			fmt.Println(ui.TEXT_DIM.Render(fmt.Sprintf("# %s/%s", p.App().Name, p.App().Stage)))
 			for key, value := range secrets {
 				fmt.Println(key + "=" + value)
 			}
@@ -132,7 +134,7 @@ var CmdSecretLoad = &cli.Command{
 			"sst secret load --stage production ./secrets.env",
 			"```",
 			"",
-			"This works becase `secret list` outputs the secrets in the right format.",
+			"This works because `secret list` outputs the secrets in the right format.",
 		}, "\n"),
 	},
 	Args: []cli.Argument{
@@ -346,6 +348,9 @@ var CmdSecretSet = &cli.Command{
 				input, err := reader.ReadString('\n')
 				if err != nil {
 					if err == io.EOF {
+						if input != "" {
+							value += input
+						}
 						break
 					}
 					return err

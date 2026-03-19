@@ -221,7 +221,7 @@ So if you:
 
 You will now have two apps in your AWS account called `my-sst-app` and `my-new-sst-app`.
 
-If you want to rename your app, you'll need to remove the old app first and then deploy a new one with the new name.
+If you want to rename your app, you'll need to [remove](/docs/workflow/#remove) the old app first and then deploy a new one with the new name.
 
 ---
 
@@ -234,7 +234,7 @@ It's useful to have multiple versions of your app because it lets you make chang
 You create a new stage by deploying to it with the `--stage <name>` CLI option. The stage name is used as a namespace to create a new version of your app. It's similar to how the app name is used as a namespace.
 
 :::caution
-To rename a stage, you'll need to remove the resources from the old one and deploy to the new one.
+To rename a stage, you'll need to [remove](/docs/workflow/#remove) the resources from the old one and deploy to the new one.
 :::
 
 Similar to app names, stages cannot be renamed. So if you wanted to rename a `development` stage to `dev`; you'll need to first remove `development` and then deploy `dev`.
@@ -254,7 +254,7 @@ We'll look at this in detail below.
 Most resources that are created in AWS (and many other providers) belong to a specific region. So when you deploy your app, it's deployed to a specific region.
 
 :::caution
-To switch regions, you'll need to remove the resources from one region and deploy to the new one.
+To switch regions, you'll need to [remove](/docs/workflow/#remove) the resources from one region and deploy to the new one.
 :::
 
 For AWS, the region comes from your AWS credentials but it can be specified in the `sst.config.ts`.

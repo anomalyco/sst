@@ -12,6 +12,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/pulumi/pulumi/pkg/v3/resource/stack"
+	"github.com/pulumi/pulumi/sdk/v3/go/common/encoding"
 	"github.com/sst/sst/v3/internal/util"
 	"github.com/sst/sst/v3/pkg/flag"
 	"github.com/sst/sst/v3/pkg/id"
@@ -26,6 +28,7 @@ type Home interface {
 	setPassphrase(app, stage string, passphrase string) error
 	getPassphrase(app, stage string) (string, error)
 	listStages(app string) ([]string, error)
+	cleanup(key, app, stage string) error
 	info() (util.KeyValuePairs[string], error)
 }
 
@@ -155,6 +158,16 @@ func PutUpdate(backend Home, app, stage string, update *Update) error {
 	return putData(backend, "update", app, stage+"/"+update.ID, false, update)
 }
 
+func Cleanup(backend Home, app, stage string) error {
+	if err := backend.cleanup("eventlog", app, stage); err != nil {
+		return err
+	}
+	if err := backend.cleanup("snapshot", app, stage); err != nil {
+		return err
+	}
+	return nil
+}
+
 func GetSecrets(backend Home, app, stage string) (map[string]string, error) {
 	if stage == "" {
 		stage = "_fallback"
@@ -181,7 +194,7 @@ func PutSecrets(backend Home, app, stage string, data map[string]string) error {
 func PushPartialState(backend Home, updateID, app, stage string, data []byte) error {
 	slog.Info("pushing partial state", "updateID", updateID)
 	err := json.Unmarshal(data, &map[string]interface{}{})
-	if err != nil {
+	if err != nil || len(data) == 0 {
 		return fmt.Errorf("something has corrupted the state file - refusing to upload: %w", err)
 	}
 	return backend.putData("app", app, stage, bytes.NewReader(data))
@@ -308,6 +321,25 @@ func ListStages(backend Home, app string) ([]string, error) {
 func Info(backend Home) (util.KeyValuePairs[string], error) {
 	slog.Info("fetching backend configuration info")
 	return backend.info()
+}
+
+func hasResources(backend Home, app, stage string) bool {
+	data, err := backend.getData("app", app, stage)
+	if err != nil {
+		return false
+	}
+
+	bytes, err := io.ReadAll(data)
+	if err != nil {
+		return false
+	}
+
+	checkpoint, _, _, err := stack.UnmarshalVersionedCheckpointToLatestCheckpoint(encoding.JSON, bytes)
+	if err != nil {
+		return false
+	}
+
+	return checkpoint != nil && checkpoint.Latest != nil && len(checkpoint.Latest.Resources) > 0
 }
 
 func putData(backend Home, key, app, stage string, encrypt bool, data interface{}) error {

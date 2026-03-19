@@ -1,6 +1,7 @@
 // @ts-check
 import { defineConfig } from "astro/config";
 import aws from "astro-sst";
+import cloudflare from "@astrojs/cloudflare";
 //import aws from "../../../../../../astro-sst/packages/astro-sst/dist/adapter";
 
 // https://astro.build/config

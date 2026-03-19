@@ -4,8 +4,8 @@ import {
   Output,
   output,
 } from "@pulumi/pulumi";
-import { Component, transform } from "../component";
-import { Function, FunctionArgs } from "./function";
+import { Component, transform, Transform } from "../component";
+import { Function, FunctionArgs } from "./function.js";
 import { QueueSubscriberArgs } from "./queue";
 import { lambda } from "@pulumi/aws";
 import { toSeconds } from "../duration";
@@ -26,6 +26,11 @@ export interface Args extends QueueSubscriberArgs {
    * The subscriber function.
    */
   subscriber: Input<string | FunctionArgs>;
+  /**
+   * [Transform](/docs/components#transform) how this component creates its underlying
+   * resources.
+   */
+  transform?: QueueSubscriberArgs["transform"];
 }
 
 /**
@@ -72,7 +77,7 @@ export class QueueLambdaSubscriber extends Component {
             },
           ],
         },
-        undefined,
+        args.transform?.function,
         { parent: self },
       );
     }

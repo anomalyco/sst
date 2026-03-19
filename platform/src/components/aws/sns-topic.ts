@@ -2,7 +2,7 @@ import { ComponentResourceOptions, Output, all, output } from "@pulumi/pulumi";
 import { Component, outputId, Transform, transform } from "../component";
 import { Link } from "../link";
 import type { Input } from "../input";
-import { FunctionArgs, FunctionArn } from "./function";
+import { FunctionArgs, FunctionArn } from "./function.js";
 import { hashStringToPrettyString, logicalName } from "../naming";
 import { parseTopicArn } from "./helpers/arn";
 import { SnsTopicLambdaSubscriber } from "./sns-topic-lambda-subscriber";

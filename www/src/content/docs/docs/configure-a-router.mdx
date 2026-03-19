@@ -1,0 +1,318 @@
+---
+title: Configure a Router
+description: Create a shared CloudFront distribution for your entire app.
+---
+
+import { Image } from "astro:assets"
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+import DevDiagram from "../../../assets/docs/router/dev-architecture.svg";
+import ProdDiagram from "../../../assets/docs/router/prod-architecture.svg";
+
+You can set [custom domains](/docs/custom-domains) on components like your frontends, APIs, or services. Each of these create their own CloudFront distribution. But as your app grows you might:
+
+1. Have multiple frontends, like a landing page, or a docs site, etc.
+2. Want to serve resources from different paths of the same domain; like `/docs`, or `/api`.
+3. Want to set up preview environments on subdomains.
+
+Also since CloudFront distributions can take 15-20 minutes to deploy, creating new distributions for each of the components, and for each stage, can really impact how long it takes to deploy your app.
+
+:::tip
+The `Router` lets you create and share a single CloudFront distribution for your entire app.
+:::
+
+The ideal setup here is to create a single CloudFront distribution for your entire app and share that across components and across stages.
+
+Let's look at how to do this with the `Router` component.
+
+---
+
+#### A sample app
+
+To demo this, let's say you have the following components in your app.
+
+```ts title="sst.config.ts"
+// Frontend
+const web = new sst.aws.Nextjs("MyWeb", {
+  path: "packages/web"
+});
+
+// API
+const api = new sst.aws.Function("MyApi", {
+  url: true,
+  handler: "packages/functions/api.handler"
+});
+
+// Docs
+const docs = new sst.aws.Astro("MyDocs", {
+  path: "packages/docs"
+});
+```
+
+This has a frontend, a docs site, and an API. In production we'd like to have:
+
+- `example.com` serve `MyWeb`
+- `example.com/api` serve `MyApi`
+- `docs.example.com` serve `MyDocs`
+
+We'll create a Router for production.
+
+<ProdDiagram style="width: min(100%, 400px);" />
+
+In our dev stage we'd like to have:
+
+- `dev.example.com` serve `MyWeb`
+- `dev.example.com/api` serve `MyApi`
+- `docs.dev.example.com` serve `MyDocs`
+
+For our PR stages or preview environments we'd like to have:
+
+- `pr-123.dev.example.com` serve `MyWeb`
+- `pr-123.dev.example.com/api` serve `MyApi`
+- `docs-pr-123.dev.example.com` serve `MyDocs`
+
+We'll create a separate Router for the dev stage and share it across all the PR stages.
+
+<DevDiagram style="width: min(100%, 640px);" />
+
+We are doing `docs-pr-123.dev.` instead of `docs.pr-123.dev.` because of a limitation with custom domains in CloudFront that we'll look at below.
+
+Let's set this up.
+
+---
+
+## Add a router
+
+Instead of adding custom domains to each component, let's add a `Router` to our app with the domain we are going to use in production.
+
+```ts title="sst.config.ts"
+const router = new sst.aws.Router("MyRouter", {
+  domain: {
+    name: "example.com",
+    aliases: ["*.example.com"]
+  }
+});
+```
+
+The `*.example.com` alias is because we want to route to the `docs.` subdomain.
+
+And use that in our components.
+
+```diff lang="ts" title="sst.config.ts"
+// Frontend
+const web = new sst.aws.Nextjs("MyWeb", {
+  path: "packages/web",
++  router: {
++    instance: router
++  }
+});
+
+// API
+const api = new sst.aws.Function("MyApi", {
+  handler: "packages/functions/api.handler",
++  url: {
++    router: {
++      instance: router,
++      path: "/api"
++    }
++  }
+});
+
+// Docs
+const docs = new sst.aws.Astro("MyDocs", {
+  path: "packages/docs",
++  router: {
++    instance: router,
++    domain: "docs.example.com"
++  }
+});
+```
+
+Next, let's configure the dev stage.
+
+---
+
+## Stage based domains
+
+Since we also want to configure domains for our dev stage, let's add a function that returns the domain we want, based on the stage.
+
+```ts title="sst.config.ts"
+const domain = $app.stage === "production"
+  ? "example.com"
+  : $app.stage === "dev"
+    ? "dev.example.com"
+    : undefined;
+```
+
+Now when we deploy the dev stage, we'll create a new `Router` with our dev domain.
+
+```diff lang="ts" title="sst.config.ts"
+const router = new sst.aws.Router("MyRouter", {
+  domain: {
+-   name: "example.com",
+-   aliases: ["*.example.com"]
++   name: domain,
++   aliases: [`*.${domain}`]
+  }
+});
+```
+
+And update the `MyDocs` component to use this.
+
+```diff lang="ts" title="sst.config.ts"
+// Docs
+const docs = new sst.aws.Astro("MyDocs", {
+  path: "packages/docs",
+  router: {
+    instance: router,
+-    domain: "docs.example.com"
++    domain: `docs.${domain}`
+  }
+});
+```
+
+---
+
+## Preview environments
+
+Currently, we create a new CloudFront distribution for dev and production. But we want to **share the same distribution from dev** in our PR stages.
+
+---
+
+### Share the router
+
+To do that, let's modify how we create the `Router`.
+
+```diff lang="ts" title="sst.config.ts"
+- const router = new sst.aws.Router("MyRouter", {
++ const router = isPermanentStage
+    ? new sst.aws.Router("MyRouter", {
+       domain: {
+         name: domain,
+         aliases: [`*.${domain}`]
+       }
+     })
++   : sst.aws.Router.get("MyRouter", "A2WQRGCYGTFB7Z");
+```
+
+The `A2WQRGCYGTFB7Z` is the ID of the Router distribution created in the dev stage. You can look this up in the SST Console or output it when you deploy your dev stage.
+
+```ts title="sst.config.ts"
+return {
+  router: router.distributionID
+};
+```
+
+We are also defining `isPermanentStage`. This is set to `true` if the stage is `dev` or `production`.
+
+```ts title="sst.config.ts"
+const isPermanentStage = ["production", "dev"].includes($app.stage);
+```
+
+Let's also update our `domain` helper.
+
+```diff lang="ts" title="sst.config.ts"
+const domain = $app.stage === "production"
+  ? "example.com"
+  : $app.stage === "dev"
+    ? "dev.example.com"
+-    : undefined;
++    : `${$app.stage}.dev.example.com`;
+```
+
+Since the domain alias for the dev stage is set to `*.dev.example.com`, it can match `pr-123.dev.example.com`. But not `docs.pr-123.dev.example.com`. This is a limitation of CloudFront.
+
+---
+
+### Nested subdomains
+
+So we'll be using `docs-pr-123.dev.example.com` instead.
+
+:::note
+Nested wildcards domain patterns are not supported.
+:::
+
+To do this, let's add a helper function.
+
+```ts title="sst.config.ts"
+function subdomain(name: string) {
+  if (isPermanentStage) return `${name}.${domain}`;
+  return `${name}-${domain}`;
+}
+```
+
+This will add the `-` for our PR stages. Let's update our `MyDocs` component to use this.
+
+```diff lang="ts" title="sst.config.ts"
+// Docs
+const docs = new sst.aws.Astro("MyDocs", {
+  path: "packages/docs",
+  router: {
+    instance: router,
+-    domain: `docs.${domain}`
++    domain: subdomain("docs")
+  }
+});
+```
+
+---
+
+## Wrapping up
+
+And that's it! We've now configured our router to serve our entire app.
+
+Here's what the final config looks like.
+
+```ts title="sst.config.ts"
+const isPermanentStage = ["production", "dev"].includes($app.stage);
+
+const domain = $app.stage === "production"
+  ? "example.com"
+  : $app.stage === "dev"
+    ? "dev.example.com"
+    : `${$app.stage}.dev.example.com`;
+
+function subdomain(name: string) {
+  if (isPermanentStage) return `${name}.${domain}`;
+  return `${name}-${domain}`;
+}
+
+const router = isPermanentStage
+  ? new sst.aws.Router("MyRouter", {
+     domain: {
+       name: domain,
+       aliases: [`*.${domain}`]
+     }
+   })
+  : sst.aws.Router.get("MyRouter", "A2WQRGCYGTFB7Z");
+
+// Frontend
+const web = new sst.aws.Nextjs("MyWeb", {
+  path: "packages/web",
+  router: {
+    instance: router
+  }
+});
+
+// API
+const api = new sst.aws.Function("MyApi", {
+  handler: "packages/functions/api.handler",
+  url: {
+    router: {
+      instance: router,
+      path: "/api"
+    }
+  }
+});
+
+// Docs
+const docs = new sst.aws.Astro("MyDocs", {
+  path: "packages/docs",
+  router: {
+    instance: router,
+    domain: subdomain("docs")
+  }
+});
+```
+
+Our components are all sharing the same CloudFront distribution. We also have our PR stages sharing the same router as our dev stage.

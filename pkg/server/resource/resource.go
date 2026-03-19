@@ -19,9 +19,25 @@ type ReadResult[T any] struct {
 	Outs T      `json:"outs"`
 }
 
+type DiffInput[N any, O any] struct {
+	ID   string `json:"id"`
+	News N      `json:"news"`
+	Olds O      `json:"olds"`
+}
+
+type DiffResult struct {
+	Changes bool `json:"changes"`
+}
+
 type CreateResult[T any] struct {
 	ID   string `json:"id"`
 	Outs T      `json:"outs"`
+}
+
+type UpdateInput[N any, O any] struct {
+	ID   string `json:"id"`
+	News N      `json:"news"`
+	Olds O      `json:"olds"`
 }
 
 type UpdateResult[T any] struct {
@@ -31,12 +47,6 @@ type UpdateResult[T any] struct {
 type DeleteInput[T any] struct {
 	ID   string `json:"id"`
 	Outs T      `json:"outs"`
-}
-
-type UpdateInput[N any, O any] struct {
-	ID   string `json:"id"`
-	News N      `json:"news"`
-	Olds O      `json:"olds"`
 }
 
 type AwsResource struct {
@@ -75,6 +85,8 @@ func Register(ctx context.Context, p *project.Project, r *rpc.Server) error {
 
 	// Cloudflare Resources
 	r.RegisterName("Resource.Cloudflare.DnsRecord", &CloudflareDnsRecord{cloudflareResource})
+	r.RegisterName("Resource.Cloudflare.WorkerAssets", &WorkerAssets{cloudflareResource})
+	r.RegisterName("Resource.Cloudflare.WorkerScript", &WorkerScript{cloudflareResource})
 
 	// Vercel Resources
 	r.RegisterName("Resource.Vercel.DnsRecord", &VercelDnsRecord{vercelResource})

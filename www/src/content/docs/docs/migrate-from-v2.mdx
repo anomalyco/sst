@@ -35,10 +35,6 @@ While the goal with v3 is to support most of what's in v2, there are a few thing
 | `Script` | [#811](https://github.com/sst/sst/issues/4323) |
 | `Function` non-Node.js runtimes | [Python](https://github.com/sst/sst/issues/4669), [Container](https://github.com/sst/sst/issues/4462), [Custom](https://github.com/sst/sst/issues/4826) |
 
-:::note
-Currently, v3 only support WSL. Windows support is on the roadmap — [#347](https://github.com/sst/sst/issues/4685)
-:::
-
 Feel free to let us know via the linked GitHub issues if these are blockers for you. It'll help us prioritize this list.
 
 ---
@@ -277,7 +273,7 @@ For example, in the [monorepo notes app](https://github.com/sst/demo-notes-app/p
   
       return {
         UserPool: auth.userPool.id,
-        Region: aws.getRegionOutput().name,
+        Region: aws.getRegionOutput().region,
         IdentityPool: auth.identityPool.id,
         UserPoolClient: auth.userPoolClient.id,
       };
@@ -536,7 +532,7 @@ There are a couple of global variables, `$app` and `$dev` that replace the `app`
 3. `$dev === true` tells you if you are in dev mode. Used to be `app.mode === "dev`.
 4. `$dev === false` tells you if it's being deployed. Used to be `app.mode === "deploy`.
 5. There is no `app.mode === remove` replacement since your components are not evaluated on `sst remove`.
-6. There is no `app.region` since in v3 you can deploy resources to different regions or AWS profiles or _providers_. To get the default AWS provider you can use `aws.getRegionOutput().name`.
+6. There is no `app.region` since in v3 you can deploy resources to different regions or AWS profiles or _providers_. To get the default AWS provider you can use `aws.getRegionOutput().region`.
 
 ---
 
@@ -1141,7 +1137,7 @@ In your function you'd access this using.
 <Tabs>
   <TabItem label="v3">
   ```ts title="sst.config.ts"
-  const bus = new sst.aws.EventBus("Bus");
+  const bus = new sst.aws.Bus("Bus");
 
   bus.subscribe("MySubscriber1", "src/function1.handler", {
     pattern: {

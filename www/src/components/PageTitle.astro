@@ -8,8 +8,14 @@ const options = {
   day: 'numeric' 
 };
 
-const { title, author, description, lastUpdated } = Astro.props.entry.data;
-const slug = Astro.props.entry.slug;
+const {
+	description,
+	lastUpdated,
+	entry: {
+    data: { title, author },
+	},
+} = Astro.locals.starlightRoute;
+const slug = Astro.url.pathname.replace(/^\//, "").replace(/\/$/, "");
 
 const isBlogPost = slug.startsWith('blog/');
 ---

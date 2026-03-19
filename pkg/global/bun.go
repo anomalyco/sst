@@ -22,7 +22,11 @@ import (
 )
 
 func BunPath() string {
-	return filepath.Join(BinPath(), "bun")
+	path := filepath.Join(BinPath(), "bun")
+	if runtime.GOOS == "windows" {
+		path += ".exe"
+	}
+	return path
 }
 
 func NeedsBun() bool {
@@ -57,9 +61,8 @@ func InstallBun(ctx context.Context) error {
 			isMusl = true
 		} else {
 			cmd := exec.Command("ldd", "--version")
-			if output, err := cmd.CombinedOutput(); err == nil {
-				isMusl = strings.Contains(strings.ToLower(string(output)), "musl")
-			}
+			output, _ := cmd.CombinedOutput()
+			isMusl = strings.Contains(strings.ToLower(string(output)), "musl")
 		}
 	}
 
@@ -68,31 +71,31 @@ func InstallBun(ctx context.Context) error {
 	case goos == "darwin" && arch == "arm64":
 		filename = "bun-darwin-aarch64.zip"
 	case goos == "darwin" && arch == "amd64":
+		filename = "bun-darwin-x64-baseline.zip"
 		if cpuid.CPU.Has(cpuid.AVX2) {
 			filename = "bun-darwin-x64.zip"
 		}
-		filename = "bun-darwin-x64-baseline.zip"
 	case goos == "linux" && arch == "arm64":
+		filename = "bun-linux-aarch64.zip"
 		if isMusl {
 			filename = "bun-linux-aarch64-musl.zip"
 		}
-		filename = "bun-linux-aarch64.zip"
 	case goos == "linux" && arch == "amd64":
+		filename = "bun-linux-x64-baseline.zip"
+		if cpuid.CPU.Has(cpuid.AVX2) {
+			filename = "bun-linux-x64.zip"
+		}
 		if isMusl {
 			if cpuid.CPU.Has(cpuid.AVX2) {
 				filename = "bun-linux-x64-musl.zip"
 			}
 			filename = "bun-linux-x64-musl-baseline.zip"
 		}
-		if cpuid.CPU.Has(cpuid.AVX2) {
-			filename = "bun-linux-x64.zip"
-		}
-		filename = "bun-linux-x64-baseline.zip"
 	case goos == "windows" && arch == "amd64":
+		filename = "bun-windows-x64-baseline.zip"
 		if cpuid.CPU.Has(cpuid.AVX2) {
 			filename = "bun-windows-x64.zip"
 		}
-		filename = "bun-windows-x64-baseline.zip"
 	default:
 	}
 	if filename == "" {
@@ -101,7 +104,7 @@ func InstallBun(ctx context.Context) error {
 	slog.Info("bun selected", "filename", filename)
 
 	_, err := task.Run(ctx, func() (any, error) {
-		url := "https://github.com/oven-sh/bun/releases//download/bun-v" + BUN_VERSION + "/" + filename
+		url := "https://github.com/oven-sh/bun/releases/download/bun-v" + BUN_VERSION + "/" + filename
 		slog.Info("bun downloading", "url", url)
 		response, err := http.Get(url)
 		if err != nil {
@@ -121,7 +124,8 @@ func InstallBun(ctx context.Context) error {
 			return nil, err
 		}
 		for _, file := range zipReader.File {
-			if filepath.Base(file.Name) == "bun" {
+			filename := filepath.Base(file.Name)
+			if filename == "bun" || filename == "bun.exe" {
 				f, err := file.Open()
 				if err != nil {
 					return nil, err

@@ -2,9 +2,10 @@ import { all, ComponentResourceOptions, Output, output } from "@pulumi/pulumi";
 import { Component, Prettify } from "../component.js";
 import { Link } from "../link.js";
 import { Cluster } from "./cluster.js";
-import { ecs, iam } from "@pulumi/aws";
+import { ec2, ecs, iam } from "@pulumi/aws";
 import { permission } from "./permission.js";
 import { Vpc } from "./vpc.js";
+import { VisibleError } from "../error.js";
 import { Function } from "./function.js";
 import {
   FargateBaseArgs,
@@ -72,6 +73,31 @@ export interface TaskArgs extends FargateBaseArgs {
    */
   containers?: Input<Prettify<FargateContainerArgs>>[];
   /**
+   * Make the task publicly accessible from the internet.
+   *
+   * :::note
+   * Tasks in an SST VPC are placed in public subnets with a public IP by default for
+   * outbound internet access. The `public` property controls whether the task is
+   * _reachable_ from the internet.
+   * :::
+   *
+   * If you are using a custom VPC, you must also set `vpc.publicSubnets` on the Cluster.
+   *
+   * @default false
+   *
+   * @example
+   * ```ts
+   * {
+   *   public: true
+   * }
+   * ```
+   */
+  public?: boolean;
+  /**
+   * @deprecated Use `public` instead.
+   */
+  publicIp?: boolean;
+  /**
    * Configure how this component works in `sst dev`.
    *
    * :::note
@@ -106,18 +132,18 @@ export interface TaskArgs extends FargateBaseArgs {
    * [Live](/docs/live/) and [`sst dev`](/docs/reference/cli/#dev).
    */
   dev?:
-  | false
-  | {
-    /**
-     * The command that `sst dev` runs in dev mode.
-     */
-    command?: Input<string>;
-    /**
-     * Change the directory from where the `command` is run.
-     * @default Uses the `image.dockerfile` path
-     */
-    directory?: Input<string>;
-  };
+    | false
+    | {
+        /**
+         * The command that `sst dev` runs in dev mode.
+         */
+        command?: Input<string>;
+        /**
+         * Change the directory from where the `command` is run.
+         * @default Uses the `image.dockerfile` path
+         */
+        directory?: Input<string>;
+      };
 }
 
 /**
@@ -235,8 +261,8 @@ export interface TaskArgs extends FargateBaseArgs {
  *
  * By default, this uses a _Linux/X86_ _Fargate_ container with 0.25 vCPUs at $0.04048 per
  * vCPU per hour and 0.5 GB of memory at $0.004445 per GB per hour. It includes 20GB of
- * _Ephemeral Storage_ for free with additional storage at $0.000111 per GB per hour. Each
- * container also gets a public IPv4 address at $0.005 per hour.
+ * _Ephemeral Storage_ for free with additional storage at $0.000111 per GB per hour. When
+ * using an SST VPC, each task also gets a public IPv4 address at $0.005 per hour.
  *
  * It works out to $0.04048 x 0.25 + $0.004445 x 0.5 + $0.005. Or **$0.02 per hour**
  * your task runs for.
@@ -250,14 +276,19 @@ export interface TaskArgs extends FargateBaseArgs {
  */
 export class Task extends Component implements Link.Linkable {
   private readonly _cluster: Cluster;
+  private readonly publicSecurityGroup?: ec2.SecurityGroup;
   private readonly vpc: {
+    id: Input<string>;
     isSstVpc: boolean;
-    containerSubnets: Output<Output<string>[]>;
-    securityGroups: Output<Output<string>[]>;
+    publicSubnets: Output<Input<string>[]>;
+    containerSubnets: Output<Input<string>[]>;
+    securityGroups: Output<Input<string>[]>;
   };
   private readonly executionRole: iam.Role;
   private readonly taskRole: iam.Role;
   private readonly _taskDefinition: Output<ecs.TaskDefinition>;
+  private readonly isPublic: boolean;
+  private readonly hasPublicIp: boolean;
   private readonly containerNames: Output<Output<string>[]>;
   private readonly dev: boolean;
 
@@ -275,7 +306,14 @@ export class Task extends Component implements Link.Linkable {
     const memory = normalizeMemory(cpu, args);
     const storage = normalizeStorage(args);
     const containers = normalizeContainers("task", args, name, architecture);
+    if (args.public !== undefined && args.publicIp !== undefined)
+      throw new VisibleError(
+        `Do not set both "public" and "publicIp" for the "${name}" Task. "publicIp" has been deprecated, use "public" instead.`,
+      );
+    const isPublic = args.public ?? false;
     const vpc = normalizeVpc();
+    const hasPublicIp = isPublic || (args.publicIp ?? vpc.isSstVpc);
+    const publicSecurityGroup = createPublicSecurityGroup();
 
     const taskRole = createTaskRole(
       name,
@@ -285,11 +323,11 @@ export class Task extends Component implements Link.Linkable {
       dev,
       dev
         ? [
-          {
-            actions: ["appsync:*"],
-            resources: ["*"],
-          },
-        ]
+            {
+              actions: ["appsync:*"],
+              resources: ["*"],
+            },
+          ]
         : [],
     );
     this.dev = dev;
@@ -303,23 +341,23 @@ export class Task extends Component implements Link.Linkable {
       self,
       dev
         ? containers.apply(async (v) => {
-          const appsync = await Function.appsync();
-          return [
-            {
-              ...v[0],
-              image: output("ghcr.io/sst/sst/bridge-task:20241224005724"),
-              environment: {
-                ...v[0].environment,
-                SST_TASK_ID: name,
-                SST_REGION: process.env.SST_AWS_REGION!,
-                SST_APPSYNC_HTTP: appsync.http,
-                SST_APPSYNC_REALTIME: appsync.realtime,
-                SST_APP: $app.name,
-                SST_STAGE: $app.stage,
+            const appsync = await Function.appsync();
+            return [
+              {
+                ...v[0],
+                image: output("ghcr.io/anomalyco/sst/bridge-task:latest"),
+                environment: {
+                  ...v[0].environment,
+                  SST_TASK_ID: name,
+                  SST_REGION: process.env.SST_AWS_REGION!,
+                  SST_APPSYNC_HTTP: appsync.http,
+                  SST_APPSYNC_REALTIME: appsync.realtime,
+                  SST_APP: $app.name,
+                  SST_STAGE: $app.stage,
+                },
               },
-            },
-          ];
-        })
+            ];
+          })
         : containers,
       architecture,
       cpu,
@@ -330,9 +368,12 @@ export class Task extends Component implements Link.Linkable {
     );
 
     this._cluster = args.cluster;
+    this.publicSecurityGroup = publicSecurityGroup;
     this.vpc = vpc;
     this.executionRole = executionRole;
     this._taskDefinition = taskDefinition;
+    this.isPublic = isPublic;
+    this.hasPublicIp = hasPublicIp;
     this.containerNames = containers.apply((v) => v.map((v) => output(v.name)));
     this.registerOutputs({
       _task: all([args.dev, containers]).apply(([v, containers]) => ({
@@ -357,7 +398,9 @@ export class Task extends Component implements Link.Linkable {
       if (args.cluster.vpc instanceof Vpc) {
         const vpc = args.cluster.vpc;
         return {
+          id: vpc.id,
           isSstVpc: true,
+          publicSubnets: vpc.publicSubnets,
           containerSubnets: vpc.publicSubnets,
           securityGroups: vpc.securityGroups,
         };
@@ -365,7 +408,15 @@ export class Task extends Component implements Link.Linkable {
 
       // "vpc" is object
       return {
+        id: output(args.cluster.vpc).apply((v) => v.id),
         isSstVpc: false,
+        publicSubnets: output(args.cluster.vpc).apply((v) => {
+          if (isPublic && !v.publicSubnets?.length)
+            throw new VisibleError(
+              `Set "vpc.publicSubnets" on the Cluster to use "public" on the "${name}" Task.`,
+            );
+          return (v.publicSubnets ?? []).map((v) => output(v));
+        }),
         containerSubnets: output(args.cluster.vpc).apply((v) =>
           v.containerSubnets.map((v) => output(v)),
         ),
@@ -373,6 +424,35 @@ export class Task extends Component implements Link.Linkable {
           v.securityGroups.map((v) => output(v)),
         ),
       };
+    }
+
+
+    function createPublicSecurityGroup() {
+      if (!isPublic) return;
+      return new ec2.SecurityGroup(
+        `${name}PublicSecurityGroup`,
+        {
+          description: "Managed by SST",
+          vpcId: vpc.id,
+          egress: [
+            {
+              fromPort: 0,
+              toPort: 0,
+              protocol: "-1",
+              cidrBlocks: ["0.0.0.0/0"],
+            },
+          ],
+          ingress: [
+            {
+              fromPort: 0,
+              toPort: 0,
+              protocol: "-1",
+              cidrBlocks: ["0.0.0.0/0"],
+            },
+          ],
+        },
+        { parent: self },
+      );
     }
   }
 
@@ -404,6 +484,10 @@ export class Task extends Component implements Link.Linkable {
    * @internal
    */
   public get securityGroups() {
+    if (this.isPublic && this.publicSecurityGroup)
+      return all([this.vpc.securityGroups, this.publicSecurityGroup.id]).apply(
+        ([sgs, publicSgId]) => [...sgs, publicSgId],
+      );
     return this.vpc.securityGroups;
   }
 
@@ -412,6 +496,7 @@ export class Task extends Component implements Link.Linkable {
    * @internal
    */
   public get subnets() {
+    if (this.isPublic || this.vpc.isSstVpc) return this.vpc.publicSubnets;
     return this.vpc.containerSubnets;
   }
 
@@ -420,7 +505,7 @@ export class Task extends Component implements Link.Linkable {
    * @internal
    */
   public get assignPublicIp() {
-    return this.vpc.isSstVpc;
+    return output(this.hasPublicIp);
   }
 
   /**
@@ -440,6 +525,11 @@ export class Task extends Component implements Link.Linkable {
        * The Amazon ECS Task Definition.
        */
       taskDefinition: this._taskDefinition,
+      /**
+       * The AWS Security Group for public tasks. Only created when `public`
+       * is `true`.
+       */
+      publicSecurityGroup: this.publicSecurityGroup,
     };
   }
 

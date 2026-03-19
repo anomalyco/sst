@@ -33,7 +33,7 @@
 export default $config({
   app(input) {
     return {
-      name: "sst-v3-go-file-upload",
+      name: "aws-go-lambda-bucket-presigned-url",
       removal: "remove",
       home: "aws",
     };

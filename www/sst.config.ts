@@ -6,7 +6,7 @@ export default $config({
       name: "www",
       removal: input?.stage === "production" ? "retain" : "remove",
       home: "aws",
-      version: "3.9.44",
+      version: "3.13.20",
     };
   },
   console: {
@@ -108,6 +108,39 @@ export default $config({
       },
     };
 
+    // Redirect /install to https://raw.githubusercontent.com/sst/sst/dev/install
+    const redirectToInstallBehavior = {
+      targetOriginId: "redirect",
+      viewerProtocolPolicy: "redirect-to-https",
+      allowedMethods: ["GET", "HEAD", "OPTIONS"],
+      cachedMethods: ["GET", "HEAD"],
+      functionAssociations: [
+        {
+          eventType: "viewer-request",
+          functionArn: new aws.cloudfront.Function("InstallRedirect", {
+            runtime: "cloudfront-js-2.0",
+            code: [
+              `async function handler(event) {`,
+              `  const request = event.request;`,
+              `  return {`,
+              `    statusCode: 302,`,
+              `    statusDescription: 'Found',`,
+              `    headers: {`,
+              `      location: { value: "https://raw.githubusercontent.com/sst/sst/dev/install" }`,
+              `    },`,
+              `  };`,
+              `}`,
+            ].join("\n"),
+          }).arn,
+        },
+      ],
+      forwardedValues: {
+        queryString: true,
+        headers: ["Origin"],
+        cookies: { forward: "none" },
+      },
+    };
+
     // Strip .html from /blog
     const stripHtmlBehavior = {
       targetOriginId: "redirect",
@@ -152,6 +185,28 @@ export default $config({
               ],
             }
           : domain,
+      edge: {
+        // Rewrite /docs/* to .md when Accept: text/markdown (for AI agents)
+        viewerRequest: {
+          injection: [
+            `var uri = event.request.uri;`,
+            `var accept = (event.request.headers['accept'] || {}).value || '';`,
+            `if (uri.startsWith('/docs') && accept.includes('text/markdown') && !/\\.[a-z0-9]+$/i.test(uri)) {`,
+            `  event.request.uri = (uri === '/docs' || uri === '/docs/')`,
+            `    ? '/docs/index.md'`,
+            `    : uri.replace(/\\/$/, '') + '.md';`,
+            `}`,
+          ].join("\n"),
+        },
+        // Fix Content-Type on .md responses (S3 serves them as octet-stream)
+        viewerResponse: {
+          injection: [
+            `if (event.request.uri.endsWith('.md')) {`,
+            `  event.response.headers['content-type'] = { value: 'text/markdown; charset=utf-8' };`,
+            `}`,
+          ].join("\n"),
+        },
+      },
       transform: {
         cdn: (args) => {
           args.origins = $output(args.origins).apply((origins) => [
@@ -169,10 +224,11 @@ export default $config({
             },
           ]);
           args.orderedCacheBehaviors = $output(
-            args.orderedCacheBehaviors
+            args.orderedCacheBehaviors,
           ).apply((cacheBehaviors) => [
             ...(cacheBehaviors || []),
             { pathPattern: "/blog/*.html", ...stripHtmlBehavior },
+            { pathPattern: "/install", ...redirectToInstallBehavior },
             { pathPattern: "/examples*", ...redirectToGuideBehavior },
             { pathPattern: "/chapters*", ...redirectToGuideBehavior },
             { pathPattern: "/archives*", ...redirectToGuideBehavior },
@@ -212,7 +268,9 @@ return {
 
     // Redirect telemetry.ion.sst.dev to us.i.posthog.com
     new sst.aws.Router("TelemetryRouter", {
-      domain: "telemetry.ion." + domain,
+      domain: {
+        name: "telemetry.ion." + domain,
+      },
       routes: {
         "/*": "https://us.i.posthog.com",
       },

@@ -35,6 +35,7 @@ type App struct {
 	Home      string                 `json:"home"`
 	Version   string                 `json:"version"`
 	Protect   bool                   `json:"protect"`
+	Watch     []string               `json:"watch"`
 	// Deprecated: Backend is now Home
 	Backend string `json:"backend"`
 	// Deprecated: RemovalPolicy is now Removal
@@ -167,7 +168,7 @@ if (mod.stacks || mod.config) {
 console.log("~j" + JSON.stringify(await mod.app({
   stage: $input.stage || undefined,
 })))`,
-				input.Config),
+				filepath.ToSlash(input.Config)),
 		},
 	)
 	if err != nil {

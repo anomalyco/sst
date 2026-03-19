@@ -2,10 +2,11 @@ import { ComponentResourceOptions, Output, all } from "@pulumi/pulumi";
 import { Component, Transform, transform } from "../component";
 import { Link } from "../link";
 import type { Input } from "../input";
-import { Function, FunctionArgs, FunctionArn } from "./function";
+import { Function, FunctionArgs, FunctionArn } from "./function.js";
 import { hashStringToPrettyString, logicalName } from "../naming";
 import { RealtimeLambdaSubscriber } from "./realtime-lambda-subscriber";
 import { iot, lambda } from "@pulumi/aws";
+import { permission } from "./permission";
 
 export interface RealtimeArgs {
   /**
@@ -175,9 +176,10 @@ export class Realtime extends Component implements Link.Linkable {
     createPermission();
 
     this.constructorOpts = opts;
-    this.iotEndpoint = iot.getEndpointOutput({
-      endpointType: "iot:Data-ATS",
-    }, { parent }).endpointAddress;
+    this.iotEndpoint = iot.getEndpointOutput(
+      { endpointType: "iot:Data-ATS" },
+      { parent },
+    ).endpointAddress;
     this.constructorName = name;
     this.authHadler = authHadler;
     this.iotAuthorizer = iotAuthorizer;
@@ -328,6 +330,12 @@ export class Realtime extends Component implements Link.Linkable {
         endpoint: this.endpoint,
         authorizer: this.authorizer,
       },
+      include: [
+        permission({
+          actions: ["iot:Publish"],
+          resources: ["*"],
+        }),
+      ],
     };
   }
 }

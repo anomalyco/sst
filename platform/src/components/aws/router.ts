@@ -1,3 +1,4 @@
+import path from "path";
 import {
   ComponentResourceOptions,
   Output,
@@ -5,19 +6,27 @@ import {
   interpolate,
   output,
 } from "@pulumi/pulumi";
+import { asset } from "@pulumi/pulumi";
+import { iam, lambda } from "@pulumi/aws";
 import crypto from "crypto";
 import { Component, Transform, transform } from "../component";
 import { Link } from "../link";
 import type { Input } from "../input";
 import { Cdn, CdnArgs } from "./cdn";
-import { cloudfront } from "@pulumi/aws";
+import { cloudfront, cloudwatch, wafv2 } from "@pulumi/aws";
+import { useProvider } from "./helpers/provider";
 import { hashStringToPrettyString, physicalName } from "../naming";
 import { Bucket } from "./bucket";
 import { OriginAccessControl } from "./providers/origin-access-control";
 import { VisibleError } from "../error";
 import { RouterUrlRoute } from "./router-url-route";
 import { RouterBucketRoute } from "./router-bucket-route";
-import { DurationSeconds } from "../duration";
+import { DurationSeconds, toSeconds } from "../duration";
+import { FunctionArn } from "./function.js";
+import { parseLambdaEdgeArn } from "./helpers/arn";
+import { Size, toMBs } from "../size";
+import { RETENTION } from "./logging";
+import { minify } from "../../util/minify";
 
 interface InlineUrlRouteArgs extends InlineBaseRouteArgs {
   /**
@@ -210,7 +219,7 @@ interface InlineBaseRouteArgs {
        *       url: "https://example.com"
        *       edge: {
        *         viewerRequest: {
-       *           injection: `event.request.headers["x-foo"] = "bar";`
+       *           injection: `event.request.headers["x-foo"] = { value: "bar" };`
        *         }
        *       }
        *     }
@@ -220,7 +229,7 @@ interface InlineBaseRouteArgs {
        */
       injection: Input<string>;
       /**
-       * The KV store to associate with the viewer request function.
+       * The KeyValueStore to associate with the viewer request function.
        *
        * @example
        * ```js
@@ -240,7 +249,7 @@ interface InlineBaseRouteArgs {
        */
       kvStore?: Input<string>;
       /**
-       * @deprecated Use `kvStore` instead because CloudFront Functions only support one KV store.
+       * @deprecated Use `kvStore` instead because CloudFront Functions only support one KeyValueStore.
        */
       kvStores?: Input<Input<string>[]>;
     }>;
@@ -263,7 +272,7 @@ interface InlineBaseRouteArgs {
      *       url: "https://example.com"
      *       edge: {
      *         viewerResponse: {
-     *           injection: `event.response.headers["x-foo"] = "bar";`
+     *           injection: `event.response.headers["x-foo"] = { value: "bar" };`
      *         }
      *       }
      *     }
@@ -296,7 +305,7 @@ interface InlineBaseRouteArgs {
        *       url: "https://example.com"
        *       edge: {
        *         viewerResponse: {
-       *           injection: `event.response.headers["x-foo"] = "bar";`
+       *           injection: `event.response.headers["x-foo"] = { value: "bar" };`
        *         }
        *       }
        *     }
@@ -306,7 +315,7 @@ interface InlineBaseRouteArgs {
        */
       injection: Input<string>;
       /**
-       * The KV store to associate with the viewer response function.
+       * The KeyValueStore to associate with the viewer response function.
        *
        * @example
        * ```js
@@ -326,7 +335,7 @@ interface InlineBaseRouteArgs {
        */
       kvStore?: Input<string>;
       /**
-       * @deprecated Use `kvStore` instead because CloudFront Functions only support one KV store.
+       * @deprecated Use `kvStore` instead because CloudFront Functions only support one KeyValueStore.
        */
       kvStores?: Input<Input<string>[]>;
     }>;
@@ -398,7 +407,7 @@ export interface RouterUrlRouteArgs extends RouteArgs {
    * When compared to the `connectionTimeout`, this is the total time for the
    * request.
    *
-   * @default `"30 seconds"`
+   * @default `"20 seconds"`
    * @example
    * ```js
    * {
@@ -453,6 +462,226 @@ export interface RouterBucketRouteArgs extends RouteArgs {
      */
     to: Input<string>;
   }>;
+}
+
+export interface WafLoggingArgs {
+  /**
+   * Filter which requests are logged.
+   *
+   * - `"all"` logs every request evaluated by the WAF.
+   * - `"blocked"` only logs requests that were blocked.
+   *
+   * @default `"all"`
+   * @example
+   * ```js
+   * {
+   *   waf: {
+   *     logging: {
+   *       include: "blocked"
+   *     }
+   *   }
+   * }
+   * ```
+   */
+  include?: Input<"all" | "blocked">;
+  /**
+   * The duration the WAF logs are kept in CloudWatch.
+   *
+   * @default `"1 month"`
+   * @example
+   * ```js
+   * {
+   *   waf: {
+   *     logging: {
+   *       retention: "3 months"
+   *     }
+   *   }
+   * }
+   * ```
+   */
+  retention?: Input<keyof typeof RETENTION>;
+  /**
+   * Configure which parts of the request are redacted from the logs. Redacted
+   * fields are replaced with `REDACTED` in the log output.
+   *
+   * By default, the query string and the `cookie` and `authorization` headers
+   * are redacted since they commonly contain PII or credentials.
+   *
+   * Set to `false` to disable all redaction.
+   *
+   * @default `{ queryString: true, headers: ["cookie", "authorization"] }`
+   * @example
+   *
+   * Disable all redaction.
+   *
+   * ```js
+   * {
+   *   waf: {
+   *     logging: {
+   *       redact: false
+   *     }
+   *   }
+   * }
+   * ```
+   *
+   * Redact everything.
+   *
+   * ```js
+   * {
+   *   waf: {
+   *     logging: {
+   *       redact: {
+   *         queryString: true,
+   *         uriPath: true,
+   *         method: true,
+   *         headers: ["cookie", "authorization"]
+   *       }
+   *     }
+   *   }
+   * }
+   * ```
+   */
+  redact?: Input<
+    | false
+    | {
+        /**
+         * Redact the query string from the logs. The query string is the
+         * part of a URL after the `?` and can contain tokens, user IDs,
+         * or other sensitive parameters.
+         * @default `true`
+         */
+        queryString?: Input<boolean>;
+        /**
+         * Redact the URI path from the logs. The URI path identifies the
+         * resource being accessed, like `/users/123/profile`.
+         * @default `false`
+         */
+        uriPath?: Input<boolean>;
+        /**
+         * Redact the HTTP method from the logs (GET, POST, etc.).
+         * @default `false`
+         */
+        method?: Input<boolean>;
+        /**
+         * A list of header names to redact from the logs. Must be lowercase.
+         * @default `["cookie", "authorization"]`
+         * @example
+         * ```js
+         * {
+         *   headers: ["cookie", "authorization", "x-api-key"]
+         * }
+         * ```
+         */
+        headers?: Input<string[]>;
+      }
+  >;
+}
+
+export interface WafArgs {
+  /**
+   * The rate limit per IP address. Requests from an IP that exceed this limit
+   * within a 5-minute window will be blocked.
+   *
+   * @default `2000`
+   * @example
+   * ```js
+   * {
+   *   waf: {
+   *     rateLimitPerIp: 1000
+   *   }
+   * }
+   * ```
+   */
+  rateLimitPerIp?: Input<number>;
+  /**
+   * Configure which AWS managed rule groups to enable.
+   *
+   * @default All managed rules enabled
+   * @example
+   * ```js
+   * {
+   *   waf: {
+   *     managedRules: {
+   *       coreRuleSet: true,
+   *       knownBadInputs: true,
+   *       sqlInjection: false
+   *     }
+   *   }
+   * }
+   * ```
+   */
+  managedRules?: Input<{
+    /**
+     * Enable the AWS Core Rule Set (CRS) which provides protection against common
+     * web vulnerabilities.
+     * @default `true`
+     */
+    coreRuleSet?: Input<boolean>;
+    /**
+     * Enable protection against known bad inputs, including Log4j vulnerabilities.
+     * @default `true`
+     */
+    knownBadInputs?: Input<boolean>;
+    /**
+     * Enable SQL injection protection.
+     * @default `true`
+     */
+    sqlInjection?: Input<boolean>;
+  }>;
+  /**
+   * Configure WAF logging to CloudWatch. When set to `true`, all WAF-evaluated
+   * requests are logged with a 1-month retention. Or pass in an object to
+   * customize what is logged, how long logs are retained, and which fields
+   * are redacted.
+   *
+   * :::tip
+   * WAF logging is off by default. Enabling it will incur additional
+   * [CloudWatch costs](https://aws.amazon.com/cloudwatch/pricing/) depending
+   * on log volume.
+   * :::
+   *
+   * @default Logging is disabled
+   * @example
+   *
+   * Enable with defaults.
+   *
+   * ```js
+   * {
+   *   waf: {
+   *     logging: true
+   *   }
+   * }
+   * ```
+   *
+   * Only log blocked requests.
+   *
+   * ```js
+   * {
+   *   waf: {
+   *     logging: {
+   *       include: "blocked",
+   *       retention: "3 months"
+   *     }
+   *   }
+   * }
+   * ```
+   *
+   * Redact sensitive fields.
+   *
+   * ```js
+   * {
+   *   waf: {
+   *     logging: {
+   *       redact: {
+   *         queryString: true,
+   *         headers: ["cookie"]
+   *       }
+   *     }
+   *   }
+   * }
+   * ```
+   */
+  logging?: Input<boolean | WafLoggingArgs>;
 }
 
 export interface RouterArgs {
@@ -590,7 +819,7 @@ export interface RouterArgs {
    *       url: "https://example.com",
    *       edge: {
    *         viewerRequest: {
-   *           injection: `event.request.headers["x-foo"] = "bar";`
+   *           injection: `event.request.headers["x-foo"] = { value: "bar" };`
    *         }
    *       }
    *     }
@@ -659,7 +888,7 @@ export interface RouterArgs {
        * {
        *   edge: {
        *     viewerRequest: {
-       *       injection: `event.request.headers["x-foo"] = "bar";`
+       *       injection: `event.request.headers["x-foo"] = { value: "bar" };`
        *     }
        *   }
        * }
@@ -667,7 +896,7 @@ export interface RouterArgs {
        */
       injection: Input<string>;
       /**
-       * The KV store to associate with the viewer request function.
+       * The KeyValueStore to associate with the viewer request function.
        *
        * @example
        * ```js
@@ -711,7 +940,7 @@ export interface RouterArgs {
        * {
        *   edge: {
        *     viewerResponse: {
-       *       injection: `event.response.headers["x-foo"] = "bar";`
+       *       injection: `event.response.headers["x-foo"] = { value: "bar" };`
        *     }
        *   }
        * }
@@ -719,7 +948,7 @@ export interface RouterArgs {
        */
       injection: Input<string>;
       /**
-       * The KV store to associate with the viewer response function.
+       * The KeyValueStore to associate with the viewer response function.
        *
        * @example
        * ```js
@@ -742,7 +971,7 @@ export interface RouterArgs {
    * :::
    * @default Invalidation is turned off
    * @example
-   * Enable invalidations. Setting this to `true` will invalidate all paths. It is equivalent
+   * Setting this to `true` will invalidate all paths. It's equivalent
    * to passing in `{ paths: ["/*"] }`.
    *
    * ```js
@@ -774,8 +1003,11 @@ export interface RouterArgs {
          */
         wait?: Input<boolean>;
         /**
-         * The invalidation token is used to determine if the cache should be invalidated. If the
+         * A token used to determine if the cache should be invalidated. If the
          * token is the same as the previous deployment, the cache will not be invalidated.
+         *
+         * You can set this to a hash that's computed on every deploy. So if the hash
+         * changes, the cache will be invalidated.
          *
          * @default A unique value is auto-generated on each deploy
          * @example
@@ -792,11 +1024,12 @@ export interface RouterArgs {
          * Specify an array of glob pattern of paths to invalidate.
          *
          * :::note
-         * Each glob pattern counts as a single invalidation. However, invalidating `/*` counts as a single invalidation as well.
+         * Each glob pattern counts as a single invalidation. Whereas, invalidating
+         * `/*` counts as a single invalidation.
          * :::
          * @default `["/*"]`
          * @example
-         * Invalidate the `index.html` and all files under the `products/` route. This counts as two invalidations.
+         * Invalidate the `index.html` and all files under the `products/` route.
          * ```js
          * {
          *   invalidation: {
@@ -804,11 +1037,139 @@ export interface RouterArgs {
          *   }
          * }
          * ```
+         * This counts as two invalidations.
          */
         paths?: Input<Input<string>[]>;
       }
   >;
 
+  /**
+   * Configure Lambda function URL protection through CloudFront Origin Access Control.
+   *
+   * When set, all Functions and SSR sites routing through this Router automatically
+   * inherit the protection mode.
+   *
+   * @default `"none"`
+   *
+   * The available options are:
+   * - `"none"`: Lambda URLs are publicly accessible.
+   * - `"oac"`: Lambda URLs protected by CloudFront Origin Access Control. Requires
+   *   manual `x-amz-content-sha256` header for POST requests.
+   * - `"oac-with-edge-signing"`: Full protection with automatic header signing via
+   *   Lambda@Edge. Works with external webhooks and callbacks. Higher cost and latency
+   *   but works out of the box.
+   *
+   * :::note
+   * Switching from `"none"` to `"oac"` or `"oac-with-edge-signing"` may cause brief
+   * 403 errors (~10-60s) during deployment while CloudFront edge nodes pick up the new
+   * signing configuration. For zero-disruption upgrades, set `protection` when first
+   * creating the Router.
+   * :::
+   *
+   * :::note
+   * When using `"oac-with-edge-signing"`, request bodies are limited to 1MB due to
+   * Lambda@Edge payload limits. For file uploads larger than 1MB, consider using
+   * presigned S3 URLs or the `"oac"` mode with manual header signing.
+   * :::
+   *
+   * :::note
+   * When removing a stage that uses `"oac-with-edge-signing"`, deletion may take
+   * 5-10 minutes while AWS removes the Lambda@Edge replicated functions from all
+   * edge locations.
+   * :::
+   *
+   * @example
+   * ```js
+   * {
+   *   protection: "oac"
+   * }
+   * ```
+   *
+   * @example
+   * ```js
+   * {
+   *   protection: "oac-with-edge-signing"
+   * }
+   * ```
+   *
+   * @example
+   * ```js
+   * // Custom Lambda@Edge configuration
+   * {
+   *   protection: {
+   *     mode: "oac-with-edge-signing",
+   *     edgeFunction: {
+   *       memory: "256 MB",
+   *       timeout: "10 seconds"
+   *     }
+   *   }
+   * }
+   * ```
+   */
+  protection?: Input<
+    | "none"
+    | "oac"
+    | "oac-with-edge-signing"
+    | {
+        mode: "oac-with-edge-signing";
+        edgeFunction?: {
+          /**
+           * Custom Lambda@Edge function ARN to use for request signing.
+           * If provided, this function will be used instead of creating a new one.
+           * Must be a qualified ARN (with version) and deployed in us-east-1.
+           */
+          arn?: Input<FunctionArn>;
+          /**
+           * Memory size for the auto-created Lambda@Edge function.
+           * Only used when arn is not provided.
+           * @default `"128 MB"`
+           */
+          memory?: Input<Size>;
+          /**
+           * Timeout for the auto-created Lambda@Edge function.
+           * Only used when arn is not provided.
+           * @default `"5 seconds"`
+           */
+          timeout?: Input<DurationSeconds>;
+        };
+      }
+  >;
+  /**
+   * Enable AWS WAF (Web Application Firewall) to protect your Router from common
+   * web exploits and bots.
+   *
+   * :::tip
+   * WAF provides protection against SQL injection, cross-site scripting (XSS),
+   * and other common attacks.
+   * :::
+   *
+   * @default WAF is disabled
+   * @example
+   *
+   * Enable with sensible defaults.
+   *
+   * ```js
+   * {
+   *   waf: true
+   * }
+   * ```
+   *
+   * Or customize the configuration.
+   *
+   * ```js
+   * {
+   *   waf: {
+   *     rateLimitPerIp: 1000,
+   *     managedRules: {
+   *       coreRuleSet: true,
+   *       knownBadInputs: true,
+   *       sqlInjection: true
+   *     }
+   *   }
+   * }
+   * ```
+   */
+  waf?: Input<boolean | WafArgs>;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
@@ -822,6 +1183,18 @@ export interface RouterArgs {
      * Transform the CloudFront CDN resource.
      */
     cdn?: Transform<CdnArgs>;
+    /**
+     * Transform the WAF WebACL resource.
+     */
+    waf?: Transform<wafv2.WebAclArgs>;
+    /**
+     * Transform the CloudWatch LogGroup resource used for WAF logs.
+     */
+    wafLogGroup?: Transform<cloudwatch.LogGroupArgs>;
+    /**
+     * Transform the WAF WebACL logging configuration resource.
+     */
+    wafLogging?: Transform<wafv2.WebAclLoggingConfigurationArgs>;
   };
   /**
    * @internal
@@ -836,29 +1209,19 @@ interface RouterRef {
 
 /**
  * The `Router` component lets you use a CloudFront distribution to direct
- * requests to various parts of your application.
+ * requests to various parts of your application like:
  *
- * #### How it works
- *
- * Behind the scenes, this uses:
- *
- * - The default CloudFront distribution behavior
- * - A CloudFront function for routing
- * - And a KV store to store the routing data
- *
- * When a request comes in, it does a lookup in the KV store and dynamically sets
- * the origin based on the routing data.
- *
- * You might notices a _placeholder.sst.dev_ behavior in CloudFront. This is not
- * used and is only there because CloudFront requires a behavior to exist.
+ * - A URL
+ * - A function
+ * - A frontend
+ * - An S3 bucket
  *
  * @example
  *
  * #### Minimal example
  *
  * ```ts title="sst.config.ts"
- * const router = new sst.aws.Router("MyRouter");
- * router.route("/", "https://some-external-service.com");
+ * new sst.aws.Router("MyRouter");
  * ```
  *
  * #### Add a custom domain
@@ -869,22 +1232,30 @@ interface RouterRef {
  * });
  * ```
  *
- * #### Route to a function URL
+ * #### Sharing the router across stages
  *
  * ```ts title="sst.config.ts"
- * const myFunction = new sst.aws.Function("MyFunction", {
- *   handler: "src/api.handler",
- *   url: true,
- * });
- *
- * const router = new sst.aws.Router("MyRouter", {
- * });
- * router.route("/", myFunction.url);
+ * const router = $app.stage === "production"
+ *   ? new sst.aws.Router("MyRouter", {
+ *       domain: {
+ *         name: "example.com",
+ *         aliases: ["*.example.com"]
+ *       }
+ *     })
+ *   : sst.aws.Router.get("MyRouter", "E1XWRGCYGTFB7Z");
  * ```
  *
- * #### Route to a bucket
+ * #### Route to a URL
  *
- * ```ts title="sst.config.ts" {2}
+ * ```ts title="sst.config.ts" {3}
+ * const router = new sst.aws.Router("MyRouter");
+ *
+ * router.route("/", "https://some-external-service.com");
+ * ```
+ *
+ * #### Route to an S3 bucket
+ *
+ * ```ts title="sst.config.ts" {2,6}
  * const myBucket = new sst.aws.Bucket("MyBucket", {
  *   access: "cloudfront"
  * });
@@ -893,37 +1264,105 @@ interface RouterRef {
  * router.routeBucket("/files", myBucket);
  * ```
  *
- * Make sure to allow CloudFront access to the bucket by setting the `access` prop on the bucket.
+ * You need to allow CloudFront to access the bucket by setting the `access` prop
+ * on the bucket.
+ *
+ * #### Route to a function
+ *
+ * ```ts title="sst.config.ts" {8-11}
+ * const router = new sst.aws.Router("MyRouter", {
+ *   domain: "example.com"
+ * });
+ *
+ * const myFunction = new sst.aws.Function("MyFunction", {
+ *   handler: "src/api.handler",
+ *   url: {
+ *     router: {
+ *       instance: router,
+ *       path: "/api"
+ *     }
+ *   }
+ * });
+ * ```
+ *
+ * Setting the route through the function, instead of `router.route()` makes
+ * it so that `myFunction.url` gives you the URL based on the Router domain.
  *
  * #### Route to a frontend
  *
- * ```ts title="sst.config.ts"
+ * ```ts title="sst.config.ts" {4-6}
  * const router = new sst.aws.Router("MyRouter");
  *
- * new sst.aws.Nextjs("Site", {
+ * const mySite = new sst.aws.Nextjs("MyWeb", {
  *   router: {
- *     instance: router,
- *   },
+ *     instance: router
+ *   }
  * });
  * ```
  *
- * #### Route to a frontend on a subpath
+ * Setting the route through the site, instead of `router.route()` makes
+ * it so that `mySite.url` gives you the URL based on the Router domain.
  *
- * ```ts title="sst.config.ts"
+ * #### Route to a frontend on a path
+ *
+ * ```ts title="sst.config.ts" {4-7}
  * const router = new sst.aws.Router("MyRouter");
  *
- * new sst.aws.Nextjs("Site", {
+ * new sst.aws.Nextjs("MyWeb", {
  *   router: {
  *     instance: router,
  *     path: "/docs"
- *   },
+ *   }
  * });
  * ```
  *
- * :::caution
- * If routing to a path, you need to configure that as the base path in your
- * frontend app as well.
- * :::
+ * If you are routing to a path, you'll need to configure the base path in your
+ * frontend app as well. [Learn more](/docs/component/aws/nextjs/#router).
+ *
+ * #### Route to a frontend on a subdomain
+ *
+ * ```ts title="sst.config.ts" {4,9-12}
+ * const router = new sst.aws.Router("MyRouter", {
+ *   domain: {
+ *     name: "example.com",
+ *     aliases: ["*.example.com"]
+ *   }
+ * });
+ *
+ * new sst.aws.Nextjs("MyWeb", {
+ *   router: {
+ *     instance: router,
+ *     domain: "docs.example.com"
+ *   }
+ * });
+ * ```
+ *
+ * We configure `*.example.com` as an alias so that we can route to a subdomain.
+ *
+ * #### How it works
+ *
+ * This uses a CloudFront KeyValueStore to store the routing data and a CloudFront
+ * function to route the request. As routes are added, the store is updated.
+ *
+ * So when a request comes in, it does a lookup in the store and dynamically sets
+ * the origin based on the routing data. For frontends, that have their server
+ * functions deployed to multiple `regions`, it routes to the closest region based
+ * on the user's location.
+ *
+ * You might notice a _placeholder.sst.dev_ behavior in CloudFront. This is not
+ * used and is only there because CloudFront requires a default behavior.
+ *
+ * #### Limits
+ *
+ * There are some limits on this setup but it's managed by SST.
+ *
+ * - The CloudFront function can be a maximum of 10KB in size. But because all
+ *   the route data is stored in the KeyValueStore, the function can be kept small.
+ * - Each value in the KeyValueStore needs to be less than 1KB. This component
+ *   splits the routes into multiple values to keep it under the limit.
+ * - The KeyValueStore can be a maximum of 5MB. This is fairly large. But to
+ *   handle sites that have a lot of files, only top-level assets get individual
+ *   entries.
  */
 export class Router extends Component implements Link.Linkable {
   private constructorName: string;
@@ -932,6 +1371,7 @@ export class Router extends Component implements Link.Linkable {
   private kvStoreArn?: Output<string>;
   private kvNamespace?: Output<string>;
   private hasInlineRoutes: Output<boolean>;
+  private _protectionMode: Output<ProtectionConfig>;
 
   constructor(
     name: string,
@@ -950,11 +1390,27 @@ export class Router extends Component implements Link.Linkable {
       this.kvStoreArn = ref.kvStoreArn;
       this.kvNamespace = ref.kvNamespace;
       this.hasInlineRoutes = ref.hasInlineRoutes;
+      this._protectionMode = ref.protection;
       registerOutputs();
       return;
     }
 
     const hasInlineRoutes = args.routes !== undefined;
+    const protection = normalizeProtection();
+
+    if (hasInlineRoutes) {
+      protection.apply((p) => {
+        if (p.mode !== "none")
+          throw new VisibleError(
+            `Cannot set "protection" on a Router with inline routes. Use lazy routes instead.`,
+          );
+      });
+    }
+
+    const waf = createWaf();
+    const wafArn = waf?.arn;
+    const wafLogging = normalizeWafLogging();
+    createWafLogging();
 
     let cdn, kvStoreArn, kvNamespace;
     if (hasInlineRoutes) {
@@ -970,12 +1426,13 @@ export class Router extends Component implements Link.Linkable {
     this.kvStoreArn = kvStoreArn;
     this.kvNamespace = kvNamespace;
     this.hasInlineRoutes = output(hasInlineRoutes);
+    this._protectionMode = protection;
     registerOutputs();
 
     function reference() {
       const ref = args as unknown as RouterRef;
       const cdn = Cdn.get(`${name}Cdn`, ref.distributionID, { parent: self });
-      const tags = cdn.nodes.distribution.tags.apply((tags) => {
+      const tags = cdn.nodes.distribution.tagsAll.apply((tags) => {
         if (tags?.["sst:ref:version"] !== _refVersion.toString()) {
           throw new VisibleError(
             [
@@ -989,6 +1446,7 @@ export class Router extends Component implements Link.Linkable {
           kvStoreArn: tags?.["sst:ref:kv"],
           kvNamespace: tags?.["sst:ref:kv-namespace"],
           hasInlineRoutes: tags?.["sst:ref:kv"] === undefined,
+          protection: tags?.["sst:ref:protection"] ?? "none",
         };
       });
 
@@ -997,12 +1455,278 @@ export class Router extends Component implements Link.Linkable {
         kvStoreArn: tags.kvStoreArn,
         kvNamespace: tags.kvNamespace,
         hasInlineRoutes: tags.hasInlineRoutes,
+        protection: tags.protection.apply((p) => ({
+          mode: p as ProtectionConfig["mode"],
+        })),
       };
+    }
+
+    function createWaf(): wafv2.WebAcl | undefined {
+      if (!args.waf) return undefined;
+
+      const wafInput = output(args.waf);
+      const config = wafInput.apply((waf) =>
+        typeof waf === "boolean" || !waf ? {} : waf,
+      );
+      const rateLimitPerIp = config.apply((c) => c.rateLimitPerIp ?? 2000);
+      const managedRules = config.apply((c) => c.managedRules ?? {});
+      const enableCoreRuleSet = managedRules.apply(
+        (m) => m.coreRuleSet !== false,
+      );
+      const enableKnownBadInputs = managedRules.apply(
+        (m) => m.knownBadInputs !== false,
+      );
+      const enableSqlInjection = managedRules.apply(
+        (m) => m.sqlInjection !== false,
+      );
+
+      // Build rules array dynamically based on config
+      const rules = all([
+        rateLimitPerIp,
+        enableCoreRuleSet,
+        enableKnownBadInputs,
+        enableSqlInjection,
+      ]).apply(([rateLimit, coreRuleSet, knownBadInputs, sqlInjection]) => {
+        const r: wafv2.WebAclArgs["rules"] = [];
+        let priority = 0;
+
+        r.push({
+          name: "RateLimitPerIP",
+          priority: priority++,
+          action: { block: {} },
+          statement: {
+            rateBasedStatement: {
+              limit: rateLimit,
+              aggregateKeyType: "IP",
+            },
+          },
+          visibilityConfig: {
+            cloudwatchMetricsEnabled: true,
+            metricName: `${name}RateLimitPerIP`,
+            sampledRequestsEnabled: true,
+          },
+        });
+
+        if (coreRuleSet) {
+          r.push({
+            name: "AWSManagedRulesCommonRuleSet",
+            priority: priority++,
+            overrideAction: { none: {} },
+            statement: {
+              managedRuleGroupStatement: {
+                vendorName: "AWS",
+                name: "AWSManagedRulesCommonRuleSet",
+                // Set SizeRestrictions_BODY to COUNT to avoid blocking large request bodies
+                ruleActionOverrides: [
+                  {
+                    name: "SizeRestrictions_BODY",
+                    actionToUse: { count: {} },
+                  },
+                ],
+              },
+            },
+            visibilityConfig: {
+              cloudwatchMetricsEnabled: true,
+              metricName: `${name}AWSManagedRulesCommonRuleSet`,
+              sampledRequestsEnabled: true,
+            },
+          });
+        }
+
+        if (knownBadInputs) {
+          r.push({
+            name: "AWSManagedRulesKnownBadInputsRuleSet",
+            priority: priority++,
+            overrideAction: { none: {} },
+            statement: {
+              managedRuleGroupStatement: {
+                vendorName: "AWS",
+                name: "AWSManagedRulesKnownBadInputsRuleSet",
+              },
+            },
+            visibilityConfig: {
+              cloudwatchMetricsEnabled: true,
+              metricName: `${name}AWSManagedRulesKnownBadInputsRuleSet`,
+              sampledRequestsEnabled: true,
+            },
+          });
+        }
+
+        if (sqlInjection) {
+          r.push({
+            name: "AWSManagedRulesSQLiRuleSet",
+            priority: priority++,
+            overrideAction: { none: {} },
+            statement: {
+              managedRuleGroupStatement: {
+                vendorName: "AWS",
+                name: "AWSManagedRulesSQLiRuleSet",
+              },
+            },
+            visibilityConfig: {
+              cloudwatchMetricsEnabled: true,
+              metricName: `${name}AWSManagedRulesSQLiRuleSet`,
+              sampledRequestsEnabled: true,
+            },
+          });
+        }
+
+        return r;
+      });
+
+      // WAF must be created in us-east-1 for CloudFront
+      return new wafv2.WebAcl(
+        ...transform(
+          args.transform?.waf,
+          `${name}Waf`,
+          {
+            scope: "CLOUDFRONT",
+            defaultAction: { allow: {} },
+            rules,
+            visibilityConfig: {
+              cloudwatchMetricsEnabled: true,
+              metricName: `${name}Waf`,
+              sampledRequestsEnabled: true,
+            },
+          },
+          { parent: self, provider: useProvider("us-east-1") },
+        ),
+      );
+    }
+
+    function normalizeWafLogging() {
+      return output(args.waf)
+        .apply((waf) => {
+          if (!waf || typeof waf === "boolean") return undefined;
+          return output(waf.logging);
+        })
+        .apply((logging) => {
+          if (!logging) return undefined;
+          const l = (
+            typeof logging === "boolean" ? {} : logging
+          ) as WafLoggingArgs;
+          const defaultRedact = {
+            queryString: true as boolean,
+            headers: ["cookie", "authorization"] as string[],
+          };
+          const redact = l.redact;
+          return {
+            include: (l.include ?? "all") as "all" | "blocked",
+            retention: (l.retention ?? "1 month") as keyof typeof RETENTION,
+            redact:
+              redact === false
+                ? undefined
+                : redact ?? defaultRedact,
+          };
+        });
+    }
+
+    function createWafLogging() {
+      if (!waf) return;
+
+      wafLogging.apply((logging) => {
+        if (!logging) return;
+
+        // CloudWatch Log Group name MUST start with "aws-waf-logs-"
+        const logGroup = new cloudwatch.LogGroup(
+          ...transform(
+            args.transform?.wafLogGroup,
+            `${name}WafLogGroup`,
+            {
+              name: `aws-waf-logs-${physicalName(64, name)}`,
+              retentionInDays: RETENTION[logging.retention],
+            },
+            {
+              parent: self,
+              provider: useProvider("us-east-1"),
+              ignoreChanges: ["name"],
+            },
+          ),
+        );
+
+        const redactedFields = logging.redact
+          ? output(logging.redact).apply((redact) => {
+              if (!redact || typeof redact === "boolean") return [];
+              const fields: wafv2.WebAclLoggingConfigurationArgs["redactedFields"] &
+                {}[] = [];
+              if (redact.method) fields.push({ method: {} });
+              if (redact.queryString) fields.push({ queryString: {} });
+              if (redact.uriPath) fields.push({ uriPath: {} });
+              if (redact.headers) {
+                for (const header of redact.headers) {
+                  fields.push({
+                    singleHeader: { name: header.toLowerCase() },
+                  });
+                }
+              }
+              return fields;
+            })
+          : undefined;
+
+        const loggingFilter =
+          logging.include === "blocked"
+            ? {
+                defaultBehavior: "DROP",
+                filters: [
+                  {
+                    behavior: "KEEP" as const,
+                    requirement: "MEETS_ANY" as const,
+                    conditions: [
+                      {
+                        actionCondition: {
+                          action: "BLOCK",
+                        },
+                      },
+                    ],
+                  },
+                ],
+              }
+            : undefined;
+
+        new wafv2.WebAclLoggingConfiguration(
+          ...transform(
+            args.transform?.wafLogging,
+            `${name}WafLogging`,
+            {
+              resourceArn: waf!.arn,
+              logDestinationConfigs: [logGroup.arn],
+              ...(redactedFields ? { redactedFields } : {}),
+              ...(loggingFilter ? { loggingFilter } : {}),
+            },
+            {
+              parent: self,
+              provider: useProvider("us-east-1"),
+            },
+          ),
+        );
+      });
     }
 
     function registerOutputs() {
       self.registerOutputs({
         _hint: args._skipHint ? undefined : self.url,
+      });
+    }
+
+    function normalizeProtection(): Output<ProtectionConfig> {
+      return output(args.protection).apply((protection) => {
+        if (!protection) return { mode: "none" as const };
+
+        if (typeof protection === "string") {
+          return { mode: protection };
+        }
+
+        if (
+          protection.mode === "oac-with-edge-signing" &&
+          protection.edgeFunction?.arn
+        ) {
+          const arn = protection.edgeFunction.arn;
+          if (typeof arn === "string") {
+            parseLambdaEdgeArn(arn);
+          }
+        }
+
+        return protection;
       });
     }
 
@@ -1323,6 +2047,7 @@ async function handler(event) {
                   .map((d) => d.behavior),
                 domain: args.domain,
                 wait: true,
+                webAclArn: wafArn,
               },
               { parent: self },
             ),
@@ -1337,6 +2062,7 @@ async function handler(event) {
       const requestFunction = createRequestFunction();
       const responseFunction = createResponseFunction();
       const cachePolicyId = createCachePolicy().id;
+      const edgeFunction = createLambdaEdgeFunction();
       const distribution = createDistribution();
 
       return { kvNamespace, kvStoreArn, distribution };
@@ -1366,30 +2092,33 @@ async function handler(event) {
 
       function createCachePolicy() {
         return new cloudfront.CachePolicy(
-          `${name}ServerCachePolicy`,
-          {
-            comment: "SST server response cache policy",
-            defaultTtl: 0,
-            maxTtl: 31536000, // 1 year
-            minTtl: 0,
-            parametersInCacheKeyAndForwardedToOrigin: {
-              cookiesConfig: {
-                cookieBehavior: "none",
-              },
-              headersConfig: {
-                headerBehavior: "whitelist",
-                headers: {
-                  items: ["x-open-next-cache-key"],
+          ...transform(
+            args.transform?.cachePolicy,
+            `${name}ServerCachePolicy`,
+            {
+              comment: "SST server response cache policy",
+              defaultTtl: 0,
+              maxTtl: 31536000, // 1 year
+              minTtl: 0,
+              parametersInCacheKeyAndForwardedToOrigin: {
+                cookiesConfig: {
+                  cookieBehavior: "none",
                 },
+                headersConfig: {
+                  headerBehavior: "whitelist",
+                  headers: {
+                    items: ["x-open-next-cache-key", "x-forwarded-host"],
+                  },
+                },
+                queryStringsConfig: {
+                  queryStringBehavior: "all",
+                },
+                enableAcceptEncodingBrotli: true,
+                enableAcceptEncodingGzip: true,
               },
-              queryStringsConfig: {
-                queryStringBehavior: "all",
-              },
-              enableAcceptEncodingBrotli: true,
-              enableAcceptEncodingGzip: true,
             },
-          },
-          { parent: self },
+            { parent: self },
+          ),
         );
       }
 
@@ -1411,9 +2140,8 @@ async function handler(event) {
   ${blockCloudfrontUrlInjection}
   ${CF_ROUTER_INJECTION}
 
-  const routerNS = "${kvNamespace}";
-
   async function getRoutes() {
+    const routerNS = "${kvNamespace}";
     let routes = [];
     try {
       const v = await cf.kvs().get(routerNS + ":routes");
@@ -1434,7 +2162,10 @@ async function handler(event) {
 
   async function matchRoute(routes) {
     const requestHost = event.request.headers.host.value;
-    const match = routes
+    const requestHostWithEscapedDots = requestHost.replace(/\\./g, "\\\\.");
+    const requestHostRegexPattern = "^" + requestHost + "$";
+    let match;
+    routes.forEach(r => {
       ${
         /*
         Route format: [type, routeNamespace, hostRegex, pathPrefix]
@@ -1442,31 +2173,45 @@ async function handler(event) {
         - Then sort by path prefix (longest first)
       */ ""
       }
-      .map(r => {
-        var parts = r.split(",");
-        return { 
-          type: parts[0], 
-          routeNs: parts[1], 
-          host: parts[2],
-          path: parts[3]
-        };
-      })
-      .sort((a, b) => {
-        return (a.host.length !== b.host.length)
-          ? b.host.length - a.host.length
-          : b.path.length - a.path.length;
-      })
-      .find(r => {
-        const hostMatches = r.host === "" || new RegExp(r.host).test("^" + requestHost + "$");
-        const pathMatches = event.request.uri.startsWith(r.path);
-        return hostMatches && pathMatches;
-      });
+      var parts = r.split(",");
+      const type = parts[0];
+      const routeNs = parts[1];
+      const host = parts[2];
+      const hostLength = host.length;
+      const path = parts[3];
+      const pathLength = path.length;
+
+      // Do not consider if the current match is a better winner
+      if (match && (
+          hostLength < match.hostLength
+          || (hostLength === match.hostLength && pathLength < match.pathLength)
+      )) return;
+
+      const hostMatches = host === ""
+        || host === requestHostWithEscapedDots
+        || (host.includes("*") && new RegExp(host).test(requestHostRegexPattern));
+      if (!hostMatches) return;
+
+      const pathMatches = event.request.uri.startsWith(path) && (event.request.uri === path || path.endsWith('/') || event.request.uri[path.length] === '/' || path === '/');
+      if (!pathMatches) return;
+
+      match = {
+        type,
+        routeNs,
+        host,
+        hostLength,
+        path,
+        pathLength,
+      };
+    });
 
     // Load metadata
     if (match) {
       try {
-        const v = await cf.kvs().get(match.routeNs + ":metadata");
-        return { type: match.type, routeNs: match.routeNs, metadata: JSON.parse(v) };
+        const type = match.type;
+        const routeNs = match.routeNs;
+        const v = await cf.kvs().get(routeNs + ":metadata");
+        return { type, routeNs, metadata: JSON.parse(v) };
       } catch (e) {}
     }
   }
@@ -1481,7 +2226,10 @@ async function handler(event) {
   }
   if (route.type === "url") setUrlOrigin(route.metadata.host, route.metadata.origin);
   if (route.type === "bucket") setS3Origin(route.metadata.domain, route.metadata.origin);
-  if (route.type === "site") await routeSite(route.routeNs, route.metadata);
+  if (route.type === "site") {
+    const response = await routeSite(route.routeNs, route.metadata);
+    return response || event.request;
+  }
   return event.request;
 }`,
             },
@@ -1512,6 +2260,79 @@ async function handler(event) {
             },
             { parent: self },
           );
+        });
+      }
+
+      function createLambdaEdgeFunction() {
+        return protection.apply((protectionConfig) => {
+          if (
+            protectionConfig.mode !== "oac-with-edge-signing" ||
+            protectionConfig.edgeFunction?.arn
+          ) {
+            return undefined;
+          }
+
+          const edgeConfig = protectionConfig.edgeFunction;
+          const memory = edgeConfig?.memory ? toMBs(edgeConfig.memory) : 128;
+          const timeout = edgeConfig?.timeout
+            ? toSeconds(edgeConfig.timeout)
+            : 5;
+
+          const edgeRole = new iam.Role(
+            ...transform(
+              undefined,
+              `${name}EdgeFunctionRole`,
+              {
+                name: physicalName(64, `${name}EdgeRole`),
+                assumeRolePolicy: JSON.stringify({
+                  Version: "2012-10-17",
+                  Statement: [
+                    {
+                      Action: "sts:AssumeRole",
+                      Effect: "Allow",
+                      Principal: {
+                        Service: [
+                          "lambda.amazonaws.com",
+                          "edgelambda.amazonaws.com",
+                        ],
+                      },
+                    },
+                  ],
+                }),
+                managedPolicyArns: [
+                  "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+                ],
+              },
+              { parent: self, ignoreChanges: ["name"] },
+            ),
+          );
+
+          const edgeFn = new lambda.Function(
+            ...transform(
+              undefined,
+              `${name}EdgeFunction`,
+              {
+                name: physicalName(64, `${name}EdgeFn`),
+                runtime: "nodejs22.x",
+                handler: "index.handler",
+                role: edgeRole.arn,
+                code: new asset.FileArchive(
+                  path.join($cli.paths.platform, "dist", "oac-edge-signer"),
+                ),
+                publish: true,
+                timeout: timeout,
+                memorySize: memory,
+                description: `${name} Lambda@Edge function for OAC request signing`,
+              },
+              {
+                parent: self,
+                provider: useProvider("us-east-1"),
+                ignoreChanges: ["name"],
+              },
+            ),
+          );
+
+          return edgeFn;
         });
       }
 
@@ -1562,12 +2383,44 @@ async function handler(event) {
                     ? [{ eventType: "viewer-response", functionArn: resFn.arn }]
                     : []),
                 ]),
+                lambdaFunctionAssociations: all([
+                  protection,
+                  edgeFunction,
+                ]).apply(([protectionConfig, autoEdgeFunction]) => {
+                  if (protectionConfig.mode !== "oac-with-edge-signing") {
+                    return [];
+                  }
+
+                  if (protectionConfig.edgeFunction?.arn) {
+                    return [
+                      {
+                        eventType: "origin-request",
+                        lambdaArn: protectionConfig.edgeFunction.arn,
+                        includeBody: true,
+                      },
+                    ];
+                  }
+
+                  if (autoEdgeFunction) {
+                    return [
+                      {
+                        eventType: "origin-request",
+                        lambdaArn: autoEdgeFunction.qualifiedArn,
+                        includeBody: true,
+                      },
+                    ];
+                  }
+
+                  return [];
+                }),
               },
               tags: {
                 "sst:ref:kv": kvStoreArn,
                 "sst:ref:kv-namespace": kvNamespace,
                 "sst:ref:version": _refVersion.toString(),
+                "sst:ref:protection": protection.apply((p) => p.mode),
               },
+              webAclArn: wafArn,
             },
             { parent: self },
           ),
@@ -1587,7 +2440,7 @@ async function handler(event) {
    * The URL of the Router.
    *
    * If the `domain` is set, this is the URL with the custom domain.
-   * Otherwise, it's the autogenerated CloudFront URL.
+   * Otherwise, it's the auto-generated CloudFront URL.
    */
   public get url() {
     return all([this.cdn.domainUrl, this.cdn.url]).apply(
@@ -1610,6 +2463,16 @@ async function handler(event) {
     return this.hasInlineRoutes;
   }
 
+  /** @internal */
+  public get _protection() {
+    return this._protectionMode;
+  }
+
+  /** @internal */
+  public get _distributionArn() {
+    return this.cdn.apply((cdn) => cdn.nodes.distribution.arn);
+  }
+
   /**
    * The underlying [resources](/docs/components/#nodes) this component creates.
    */
@@ -1625,7 +2488,7 @@ async function handler(event) {
   /**
    * Add a route to a destination URL.
    *
-   * @param pattern The path pattern to match for this route.
+   * @param pattern The path prefix to match for this route.
    * @param url The destination URL to route matching requests to.
    * @param args Configure the route.
    *
@@ -1633,11 +2496,11 @@ async function handler(event) {
    *
    * You can match a route based on:
    *
-   * - A path like `/api`
+   * - A path prefix like `/api`
    * - A domain pattern like `api.example.com`
    * - A combined pattern like `dev.example.com/api`
    *
-   * For example, to match a path.
+   * For example, to match a path prefix.
    *
    * ```ts title="sst.config.ts"
    * router.route("/api", "https://api.example.com");
@@ -1699,7 +2562,7 @@ async function handler(event) {
   /**
    * Add a route to an S3 bucket.
    *
-   * @param pattern The path pattern to match for this route.
+   * @param pattern The path prefix to match for this route.
    * @param bucket The S3 bucket to route matching requests to.
    * @param args Configure the route.
    *
@@ -1715,11 +2578,11 @@ async function handler(event) {
    *
    * You can match a pattern and route to it based on:
    *
-   * - A path like `/api`
+   * - A path prefix like `/api`
    * - A domain pattern like `api.example.com`
    * - A combined pattern like `dev.example.com/api`
    *
-   * For example, to match a path.
+   * For example, to match a path prefix.
    *
    * ```ts title="sst.config.ts"
    * router.routeBucket("/files", bucket);
@@ -1781,7 +2644,7 @@ async function handler(event) {
   /**
    * Add a route to a frontend or static site.
    *
-   * @param pattern The path pattern to match for this route.
+   * @param pattern The path prefix to match for this route.
    * @param site The frontend or static site to route matching requests to.
    *
    * @deprecated The `routeSite` function has been deprecated. Set the `route` on the
@@ -1835,6 +2698,8 @@ async function handler(event) {
    *   router: router.distributionID
    * };
    * ```
+   *
+   * Learn more about [how to configure a router for your app](/docs/configure-a-router).
    */
   public static get(
     name: string,
@@ -1856,6 +2721,11 @@ const __pulumiType = "sst:aws:Router";
 // @ts-expect-error
 Router.__pulumiType = __pulumiType;
 
+// CloudFront Functions have a 10KB limit on the forwarded request size.
+// We reserve 512 bytes for origin-request overhead CloudFront can still add after
+// this viewer-request function runs, so borderline requests fail with a clear 431.
+const CLOUDFRONT_FUNCTION_SAFE_HEADER_LIMIT = 10240 - 512;
+
 export const CF_BLOCK_CLOUDFRONT_URL_INJECTION = `
 if (event.request.headers.host.value.includes('cloudfront.net')) {
   return {
@@ -1868,7 +2738,9 @@ if (event.request.headers.host.value.includes('cloudfront.net')) {
   };
 }`;
 
-export const CF_ROUTER_INJECTION = `
+// CloudFront Function handler code injected into site and router CF functions.
+// NOTE: This string is size-sensitive — CloudFront Functions have a 10KB limit.
+export const CF_ROUTER_INJECTION = minify`
 async function routeSite(kvNamespace, metadata) {
   const baselessUri = metadata.base
     ? event.request.uri.replace(metadata.base, "")
@@ -1908,28 +2780,35 @@ async function routeSite(kvNamespace, metadata) {
     }
   }
 
-  // Route to S3 custom 404 (no servers)
-  if (metadata.custom404) {
+  // Route to S3 custom 404 (SPA fallback, no servers)
+  if (metadata.custom404 && !metadata.errorResponseCode) {
     event.request.uri = metadata.s3.dir + (metadata.base ? metadata.base : "") + metadata.custom404;
+    setS3Origin(metadata.s3.domain);
+    return;
+  }
+
+  // Route unmatched to S3 (triggers customErrorResponses)
+  if (metadata.s3 && !metadata.servers) {
+    event.request.uri = metadata.s3.dir + event.request.uri;
     setS3Origin(metadata.s3.domain);
     return;
   }
 
   // Route to image optimizer
   if (metadata.image && baselessUri.startsWith(metadata.image.route)) {
-    setUrlOrigin(metadata.image.host);
+    setForwardedHost();
+    setNextjsCacheKey();
+    if (isRequestHeaderTooLarge()) return buildOversizedHeadersResponse();
+    setUrlOrigin(metadata.image.host, metadata.image.originAccessControlConfig ? { originAccessControlConfig: metadata.image.originAccessControlConfig } : undefined);
     return;
   }
 
   // Route to servers
   if (metadata.servers){
-    event.request.headers["x-forwarded-host"] = event.request.headers.host;
-    ${
-      // Note: In SvelteKit, form action requests contain "/" in request query string
-      //  ie. POST request with query string "?/action"
-      //  CloudFront does not allow query string with "/". It needs to be encoded.
-      ""
-    }
+    setForwardedHost();
+    // In SvelteKit, form action requests contain "/" in request query string
+    // ie. POST request with query string "?/action"
+    // CloudFront does not allow query string with "/". It needs to be encoded.
     for (var key in event.request.querystring) {
       if (key.includes("/")) {
         event.request.querystring[encodeURIComponent(key)] = event.request.querystring[key];
@@ -1938,49 +2817,30 @@ async function routeSite(kvNamespace, metadata) {
     }
     setNextjsGeoHeaders();
     setNextjsCacheKey();
+    if (isRequestHeaderTooLarge()) return buildOversizedHeadersResponse();
     setUrlOrigin(findNearestServer(metadata.servers), metadata.origin);
   }
 
+  // Inject the CloudFront viewer country, region, latitude, and longitude headers into
+  // the request headers for OpenNext to use them
   function setNextjsGeoHeaders() {
-    ${
-      // Inject the CloudFront viewer country, region, latitude, and longitude headers into
-      // the request headers for OpenNext to use them for OpenNext to use them
-      ""
-    }
-    if(event.request.headers["cloudfront-viewer-city"]) {
-      event.request.headers["x-open-next-city"] = event.request.headers["cloudfront-viewer-city"];
-    }
-    if(event.request.headers["cloudfront-viewer-country"]) {
-      event.request.headers["x-open-next-country"] = event.request.headers["cloudfront-viewer-country"];
-    }
-    if(event.request.headers["cloudfront-viewer-region"]) {
-      event.request.headers["x-open-next-region"] = event.request.headers["cloudfront-viewer-region"];
-    }
-    if(event.request.headers["cloudfront-viewer-latitude"]) {
-      event.request.headers["x-open-next-latitude"] = event.request.headers["cloudfront-viewer-latitude"];
-    }
-    if(event.request.headers["cloudfront-viewer-longitude"]) {
-      event.request.headers["x-open-next-longitude"] = event.request.headers["cloudfront-viewer-longitude"];
+    var keys = ["city","country","region","latitude","longitude"];
+    for (var i=0; i<keys.length; i++) {
+      if (event.request.headers["cloudfront-viewer-" + keys[i]])
+        event.request.headers["x-open-next-" + keys[i]] = event.request.headers["cloudfront-viewer-" + keys[i]];
     }
   }
 
+  // This function is used to improve cache hit ratio by setting the cache key
+  // based on the request headers and the path. next/image only needs the
+  // accept header, and this header is not useful for the rest of the query
   function setNextjsCacheKey() {
-    ${
-      // This function is used to improve cache hit ratio by setting the cache key
-      // based on the request headers and the path. `next/image` only needs the
-      // accept header, and this header is not useful for the rest of the query
-      ""
-    }
     var cacheKey = "";
     if (event.request.uri.startsWith("/_next/image")) {
       cacheKey = getHeader("accept");
     } else {
-      cacheKey =
-        getHeader("rsc") +
-        getHeader("next-router-prefetch") +
-        getHeader("next-router-state-tree") +
-        getHeader("next-url") +
-        getHeader("x-prerender-revalidate");
+      var headers = ["rsc","next-router-prefetch","next-router-state-tree","next-url","x-prerender-revalidate"];
+      for (var i=0; i<headers.length; i++) cacheKey += getHeader(headers[i]);
     }
     if (event.request.cookies["__prerender_bypass"]) {
       cacheKey += event.request.cookies["__prerender_bypass"]
@@ -2003,6 +2863,58 @@ async function routeSite(kvNamespace, metadata) {
       }
     }
     return "";
+  }
+
+  function isRequestHeaderTooLarge() {
+    return getRequestHeaderSize() > ${CLOUDFRONT_FUNCTION_SAFE_HEADER_LIMIT};
+  }
+
+  function buildOversizedHeadersResponse() {
+    return {
+      statusCode: 431,
+      statusDescription: "Request Header Fields Too Large",
+      headers: {
+        "cache-control": { value: "no-store" },
+        "content-type": { value: "text/plain; charset=utf-8" },
+      },
+      body: {
+        encoding: "text",
+        data: "Request headers are too large. Reduce cookie size and try again.",
+      },
+    };
+  }
+
+  function getRequestHeaderSize() {
+    var size = 0;
+
+    for (var key in event.request.headers) {
+      var header = event.request.headers[key];
+      if (header.multiValue) {
+        for (var i=0; i<header.multiValue.length; i++) {
+          size += key.length + header.multiValue[i].value.length + 4;
+        }
+      } else if (header.value) {
+        size += key.length + header.value.length + 4;
+      }
+    }
+
+    var cookies = [];
+    for (var key in event.request.cookies) {
+      var cookie = event.request.cookies[key];
+      if (cookie.multiValue) {
+        for (var i=0; i<cookie.multiValue.length; i++) {
+          cookies.push(key + "=" + cookie.multiValue[i].value);
+        }
+      } else {
+        cookies.push(key + "=" + cookie.value);
+      }
+    }
+
+    if (cookies.length) {
+      size += 10 + cookies.join("; ").length;
+    }
+
+    return size;
   }
 
   function findNearestServer(servers) {
@@ -2033,8 +2945,13 @@ async function routeSite(kvNamespace, metadata) {
   }
 }
 
-function setUrlOrigin(urlHost, override) {
+function setForwardedHost() {
+  // Lambda URLs expect the original viewer host in x-forwarded-host.
   event.request.headers["x-forwarded-host"] = event.request.headers.host;
+}
+
+function setUrlOrigin(urlHost, override) {
+  setForwardedHost();
   const origin = {
     domainName: urlHost,
     customOriginConfig: {
@@ -2055,6 +2972,9 @@ function setUrlOrigin(urlHost, override) {
   }
   if (override.timeouts) {
     origin.timeouts = override.timeouts;
+  }
+  if (override.originAccessControlConfig) {
+    origin.originAccessControlConfig = override.originAccessControlConfig;
   }
   cf.updateRequestOrigin(origin);
 }
@@ -2086,6 +3006,7 @@ function setS3Origin(s3Domain, override) {
 export type KV_SITE_METADATA = {
   base?: string; // Should be undefiend if no base path, should never be "/"
   custom404?: string;
+  errorResponseCode?: number;
   s3: {
     domain: string;
     dir: string; // Should be "" if no dir
@@ -2094,18 +3015,39 @@ export type KV_SITE_METADATA = {
   image?: {
     host: string;
     route: string;
+    originAccessControlConfig?: {
+      enabled: boolean;
+      signingBehavior: string;
+      signingProtocol: string;
+      originType: string;
+    };
   };
   servers?: [string, number, number][];
   origin?: {
     timeouts: {
       readTimeout: number;
     };
+    originAccessControlConfig?: {
+      enabled: boolean;
+      signingBehavior: string;
+      signingProtocol: string;
+      originType: string;
+    };
+  };
+};
+
+export type ProtectionConfig = {
+  mode: "none" | "oac" | "oac-with-edge-signing";
+  edgeFunction?: {
+    arn?: string;
+    memory?: Size;
+    timeout?: DurationSeconds;
   };
 };
 
 export type RouterRouteArgs = {
   /**
-   * The `Router` component to use to route requests.
+   * The `Router` component to use for routing requests.
    *
    * @example
    *
@@ -2113,53 +3055,65 @@ export type RouterRouteArgs = {
    *
    * ```ts title="sst.config.ts"
    * const router = new sst.aws.Router("MyRouter", {
-   *   domain: "example.com",
+   *   domain: "example.com"
    * });
    * ```
    *
-   * Attach to the Router to receive requests.
+   * You can attach it to the Router, instead of creating a standalone CloudFront
+   * distribution.
    *
-   * ```ts title="sst.config.ts"
+   * ```ts
    * router: {
-   *   instance: router,
+   *   instance: router
    * }
    * ```
    */
   instance: Input<Router>;
   /**
-   * Route requests matching specific domain pattern.
+   * Route requests matching a specific domain pattern.
    *
    * @example
    *
    * You can serve your resource from a subdomain. For example, if you want to make
-   * it available at `https://dev.example.com`, set the `Router` domain to a wildcard.
+   * it available at `https://dev.example.com`, set the `Router` to match the
+   * domain or a wildcard.
    *
    * ```ts {2} title="sst.config.ts"
    * const router = new sst.aws.Router("MyRouter", {
-   *   domain: "*.example.com",
+   *   domain: "*.example.com"
    * });
    * ```
    *
    * Then set the domain pattern.
    *
-   * ```ts {3} title="sst.config.ts"
+   * ```ts {3}
    * router: {
    *   instance: router,
-   *   domain: "dev.example.com",
+   *   domain: "dev.example.com"
    * }
    * ```
+   *
+   * While `dev.example.com` matches `*.example.com`. Something like
+   * `docs.dev.example.com` will not match `*.example.com`.
+   *
+   * :::tip
+   * Nested wildcards domain patterns are not supported.
+   * :::
+   *
+   * You'll need to add `*.dev.example.com` as an alias.
    */
   domain?: Input<string>;
   /**
-   * Route request smatching specific path prefix.
+   * Route requests matching a specific path prefix.
    *
    * @default `"/"`
+   *
    * @example
    *
-   * ```ts {3} title="sst.config.ts"
+   * ```ts {3}
    * router: {
    *   instance: router,
-   *   path: "/docs",
+   *   path: "/docs"
    * }
    * ```
    */
@@ -2206,6 +3160,8 @@ export function normalizeRouteArgs(
         ),
         routerKvNamespace: v.instance._kvNamespace!,
         routerKvStoreArn: v.instance._kvStoreArn!,
+        routerProtection: v.instance._protection,
+        routerDistributionArn: v.instance._distributionArn,
       };
     });
   });

@@ -5,7 +5,7 @@ import {
   output,
 } from "@pulumi/pulumi";
 import { Component, transform } from "../component";
-import { Function } from "./function";
+import { Function } from "./function.js";
 import { VisibleError } from "../error";
 import { AppSyncDataSourceArgs } from "./app-sync";
 import { parseDynamoArn } from "./helpers/arn";

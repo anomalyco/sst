@@ -456,6 +456,7 @@ async function generateExamplesDocs() {
     const lines = fs
       .readFileSync(path.join(`../examples`, module.sources![0].fileName))
       .toString()
+      .replace(/\t/g, "  ")
       .split("\n");
     const start = lines.indexOf("  async run() {");
     const end = lines.lastIndexOf("  },");
@@ -605,7 +606,7 @@ async function generateComponentDoc(
   const className = useClassName(component);
   const fullClassName = `${useClassProviderNamespace(component)}.${className}`;
   const matchRet = component.name.match(/-(v\d+)$/);
-  const version = matchRet ? `.${matchRet[1]}` : "";
+  const version = matchRet && !className.toLowerCase().endsWith(matchRet[1]) ? `.${matchRet[1]}` : "";
 
   // Remove leading `components/`
   // module.name = "components/aws/bucket"
@@ -643,20 +644,6 @@ async function generateComponentDoc(
           ...(["realtime", "task"].includes(sdk?.name!)
             ? renderAbout(useModuleComment(sdk!))
             : []),
-          ...(() => {
-            if (!["opencontrol"].includes(sdk?.name!)) return [];
-            for (const variable of sdk!.children!) {
-              if (variable.name === "tools") {
-                // @ts-expect-error
-                variable.type = {
-                  type: "reference",
-                  name: "Tools",
-                  package: "opencontrol",
-                };
-              }
-            }
-            return renderVariables(sdk!);
-          })(),
           ...(sdk
             ? renderFunctions(
                 sdk,
@@ -785,9 +772,6 @@ function renderType(
     if (type.type === "reference" && type.package === "esbuild") {
       return renderEsbuildType(type);
     }
-    if (type.type === "reference" && type.package === "opencontrol") {
-      return renderOpencontrolType(type);
-    }
     if (
       // when bun is installed globally, package is `bun-types`
       (type.type === "reference" && type.package === "bun-types") ||
@@ -858,7 +842,9 @@ function renderType(
       console.error(type);
       throw new Error(`Unsupported templateLiteral type`);
     }
-    return `<code class="symbol">&ldquo;</code><code class="primitive">${type.head}$\\{${type.tail[0][0].name}\\}${type.tail[0][1]}</code><code class="symbol">&rdquo;</code>`;
+    const head = type.head.replace("{", "\\{").replace("}", "\\}");
+    const tail = type.tail[0][1].replace("{", "\\{").replace("}", "\\}");
+    return `<code class="symbol">&ldquo;</code><code class="primitive">${head}$\\{${type.tail[0][0].name}\\}${tail}</code><code class="symbol">&rdquo;</code>`;
   }
   function renderUnionType(type: TypeDoc.UnionType) {
     return type.types
@@ -954,63 +940,27 @@ function renderType(
         type.name
       }</code>](#${type.name.toLowerCase()})`;
     }
+
     // types in different doc
-    const externalModule = {
-      ApiGatewayV1ApiKey: "apigatewayv1-api-key",
-      ApiGatewayV1ApiKeyArgs: "apigatewayv1-api-key",
-      ApiGatewayV1Authorizer: "apigatewayv1-authorizer",
-      ApiGatewayV1IntegrationArgs: "apigatewayv1",
-      ApiGatewayV1IntegrationRoute: "apigatewayv1-integration-route",
-      ApiGatewayV1LambdaRoute: "apigatewayv1-lambda-route",
-      ApiGatewayV1UsagePlan: "apigatewayv1-usage-plan",
-      ApiGatewayV2Authorizer: "apigatewayv2-authorizer",
-      ApiGatewayV2LambdaRoute: "apigatewayv2-lambda-route",
-      ApiGatewayV2PrivateRoute: "apigatewayv2-private-route",
-      ApiGatewayV2UrlRoute: "apigatewayv2-url-route",
-      ApiGatewayWebSocketRoute: "apigateway-websocket-route",
-      AppSyncDataSource: "app-sync-data-source",
-      AppSyncFunction: "app-sync-function",
-      AppSyncResolver: "app-sync-resolver",
-      Bucket: "bucket",
-      BucketArgs: "bucket",
-      BucketNotification: "bucket-notification",
-      Bus: "bus",
-      BusLambdaSubscriber: "bus-lambda-subscriber",
-      BusQueueSubscriber: "bus-queue-subscriber",
-      Cdn: "cdn",
-      CdnArgs: "cdn",
-      Cluster: "cluster",
-      CognitoIdentityProvider: "cognito-identity-provider",
-      CognitoUserPoolClient: "cognito-user-pool-client",
-      Dynamo: "dynamo",
-      DynamoLambdaSubscriber: "dynamo-lambda-subscriber",
-      Efs: "efs",
-      Function: "function",
-      FunctionArgs: "function",
-      FunctionEnvironmentUpdate: "providers/function-environment-update",
-      FunctionPermissionArgs: "function",
-      Postgres: "postgres",
-      PostgresArgs: "postgres",
-      Router: "router",
-      Queue: "queue",
-      QueueLambdaSubscriber: "queue-lambda-subscriber",
-      KinesisStreamLambdaSubscriber: "kinesis-stream-lambda-subscriber",
-      RealtimeLambdaSubscriber: "realtime-lambda-subscriber",
-      Service: "service",
-      SnsTopic: "sns-topic",
-      SnsTopicLambdaSubscriber: "sns-topic-lambda-subscriber",
-      SnsTopicQueueSubscriber: "sns-topic-queue-subscriber",
-      StaticSite: "static-site",
-      Task: "task",
-      Vpc: "vpc",
-    }[type.name];
-    if (externalModule) {
-      const hash = type.name.endsWith("Args")
+    const fileName = (type.reflection as TypeDoc.DeclarationReflection)
+      ?.sources?.[0].fileName;
+    if (fileName?.startsWith("platform/src/components/")) {
+      const docHash = type.name.endsWith("Args")
         ? `#${type.name.toLowerCase()}`
         : "";
-      return `[<code class="type">${type.name}</code>](/docs/component/aws/${externalModule}/${hash})`;
+      const docLink = fileName.replace(
+        /platform\/src\/components\/(.*)\.ts/,
+        "/docs/component/$1"
+      );
+      return `[<code class="type">${type.name}</code>](${docLink}${docHash})`;
     }
-    if (type.name === "Resource" || type.name === "Constructor") {
+
+    // types in different doc without their own doc page
+    if (
+      type.name === "Resource" ||
+      type.name === "Constructor" ||
+      type.name === "EsbuildOptions"
+    ) {
       return `<code class="type">${type.name}</code>`;
     }
 
@@ -1113,6 +1063,7 @@ function renderType(
         DistributionCustomErrorResponse: "cloudfront/distribution",
         DistributionDefaultCacheBehavior: "cloudfront/distribution",
         DistributionOrderedCacheBehavior: "cloudfront/distribution",
+        PolicyDocument: "iam/getpolicydocument",
       }[type.name];
       if (!link) {
         // @ts-expect-error
@@ -1196,9 +1147,6 @@ function renderType(
   function renderEsbuildType(type: TypeDoc.ReferenceType) {
     const hash = type.name === "Loader" ? `#loader` : "#build";
     return `[<code class="type">${type.name}</code>](https://esbuild.github.io/api/${hash})`;
-  }
-  function renderOpencontrolType(type: TypeDoc.ReferenceType) {
-    return `[<code class="type">${type.name}</code>](https://opencontrol.ai/)`;
   }
   function renderBunShellType(type: TypeDoc.ReferenceType) {
     return `[<code class="type">Bun Shell</code>](https://bun.sh/docs/runtime/shell)`;
@@ -1635,7 +1583,8 @@ function renderInterfacesAtH2Level(
   const interfaces = useModuleInterfaces(module)
     .filter((c) => !c.comment?.modifierTags.has("@internal"))
     .filter((c) => !c.comment?.blockTags.find((t) => t.tag === "@deprecated"))
-    .filter((c) => !opts.filter || opts.filter(c));
+    .filter((c) => !opts.filter || opts.filter(c))
+    .filter((c) => c.children?.length);
 
   for (const int of interfaces) {
     console.debug(` - interface ${int.name}`);
@@ -2130,6 +2079,24 @@ function patchCode() {
       "\ntype AwsPermission = {};\n" +
       "\ntype CloudflareBinding = {};\n"
   );
+  // patch StepFunctions
+  ["map.ts", "parallel.ts", "pass.ts", "task.ts", "wait.ts"].forEach((file) => {
+    fs.cpSync(
+      `../platform/src/components/aws/step-functions/${file}`,
+      `../platform/src/components/aws/step-functions/${file}.bk`
+    );
+    fs.writeFileSync(
+      `../platform/src/components/aws/step-functions/${file}`,
+      fs
+        .readFileSync(`../platform/src/components/aws/step-functions/${file}`)
+        .toString()
+        .trim()
+        .replace(
+          "public next<T extends State>(state: T): T {",
+          "public next(state: State): State {"
+        )
+    );
+  });
 }
 
 function restoreCode() {
@@ -2145,6 +2112,13 @@ function restoreCode() {
     "../platform/src/components/linkable.ts.bk",
     "../platform/src/components/linkable.ts"
   );
+  // restore StepFunctions
+  ["map.ts", "parallel.ts", "pass.ts", "task.ts", "wait.ts"].forEach((file) => {
+    fs.renameSync(
+      `../platform/src/components/aws/step-functions/${file}.bk`,
+      `../platform/src/components/aws/step-functions/${file}`
+    );
+  });
 }
 
 async function buildComponents() {
@@ -2194,17 +2168,21 @@ async function buildComponents() {
       "../platform/src/components/aws/cognito-user-pool.ts",
       "../platform/src/components/aws/cognito-user-pool-client.ts",
       "../platform/src/components/aws/cron.ts",
+      "../platform/src/components/aws/cron-v2.ts",
       "../platform/src/components/aws/dynamo.ts",
       "../platform/src/components/aws/dynamo-lambda-subscriber.ts",
       "../platform/src/components/aws/efs.ts",
       "../platform/src/components/aws/email.ts",
       "../platform/src/components/aws/function.ts",
+      "../platform/src/components/aws/mysql.ts",
       "../platform/src/components/aws/postgres.ts",
       "../platform/src/components/aws/postgres-v1.ts",
+      "../platform/src/components/aws/step-functions.ts",
       "../platform/src/components/aws/vector.ts",
       "../platform/src/components/aws/astro.ts",
       "../platform/src/components/aws/nextjs.ts",
       "../platform/src/components/aws/nuxt.ts",
+      "../platform/src/components/aws/dsql.ts",
       "../platform/src/components/aws/realtime.ts",
       "../platform/src/components/aws/realtime-lambda-subscriber.ts",
       "../platform/src/components/aws/react.ts",
@@ -2216,8 +2194,10 @@ async function buildComponents() {
       "../platform/src/components/aws/kinesis-stream.ts",
       "../platform/src/components/aws/kinesis-stream-lambda-subscriber.ts",
       "../platform/src/components/aws/opencontrol.ts",
+      "../platform/src/components/aws/open-search.ts",
       "../platform/src/components/aws/router.ts",
       "../platform/src/components/aws/service.ts",
+      "../platform/src/components/aws/service-v1.ts",
       "../platform/src/components/aws/sns-topic.ts",
       "../platform/src/components/aws/sns-topic-lambda-subscriber.ts",
       "../platform/src/components/aws/sns-topic-queue-subscriber.ts",
@@ -2228,16 +2208,30 @@ async function buildComponents() {
       "../platform/src/components/aws/task.ts",
       "../platform/src/components/aws/vpc.ts",
       "../platform/src/components/aws/vpc-v1.ts",
-      "../platform/src/components/cloudflare/worker.ts",
+      "../platform/src/components/cloudflare/ai.ts",
       "../platform/src/components/cloudflare/bucket.ts",
+      "../platform/src/components/cloudflare/cron.ts",
       "../platform/src/components/cloudflare/d1.ts",
       "../platform/src/components/cloudflare/kv.ts",
+      "../platform/src/components/cloudflare/queue.ts",
+      "../platform/src/components/cloudflare/queue-worker-subscriber.ts",
+      "../platform/src/components/cloudflare/worker.ts",
       // internal
+      "../platform/src/components/aws/alb.ts",
       "../platform/src/components/aws/cdn.ts",
       "../platform/src/components/aws/dns.ts",
       "../platform/src/components/aws/iam-edit.ts",
       "../platform/src/components/aws/permission.ts",
       "../platform/src/components/aws/providers/function-environment-update.ts",
+      "../platform/src/components/aws/step-functions/choice.ts",
+      "../platform/src/components/aws/step-functions/fail.ts",
+      "../platform/src/components/aws/step-functions/map.ts",
+      "../platform/src/components/aws/step-functions/parallel.ts",
+      "../platform/src/components/aws/step-functions/pass.ts",
+      "../platform/src/components/aws/step-functions/state.ts",
+      "../platform/src/components/aws/step-functions/succeed.ts",
+      "../platform/src/components/aws/step-functions/task.ts",
+      "../platform/src/components/aws/step-functions/wait.ts",
       "../platform/src/components/cloudflare/binding.ts",
       "../platform/src/components/cloudflare/dns.ts",
       "../platform/src/components/vercel/dns.ts",
@@ -2247,6 +2241,32 @@ async function buildComponents() {
 
   const project = await app.convert();
   if (!project) throw new Error("Failed to convert project");
+
+  // sort StepFunctions methods
+  (() => {
+    const c = project
+      .getChildrenByKind(TypeDoc.ReflectionKind.Module)
+      .find((c) => c.name === "components/aws/step-functions")
+      ?.getChildByName("StepFunctions") as TypeDoc.DeclarationReflection;
+    const taskChildren: TypeDoc.DeclarationReflection[] = [];
+    const otherChildren: TypeDoc.DeclarationReflection[] = [];
+    c.children?.forEach((c) =>
+      c.kind === TypeDoc.ReflectionKind.Method &&
+      [
+        "task",
+        "choice",
+        "parallel",
+        "map",
+        "pass",
+        "succeed",
+        "fail",
+        "wait",
+      ].includes(c.name)
+        ? taskChildren.push(c)
+        : otherChildren.push(c)
+    );
+    c.children = [...taskChildren, ...otherChildren];
+  })();
 
   // Generate JSON (generated for debugging purposes)
   await app.generateJson(project, "components-doc.json");
@@ -2267,7 +2287,6 @@ async function buildSdk() {
       "../sdk/js/src/aws/realtime.ts",
       "../sdk/js/src/aws/task.ts",
       "../sdk/js/src/vector/index.ts",
-      "../sdk/js/src/opencontrol.ts",
     ],
     tsconfig: "../sdk/js/tsconfig.json",
   });

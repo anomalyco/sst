@@ -31,7 +31,7 @@ const tmp = `tmp`;
 const binaryPackages = [] as string[];
 for (const artifact of artifacts) {
   if (artifact.type !== "Binary") continue;
-  const os = artifact.goos;
+  const os = artifact.goos === "windows" ? "win32" : artifact.goos;
   const cpu = cpus[artifact.goarch as keyof typeof cpus];
   if (!os || !cpu)
     throw new Error(`Invalid artifact: ${JSON.stringify(artifact)}`);
@@ -49,6 +49,8 @@ for (const artifact of artifacts) {
       {
         name,
         version: nextPkg.version,
+        license: nextPkg.license,
+        repository: nextPkg.repository,
         os: [os],
         cpu: [cpu],
       },
@@ -67,6 +69,7 @@ try {
   }
   console.log(nextPkg);
   await Bun.write("package.json", JSON.stringify(nextPkg, null, 2));
+  await fs.cp("../../README.md", "README.md");
   await $`npm publish --access public --tag ${tag}`;
   if (!snapshot)
     await $`npm dist-tag add ${nextPkg.name}@${nextPkg.version} ion`;

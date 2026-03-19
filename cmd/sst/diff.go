@@ -39,6 +39,12 @@ var CmdDiff = &cli.Command{
 			"sst diff --target MyComponent",
 			"```",
 			"",
+			"Alternatively, exclude a specific component from the diff.",
+			"",
+			"```bash frame=\"none\"",
+			"sst diff --exclude MyComponent",
+			"```",
+			"",
 			"By default, this compares to the last deploy of the given stage as it would be",
 			"deployed using `sst deploy`. But if you are working in dev mode using `sst dev`,",
 			"you can use the `--dev` flag.",
@@ -59,6 +65,14 @@ var CmdDiff = &cli.Command{
 			},
 		},
 		{
+			Name: "exclude",
+			Type: "string",
+			Description: cli.Description{
+				Short: "Exclude a component",
+				Long:  "Exclude the specified component from the operation.",
+			},
+		},
+		{
 			Name: "dev",
 			Type: "bool",
 			Description: cli.Description{
@@ -68,12 +82,26 @@ var CmdDiff = &cli.Command{
 				}, "\n"),
 			},
 		},
+		{
+			Name: "policy",
+			Type: "string",
+			Description: cli.Description{
+				Short: "Path to policy pack",
+				Long:  "Run policy pack validation against the preview changes.",
+			},
+		},
 	},
 	Examples: []cli.Example{
 		{
 			Content: "sst diff --stage production",
 			Description: cli.Description{
 				Short: "See changes to production",
+			},
+		},
+		{
+			Content: "sst diff --stage production --policy ./policies/production",
+			Description: cli.Description{
+				Short: "See changes to production with policy validation",
 			},
 		},
 	},
@@ -87,6 +115,11 @@ var CmdDiff = &cli.Command{
 		target := []string{}
 		if c.String("target") != "" {
 			target = strings.Split(c.String("target"), ",")
+		}
+
+		exclude := []string{}
+		if c.String("exclude") != "" {
+			exclude = strings.Split(c.String("exclude"), ",")
 		}
 
 		var wg errgroup.Group
@@ -121,7 +154,9 @@ var CmdDiff = &cli.Command{
 			ServerPort: s.Port,
 			Dev:        c.Bool("dev"),
 			Target:     target,
+			Exclude:    exclude,
 			Verbose:    c.Bool("verbose"),
+			PolicyPath: c.String("policy"),
 		})
 		if err != nil {
 			return err

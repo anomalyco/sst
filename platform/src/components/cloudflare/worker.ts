@@ -1,25 +1,33 @@
 import fs from "fs/promises";
 import path from "path";
+import crypto from "crypto";
 import {
   ComponentResourceOptions,
   output,
-  Output,
   all,
   jsonStringify,
   interpolate,
 } from "@pulumi/pulumi";
 import * as cf from "@pulumi/cloudflare";
-import type { Loader, BuildOptions } from "esbuild";
+import type { Loader } from "esbuild";
+import type { EsbuildOptions } from "../esbuild.js";
 import { Component, Transform, transform } from "../component";
 import { WorkerUrl } from "./providers/worker-url.js";
+import { WorkerPlacement } from "./providers/worker-placement.js";
 import { Link } from "../link.js";
 import type { Input } from "../input.js";
 import { ZoneLookup } from "./providers/zone-lookup.js";
 import { iam } from "@pulumi/aws";
 import { Permission } from "../aws/permission.js";
-import { Binding, binding } from "./binding.js";
+import { binding } from "./binding.js";
 import { DEFAULT_ACCOUNT_ID } from "./account-id.js";
 import { rpc } from "../rpc/rpc.js";
+import { WorkerAssets } from "./providers/worker-assets";
+import { globSync } from "glob";
+import { VisibleError } from "../error";
+import { getContentType } from "../base/base-site";
+import { physicalName } from "../naming";
+import { existsAsync } from "../../util/fs";
 
 export interface WorkerArgs {
   /**
@@ -102,7 +110,7 @@ export interface WorkerArgs {
      * :::
      *
      */
-    esbuild?: Input<BuildOptions>;
+    esbuild?: Input<EsbuildOptions>;
     /**
      * Disable if the worker code should be minified when bundled.
      *
@@ -153,6 +161,58 @@ export interface WorkerArgs {
    */
   environment?: Input<Record<string, Input<string>>>;
   /**
+   * Upload [static assets](https://developers.cloudflare.com/workers/static-assets/) as
+   * part of the worker.
+   *
+   * You can directly fetch and serve assets within your Worker code via the [assets
+   * binding](https://developers.cloudflare.com/workers/static-assets/binding/#binding).
+   *
+   * @example
+   * ```js
+   * {
+   *   assets: {
+   *     directory: "./dist"
+   *   }
+   * }
+   * ```
+   */
+  assets?: Input<{
+    /**
+     * The directory containing the assets.
+     */
+    directory: Input<string>;
+  }>;
+  /**
+   * Configure [placement](https://developers.cloudflare.com/workers/configuration/placement/)
+   * for your Worker.
+   *
+   * @example
+   *
+   * #### Smart Placement
+   * ```js
+   * {
+   *   placement: {
+   *     mode: "smart"
+   *   }
+   * }
+   * ```
+   *
+   * #### Explicit region
+   * ```js
+   * {
+   *   placement: {
+   *     region: "aws:us-east-1"
+   *   }
+   * }
+   * ```
+   */
+  placement?: Input<{
+    mode?: Input<string>;
+    region?: Input<string>;
+    host?: Input<string>;
+    hostname?: Input<string>;
+  }>;
+  /**
    * [Transform](/docs/components/#transform) how this component creates its underlying
    * resources.
    */
@@ -160,7 +220,7 @@ export interface WorkerArgs {
     /**
      * Transform the Worker resource.
      */
-    worker?: Transform<cf.WorkerScriptArgs>;
+    worker?: Transform<cf.WorkersScriptArgs>;
   };
   /**
    * @internal
@@ -230,8 +290,9 @@ export interface WorkerArgs {
  * ```
  */
 export class Worker extends Component implements Link.Linkable {
-  private script: Output<cf.WorkerScript>;
+  private script: cf.WorkersScript;
   private workerUrl: WorkerUrl;
+  private workerPlacement?: WorkerPlacement;
   private workerDomain?: cf.WorkerDomain;
 
   constructor(name: string, args: WorkerArgs, opts?: ComponentResourceOptions) {
@@ -261,13 +322,15 @@ export class Worker extends Component implements Link.Linkable {
     const build = buildHandler();
     const script = createScript();
     const workerUrl = createWorkersUrl();
+    const workerPlacement = createWorkerPlacement();
     const workerDomain = createWorkersDomain();
 
     this.script = script;
     this.workerUrl = workerUrl;
+    this.workerPlacement = workerPlacement;
     this.workerDomain = workerDomain;
 
-    all([dev, buildInput, script.name]).apply(
+    all([dev, buildInput, script.scriptName]).apply(
       async ([dev, buildInput, scriptName]) => {
         if (!dev) return undefined;
         await rpc.call("Runtime.AddTarget", {
@@ -290,7 +353,7 @@ export class Worker extends Component implements Link.Linkable {
             runtime: "worker",
             properties: {
               accountID: DEFAULT_ACCOUNT_ID,
-              scriptName: script.name,
+              scriptName: script.scriptName,
               build,
             },
           };
@@ -310,17 +373,16 @@ export class Worker extends Component implements Link.Linkable {
     }
 
     function buildBindings() {
-      const result = {
-        plainTextBindings: [
-          {
-            name: "SST_RESOURCE_App",
-            text: jsonStringify({
-              name: $app.name,
-              stage: $app.stage,
-            }),
-          },
-        ],
-      } as Record<Binding["type"], any[]>;
+      const result = [
+        {
+          type: "plain_text",
+          name: "SST_RESOURCE_App",
+          text: jsonStringify({
+            name: $app.name,
+            stage: $app.stage,
+          }),
+        },
+      ] as cf.types.input.WorkerScriptBinding[];
       if (!args.link) return result;
       return output(args.link).apply((links) => {
         for (let link of links) {
@@ -330,26 +392,28 @@ export class Worker extends Component implements Link.Linkable {
           const b = item.include?.find(
             (i) => i.type === "cloudflare.binding",
           ) as ReturnType<typeof binding>;
-          if (b) {
-            if (!result[b.binding]) result[b.binding] = [];
-            result[b.binding].push({
-              // for some reason queue bindings have a different format
-              ...(b.binding === "queueBindings"
-                ? {
-                    binding: name,
-                  }
-                : {
-                    name,
-                  }),
-              ...b.properties,
-            });
-            continue;
-          }
-          if (!result.secretTextBindings) result.secretTextBindings = [];
-          result.secretTextBindings.push({
-            name,
-            text: jsonStringify(item.properties),
-          });
+          result.push(
+            b
+              ? {
+                  type: {
+                    aiBindings: "ai",
+                    plainTextBindings: "plain_text",
+                    secretTextBindings: "secret_text",
+                    queueBindings: "queue",
+                    serviceBindings: "service",
+                    kvNamespaceBindings: "kv_namespace",
+                    d1DatabaseBindings: "d1",
+                    r2BucketBindings: "r2_bucket",
+                  }[b.binding],
+                  name,
+                  ...b.properties,
+                }
+              : {
+                  type: "secret_text",
+                  name: name,
+                  text: jsonStringify(item.properties),
+                },
+          );
         }
         return result;
       });
@@ -379,6 +443,16 @@ export class Worker extends Component implements Link.Linkable {
                 })(),
                 Action: p.actions,
                 Resource: p.resources,
+                ...("conditions" in p && p.conditions
+                  ? {
+                      Condition: Object.fromEntries(
+                        p.conditions.map((c) => [
+                          c.test,
+                          { [c.variable]: c.values },
+                        ]),
+                      ),
+                    }
+                  : {}),
               })),
             }),
           },
@@ -411,52 +485,80 @@ export class Worker extends Component implements Link.Linkable {
     }
 
     function createScript() {
-      return all([build, args.environment, iamCredentials, bindings]).apply(
-        async ([build, environment, iamCredentials, bindings]) =>
-          new cf.WorkerScript(
-            ...transform(
-              args.transform?.worker,
-              `${name}Script`,
-              {
-                name: "",
-                accountId: DEFAULT_ACCOUNT_ID,
-                content: (
-                  await fs.readFile(path.join(build.out, build.handler))
-                ).toString(),
-                module: true,
-                compatibilityDate: "2024-09-23",
-                compatibilityFlags: ["nodejs_compat"],
-                ...bindings,
-                plainTextBindings: [
-                  ...(iamCredentials
-                    ? [
-                        {
-                          name: "AWS_ACCESS_KEY_ID",
-                          text: iamCredentials.id,
-                        },
-                      ]
-                    : []),
-                  ...Object.entries(environment ?? {}).map(([key, value]) => ({
-                    name: key,
-                    text: value,
-                  })),
-                  ...(bindings.plainTextBindings || []),
-                ],
-                secretTextBindings: [
-                  ...(iamCredentials
-                    ? [
-                        {
-                          name: "AWS_SECRET_ACCESS_KEY",
-                          text: iamCredentials.secret,
-                        },
-                      ]
-                    : []),
-                  ...(bindings.secretTextBindings || []),
-                ],
-              },
-              { parent },
+      const contentFilePath = build.apply((build) =>
+        path.join(build.out, build.handler),
+      );
+      return new cf.WorkersScript(
+        ...transform(
+          args.transform?.worker as Transform<cf.WorkersScriptArgs>,
+          `${name}Script`,
+          {
+            scriptName: physicalName(64, `${name}Script`).toLowerCase(),
+            mainModule: "placeholder",
+            accountId: DEFAULT_ACCOUNT_ID,
+            contentFile: contentFilePath,
+            contentSha256: contentFilePath.apply(async (p) =>
+              crypto
+                .createHash("sha256")
+                .update(await fs.readFile(p, "utf-8"))
+                .digest("hex"),
             ),
-          ),
+            compatibilityDate: "2025-05-05",
+            compatibilityFlags: ["nodejs_compat"],
+            assets: args.assets
+              ? output(args.assets).apply(async (assets) => {
+                  const directory = path.join(
+                    $cli.paths.root,
+                    assets.directory,
+                  );
+                  let headers;
+                  try {
+                    headers = await fs.readFile(
+                      path.join(directory, "_headers"),
+                      "utf-8",
+                    );
+                  } catch (e) {}
+                  return {
+                    directory,
+                    config: { headers },
+                  };
+                })
+              : undefined,
+            bindings: all([args.environment, iamCredentials, bindings]).apply(
+              ([environment, iamCredentials, bindings]) => [
+                ...bindings,
+                ...(iamCredentials
+                  ? [
+                      {
+                        type: "plain_text",
+                        name: "AWS_ACCESS_KEY_ID",
+                        text: iamCredentials.id,
+                      },
+                      {
+                        type: "secret_text",
+                        name: "AWS_SECRET_ACCESS_KEY",
+                        text: iamCredentials.secret,
+                      },
+                    ]
+                  : []),
+                ...(args.assets
+                  ? [
+                      {
+                        type: "assets",
+                        name: "ASSETS",
+                      },
+                    ]
+                  : []),
+                ...Object.entries(environment ?? {}).map(([key, value]) => ({
+                  type: "plain_text",
+                  name: key,
+                  text: value,
+                })),
+              ],
+            ),
+          },
+          { parent, ignoreChanges: ["scriptName"] },
+        ),
       );
     }
 
@@ -465,8 +567,24 @@ export class Worker extends Component implements Link.Linkable {
         `${name}Url`,
         {
           accountId: DEFAULT_ACCOUNT_ID,
-          scriptName: script.name,
+          scriptName: script.scriptName,
           enabled: urlEnabled,
+        },
+        { parent },
+      );
+    }
+
+    // workaround: pulumi cloudflare provider marks placement as read-only,
+    // so we use the CF API directly until upstream support lands
+    function createWorkerPlacement() {
+      if (!args.placement) return;
+
+      return new WorkerPlacement(
+        `${name}Placement`,
+        {
+          accountId: DEFAULT_ACCOUNT_ID,
+          scriptName: script.scriptName,
+          ...args.placement,
         },
         { parent },
       );
@@ -484,13 +602,14 @@ export class Worker extends Component implements Link.Linkable {
         { parent },
       );
 
-      return new cf.WorkerDomain(
+      return new cf.WorkersCustomDomain(
         `${name}Domain`,
         {
           accountId: DEFAULT_ACCOUNT_ID,
-          service: script.name,
+          service: script.scriptName,
           hostname: args.domain,
           zoneId: zone.id,
+          environment: "production",
         },
         { parent },
       );

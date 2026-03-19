@@ -36,7 +36,7 @@ export interface AstroArgs extends SsrSiteArgs {
    *     {
    *       actions: ["s3:GetObject", "s3:PutObject"],
    *       resources: ["arn:aws:s3:::my-bucket/*"]
-   *     },
+   *     }
    *   ]
    * }
    * ```
@@ -49,7 +49,7 @@ export interface AstroArgs extends SsrSiteArgs {
    *     {
    *       actions: ["s3:*"],
    *       resources: ["arn:aws:s3:::my-bucket/*"]
-   *     },
+   *     }
    *   ]
    * }
    * ```
@@ -62,25 +62,12 @@ export interface AstroArgs extends SsrSiteArgs {
    *     {
    *       actions: ["*"],
    *       resources: ["*"]
-   *     },
+   *     }
    *   ]
    * }
    * ```
    */
   permissions?: SsrSiteArgs["permissions"];
-  /**
-   * The regions that the [server function](#nodes-server) in your Astro site will be
-   * deployed to. Requests will be routed to the nearest region based on the user's location.
-   *
-   * @default The default region of the SST app
-   * @example
-   * ```js
-   * {
-   *   regions: ["us-east-1", "eu-west-1"]
-   * }
-   * ```
-   */
-  regions?: SsrSiteArgs["regions"];
   /**
    * Path to the directory where your Astro site is located.  This path is relative to your `sst.config.ts`.
    *
@@ -203,76 +190,104 @@ export interface AstroArgs extends SsrSiteArgs {
    */
   domain?: SsrSiteArgs["domain"];
   /**
-   * Serve your Astro site through a `Router` component instead of a standalone CloudFront
+   * Serve your Astro site through a `Router` instead of a standalone CloudFront
    * distribution.
    *
-   * Let's say you have a Router component.
+   * By default, this component creates a new CloudFront distribution. But you might
+   * want to serve it through the distribution of your `Router` as a:
    *
-   * ```ts title="sst.config.ts"
+   * - A path like `/docs`
+   * - A subdomain like `docs.example.com`
+   * - Or a combined pattern like `dev.example.com/docs`
+   *
+   * @example
+   *
+   * To serve your Astro site **from a path**, you'll need to configure the root domain
+   * in your `Router` component.
+   *
+   * ```ts title="sst.config.ts" {2}
    * const router = new sst.aws.Router("Router", {
-   *   domain: "*.example.com",
+   *   domain: "example.com"
    * });
    * ```
    *
-   * You can then match a pattern and route to your site based on:
+   * Now set the `router` and the `path`.
    *
-   * - A path like `/docs`
-   * - A domain pattern like `docs.example.com`
-   * - A combined pattern like `dev.example.com/docs`
-   *
-   * For example, to match a path.
-   *
-   * ```ts title="sst.config.ts"
+   * ```ts {3,4}
    * {
    *   router: {
    *     instance: router,
-   *     path: "/docs",
-   *   },
+   *     path: "/docs"
+   *   }
    * }
    * ```
    *
-   * Or match a domain.
-   *
-   * ```ts title="sst.config.ts"
-   * {
-   *   router: {
-   *     instance: router,
-   *     domain: "docs.example.com",
-   *   },
-   * }
-   * ```
-   *
-   * Route by both domain and path:
-   *
-   * ```ts title="sst.config.ts"
-   * {
-   *   router: {
-   *     instance: router,
-   *     domain: "dev.example.com",
-   *     path: "/docs",
-   *   },
-   * }
-   * ```
-   *
-   * If you are routing to a path like `/docs`, you must configure the
-   * base path in your Astro site. The base path must match the path in your
-   * route prop.
+   * You also need to set the
+   * [`base`](https://docs.astro.build/en/reference/configuration-reference/#base)
+   * in your `astro.config.mjs`.
    *
    * :::caution
-   * If routing to a path, you need to configure that as the base path in your
-   * Astro site as well.
+   * If routing to a path, you need to set that as the base path in your Astro
+   * site as well.
    * :::
    *
-   * For example, if you are routing `/docs` to an Astro site, you need to set
-   * [`base`](https://docs.astro.build/en/reference/configuration-reference/#base)
-   * to `/docs` in your `astro.config.mjs`.
-   *
-   * ```js {3} title="astro.config.mjs"
+   * ```js title="astro.config.mjs" {3}
    * export default defineConfig({
    *   adapter: sst(),
    *   base: "/docs"
    * });
    * ```
+   *
+   * To serve your Astro site **from a subdomain**, you'll need to configure the
+   * domain in your `Router` component to match both the root and the subdomain.
+   *
+   * ```ts title="sst.config.ts" {3,4}
+   * const router = new sst.aws.Router("Router", {
+   *   domain: {
+   *     name: "example.com",
+   *     aliases: ["*.example.com"]
+   *   }
+   * });
+   * ```
+   *
+   * Now set the `domain` in the `router` prop.
+   *
+   * ```ts {4}
+   * {
+   *   router: {
+   *     instance: router,
+   *     domain: "docs.example.com"
+   *   }
+   * }
+   * ```
+   *
+   * Finally, to serve your Astro site **from a combined pattern** like
+   * `dev.example.com/docs`, you'll need to configure the domain in your `Router` to
+   * match the subdomain.
+   *
+   * ```ts title="sst.config.ts" {3,4}
+   * const router = new sst.aws.Router("Router", {
+   *   domain: {
+   *     name: "example.com",
+   *     aliases: ["*.example.com"]
+   *   }
+   * });
+   * ```
+   *
+   * And set the `domain` and the `path`.
+   *
+   * ```ts {4,5}
+   * {
+   *   router: {
+   *     instance: router,
+   *     domain: "dev.example.com",
+   *     path: "/docs"
+   *   }
+   * }
+   * ```
+   *
+   * Also, make sure to set this as the `base` in your `astro.config.mjs`, like
+   * above.
    */
   router?: SsrSiteArgs["router"];
   /**
@@ -406,7 +421,7 @@ export class Astro extends SsrSite {
     super(__pulumiType, name, args, opts);
   }
 
-  protected normalizeBuildCommand() {}
+  protected normalizeBuildCommand() { }
 
   protected buildPlan(outputPath: Output<string>): Output<Plan> {
     return outputPath.apply((outputPath) => {
@@ -458,18 +473,18 @@ export class Astro extends SsrSite {
         server: isStatic
           ? undefined
           : {
-              handler: path.join(serverOutputPath, "entry.handler"),
-              nodejs: { install: ["sharp"] },
-              streaming: buildMeta.responseMode === "stream",
-              copyFiles: fs.existsSync(path.join(serverOutputPath, "404.html"))
-                ? [
-                    {
-                      from: path.join(serverOutputPath, "404.html"),
-                      to: "404.html",
-                    },
-                  ]
-                : [],
-            },
+            handler: path.join(serverOutputPath, "entry.handler"),
+            nodejs: { install: ["sharp"] },
+            streaming: buildMeta.responseMode === "stream",
+            copyFiles: fs.existsSync(path.join(serverOutputPath, "404.html"))
+              ? [
+                {
+                  from: path.join(serverOutputPath, "404.html"),
+                  to: "404.html",
+                },
+              ]
+              : [],
+          },
         assets: [
           {
             from: buildMeta.clientBuildOutputDir,
@@ -480,9 +495,9 @@ export class Astro extends SsrSite {
         ],
         custom404:
           isStatic &&
-          fs.existsSync(
-            path.join(outputPath, buildMeta.clientBuildOutputDir, "404.html"),
-          )
+            fs.existsSync(
+              path.join(outputPath, buildMeta.clientBuildOutputDir, "404.html"),
+            )
             ? "/404.html"
             : undefined,
       };
@@ -493,7 +508,7 @@ export class Astro extends SsrSite {
    * The URL of the Astro site.
    *
    * If the `domain` is set, this is the URL with the custom domain.
-   * Otherwise, it's the autogenerated CloudFront URL.
+   * Otherwise, it's the auto-generated CloudFront URL.
    */
   public get url() {
     return super.url;

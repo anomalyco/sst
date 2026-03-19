@@ -23,6 +23,10 @@ func (l *LocalHome) Bootstrap() error {
 	return nil
 }
 
+func (l *LocalHome) cleanup(key, app, stage string) error {
+	return nil
+}
+
 func (l *LocalHome) getData(key, app, stage string) (io.Reader, error) {
 	p := l.pathForData(key, app, stage)
 	result, err := os.Open(p)
@@ -95,10 +99,9 @@ func (a *LocalHome) listStages(app string) ([]string, error) {
 
 	var stages []string
 	for _, entry := range entries {
-		if !entry.IsDir() {
-			filename := entry.Name()
-			if strings.HasSuffix(filename, ".json") {
-				stageName := strings.TrimSuffix(filename, ".json")
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".json") {
+			stageName := strings.TrimSuffix(entry.Name(), ".json")
+			if hasResources(a, app, stageName) {
 				stages = append(stages, stageName)
 			}
 		}

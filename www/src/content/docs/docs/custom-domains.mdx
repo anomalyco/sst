@@ -3,29 +3,101 @@ title: Custom Domains
 description: Configure custom domains in your components.
 ---
 
-You can configure custom domains and subdomains for your frontends or APIs in SST. By default, these components auto-generate a URL. You can pass in the `domain` to use your custom domain.
+import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-```ts title="sst.config.ts" {2}
-new sst.aws.Nextjs("MyWeb", {
-  domain: "example.com"
-});
-```
-
-Or a subdomain.
-
-```ts title="sst.config.ts" {2}
-new sst.aws.Nextjs("MyWeb", {
-  domain: "app.example.com"
-});
-```
-
-SST supports a couple of DNS providers automatically. These include AWS Route 53, Cloudflare, and Vercel. Other providers will need to be manually configured.
+You can configure custom domains and subdomains for your frontends, APIs, services, or routers in SST.
 
 :::note
 SST currently supports configuring custom domains for AWS components.
 :::
 
-Let's look at how it works.
+By default, these components auto-generate a URL. You can pass in the `domain` to use your custom domain.
+
+<Tabs>
+  <TabItem label="Frontend">
+  ```ts title="sst.config.ts" {2}
+  new sst.aws.Nextjs("MyWeb", {
+    domain: "example.com"
+  });
+  ```
+  </TabItem>
+  <TabItem label="API">
+  ```ts title="sst.config.ts" {2}
+  new sst.aws.ApiGatewayV2("MyApi", {
+    domain: "api.example.com"
+  });
+  ```
+  </TabItem>
+  <TabItem label="Service">
+  ```ts title="sst.config.ts" {6}
+  const vpc = new sst.aws.Vpc("MyVpc");
+
+  new sst.aws.Cluster("MyCluster", {
+    vpc,
+    loadBalancer: {
+      domain: "example.com"
+    }
+  });
+  ```
+  </TabItem>
+  <TabItem label="Router">
+  ```ts title="sst.config.ts" {2}
+  new sst.aws.Router("MyRouter", {
+    domain: "example.com"
+  });
+  ```
+  </TabItem>
+</Tabs>
+
+SST supports a couple of DNS providers automatically. These include AWS Route 53, Cloudflare, and Vercel. Other providers will need to be manually configured.
+
+We'll look at how it works below.
+
+---
+
+##### Redirect www to apex domain
+
+A common use case is to redirect `www.example.com` to `example.com`. You can do this by:
+
+```ts title="sst.config.ts" {3,4}
+new sst.aws.Router("MyRouter", {
+  domain: {
+    name: "example.com",
+    redirects: ["www.example.com"]
+  }
+});
+```
+
+---
+
+##### Add subdomains
+
+You can add subdomains to your domain. This is useful if you want to use a `Router` to route a subdomain to a separate resource.
+
+```ts title="sst.config.ts" {3,4,11}
+const router = new sst.aws.Router("MyRouter", {
+  domain: {
+    name: "example.com",
+    aliases: ["*.example.com"]
+  }
+});
+
+new sst.aws.Nextjs("MyWeb", {
+  router: {
+    instance: router,
+    domain: "docs.example.com"
+  }
+});
+```
+
+Here if a user visits `docs.example.com`, they'll kept on the alias domain and be served the docs site.
+
+:::tip
+You can use the `Router` component to centrally manage domains and routing for your
+app. [Learn more](/docs/configure-a-router).
+:::
+
+However, this does not match `docs.dev.example.com`. For that, you'll need to add `*.dev.example.com` as an alias.
 
 ---
 
@@ -95,7 +167,7 @@ If your domains are hosted on [Vercel](https://vercel.com), you'll need to do th
 1. [Add the Vercel provider to your app](/docs/component/vercel/dns/#configure-provider).
 
    ```bash
-   sst add @pulumiverse/vercel
+   sst add vercel
    ```
 
 2. Set the **`VERCEL_API_TOKEN`** in your environment. You might also need to set the `VERCEL_TEAM_ID` if the domain belongs to a team.

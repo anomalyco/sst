@@ -5,9 +5,9 @@ ARG PYTHON_VERSION=3.11
 FROM public.ecr.aws/lambda/python:${PYTHON_VERSION}
 
 # # Ensure git is installed so we can install git based dependencies (such as sst)
-RUN yum update -y && \
-    yum install -y git gcc && \
-    yum clean all
+RUN dnf update -y && \
+    dnf install -y git gcc && \
+    dnf clean all
 
 # Install UV to manage your python runtime
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv

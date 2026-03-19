@@ -56,9 +56,10 @@ export class RouterUrlRoute extends Component {
                 "connectionTimeout" as const,
                 "readTimeout" as const,
                 "keepAliveTimeout" as const,
-              ].flatMap((k) =>
-                routeArgs?.[k] ? [[k, toSeconds(routeArgs[k])]] : [],
-              );
+              ].flatMap((k) => {
+                const value = routeArgs?.[k];
+                return value ? [[k, toSeconds(value)]] : [];
+              });
               return timeouts.length ? Object.fromEntries(timeouts) : undefined;
             })(),
           },

@@ -186,68 +186,45 @@ export interface SolidStartArgs extends SsrSiteArgs {
    */
   domain?: SsrSiteArgs["domain"];
   /**
-   * Serve your SolidStart app through a `Router` component instead of a standalone CloudFront
+   * Serve your SolidStart app through a `Router` instead of a standalone CloudFront
    * distribution.
    *
-   * Let's say you have a Router component.
+   * By default, this component creates a new CloudFront distribution. But you might
+   * want to serve it through the distribution of your `Router` as a:
    *
-   * ```ts title="sst.config.ts"
+   * - A path like `/docs`
+   * - A subdomain like `docs.example.com`
+   * - Or a combined pattern like `dev.example.com/docs`
+   *
+   * @example
+   *
+   * To serve your SolidStart app **from a path**, you'll need to configure the root domain
+   * in your `Router` component.
+   *
+   * ```ts title="sst.config.ts" {2}
    * const router = new sst.aws.Router("Router", {
-   *   domain: "*.example.com",
+   *   domain: "example.com"
    * });
    * ```
    *
-   * You can then match a pattern and route to your app based on:
+   * Now set the `router` and the `path`.
    *
-   * - A path like `/docs`
-   * - A domain pattern like `docs.example.com`
-   * - A combined pattern like `dev.example.com/docs`
-   *
-   * For example, to match a path.
-   *
-   * ```ts title="sst.config.ts"
+   * ```ts {3,4}
    * {
    *   router: {
    *     instance: router,
-   *     path: "/docs",
-   *   },
+   *     path: "/docs"
+   *   }
    * }
    * ```
    *
-   * Or match a domain.
-   *
-   * ```ts title="sst.config.ts"
-   * {
-   *   router: {
-   *     instance: router,
-   *     domain: "docs.example.com",
-   *   },
-   * }
-   * ```
-   *
-   * Route by both domain and path:
-   *
-   * ```ts title="sst.config.ts"
-   * {
-   *   router: {
-   *     instance: router,
-   *     domain: "dev.example.com",
-   *     path: "/docs",
-   *   },
-   * }
-   * ```
-   *
-   * If you are routing to a path like `/docs`, you must configure the
-   * base path in your SolidStart app. The base path must match the path in your
-   * route prop.
+   * You also need to set the `baseURL` property in your `app.config.ts` without a
+   * trailing slash.
    *
    * :::caution
-   * If routing to a path, you need to configure that as the base path in your
+   * If routing to a path, you need to set that as the base path in your
    * SolidStart app as well.
    * :::
-   *
-   * For example, if you are routing `/docs` to a SolidStart app, you need to set
-   * the `baseURL` property in your `app.config.ts` without a trailing slash.
    *
    * ```js title="app.config.ts" {3}
    * export default defineConfig({
@@ -255,6 +232,56 @@ export interface SolidStartArgs extends SsrSiteArgs {
    *   baseURL: "/docs"
    * });
    * ```
+   *
+   * To serve your SolidStart app **from a subdomain**, you'll need to configure the
+   * domain in your `Router` component to match both the root and the subdomain.
+   *
+   * ```ts title="sst.config.ts" {3,4}
+   * const router = new sst.aws.Router("Router", {
+   *   domain: {
+   *     name: "example.com",
+   *     aliases: ["*.example.com"]
+   *   }
+   * });
+   * ```
+   *
+   * Now set the `domain` in the `router` prop.
+   *
+   * ```ts {4}
+   * {
+   *   router: {
+   *     instance: router,
+   *     domain: "docs.example.com"
+   *   }
+   * }
+   * ```
+   *
+   * Finally, to serve your SolidStart app **from a combined pattern** like
+   * `dev.example.com/docs`, you'll need to configure the domain in your `Router` to
+   * match the subdomain.
+   *
+   * ```ts title="sst.config.ts" {3,4}
+   * const router = new sst.aws.Router("Router", {
+   *   domain: {
+   *     name: "example.com",
+   *     aliases: ["*.example.com"]
+   *   }
+   * });
+   * ```
+   *
+   * And set the `domain` and the `path`.
+   *
+   * ```ts {4,5}
+   * {
+   *   router: {
+   *     instance: router,
+   *     domain: "dev.example.com",
+   *     path: "/docs"
+   *   }
+   * }
+   * ```
+   *
+   * Also, make sure to set the baseURL in your `app.config.ts`, like above.
    */
   router?: SsrSiteArgs["router"];
   /**
@@ -386,7 +413,7 @@ export class SolidStart extends SsrSite {
     super(__pulumiType, name, args, opts);
   }
 
-  protected normalizeBuildCommand() {}
+  protected normalizeBuildCommand() { }
 
   protected buildPlan(outputPath: Output<string>): Output<Plan> {
     return outputPath.apply((outputPath) => {
@@ -411,6 +438,14 @@ export class SolidStart extends SsrSite {
       );
       const basepath = appConfig.match(/baseURL: ['"](.*)['"]/)?.[1];
 
+      // Remove the .output/public/_server directory from the assets
+      // b/c all `_server` requests should go to the server function. If this folder is
+      // not removed, it will create an s3 route that conflicts with the `_server` route.
+      fs.rmSync(path.join(outputPath, ".output", "public", "_server"), {
+        recursive: true,
+        force: true,
+      });
+
       return {
         base: basepath,
         server: {
@@ -434,7 +469,7 @@ export class SolidStart extends SsrSite {
    * The URL of the SolidStart app.
    *
    * If the `domain` is set, this is the URL with the custom domain.
-   * Otherwise, it's the autogenerated CloudFront URL.
+   * Otherwise, it's the auto-generated CloudFront URL.
    */
   public get url() {
     return super.url;

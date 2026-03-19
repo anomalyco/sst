@@ -32,7 +32,10 @@ func (p *Project) EnvFor(ctx context.Context, complete *CompleteEvent, name stri
 			env["AWS_SESSION_TOKEN"] = *result.Credentials.SessionToken
 			env["AWS_REGION"] = awsProvider.Config().Region
 		}
-		log.Error("failed to load aws credentials", "err", err)
+
+		if err != nil {
+			log.Error("failed to load aws credentials", "err", err)
+		}
 	}
 	log.Info("dev", "links", dev.Links)
 	for _, resource := range dev.Links {
