@@ -1,21 +1,15 @@
 ---
-template: splash
-title: PlanetScale with SST
-description: Using PlanetScale with SST to get new database branch for every stage.
-author: vimtor
-lastUpdated: 2026-02-14
-pagefind: false
+title: PlanetScale
+description: Use PlanetScale with SST to manage database branches across stages.
 ---
 
-[PlanetScale](https://planetscale.com) is a cloud database platform built for speed and scalability, with built-in branching. Combined with SST, every stage (and every pull request) can get its own isolated database branch automatically.
+[PlanetScale](https://planetscale.com) is a cloud database platform built for speed and scalability, with built-in branching. This guide covers how to set it up with SST.
 
 This is a pattern used in production by [terminal.shop](https://github.com/terminaldotshop/terminal) and [OpenCode](https://github.com/anomalyco/opencode).
 
----
+## Install
 
-## Add the provider
-
-Start by adding the PlanetScale provider to your SST app.
+Add the PlanetScale provider to your SST app.
 
 ```bash
 sst add planetscale
@@ -34,6 +28,8 @@ This adds the provider to your `sst.config.ts`.
 Then set the `PLANETSCALE_SERVICE_TOKEN` and `PLANETSCALE_SERVICE_TOKEN_ID` environment variables. You can create a service token in the PlanetScale dashboard under [Settings > Service tokens](https://app.planetscale.com/~/settings/service-tokens).
 
 ## Branch per stage
+
+PlanetScale supports database branching natively. Combined with SST, every stage and every pull request can get its own isolated database branch automatically.
 
 Start by referencing your existing database.
 
@@ -68,7 +64,9 @@ In production, it references the existing `production` branch. In any other stag
 Configure [Autodeploy](/docs/console/#autodeploy) in the SST Console to do this automatically on every pull request.
 :::
 
-Next, create a password for the branch and wrap it in a `sst.Linkable`.
+## Link to your app
+
+Create a password for the branch and wrap it in a `sst.Linkable`.
 
 ```ts title="sst.config.ts"
 const password = new planetscale.Password("DatabasePassword", {

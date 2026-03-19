@@ -57,6 +57,13 @@ const sidebar = [
     ],
   },
   {
+    label: "Integrations",
+    collapsed: true,
+    items: [
+      { label: "PlanetScale", slug: "docs/integrations/planetscale" },
+    ],
+  },
+  {
     label: "How to",
     collapsed: true,
     items: [
