@@ -110,7 +110,7 @@ Make sure the upgrade path is supported. Not all version jumps are allowed — y
 
 Decide how you want to handle the upgrade based on your downtime tolerance.
 
-- **In-place** — simplest, but plan for downtime during the upgrade. Good for dev and staging.
+- **In-place** — simplest, but plan for downtime during the upgrade.
 - **Multi-AZ** — reduces downtime to about 60 seconds by failing over to an upgraded standby. Can be enabled temporarily for the upgrade.
 - **Blue/Green** — minimizes downtime by creating a staging copy and switching over. The overall deploy takes longer (20-30 min) but the application sees very little interruption. Only available for `Postgres` and `Mysql`.
 
