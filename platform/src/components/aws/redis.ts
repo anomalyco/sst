@@ -39,7 +39,7 @@ export interface RedisArgs {
    *
    * :::caution
    * Changing the version will cause the instance to restart on the next `sst deploy`,
-   * possibly causing downtime. [Learn more about upgrading databases](/docs/upgrade-databases/).
+   * possibly causing downtime. Learn more about [upgrading databases](/docs/upgrade-databases/).
    * :::
    *
    * @default `"7.1"` for Redis, `"7.2"` for Valkey
@@ -56,7 +56,7 @@ export interface RedisArgs {
    *
    * :::caution
    * Changing the instance type will cause the instance to restart on the next `sst deploy`,
-   * possibly causing downtime. [Learn more about upgrading databases](/docs/upgrade-databases/).
+   * possibly causing downtime. Learn more about [upgrading databases](/docs/upgrade-databases/).
    * :::
    *
    * @default `"t4g.micro"`
@@ -75,7 +75,7 @@ export interface RedisArgs {
    * When enabled, ElastiCache maintains a replica in a different availability zone
    * and automatically fails over to it if the primary node fails. This also reduces
    * downtime during version and instance upgrades.
-   * [Learn more about upgrading databases](/docs/upgrade-databases/).
+   * Learn more about [upgrading databases](/docs/upgrade-databases/).
    *
    * :::caution
    * Using Multi-AZ will approximately double the cost of the instance since a
