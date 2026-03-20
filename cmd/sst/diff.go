@@ -183,7 +183,10 @@ var CmdDiff = &cli.Command{
 		})
 
 		if jsonOutput {
-			return renderDiffJSON(outputs)
+			if jsonErr := renderDiffJSON(outputs); jsonErr != nil {
+				return jsonErr
+			}
+			return err
 		}
 		if err != nil {
 			return err
