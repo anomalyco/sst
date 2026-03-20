@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/pulumi/pulumi/sdk/v3/go/common/apitype"
-
 )
 
 func captureStdout(t *testing.T, fn func()) string {
@@ -37,12 +36,12 @@ func TestRenderDiffJSON_NoChanges(t *testing.T) {
 		}
 	})
 
-	var result DiffOutput
+	var result []apitype.StepEventMetadata
 	if err := json.Unmarshal([]byte(out), &result); err != nil {
 		t.Fatalf("invalid JSON: %v\noutput: %s", err, out)
 	}
-	if len(result.Changes) != 0 {
-		t.Fatalf("expected 0 changes, got %d", len(result.Changes))
+	if len(result) != 0 {
+		t.Fatalf("expected 0 changes, got %d", len(result))
 	}
 }
 
@@ -50,7 +49,7 @@ func TestRenderDiffJSON_WithChanges(t *testing.T) {
 	outputs := []*apitype.ResOutputsEvent{
 		{
 			Metadata: apitype.StepEventMetadata{
-				URN:  ("urn:pulumi:dev::app::aws:ecs/service:Service::MyService"),
+				URN:  "urn:pulumi:dev::app::aws:ecs/service:Service::MyService",
 				Type: "aws:ecs/service:Service",
 				Op:   apitype.OpUpdate,
 				DetailedDiff: map[string]apitype.PropertyDiff{
@@ -67,14 +66,14 @@ func TestRenderDiffJSON_WithChanges(t *testing.T) {
 		},
 		{
 			Metadata: apitype.StepEventMetadata{
-				URN:  ("urn:pulumi:dev::app::aws:s3/bucket:Bucket::MyBucket"),
+				URN:  "urn:pulumi:dev::app::aws:s3/bucket:Bucket::MyBucket",
 				Type: "aws:s3/bucket:Bucket",
 				Op:   apitype.OpCreate,
 			},
 		},
 		{
 			Metadata: apitype.StepEventMetadata{
-				URN:  ("urn:pulumi:dev::app::aws:lambda/function:Function::OldFn"),
+				URN:  "urn:pulumi:dev::app::aws:lambda/function:Function::OldFn",
 				Type: "aws:lambda/function:Function",
 				Op:   apitype.OpSame,
 			},
@@ -87,19 +86,19 @@ func TestRenderDiffJSON_WithChanges(t *testing.T) {
 		}
 	})
 
-	var result DiffOutput
+	var result []apitype.StepEventMetadata
 	if err := json.Unmarshal([]byte(out), &result); err != nil {
 		t.Fatalf("invalid JSON: %v\noutput: %s", err, out)
 	}
 
 	// OpSame should be filtered out
-	if len(result.Changes) != 2 {
-		t.Fatalf("expected 2 changes, got %d", len(result.Changes))
+	if len(result) != 2 {
+		t.Fatalf("expected 2 changes, got %d", len(result))
 	}
 
-	update := result.Changes[0]
-	if update.Operation != "update" {
-		t.Errorf("expected operation 'update', got %q", update.Operation)
+	update := result[0]
+	if update.Op != apitype.OpUpdate {
+		t.Errorf("expected op 'update', got %q", update.Op)
 	}
 	if update.URN != "urn:pulumi:dev::app::aws:ecs/service:Service::MyService" {
 		t.Errorf("unexpected URN: %s", update.URN)
@@ -107,68 +106,18 @@ func TestRenderDiffJSON_WithChanges(t *testing.T) {
 	if update.Type != "aws:ecs/service:Service" {
 		t.Errorf("unexpected type: %s", update.Type)
 	}
-	if len(update.Properties) != 2 {
-		t.Fatalf("expected 2 properties, got %d", len(update.Properties))
+	if len(update.DetailedDiff) != 2 {
+		t.Fatalf("expected 2 detailed diff entries, got %d", len(update.DetailedDiff))
 	}
-	// Properties are sorted alphabetically
-	if update.Properties[0].Path != "healthCheckGracePeriodSeconds" {
-		t.Errorf("expected first property 'healthCheckGracePeriodSeconds', got %q", update.Properties[0].Path)
+	if update.DetailedDiff["healthCheckGracePeriodSeconds"].Kind != apitype.DiffUpdate {
+		t.Errorf("expected diff kind 'update', got %q", update.DetailedDiff["healthCheckGracePeriodSeconds"].Kind)
 	}
-	if update.Properties[0].Kind != "update" {
-		t.Errorf("expected kind 'update', got %q", update.Properties[0].Kind)
-	}
-	if update.Properties[1].Path != "tags" {
-		t.Errorf("expected second property 'tags', got %q", update.Properties[1].Path)
-	}
-	if update.Properties[1].Kind != "add" {
-		t.Errorf("expected kind 'add', got %q", update.Properties[1].Kind)
+	if update.DetailedDiff["tags"].Kind != apitype.DiffAdd {
+		t.Errorf("expected diff kind 'add', got %q", update.DetailedDiff["tags"].Kind)
 	}
 
-	create := result.Changes[1]
-	if create.Operation != "create" {
-		t.Errorf("expected operation 'create', got %q", create.Operation)
-	}
-	if len(create.Properties) != 0 {
-		t.Errorf("expected 0 properties for create without detailed diff, got %d", len(create.Properties))
-	}
-}
-
-func TestOpToString(t *testing.T) {
-	cases := []struct {
-		op   apitype.OpType
-		want string
-	}{
-		{apitype.OpCreate, "create"},
-		{apitype.OpUpdate, "update"},
-		{apitype.OpDelete, "delete"},
-		{apitype.OpReplace, "replace"},
-		{apitype.OpImport, "import"},
-		{apitype.OpSame, ""},
-	}
-	for _, tc := range cases {
-		got := opToString(tc.op)
-		if got != tc.want {
-			t.Errorf("opToString(%v) = %q, want %q", tc.op, got, tc.want)
-		}
-	}
-}
-
-func TestDiffKindToString(t *testing.T) {
-	cases := []struct {
-		kind apitype.DiffKind
-		want string
-	}{
-		{apitype.DiffAdd, "add"},
-		{apitype.DiffDelete, "delete"},
-		{apitype.DiffUpdate, "update"},
-		{apitype.DiffAddReplace, "add-replace"},
-		{apitype.DiffUpdateReplace, "update-replace"},
-		{apitype.DiffDeleteReplace, "delete-replace"},
-	}
-	for _, tc := range cases {
-		got := diffKindToString(tc.kind)
-		if got != tc.want {
-			t.Errorf("diffKindToString(%v) = %q, want %q", tc.kind, got, tc.want)
-		}
+	create := result[1]
+	if create.Op != apitype.OpCreate {
+		t.Errorf("expected op 'create', got %q", create.Op)
 	}
 }

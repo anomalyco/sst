@@ -10,66 +10,12 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/common/apitype"
 	"github.com/sst/sst/v3/cmd/sst/cli"
 	"github.com/sst/sst/v3/cmd/sst/mosaic/ui"
-	"github.com/sst/sst/v3/internal/util"
 	"github.com/sst/sst/v3/pkg/bus"
 	"github.com/sst/sst/v3/pkg/project"
 	"github.com/sst/sst/v3/pkg/server"
 	"github.com/yalp/jsonpath"
 	"golang.org/x/sync/errgroup"
 )
-
-type DiffOutput struct {
-	Changes []DiffChange `json:"changes"`
-}
-
-type DiffChange struct {
-	URN        string               `json:"urn"`
-	Type       string               `json:"type"`
-	Operation  string               `json:"operation"`
-	Properties []DiffPropertyChange `json:"properties,omitempty"`
-}
-
-type DiffPropertyChange struct {
-	Path     string      `json:"path"`
-	Kind     string      `json:"kind"`
-	NewValue interface{} `json:"newValue,omitempty"`
-}
-
-func opToString(op apitype.OpType) string {
-	switch op {
-	case apitype.OpCreate:
-		return "create"
-	case apitype.OpUpdate:
-		return "update"
-	case apitype.OpDelete:
-		return "delete"
-	case apitype.OpReplace:
-		return "replace"
-	case apitype.OpImport:
-		return "import"
-	default:
-		return ""
-	}
-}
-
-func diffKindToString(kind apitype.DiffKind) string {
-	switch kind {
-	case apitype.DiffAdd:
-		return "add"
-	case apitype.DiffDelete:
-		return "delete"
-	case apitype.DiffUpdate:
-		return "update"
-	case apitype.DiffAddReplace:
-		return "add-replace"
-	case apitype.DiffUpdateReplace:
-		return "update-replace"
-	case apitype.DiffDeleteReplace:
-		return "delete-replace"
-	default:
-		return ""
-	}
-}
 
 var CmdDiff = &cli.Command{
 	Name: "diff",
@@ -146,16 +92,13 @@ var CmdDiff = &cli.Command{
 			},
 		},
 		{
-			Name: "output",
-			Type: "string",
+			Name: "json",
+			Type: "bool",
 			Description: cli.Description{
-				Short: "Output format (json)",
+				Short: "Output as JSON",
 				Long: strings.Join([]string{
-					"Set the output format.",
+					"Output the diff result as JSON to stdout.",
 					"",
-					"Supported values: `json`.",
-					"",
-					"When set to `json`, the diff result is printed as a JSON object to stdout.",
 					"This is useful for CI pipelines and scripting.",
 				}, "\n"),
 			},
@@ -175,17 +118,14 @@ var CmdDiff = &cli.Command{
 			},
 		},
 		{
-			Content: "sst diff --output json",
+			Content: "sst diff --json",
 			Description: cli.Description{
 				Short: "Output changes as JSON",
 			},
 		},
 	},
 	Run: func(c *cli.Cli) error {
-		outputFormat := c.String("output")
-		if outputFormat != "" && outputFormat != "json" {
-			return util.NewReadableError(nil, "Unsupported output format: "+outputFormat+". Supported values: json")
-		}
+		jsonOutput := c.Bool("json")
 
 		p, err := c.InitProject()
 		if err != nil {
@@ -220,7 +160,9 @@ var CmdDiff = &cli.Command{
 		defer close(events)
 		wg.Go(func() error {
 			for evt := range events {
-				u.Event(evt)
+				if !jsonOutput {
+					u.Event(evt)
+				}
 				switch evt := evt.(type) {
 				case *apitype.ResOutputsEvent:
 					outputs = append(outputs, evt)
@@ -239,56 +181,28 @@ var CmdDiff = &cli.Command{
 			Verbose:    c.Bool("verbose"),
 			PolicyPath: c.String("policy"),
 		})
+
+		if jsonOutput {
+			return renderDiffJSON(outputs)
+		}
 		if err != nil {
 			return err
-		}
-
-		if outputFormat == "json" {
-			return renderDiffJSON(outputs)
 		}
 		return renderDiffText(outputs, u)
 	},
 }
 
 func renderDiffJSON(outputs []*apitype.ResOutputsEvent) error {
-	result := DiffOutput{
-		Changes: []DiffChange{},
-	}
+	filtered := []apitype.StepEventMetadata{}
 	for _, output := range outputs {
-		op := opToString(output.Metadata.Op)
-		if op == "" {
+		if output.Metadata.Op == apitype.OpSame {
 			continue
 		}
-		change := DiffChange{
-			URN:       string(output.Metadata.URN),
-			Type:      string(output.Metadata.Type),
-			Operation: op,
-		}
-		sorted := make([]string, 0, len(output.Metadata.DetailedDiff))
-		for path := range output.Metadata.DetailedDiff {
-			sorted = append(sorted, path)
-		}
-		sort.Strings(sorted)
-		for _, path := range sorted {
-			diff := output.Metadata.DetailedDiff[path]
-			prop := DiffPropertyChange{
-				Path: strings.TrimSpace(path),
-				Kind: diffKindToString(diff.Kind),
-			}
-			value, _ := jsonpath.Read(output.Metadata.New.Outputs, "$."+path)
-			if path == "__provider" {
-				value = "code changed"
-			}
-			if value != nil {
-				prop.NewValue = value
-			}
-			change.Properties = append(change.Properties, prop)
-		}
-		result.Changes = append(result.Changes, change)
+		filtered = append(filtered, output.Metadata)
 	}
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
-	return encoder.Encode(result)
+	return encoder.Encode(filtered)
 }
 
 func renderDiffText(outputs []*apitype.ResOutputsEvent, u *ui.UI) error {
