@@ -20,7 +20,7 @@ export interface OpenSearchArgs {
    *
    * :::caution
    * Changing the version will cause the domain to restart on the next `sst deploy`,
-   * possibly causing downtime. [Learn more about upgrading databases](/docs/upgrade-databases/).
+   * possibly causing downtime. Learn more about [upgrading databases](/docs/upgrade-databases/).
    * :::
    *
    * @default `"OpenSearch_2.17"`
@@ -71,7 +71,7 @@ export interface OpenSearchArgs {
    *
    * :::caution
    * Changing the instance type will cause the domain to restart on the next `sst deploy`,
-   * possibly causing downtime. [Learn more about upgrading databases](/docs/upgrade-databases/).
+   * possibly causing downtime. Learn more about [upgrading databases](/docs/upgrade-databases/).
    * :::
    *
    * @default `"t3.small"`
