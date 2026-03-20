@@ -498,6 +498,20 @@ export interface BucketArgs {
    */
   versioning?: Input<boolean>;
   /**
+   * Enable default server-side encryption for objects uploaded to the bucket.
+   *
+   * This uses S3-managed keys (`AES256`).
+   *
+   * @default `false`
+   * @example
+   * ```js
+   * {
+   *   defaultServerSideEncryption: true
+   * }
+   * ```
+   */
+  defaultServerSideEncryption?: Input<boolean>;
+  /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
    */
@@ -518,6 +532,10 @@ export interface BucketArgs {
      * Transform the S3 Bucket versioning resource.
      */
     versioning?: Transform<s3.BucketVersioningArgs>;
+    /**
+     * Transform the S3 Bucket server-side encryption configuration resource.
+     */
+    encryption?: Transform<s3.BucketServerSideEncryptionConfigurationArgs>;
     /**
      * Transform the S3 Bucket lifecycle resource.
      * */
@@ -882,6 +900,7 @@ export class Bucket extends Component implements Link.Linkable {
 
     const bucket = createBucket();
     createVersioning();
+    createDefaultServerSideEncryption();
     const publicAccessBlock = createPublicAccess();
     const policy = createBucketPolicy();
     createCorsRule();
@@ -950,6 +969,30 @@ export class Bucket extends Component implements Link.Linkable {
               versioningConfiguration: {
                 status: "Enabled",
               },
+            },
+            { parent },
+          ),
+        );
+      });
+    }
+
+    function createDefaultServerSideEncryption() {
+      return output(args.defaultServerSideEncryption).apply((enabled) => {
+        if (!enabled) return;
+
+        return new s3.BucketServerSideEncryptionConfiguration(
+          ...transform(
+            args.transform?.encryption,
+            `${name}Encryption`,
+            {
+              bucket: bucket.bucket,
+              rules: [
+                {
+                  applyServerSideEncryptionByDefault: {
+                    sseAlgorithm: "AES256",
+                  },
+                },
+              ],
             },
             { parent },
           ),
