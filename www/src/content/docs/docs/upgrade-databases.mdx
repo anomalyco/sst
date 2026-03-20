@@ -1,9 +1,9 @@
 ---
 title: Upgrade Databases
-description: What to expect when upgrading your database engine version or instance type, and how to minimize downtime.
+description: How to upgrade your database version how minimize downtime.
 ---
 
-When you change the `version`, `instance` or `engine` of your database component, SST applies the update immediately on the next `sst deploy`. This applies to [`Postgres`](/docs/component/aws/postgres/), [`Mysql`](/docs/component/aws/mysql/), [`Aurora`](/docs/component/aws/aurora/), [`Redis`](/docs/component/aws/redis/), and [`OpenSearch`](/docs/component/aws/open-search/).
+When you change fields like `version` or `instance` on your database component, SST applies the update immediately on the next `sst deploy`. This applies to [`Postgres`](/docs/component/aws/postgres/), [`Mysql`](/docs/component/aws/mysql/), [`Aurora`](/docs/component/aws/aurora/), [`Redis`](/docs/component/aws/redis/), and [`OpenSearch`](/docs/component/aws/open-search/).
 
 :::note
 Not all settings cause downtime. Check the component docs for which fields trigger a restart.
