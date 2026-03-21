@@ -72,6 +72,7 @@ const sidebar = [
       { label: "Reference Resources", slug: "docs/reference-resources" },
       { label: "Environment Variables", slug: "docs/environment-variables" },
       { label: "Policy Packs", slug: "docs/policy-packs" },
+      { label: "PlanetScale", slug: "docs/planetscale" },
     ],
   },
   {
@@ -265,13 +266,6 @@ const sidebar = [
       "docs/component/secret",
       "docs/component/linkable",
       "docs/component/experimental/dev-command",
-    ],
-  },
-  {
-    label: "Integrations",
-    collapsed: true,
-    items: [
-      { label: "PlanetScale", slug: "docs/integrations/planetscale" },
     ],
   },
   { label: "Examples", slug: "docs/examples" },

@@ -3,7 +3,7 @@ title: PlanetScale
 description: Learn how to use SST with PlanetScale
 ---
 
-[PlanetScale](https://planetscale.com) is a cloud database platform built for speed and scalability, with built-in branching. This guide covers how to set it up with SST.
+[PlanetScale](https://planetscale.com) is a cloud database platform built for speed and scalability. This guide covers how to set it up with SST.
 
 ## Install
 
@@ -25,9 +25,9 @@ This adds the provider to your `sst.config.ts`.
 
 Then set the `PLANETSCALE_SERVICE_TOKEN` and `PLANETSCALE_SERVICE_TOKEN_ID` environment variables. You can create a service token in the PlanetScale dashboard under [Settings > Service tokens](https://app.planetscale.com/~/settings/service-tokens).
 
-## Features
+---
 
-### Reference a database
+## Reference a database
 
 Reference an existing PlanetScale database directly from your SST config.
 
@@ -38,7 +38,9 @@ const db = planetscale.getDatabaseOutput({
 });
 ```
 
-### Branch per stage
+---
+
+## Branch per stage
 
 PlanetScale supports database branching natively. Combined with SST, every stage and every pull request can get its own isolated database branch automatically.
 
@@ -68,9 +70,9 @@ Configure [Autodeploy](/docs/console/#autodeploy) in the SST Console to do this 
 
 This is a pattern used in production by [terminal.shop](https://github.com/terminaldotshop/terminal) and [OpenCode](https://github.com/anomalyco/opencode).
 
-## Usage
+---
 
-### Link to your app
+## Link to your app
 
 Create a password for the branch and wrap it in a `sst.Linkable`.
 
@@ -96,7 +98,9 @@ export const database = new sst.Linkable("Database", {
 
 The [`Linkable`](/docs/component/linkable) component lets you wrap arbitrary values and make them available to any function or service you link it to. Learn more about [linking resources](/docs/linking).
 
-### Connect to the database
+---
+
+## Connect to the database
 
 Link the database to any function or service.
 
