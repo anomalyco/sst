@@ -36,6 +36,13 @@ import {
   normalizeMemory,
   normalizeStorage,
 } from "./fargate.js";
+import {
+  createManagedCapacityProvider,
+  createManagedTaskDefinition,
+  isManagedCapacityInput,
+  ManagedServiceCapacityArgs,
+  normalizeManagedCapacity,
+} from "./managed-instances.js";
 import { Dns } from "../dns.js";
 import { hashStringToPrettyString } from "../naming.js";
 import { Alb } from "./alb.js";
@@ -333,7 +340,22 @@ interface ServiceContainerArgs extends FargateContainerArgs {
      */
     directory?: Input<string>;
   };
+  /**
+   * The number of GPUs to reserve for this container when using managed instances.
+   */
+  gpu?: Input<number>;
 }
+
+type ServiceFargateCapacity = {
+  fargate?: {
+    base?: Input<number>;
+    weight: Input<number>;
+  };
+  spot?: {
+    base?: Input<number>;
+    weight: Input<number>;
+  };
+};
 
 export interface ServiceArgs extends FargateBaseArgs {
   /**
@@ -1305,17 +1327,55 @@ export interface ServiceArgs extends FargateBaseArgs {
    *   regular Fargate.
    *
    *   ```js
-   *   {
-   *     capacity: {
-   *       fargate: { weight: 1, base: 2 },
-   *       spot: { weight: 1 }
-   *     }
-   *   }
-   *   ```
-   */
+    *   {
+    *     capacity: {
+    *       fargate: { weight: 1, base: 2 },
+    *       spot: { weight: 1 }
+    *     }
+    *   }
+    *   ```
+    * - Use ECS Managed Instances for a CPU-only workload.
+    *
+    *   ```js
+    *   {
+    *     cpu: "1 vCPU",
+    *     memory: "2 GB",
+    *     capacity: {
+    *       managed: {
+    *         infrastructureRole: "arn:aws:iam::123456789012:role/ecs-infra",
+    *         instanceProfile: "arn:aws:iam::123456789012:instance-profile/ecs-managed",
+    *         cpu: { min: 1, max: 4 },
+    *         memory: { min: "2 GB", max: "8 GB" }
+    *       }
+    *     }
+    *   }
+    *   ```
+    * - Use ECS Managed Instances for a GPU workload.
+    *
+    *   ```js
+    *   {
+    *     cpu: "4 vCPU",
+    *     memory: "16 GB",
+    *     containers: [{
+    *       name: "app",
+    *       gpu: 1,
+    *     }],
+    *     capacity: {
+    *       managed: {
+    *         infrastructureRole: "arn:aws:iam::123456789012:role/ecs-infra",
+    *         instanceProfile: "arn:aws:iam::123456789012:instance-profile/ecs-managed",
+    *         gpu: {
+    *           count: 1,
+    *           name: "t4",
+    *         }
+    *       }
+    *     }
+    *   }
+    *   ```
+    */
   capacity?: Input<
     | "spot"
-    | {
+    | (ServiceFargateCapacity & {
         /**
          * Configure how the regular Fargate capacity is allocated.
          */
@@ -1350,6 +1410,18 @@ export interface ServiceArgs extends FargateBaseArgs {
            */
           weight: Input<number>;
         }>;
+        /**
+         * Configure ECS Managed Instances for this service.
+         */
+        managed?: never;
+      })
+    | {
+        /**
+         * Configure ECS Managed Instances for this service.
+         *
+         * This mode is exclusive and cannot be combined with `fargate` or `spot`.
+         */
+        managed?: Input<ManagedServiceCapacityArgs>;
       }
   >;
   /**
@@ -1525,6 +1597,14 @@ export interface ServiceArgs extends FargateBaseArgs {
        * attaching to an external ALB via the `loadBalancer.instance` prop.
        */
       listenerRule?: Transform<lb.ListenerRuleArgs>;
+      /**
+       * Transform the ECS managed instances capacity provider resource.
+       */
+      capacityProvider?: Transform<ecs.CapacityProviderArgs>;
+      /**
+       * Transform the IAM instance profile resource created for managed instances.
+       */
+      instanceProfile?: Transform<iam.InstanceProfileArgs>;
     }
   >;
 }
@@ -1789,6 +1869,7 @@ export class Service extends Component implements Link.Linkable {
     const scaling = normalizeScaling();
     const capacity = normalizeCapacity();
     const vpc = normalizeVpc();
+    const managed = normalizeManaged();
 
     const taskRole = createTaskRole(name, args, opts, self, !!dev);
 
@@ -1803,19 +1884,51 @@ export class Service extends Component implements Link.Linkable {
     }
 
     const executionRole = createExecutionRole(name, args, opts, self);
-    const taskDefinition = createTaskDefinition(
-      name,
-      args,
-      opts,
-      self,
-      containers,
-      architecture,
-      cpu,
-      memory,
-      storage,
-      taskRole,
-      executionRole,
-    );
+    const managedCapacityProvider = managed
+      ? createManagedCapacityProvider(
+          name,
+          {
+            capacity: managed.capacity,
+            transform: {
+              capacityProvider: args.transform?.capacityProvider,
+              instanceProfile: args.transform?.instanceProfile,
+            },
+          },
+          opts,
+          self,
+          clusterName,
+          {
+            containerSubnets: vpc.containerSubnets,
+            securityGroups: vpc.securityGroups,
+          },
+          managed.normalized,
+        )
+      : undefined;
+    const taskDefinition = managed
+      ? createManagedTaskDefinition(
+          name,
+          args,
+          opts,
+          self,
+          containers,
+          architecture,
+          taskRole,
+          executionRole,
+          managed.normalized,
+        )
+      : createTaskDefinition(
+          name,
+          args,
+          opts,
+          self,
+          containers,
+          architecture,
+          cpu,
+          memory,
+          storage,
+          taskRole,
+          executionRole,
+        );
     let loadBalancer: lb.LoadBalancer | undefined;
     let targetGroups: ReturnType<typeof createTargets>;
     let targetEntries: Output<{ targetGroup: lb.TargetGroup; containerName: string; containerPort: number }[]>;
@@ -1930,11 +2043,56 @@ export class Service extends Component implements Link.Linkable {
     function normalizeCapacity() {
       if (!args.capacity) return;
 
-      return output(args.capacity).apply((v) => {
+      return output(args.capacity).apply((v): ServiceFargateCapacity | undefined => {
+        if (isManagedCapacityInput(v)) return undefined;
         if (v === "spot")
           return { spot: { weight: 1 }, fargate: { weight: 0 } };
-        return v;
+        const fargateCapacity = v as ServiceFargateCapacity;
+        return {
+          fargate: fargateCapacity.fargate,
+          spot: fargateCapacity.spot,
+        };
       });
+    }
+
+    function normalizeManaged() {
+      if (!args.capacity) return;
+
+      const managedCapacity = output(args.capacity).apply((v) => {
+        if (v === "spot" || !isManagedCapacityInput(v)) return;
+
+        if ("fargate" in v || "spot" in v) {
+          throw new VisibleError(
+            `Do not combine \"capacity.managed\" with \"capacity.fargate\" or \"capacity.spot\" in the \"${name}\" Service.`,
+          );
+        }
+
+        return v.managed;
+      });
+
+      return {
+        capacity: managedCapacity.apply((v) => {
+          if (!v)
+            throw new VisibleError(
+              `Missing \"capacity.managed\" for the \"${name}\" Service.`,
+            );
+          return v;
+        }),
+        normalized: managedCapacity
+          .apply((v) => {
+            if (!v)
+              throw new VisibleError(
+                `Missing \"capacity.managed\" for the \"${name}\" Service.`,
+              );
+            return v;
+          })
+          .apply((managed) =>
+            normalizeManagedCapacity(name, managed, {
+              cpu: args.cpu,
+              memory: args.memory,
+            }),
+          ),
+      };
     }
 
     function normalizeLoadBalancer() {
@@ -2397,31 +2555,47 @@ export class Service extends Component implements Link.Linkable {
                 cluster: clusterArn,
                 taskDefinition: taskDefinition.arn,
                 desiredCount: scaling.min,
-                ...(capacity
+                ...(managed
+                  ? {
+                      forceNewDeployment: true,
+                      capacityProviderStrategies: [
+                        {
+                          capacityProvider: managedCapacityProvider!.name,
+                          weight: 1,
+                        },
+                      ],
+                    }
+                  : capacity
                   ? {
                       // setting `forceNewDeployment` ensures that the service is not recreated
                       // when the capacity provider config changes.
                       forceNewDeployment: true,
-                      capacityProviderStrategies: capacity.apply((v) => [
-                        ...(v.fargate
-                          ? [
-                              {
-                                capacityProvider: "FARGATE",
-                                base: v.fargate?.base,
-                                weight: v.fargate?.weight,
-                              },
-                            ]
-                          : []),
-                        ...(v.spot
-                          ? [
-                              {
-                                capacityProvider: "FARGATE_SPOT",
-                                base: v.spot?.base,
-                                weight: v.spot?.weight,
-                              },
-                            ]
-                          : []),
-                      ]),
+                      capacityProviderStrategies: capacity.apply((v) => {
+                        if (!v)
+                          throw new VisibleError(
+                            `Invalid Fargate capacity configuration for the \"${name}\" Service.`,
+                          );
+                        return [
+                          ...(v.fargate
+                            ? [
+                                {
+                                  capacityProvider: "FARGATE",
+                                  base: v.fargate?.base,
+                                  weight: v.fargate?.weight,
+                                },
+                              ]
+                            : []),
+                          ...(v.spot
+                            ? [
+                                {
+                                  capacityProvider: "FARGATE_SPOT",
+                                  base: v.spot?.base,
+                                  weight: v.spot?.weight,
+                                },
+                              ]
+                            : []),
+                        ];
+                      }),
                     }
                   : // @deprecated do not use `launchType`, set `capacityProviderStrategies`
                     // to `[{ capacityProvider: "FARGATE", weight: 1 }]` instead
@@ -2431,7 +2605,7 @@ export class Service extends Component implements Link.Linkable {
                 networkConfiguration: {
                   // If the vpc is an SST vpc, services are automatically deployed to the public
                   // subnets. So we need to assign a public IP for the service to be accessible.
-                  assignPublicIp: vpc.isSstVpc,
+                  ...(managed ? {} : { assignPublicIp: vpc.isSstVpc }),
                   subnets: vpc.containerSubnets,
                   securityGroups: vpc.securityGroups,
                 },
