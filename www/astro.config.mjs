@@ -57,13 +57,6 @@ const sidebar = [
     ],
   },
   {
-    label: "Integrations",
-    collapsed: true,
-    items: [
-      { label: "PlanetScale", slug: "docs/integrations/planetscale" },
-    ],
-  },
-  {
     label: "How to",
     collapsed: true,
     items: [
@@ -272,6 +265,13 @@ const sidebar = [
       "docs/component/secret",
       "docs/component/linkable",
       "docs/component/experimental/dev-command",
+    ],
+  },
+  {
+    label: "Integrations",
+    collapsed: true,
+    items: [
+      { label: "PlanetScale", slug: "docs/integrations/planetscale" },
     ],
   },
   { label: "Examples", slug: "docs/examples" },
