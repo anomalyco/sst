@@ -368,6 +368,8 @@ export interface FunctionArgs {
     | "python3.11"
     | "python3.12"
     | "python3.13"
+    | "ruby3.2"
+    | "ruby3.3"
   >;
   /**
    * Path to the source code directory for the function. By default, the handler is
@@ -1190,6 +1192,57 @@ export interface FunctionArgs {
     >;
   }>;
   /**
+   * Configure how your Ruby function is packaged.
+   */
+  ruby?: Input<{
+    /**
+     * Set this to `true` if you want to deploy this function as a container image.
+     * There are a couple of reasons why you might want to do this.
+     *
+     * 1. The Lambda package size has an unzipped limit of 250MB. Whereas the
+     *    container image size has a limit of 10GB.
+     * 2. Even if you are below the 250MB limit, larger Lambda function packages
+     *    have longer cold starts when compared to container image.
+     * 3. You might want to use a custom Dockerfile to handle complex builds.
+     *
+     * @default `false`
+     * @example
+     * ```ts
+     * {
+     *   ruby: {
+     *     container: true
+     *   }
+     * }
+     * ```
+     *
+     * When you run `sst deploy`, it uses a built-in Dockerfile. It also needs
+     * the Docker daemon to be running.
+     *
+     * :::note
+     * This needs the Docker daemon to be running.
+     * :::
+     *
+     * To use a custom Dockerfile, add one to the root of your Ruby project.
+     *
+     * ```txt {4}
+     * ├── sst.config.ts
+     * ├── Gemfile
+     * ├── Dockerfile
+     * └── function.rb
+     * ```
+     */
+    container?: Input<
+      | boolean
+      | {
+          /**
+           * Controls whether Docker build cache is enabled.
+           * @default `true`
+           */
+          cache?: Input<boolean>;
+        }
+    >;
+  }>;
+  /**
    * Add additional files to copy into the function package. Takes a list of objects
    * with `from` and `to` paths. These will be copied over before the function package
    * is zipped up.
@@ -1737,13 +1790,14 @@ export class Function extends Component implements Link.Linkable {
 
     const parent = this;
     const dev = normalizeDev();
-    const isContainer = all([args.python, dev]).apply(
-      ([python, dev]) => !dev && !!python?.container,
+    const isContainer = all([args.python, args.ruby, dev]).apply(
+      ([python, ruby, dev]) => !dev && (!!python?.container || !!ruby?.container),
     );
-    const containerCache = all([args.python]).apply(([python]) =>
-      typeof python?.container === "object"
-        ? (python.container.cache ?? true)
-        : true,
+    const containerCache = all([args.python, args.ruby]).apply(
+      ([python, ruby]) => {
+        const container = python?.container ?? ruby?.container;
+        return typeof container === "object" ? (container.cache ?? true) : true;
+      },
     );
     const partition = getPartitionOutput({}, opts).partition;
     const region = getRegionOutput({}, opts).region;
@@ -1796,12 +1850,14 @@ export class Function extends Component implements Link.Linkable {
         Object.fromEntries(input.map((item) => [item.name, item.properties])),
       ),
       copyFiles,
-      properties: output({ nodejs: args.nodejs, python: args.python }).apply(
-        (val) => ({
-          ...(val.nodejs || val.python),
-          architecture,
-        }),
-      ),
+      properties: output({
+        nodejs: args.nodejs,
+        python: args.python,
+        ruby: args.ruby,
+      }).apply((val) => ({
+        ...(val.nodejs || val.python || val.ruby),
+        architecture,
+      })),
       dev,
     });
 
