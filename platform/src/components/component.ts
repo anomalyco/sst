@@ -238,6 +238,7 @@ export class Component extends ComponentResource {
             "aws:ec2/subnet:Subnet": ["tags", 255],
             "aws:ec2/vpc:Vpc": ["tags", 255],
             "aws:ec2/vpcEndpoint:VpcEndpoint": ["tags", 255],
+            "aws:ecs/capacityProvider:CapacityProvider": ["name", 255],
             "aws:ecs/cluster:Cluster": ["name", 255],
             "aws:elasticache/parameterGroup:ParameterGroup": [
               "name",

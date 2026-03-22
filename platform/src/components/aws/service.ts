@@ -39,8 +39,7 @@ import {
 import {
   createManagedCapacityProvider,
   createManagedTaskDefinition,
-  isManagedCapacityInput,
-  ManagedServiceCapacityArgs,
+  ManagedGpu,
   normalizeManagedCapacity,
 } from "./managed-instances.js";
 import { Dns } from "../dns.js";
@@ -340,10 +339,6 @@ interface ServiceContainerArgs extends FargateContainerArgs {
      */
     directory?: Input<string>;
   };
-  /**
-   * The number of GPUs to reserve for this container when using managed instances.
-   */
-  gpu?: Input<number>;
 }
 
 type ServiceFargateCapacity = {
@@ -661,437 +656,437 @@ export interface ServiceArgs extends FargateBaseArgs {
    */
   loadBalancer?: Input<
     | {
-    /**
-     * Configure if the load balancer should be public or private.
-     *
-     * When set to `false`, the load balancer endpoint will only be accessible within the
-     * VPC.
-     *
-     * @default `true`
-     */
-    public?: Input<boolean>;
-    /**
-     * Set a custom domain for your load balancer endpoint.
-     *
-     * Automatically manages domains hosted on AWS Route 53, Cloudflare, and Vercel. For other
-     * providers, you'll need to pass in a `cert` that validates domain ownership and add the
-     * DNS records.
-     *
-     * :::tip
-     * Built-in support for AWS Route 53, Cloudflare, and Vercel. And manual setup for other
-     * providers.
-     * :::
-     *
-     * @example
-     *
-     * By default this assumes the domain is hosted on Route 53.
-     *
-     * ```js
-     * {
-     *   domain: "example.com"
-     * }
-     * ```
-     *
-     * For domains hosted on Cloudflare.
-     *
-     * ```js
-     * {
-     *   domain: {
-     *     name: "example.com",
-     *     dns: sst.cloudflare.dns()
-     *   }
-     * }
-     * ```
-     */
-    domain?: Input<
-      | string
-      | {
-          /**
-           * The custom domain you want to use.
-           *
-           * @example
-           * ```js
-           * {
-           *   domain: {
-           *     name: "example.com"
-           *   }
-           * }
-           * ```
-           *
-           * Can also include subdomains based on the current stage.
-           *
-           * ```js
-           * {
-           *   domain: {
-           *     name: `${$app.stage}.example.com`
-           *   }
-           * }
-           * ```
-           *
-           * Wildcard domains are supported.
-           *
-           * ```js
-           * {
-           *   domain: {
-           *     name: "*.example.com"
-           *   }
-           * }
-           * ```
-           */
-          name: Input<string>;
-          /**
-           * Alias domains that should be used.
-           *
-           * @example
-           * ```js {4}
-           * {
-           *   domain: {
-           *     name: "app1.example.com",
-           *     aliases: ["app2.example.com"]
-           *   }
-           * }
-           * ```
-           */
-          aliases?: Input<string[]>;
-          /**
-           * The ARN of an ACM (AWS Certificate Manager) certificate that proves ownership of the
-           * domain. By default, a certificate is created and validated automatically.
-           *
-           * :::tip
-           * You need to pass in a `cert` for domains that are not hosted on supported `dns` providers.
-           * :::
-           *
-           * To manually set up a domain on an unsupported provider, you'll need to:
-           *
-           * 1. [Validate that you own the domain](https://docs.aws.amazon.com/acm/latest/userguide/domain-ownership-validation.html) by creating an ACM certificate. You can either validate it by setting a DNS record or by verifying an email sent to the domain owner.
-           * 2. Once validated, set the certificate ARN as the `cert` and set `dns` to `false`.
-           * 3. Add the DNS records in your provider to point to the load balancer endpoint.
-           *
-           * @example
-           * ```js
-           * {
-           *   domain: {
-           *     name: "example.com",
-           *     dns: false,
-           *     cert: "arn:aws:acm:us-east-1:112233445566:certificate/3a958790-8878-4cdc-a396-06d95064cf63"
-           *   }
-           * }
-           * ```
-           */
-          cert?: Input<string>;
-          /**
-           * The DNS provider to use for the domain. Defaults to the AWS.
-           *
-           * Takes an adapter that can create the DNS records on the provider. This can automate
-           * validating the domain and setting up the DNS routing.
-           *
-           * Supports Route 53, Cloudflare, and Vercel adapters. For other providers, you'll need
-           * to set `dns` to `false` and pass in a certificate validating ownership via `cert`.
-           *
-           * @default `sst.aws.dns`
-           *
-           * @example
-           *
-           * Specify the hosted zone ID for the Route 53 domain.
-           *
-           * ```js
-           * {
-           *   domain: {
-           *     name: "example.com",
-           *     dns: sst.aws.dns({
-           *       zone: "Z2FDTNDATAQYW2"
-           *     })
-           *   }
-           * }
-           * ```
-           *
-           * Use a domain hosted on Cloudflare, needs the Cloudflare provider.
-           *
-           * ```js
-           * {
-           *   domain: {
-           *     name: "example.com",
-           *     dns: sst.cloudflare.dns()
-           *   }
-           * }
-           * ```
-           *
-           * Use a domain hosted on Vercel, needs the Vercel provider.
-           *
-           * ```js
-           * {
-           *   domain: {
-           *     name: "example.com",
-           *     dns: sst.vercel.dns()
-           *   }
-           * }
-           * ```
-           */
-          dns?: Input<false | (Dns & {})>;
-        }
-    >;
-    /** @deprecated Use `rules` instead. */
-    ports?: Input<Prettify<ServiceRules>[]>;
-    /**
-     * Configure the mapping for the ports the load balancer listens to, forwards, or redirects to
-     * the service.
-     * This supports two types of protocols:
-     *
-     * 1. Application Layer Protocols: `http` and `https`. This'll create an [Application Load Balancer](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/introduction.html).
-     * 2. Network Layer Protocols: `tcp`, `udp`, `tcp_udp`, and `tls`. This'll create a [Network Load Balancer](https://docs.aws.amazon.com/elasticloadbalancing/latest/network/introduction.html).
-     *
-     * :::note
-     * If you want to listen on `https` or `tls`, you need to specify a custom
-     * `loadBalancer.domain`.
-     * :::
-     *
-     * You **can not configure** both application and network layer protocols for the same
-     * service.
-     *
-     * @example
-     * Here we are listening on port `80` and forwarding it to the service on port `8080`.
-     * ```js
-     * {
-     *   rules: [
-     *     { listen: "80/http", forward: "8080/http" }
-     *   ]
-     * }
-     * ```
-     *
-     * The `forward` port and protocol defaults to the `listen` port and protocol. So in this
-     * case both are `80/http`.
-     *
-     * ```js
-     * {
-     *   rules: [
-     *     { listen: "80/http" }
-     *   ]
-     * }
-     * ```
-     *
-     * If multiple containers are configured via the `containers` argument, you need to
-     * specify which container the traffic should be forwarded to.
-     *
-     * ```js
-     * {
-     *   rules: [
-     *     { listen: "80/http", container: "app" },
-     *     { listen: "8000/http", container: "admin" }
-     *   ]
-     * }
-     * ```
-     *
-     * You can also route the same port to multiple containers via path-based routing.
-     *
-     * ```js
-     * {
-     *   rules: [
-     *     {
-     *       listen: "80/http",
-     *       container: "app",
-     *       conditions: { path: "/api/*" }
-     *     },
-     *     {
-     *       listen: "80/http",
-     *       container: "admin",
-     *       conditions: { path: "/admin/*" }
-     *     }
-     *   ]
-     * }
-     * ```
-     *
-     * Additionally, you can redirect traffic from one port to another. This is
-     * commonly used to redirect http to https.
-     *
-     * ```js
-     * {
-     *   rules: [
-     *     { listen: "80/http", redirect: "443/https" },
-     *     { listen: "443/https", forward: "80/http" }
-     *   ]
-     * }
-     * ```
-     */
-    rules?: Input<Prettify<ServiceRules>[]>;
-    /**
-     * Configure the health check that the load balancer runs on your containers.
-     *
-     * :::tip
-     * This health check is different from the [`health`](#health) check.
-     * :::
-     *
-     * This health check is run by the load balancer. While, `health` is run by ECS. This
-     * cannot be disabled if you are using a load balancer. While the other is off by default.
-     *
-     * Since this cannot be disabled, here are some tips on how to debug an unhealthy
-     * health check.
-     *
-     * <details>
-     * <summary>How to debug a load balancer health check</summary>
-     *
-     * If you notice a `Unhealthy: Health checks failed` error, it's because the health
-     * check has failed. When it fails, the load balancer will terminate the containers,
-     * causing any requests to fail.
-     *
-     * Here's how to debug it:
-     *
-     * 1. Verify the health check path.
-     *
-     *    By default, the load balancer checks the `/` path. Ensure it's accessible in your
-     *    containers. If your application runs on a different path, then update the path in
-     *    the health check config accordingly.
-     *
-     * 2. Confirm the containers are operational.
-     *
-     *    Navigate to **ECS console** > select the **cluster** > go to the **Tasks tab** >
-     *    choose **Any desired status** under the **Filter desired status** dropdown > select
-     *    a task and check for errors under the **Logs tab**. If it has error that means that
-     *    the container failed to start.
-     *
-     * 3. If the container was terminated by the load balancer while still starting up, try
-     *    increasing the health check interval and timeout.
-     * </details>
-     *
-     * For `http` and `https` the default is:
-     *
-     * ```js
-     * {
-     *   path: "/",
-     *   healthyThreshold: 5,
-     *   successCodes: "200",
-     *   timeout: "5 seconds",
-     *   unhealthyThreshold: 2,
-     *   interval: "30 seconds"
-     * }
-     * ```
-     *
-     * For `tcp` and `udp` the default is:
-     *
-     * ```js
-     * {
-     *   healthyThreshold: 5,
-     *   timeout: "6 seconds",
-     *   unhealthyThreshold: 2,
-     *   interval: "30 seconds"
-     * }
-     * ```
-     *
-     * @example
-     *
-     * To configure the health check, we use the _port/protocol_ format. Here we are
-     * configuring a health check that pings the `/health` path on port `8080`
-     * every 10 seconds.
-     *
-     * ```js
-     * {
-     *   rules: [
-     *     { listen: "80/http", forward: "8080/http" }
-     *   ],
-     *   health: {
-     *     "8080/http": {
-     *       path: "/health",
-     *       interval: "10 seconds"
-     *     }
-     *   }
-     * }
-     * ```
-     *
-     */
-    health?: Input<
-      Record<
-        Port,
-        Input<{
-          /**
-           * The URL path to ping on the service for health checks. Only applicable to
-           * `http` and `https` protocols.
-           * @default `"/"`
-           */
-          path?: Input<string>;
-          /**
-           * The time period between each health check request. Must be between `5 seconds`
-           * and `300 seconds`.
-           * @default `"30 seconds"`
-           */
-          interval?: Input<DurationMinutes>;
-          /**
-           * The timeout for each health check request. If no response is received within this
-           * time, it is considered failed. Must be between `2 seconds` and `120 seconds`.
-           * @default `"5 seconds"`
-           */
-          timeout?: Input<DurationMinutes>;
-          /**
-           * The number of consecutive successful health check requests required to consider the
-           * target healthy. Must be between 2 and 10.
-           * @default `5`
-           */
-          healthyThreshold?: Input<number>;
-          /**
-           * The number of consecutive failed health check requests required to consider the
-           * target unhealthy. Must be between 2 and 10.
-           * @default `2`
-           */
-          unhealthyThreshold?: Input<number>;
-          /**
-           * One or more HTTP response codes the health check treats as successful. Only
-           * applicable to `http` and `https` protocols.
-           *
-           * @default `"200"`
-           * @example
-           * ```js
-           * {
-           *   successCodes: "200-299"
-           * }
-           * ```
-           */
-          successCodes?: Input<string>;
-        }>
-      >
-    >;
-  }
+        /**
+         * Configure if the load balancer should be public or private.
+         *
+         * When set to `false`, the load balancer endpoint will only be accessible within the
+         * VPC.
+         *
+         * @default `true`
+         */
+        public?: Input<boolean>;
+        /**
+         * Set a custom domain for your load balancer endpoint.
+         *
+         * Automatically manages domains hosted on AWS Route 53, Cloudflare, and Vercel. For other
+         * providers, you'll need to pass in a `cert` that validates domain ownership and add the
+         * DNS records.
+         *
+         * :::tip
+         * Built-in support for AWS Route 53, Cloudflare, and Vercel. And manual setup for other
+         * providers.
+         * :::
+         *
+         * @example
+         *
+         * By default this assumes the domain is hosted on Route 53.
+         *
+         * ```js
+         * {
+         *   domain: "example.com"
+         * }
+         * ```
+         *
+         * For domains hosted on Cloudflare.
+         *
+         * ```js
+         * {
+         *   domain: {
+         *     name: "example.com",
+         *     dns: sst.cloudflare.dns()
+         *   }
+         * }
+         * ```
+         */
+        domain?: Input<
+          | string
+          | {
+              /**
+               * The custom domain you want to use.
+               *
+               * @example
+               * ```js
+               * {
+               *   domain: {
+               *     name: "example.com"
+               *   }
+               * }
+               * ```
+               *
+               * Can also include subdomains based on the current stage.
+               *
+               * ```js
+               * {
+               *   domain: {
+               *     name: `${$app.stage}.example.com`
+               *   }
+               * }
+               * ```
+               *
+               * Wildcard domains are supported.
+               *
+               * ```js
+               * {
+               *   domain: {
+               *     name: "*.example.com"
+               *   }
+               * }
+               * ```
+               */
+              name: Input<string>;
+              /**
+               * Alias domains that should be used.
+               *
+               * @example
+               * ```js {4}
+               * {
+               *   domain: {
+               *     name: "app1.example.com",
+               *     aliases: ["app2.example.com"]
+               *   }
+               * }
+               * ```
+               */
+              aliases?: Input<string[]>;
+              /**
+               * The ARN of an ACM (AWS Certificate Manager) certificate that proves ownership of the
+               * domain. By default, a certificate is created and validated automatically.
+               *
+               * :::tip
+               * You need to pass in a `cert` for domains that are not hosted on supported `dns` providers.
+               * :::
+               *
+               * To manually set up a domain on an unsupported provider, you'll need to:
+               *
+               * 1. [Validate that you own the domain](https://docs.aws.amazon.com/acm/latest/userguide/domain-ownership-validation.html) by creating an ACM certificate. You can either validate it by setting a DNS record or by verifying an email sent to the domain owner.
+               * 2. Once validated, set the certificate ARN as the `cert` and set `dns` to `false`.
+               * 3. Add the DNS records in your provider to point to the load balancer endpoint.
+               *
+               * @example
+               * ```js
+               * {
+               *   domain: {
+               *     name: "example.com",
+               *     dns: false,
+               *     cert: "arn:aws:acm:us-east-1:112233445566:certificate/3a958790-8878-4cdc-a396-06d95064cf63"
+               *   }
+               * }
+               * ```
+               */
+              cert?: Input<string>;
+              /**
+               * The DNS provider to use for the domain. Defaults to the AWS.
+               *
+               * Takes an adapter that can create the DNS records on the provider. This can automate
+               * validating the domain and setting up the DNS routing.
+               *
+               * Supports Route 53, Cloudflare, and Vercel adapters. For other providers, you'll need
+               * to set `dns` to `false` and pass in a certificate validating ownership via `cert`.
+               *
+               * @default `sst.aws.dns`
+               *
+               * @example
+               *
+               * Specify the hosted zone ID for the Route 53 domain.
+               *
+               * ```js
+               * {
+               *   domain: {
+               *     name: "example.com",
+               *     dns: sst.aws.dns({
+               *       zone: "Z2FDTNDATAQYW2"
+               *     })
+               *   }
+               * }
+               * ```
+               *
+               * Use a domain hosted on Cloudflare, needs the Cloudflare provider.
+               *
+               * ```js
+               * {
+               *   domain: {
+               *     name: "example.com",
+               *     dns: sst.cloudflare.dns()
+               *   }
+               * }
+               * ```
+               *
+               * Use a domain hosted on Vercel, needs the Vercel provider.
+               *
+               * ```js
+               * {
+               *   domain: {
+               *     name: "example.com",
+               *     dns: sst.vercel.dns()
+               *   }
+               * }
+               * ```
+               */
+              dns?: Input<false | (Dns & {})>;
+            }
+        >;
+        /** @deprecated Use `rules` instead. */
+        ports?: Input<Prettify<ServiceRules>[]>;
+        /**
+         * Configure the mapping for the ports the load balancer listens to, forwards, or redirects to
+         * the service.
+         * This supports two types of protocols:
+         *
+         * 1. Application Layer Protocols: `http` and `https`. This'll create an [Application Load Balancer](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/introduction.html).
+         * 2. Network Layer Protocols: `tcp`, `udp`, `tcp_udp`, and `tls`. This'll create a [Network Load Balancer](https://docs.aws.amazon.com/elasticloadbalancing/latest/network/introduction.html).
+         *
+         * :::note
+         * If you want to listen on `https` or `tls`, you need to specify a custom
+         * `loadBalancer.domain`.
+         * :::
+         *
+         * You **can not configure** both application and network layer protocols for the same
+         * service.
+         *
+         * @example
+         * Here we are listening on port `80` and forwarding it to the service on port `8080`.
+         * ```js
+         * {
+         *   rules: [
+         *     { listen: "80/http", forward: "8080/http" }
+         *   ]
+         * }
+         * ```
+         *
+         * The `forward` port and protocol defaults to the `listen` port and protocol. So in this
+         * case both are `80/http`.
+         *
+         * ```js
+         * {
+         *   rules: [
+         *     { listen: "80/http" }
+         *   ]
+         * }
+         * ```
+         *
+         * If multiple containers are configured via the `containers` argument, you need to
+         * specify which container the traffic should be forwarded to.
+         *
+         * ```js
+         * {
+         *   rules: [
+         *     { listen: "80/http", container: "app" },
+         *     { listen: "8000/http", container: "admin" }
+         *   ]
+         * }
+         * ```
+         *
+         * You can also route the same port to multiple containers via path-based routing.
+         *
+         * ```js
+         * {
+         *   rules: [
+         *     {
+         *       listen: "80/http",
+         *       container: "app",
+         *       conditions: { path: "/api/*" }
+         *     },
+         *     {
+         *       listen: "80/http",
+         *       container: "admin",
+         *       conditions: { path: "/admin/*" }
+         *     }
+         *   ]
+         * }
+         * ```
+         *
+         * Additionally, you can redirect traffic from one port to another. This is
+         * commonly used to redirect http to https.
+         *
+         * ```js
+         * {
+         *   rules: [
+         *     { listen: "80/http", redirect: "443/https" },
+         *     { listen: "443/https", forward: "80/http" }
+         *   ]
+         * }
+         * ```
+         */
+        rules?: Input<Prettify<ServiceRules>[]>;
+        /**
+         * Configure the health check that the load balancer runs on your containers.
+         *
+         * :::tip
+         * This health check is different from the [`health`](#health) check.
+         * :::
+         *
+         * This health check is run by the load balancer. While, `health` is run by ECS. This
+         * cannot be disabled if you are using a load balancer. While the other is off by default.
+         *
+         * Since this cannot be disabled, here are some tips on how to debug an unhealthy
+         * health check.
+         *
+         * <details>
+         * <summary>How to debug a load balancer health check</summary>
+         *
+         * If you notice a `Unhealthy: Health checks failed` error, it's because the health
+         * check has failed. When it fails, the load balancer will terminate the containers,
+         * causing any requests to fail.
+         *
+         * Here's how to debug it:
+         *
+         * 1. Verify the health check path.
+         *
+         *    By default, the load balancer checks the `/` path. Ensure it's accessible in your
+         *    containers. If your application runs on a different path, then update the path in
+         *    the health check config accordingly.
+         *
+         * 2. Confirm the containers are operational.
+         *
+         *    Navigate to **ECS console** > select the **cluster** > go to the **Tasks tab** >
+         *    choose **Any desired status** under the **Filter desired status** dropdown > select
+         *    a task and check for errors under the **Logs tab**. If it has error that means that
+         *    the container failed to start.
+         *
+         * 3. If the container was terminated by the load balancer while still starting up, try
+         *    increasing the health check interval and timeout.
+         * </details>
+         *
+         * For `http` and `https` the default is:
+         *
+         * ```js
+         * {
+         *   path: "/",
+         *   healthyThreshold: 5,
+         *   successCodes: "200",
+         *   timeout: "5 seconds",
+         *   unhealthyThreshold: 2,
+         *   interval: "30 seconds"
+         * }
+         * ```
+         *
+         * For `tcp` and `udp` the default is:
+         *
+         * ```js
+         * {
+         *   healthyThreshold: 5,
+         *   timeout: "6 seconds",
+         *   unhealthyThreshold: 2,
+         *   interval: "30 seconds"
+         * }
+         * ```
+         *
+         * @example
+         *
+         * To configure the health check, we use the _port/protocol_ format. Here we are
+         * configuring a health check that pings the `/health` path on port `8080`
+         * every 10 seconds.
+         *
+         * ```js
+         * {
+         *   rules: [
+         *     { listen: "80/http", forward: "8080/http" }
+         *   ],
+         *   health: {
+         *     "8080/http": {
+         *       path: "/health",
+         *       interval: "10 seconds"
+         *     }
+         *   }
+         * }
+         * ```
+         *
+         */
+        health?: Input<
+          Record<
+            Port,
+            Input<{
+              /**
+               * The URL path to ping on the service for health checks. Only applicable to
+               * `http` and `https` protocols.
+               * @default `"/"`
+               */
+              path?: Input<string>;
+              /**
+               * The time period between each health check request. Must be between `5 seconds`
+               * and `300 seconds`.
+               * @default `"30 seconds"`
+               */
+              interval?: Input<DurationMinutes>;
+              /**
+               * The timeout for each health check request. If no response is received within this
+               * time, it is considered failed. Must be between `2 seconds` and `120 seconds`.
+               * @default `"5 seconds"`
+               */
+              timeout?: Input<DurationMinutes>;
+              /**
+               * The number of consecutive successful health check requests required to consider the
+               * target healthy. Must be between 2 and 10.
+               * @default `5`
+               */
+              healthyThreshold?: Input<number>;
+              /**
+               * The number of consecutive failed health check requests required to consider the
+               * target unhealthy. Must be between 2 and 10.
+               * @default `2`
+               */
+              unhealthyThreshold?: Input<number>;
+              /**
+               * One or more HTTP response codes the health check treats as successful. Only
+               * applicable to `http` and `https` protocols.
+               *
+               * @default `"200"`
+               * @example
+               * ```js
+               * {
+               *   successCodes: "200-299"
+               * }
+               * ```
+               */
+              successCodes?: Input<string>;
+            }>
+          >
+        >;
+      }
     | {
-    /**
-     * The `Alb` instance to attach this service to. When provided, the service creates
-     * target groups and listener rules on the shared ALB instead of creating its own
-     * load balancer.
-     *
-     * ECS tasks use the VPC's default security group, which allows all traffic within the
-     * VPC CIDR. For tighter security, add an explicit security group ingress rule from the
-     * ALB's security group using `transform`.
-     *
-     * @example
-     * ```js
-     * {
-     *   loadBalancer: {
-     *     instance: alb,
-     *     rules: [
-     *       { listen: "443/https", forward: "8080/http", conditions: { path: "/api/*" }, priority: 100 }
-     *     ]
-     *   }
-     * }
-     * ```
-     */
-    instance: Alb;
-    /**
-     * The rules for routing traffic from the ALB to this service's containers.
-     * Each rule must have explicit conditions and priority.
-     */
-    rules: Prettify<ServiceAlbRule>[];
-    /**
-     * Configure health checks for the target groups. Uses the same format as the inline
-     * health check config, keyed by `{port}/{protocol}`.
-     */
-    health?: Record<
-      AlbPort,
-      Input<{
-        path?: Input<string>;
-        interval?: Input<DurationMinutes>;
-        timeout?: Input<DurationMinutes>;
-        healthyThreshold?: Input<number>;
-        unhealthyThreshold?: Input<number>;
-        successCodes?: Input<string>;
-      }>
-    >;
-  }
+        /**
+         * The `Alb` instance to attach this service to. When provided, the service creates
+         * target groups and listener rules on the shared ALB instead of creating its own
+         * load balancer.
+         *
+         * ECS tasks use the VPC's default security group, which allows all traffic within the
+         * VPC CIDR. For tighter security, add an explicit security group ingress rule from the
+         * ALB's security group using `transform`.
+         *
+         * @example
+         * ```js
+         * {
+         *   loadBalancer: {
+         *     instance: alb,
+         *     rules: [
+         *       { listen: "443/https", forward: "8080/http", conditions: { path: "/api/*" }, priority: 100 }
+         *     ]
+         *   }
+         * }
+         * ```
+         */
+        instance: Alb;
+        /**
+         * The rules for routing traffic from the ALB to this service's containers.
+         * Each rule must have explicit conditions and priority.
+         */
+        rules: Prettify<ServiceAlbRule>[];
+        /**
+         * Configure health checks for the target groups. Uses the same format as the inline
+         * health check config, keyed by `{port}/{protocol}`.
+         */
+        health?: Record<
+          AlbPort,
+          Input<{
+            path?: Input<string>;
+            interval?: Input<DurationMinutes>;
+            timeout?: Input<DurationMinutes>;
+            healthyThreshold?: Input<number>;
+            unhealthyThreshold?: Input<number>;
+            successCodes?: Input<string>;
+          }>
+        >;
+      }
   >;
   /**
    * Configure the CloudMap service registry for the service.
@@ -1232,6 +1227,22 @@ export interface ServiceArgs extends FargateBaseArgs {
     scaleOutCooldown?: Input<DurationMinutes>;
   }>;
   /**
+   * Run this service on ECS Managed Instances with a GPU-enabled host.
+   *
+   * This automatically switches the service from Fargate to ECS Managed Instances.
+   * Use the top-level `cpu`, `memory`, and `storage` props to size the workload.
+   *
+   * @example
+   * ```js
+   * {
+   *   gpu: "nvidia/t4",
+   *   cpu: "4 vCPU",
+   *   memory: "16 GB"
+   * }
+   * ```
+   */
+  gpu?: Input<ManagedGpu>;
+  /**
    * Configure the capacity provider; regular Fargate or Fargate Spot, for this service.
    *
    * :::tip
@@ -1327,52 +1338,14 @@ export interface ServiceArgs extends FargateBaseArgs {
    *   regular Fargate.
    *
    *   ```js
-    *   {
-    *     capacity: {
-    *       fargate: { weight: 1, base: 2 },
-    *       spot: { weight: 1 }
-    *     }
-    *   }
-    *   ```
-    * - Use ECS Managed Instances for a CPU-only workload.
-    *
-    *   ```js
-    *   {
-    *     cpu: "1 vCPU",
-    *     memory: "2 GB",
-    *     capacity: {
-    *       managed: {
-    *         infrastructureRole: "arn:aws:iam::123456789012:role/ecs-infra",
-    *         instanceProfile: "arn:aws:iam::123456789012:instance-profile/ecs-managed",
-    *         cpu: { min: 1, max: 4 },
-    *         memory: { min: "2 GB", max: "8 GB" }
-    *       }
-    *     }
-    *   }
-    *   ```
-    * - Use ECS Managed Instances for a GPU workload.
-    *
-    *   ```js
-    *   {
-    *     cpu: "4 vCPU",
-    *     memory: "16 GB",
-    *     containers: [{
-    *       name: "app",
-    *       gpu: 1,
-    *     }],
-    *     capacity: {
-    *       managed: {
-    *         infrastructureRole: "arn:aws:iam::123456789012:role/ecs-infra",
-    *         instanceProfile: "arn:aws:iam::123456789012:instance-profile/ecs-managed",
-    *         gpu: {
-    *           count: 1,
-    *           name: "t4",
-    *         }
-    *       }
-    *     }
-    *   }
-    *   ```
-    */
+   *   {
+   *     capacity: {
+   *       fargate: { weight: 1, base: 2 },
+   *       spot: { weight: 1 }
+   *     }
+   *   }
+   *   ```
+   */
   capacity?: Input<
     | "spot"
     | (ServiceFargateCapacity & {
@@ -1410,19 +1383,8 @@ export interface ServiceArgs extends FargateBaseArgs {
            */
           weight: Input<number>;
         }>;
-        /**
-         * Configure ECS Managed Instances for this service.
-         */
         managed?: never;
       })
-    | {
-        /**
-         * Configure ECS Managed Instances for this service.
-         *
-         * This mode is exclusive and cannot be combined with `fargate` or `spot`.
-         */
-        managed?: Input<ManagedServiceCapacityArgs>;
-      }
   >;
   /**
    * Configure the health check that ECS runs on your containers.
@@ -1597,6 +1559,14 @@ export interface ServiceArgs extends FargateBaseArgs {
        * attaching to an external ALB via the `loadBalancer.instance` prop.
        */
       listenerRule?: Transform<lb.ListenerRuleArgs>;
+      /**
+       * Transform the IAM infrastructure role resource created for managed instances.
+       */
+      infrastructureRole?: Transform<iam.RoleArgs>;
+      /**
+       * Transform the IAM instance role resource created for managed instances.
+       */
+      instanceRole?: Transform<iam.RoleArgs>;
       /**
        * Transform the ECS managed instances capacity provider resource.
        */
@@ -1878,7 +1848,7 @@ export class Service extends Component implements Link.Linkable {
     this.taskRole = taskRole;
 
     if (dev) {
-      this.devUrl = (!lbArgs && !args.loadBalancer) ? undefined : dev.url;
+      this.devUrl = !lbArgs && !args.loadBalancer ? undefined : dev.url;
       registerReceiver();
       return;
     }
@@ -1888,8 +1858,9 @@ export class Service extends Component implements Link.Linkable {
       ? createManagedCapacityProvider(
           name,
           {
-            capacity: managed.capacity,
             transform: {
+              infrastructureRole: args.transform?.infrastructureRole,
+              instanceRole: args.transform?.instanceRole,
               capacityProvider: args.transform?.capacityProvider,
               instanceProfile: args.transform?.instanceProfile,
             },
@@ -1931,7 +1902,13 @@ export class Service extends Component implements Link.Linkable {
         );
     let loadBalancer: lb.LoadBalancer | undefined;
     let targetGroups: ReturnType<typeof createTargets>;
-    let targetEntries: Output<{ targetGroup: lb.TargetGroup; containerName: string; containerPort: number }[]>;
+    let targetEntries: Output<
+      {
+        targetGroup: lb.TargetGroup;
+        containerName: string;
+        containerPort: number;
+      }[]
+    >;
     let effectiveLbArn: Output<string> | undefined;
     let effectiveDomain: Output<string | undefined>;
     let effectiveDnsName: Output<string> | undefined;
@@ -1946,7 +1923,8 @@ export class Service extends Component implements Link.Linkable {
           }
         },
       );
-      const { targets: albTargets, entries: albEntries } = createAlbTargetsAndEntries(albAttachment);
+      const { targets: albTargets, entries: albEntries } =
+        createAlbTargetsAndEntries(albAttachment);
       targetGroups = output(albTargets);
       targetEntries = albEntries;
       createAlbListenerRules(albAttachment, albTargets);
@@ -1963,7 +1941,8 @@ export class Service extends Component implements Link.Linkable {
         effectiveLbArn = loadBalancer.arn;
         effectiveDnsName = loadBalancer.dnsName;
       }
-      effectiveDomain = lbArgs?.domain?.apply((d) => d?.name) ?? output(undefined);
+      effectiveDomain =
+        lbArgs?.domain?.apply((d) => d?.name) ?? output(undefined);
     }
     const cloudmapService = createCloudmapService();
     const service = createService();
@@ -1973,13 +1952,13 @@ export class Service extends Component implements Link.Linkable {
     this.cloudmapService = cloudmapService;
     this.executionRole = executionRole;
     this.taskDefinition = taskDefinition;
-    this.loadBalancer = loadBalancer ?? albAttachment?.instance.nodes.loadBalancer;
+    this.loadBalancer =
+      loadBalancer ?? albAttachment?.instance.nodes.loadBalancer;
     this.autoScalingTarget = autoScalingTarget;
     this.domain = effectiveDomain;
     this._url = effectiveDnsName
-      ? all([effectiveDomain, effectiveDnsName]).apply(
-          ([domain, dnsName]) =>
-            domain ? `https://${domain}/` : `http://${dnsName}`,
+      ? all([effectiveDomain, effectiveDnsName]).apply(([domain, dnsName]) =>
+          domain ? `https://${domain}/` : `http://${dnsName}`,
         )
       : undefined;
 
@@ -2021,7 +2000,9 @@ export class Service extends Component implements Link.Linkable {
 
     function normalizeScaling() {
       // External ALB is always "application" type
-      const lbType = albAttachment ? output("application" as const) : lbArgs?.type;
+      const lbType = albAttachment
+        ? output("application" as const)
+        : lbArgs?.type;
       return all([lbType, args.scaling]).apply(([type, v]) => {
         if (type !== "application" && v?.requestCount)
           throw new VisibleError(
@@ -2034,64 +2015,51 @@ export class Service extends Component implements Link.Linkable {
           cpuUtilization: v?.cpuUtilization ?? 70,
           memoryUtilization: v?.memoryUtilization ?? 70,
           requestCount: v?.requestCount ?? false,
-          scaleInCooldown: v?.scaleInCooldown ? toSeconds(v.scaleInCooldown) : undefined,
-          scaleOutCooldown: v?.scaleOutCooldown ? toSeconds(v.scaleOutCooldown) : undefined,
+          scaleInCooldown: v?.scaleInCooldown
+            ? toSeconds(v.scaleInCooldown)
+            : undefined,
+          scaleOutCooldown: v?.scaleOutCooldown
+            ? toSeconds(v.scaleOutCooldown)
+            : undefined,
         };
       });
     }
 
     function normalizeCapacity() {
+      if (args.gpu && args.capacity) {
+        throw new VisibleError(
+          `Do not combine top-level "gpu" with "capacity" in the "${name}" Service. GPU services use ECS Managed Instances automatically.`,
+        );
+      }
       if (!args.capacity) return;
 
-      return output(args.capacity).apply((v): ServiceFargateCapacity | undefined => {
-        if (isManagedCapacityInput(v)) return undefined;
-        if (v === "spot")
-          return { spot: { weight: 1 }, fargate: { weight: 0 } };
-        const fargateCapacity = v as ServiceFargateCapacity;
-        return {
-          fargate: fargateCapacity.fargate,
-          spot: fargateCapacity.spot,
-        };
-      });
+      return output(args.capacity).apply(
+        (v): ServiceFargateCapacity | undefined => {
+          if (v === "spot")
+            return { spot: { weight: 1 }, fargate: { weight: 0 } };
+          const fargateCapacity = v as ServiceFargateCapacity;
+          return {
+            fargate: fargateCapacity.fargate,
+            spot: fargateCapacity.spot,
+          };
+        },
+      );
     }
 
     function normalizeManaged() {
-      if (!args.capacity) return;
+      if (!args.gpu) return;
 
-      const managedCapacity = output(args.capacity).apply((v) => {
-        if (v === "spot" || !isManagedCapacityInput(v)) return;
-
-        if ("fargate" in v || "spot" in v) {
-          throw new VisibleError(
-            `Do not combine \"capacity.managed\" with \"capacity.fargate\" or \"capacity.spot\" in the \"${name}\" Service.`,
-          );
-        }
-
-        return v.managed;
+      const managedCapacity = output({
+        gpu: args.gpu,
+        cpu: args.cpu,
+        memory: args.memory,
+        storage: args.storage,
       });
 
       return {
-        capacity: managedCapacity.apply((v) => {
-          if (!v)
-            throw new VisibleError(
-              `Missing \"capacity.managed\" for the \"${name}\" Service.`,
-            );
-          return v;
-        }),
-        normalized: managedCapacity
-          .apply((v) => {
-            if (!v)
-              throw new VisibleError(
-                `Missing \"capacity.managed\" for the \"${name}\" Service.`,
-              );
-            return v;
-          })
-          .apply((managed) =>
-            normalizeManagedCapacity(name, managed, {
-              cpu: args.cpu,
-              memory: args.memory,
-            }),
-          ),
+        normalized: managedCapacity.apply((managed) =>
+          normalizeManagedCapacity(name, managed),
+        ),
       };
     }
 
@@ -2374,7 +2342,11 @@ export class Service extends Component implements Link.Linkable {
         const seen = new Set<string>();
         for (const rule of rules) {
           if (rule.type !== "forward") continue;
-          const targetId = targetKey(rule.container!, rule.forwardProtocol, rule.forwardPort);
+          const targetId = targetKey(
+            rule.container!,
+            rule.forwardProtocol,
+            rule.forwardPort,
+          );
           if (seen.has(targetId)) continue;
           seen.add(targetId);
           entries.push({
@@ -2561,47 +2533,48 @@ export class Service extends Component implements Link.Linkable {
                       capacityProviderStrategies: [
                         {
                           capacityProvider: managedCapacityProvider!.name,
+                          base: 1,
                           weight: 1,
                         },
                       ],
                     }
                   : capacity
-                  ? {
-                      // setting `forceNewDeployment` ensures that the service is not recreated
-                      // when the capacity provider config changes.
-                      forceNewDeployment: true,
-                      capacityProviderStrategies: capacity.apply((v) => {
-                        if (!v)
-                          throw new VisibleError(
-                            `Invalid Fargate capacity configuration for the \"${name}\" Service.`,
-                          );
-                        return [
-                          ...(v.fargate
-                            ? [
-                                {
-                                  capacityProvider: "FARGATE",
-                                  base: v.fargate?.base,
-                                  weight: v.fargate?.weight,
-                                },
-                              ]
-                            : []),
-                          ...(v.spot
-                            ? [
-                                {
-                                  capacityProvider: "FARGATE_SPOT",
-                                  base: v.spot?.base,
-                                  weight: v.spot?.weight,
-                                },
-                              ]
-                            : []),
-                        ];
+                    ? {
+                        // setting `forceNewDeployment` ensures that the service is not recreated
+                        // when the capacity provider config changes.
+                        forceNewDeployment: true,
+                        capacityProviderStrategies: capacity.apply((v) => {
+                          if (!v)
+                            throw new VisibleError(
+                              `Invalid Fargate capacity configuration for the \"${name}\" Service.`,
+                            );
+                          return [
+                            ...(v.fargate
+                              ? [
+                                  {
+                                    capacityProvider: "FARGATE",
+                                    base: v.fargate?.base,
+                                    weight: v.fargate?.weight,
+                                  },
+                                ]
+                              : []),
+                            ...(v.spot
+                              ? [
+                                  {
+                                    capacityProvider: "FARGATE_SPOT",
+                                    base: v.spot?.base,
+                                    weight: v.spot?.weight,
+                                  },
+                                ]
+                              : []),
+                          ];
+                        }),
+                      }
+                    : // @deprecated do not use `launchType`, set `capacityProviderStrategies`
+                      // to `[{ capacityProvider: "FARGATE", weight: 1 }]` instead
+                      {
+                        launchType: "FARGATE",
                       }),
-                    }
-                  : // @deprecated do not use `launchType`, set `capacityProviderStrategies`
-                    // to `[{ capacityProvider: "FARGATE", weight: 1 }]` instead
-                    {
-                      launchType: "FARGATE",
-                    }),
                 networkConfiguration: {
                   // If the vpc is an SST vpc, services are automatically deployed to the public
                   // subnets. So we need to assign a public IP for the service to be accessible.
@@ -2651,55 +2624,64 @@ export class Service extends Component implements Link.Linkable {
         ),
       );
 
-      all([scaling.cpuUtilization, scaling.scaleInCooldown, scaling.scaleOutCooldown]).apply(
-        ([cpuUtilization, scaleInCooldown, scaleOutCooldown]) => {
-          if (cpuUtilization === false) return;
-          new appautoscaling.Policy(
-            `${name}AutoScalingCpuPolicy`,
-            {
-              serviceNamespace: target.serviceNamespace,
-              scalableDimension: target.scalableDimension,
-              resourceId: target.resourceId,
-              policyType: "TargetTrackingScaling",
-              targetTrackingScalingPolicyConfiguration: {
-                predefinedMetricSpecification: {
-                  predefinedMetricType: "ECSServiceAverageCPUUtilization",
-                },
-                targetValue: cpuUtilization,
-                scaleInCooldown,
-                scaleOutCooldown,
+      all([
+        scaling.cpuUtilization,
+        scaling.scaleInCooldown,
+        scaling.scaleOutCooldown,
+      ]).apply(([cpuUtilization, scaleInCooldown, scaleOutCooldown]) => {
+        if (cpuUtilization === false) return;
+        new appautoscaling.Policy(
+          `${name}AutoScalingCpuPolicy`,
+          {
+            serviceNamespace: target.serviceNamespace,
+            scalableDimension: target.scalableDimension,
+            resourceId: target.resourceId,
+            policyType: "TargetTrackingScaling",
+            targetTrackingScalingPolicyConfiguration: {
+              predefinedMetricSpecification: {
+                predefinedMetricType: "ECSServiceAverageCPUUtilization",
               },
+              targetValue: cpuUtilization,
+              scaleInCooldown,
+              scaleOutCooldown,
             },
-            { parent: self },
-          );
-        }
-      );
+          },
+          { parent: self },
+        );
+      });
 
-      all([scaling.memoryUtilization, scaling.scaleInCooldown, scaling.scaleOutCooldown]).apply(
-        ([memoryUtilization, scaleInCooldown, scaleOutCooldown]) => {
-          if (memoryUtilization === false) return;
-          new appautoscaling.Policy(
-            `${name}AutoScalingMemoryPolicy`,
-            {
-              serviceNamespace: target.serviceNamespace,
-              scalableDimension: target.scalableDimension,
-              resourceId: target.resourceId,
-              policyType: "TargetTrackingScaling",
-              targetTrackingScalingPolicyConfiguration: {
-                predefinedMetricSpecification: {
-                  predefinedMetricType: "ECSServiceAverageMemoryUtilization",
-                },
-                targetValue: memoryUtilization,
-                scaleInCooldown,
-                scaleOutCooldown,
+      all([
+        scaling.memoryUtilization,
+        scaling.scaleInCooldown,
+        scaling.scaleOutCooldown,
+      ]).apply(([memoryUtilization, scaleInCooldown, scaleOutCooldown]) => {
+        if (memoryUtilization === false) return;
+        new appautoscaling.Policy(
+          `${name}AutoScalingMemoryPolicy`,
+          {
+            serviceNamespace: target.serviceNamespace,
+            scalableDimension: target.scalableDimension,
+            resourceId: target.resourceId,
+            policyType: "TargetTrackingScaling",
+            targetTrackingScalingPolicyConfiguration: {
+              predefinedMetricSpecification: {
+                predefinedMetricType: "ECSServiceAverageMemoryUtilization",
               },
+              targetValue: memoryUtilization,
+              scaleInCooldown,
+              scaleOutCooldown,
             },
-            { parent: self },
-          );
-        }
-      );
+          },
+          { parent: self },
+        );
+      });
 
-      all([scaling.requestCount, scaling.scaleInCooldown, scaling.scaleOutCooldown, targetGroups]).apply(
+      all([
+        scaling.requestCount,
+        scaling.scaleInCooldown,
+        scaling.scaleOutCooldown,
+        targetGroups,
+      ]).apply(
         ([requestCount, scaleInCooldown, scaleOutCooldown, targetGroups]) => {
           if (requestCount === false) return;
           if (!targetGroups) return;
@@ -2809,7 +2791,9 @@ export class Service extends Component implements Link.Linkable {
           const cn = rule.container ?? ctrs[0].name;
           if (!containerNames.has(cn)) {
             throw new VisibleError(
-              `Container "${cn}" in "loadBalancer.rules" does not match any container in Service "${name}". Available: ${[...containerNames].join(", ")}.`,
+              `Container "${cn}" in "loadBalancer.rules" does not match any container in Service "${name}". Available: ${[
+                ...containerNames,
+              ].join(", ")}.`,
             );
           }
         }
@@ -2829,7 +2813,11 @@ export class Service extends Component implements Link.Linkable {
         const forwardProtocol = parts[1].toUpperCase();
         // Use explicit container or component name for keying/naming
         const containerNameForKey = rule.container ?? name;
-        const tgtId = targetKey(containerNameForKey, forwardProtocol, forwardPort);
+        const tgtId = targetKey(
+          containerNameForKey,
+          forwardProtocol,
+          forwardPort,
+        );
 
         if (!targets[tgtId]) {
           const healthKey = `${forwardPort}/${parts[1]}` as AlbPort;
@@ -2902,8 +2890,7 @@ export class Service extends Component implements Link.Linkable {
           );
         }
 
-        const seen =
-          prioritiesByListener.get(rule.listen) ?? new Set();
+        const seen = prioritiesByListener.get(rule.listen) ?? new Set();
         if (seen.has(rule.priority)) {
           throw new VisibleError(
             `Duplicate priority ${rule.priority} on listener "${rule.listen}" in Service "${name}".`,
@@ -2930,7 +2917,11 @@ export class Service extends Component implements Link.Linkable {
         const forwardPort = parseInt(forwardParts[0]);
         const forwardProtocol = forwardParts[1].toUpperCase();
         const containerNameForKey = rule.container ?? name;
-        const tgtId = targetKey(containerNameForKey, forwardProtocol, forwardPort);
+        const tgtId = targetKey(
+          containerNameForKey,
+          forwardProtocol,
+          forwardPort,
+        );
 
         const targetGroup = albTargets[tgtId];
         if (!targetGroup) {
@@ -2939,13 +2930,17 @@ export class Service extends Component implements Link.Linkable {
           );
         }
 
-        const listenerResource =
-          attachment.instance.getListener(listenerProtocol, listenerPort);
+        const listenerResource = attachment.instance.getListener(
+          listenerProtocol,
+          listenerPort,
+        );
 
         new lb.ListenerRule(
           ...transform(
             args.transform?.listenerRule,
-            `${name}AlbRule${listenerProtocol.toUpperCase()}${listenerPort}P${rule.priority}`,
+            `${name}AlbRule${listenerProtocol.toUpperCase()}${listenerPort}P${
+              rule.priority
+            }`,
             {
               listenerArn: listenerResource.arn,
               priority: rule.priority,
@@ -3034,10 +3029,14 @@ export class Service extends Component implements Link.Linkable {
           throw new VisibleError(
             `Cannot access the AWS Cloud Map service name for the "${this._name}" Service. Cloud Map is not configured for the cluster.`,
           );
+        if (!service)
+          throw new VisibleError(
+            `Cannot access the AWS Cloud Map service name for the "${this._name}" Service. The Cloud Map service is not available.`,
+          );
 
         return this.dev
           ? interpolate`dev.${namespace}`
-          : interpolate`${service!.name}.${namespace}`;
+          : interpolate`${service.name}.${namespace}`;
       },
     );
   }
@@ -3123,8 +3122,13 @@ export class Service extends Component implements Link.Linkable {
     return {
       properties: {
         url: this.dev ? this.devUrl : this._url,
-        service: output(this.cloudmapNamespace).apply((namespace) =>
-          namespace ? this.service : undefined,
+        service: all([this.cloudmapNamespace, this.cloudmapService]).apply(
+          ([namespace, service]) =>
+            namespace && service
+              ? this.dev
+                ? `dev.${namespace}`
+                : `${service.name}.${namespace}`
+              : undefined,
         ),
       },
     };

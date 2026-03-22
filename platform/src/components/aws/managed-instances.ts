@@ -8,7 +8,14 @@ import {
   Output,
   secret,
 } from "@pulumi/pulumi";
-import { cloudwatch, ecr, ecs, getRegionOutput, iam } from "@pulumi/aws";
+import {
+  cloudwatch,
+  ecr,
+  ecs,
+  getPartitionOutput,
+  getRegionOutput,
+  iam,
+} from "@pulumi/aws";
 import { ImageArgs } from "@pulumi/docker-build";
 import { Component, Transform, transform } from "../component.js";
 import { Input } from "../input.js";
@@ -37,47 +44,15 @@ export const ManagedGpuAcceleratorName = {
 
 export type ManagedGpuAcceleratorName =
   (typeof ManagedGpuAcceleratorName)[keyof typeof ManagedGpuAcceleratorName];
+export type ManagedGpu =
+  `${(typeof managedGpuManufacturers)[number]}/${ManagedGpuAcceleratorName}`;
 
 type ManagedContainers = ReturnType<typeof normalizeContainers>;
-
-type ManagedRoleInput = Input<string>;
-
-type ManagedGpuCount =
-  | Input<number>
-  | Input<{
-      min: Input<number>;
-      max?: Input<number>;
-    }>;
-
-export interface ManagedServiceCapacityArgs {
-  cpu?: Input<{
-    min: Input<number>;
-    max?: Input<number>;
-  }>;
-  memory?: Input<{
-    min: Input<`${number} GB`>;
-    max?: Input<`${number} GB`>;
-  }>;
-  gpu?: Input<{
-    count?: ManagedGpuCount;
-    manufacturer?: Input<(typeof managedGpuManufacturers)[number]>;
-    /**
-     * The NVIDIA GPU model to require.
-     *
-     * Supported values: `"a100"`, `"a10g"`, `"h100"`, `"k520"`, `"k80"`,
-     * `"m60"`, `"t4"`, `"t4g"`, and `"v100"`.
-     */
-    name?: Input<ManagedGpuAcceleratorName | Input<ManagedGpuAcceleratorName>[]>;
-  }>;
-  infrastructureRole: ManagedRoleInput;
-  instanceRole?: ManagedRoleInput;
-  instanceProfile?: Input<string>;
-  storage?: Input<`${number} GB`>;
-}
-
-type ServiceSizingArgs = {
+type ManagedServiceArgs = {
+  gpu: Input<ManagedGpu>;
   cpu?: Input<`${number} vCPU`>;
   memory?: Input<`${number} GB`>;
+  storage?: Input<`${number} GB`>;
 };
 
 type ManagedTaskDefinitionArgs = {
@@ -98,6 +73,8 @@ type ManagedTaskDefinitionArgs = {
 
 type ManagedCapacityProviderArgs = {
   transform?: {
+    infrastructureRole?: Transform<iam.RoleArgs>;
+    instanceRole?: Transform<iam.RoleArgs>;
     capacityProvider?: Transform<ecs.CapacityProviderArgs>;
     instanceProfile?: Transform<iam.InstanceProfileArgs>;
   };
@@ -132,142 +109,74 @@ type NormalizedManagedCapacity = {
 
 export function normalizeManagedCapacity(
   name: string,
-  args: ManagedServiceCapacityArgs,
-  serviceSizing: ServiceSizingArgs,
+  args: ManagedServiceArgs,
 ) {
-  return all([serviceSizing.cpu, serviceSizing.memory]).apply(
-    ([serviceCpu, serviceMemory]) => {
-      const managed = args as ManagedServiceCapacityArgs & {
-        infrastructureRole?: string;
-        instanceRole?: string;
-        instanceProfile?: string;
-        storage?: `${number} GB`;
-        cpu?: { min: number; max?: number };
-        memory?: { min: `${number} GB`; max?: `${number} GB` };
-        gpu?: {
-          count?: number | { min: number; max?: number };
-          manufacturer?: (typeof managedGpuManufacturers)[number];
-          name?: ManagedGpuAcceleratorName | ManagedGpuAcceleratorName[];
-        };
-      };
-
-      if (!managed.infrastructureRole) {
-        throw new VisibleError(
-          `Missing \"capacity.managed.infrastructureRole\" for the \"${name}\" Service.`,
-        );
-      }
-
-      if (!managed.instanceRole && !managed.instanceProfile) {
-        throw new VisibleError(
-          `You must provide either \"capacity.managed.instanceRole\" or \"capacity.managed.instanceProfile\" for the \"${name}\" Service.`,
-        );
-      }
-
-      if (managed.instanceRole && managed.instanceProfile) {
-        throw new VisibleError(
-          `Do not provide both \"capacity.managed.instanceRole\" and \"capacity.managed.instanceProfile\" for the \"${name}\" Service.`,
-        );
-      }
-
-      const hostCpu = normalizeHostCpu(managed.cpu, serviceCpu);
-      const hostMemory = normalizeHostMemory(managed.memory, serviceMemory);
-      const gpu = normalizeGpu(managed.gpu);
-      const hostStorage = normalizeStorage(managed.storage);
+  return all([args.gpu, args.cpu, args.memory, args.storage]).apply(
+    ([gpu, cpu, memory, storage]) => {
+      const hostCpu = normalizeHostCpu(cpu);
+      const hostMemory = normalizeHostMemory(memory);
+      const hostStorage = normalizeStorage(storage);
 
       return {
-        taskCpu: serviceCpu
-          ? toNumber(serviceCpu).toString()
-          : Math.round(hostCpu.min * 1024).toString(),
-        taskMemory: serviceMemory
-          ? toMBs(serviceMemory).toString()
-          : hostMemory.min.toString(),
+        taskCpu: cpu!,
+        taskMemory: memory!,
         hostCpu,
         hostMemory,
         hostStorage,
-        gpu,
+        gpu: normalizeGpu(gpu),
       } satisfies NormalizedManagedCapacity;
     },
   );
 
-  function normalizeHostCpu(
-    cpu: { min: number; max?: number } | undefined,
-    fallback?: `${number} vCPU`,
-  ) {
+  function normalizeHostCpu(cpu?: `${number} vCPU`) {
     if (cpu) {
-      validateRange("capacity.managed.cpu", cpu.min, cpu.max);
-      return { min: cpu.min, max: cpu.max };
-    }
-    if (fallback) {
-      const min = parseFloat(fallback.split(" ")[0]);
+      const min = parseFloat(cpu.split(" ")[0]);
       return { min, max: min };
     }
     throw new VisibleError(
-      `You must provide either \"capacity.managed.cpu\" or top-level \"cpu\" for managed instances.`,
+      `You must provide top-level \"cpu\" for the \"${name}\" Service when \"gpu\" is set.`,
     );
   }
 
-  function normalizeHostMemory(
-    memory: { min: `${number} GB`; max?: `${number} GB` } | undefined,
-    fallback?: `${number} GB`,
-  ) {
+  function normalizeHostMemory(memory?: `${number} GB`) {
     if (memory) {
-      const min = toMBs(memory.min);
-      const max = memory.max ? toMBs(memory.max) : undefined;
-      validateRange("capacity.managed.memory", min, max);
-      return { min, max };
-    }
-    if (fallback) {
-      const min = toMBs(fallback);
+      const min = toMBs(memory);
       return { min, max: min };
     }
     throw new VisibleError(
-      `You must provide either \"capacity.managed.memory\" or top-level \"memory\" for managed instances.`,
+      `You must provide top-level \"memory\" for the \"${name}\" Service when \"gpu\" is set.`,
     );
   }
 
-  function normalizeGpu(
-    gpu:
-      | {
-          count?: number | { min: number; max?: number };
-          manufacturer?: (typeof managedGpuManufacturers)[number];
-          name?: ManagedGpuAcceleratorName | ManagedGpuAcceleratorName[];
-        }
-      | undefined,
-  ) {
-    if (!gpu) return undefined;
-    const manufacturer = gpu.manufacturer ?? "nvidia";
+  function normalizeGpu(gpu: ManagedGpu) {
+    const [manufacturer, name] = gpu.split("/") as [
+      (typeof managedGpuManufacturers)[number],
+      ManagedGpuAcceleratorName,
+    ];
     if (!managedGpuManufacturers.includes(manufacturer)) {
       throw new VisibleError(
-        `Unsupported GPU manufacturer \"${manufacturer}\". The supported values are ${managedGpuManufacturers.join(", ")}.`,
+        `Unsupported GPU manufacturer \"${manufacturer}\". The supported values are ${managedGpuManufacturers.join(
+          ", ",
+        )}.`,
       );
     }
 
-    const count =
-      typeof gpu.count === "number"
-        ? { min: gpu.count, max: gpu.count }
-        : gpu.count
-          ? { min: gpu.count.min, max: gpu.count.max }
-          : { min: 1, max: 1 };
-
-    validateRange("capacity.managed.gpu.count", count.min, count.max);
-
     return {
-      count,
+      count: { min: 1, max: 1 },
       manufacturer,
-      names: normalizeGpuNames(gpu.name),
+      names: normalizeGpuNames(name),
     };
   }
 
-  function normalizeGpuNames(
-    name: ManagedGpuAcceleratorName | ManagedGpuAcceleratorName[] | undefined,
-  ) {
-    if (!name) return undefined;
-    const names = Array.isArray(name) ? name : [name];
+  function normalizeGpuNames(name: ManagedGpuAcceleratorName) {
+    const names = [name];
     const supported = Object.values(ManagedGpuAcceleratorName);
     const invalid = names.filter((name) => !supported.includes(name));
     if (invalid.length > 0) {
       throw new VisibleError(
-        `Unsupported GPU accelerator name ${invalid.map((name) => `"${name}"`).join(", ")}. The supported NVIDIA values are ${supported
+        `Unsupported GPU accelerator name ${invalid
+          .map((name) => `"${name}"`)
+          .join(", ")}. The supported NVIDIA values are ${supported
           .map((name) => `"${name}"`)
           .join(", ")}.`,
       );
@@ -280,56 +189,48 @@ export function normalizeManagedCapacity(
     const value = toGBs(storage);
     if (value <= 0) {
       throw new VisibleError(
-        `Invalid \"capacity.managed.storage\" value \"${storage}\". It must be greater than 0 GB.`,
+        `Invalid top-level \"storage\" value \"${storage}\" for the \"${name}\" Service. It must be greater than 0 GB.`,
       );
     }
     return value;
-  }
-
-  function validateRange(label: string, min: number, max?: number) {
-    if (min <= 0) {
-      throw new VisibleError(`\"${label}.min\" must be greater than 0.`);
-    }
-    if (max !== undefined && max < min) {
-      throw new VisibleError(
-        `\"${label}.max\" must be greater than or equal to \"${label}.min\".`,
-      );
-    }
   }
 }
 
 export function createManagedCapacityProvider(
   name: string,
-  args: ManagedCapacityProviderArgs & {
-    capacity: Input<ManagedServiceCapacityArgs>;
-  },
+  args: ManagedCapacityProviderArgs,
   opts: ComponentResourceOptions,
   parent: Component,
   clusterName: Output<string>,
   vpc: ManagedVpcArgs,
   normalized: Output<NormalizedManagedCapacity>,
 ) {
-  const infrastructureRole = iam.Role.get(
-    `${name}ManagedInfrastructureRole`,
-    output(args.capacity).apply((v) => v.infrastructureRole),
-    {},
-    { parent },
+  const partition = getPartitionOutput({}, opts).partition;
+
+  const infrastructureRole = new iam.Role(
+    ...transform(
+      args.transform?.infrastructureRole,
+      `${name}ManagedInfrastructureRole`,
+      {
+        assumeRolePolicy: iam.assumeRolePolicyForPrincipal({
+          Service: "ecs.amazonaws.com",
+        }),
+        managedPolicyArns: [
+          interpolate`arn:${partition}:iam::aws:policy/AmazonECSInfrastructureRolePolicyForManagedInstances`,
+        ],
+      },
+      { parent },
+    ),
   );
 
-  const instanceProfileArn = output(args.capacity).apply((v) => {
-    if (v.instanceProfile) return v.instanceProfile;
-
-    return new iam.InstanceProfile(
-      ...transform(
-        args.transform?.instanceProfile,
-        `${name}ManagedInstanceProfile`,
-        {
-          role: output(v.instanceRole!).apply(extractRoleName),
-        },
-        { parent },
-      ),
-    ).arn;
-  });
+  const instanceProfileArn = getOrCreateManagedInstanceProfile(
+    name,
+    partition,
+    args.transform?.instanceRole,
+    args.transform?.instanceProfile,
+    parent,
+    opts,
+  ).arn;
 
   return new ecs.CapacityProvider(
     ...transform(
@@ -344,55 +245,120 @@ export function createManagedCapacityProvider(
           vpc.containerSubnets,
           vpc.securityGroups,
         ]).apply(
-          ([normalized, infrastructureRoleArn, instanceProfileArn, subnets, securityGroups]) => ({
+          ([
+            normalized,
             infrastructureRoleArn,
-            propagateTags: "CAPACITY_PROVIDER",
-            instanceLaunchTemplate: {
-              ec2InstanceProfileArn: instanceProfileArn,
-              networkConfiguration: {
-                subnets,
-                securityGroups,
-              },
-              ...(normalized.hostStorage
-                ? {
-                    storageConfiguration: {
-                      storageSizeGib: normalized.hostStorage,
-                    },
-                  }
-                : {}),
-              instanceRequirements: {
-                vcpuCount: {
-                  min: normalized.hostCpu.min,
-                  max: normalized.hostCpu.max,
+            instanceProfileArn,
+            subnets,
+            securityGroups,
+          ]) => {
+            const managedInstancesProvider = {
+              infrastructureRoleArn,
+              propagateTags: "CAPACITY_PROVIDER" as const,
+              instanceLaunchTemplate: {
+                ec2InstanceProfileArn: instanceProfileArn,
+                networkConfiguration: {
+                  subnets,
+                  securityGroups,
                 },
-                memoryMib: {
-                  min: normalized.hostMemory.min,
-                  max: normalized.hostMemory.max,
-                },
-                instanceGenerations: ["current"],
-                ...(normalized.gpu
+                ...(normalized.hostStorage
                   ? {
-                      acceleratorTypes: ["gpu"],
-                      acceleratorCount: {
-                        min: normalized.gpu.count.min,
-                        max: normalized.gpu.count.max,
+                      storageConfiguration: {
+                        storageSizeGib: normalized.hostStorage,
                       },
-                      acceleratorManufacturers: [normalized.gpu.manufacturer],
-                      ...(normalized.gpu.names
-                        ? {
-                            acceleratorNames: normalized.gpu.names,
-                          }
-                        : {}),
                     }
                   : {}),
+                instanceRequirements: {
+                  vcpuCount: {
+                    min: normalized.hostCpu.min,
+                    max: normalized.hostCpu.max,
+                  },
+                  memoryMib: {
+                    min: normalized.hostMemory.min,
+                    max: normalized.hostMemory.max,
+                  },
+                  instanceGenerations: ["current"],
+                  ...(normalized.gpu
+                    ? {
+                        acceleratorTypes: ["gpu"],
+                        acceleratorCount: {
+                          min: normalized.gpu.count.min,
+                          max: normalized.gpu.count.max,
+                        },
+                        acceleratorManufacturers: [normalized.gpu.manufacturer],
+                        ...(normalized.gpu.names
+                          ? {
+                              acceleratorNames: normalized.gpu.names,
+                            }
+                          : {}),
+                      }
+                    : {}),
+                },
               },
-            },
-          }),
+            };
+
+            return managedInstancesProvider;
+          },
         ),
       },
       { parent },
     ),
   );
+}
+
+const sharedManagedInstanceProfileByProvider = new WeakMap<
+  object,
+  iam.InstanceProfile
+>();
+let defaultManagedInstanceProfile: iam.InstanceProfile | undefined;
+
+function getOrCreateManagedInstanceProfile(
+  name: string,
+  partition: Output<string>,
+  roleTransform: Transform<iam.RoleArgs> | undefined,
+  profileTransform: Transform<iam.InstanceProfileArgs> | undefined,
+  parent: Component,
+  opts: ComponentResourceOptions,
+) {
+  const provider = opts.provider;
+  const existing = provider
+    ? sharedManagedInstanceProfileByProvider.get(provider)
+    : defaultManagedInstanceProfile;
+  if (existing) return existing;
+
+  const role = new iam.Role(
+    ...transform(
+      roleTransform,
+      `${name}ManagedInstancesEcsInstanceRole`,
+      {
+        name: "ecsInstanceRole",
+        assumeRolePolicy: iam.assumeRolePolicyForPrincipal({
+          Service: "ec2.amazonaws.com",
+        }),
+        managedPolicyArns: [
+          interpolate`arn:${partition}:iam::aws:policy/AmazonECSInstanceRolePolicyForManagedInstances`,
+        ],
+      },
+      { parent },
+    ),
+  );
+
+  const profile = new iam.InstanceProfile(
+    ...transform(
+      profileTransform,
+      `${name}ManagedInstancesEcsInstanceProfile`,
+      {
+        name: "ecsInstanceRole",
+        role: role.name,
+      },
+      { parent },
+    ),
+  );
+
+  if (provider) sharedManagedInstanceProfileByProvider.set(provider, profile);
+  else defaultManagedInstanceProfile = profile;
+
+  return profile;
 }
 
 export function createManagedTaskDefinition(
@@ -422,10 +388,14 @@ export function createManagedTaskDefinition(
       return containers.map((container) => ({
         name: container.name,
         image: (() => {
-          if (typeof container.image === "string") return output(container.image);
+          if (typeof container.image === "string")
+            return output(container.image);
 
           const containerImage = container.image;
-          const contextPath = path.join($cli.paths.root, container.image.context);
+          const contextPath = path.join(
+            $cli.paths.root,
+            container.image.context,
+          );
           const dockerfile = container.image.dockerfile ?? "Dockerfile";
           const dockerfilePath = path.join(contextPath, dockerfile);
           const dockerIgnorePath = fs.existsSync(
@@ -553,10 +523,12 @@ export function createManagedTaskDefinition(
           sourceVolume: volume.efs.accessPoint,
           containerPath: volume.path,
         })),
-        secrets: Object.entries(container.ssm ?? {}).map(([name, valueFrom]) => ({
-          name,
-          valueFrom,
-        })),
+        secrets: Object.entries(container.ssm ?? {}).map(
+          ([name, valueFrom]) => ({
+            name,
+            valueFrom,
+          }),
+        ),
         resourceRequirements: normalized.gpu
           ? [{ type: "GPU", value: normalized.gpu.count.min.toString() }]
           : undefined,
@@ -607,16 +579,4 @@ export function createManagedTaskDefinition(
       ),
     ),
   );
-}
-
-export function isManagedCapacityInput(
-  capacity: unknown,
-): capacity is {
-  managed: Input<ManagedServiceCapacityArgs>;
-} {
-  return typeof capacity === "object" && capacity !== null && "managed" in capacity;
-}
-
-function extractRoleName(role: string) {
-  return role.split("/").pop()!;
 }
