@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/sst/sst/v3/cmd/sst/cli"
@@ -27,7 +29,8 @@ func CmdShell(c *cli.Cli) error {
 	cwd, _ := os.Getwd()
 	currentDir := cwd
 	for {
-		newPath := filepath.Join(currentDir, "node_modules", ".bin") + string(os.PathListSeparator) + os.Getenv("PATH")
+		nodeBinPath := filepath.Join(currentDir, "node_modules", ".bin")
+		newPath := nodeBinPath + string(os.PathListSeparator) + os.Getenv("PATH")
 		os.Setenv("PATH", newPath)
 		parentDir := filepath.Dir(currentDir)
 		if parentDir == currentDir {
@@ -36,13 +39,33 @@ func CmdShell(c *cli.Cli) error {
 		currentDir = parentDir
 	}
 	if len(args) == 0 {
-		args = append(args, "sh")
+		switch runtime.GOOS {
+		case "windows":
+			args = append(args, "cmd")
+		default:
+			args = append(args, "sh")
+		}
 	}
-	cmd := process.Command(
-		args[0],
-		args[1:]...,
-	)
-	// Get the environment variables
+
+	// On Windows, when executing commands like cross-env that manage their own environment,
+	// bypass cmd.exe and execute directly when possible
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" && len(args) > 0 && args[0] != "cmd" {
+		// Try to find the executable directly
+		if execPath, err := exec.LookPath(args[0]); err == nil {
+			// Use exec.Command directly instead of process.Command to avoid potential issues
+			cmd = exec.Command(execPath, args[1:]...)
+			// Track it manually since we're not using process.Command
+			// (Note: this skips the process tracking in the process package)
+		} else {
+			cmd = process.Command(args[0], args[1:]...)
+		}
+	} else {
+		cmd = process.Command(args[0], args[1:]...)
+	}
+	// Initialize with current environment variables
+	cmd.Env = os.Environ()
+	// Add SST-specific environment variables
 	cmd.Env = append(cmd.Env,
 		fmt.Sprintf("PS1=%s/%s> ", p.App().Name, p.App().Stage),
 	)
@@ -50,6 +73,7 @@ func CmdShell(c *cli.Cli) error {
 	if err != nil {
 		return err
 	}
+
 	target := c.String("target")
 	if target != "" {
 		cmd.Env = append(cmd.Env, c.Env()...)
@@ -62,24 +86,51 @@ func CmdShell(c *cli.Cli) error {
 		}
 	}
 	if target == "" {
-		env := map[string]string{}
-		for _, item := range os.Environ() {
-			key, value, _ := strings.Cut(item, "=")
-			env[key] = value
-		}
-		for resource, value := range complete.Links {
-			jsonValue, err := json.Marshal(value.Properties)
+		// On Windows with many resources, use a consolidated environment variable to avoid 32KB limit
+		if runtime.GOOS == "windows" && len(complete.Links) > 50 {
+			// Create a single JSON with all resources
+			allResources := make(map[string]any)
+			for resource, value := range complete.Links {
+				allResources[resource] = value.Properties
+			}
+			allResources["App"] = map[string]string{
+				"name":  p.App().Name,
+				"stage": p.App().Stage,
+			}
+
+			jsonData, err := json.Marshal(allResources)
 			if err != nil {
 				return err
 			}
-			env[fmt.Sprintf("SST_RESOURCE_%s", resource)] = string(jsonValue)
+
+			// Set as single environment variable that the SDK can parse
+			resourcesEnv := fmt.Sprintf("SST_RESOURCES_JSON=%s", string(jsonData))
+			cmd.Env = append(cmd.Env, resourcesEnv)
+		} else {
+			// Original approach: Add individual SST resource environment variables
+			for resource, value := range complete.Links {
+				jsonValue, err := json.Marshal(value.Properties)
+				if err != nil {
+					return err
+				}
+				envVar := fmt.Sprintf("SST_RESOURCE_%s=%s", resource, string(jsonValue))
+				cmd.Env = append(cmd.Env, envVar)
+			}
+			appEnv := fmt.Sprintf("SST_RESOURCE_App=%s", fmt.Sprintf(`{"name": "%s", "stage": "%s" }`, p.App().Name, p.App().Stage))
+			cmd.Env = append(cmd.Env, appEnv)
 		}
-		env["SST_RESOURCE_App"] = fmt.Sprintf(`{"name": "%s", "stage": "%s" }`, p.App().Name, p.App().Stage)
 
 		aws, ok := p.Provider("aws")
 		if ok {
-			// newer versions of aws-sdk do not like it when you specify both profile and credentials
-			delete(env, "AWS_PROFILE")
+			// Remove AWS_PROFILE from environment
+			filteredEnv := []string{}
+			for _, envVar := range cmd.Env {
+				if !strings.HasPrefix(envVar, "AWS_PROFILE=") {
+					filteredEnv = append(filteredEnv, envVar)
+				}
+			}
+			cmd.Env = filteredEnv
+
 			provider := aws.(*provider.AwsProvider)
 			cfg := provider.Config()
 			creds, err := cfg.Credentials.Retrieve(c.Context)
@@ -92,10 +143,6 @@ func CmdShell(c *cli.Cli) error {
 			if cfg.Region != "" {
 				cmd.Env = append(cmd.Env, fmt.Sprintf("AWS_REGION=%s", cfg.Region))
 			}
-		}
-
-		for key, val := range env {
-			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", key, val))
 		}
 	}
 	cmd.Stdout = os.Stdout

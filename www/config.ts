@@ -1,5 +1,5 @@
 export default {
-  starsPlaceholder: "24K",
+  starsPlaceholder: "25K",
   download: {
     curl: "curl -fsSL",
     url: "https://sst.dev/install",
@@ -21,6 +21,10 @@ export default {
     "jay": {
       name: "Jay",
       twitter: "https://x.com/jayair",
+    },
+    "vimtor": {
+      name: "vimtor",
+      twitter: "https://x.com/vimtor",
     },
   },
   email: "hello@sst.dev",

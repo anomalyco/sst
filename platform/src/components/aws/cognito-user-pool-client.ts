@@ -31,6 +31,7 @@ export class CognitoUserPoolClient extends Component implements Link.Linkable {
     const parent = this;
 
     const providers = normalizeProviders();
+    const callbackUrls = normalizeCallbackUrls();
     const client = createClient();
 
     this.client = client;
@@ -38,6 +39,11 @@ export class CognitoUserPoolClient extends Component implements Link.Linkable {
     function normalizeProviders() {
       if (!args.providers) return ["COGNITO"];
       return output(args.providers);
+    }
+
+    function normalizeCallbackUrls() {
+      if (!args.callbackUrls) return ["https://example.com"];
+      return output(args.callbackUrls);
     }
 
     function createClient() {
@@ -57,7 +63,7 @@ export class CognitoUserPoolClient extends Component implements Link.Linkable {
               "openid",
               "aws.cognito.signin.user.admin",
             ],
-            callbackUrls: ["https://example.com"],
+            callbackUrls: callbackUrls,
             supportedIdentityProviders: providers,
           },
           { parent },

@@ -1,9 +1,11 @@
 package tunnel
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -43,6 +45,26 @@ func (p *linuxPlatform) install() error {
 	}
 	err = os.Chmod(BINARY_PATH, 0755)
 	user := os.Getenv("SUDO_USER")
+
+	if isNixOS() {
+		slog.Info("NixOS detected")
+		command := BINARY_PATH + " tunnel start *"
+		fmt.Println("For NixOS users you will also need to declare the following sudo configuration to complete the setup:")
+		fmt.Println("")
+		fmt.Println("  security.sudo.extraRules = [")
+		fmt.Println("    {")
+		fmt.Println("      users = [\"" + user + "\"]; # Your user")
+		fmt.Println("      commands = [")
+		fmt.Println("        {")
+		fmt.Println("          command = \"" + command + "\";")
+		fmt.Println("          options = [\"NOPASSWD\" \"SETENV\"];")
+		fmt.Println("        }")
+		fmt.Println("      ];")
+		fmt.Println("    }")
+		fmt.Println("  ];")
+		return nil
+	}
+
 	sudoersPath := "/etc/sudoers.d/sst-" + strings.ReplaceAll(user, ".", "")
 	slog.Info("creating sudoers file", "path", sudoersPath)
 	command := BINARY_PATH + " tunnel start *"
@@ -85,6 +107,11 @@ func (p *linuxPlatform) start(routes ...string) error {
 	return nil
 }
 
+func (p *linuxPlatform) isRunning() bool {
+	_, err := net.InterfaceByName(resolveInterface())
+	return err == nil
+}
+
 func (p *linuxPlatform) destroy() error {
 	name := resolveInterface()
 	return runCommands([][]string{
@@ -95,4 +122,19 @@ func (p *linuxPlatform) destroy() error {
 
 func resolveInterface() string {
 	return "sst"
+}
+
+func isNixOS() bool {
+	file, err := os.Open("/etc/os-release")
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		if strings.Contains(scanner.Text(), "ID=nixos") {
+			return true
+		}
+	}
+	return false
 }

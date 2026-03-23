@@ -21,6 +21,11 @@ import { RdsRoleLookup } from "./providers/rds-role-lookup";
 export interface MysqlArgs {
   /**
    * The MySQL engine version. Check out the [available versions in your region](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/MySQL.Concepts.VersionMgmt.html).
+   *
+   * :::caution
+   * Changing the version will **immediately** apply the update on the next `sst deploy` possibly causing downtime.
+   * :::
+   *
    * @default `"8.0.40"`
    * @example
    * ```js
@@ -33,7 +38,7 @@ export interface MysqlArgs {
   /**
    * The username of the master user.
    *
-   * :::caution
+   * :::danger
    * Changing the username will cause the database to be destroyed and recreated.
    * :::
    *
@@ -72,6 +77,10 @@ export interface MysqlArgs {
    * underscores. By default, it takes the name of the app, and replaces the hyphens with
    * underscores.
    *
+   * :::danger
+   * Changing the database name will cause the database to be destroyed and recreated.
+   * :::
+   *
    * @default Based on the name of the current app
    * @example
    * ```js
@@ -84,6 +93,10 @@ export interface MysqlArgs {
   /**
    * The type of instance to use for the database. Check out the [supported instance types](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.DBInstanceClass.Types.html).
    *
+   * :::caution
+   * Changing the instance type will **immediately** apply the update on the next `sst deploy` possibly causing downtime.
+   * :::
+   *
    * @default `"t4g.micro"`
    * @example
    * ```js
@@ -91,10 +104,6 @@ export interface MysqlArgs {
    *   instance: "m7g.xlarge"
    * }
    * ```
-   *
-   * By default, these changes are not applied immediately by RDS. Instead, they are
-   * applied in the next maintenance window. Check out the [full list](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_ModifyInstance.Settings.html)
-   * of props that are not applied immediately.
    */
   instance?: Input<string>;
   /**
@@ -497,7 +506,7 @@ export class Mysql extends Component implements Link.Linkable {
         parent: self,
       });
 
-      const input = instance.tags.apply((tags) => {
+      const input = instance.tagsAll.apply((tags) => {
         return {
           proxyId: output(ref.proxyId),
           passwordTag: tags?.["sst:ref:password"],
@@ -649,7 +658,12 @@ Listening on "${dev.host}:${dev.port}"...`,
               },
             ],
           },
-          { parent: self },
+          {
+            parent: self,
+            // Necessary for the parameter group to be deleted AFTER upgrading the instance.
+            // This is either a Pulumi bug or an undocumented feature.
+            deleteBeforeReplace: false,
+          },
         ),
       );
     }
@@ -692,6 +706,9 @@ Listening on "${dev.host}:${dev.port}"...`,
             username,
             password,
             parameterGroupName: parameterGroup.name,
+            applyImmediately: true,
+            allowMajorVersionUpgrade: true,
+            autoMinorVersionUpgrade: false,
             skipFinalSnapshot: true,
             storageEncrypted: true,
             storageType: "gp3",
@@ -731,6 +748,7 @@ Listening on "${dev.host}:${dev.port}"...`,
                 username: instance.username,
                 password: instance.password.apply((v) => v!),
                 parameterGroupName: instance.parameterGroupName,
+                applyImmediately: true,
                 skipFinalSnapshot: true,
                 storageEncrypted: instance.storageEncrypted.apply((v) => v!),
                 storageType: instance.storageType,

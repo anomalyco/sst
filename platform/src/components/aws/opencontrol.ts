@@ -45,15 +45,18 @@ export interface OpenControlArgs {
    */
   server: Input<string | FunctionArgs>;
 }
-
 /**
+ * The `OpenControl` component has been deprecated. It should not be used for new projects.
+ *
+ * :::caution
+ * This component has been deprecated.
+ * :::
+ *
  * The `OpenControl` component lets you deploy your
  * [OpenControl](https://opencontrol.ai) server to
  * [AWS Lambda](https://aws.amazon.com/lambda/).
  *
- * :::note
- * OpenControl is currently in beta.
- * :::
+ * @deprecated Use OpenControl outside of SST instead.
  *
  * @example
  *
@@ -65,7 +68,7 @@ export interface OpenControlArgs {
  * });
  * ```
  *
- * #### Link your AI API keys 
+ * #### Link your AI API keys
  *
  * ```ts title="sst.config.ts" {6}
  * const anthropicKey = new sst.Secret("AnthropicKey");
@@ -189,14 +192,12 @@ export class OpenControl extends Component {
           environment: {
             OPENCONTROL_KEY: key,
           },
-          url: true,
+          url: {
+            cors: false,
+          },
           _skipHint: true,
         },
-        (args) => {
-          args.url = {
-            cors: false,
-          };
-        },
+        undefined,
         { parent: self },
       ).apply((v) => v.getFunction());
     }

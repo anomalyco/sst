@@ -118,7 +118,7 @@ export class Secret extends Component implements Link.Linkable {
       {},
     );
     this._name = name;
-    this._placeholder = placeholder ? output(placeholder) : undefined;
+    this._placeholder = placeholder !== undefined ? output(placeholder) : undefined;
     this._value = output(
       process.env["SST_SECRET_" + this._name] ?? this._placeholder,
     ).apply((value) => {

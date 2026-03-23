@@ -18,6 +18,7 @@ import (
 
 	"github.com/pulumi/pulumi/sdk/v3/go/auto/events"
 	"github.com/pulumi/pulumi/sdk/v3/go/common/apitype"
+	"github.com/sst/sst/v3/internal/util"
 	"github.com/sst/sst/v3/pkg/bus"
 	"github.com/sst/sst/v3/pkg/flag"
 	"github.com/sst/sst/v3/pkg/global"
@@ -262,8 +263,15 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 		"PULUMI_SKIP_UPDATE_CHECK=true",
 		"PULUMI_BACKEND_URL=file://"+filepath.ToSlash(workdir.Backend()),
 		"PULUMI_DEBUG_COMMANDS=true",
+		"PULUMI_IGNORE_AMBIENT_PLUGINS=true",
 		// "PULUMI_DISABLE_AUTOMATIC_PLUGIN_ACQUISITION=true",
-		"NODE_OPTIONS=--enable-source-maps --no-deprecation",
+		"NODE_OPTIONS="+func() string {
+			nodeOptions := "--enable-source-maps --no-deprecation"
+			if existing := os.Getenv("NODE_OPTIONS"); existing != "" {
+				nodeOptions = existing + " " + nodeOptions
+			}
+			return nodeOptions
+		}(),
 		"PULUMI_HOME="+global.ConfigDir(),
 	)
 	if input.ServerPort != 0 {
@@ -287,9 +295,20 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 		"--event-log", eventlogPath,
 	}
 
-	if input.Command == "deploy" || input.Command == "diff" {
+	if input.Command == "deploy" {
+		upgradeMsgs := p.checkProviderUpgrade(completed.Resources)
+		if len(upgradeMsgs) > 0 {
+			return util.NewReadableError(nil, strings.Join(upgradeMsgs, "\n\n"))
+		}
+	}
+
+	if input.Command == "deploy" || input.Command == "diff" || input.Command == "refresh" {
 		for provider, opts := range p.app.Providers {
 			for key, value := range opts.(map[string]interface{}) {
+				// Skip SST-only fields that Pulumi doesn't understand
+				if key == "package" {
+					continue
+				}
 				switch v := value.(type) {
 				case map[string]interface{}:
 					bytes, err := json.Marshal(v)
@@ -314,11 +333,19 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	case "diff":
 		args = append([]string{"preview"}, args...)
 	case "refresh":
-		args = append([]string{"refresh", "--yes"}, args...)
+		args = append([]string{"refresh", "--yes", "--run-program"}, args...)
 	case "deploy":
 		args = append([]string{"up", "--yes", "-f"}, args...)
 	case "remove":
 		args = append([]string{"destroy", "--yes", "-f"}, args...)
+	}
+
+	if (input.Command == "diff" || input.Command == "deploy") && input.PolicyPath != "" {
+		policyPath, err := p.ResolvePolicyPackPath(input.PolicyPath)
+		if err != nil {
+			return util.NewReadableError(nil, err.Error())
+		}
+		args = append(args, "--policy-pack", policyPath)
 	}
 
 	if input.Target != nil {
@@ -327,12 +354,27 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 				return res.URN.Name() == item
 			})
 			if index == -1 {
-				return fmt.Errorf("Target not found: %v", item)
+				return util.NewReadableError(nil, fmt.Sprintf("Target not found: %v", item))
 			}
 			args = append(args, "--target", string(completed.Resources[index].URN))
 		}
 		if len(input.Target) > 0 {
 			args = append(args, "--target-dependents")
+		}
+	}
+
+	if input.Exclude != nil {
+		for _, item := range input.Exclude {
+			index := slices.IndexFunc(completed.Resources, func(res apitype.ResourceV3) bool {
+				return res.URN.Name() == item
+			})
+			if index == -1 {
+				return util.NewReadableError(nil, fmt.Sprintf("Exclude target not found: %v", item))
+			}
+			args = append(args, "--exclude", string(completed.Resources[index].URN))
+		}
+		if len(input.Exclude) > 0 {
+			args = append(args, "--exclude-dependents")
 		}
 	}
 
@@ -347,6 +389,9 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	errors := []Error{}
 	finished := false
 	importDiffs := map[string][]ImportDiff{}
+	hasPolicyFlag := input.PolicyPath != ""
+	hasPolicyEvents := false
+	hasPolicyViolations := false
 
 	partial := make(chan int, 1000)
 	partialContext, partialCancel := context.WithCancel(ctx)
@@ -376,7 +421,7 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	}
 	exited := make(chan struct{})
 	go func() {
-		cmd.Wait()
+		err := cmd.Wait()
 		log.Info("pulumi exited", "err", err)
 		close(exited)
 	}()
@@ -443,6 +488,35 @@ loop:
 		if err != nil {
 			log.Error("failed to unmarshal event", "err", err)
 			continue
+		}
+
+		if event.PolicyEvent != nil {
+			hasPolicyEvents = true
+			message := fmt.Sprintf("Policy: %s\n%s",
+				event.PolicyEvent.PolicyName,
+				strings.TrimSpace(event.PolicyEvent.Message))
+
+			if event.PolicyEvent.EnforcementLevel == "mandatory" {
+				log.Info("policy violation",
+					"policy", event.PolicyEvent.PolicyName,
+					"urn", event.PolicyEvent.ResourceURN)
+
+				errors = append(errors, Error{
+					Message: message,
+					URN:     event.PolicyEvent.ResourceURN,
+				})
+				hasPolicyViolations = true
+			} else if event.PolicyEvent.EnforcementLevel == "advisory" {
+				log.Info("policy advisory",
+					"policy", event.PolicyEvent.PolicyName,
+					"urn", event.PolicyEvent.ResourceURN)
+
+				bus.Publish(&PolicyAdvisoryEvent{
+					Policy:  event.PolicyEvent.PolicyName,
+					Message: strings.TrimSpace(event.PolicyEvent.Message),
+					URN:     event.PolicyEvent.ResourceURN,
+				})
+			}
 		}
 
 		if event.DiagnosticEvent != nil && event.DiagnosticEvent.Severity == "error" {
@@ -518,6 +592,47 @@ loop:
 		}
 	}
 
+	// fallback: re-read the event log if the tailing loop missed SummaryEvent
+	if !finished {
+		if data, err := os.ReadFile(eventlogPath); err == nil {
+			for _, line := range strings.Split(string(data), "\n") {
+				if line == "" {
+					continue
+				}
+				var ev events.EngineEvent
+				if json.Unmarshal([]byte(line), &ev) == nil && ev.SummaryEvent != nil {
+					finished = true
+					break
+				}
+			}
+		}
+	}
+
+	// if pulumi exited without completing and no resource errors were captured,
+	// check stderr for the actual error (e.g. snapshot integrity failures)
+	if !finished && len(errors) == 0 {
+		if data, err := os.ReadFile(pulumiStderr.Name()); err == nil {
+			stderr := strings.TrimSpace(string(data))
+			if stderr != "" {
+				if strings.Contains(stderr, "snapshot integrity") {
+					errors = append(errors, Error{
+						Message: "Your app state is corrupted.",
+						Help: []string{
+							"Run `sst state repair` to fix state integrity issues",
+							"Learn more: https://sst.dev/docs/reference/cli/#state-repair",
+						},
+					})
+				} else {
+					msg := strings.SplitN(stderr, "\n", 2)[0]
+					msg = strings.TrimPrefix(msg, "error: ")
+					errors = append(errors, Error{
+						Message: msg,
+					})
+				}
+			}
+		}
+	}
+
 	log.Info("parsing state")
 	complete, err := getCompletedEvent(context.Background(), passphrase, workdir)
 	if err != nil {
@@ -566,7 +681,14 @@ loop:
 	}
 
 	log.Info("done running stack command", "resources", len(complete.Resources))
+
 	if cmd.ProcessState.ExitCode() > 0 {
+		if hasPolicyViolations {
+			return ErrPolicyViolation
+		}
+		if hasPolicyFlag && !hasPolicyEvents && len(errors) == 0 {
+			return ErrPolicyConfigError
+		}
 		return ErrStackRunFailed
 	}
 	return nil

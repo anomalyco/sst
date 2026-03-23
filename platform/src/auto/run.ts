@@ -28,7 +28,15 @@ function addTransformationToRetainResourcesOnDelete() {
       ($app.removal === "retain" &&
         [
           "aws:dynamodb/table:Table",
+          "aws:ec2/defaultSecurityGroup:DefaultSecurityGroup",
+          "aws:ec2/subnet:Subnet",
+          "aws:ec2/vpc:Vpc",
+          "aws:rds/cluster:Cluster",
+          "aws:rds/clusterParameterGroup:ClusterParameterGroup",
           "aws:rds/instance:Instance",
+          "aws:rds/parameterGroup:ParameterGroup",
+          "aws:rds/subnetGroup:SubnetGroup",
+          "aws:dsql/cluster:Cluster",
           "aws:s3/bucket:Bucket",
           "aws:s3/bucketV2:BucketV2",
           "planetscale:index/database:Database",

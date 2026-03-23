@@ -61,6 +61,9 @@ func CmdUI(c *cli.Cli) error {
 			aws.TaskMissingCommandEvent{},
 		)
 	}
+	if filter == "function" || filter == "task" {
+		types = append(types, ui.PaneFilterEvent{})
+	}
 	if filter == "sst" || filter == "" {
 		u = ui.New(c.Context, ui.WithDev)
 		types = append(types,
@@ -101,7 +104,14 @@ func CmdUI(c *cli.Cli) error {
 				c.Cancel()
 				return nil
 			}
+		switch e := evt.(type) {
+		case *ui.PaneFilterEvent:
+			if e.PaneKey == filter {
+				u.SetFilter(e.Value, e.PaneKey)
+			}
+		default:
 			u.Event(evt)
+		}
 		}
 	}
 }

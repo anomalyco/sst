@@ -5,7 +5,7 @@ import {
   Output,
   output,
 } from "@pulumi/pulumi";
-import { Function, FunctionArn, FunctionArgs } from "../function";
+import { Function, FunctionArn, FunctionArgs } from "../function.js";
 import { transform, Transform } from "../../component";
 import { VisibleError } from "../../error";
 
@@ -13,6 +13,7 @@ export type FunctionBuilder = Output<{
   getFunction: () => Function;
   arn: Output<string>;
   invokeArn: Output<string>;
+  responseStreamingInvokeArn: Output<string>;
 }>;
 
 export function functionBuilder(
@@ -20,11 +21,43 @@ export function functionBuilder(
   definition: Input<string | FunctionArn | FunctionArgs>,
   defaultArgs: Pick<
     FunctionArgs,
-    "description" | "link" | "environment" | "permissions" | "url" | "_skipHint"
+    | "description"
+    | "link"
+    | "environment"
+    | "permissions"
+    | "url"
+    | "streaming"
+    | "_skipHint"
   >,
   argsTransform?: Transform<FunctionArgs>,
   opts?: ComponentResourceOptions,
 ): FunctionBuilder {
+  function buildResult(fn: Function) {
+    const lambdaFn = fn.nodes.function;
+    return {
+      getFunction: () => fn,
+      arn: all([lambdaFn.publish, lambdaFn.qualifiedArn, lambdaFn.arn]).apply(
+        ([publish, qualifiedArn, arn]) => (publish ? qualifiedArn : arn),
+      ),
+      invokeArn: all([
+        lambdaFn.publish,
+        lambdaFn.qualifiedInvokeArn,
+        lambdaFn.invokeArn,
+      ]).apply(([publish, qualifiedInvokeArn, invokeArn]) =>
+        publish ? qualifiedInvokeArn : invokeArn,
+      ),
+      responseStreamingInvokeArn: all([
+        lambdaFn.publish,
+        lambdaFn.arn,
+        lambdaFn.qualifiedArn,
+        lambdaFn.responseStreamingInvokeArn,
+      ]).apply(([publish, arn, qualifiedArn, streamingArn]) => {
+        if (!publish) return streamingArn;
+        return streamingArn.replace(arn, qualifiedArn);
+      }),
+    };
+  }
+
   return output(definition).apply((definition) => {
     if (typeof definition === "string") {
       // Case 1: The definition is an ARN
@@ -40,6 +73,9 @@ export function functionBuilder(
           invokeArn: output(
             `arn:${parts[1]}:apigateway:${parts[3]}:lambda:path/2015-03-31/functions/${definition}/invocations`,
           ),
+          responseStreamingInvokeArn: output(
+            `arn:${parts[1]}:apigateway:${parts[3]}:lambda:path/2015-03-31/functions/${definition}:*/response-streaming-invocations`,
+          ),
         };
       }
 
@@ -52,11 +88,7 @@ export function functionBuilder(
           opts || {},
         ),
       );
-      return {
-        getFunction: () => fn,
-        arn: fn.arn,
-        invokeArn: fn.nodes.function.invokeArn,
-      };
+      return buildResult(fn);
     }
 
     // Case 3: The definition is a FunctionArgs
@@ -92,11 +124,7 @@ export function functionBuilder(
           opts || {},
         ),
       );
-      return {
-        getFunction: () => fn,
-        arn: fn.arn,
-        invokeArn: fn.nodes.function.invokeArn,
-      };
+      return buildResult(fn);
     }
     throw new Error(`Invalid function definition for the "${name}" Function`);
   });

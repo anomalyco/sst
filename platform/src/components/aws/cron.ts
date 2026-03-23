@@ -1,9 +1,10 @@
 import { all, ComponentResourceOptions, output, Output } from "@pulumi/pulumi";
 import { Component, Transform, transform } from "../component";
-import { FunctionArgs, FunctionArn } from "./function";
+import { FunctionArgs, FunctionArn } from "./function.js";
 import { Input } from "../input.js";
 import { cloudwatch, iam, lambda } from "@pulumi/aws";
 import { functionBuilder, FunctionBuilder } from "./helpers/function-builder";
+import { splitQualifiedFunctionArn } from "./helpers/arn";
 import { Task } from "./task";
 import { VisibleError } from "../error";
 
@@ -122,7 +123,7 @@ export interface CronArgs {
    * console.log(event.foo);
    * ```
    */
-  event?: Input<Record<string, Input<string>>>;
+  event?: Input<any>;
   /**
    * The schedule for the cron job.
    *
@@ -181,8 +182,16 @@ export interface CronArgs {
 }
 
 /**
+ * The `Cron` component has been deprecated. Use [`CronV2`](https://sst.dev/docs/component/aws/cron-v2) instead.
+ *
+ * :::caution
+ * This component has been deprecated.
+ * :::
+ *
  * The `Cron` component lets you add cron jobs to your app
  * using [Amazon Event Bus](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-event-bus.html). The cron job can invoke a `Function` or a container `Task`.
+ *
+ * @deprecated Use [`CronV2`](https://sst.dev/docs/component/aws/cron-v2) instead.
  *
  * @example
  * #### Cron job function
@@ -291,7 +300,8 @@ export class Cron extends Component {
         `${name}Permission`,
         {
           action: "lambda:InvokeFunction",
-          function: fn.arn,
+          function: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).unqualifiedArn),
+          qualifier: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).qualifier!),
           principal: "events.amazonaws.com",
           sourceArn: rule.arn,
         },

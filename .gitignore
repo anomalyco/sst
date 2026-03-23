@@ -7,9 +7,11 @@ Pulumi.yaml
 # osx
 .DS_Store
 
-# Local Netlify folder
 .netlify
 .env
 tmp
 .termai
 .opencode
+
+examples/*/sst-env.d.ts
+www/src/content/docs/docs/examples.mdx

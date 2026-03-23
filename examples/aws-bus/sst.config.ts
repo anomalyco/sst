@@ -1,5 +1,10 @@
 /// <reference path="./.sst/platform/config.d.ts" />
 
+/**
+ * ## AWS Bus subscriptions
+ *
+ * Subscribe bus events with AWS Lambda functions.
+ */
 export default $config({
   app(input) {
     return {
@@ -11,15 +16,12 @@ export default $config({
   async run() {
     const bus = new sst.aws.Bus("Bus");
 
-    const fn = new sst.aws.Function("Fn", {
-      handler: "./src/index.handler",
+    const publisher = new sst.aws.Function("Publisher", {
+      handler: "./src/publisher.handler",
       url: true,
       link: [bus],
     });
-    bus.subscribe("./src/receiver.handler");
 
-    return {
-      url: fn.url,
-    };
+    bus.subscribe("Example", "./src/receiver.handler");
   },
 });

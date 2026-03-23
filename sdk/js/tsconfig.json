@@ -10,9 +10,8 @@
     "moduleResolution": "NodeNext",
     "isolatedModules": true,
     "downlevelIteration": true,
+    "lib": ["ES2022", "DOM"],
+    "types": ["@types/node"]
   },
-  "exclude": [
-    "scripts",
-    "dist"
-  ]
+  "exclude": ["scripts", "dist"]
 }

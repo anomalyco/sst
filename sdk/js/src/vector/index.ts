@@ -31,7 +31,8 @@ export interface PutEvent {
 
 export interface QueryEvent {
   /**
-   * The vector used to query the database.
+   * The vector used to query the database. When omitted, performs a metadata-only
+   * query and returns `score: 0` for each result.
    * @example
    * ```js
    * {
@@ -39,10 +40,11 @@ export interface QueryEvent {
    * }
    * ```
    */
-  vector: number[];
+  vector?: number[];
   /**
    * The metadata used to filter the vectors.
    * Only vectors that match the provided fields will be returned.
+   * @default `{}`
    * @example
    * Given this filter.
    * ```js
@@ -71,7 +73,7 @@ export interface QueryEvent {
    *  }
    * ```
    */
-  include: Record<string, any>;
+  include?: Record<string, any>;
   /**
    * Exclude vectors with metadata that match the provided fields.
    * @example
@@ -190,13 +192,20 @@ export interface VectorClientResponse {
    */
   put: (event: PutEvent) => Promise<void>;
   /**
-   * Query vectors that are similar to the given vector
+   * Query vectors that are similar to the given vector.
    * @example
+   * Query by vector similarity.
    * ```ts title="src/lambda.ts"
    * const result = await client.query({
    *   vector: [32.4, 6.55, 11.2, 10.3, 87.9],
    *   include: { type: "movie" },
    *   exclude: { genre: "thriller" },
+   * });
+   * ```
+   * Query by metadata only (no vector). Returns `score: 0` for each result.
+   * ```ts title="src/lambda.ts"
+   * const result = await client.query({
+   *   include: { type: "movie" },
    * });
    * ```
    */
@@ -248,7 +257,7 @@ export function VectorClient<
         ? never
         : key
       : never]: Resource[key];
-  },
+  }
 >(name: T): VectorClientResponse {
   return {
     put: async (event: PutEvent) => {
@@ -256,7 +265,7 @@ export function VectorClient<
         // @ts-expect-error
         Resource[name].putFunction,
         JSON.stringify(event),
-        "Failed to store into the vector db",
+        "Failed to store into the vector db"
       );
     },
 
@@ -265,7 +274,7 @@ export function VectorClient<
         // @ts-expect-error
         Resource[name].queryFunction,
         JSON.stringify(event),
-        "Failed to query the vector db",
+        "Failed to query the vector db"
       );
     },
 
@@ -274,7 +283,7 @@ export function VectorClient<
         // @ts-expect-error
         Resource[name].removeFunction,
         JSON.stringify(event),
-        "Failed to remove from the vector db",
+        "Failed to remove from the vector db"
       );
     },
   };
@@ -284,7 +293,7 @@ async function invokeFunction<T>(
   functionName: string,
   body: string,
   errorMessage: string,
-  attempts = 0,
+  attempts = 0
 ): Promise<T> {
   try {
     const c = await client();
@@ -295,7 +304,7 @@ async function invokeFunction<T>(
         method: "POST",
         headers: { Accept: "application/json" },
         body,
-      },
+      }
     );
 
     // success
@@ -346,13 +355,13 @@ async function invokeFunction<T>(
 
     // retry
     await new Promise((resolve) =>
-      setTimeout(resolve, 1.5 ** attempts * 100 * Math.random()),
+      setTimeout(resolve, 1.5 ** attempts * 100 * Math.random())
     );
     return await invokeFunction<T>(
       functionName,
       body,
       errorMessage,
-      attempts + 1,
+      attempts + 1
     );
   }
 }

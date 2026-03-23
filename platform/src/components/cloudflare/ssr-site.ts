@@ -59,6 +59,9 @@ export abstract class SsrSite extends Component implements Link.Linkable {
         command: "npm run dev",
         directory: sitePath,
         autostart: true,
+        links: output(args.link || [])
+          .apply(Link.build)
+          .apply((links) => links.map((link) => link.name)),
       },
       _metadata: {
         mode: $dev ? "placeholder" : "deployed",
