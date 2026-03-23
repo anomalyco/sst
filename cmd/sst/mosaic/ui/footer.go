@@ -35,7 +35,8 @@ type footer struct {
 
 	input chan any
 
-	previous string
+	previous      string
+	previousWidth int
 }
 
 type op struct {
@@ -90,7 +91,7 @@ func (m *footer) Start(ctx context.Context) {
 }
 
 func (m *footer) clear() {
-	oldLines := strings.Split(m.previous, "\n")
+	oldLines := splitFooterLines(m.previous)
 	out := &bytes.Buffer{}
 	if len(oldLines) > 0 {
 		for i := range oldLines {
@@ -105,14 +106,14 @@ func (m *footer) clear() {
 }
 
 func (m *footer) Render(width int, next string) {
-	oldLines := strings.Split(m.previous, "\n")
-	nextLines := strings.Split(next, "\n")
+	if next == m.previous && (next == "" || width == m.previousWidth) {
+		return
+	}
+
+	oldLines := splitFooterLines(m.previous)
+	nextLines := splitFooterLines(next)
 
 	out := &bytes.Buffer{}
-
-	// if next == m.previous {
-	// 	return
-	// }
 
 	if len(oldLines) > 0 {
 		for i := range oldLines {
@@ -129,8 +130,7 @@ func (m *footer) Render(width int, next string) {
 		if i == 0 {
 			out.WriteByte('\r')
 		}
-		truncated := ansi.Truncate(line, width, "…")
-		out.WriteString(truncated)
+		out.WriteString(renderFooterLine(line, width))
 		out.WriteString(ansi.EraseLine(0))
 		if i < len(nextLines)-1 {
 			out.WriteString("\r\n")
@@ -139,6 +139,21 @@ func (m *footer) Render(width int, next string) {
 	out.WriteString(ansi.CursorLeft(10000))
 	os.Stdout.Write(out.Bytes())
 	m.previous = next
+	m.previousWidth = width
+}
+
+func splitFooterLines(value string) []string {
+	if value == "" {
+		return nil
+	}
+	return strings.Split(value, "\n")
+}
+
+func renderFooterLine(value string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	return ansi.Truncate(value, width, "…")
 }
 
 func (m *footer) Reset() {
