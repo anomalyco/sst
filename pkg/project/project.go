@@ -206,8 +206,10 @@ console.log("~j" + JSON.stringify(await mod.app({
 			}
 
 			for name, args := range proj.app.Providers {
-				if argsBool, ok := args.(bool); ok && argsBool {
-					proj.app.Providers[name] = make(map[string]interface{})
+				if _, ok := args.(bool); ok {
+					return nil, util.NewReadableError(nil,
+						fmt.Sprintf(`Setting providers.%s to true is deprecated. Specify the version explicitly instead.`, name),
+					)
 				}
 
 				if argsString, ok := args.(string); ok {

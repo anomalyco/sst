@@ -13,6 +13,8 @@ import (
 
 func (s *Multiplexer) draw() {
 	defer s.screen.Show()
+	s.screen.Clear()
+	softGray := tcell.NewRGBColor(138, 138, 138)
 	for _, w := range s.stack.Widgets() {
 		s.stack.RemoveWidget(w)
 	}
@@ -42,7 +44,7 @@ func (s *Multiplexer) draw() {
 		}
 		title := views.NewTextBar()
 		title.SetStyle(style)
-		title.SetLeft(" "+item.Icon+" "+label, textStyle)
+		title.SetLeft(item.Icon+" "+label, textStyle)
 		s.stack.AddWidget(title, 0)
 	}
 	s.stack.AddWidget(views.NewSpacer(), 1)
@@ -101,16 +103,16 @@ func (s *Multiplexer) draw() {
 	for _, key := range keys {
 		label := hotkeys[key]
 		title := views.NewTextBar()
-		title.SetStyle(tcell.StyleDefault.Foreground(tcell.ColorGray))
-		title.SetLeft(" "+key, tcell.StyleDefault.Foreground(tcell.ColorGray).Bold(true))
-		title.SetRight(label+"  ", tcell.StyleDefault)
+		title.SetStyle(tcell.StyleDefault.Foreground(softGray))
+		title.SetLeft(key, tcell.StyleDefault.Foreground(softGray).Bold(true))
+		title.SetRight(label+" ", tcell.StyleDefault)
 		s.stack.AddWidget(title, 0)
 	}
 	s.stack.Draw()
 
-	borderStyle := tcell.StyleDefault.Foreground(tcell.ColorGray)
-	for i := 0; i < s.height; i++ {
-		s.screen.SetContent(SIDEBAR_WIDTH-1, i, '│', nil, borderStyle)
+	borderStyle := tcell.StyleDefault.Foreground(tcell.ColorGray).Dim(true)
+	for i := PAD_HEIGHT; i < s.height-PAD_HEIGHT; i++ {
+		s.screen.SetContent(SIDEBAR_WIDTH, i, '│', nil, borderStyle)
 	}
 
 	// render virtual terminal
@@ -118,7 +120,7 @@ func (s *Multiplexer) draw() {
 		selected.vt.Draw()
 		if s.focused {
 			y, x, _, _ := selected.vt.Cursor()
-			s.screen.ShowCursor(SIDEBAR_WIDTH+1+x, y+PAD_HEIGHT)
+			s.screen.ShowCursor(s.mainX()+x, y+s.contentY())
 		}
 		if !s.focused {
 			s.screen.HideCursor()
@@ -134,34 +136,38 @@ func (s *Multiplexer) draw() {
 }
 
 func (s *Multiplexer) drawFilterSelect(selected *pane) {
-	startX := SIDEBAR_WIDTH + 1
+	startX := s.mainX()
+	startY := s.contentY()
+	endY := s.height - s.contentY()
 	mainW := s.width - startX
+	softGray := tcell.NewRGBColor(138, 138, 138)
 	dimStyle := tcell.StyleDefault.Foreground(tcell.ColorGray)
+	grayStyle := tcell.StyleDefault.Foreground(softGray)
 	tealStyle := tcell.StyleDefault.Foreground(tcell.ColorTeal).Bold(true)
 	tealDimStyle := tcell.StyleDefault.Foreground(tcell.ColorTeal).Dim(true)
 	normalStyle := tcell.StyleDefault.Foreground(tcell.ColorWhite)
 
 	// clear main area
-	for y := 0; y < s.height; y++ {
+	for y := startY; y < endY; y++ {
 		for x := startX; x < s.width; x++ {
 			s.screen.SetContent(x, y, ' ', nil, tcell.StyleDefault)
 		}
 	}
 
-	y := 0
+	y := startY
 	s.drawLine(startX, y, selected.FilterTitle, tealStyle, mainW)
 	y++ // blank
 	y++
 
 	if s.filterSearching {
-		x := s.drawLine(startX, y, "Search: ", dimStyle, mainW)
+		x := s.drawLine(startX, y, "Search: ", grayStyle, mainW)
 		x = s.drawLine(x, y, s.filterQuery, normalStyle, mainW-(x-startX))
 		s.screen.ShowCursor(x, y)
 	} else if s.filterQuery != "" {
-		x := s.drawLine(startX, y, "Search: ", dimStyle, mainW)
+		x := s.drawLine(startX, y, "Search: ", grayStyle, mainW)
 		s.drawLine(x, y, s.filterQuery, normalStyle.Italic(true), mainW-(x-startX))
 	} else {
-		s.drawLine(startX, y, selected.FilterSubtitle, dimStyle, mainW)
+		s.drawLine(startX, y, selected.FilterSubtitle, grayStyle, mainW)
 	}
 	y++ // blank
 	y++
@@ -181,7 +187,7 @@ func (s *Multiplexer) drawFilterSelect(selected *pane) {
 	visible := s.filterVisibleRows()
 	end := min(s.filterScroll+visible, total)
 
-	for fi := s.filterScroll; fi < end && y < s.height-1; fi++ {
+	for fi := s.filterScroll; fi < end && y < endY-1; fi++ {
 		opt := s.filterOptions[s.filterFiltered[fi]]
 		style := normalStyle
 		descStyle := dimStyle
@@ -198,7 +204,7 @@ func (s *Multiplexer) drawFilterSelect(selected *pane) {
 		y++
 	}
 
-	if end < total {
+	if end < total && y < endY {
 		s.drawLine(startX, y, fmt.Sprintf("↓ %d more", total-end), dimStyle, mainW)
 	}
 }

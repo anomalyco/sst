@@ -17,8 +17,10 @@ import (
 	"github.com/sst/sst/v3/pkg/process"
 )
 
-var PAD_HEIGHT = 0
-var PAD_WIDTH = 0
+var PAD_HEIGHT = 1
+var PAD_WIDTH = 1
+var MAIN_PAD_WIDTH = 2
+var CONTENT_PAD_HEIGHT = 0
 var SIDEBAR_WIDTH = 24
 
 type Multiplexer struct {
@@ -32,12 +34,12 @@ type Multiplexer struct {
 	main      *views.ViewPort
 	stack     *views.BoxLayout
 
-	dragging       bool
-	click          *tcell.EventMouse
-	scrollTicker   *time.Ticker
-	scrollDone     chan struct{}
-	scrollDir      int
-	lastDragX      int
+	dragging     bool
+	click        *tcell.EventMouse
+	scrollTicker *time.Ticker
+	scrollDone   chan struct{}
+	scrollDir    int
+	lastDragX    int
 
 	filtering       bool
 	filterOptions   []FilterOption
@@ -79,14 +81,30 @@ func New() (*Multiplexer, error) {
 }
 
 func (s *Multiplexer) mainRect() (int, int) {
-	return s.width - SIDEBAR_WIDTH + 1, s.height
+	return s.width - s.mainX(), s.mainHeight()
+}
+
+func (s *Multiplexer) mainX() int {
+	return SIDEBAR_WIDTH + 1 + MAIN_PAD_WIDTH
+}
+
+func (s *Multiplexer) contentY() int {
+	return PAD_HEIGHT + CONTENT_PAD_HEIGHT
+}
+
+func (s *Multiplexer) mainHeight() int {
+	return max(0, s.height-s.contentY()*2)
+}
+
+func (s *Multiplexer) sidebarWidth() int {
+	return SIDEBAR_WIDTH - PAD_WIDTH - 1
 }
 
 func (s *Multiplexer) resize(width int, height int) {
 	s.width = width
 	s.height = height
-	s.root.Resize(PAD_WIDTH, PAD_HEIGHT, SIDEBAR_WIDTH, height-PAD_HEIGHT*2)
-	s.main.Resize(PAD_WIDTH+SIDEBAR_WIDTH+PAD_WIDTH+1, PAD_HEIGHT, width-PAD_WIDTH-SIDEBAR_WIDTH-PAD_WIDTH-PAD_WIDTH-1, height-PAD_HEIGHT*2)
+	s.root.Resize(PAD_WIDTH, s.contentY(), s.sidebarWidth(), s.mainHeight())
+	s.main.Resize(s.mainX(), s.contentY(), width-s.mainX(), s.mainHeight())
 	mw, mh := s.main.Size()
 	for _, p := range s.processes {
 		p.vt.Resize(mw, mh)
@@ -125,39 +143,39 @@ func (s *Multiplexer) Start() {
 						selected.vt.SelectEnd(s.lastDragX, 0)
 					} else {
 						s.scrollDown(1)
-						selected.vt.SelectEnd(s.lastDragX, s.height-1)
+						selected.vt.SelectEnd(s.lastDragX, max(0, s.mainHeight()-1))
 					}
 				}
 				return
 
-		case *EventExit:
-			shouldBreak = true
-			return
+			case *EventExit:
+				shouldBreak = true
+				return
 
-		case *EventCheckFilter:
-			for _, p := range s.processes {
-				if p.Key != evt.PaneKey || !p.Filterable {
-					continue
-				}
-				p.filterAvailable = len(evt.Names) > 0
-				if p.filter == "" {
-					continue
-				}
-				found := false
-				for _, name := range evt.Names {
-					if name == p.filter {
-						found = true
-						break
+			case *EventCheckFilter:
+				for _, p := range s.processes {
+					if p.Key != evt.PaneKey || !p.Filterable {
+						continue
+					}
+					p.filterAvailable = len(evt.Names) > 0
+					if p.filter == "" {
+						continue
+					}
+					found := false
+					for _, name := range evt.Names {
+						if name == p.filter {
+							found = true
+							break
+						}
+					}
+					if !found {
+						s.clearPaneFilter(p)
 					}
 				}
-				if !found {
-					s.clearPaneFilter(p)
-				}
-			}
-			s.draw()
-			return
+				s.draw()
+				return
 
-		case *EventProcess:
+			case *EventProcess:
 				for _, p := range s.processes {
 					if p.Key == evt.Key {
 						if p.dead && evt.Autostart {
@@ -206,25 +224,31 @@ func (s *Multiplexer) Start() {
 				}
 				if evt.Buttons()&tcell.ButtonPrimary != 0 {
 					x, y := evt.Position()
-					if x <= SIDEBAR_WIDTH && s.dragging && selected != nil {
-						if y <= 0 {
+					contentY := y - s.contentY()
+					maxContentY := max(0, s.mainHeight()-1)
+					if x < s.mainX() && s.dragging && selected != nil {
+						if y < s.contentY() {
 							s.scrollUp(1)
 							s.startAutoScroll(-1)
 							selected.vt.SelectEnd(0, 0)
 							s.draw()
-						} else if y >= s.height-1 {
+						} else if y >= s.height-s.contentY() {
 							s.scrollDown(1)
 							s.startAutoScroll(1)
-							selected.vt.SelectEnd(0, s.height-1)
+							selected.vt.SelectEnd(0, maxContentY)
 							s.draw()
-						} else {
+						} else if contentY >= 0 && contentY <= maxContentY {
 							s.stopAutoScroll()
-							selected.vt.SelectEnd(0, y)
+							selected.vt.SelectEnd(0, contentY)
 							s.draw()
 						}
 						return
 					}
 					if x < SIDEBAR_WIDTH && !s.dragging {
+						if contentY < 0 || contentY > maxContentY {
+							return
+						}
+						y = contentY
 						alive := 0
 						for _, p := range s.processes {
 							if !p.dead {
@@ -246,35 +270,41 @@ func (s *Multiplexer) Start() {
 						s.blur()
 						return
 					}
-					if x > SIDEBAR_WIDTH {
+					if x >= s.mainX() {
+						if selected == nil {
+							return
+						}
+						if !s.dragging && (contentY < 0 || contentY > maxContentY) {
+							return
+						}
 						if !s.dragging && s.click != nil && time.Since(s.click.When()) < time.Millisecond*500 {
 							oldX, oldY := s.click.Position()
 							if oldX == x && oldY == y {
-								selected.vt.SelectStart(0, y)
-								selected.vt.SelectEnd(s.width-1, y)
+								selected.vt.SelectStart(0, contentY)
+								selected.vt.SelectEnd(s.width-1, contentY)
 								s.dragging = true
 								s.draw()
 								return
 							}
 						}
 						s.click = evt
-						offsetX := x - SIDEBAR_WIDTH - 1
+						offsetX := x - s.mainX()
 						s.lastDragX = offsetX
 						if s.dragging {
-							if y <= 0 {
+							if y < s.contentY() {
 								s.scrollUp(1)
 								s.startAutoScroll(-1)
-							} else if y >= s.height-1 {
+							} else if y >= s.height-s.contentY() {
 								s.scrollDown(1)
 								s.startAutoScroll(1)
 							} else {
 								s.stopAutoScroll()
 							}
-							selected.vt.SelectEnd(offsetX, y)
+							selected.vt.SelectEnd(offsetX, min(max(contentY, 0), maxContentY))
 						}
 						if !s.dragging {
 							s.dragging = true
-							selected.vt.SelectStart(offsetX, y)
+							selected.vt.SelectStart(offsetX, contentY)
 						}
 						s.draw()
 						return
@@ -337,32 +367,32 @@ func (s *Multiplexer) Start() {
 						if selected.Killable && !selected.dead && !s.focused {
 							selected.Kill()
 						}
-				case 'f':
-					if !s.focused && selected != nil && selected.Filterable && selected.filterAvailable && selected.ListOptions != nil {
-						options := selected.ListOptions()
-						if len(options) == 0 {
+					case 'f':
+						if !s.focused && selected != nil && selected.Filterable && selected.filterAvailable && selected.ListOptions != nil {
+							options := selected.ListOptions()
+							if len(options) == 0 {
+								return
+							}
+							s.filterOptions = options
+							s.filterFiltered = make([]int, len(options))
+							for i := range options {
+								s.filterFiltered[i] = i
+							}
+							s.filterSelected = 0
+							for i, opt := range s.filterOptions {
+								if opt.Value == selected.filter {
+									s.filterSelected = i
+									break
+								}
+							}
+							s.filterScroll = 0
+							s.filterSearching = false
+							s.filterQuery = ""
+							s.filtering = true
+							s.filterEnsureVisible()
+							s.draw()
 							return
 						}
-						s.filterOptions = options
-						s.filterFiltered = make([]int, len(options))
-						for i := range options {
-							s.filterFiltered[i] = i
-						}
-						s.filterSelected = 0
-						for i, opt := range s.filterOptions {
-							if opt.Value == selected.filter {
-								s.filterSelected = i
-								break
-							}
-						}
-						s.filterScroll = 0
-						s.filterSearching = false
-						s.filterQuery = ""
-						s.filtering = true
-						s.filterEnsureVisible()
-						s.draw()
-						return
-					}
 					}
 				case tcell.KeyUp:
 					if !s.focused {
@@ -376,12 +406,12 @@ func (s *Multiplexer) Start() {
 					}
 				case tcell.KeyCtrlU:
 					if selected != nil {
-						s.scrollUp(s.height/2 + 1)
+						s.scrollUp(s.mainHeight()/2 + 1)
 						return
 					}
 				case tcell.KeyCtrlD:
 					if selected != nil {
-						s.scrollDown(s.height/2 + 1)
+						s.scrollDown(s.mainHeight()/2 + 1)
 						return
 					}
 				case tcell.KeyEnter:
@@ -411,16 +441,16 @@ func (s *Multiplexer) Start() {
 						process.Signal(syscall.SIGINT)
 						return
 					}
-			case tcell.KeyEscape:
-				if !s.focused && selected != nil && selected.filter != "" {
-					s.clearPaneFilter(selected)
-					return
-				}
-			case tcell.KeyCtrlZ:
-				if s.focused {
-					s.blur()
-					return
-				}
+				case tcell.KeyEscape:
+					if !s.focused && selected != nil && selected.filter != "" {
+						s.clearPaneFilter(selected)
+						return
+					}
+				case tcell.KeyCtrlZ:
+					if s.focused {
+						s.blur()
+						return
+					}
 				case tcell.KeyCtrlG:
 					if selected != nil && selected.isScrolling() {
 						selected.scrollReset()
@@ -559,7 +589,7 @@ func (s *Multiplexer) refilterOptions() {
 func (s *Multiplexer) filterVisibleRows() int {
 	// header (y=0) + blank + subtitle (y=2) + blank + ↑/blank (y=4) = list starts at y=5
 	// reserve 1 row at bottom for ↓ indicator + 6 rows padding
-	rows := s.height - 5 - 1 - 6
+	rows := s.mainHeight() - 5 - 1 - 6
 	if rows < 1 {
 		rows = 1
 	}

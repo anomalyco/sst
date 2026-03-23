@@ -2313,7 +2313,7 @@ async function handler(event) {
               `${name}EdgeFunction`,
               {
                 name: physicalName(64, `${name}EdgeFn`),
-                runtime: "nodejs22.x",
+                runtime: "nodejs24.x",
                 handler: "index.handler",
                 role: edgeRole.arn,
                 code: new asset.FileArchive(

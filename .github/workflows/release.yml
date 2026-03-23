@@ -71,12 +71,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.SST_GITHUB_TOKEN }}
           AUR_KEY: ${{ secrets.AUR_KEY }}
-          NPM_CONFIG_PROVENANCE: false
 
       - name: Release JS SDK
         run: |
           cd sdk/js
           bun run release
-        env:
-          NPM_CONFIG_PROVENANCE: false
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

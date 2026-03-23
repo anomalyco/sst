@@ -229,6 +229,8 @@ var SPINNER_STYLE = lipgloss.NewStyle().Foreground(lipgloss.Color("14"))
 
 var TEXT_DIM = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 var TEXT_DIM_BOLD = TEXT_DIM.Copy().Bold(true)
+var TEXT_GRAY = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+var TEXT_GRAY_BOLD = TEXT_GRAY.Copy().Bold(true)
 
 var TEXT_NORMAL = lipgloss.NewStyle()
 var TEXT_NORMAL_BOLD = TEXT_NORMAL.Copy().Bold(true)
