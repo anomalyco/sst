@@ -24,9 +24,7 @@ func CmdUI(c *cli.Cli) error {
 	types := []interface{}{}
 	filter := c.String("filter")
 	var u *ui.UI
-	opts := []ui.Option{
-		ui.WithDev,
-	}
+	opts := []ui.Option{}
 	if filter == "function" || filter == "" {
 		if filter != "" {
 			fmt.Println(ui.TEXT_HIGHLIGHT_BOLD.Render("Function Logs"))
@@ -65,7 +63,7 @@ func CmdUI(c *cli.Cli) error {
 		types = append(types, ui.PaneFilterEvent{})
 	}
 	if filter == "sst" || filter == "" {
-		u = ui.New(c.Context, ui.WithDev)
+		u = ui.New(c.Context)
 		types = append(types,
 			common.StdoutEvent{},
 			deployer.DeployFailedEvent{},
@@ -104,14 +102,14 @@ func CmdUI(c *cli.Cli) error {
 				c.Cancel()
 				return nil
 			}
-		switch e := evt.(type) {
-		case *ui.PaneFilterEvent:
-			if e.PaneKey == filter {
-				u.SetFilter(e.Value, e.PaneKey)
+			switch e := evt.(type) {
+			case *ui.PaneFilterEvent:
+				if e.PaneKey == filter {
+					u.SetFilter(e.Value, e.PaneKey)
+				}
+			default:
+				u.Event(evt)
 			}
-		default:
-			u.Event(evt)
-		}
 		}
 	}
 }
