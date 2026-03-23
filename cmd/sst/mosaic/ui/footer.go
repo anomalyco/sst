@@ -35,8 +35,7 @@ type footer struct {
 
 	input chan any
 
-	previous      string
-	previousWidth int
+	previous string
 }
 
 type op struct {
@@ -110,9 +109,7 @@ func (m *footer) clear() {
 
 func (m *footer) Render(width int, next string) {
 	if next == m.previous {
-		if next == "" || width == m.previousWidth {
-			return
-		}
+		return
 	}
 
 	var oldLines []string
@@ -153,7 +150,6 @@ func (m *footer) Render(width int, next string) {
 		os.Stdout.Write(out.Bytes())
 	}
 	m.previous = next
-	m.previousWidth = width
 }
 
 func (m *footer) Reset() {
