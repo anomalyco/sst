@@ -14,6 +14,7 @@ import (
 func (s *Multiplexer) draw() {
 	defer s.screen.Show()
 	s.screen.Clear()
+	softGray := tcell.NewRGBColor(138, 138, 138)
 	for _, w := range s.stack.Widgets() {
 		s.stack.RemoveWidget(w)
 	}
@@ -102,14 +103,14 @@ func (s *Multiplexer) draw() {
 	for _, key := range keys {
 		label := hotkeys[key]
 		title := views.NewTextBar()
-		title.SetStyle(tcell.StyleDefault.Foreground(tcell.ColorGray))
-		title.SetLeft(key, tcell.StyleDefault.Foreground(tcell.ColorGray).Bold(true))
+		title.SetStyle(tcell.StyleDefault.Foreground(softGray))
+		title.SetLeft(key, tcell.StyleDefault.Foreground(softGray).Bold(true))
 		title.SetRight(label+" ", tcell.StyleDefault)
 		s.stack.AddWidget(title, 0)
 	}
 	s.stack.Draw()
 
-	borderStyle := tcell.StyleDefault.Foreground(tcell.ColorGray)
+	borderStyle := tcell.StyleDefault.Foreground(tcell.ColorGray).Dim(true)
 	for i := PAD_HEIGHT; i < s.height-PAD_HEIGHT; i++ {
 		s.screen.SetContent(SIDEBAR_WIDTH, i, '│', nil, borderStyle)
 	}
@@ -139,7 +140,9 @@ func (s *Multiplexer) drawFilterSelect(selected *pane) {
 	startY := s.contentY()
 	endY := s.height - s.contentY()
 	mainW := s.width - startX
+	softGray := tcell.NewRGBColor(138, 138, 138)
 	dimStyle := tcell.StyleDefault.Foreground(tcell.ColorGray)
+	grayStyle := tcell.StyleDefault.Foreground(softGray)
 	tealStyle := tcell.StyleDefault.Foreground(tcell.ColorTeal).Bold(true)
 	tealDimStyle := tcell.StyleDefault.Foreground(tcell.ColorTeal).Dim(true)
 	normalStyle := tcell.StyleDefault.Foreground(tcell.ColorWhite)
@@ -157,14 +160,14 @@ func (s *Multiplexer) drawFilterSelect(selected *pane) {
 	y++
 
 	if s.filterSearching {
-		x := s.drawLine(startX, y, "Search: ", dimStyle, mainW)
+		x := s.drawLine(startX, y, "Search: ", grayStyle, mainW)
 		x = s.drawLine(x, y, s.filterQuery, normalStyle, mainW-(x-startX))
 		s.screen.ShowCursor(x, y)
 	} else if s.filterQuery != "" {
-		x := s.drawLine(startX, y, "Search: ", dimStyle, mainW)
+		x := s.drawLine(startX, y, "Search: ", grayStyle, mainW)
 		s.drawLine(x, y, s.filterQuery, normalStyle.Italic(true), mainW-(x-startX))
 	} else {
-		s.drawLine(startX, y, selected.FilterSubtitle, dimStyle, mainW)
+		s.drawLine(startX, y, selected.FilterSubtitle, grayStyle, mainW)
 	}
 	y++ // blank
 	y++

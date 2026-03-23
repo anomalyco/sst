@@ -86,7 +86,7 @@ func (u *UI) SetFilter(filter string, paneKey string) {
 	u.options.Filter = filter
 	u.blank()
 	if filter != "" {
-		u.println(TEXT_HIGHLIGHT.Render(icon), "  ", TEXT_NORMAL_BOLD.Render("Filter"), "   ", filter)
+		u.println(TEXT_HIGHLIGHT.Render(icon), "  ", TEXT_NORMAL_BOLD.Render("Filter"), "   ", TEXT_GRAY.Render(filter))
 	} else {
 		u.println(TEXT_DANGER.Render(icon), "  ", TEXT_NORMAL_BOLD.Render("Filter"), "   ", TEXT_DIM.Render("Removed"))
 	}
@@ -473,20 +473,20 @@ func (u *UI) Event(unknown interface{}) {
 				for k, v := range evt.Hints {
 					splits := strings.Split(k, "::")
 					u.println(
-						TEXT_DIM_BOLD.Render("   "),
-						TEXT_DIM_BOLD.Render(splits[len(splits)-1]+": "),
+						TEXT_GRAY_BOLD.Render("   "),
+						TEXT_GRAY_BOLD.Render(splits[len(splits)-1]+": "),
 						TEXT_NORMAL.Render(v),
 					)
 				}
 			}
 			if len(evt.Outputs) > 0 {
 				if len(evt.Hints) > 0 {
-					u.println(TEXT_DIM_BOLD.Render("   ---"))
+					u.println(TEXT_GRAY_BOLD.Render("   ---"))
 				}
 				for k, v := range evt.Outputs {
 					u.println(
-						TEXT_DIM_BOLD.Render("   "),
-						TEXT_DIM_BOLD.Render(k+": "),
+						TEXT_GRAY_BOLD.Render("   "),
+						TEXT_GRAY_BOLD.Render(k+": "),
 						TEXT_NORMAL.Render(fmt.Sprint(v)),
 					)
 				}
@@ -667,23 +667,23 @@ func (u *UI) header(version, app, stage string) {
 	}
 	u.println(
 		TEXT_HIGHLIGHT_BOLD.Render("SST "+version),
-		TEXT_DIM.Render(" ready!"),
+		TEXT_GRAY.Render(" ready!"),
 	)
 	u.blank()
 	u.println(
 		TEXT_HIGHLIGHT_BOLD.Render("➜  "),
 		TEXT_NORMAL_BOLD.Render(fmt.Sprintf("%-12s", "App:")),
-		TEXT_DIM.Render(app),
+		TEXT_GRAY.Render(app),
 	)
 	u.println(
 		TEXT_NORMAL_BOLD.Render(fmt.Sprintf("   %-12s", "Stage:")),
-		TEXT_DIM.Render(stage),
+		TEXT_GRAY.Render(stage),
 	)
 
 	if u.options.Dev {
 		u.println(
 			TEXT_NORMAL_BOLD.Render(fmt.Sprintf("   %-12s", "Console:")),
-			TEXT_DIM.Render("https://console.sst.dev/local/"+app+"/"+stage),
+			TEXT_GRAY.Render("https://console.sst.dev/local/"+app+"/"+stage),
 		)
 	}
 	u.blank()
