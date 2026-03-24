@@ -101,7 +101,7 @@ export default $config({
       inheritedRoles: [
         "pg_read_all_data",
         "pg_write_all_data",
-        "postgres", // only needed for pushing schema changes
+        "postgres", // Only needed for pushing schema changes
       ],
     });
 
@@ -111,6 +111,7 @@ export default $config({
         username: role.username,
         password: role.password,
         database: role.databaseName,
+        port: 6432, // Use 5432 for direct connection instead of PgBouncer
       },
     });
 

@@ -23,11 +23,7 @@ This adds the provider to your `sst.config.ts`.
 }
 ```
 
-:::note
-This guide uses the Vitess resources. PlanetScale also supports Postgres with equivalent resources and functions: `PostgresBranch`, `PostgresBranchRole`, `getDatabasePostgresOutput`, and `getPostgresBranchOutput`.
-:::
-
-Then set the `PLANETSCALE_SERVICE_TOKEN` and `PLANETSCALE_SERVICE_TOKEN_ID` environment variables. You can create a service token in the PlanetScale dashboard under [Settings > Service tokens](https://app.planetscale.com/~/settings/service-tokens). The token needs at least the following permissions:
+Then set the `PLANETSCALE_SERVICE_TOKEN` and `PLANETSCALE_SERVICE_TOKEN_ID` environment variables. You can create a service token in the PlanetScale dashboard under [Settings > Service tokens](https://app.planetscale.com/~/settings/service-tokens). The token needs at least the following permissions for the upcoming examples:
 
 - `connect_branch`
 - `connect_production_branch`
@@ -49,6 +45,10 @@ const db = planetscale.getDatabaseVitessOutput({
   organization: "myorg",
 });
 ```
+
+:::note
+This guide uses the Vitess resources. PlanetScale also supports Postgres with equivalent resources and functions: `PostgresBranch`, `PostgresBranchRole`, `getDatabasePostgresOutput`, and `getPostgresBranchOutput`.
+:::
 
 ---
 
