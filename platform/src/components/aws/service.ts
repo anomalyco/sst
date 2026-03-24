@@ -1237,11 +1237,21 @@ export interface ServiceArgs extends FargateBaseArgs {
    * {
    *   gpu: "nvidia/t4",
    *   cpu: "4 vCPU",
-   *   memory: "16 GB"
+   *   memory: "16 GB",
+   *   infrastructureRole: "arn:aws:iam::123456789012:role/ecs-infra",
+   *   instanceProfile: "arn:aws:iam::123456789012:instance-profile/ecs-managed"
    * }
    * ```
    */
   gpu?: Input<ManagedGpu>;
+  /**
+   * The ARN of an existing ECS infrastructure role to use for managed instances.
+   */
+  infrastructureRole?: Input<string>;
+  /**
+   * The ARN of an existing EC2 instance profile to use for managed instances.
+   */
+  instanceProfile?: Input<string>;
   /**
    * Configure the capacity provider; regular Fargate or Fargate Spot, for this service.
    *
@@ -1564,10 +1574,6 @@ export interface ServiceArgs extends FargateBaseArgs {
        */
       infrastructureRole?: Transform<iam.RoleArgs>;
       /**
-       * Transform the IAM instance role resource created for managed instances.
-       */
-      instanceRole?: Transform<iam.RoleArgs>;
-      /**
        * Transform the ECS managed instances capacity provider resource.
        */
       capacityProvider?: Transform<ecs.CapacityProviderArgs>;
@@ -1858,9 +1864,10 @@ export class Service extends Component implements Link.Linkable {
       ? createManagedCapacityProvider(
           name,
           {
+            infrastructureRole: args.infrastructureRole,
+            instanceProfile: args.instanceProfile,
             transform: {
               infrastructureRole: args.transform?.infrastructureRole,
-              instanceRole: args.transform?.instanceRole,
               capacityProvider: args.transform?.capacityProvider,
               instanceProfile: args.transform?.instanceProfile,
             },
@@ -2054,6 +2061,8 @@ export class Service extends Component implements Link.Linkable {
         cpu: args.cpu,
         memory: args.memory,
         storage: args.storage,
+        infrastructureRole: args.infrastructureRole,
+        instanceProfile: args.instanceProfile,
       });
 
       return {

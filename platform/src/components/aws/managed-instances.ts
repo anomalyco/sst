@@ -53,6 +53,8 @@ type ManagedServiceArgs = {
   cpu?: Input<`${number} vCPU`>;
   memory?: Input<`${number} GB`>;
   storage?: Input<`${number} GB`>;
+  infrastructureRole?: Input<string>;
+  instanceProfile?: Input<string>;
 };
 
 type ManagedTaskDefinitionArgs = {
@@ -72,9 +74,10 @@ type ManagedTaskDefinitionArgs = {
 };
 
 type ManagedCapacityProviderArgs = {
+  infrastructureRole?: Input<string>;
+  instanceProfile?: Input<string>;
   transform?: {
     infrastructureRole?: Transform<iam.RoleArgs>;
-    instanceRole?: Transform<iam.RoleArgs>;
     capacityProvider?: Transform<ecs.CapacityProviderArgs>;
     instanceProfile?: Transform<iam.InstanceProfileArgs>;
   };
@@ -111,8 +114,25 @@ export function normalizeManagedCapacity(
   name: string,
   args: ManagedServiceArgs,
 ) {
-  return all([args.gpu, args.cpu, args.memory, args.storage]).apply(
-    ([gpu, cpu, memory, storage]) => {
+  return all([
+    args.gpu,
+    args.cpu,
+    args.memory,
+    args.storage,
+    args.infrastructureRole,
+    args.instanceProfile,
+  ]).apply(([gpu, cpu, memory, storage, infrastructureRole, instanceProfile]) => {
+      if (!infrastructureRole) {
+        throw new VisibleError(
+          `You must provide \"infrastructureRole\" for the \"${name}\" Service when \"gpu\" is set.`,
+        );
+      }
+      if (!instanceProfile) {
+        throw new VisibleError(
+          `You must provide \"instanceProfile\" for the \"${name}\" Service when \"gpu\" is set.`,
+        );
+      }
+
       const hostCpu = normalizeHostCpu(cpu);
       const hostMemory = normalizeHostMemory(memory);
       const hostStorage = normalizeStorage(storage);
@@ -125,8 +145,7 @@ export function normalizeManagedCapacity(
         hostStorage,
         gpu: normalizeGpu(gpu),
       } satisfies NormalizedManagedCapacity;
-    },
-  );
+    });
 
   function normalizeHostCpu(cpu?: `${number} vCPU`) {
     if (cpu) {
@@ -207,30 +226,33 @@ export function createManagedCapacityProvider(
 ) {
   const partition = getPartitionOutput({}, opts).partition;
 
-  const infrastructureRole = new iam.Role(
-    ...transform(
-      args.transform?.infrastructureRole,
-      `${name}ManagedInfrastructureRole`,
-      {
-        assumeRolePolicy: iam.assumeRolePolicyForPrincipal({
-          Service: "ecs.amazonaws.com",
-        }),
-        managedPolicyArns: [
-          interpolate`arn:${partition}:iam::aws:policy/AmazonECSInfrastructureRolePolicyForManagedInstances`,
-        ],
-      },
-      { parent },
-    ),
-  );
+  const infrastructureRoleArn = args.infrastructureRole
+    ? output(args.infrastructureRole)
+    : new iam.Role(
+        ...transform(
+          args.transform?.infrastructureRole,
+          `${name}ManagedInfrastructureRole`,
+          {
+            assumeRolePolicy: iam.assumeRolePolicyForPrincipal({
+              Service: "ecs.amazonaws.com",
+            }),
+            managedPolicyArns: [
+              interpolate`arn:${partition}:iam::aws:policy/AmazonECSInfrastructureRolePolicyForManagedInstances`,
+            ],
+          },
+          { parent },
+        ),
+      ).arn;
 
-  const instanceProfileArn = getOrCreateManagedInstanceProfile(
-    name,
-    partition,
-    args.transform?.instanceRole,
-    args.transform?.instanceProfile,
-    parent,
-    opts,
-  ).arn;
+  const instanceProfileArn = args.instanceProfile
+    ? output(args.instanceProfile)
+    : getOrCreateManagedInstanceProfile(
+        name,
+        partition,
+        args.transform?.instanceProfile,
+        parent,
+        opts,
+      ).arn;
 
   return new ecs.CapacityProvider(
     ...transform(
@@ -240,7 +262,7 @@ export function createManagedCapacityProvider(
         cluster: clusterName,
         managedInstancesProvider: all([
           normalized,
-          infrastructureRole.arn,
+          infrastructureRoleArn,
           instanceProfileArn,
           vpc.containerSubnets,
           vpc.securityGroups,
@@ -315,7 +337,6 @@ let defaultManagedInstanceProfile: iam.InstanceProfile | undefined;
 function getOrCreateManagedInstanceProfile(
   name: string,
   partition: Output<string>,
-  roleTransform: Transform<iam.RoleArgs> | undefined,
   profileTransform: Transform<iam.InstanceProfileArgs> | undefined,
   parent: Component,
   opts: ComponentResourceOptions,
@@ -328,7 +349,7 @@ function getOrCreateManagedInstanceProfile(
 
   const role = new iam.Role(
     ...transform(
-      roleTransform,
+      undefined,
       `${name}ManagedInstancesEcsInstanceRole`,
       {
         name: "ecsInstanceRole",
