@@ -54,9 +54,16 @@ function useLinkHashes(module: TypeDoc.DeclarationReflection) {
 
 configureLogger();
 patchCode();
+
+// Kick off examples build early so it runs in parallel with components+sdk
+const examplesPromise =
+  !cmd || cmd === "examples" ? buildExamples() : undefined;
+
 if (!cmd || cmd === "components") {
-  const components = await buildComponents();
-  const sdks = await buildSdk();
+  const [components, sdks] = await Promise.all([
+    buildComponents(),
+    buildSdk(),
+  ]);
 
   for (const component of components) {
     const sourceFile = component.sources![0].fileName;
@@ -92,7 +99,7 @@ if (!cmd || cmd === "components") {
 }
 if (!cmd || cmd === "cli") await generateCliDoc();
 if (!cmd || cmd === "common-errors") await generateCommonErrorsDoc();
-if (!cmd || cmd === "examples") await generateExamplesDocs();
+if (examplesPromise) await generateExamplesDocs(await examplesPromise);
 restoreCode();
 
 function generateCliDoc() {
@@ -406,8 +413,10 @@ function generateCommonErrorsDoc() {
   }
 }
 
-async function generateExamplesDocs() {
-  const modules = await buildExamples();
+async function generateExamplesDocs(
+  prebuiltModules?: TypeDoc.DeclarationReflection[]
+) {
+  const modules = prebuiltModules ?? (await buildExamples());
   const outputFilePath = `src/content/docs/docs/examples.mdx`;
   fs.writeFileSync(
     outputFilePath,
@@ -2269,7 +2278,7 @@ async function buildComponents() {
   })();
 
   // Generate JSON (generated for debugging purposes)
-  await app.generateJson(project, "components-doc.json");
+  if (process.env.DEBUG) await app.generateJson(project, "components-doc.json");
 
   return project.getChildrenByKind(TypeDoc.ReflectionKind.Module);
 }
@@ -2295,7 +2304,7 @@ async function buildSdk() {
   if (!project) throw new Error("Failed to convert project");
 
   // Generate JSON (generated for debugging purposes)
-  await app.generateJson(project, "sdk-doc.json");
+  if (process.env.DEBUG) await app.generateJson(project, "sdk-doc.json");
 
   return project.getChildrenByKind(TypeDoc.ReflectionKind.Module);
 }
@@ -2317,7 +2326,7 @@ async function buildExamples() {
   if (!project) throw new Error("Failed to convert project");
 
   // Generate JSON (generated for debugging purposes)
-  await app.generateJson(project, "examples-doc.json");
+  if (process.env.DEBUG) await app.generateJson(project, "examples-doc.json");
 
   return project.children!.filter(
     (c) =>
