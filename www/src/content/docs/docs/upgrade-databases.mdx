@@ -56,6 +56,8 @@ If you don't want to keep Multi-AZ enabled permanently, you can enable it tempor
 Aurora does not currently support the `multiAz` prop, but Aurora clusters inherently store data across multiple AZs. Adding replicas through the `replicas` prop provides similar failover behavior during upgrades.
 :::
 
+If your database also has `proxy` enabled, [RDS Proxy](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/rds-proxy.html) further reduces failover downtime by detecting the new primary directly instead of waiting for DNS propagation. This can bring downtime down to just a few seconds.
+
 ### Blue/Green deployments
 
 [`Postgres`](/docs/component/aws/postgres/) and [`Mysql`](/docs/component/aws/mysql/) support [AWS RDS Blue/Green deployments](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/blue-green-deployments.html) through the `blueGreen` prop. This creates a complete staging copy of your database, applies the changes there, and then switches over with minimal downtime.
@@ -90,7 +92,7 @@ Your database endpoint stays the same throughout this process, so no application
 
 When using Blue/Green deployments expect longer deploy times because of the staging instance creation and switchover process. The actual downtime during the near zero, but the overall deploy takes significantly longer than in-place.
 
-Also, Blue/Green deployments are not compatible with databases that have read replicas. AWS will reject the deployment.
+Also, Blue/Green deployments are not compatible with databases that have read replicas or `proxy` enabled. AWS will reject the deployment.
 
 Read more about AWS RDS Blue/Green deployments in [this Pulumi article](https://www.pulumi.com/blog/aws-rds-blue-green-deployment-updates).
 
