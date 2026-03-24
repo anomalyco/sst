@@ -7,23 +7,23 @@
  * database branch — so each PR can have an isolated database.
  *
  * ```ts title="sst.config.ts"
- * const db = planetscale.getDatabaseOutput({
- *   name: "mydb",
+ * const db = planetscale.getDatabaseVitessOutput({
+ *   id: "mydb",
  *   organization: "myorg",
  * });
  *
  * const branch =
  *   $app.stage === "production"
- *     ? planetscale.getBranchOutput({
- *         name: "production",
+ *     ? planetscale.getVitessBranchOutput({
+ *         id: db.defaultBranch,
  *         organization: db.organization,
  *         database: db.name,
  *       })
- *     : new planetscale.Branch("DatabaseBranch", {
+ *     : new planetscale.VitessBranch("DatabaseBranch", {
  *         database: db.name,
  *         organization: db.organization,
  *         name: $app.stage,
- *         parentBranch: "production",
+ *         parentBranch: db.defaultBranch,
  *       });
  * ```
  *
@@ -67,31 +67,31 @@ export default $config({
       removal: input?.stage === "production" ? "retain" : "remove",
       home: "aws",
       providers: {
-        planetscale: "0.4.1",
+        planetscale: "1.0.0",
       },
     };
   },
   async run() {
-    const db = planetscale.getDatabaseOutput({
-      name: "mydb",
+    const db = planetscale.getDatabaseVitessOutput({
+      id: "mydb",
       organization: "myorg",
     });
 
     const branch =
       $app.stage === "production"
-        ? planetscale.getBranchOutput({
-            name: "production",
+        ? planetscale.getVitessBranchOutput({
+            id: db.defaultBranch,
             organization: db.organization,
             database: db.name,
           })
-        : new planetscale.Branch("DatabaseBranch", {
+        : new planetscale.VitessBranch("DatabaseBranch", {
             database: db.name,
             organization: db.organization,
             name: $app.stage,
-            parentBranch: "production",
+            parentBranch: db.defaultBranch,
           });
 
-    const password = new planetscale.Password("DatabasePassword", {
+    const password = new planetscale.VitessBranchPassword("DatabasePassword", {
       database: db.name,
       organization: db.organization,
       branch: branch.name,
@@ -103,7 +103,7 @@ export default $config({
       properties: {
         host: password.accessHostUrl,
         username: password.username,
-        password: password.plaintext,
+        password: password.plainText,
         database: db.name,
         port: 3306,
       },
