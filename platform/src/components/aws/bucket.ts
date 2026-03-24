@@ -510,7 +510,7 @@ export interface BucketArgs {
    * }
    * ```
    */
-  defaultServerSideEncryption?: Input<boolean>;
+  encryption?: Input<boolean>;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
@@ -977,27 +977,25 @@ export class Bucket extends Component implements Link.Linkable {
     }
 
     function createDefaultServerSideEncryption() {
-      return output(args.defaultServerSideEncryption).apply((enabled) => {
-        if (!enabled) return;
+      if (!args.encryption) return;
 
-        return new s3.BucketServerSideEncryptionConfiguration(
-          ...transform(
-            args.transform?.encryption,
-            `${name}Encryption`,
-            {
-              bucket: bucket.bucket,
-              rules: [
-                {
-                  applyServerSideEncryptionByDefault: {
-                    sseAlgorithm: "AES256",
-                  },
+      return new s3.BucketServerSideEncryptionConfiguration(
+        ...transform(
+          args.transform?.encryption,
+          `${name}Encryption`,
+          {
+            bucket: bucket.bucket,
+            rules: [
+              {
+                applyServerSideEncryptionByDefault: {
+                  sseAlgorithm: "AES256",
                 },
-              ],
-            },
-            { parent },
-          ),
-        );
-      });
+              },
+            ],
+          },
+          { parent },
+        ),
+      );
     }
 
     function createLifecycle() {
