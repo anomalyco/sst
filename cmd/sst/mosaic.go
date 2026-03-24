@@ -257,6 +257,14 @@ func CmdMosaic(c *cli.Cli) error {
 			"SST_STAGE="+p.App().Stage,
 		)
 		serverURL := fmt.Sprintf("http://localhost:%v", server.Port)
+		_, hasAWS := p.App().Providers["aws"]
+		showWorkers := p.App().Home == "cloudflare" && !hasAWS
+		fnTitle := "Functions"
+		fnFilterSubtitle := "Select a function to filter logs"
+		if showWorkers {
+			fnTitle = "Workers"
+			fnFilterSubtitle = "Select a worker to filter logs"
+		}
 		multi.AddProcess(multiplexer.PaneConfig{
 			Key:       "deploy",
 			Args:      []string{currentExecutable, "ui", "--filter=sst"},
@@ -269,11 +277,11 @@ func CmdMosaic(c *cli.Cli) error {
 			Key:            "function",
 			Args:           []string{currentExecutable, "ui", "--filter=function"},
 			Icon:           "λ",
-			Title:          "Functions",
+			Title:          fnTitle,
 			Autostart:      true,
 			Filterable:     true,
-			FilterTitle:    "Functions",
-			FilterSubtitle: "Select a function to filter logs",
+			FilterTitle:    fnTitle,
+			FilterSubtitle: fnFilterSubtitle,
 			OnFilterChanged: func(value string) {
 				bus.Publish(&ui.PaneFilterEvent{PaneKey: "function", Value: value})
 			},
@@ -284,6 +292,9 @@ func CmdMosaic(c *cli.Cli) error {
 				}
 				var options []multiplexer.FilterOption
 				for _, r := range completed.Resources {
+					if showWorkers && string(r.Type) != "sst:cloudflare:Worker" {
+						continue
+					}
 					if string(r.Type) == "sst:aws:Function" || string(r.Type) == "sst:cloudflare:Worker" {
 						name := r.URN.Name()
 						handler := name
@@ -386,6 +397,9 @@ func CmdMosaic(c *cli.Cli) error {
 					}
 					var fnNames []string
 					for _, r := range evt.Resources {
+						if showWorkers && string(r.Type) != "sst:cloudflare:Worker" {
+							continue
+						}
 						if string(r.Type) == "sst:aws:Function" || string(r.Type) == "sst:cloudflare:Worker" {
 							fnNames = append(fnNames, r.URN.Name())
 						}
@@ -412,8 +426,13 @@ func CmdMosaic(c *cli.Cli) error {
 
 	if mode == "mono" {
 		mono := monoplexer.New()
+		_, hasAWS := p.App().Providers["aws"]
+		fnTitle := "Function"
+		if p.App().Home == "cloudflare" && !hasAWS {
+			fnTitle = "Worker"
+		}
 		mono.AddProcess("deploy", []string{currentExecutable, "ui", "--filter=sst"}, "", "SST")
-		mono.AddProcess("function", []string{currentExecutable, "ui", "--filter=function"}, "", "Function")
+		mono.AddProcess("function", []string{currentExecutable, "ui", "--filter=function"}, "", fnTitle)
 
 		wg.Go(func() error {
 			defer c.Cancel()
