@@ -558,14 +558,23 @@ func (u *UI) Event(unknown interface{}) {
 		}
 		u.blank()
 	case *cloudflare.WorkerBuildEvent:
+		if !u.matchFilter(evt.WorkerID) {
+			return
+		}
 		if len(evt.Errors) > 0 {
 			u.printEvent(TEXT_DANGER, "Build Error", u.functionName(evt.WorkerID)+" "+strings.Join(evt.Errors, "\n"))
 			return
 		}
 		u.printEvent(TEXT_INFO, "Build", u.functionName(evt.WorkerID))
 	case *cloudflare.WorkerUpdatedEvent:
+		if !u.matchFilter(evt.WorkerID) {
+			return
+		}
 		u.printEvent(TEXT_INFO, "Reload", u.functionName(evt.WorkerID))
 	case *cloudflare.WorkerInvokedEvent:
+		if !u.matchFilter(evt.WorkerID) {
+			return
+		}
 		url, _ := url.Parse(evt.TailEvent.Event.Request.URL)
 		u.printEvent(
 			u.getColor(evt.WorkerID),
