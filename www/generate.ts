@@ -54,11 +54,6 @@ function useLinkHashes(module: TypeDoc.DeclarationReflection) {
 
 configureLogger();
 patchCode();
-
-// Kick off examples build early so it runs in parallel with components+sdk
-const examplesPromise =
-  !cmd || cmd === "examples" ? buildExamples() : undefined;
-
 if (!cmd || cmd === "components") {
   const [components, sdks] = await Promise.all([
     buildComponents(),
@@ -99,7 +94,7 @@ if (!cmd || cmd === "components") {
 }
 if (!cmd || cmd === "cli") await generateCliDoc();
 if (!cmd || cmd === "common-errors") await generateCommonErrorsDoc();
-if (examplesPromise) await generateExamplesDocs(await examplesPromise);
+if (!cmd || cmd === "examples") await generateExamplesDocs();
 restoreCode();
 
 function generateCliDoc() {
@@ -413,10 +408,8 @@ function generateCommonErrorsDoc() {
   }
 }
 
-async function generateExamplesDocs(
-  prebuiltModules?: TypeDoc.DeclarationReflection[]
-) {
-  const modules = prebuiltModules ?? (await buildExamples());
+async function generateExamplesDocs() {
+  const modules = await buildExamples();
   const outputFilePath = `src/content/docs/docs/examples.mdx`;
   fs.writeFileSync(
     outputFilePath,
