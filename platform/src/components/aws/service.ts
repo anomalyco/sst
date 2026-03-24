@@ -341,17 +341,6 @@ interface ServiceContainerArgs extends FargateContainerArgs {
   };
 }
 
-type ServiceFargateCapacity = {
-  fargate?: {
-    base?: Input<number>;
-    weight: Input<number>;
-  };
-  spot?: {
-    base?: Input<number>;
-    weight: Input<number>;
-  };
-};
-
 export interface ServiceArgs extends FargateBaseArgs {
   /**
    * Configure how this component works in `sst dev`.
@@ -1361,7 +1350,7 @@ export interface ServiceArgs extends FargateBaseArgs {
    */
   capacity?: Input<
     | "spot"
-    | (ServiceFargateCapacity & {
+    | {
         /**
          * Configure how the regular Fargate capacity is allocated.
          */
@@ -1397,7 +1386,7 @@ export interface ServiceArgs extends FargateBaseArgs {
           weight: Input<number>;
         }>;
         managed?: never;
-      })
+      }
   >;
   /**
    * Configure the health check that ECS runs on your containers.
@@ -2044,10 +2033,18 @@ export class Service extends Component implements Link.Linkable {
       if (!args.capacity) return;
 
       return output(args.capacity).apply(
-        (v): ServiceFargateCapacity | undefined => {
+        (v):
+          | {
+              fargate?: { base?: Input<number>; weight: Input<number> };
+              spot?: { base?: Input<number>; weight: Input<number> };
+            }
+          | undefined => {
           if (v === "spot")
             return { spot: { weight: 1 }, fargate: { weight: 0 } };
-          const fargateCapacity = v as ServiceFargateCapacity;
+          const fargateCapacity = v as {
+            fargate?: { base?: Input<number>; weight: Input<number> };
+            spot?: { base?: Input<number>; weight: Input<number> };
+          };
           return {
             fargate: fargateCapacity.fargate,
             spot: fargateCapacity.spot,
