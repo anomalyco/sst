@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"log/slog"
-	"os"
 
 	"github.com/pulumi/pulumi/sdk/v3/go/common/apitype"
 	"github.com/sst/sst/v3/cmd/sst/cli"
@@ -28,13 +27,13 @@ func CmdUI(c *cli.Cli) error {
 	opts := []ui.Option{
 		ui.WithDev,
 	}
-	if filter == "function" || filter == "" {
-		if filter != "" {
-			title := "Function Logs"
-			if os.Getenv("SST_UI_WORKERS") == "1" {
-				title = "Worker Logs"
-			}
-			fmt.Println(ui.TEXT_HIGHLIGHT_BOLD.Render(title))
+	if filter == "function" || filter == "worker" || filter == "" {
+		if filter == "function" {
+			fmt.Println(ui.TEXT_HIGHLIGHT_BOLD.Render("Function Logs"))
+		} else if filter == "worker" {
+			fmt.Println(ui.TEXT_HIGHLIGHT_BOLD.Render("Worker Logs"))
+		}
+		if filter == "function" || filter == "worker" {
 			fmt.Println()
 			fmt.Println(ui.TEXT_GRAY.Render("Waiting for invocations..."))
 			fmt.Println()
@@ -66,7 +65,7 @@ func CmdUI(c *cli.Cli) error {
 			aws.TaskMissingCommandEvent{},
 		)
 	}
-	if filter == "function" || filter == "task" {
+	if filter == "function" || filter == "worker" || filter == "task" {
 		types = append(types, ui.PaneFilterEvent{})
 	}
 	if filter == "sst" || filter == "" {
@@ -111,7 +110,7 @@ func CmdUI(c *cli.Cli) error {
 			}
 			switch e := evt.(type) {
 			case *ui.PaneFilterEvent:
-				if e.PaneKey == filter {
+				if e.PaneKey == filter || (e.PaneKey == "function" && filter == "worker") {
 					u.SetFilter(e.Value, e.PaneKey)
 				}
 			default:

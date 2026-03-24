@@ -261,11 +261,12 @@ func CmdMosaic(c *cli.Cli) error {
 		showWorkers := p.App().Home == "cloudflare" && !hasAWS
 		fnTitle := "Functions"
 		fnFilterSubtitle := "Select a function to filter logs"
+		fnFilter := "function"
 		functionEnv := append(multiEnv, "SST_LOG="+p.PathLog("ui-function"))
 		if showWorkers {
 			fnTitle = "Workers"
 			fnFilterSubtitle = "Select a worker to filter logs"
-			functionEnv = append(functionEnv, "SST_UI_WORKERS=1")
+			fnFilter = "worker"
 		}
 		multi.AddProcess(multiplexer.PaneConfig{
 			Key:       "deploy",
@@ -277,7 +278,7 @@ func CmdMosaic(c *cli.Cli) error {
 		})
 		multi.AddProcess(multiplexer.PaneConfig{
 			Key:            "function",
-			Args:           []string{currentExecutable, "ui", "--filter=function"},
+			Args:           []string{currentExecutable, "ui", "--filter=" + fnFilter},
 			Icon:           "λ",
 			Title:          fnTitle,
 			Autostart:      true,
@@ -430,13 +431,13 @@ func CmdMosaic(c *cli.Cli) error {
 		mono := monoplexer.New()
 		_, hasAWS := p.App().Providers["aws"]
 		fnTitle := "Function"
-		functionEnv := []string{}
+		fnFilter := "function"
 		if p.App().Home == "cloudflare" && !hasAWS {
 			fnTitle = "Worker"
-			functionEnv = append(functionEnv, "SST_UI_WORKERS=1")
+			fnFilter = "worker"
 		}
 		mono.AddProcess("deploy", []string{currentExecutable, "ui", "--filter=sst"}, "", "SST")
-		mono.AddProcess("function", []string{currentExecutable, "ui", "--filter=function"}, "", fnTitle, functionEnv...)
+		mono.AddProcess("function", []string{currentExecutable, "ui", "--filter=" + fnFilter}, "", fnTitle)
 
 		wg.Go(func() error {
 			defer c.Cancel()
