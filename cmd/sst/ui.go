@@ -23,17 +23,21 @@ func CmdUI(c *cli.Cli) error {
 	}
 	types := []interface{}{}
 	filter := c.String("filter")
+	isWorker := filter == "worker"
+	if isWorker {
+		filter = "function"
+	}
 	var u *ui.UI
 	opts := []ui.Option{
 		ui.WithDev,
 	}
-	if filter == "function" || filter == "worker" || filter == "" {
-		if filter == "function" {
-			fmt.Println(ui.TEXT_HIGHLIGHT_BOLD.Render("Function Logs"))
-		} else if filter == "worker" {
-			fmt.Println(ui.TEXT_HIGHLIGHT_BOLD.Render("Worker Logs"))
-		}
-		if filter == "function" || filter == "worker" {
+	if filter == "function" || filter == "" {
+		if filter != "" {
+			title := "Function Logs"
+			if isWorker {
+				title = "Worker Logs"
+			}
+			fmt.Println(ui.TEXT_HIGHLIGHT_BOLD.Render(title))
 			fmt.Println()
 			fmt.Println(ui.TEXT_GRAY.Render("Waiting for invocations..."))
 			fmt.Println()
@@ -65,7 +69,7 @@ func CmdUI(c *cli.Cli) error {
 			aws.TaskMissingCommandEvent{},
 		)
 	}
-	if filter == "function" || filter == "worker" || filter == "task" {
+	if filter == "function" || filter == "task" {
 		types = append(types, ui.PaneFilterEvent{})
 	}
 	if filter == "sst" || filter == "" {
@@ -110,7 +114,7 @@ func CmdUI(c *cli.Cli) error {
 			}
 			switch e := evt.(type) {
 			case *ui.PaneFilterEvent:
-				if e.PaneKey == filter || (e.PaneKey == "function" && filter == "worker") {
+				if e.PaneKey == filter {
 					u.SetFilter(e.Value, e.PaneKey)
 				}
 			default:

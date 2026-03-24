@@ -260,12 +260,9 @@ func CmdMosaic(c *cli.Cli) error {
 		_, hasAWS := p.App().Providers["aws"]
 		showWorkers := p.App().Home == "cloudflare" && !hasAWS
 		fnTitle := "Functions"
-		fnFilterSubtitle := "Select a function to filter logs"
 		fnFilter := "function"
-		functionEnv := append(multiEnv, "SST_LOG="+p.PathLog("ui-function"))
 		if showWorkers {
 			fnTitle = "Workers"
-			fnFilterSubtitle = "Select a worker to filter logs"
 			fnFilter = "worker"
 		}
 		multi.AddProcess(multiplexer.PaneConfig{
@@ -284,7 +281,7 @@ func CmdMosaic(c *cli.Cli) error {
 			Autostart:      true,
 			Filterable:     true,
 			FilterTitle:    fnTitle,
-			FilterSubtitle: fnFilterSubtitle,
+			FilterSubtitle: "Select to filter logs",
 			OnFilterChanged: func(value string) {
 				bus.Publish(&ui.PaneFilterEvent{PaneKey: "function", Value: value})
 			},
@@ -295,9 +292,6 @@ func CmdMosaic(c *cli.Cli) error {
 				}
 				var options []multiplexer.FilterOption
 				for _, r := range completed.Resources {
-					if showWorkers && string(r.Type) != "sst:cloudflare:Worker" {
-						continue
-					}
 					if string(r.Type) == "sst:aws:Function" || string(r.Type) == "sst:cloudflare:Worker" {
 						name := r.URN.Name()
 						handler := name
@@ -315,7 +309,7 @@ func CmdMosaic(c *cli.Cli) error {
 				}
 				return options
 			},
-			Env: functionEnv,
+			Env: append(multiEnv, "SST_LOG="+p.PathLog("ui-function")),
 		})
 		defer func() {
 			multi.Exit()
@@ -400,9 +394,6 @@ func CmdMosaic(c *cli.Cli) error {
 						}
 						var fnNames []string
 						for _, r := range evt.Resources {
-							if showWorkers && string(r.Type) != "sst:cloudflare:Worker" {
-								continue
-							}
 							if string(r.Type) == "sst:aws:Function" || string(r.Type) == "sst:cloudflare:Worker" {
 								fnNames = append(fnNames, r.URN.Name())
 							}

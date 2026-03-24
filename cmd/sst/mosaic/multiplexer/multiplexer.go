@@ -19,7 +19,7 @@ import (
 
 var PAD_HEIGHT = 1
 var PAD_WIDTH = 1
-var MAIN_PAD_WIDTH = 2
+var MAIN_PAD_WIDTH = 3
 var CONTENT_PAD_HEIGHT = 0
 var SIDEBAR_WIDTH = 24
 
