@@ -656,437 +656,437 @@ export interface ServiceArgs extends FargateBaseArgs {
    */
   loadBalancer?: Input<
     | {
-        /**
-         * Configure if the load balancer should be public or private.
-         *
-         * When set to `false`, the load balancer endpoint will only be accessible within the
-         * VPC.
-         *
-         * @default `true`
-         */
-        public?: Input<boolean>;
-        /**
-         * Set a custom domain for your load balancer endpoint.
-         *
-         * Automatically manages domains hosted on AWS Route 53, Cloudflare, and Vercel. For other
-         * providers, you'll need to pass in a `cert` that validates domain ownership and add the
-         * DNS records.
-         *
-         * :::tip
-         * Built-in support for AWS Route 53, Cloudflare, and Vercel. And manual setup for other
-         * providers.
-         * :::
-         *
-         * @example
-         *
-         * By default this assumes the domain is hosted on Route 53.
-         *
-         * ```js
-         * {
-         *   domain: "example.com"
-         * }
-         * ```
-         *
-         * For domains hosted on Cloudflare.
-         *
-         * ```js
-         * {
-         *   domain: {
-         *     name: "example.com",
-         *     dns: sst.cloudflare.dns()
-         *   }
-         * }
-         * ```
-         */
-        domain?: Input<
-          | string
-          | {
-              /**
-               * The custom domain you want to use.
-               *
-               * @example
-               * ```js
-               * {
-               *   domain: {
-               *     name: "example.com"
-               *   }
-               * }
-               * ```
-               *
-               * Can also include subdomains based on the current stage.
-               *
-               * ```js
-               * {
-               *   domain: {
-               *     name: `${$app.stage}.example.com`
-               *   }
-               * }
-               * ```
-               *
-               * Wildcard domains are supported.
-               *
-               * ```js
-               * {
-               *   domain: {
-               *     name: "*.example.com"
-               *   }
-               * }
-               * ```
-               */
-              name: Input<string>;
-              /**
-               * Alias domains that should be used.
-               *
-               * @example
-               * ```js {4}
-               * {
-               *   domain: {
-               *     name: "app1.example.com",
-               *     aliases: ["app2.example.com"]
-               *   }
-               * }
-               * ```
-               */
-              aliases?: Input<string[]>;
-              /**
-               * The ARN of an ACM (AWS Certificate Manager) certificate that proves ownership of the
-               * domain. By default, a certificate is created and validated automatically.
-               *
-               * :::tip
-               * You need to pass in a `cert` for domains that are not hosted on supported `dns` providers.
-               * :::
-               *
-               * To manually set up a domain on an unsupported provider, you'll need to:
-               *
-               * 1. [Validate that you own the domain](https://docs.aws.amazon.com/acm/latest/userguide/domain-ownership-validation.html) by creating an ACM certificate. You can either validate it by setting a DNS record or by verifying an email sent to the domain owner.
-               * 2. Once validated, set the certificate ARN as the `cert` and set `dns` to `false`.
-               * 3. Add the DNS records in your provider to point to the load balancer endpoint.
-               *
-               * @example
-               * ```js
-               * {
-               *   domain: {
-               *     name: "example.com",
-               *     dns: false,
-               *     cert: "arn:aws:acm:us-east-1:112233445566:certificate/3a958790-8878-4cdc-a396-06d95064cf63"
-               *   }
-               * }
-               * ```
-               */
-              cert?: Input<string>;
-              /**
-               * The DNS provider to use for the domain. Defaults to the AWS.
-               *
-               * Takes an adapter that can create the DNS records on the provider. This can automate
-               * validating the domain and setting up the DNS routing.
-               *
-               * Supports Route 53, Cloudflare, and Vercel adapters. For other providers, you'll need
-               * to set `dns` to `false` and pass in a certificate validating ownership via `cert`.
-               *
-               * @default `sst.aws.dns`
-               *
-               * @example
-               *
-               * Specify the hosted zone ID for the Route 53 domain.
-               *
-               * ```js
-               * {
-               *   domain: {
-               *     name: "example.com",
-               *     dns: sst.aws.dns({
-               *       zone: "Z2FDTNDATAQYW2"
-               *     })
-               *   }
-               * }
-               * ```
-               *
-               * Use a domain hosted on Cloudflare, needs the Cloudflare provider.
-               *
-               * ```js
-               * {
-               *   domain: {
-               *     name: "example.com",
-               *     dns: sst.cloudflare.dns()
-               *   }
-               * }
-               * ```
-               *
-               * Use a domain hosted on Vercel, needs the Vercel provider.
-               *
-               * ```js
-               * {
-               *   domain: {
-               *     name: "example.com",
-               *     dns: sst.vercel.dns()
-               *   }
-               * }
-               * ```
-               */
-              dns?: Input<false | (Dns & {})>;
-            }
-        >;
-        /** @deprecated Use `rules` instead. */
-        ports?: Input<Prettify<ServiceRules>[]>;
-        /**
-         * Configure the mapping for the ports the load balancer listens to, forwards, or redirects to
-         * the service.
-         * This supports two types of protocols:
-         *
-         * 1. Application Layer Protocols: `http` and `https`. This'll create an [Application Load Balancer](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/introduction.html).
-         * 2. Network Layer Protocols: `tcp`, `udp`, `tcp_udp`, and `tls`. This'll create a [Network Load Balancer](https://docs.aws.amazon.com/elasticloadbalancing/latest/network/introduction.html).
-         *
-         * :::note
-         * If you want to listen on `https` or `tls`, you need to specify a custom
-         * `loadBalancer.domain`.
-         * :::
-         *
-         * You **can not configure** both application and network layer protocols for the same
-         * service.
-         *
-         * @example
-         * Here we are listening on port `80` and forwarding it to the service on port `8080`.
-         * ```js
-         * {
-         *   rules: [
-         *     { listen: "80/http", forward: "8080/http" }
-         *   ]
-         * }
-         * ```
-         *
-         * The `forward` port and protocol defaults to the `listen` port and protocol. So in this
-         * case both are `80/http`.
-         *
-         * ```js
-         * {
-         *   rules: [
-         *     { listen: "80/http" }
-         *   ]
-         * }
-         * ```
-         *
-         * If multiple containers are configured via the `containers` argument, you need to
-         * specify which container the traffic should be forwarded to.
-         *
-         * ```js
-         * {
-         *   rules: [
-         *     { listen: "80/http", container: "app" },
-         *     { listen: "8000/http", container: "admin" }
-         *   ]
-         * }
-         * ```
-         *
-         * You can also route the same port to multiple containers via path-based routing.
-         *
-         * ```js
-         * {
-         *   rules: [
-         *     {
-         *       listen: "80/http",
-         *       container: "app",
-         *       conditions: { path: "/api/*" }
-         *     },
-         *     {
-         *       listen: "80/http",
-         *       container: "admin",
-         *       conditions: { path: "/admin/*" }
-         *     }
-         *   ]
-         * }
-         * ```
-         *
-         * Additionally, you can redirect traffic from one port to another. This is
-         * commonly used to redirect http to https.
-         *
-         * ```js
-         * {
-         *   rules: [
-         *     { listen: "80/http", redirect: "443/https" },
-         *     { listen: "443/https", forward: "80/http" }
-         *   ]
-         * }
-         * ```
-         */
-        rules?: Input<Prettify<ServiceRules>[]>;
-        /**
-         * Configure the health check that the load balancer runs on your containers.
-         *
-         * :::tip
-         * This health check is different from the [`health`](#health) check.
-         * :::
-         *
-         * This health check is run by the load balancer. While, `health` is run by ECS. This
-         * cannot be disabled if you are using a load balancer. While the other is off by default.
-         *
-         * Since this cannot be disabled, here are some tips on how to debug an unhealthy
-         * health check.
-         *
-         * <details>
-         * <summary>How to debug a load balancer health check</summary>
-         *
-         * If you notice a `Unhealthy: Health checks failed` error, it's because the health
-         * check has failed. When it fails, the load balancer will terminate the containers,
-         * causing any requests to fail.
-         *
-         * Here's how to debug it:
-         *
-         * 1. Verify the health check path.
-         *
-         *    By default, the load balancer checks the `/` path. Ensure it's accessible in your
-         *    containers. If your application runs on a different path, then update the path in
-         *    the health check config accordingly.
-         *
-         * 2. Confirm the containers are operational.
-         *
-         *    Navigate to **ECS console** > select the **cluster** > go to the **Tasks tab** >
-         *    choose **Any desired status** under the **Filter desired status** dropdown > select
-         *    a task and check for errors under the **Logs tab**. If it has error that means that
-         *    the container failed to start.
-         *
-         * 3. If the container was terminated by the load balancer while still starting up, try
-         *    increasing the health check interval and timeout.
-         * </details>
-         *
-         * For `http` and `https` the default is:
-         *
-         * ```js
-         * {
-         *   path: "/",
-         *   healthyThreshold: 5,
-         *   successCodes: "200",
-         *   timeout: "5 seconds",
-         *   unhealthyThreshold: 2,
-         *   interval: "30 seconds"
-         * }
-         * ```
-         *
-         * For `tcp` and `udp` the default is:
-         *
-         * ```js
-         * {
-         *   healthyThreshold: 5,
-         *   timeout: "6 seconds",
-         *   unhealthyThreshold: 2,
-         *   interval: "30 seconds"
-         * }
-         * ```
-         *
-         * @example
-         *
-         * To configure the health check, we use the _port/protocol_ format. Here we are
-         * configuring a health check that pings the `/health` path on port `8080`
-         * every 10 seconds.
-         *
-         * ```js
-         * {
-         *   rules: [
-         *     { listen: "80/http", forward: "8080/http" }
-         *   ],
-         *   health: {
-         *     "8080/http": {
-         *       path: "/health",
-         *       interval: "10 seconds"
-         *     }
-         *   }
-         * }
-         * ```
-         *
-         */
-        health?: Input<
-          Record<
-            Port,
-            Input<{
-              /**
-               * The URL path to ping on the service for health checks. Only applicable to
-               * `http` and `https` protocols.
-               * @default `"/"`
-               */
-              path?: Input<string>;
-              /**
-               * The time period between each health check request. Must be between `5 seconds`
-               * and `300 seconds`.
-               * @default `"30 seconds"`
-               */
-              interval?: Input<DurationMinutes>;
-              /**
-               * The timeout for each health check request. If no response is received within this
-               * time, it is considered failed. Must be between `2 seconds` and `120 seconds`.
-               * @default `"5 seconds"`
-               */
-              timeout?: Input<DurationMinutes>;
-              /**
-               * The number of consecutive successful health check requests required to consider the
-               * target healthy. Must be between 2 and 10.
-               * @default `5`
-               */
-              healthyThreshold?: Input<number>;
-              /**
-               * The number of consecutive failed health check requests required to consider the
-               * target unhealthy. Must be between 2 and 10.
-               * @default `2`
-               */
-              unhealthyThreshold?: Input<number>;
-              /**
-               * One or more HTTP response codes the health check treats as successful. Only
-               * applicable to `http` and `https` protocols.
-               *
-               * @default `"200"`
-               * @example
-               * ```js
-               * {
-               *   successCodes: "200-299"
-               * }
-               * ```
-               */
-              successCodes?: Input<string>;
-            }>
-          >
-        >;
-      }
+    /**
+     * Configure if the load balancer should be public or private.
+     *
+     * When set to `false`, the load balancer endpoint will only be accessible within the
+     * VPC.
+     *
+     * @default `true`
+     */
+    public?: Input<boolean>;
+    /**
+     * Set a custom domain for your load balancer endpoint.
+     *
+     * Automatically manages domains hosted on AWS Route 53, Cloudflare, and Vercel. For other
+     * providers, you'll need to pass in a `cert` that validates domain ownership and add the
+     * DNS records.
+     *
+     * :::tip
+     * Built-in support for AWS Route 53, Cloudflare, and Vercel. And manual setup for other
+     * providers.
+     * :::
+     *
+     * @example
+     *
+     * By default this assumes the domain is hosted on Route 53.
+     *
+     * ```js
+     * {
+     *   domain: "example.com"
+     * }
+     * ```
+     *
+     * For domains hosted on Cloudflare.
+     *
+     * ```js
+     * {
+     *   domain: {
+     *     name: "example.com",
+     *     dns: sst.cloudflare.dns()
+     *   }
+     * }
+     * ```
+     */
+    domain?: Input<
+      | string
+      | {
+          /**
+           * The custom domain you want to use.
+           *
+           * @example
+           * ```js
+           * {
+           *   domain: {
+           *     name: "example.com"
+           *   }
+           * }
+           * ```
+           *
+           * Can also include subdomains based on the current stage.
+           *
+           * ```js
+           * {
+           *   domain: {
+           *     name: `${$app.stage}.example.com`
+           *   }
+           * }
+           * ```
+           *
+           * Wildcard domains are supported.
+           *
+           * ```js
+           * {
+           *   domain: {
+           *     name: "*.example.com"
+           *   }
+           * }
+           * ```
+           */
+          name: Input<string>;
+          /**
+           * Alias domains that should be used.
+           *
+           * @example
+           * ```js {4}
+           * {
+           *   domain: {
+           *     name: "app1.example.com",
+           *     aliases: ["app2.example.com"]
+           *   }
+           * }
+           * ```
+           */
+          aliases?: Input<string[]>;
+          /**
+           * The ARN of an ACM (AWS Certificate Manager) certificate that proves ownership of the
+           * domain. By default, a certificate is created and validated automatically.
+           *
+           * :::tip
+           * You need to pass in a `cert` for domains that are not hosted on supported `dns` providers.
+           * :::
+           *
+           * To manually set up a domain on an unsupported provider, you'll need to:
+           *
+           * 1. [Validate that you own the domain](https://docs.aws.amazon.com/acm/latest/userguide/domain-ownership-validation.html) by creating an ACM certificate. You can either validate it by setting a DNS record or by verifying an email sent to the domain owner.
+           * 2. Once validated, set the certificate ARN as the `cert` and set `dns` to `false`.
+           * 3. Add the DNS records in your provider to point to the load balancer endpoint.
+           *
+           * @example
+           * ```js
+           * {
+           *   domain: {
+           *     name: "example.com",
+           *     dns: false,
+           *     cert: "arn:aws:acm:us-east-1:112233445566:certificate/3a958790-8878-4cdc-a396-06d95064cf63"
+           *   }
+           * }
+           * ```
+           */
+          cert?: Input<string>;
+          /**
+           * The DNS provider to use for the domain. Defaults to the AWS.
+           *
+           * Takes an adapter that can create the DNS records on the provider. This can automate
+           * validating the domain and setting up the DNS routing.
+           *
+           * Supports Route 53, Cloudflare, and Vercel adapters. For other providers, you'll need
+           * to set `dns` to `false` and pass in a certificate validating ownership via `cert`.
+           *
+           * @default `sst.aws.dns`
+           *
+           * @example
+           *
+           * Specify the hosted zone ID for the Route 53 domain.
+           *
+           * ```js
+           * {
+           *   domain: {
+           *     name: "example.com",
+           *     dns: sst.aws.dns({
+           *       zone: "Z2FDTNDATAQYW2"
+           *     })
+           *   }
+           * }
+           * ```
+           *
+           * Use a domain hosted on Cloudflare, needs the Cloudflare provider.
+           *
+           * ```js
+           * {
+           *   domain: {
+           *     name: "example.com",
+           *     dns: sst.cloudflare.dns()
+           *   }
+           * }
+           * ```
+           *
+           * Use a domain hosted on Vercel, needs the Vercel provider.
+           *
+           * ```js
+           * {
+           *   domain: {
+           *     name: "example.com",
+           *     dns: sst.vercel.dns()
+           *   }
+           * }
+           * ```
+           */
+          dns?: Input<false | (Dns & {})>;
+        }
+    >;
+    /** @deprecated Use `rules` instead. */
+    ports?: Input<Prettify<ServiceRules>[]>;
+    /**
+     * Configure the mapping for the ports the load balancer listens to, forwards, or redirects to
+     * the service.
+     * This supports two types of protocols:
+     *
+     * 1. Application Layer Protocols: `http` and `https`. This'll create an [Application Load Balancer](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/introduction.html).
+     * 2. Network Layer Protocols: `tcp`, `udp`, `tcp_udp`, and `tls`. This'll create a [Network Load Balancer](https://docs.aws.amazon.com/elasticloadbalancing/latest/network/introduction.html).
+     *
+     * :::note
+     * If you want to listen on `https` or `tls`, you need to specify a custom
+     * `loadBalancer.domain`.
+     * :::
+     *
+     * You **can not configure** both application and network layer protocols for the same
+     * service.
+     *
+     * @example
+     * Here we are listening on port `80` and forwarding it to the service on port `8080`.
+     * ```js
+     * {
+     *   rules: [
+     *     { listen: "80/http", forward: "8080/http" }
+     *   ]
+     * }
+     * ```
+     *
+     * The `forward` port and protocol defaults to the `listen` port and protocol. So in this
+     * case both are `80/http`.
+     *
+     * ```js
+     * {
+     *   rules: [
+     *     { listen: "80/http" }
+     *   ]
+     * }
+     * ```
+     *
+     * If multiple containers are configured via the `containers` argument, you need to
+     * specify which container the traffic should be forwarded to.
+     *
+     * ```js
+     * {
+     *   rules: [
+     *     { listen: "80/http", container: "app" },
+     *     { listen: "8000/http", container: "admin" }
+     *   ]
+     * }
+     * ```
+     *
+     * You can also route the same port to multiple containers via path-based routing.
+     *
+     * ```js
+     * {
+     *   rules: [
+     *     {
+     *       listen: "80/http",
+     *       container: "app",
+     *       conditions: { path: "/api/*" }
+     *     },
+     *     {
+     *       listen: "80/http",
+     *       container: "admin",
+     *       conditions: { path: "/admin/*" }
+     *     }
+     *   ]
+     * }
+     * ```
+     *
+     * Additionally, you can redirect traffic from one port to another. This is
+     * commonly used to redirect http to https.
+     *
+     * ```js
+     * {
+     *   rules: [
+     *     { listen: "80/http", redirect: "443/https" },
+     *     { listen: "443/https", forward: "80/http" }
+     *   ]
+     * }
+     * ```
+     */
+    rules?: Input<Prettify<ServiceRules>[]>;
+    /**
+     * Configure the health check that the load balancer runs on your containers.
+     *
+     * :::tip
+     * This health check is different from the [`health`](#health) check.
+     * :::
+     *
+     * This health check is run by the load balancer. While, `health` is run by ECS. This
+     * cannot be disabled if you are using a load balancer. While the other is off by default.
+     *
+     * Since this cannot be disabled, here are some tips on how to debug an unhealthy
+     * health check.
+     *
+     * <details>
+     * <summary>How to debug a load balancer health check</summary>
+     *
+     * If you notice a `Unhealthy: Health checks failed` error, it's because the health
+     * check has failed. When it fails, the load balancer will terminate the containers,
+     * causing any requests to fail.
+     *
+     * Here's how to debug it:
+     *
+     * 1. Verify the health check path.
+     *
+     *    By default, the load balancer checks the `/` path. Ensure it's accessible in your
+     *    containers. If your application runs on a different path, then update the path in
+     *    the health check config accordingly.
+     *
+     * 2. Confirm the containers are operational.
+     *
+     *    Navigate to **ECS console** > select the **cluster** > go to the **Tasks tab** >
+     *    choose **Any desired status** under the **Filter desired status** dropdown > select
+     *    a task and check for errors under the **Logs tab**. If it has error that means that
+     *    the container failed to start.
+     *
+     * 3. If the container was terminated by the load balancer while still starting up, try
+     *    increasing the health check interval and timeout.
+     * </details>
+     *
+     * For `http` and `https` the default is:
+     *
+     * ```js
+     * {
+     *   path: "/",
+     *   healthyThreshold: 5,
+     *   successCodes: "200",
+     *   timeout: "5 seconds",
+     *   unhealthyThreshold: 2,
+     *   interval: "30 seconds"
+     * }
+     * ```
+     *
+     * For `tcp` and `udp` the default is:
+     *
+     * ```js
+     * {
+     *   healthyThreshold: 5,
+     *   timeout: "6 seconds",
+     *   unhealthyThreshold: 2,
+     *   interval: "30 seconds"
+     * }
+     * ```
+     *
+     * @example
+     *
+     * To configure the health check, we use the _port/protocol_ format. Here we are
+     * configuring a health check that pings the `/health` path on port `8080`
+     * every 10 seconds.
+     *
+     * ```js
+     * {
+     *   rules: [
+     *     { listen: "80/http", forward: "8080/http" }
+     *   ],
+     *   health: {
+     *     "8080/http": {
+     *       path: "/health",
+     *       interval: "10 seconds"
+     *     }
+     *   }
+     * }
+     * ```
+     *
+     */
+    health?: Input<
+      Record<
+        Port,
+        Input<{
+          /**
+           * The URL path to ping on the service for health checks. Only applicable to
+           * `http` and `https` protocols.
+           * @default `"/"`
+           */
+          path?: Input<string>;
+          /**
+           * The time period between each health check request. Must be between `5 seconds`
+           * and `300 seconds`.
+           * @default `"30 seconds"`
+           */
+          interval?: Input<DurationMinutes>;
+          /**
+           * The timeout for each health check request. If no response is received within this
+           * time, it is considered failed. Must be between `2 seconds` and `120 seconds`.
+           * @default `"5 seconds"`
+           */
+          timeout?: Input<DurationMinutes>;
+          /**
+           * The number of consecutive successful health check requests required to consider the
+           * target healthy. Must be between 2 and 10.
+           * @default `5`
+           */
+          healthyThreshold?: Input<number>;
+          /**
+           * The number of consecutive failed health check requests required to consider the
+           * target unhealthy. Must be between 2 and 10.
+           * @default `2`
+           */
+          unhealthyThreshold?: Input<number>;
+          /**
+           * One or more HTTP response codes the health check treats as successful. Only
+           * applicable to `http` and `https` protocols.
+           *
+           * @default `"200"`
+           * @example
+           * ```js
+           * {
+           *   successCodes: "200-299"
+           * }
+           * ```
+           */
+          successCodes?: Input<string>;
+        }>
+      >
+    >;
+  }
     | {
-        /**
-         * The `Alb` instance to attach this service to. When provided, the service creates
-         * target groups and listener rules on the shared ALB instead of creating its own
-         * load balancer.
-         *
-         * ECS tasks use the VPC's default security group, which allows all traffic within the
-         * VPC CIDR. For tighter security, add an explicit security group ingress rule from the
-         * ALB's security group using `transform`.
-         *
-         * @example
-         * ```js
-         * {
-         *   loadBalancer: {
-         *     instance: alb,
-         *     rules: [
-         *       { listen: "443/https", forward: "8080/http", conditions: { path: "/api/*" }, priority: 100 }
-         *     ]
-         *   }
-         * }
-         * ```
-         */
-        instance: Alb;
-        /**
-         * The rules for routing traffic from the ALB to this service's containers.
-         * Each rule must have explicit conditions and priority.
-         */
-        rules: Prettify<ServiceAlbRule>[];
-        /**
-         * Configure health checks for the target groups. Uses the same format as the inline
-         * health check config, keyed by `{port}/{protocol}`.
-         */
-        health?: Record<
-          AlbPort,
-          Input<{
-            path?: Input<string>;
-            interval?: Input<DurationMinutes>;
-            timeout?: Input<DurationMinutes>;
-            healthyThreshold?: Input<number>;
-            unhealthyThreshold?: Input<number>;
-            successCodes?: Input<string>;
-          }>
-        >;
-      }
+    /**
+     * The `Alb` instance to attach this service to. When provided, the service creates
+     * target groups and listener rules on the shared ALB instead of creating its own
+     * load balancer.
+     *
+     * ECS tasks use the VPC's default security group, which allows all traffic within the
+     * VPC CIDR. For tighter security, add an explicit security group ingress rule from the
+     * ALB's security group using `transform`.
+     *
+     * @example
+     * ```js
+     * {
+     *   loadBalancer: {
+     *     instance: alb,
+     *     rules: [
+     *       { listen: "443/https", forward: "8080/http", conditions: { path: "/api/*" }, priority: 100 }
+     *     ]
+     *   }
+     * }
+     * ```
+     */
+    instance: Alb;
+    /**
+     * The rules for routing traffic from the ALB to this service's containers.
+     * Each rule must have explicit conditions and priority.
+     */
+    rules: Prettify<ServiceAlbRule>[];
+    /**
+     * Configure health checks for the target groups. Uses the same format as the inline
+     * health check config, keyed by `{port}/{protocol}`.
+     */
+    health?: Record<
+      AlbPort,
+      Input<{
+        path?: Input<string>;
+        interval?: Input<DurationMinutes>;
+        timeout?: Input<DurationMinutes>;
+        healthyThreshold?: Input<number>;
+        unhealthyThreshold?: Input<number>;
+        successCodes?: Input<string>;
+      }>
+    >;
+  }
   >;
   /**
    * Configure the CloudMap service registry for the service.
@@ -1245,7 +1245,7 @@ export interface ServiceArgs extends FargateBaseArgs {
    *
    * The GPU value must be in the form `<manufacturer>/<name>`. Valid manufacturers are
    * `amazon-web-services`, `amd`, `nvidia`, `xilinx`, and `habana`.
-    */
+   */
   gpu?: Input<ManagedGpu>;
   /**
    * The ARN of an existing ECS infrastructure role to use for managed instances.
