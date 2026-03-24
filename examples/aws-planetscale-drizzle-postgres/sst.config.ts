@@ -98,7 +98,11 @@ export default $config({
       organization: db.organization,
       branch: branch.name,
       name: `${$app.name}-${$app.stage}`,
-      inheritedRoles: ["pg_read_all_data", "pg_write_all_data"],
+      inheritedRoles: [
+        "pg_read_all_data",
+        "pg_write_all_data",
+        "postgres", // only needed for pushing schema changes
+      ],
     });
 
     const database = new sst.Linkable("Database", {

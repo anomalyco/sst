@@ -6,9 +6,18 @@
 
 declare module "sst" {
   export interface Resource {
-    "Example": {
+    "Api": {
       "name": string
-      "type": "sst.aws.Bucket"
+      "type": "sst.aws.Function"
+      "url": string
+    }
+    "Database": {
+      "database": string
+      "host": string
+      "password": string
+      "port": number
+      "type": "sst.sst.Linkable"
+      "username": string
     }
   }
 }

@@ -67,11 +67,16 @@ export default $config({
       removal: input?.stage === "production" ? "retain" : "remove",
       home: "aws",
       providers: {
-        planetscale: "0.6.0",
+        planetscale: "1.0.0",
       },
     };
   },
   async run() {
+    const db = planetscale.getDatabaseVitessOutput({
+      id: "example",
+      organization: "vimtor",
+    });
+
     const branch =
       $app.stage === "production"
         ? planetscale.getVitessBranchOutput({

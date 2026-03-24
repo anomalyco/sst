@@ -4,10 +4,7 @@ import { Resource } from "sst";
 export default defineConfig({
   dialect: "postgresql",
   dbCredentials: {
-    host: Resource.Database.host,
-    user: Resource.Database.username,
-    password: Resource.Database.password,
-    database: Resource.Database.database,
+    url: `postgresql://${Resource.Database.username}:${Resource.Database.password}@${Resource.Database.host}/${Resource.Database.database}?sslmode=require`,
   },
   schema: ["./src/schema.ts"],
 });
