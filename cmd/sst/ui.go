@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log/slog"
+	"os"
 
 	"github.com/pulumi/pulumi/sdk/v3/go/common/apitype"
 	"github.com/sst/sst/v3/cmd/sst/cli"
@@ -29,7 +30,11 @@ func CmdUI(c *cli.Cli) error {
 	}
 	if filter == "function" || filter == "" {
 		if filter != "" {
-			fmt.Println(ui.TEXT_HIGHLIGHT_BOLD.Render("Function Logs"))
+			title := "Function Logs"
+			if os.Getenv("SST_UI_WORKERS") == "1" {
+				title = "Worker Logs"
+			}
+			fmt.Println(ui.TEXT_HIGHLIGHT_BOLD.Render(title))
 			fmt.Println()
 			fmt.Println(ui.TEXT_GRAY.Render("Waiting for invocations..."))
 			fmt.Println()
