@@ -266,7 +266,7 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 		"PULUMI_IGNORE_AMBIENT_PLUGINS=true",
 		// "PULUMI_DISABLE_AUTOMATIC_PLUGIN_ACQUISITION=true",
 		"NODE_OPTIONS="+func() string {
-			nodeOptions := "--enable-source-maps --no-deprecation"
+			nodeOptions := "--enable-source-maps --no-deprecation --no-warnings"
 			if existing := os.Getenv("NODE_OPTIONS"); existing != "" {
 				nodeOptions = existing + " " + nodeOptions
 			}
