@@ -1242,7 +1242,10 @@ export interface ServiceArgs extends FargateBaseArgs {
    *   instanceProfile: "arn:aws:iam::123456789012:instance-profile/ecs-managed"
    * }
    * ```
-   */
+   *
+   * The GPU value must be in the form `<manufacturer>/<name>`. Valid manufacturers are
+   * `amazon-web-services`, `amd`, `nvidia`, `xilinx`, and `habana`.
+    */
   gpu?: Input<ManagedGpu>;
   /**
    * The ARN of an existing ECS infrastructure role to use for managed instances.

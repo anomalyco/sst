@@ -29,17 +29,44 @@ import { bootstrap } from "./helpers/bootstrap.js";
 import { imageBuilder } from "./helpers/container-builder.js";
 import { normalizeContainers } from "./fargate.js";
 
-export const managedGpuManufacturers = ["nvidia"] as const;
+export const managedGpuManufacturers = [
+  "amazon-web-services",
+  "amd",
+  "nvidia",
+  "xilinx",
+  "habana",
+] as const;
 export const ManagedGpuAcceleratorName = {
   A100: "a100",
   A10G: "a10g",
   H100: "h100",
+  INFERENTIA: "inferentia",
   K520: "k520",
   K80: "k80",
   M60: "m60",
+  RADEON_PRO_V520: "radeon-pro-v520",
   T4: "t4",
   T4G: "t4g",
   V100: "v100",
+  VU9P: "vu9p",
+} as const;
+
+const managedGpuManufacturerNames = {
+  "amazon-web-services": [ManagedGpuAcceleratorName.INFERENTIA],
+  amd: [ManagedGpuAcceleratorName.RADEON_PRO_V520],
+  nvidia: [
+    ManagedGpuAcceleratorName.A100,
+    ManagedGpuAcceleratorName.A10G,
+    ManagedGpuAcceleratorName.H100,
+    ManagedGpuAcceleratorName.K520,
+    ManagedGpuAcceleratorName.K80,
+    ManagedGpuAcceleratorName.M60,
+    ManagedGpuAcceleratorName.T4,
+    ManagedGpuAcceleratorName.T4G,
+    ManagedGpuAcceleratorName.V100,
+  ],
+  xilinx: [ManagedGpuAcceleratorName.VU9P],
+  habana: [],
 } as const;
 
 export type ManagedGpuAcceleratorName =
@@ -183,11 +210,14 @@ export function normalizeManagedCapacity(
     return {
       count: { min: 1, max: 1 },
       manufacturer,
-      names: normalizeGpuNames(name),
+      names: normalizeGpuNames(manufacturer, name),
     };
   }
 
-  function normalizeGpuNames(name: ManagedGpuAcceleratorName) {
+  function normalizeGpuNames(
+    manufacturer: (typeof managedGpuManufacturers)[number],
+    name: ManagedGpuAcceleratorName,
+  ) {
     const names = [name];
     const supported = Object.values(ManagedGpuAcceleratorName);
     const invalid = names.filter((name) => !supported.includes(name));
@@ -195,9 +225,23 @@ export function normalizeManagedCapacity(
       throw new VisibleError(
         `Unsupported GPU accelerator name ${invalid
           .map((name) => `"${name}"`)
-          .join(", ")}. The supported NVIDIA values are ${supported
+          .join(", ")}. The supported values are ${supported
           .map((name) => `"${name}"`)
           .join(", ")}.`,
+      );
+    }
+
+    const supportedForManufacturer = managedGpuManufacturerNames[
+      manufacturer
+    ] as readonly ManagedGpuAcceleratorName[];
+    if (!supportedForManufacturer.includes(name)) {
+      const validNames = supportedForManufacturer
+        .map((name) => `"${name}"`)
+        .join(", ");
+      throw new VisibleError(
+        supportedForManufacturer.length > 0
+          ? `Unsupported GPU accelerator \"${manufacturer}/${name}\". The supported values for \"${manufacturer}\" are ${validNames}.`
+          : `Unsupported GPU accelerator \"${manufacturer}/${name}\". No accelerator names are currently supported for \"${manufacturer}\".`,
       );
     }
     return names;
