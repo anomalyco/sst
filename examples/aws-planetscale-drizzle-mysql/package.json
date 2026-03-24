@@ -1,5 +1,5 @@
 {
-  "name": "aws-planetscale-drizzle",
+  "name": "aws-planetscale-drizzle-mysql",
   "version": "0.0.0",
   "scripts": {
     "db": "sst shell drizzle-kit",

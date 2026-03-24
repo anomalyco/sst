@@ -1,25 +1,25 @@
 /// <reference path="./.sst/platform/config.d.ts" />
 
 /**
- * ## AWS PlanetScale Drizzle
+ * ## AWS PlanetScale Drizzle Postgres
  *
- * In this example, we use PlanetScale with a branch-per-stage pattern. Every stage gets its own
- * database branch — so each PR can have an isolated database.
+ * In this example, we use PlanetScale Postgres with a branch-per-stage pattern. Every stage
+ * gets its own database branch — so each PR can have an isolated database.
  *
  * ```ts title="sst.config.ts"
- * const db = planetscale.getDatabaseVitessOutput({
+ * const db = planetscale.getDatabasePostgresOutput({
  *   id: "mydb",
  *   organization: "myorg",
  * });
  *
  * const branch =
  *   $app.stage === "production"
- *     ? planetscale.getVitessBranchOutput({
+ *     ? planetscale.getPostgresBranchOutput({
  *         id: db.defaultBranch,
  *         organization: db.organization,
  *         database: db.name,
  *       })
- *     : new planetscale.VitessBranch("DatabaseBranch", {
+ *     : new planetscale.PostgresBranch("DatabaseBranch", {
  *         database: db.name,
  *         organization: db.organization,
  *         name: $app.stage,
@@ -27,7 +27,7 @@
  *       });
  * ```
  *
- * We then create a password and wrap it in a `Linkable` to link it to a function.
+ * We then create a role and wrap it in a `Linkable` to link it to a function.
  *
  * ```ts title="sst.config.ts" {3}
  * new sst.aws.Function("Api", {
@@ -47,23 +47,25 @@
  * [`Resource`](/docs/reference/sdk/#resource) helper.
  *
  * ```ts title="src/drizzle.ts"
- * import { drizzle } from "drizzle-orm/planetscale-serverless";
+ * import { drizzle } from "drizzle-orm/postgres-js";
  * import { Resource } from "sst";
+ * import postgres from "postgres";
  *
- * export const db = drizzle({
- *   connection: {
- *     host: Resource.Database.host,
- *     username: Resource.Database.username,
- *     password: Resource.Database.password,
- *   },
+ * const client = postgres({
+ *   host: Resource.Database.host,
+ *   username: Resource.Database.username,
+ *   password: Resource.Database.password,
+ *   database: Resource.Database.database,
  * });
+ *
+ * export const db = drizzle(client);
  * ```
  *
  */
 export default $config({
   app(input) {
     return {
-      name: "aws-planetscale-drizzle",
+      name: "aws-planetscale-drizzle-postgres",
       removal: input?.stage === "production" ? "retain" : "remove",
       home: "aws",
       providers: {
@@ -72,40 +74,39 @@ export default $config({
     };
   },
   async run() {
-    const db = planetscale.getDatabaseVitessOutput({
+    const db = planetscale.getDatabasePostgresOutput({
       id: "mydb",
       organization: "myorg",
     });
 
     const branch =
       $app.stage === "production"
-        ? planetscale.getVitessBranchOutput({
+        ? planetscale.getPostgresBranchOutput({
             id: db.defaultBranch,
             organization: db.organization,
             database: db.name,
           })
-        : new planetscale.VitessBranch("DatabaseBranch", {
+        : new planetscale.PostgresBranch("DatabaseBranch", {
             database: db.name,
             organization: db.organization,
             name: $app.stage,
             parentBranch: db.defaultBranch,
           });
 
-    const password = new planetscale.VitessBranchPassword("DatabasePassword", {
+    const role = new planetscale.PostgresBranchRole("DatabaseRole", {
       database: db.name,
       organization: db.organization,
       branch: branch.name,
-      role: "admin",
       name: `${$app.name}-${$app.stage}`,
+      inheritedRoles: ["pg_read_all_data", "pg_write_all_data"],
     });
 
     const database = new sst.Linkable("Database", {
       properties: {
-        host: password.accessHostUrl,
-        username: password.username,
-        password: password.plainText,
-        database: db.name,
-        port: 3306,
+        host: role.accessHostUrl,
+        username: role.username,
+        password: role.password,
+        database: role.databaseName,
       },
     });
 
