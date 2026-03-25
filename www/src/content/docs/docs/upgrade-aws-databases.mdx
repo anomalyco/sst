@@ -5,19 +5,17 @@ description: How to upgrade your database version and minimize downtime.
 
 Sometimes database components like [`Postgres`](/docs/component/aws/postgres/) or [`Mysql`](/docs/component/aws/mysql/) need to be upgraded. When you change fields like `version` or `instance`, SST applies the update on the next `sst deploy`.
 
-This page covers the different strategies for handling these upgrades and how to minimize downtime.
+By default, AWS applies the upgrade in-place to the running instance. The database restarts, and your application loses connectivity until it finishes.
 
----
+Some components also support Multi-AZ or Blue/Green deployments to reduce downtime.
 
-## In-place
-
-By default, the update is applied directly to the running instance. The database restarts and your application loses connectivity for up to 30 minutes depending on the change.
+This guide covers the different strategies to minimize downtime when handling these upgrades.
 
 ---
 
 ## Multi-AZ
 
-[`Postgres`](/docs/component/aws/postgres/) and [`Mysql`](/docs/component/aws/mysql/) support Multi-AZ deployments. AWS maintains a standby replica in a different availability zone. During the upgrade, changes are applied to the standby first, then it fails over. This reduces downtime to around **60-120 seconds** instead of the full upgrade duration.
+[`Postgres`](/docs/component/aws/postgres/) and [`Mysql`](/docs/component/aws/mysql/) support Multi-AZ deployments. AWS maintains a standby replica in a different availability zone. During the upgrade, changes are applied to the standby first, then it fails over. This reduces downtime to around 60-120 seconds instead of the full upgrade duration.
 
 ```ts title="sst.config.ts" {4}
 const database = new sst.aws.Postgres("MyDatabase", {
@@ -33,13 +31,13 @@ Multi-AZ roughly doubles the cost since a standby instance is always running. Yo
 Major version upgrades restart both instances, making Multi-AZ ineffective for reducing downtime.
 :::
 
-Enabling [RDS Proxy](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/rds-proxy.html) through the `proxy` prop can help further reduce failover downtime by detecting the new primary directly instead of waiting for DNS propagation. This can bring downtime down to just a few seconds.
+Enabling [RDS Proxy](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/rds-proxy.html) through the `proxy` property can help further reduce failover downtime by detecting the new primary directly instead of waiting for DNS propagation. This can bring downtime down to just a few seconds.
 
 ---
 
-## Blue/Green deployments
+## Blue/Green
 
-[`Postgres`](/docs/component/aws/postgres/) and [`Mysql`](/docs/component/aws/mysql/) support [AWS RDS Blue/Green deployments](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/blue-green-deployments.html) through the `blueGreen` prop. This creates a staging copy of your database, applies the changes there, and switches over with near-zero downtime.
+[`Postgres`](/docs/component/aws/postgres/) and [`Mysql`](/docs/component/aws/mysql/) support [AWS RDS Blue/Green deployments](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/blue-green-deployments.html) through the `blueGreen` property. This creates a staging copy of your database, applies the changes there, and switches over with near-zero downtime.
 
 ```ts title="sst.config.ts" {4}
 const database = new sst.aws.Postgres("MyDatabase", {
@@ -55,17 +53,17 @@ Your database endpoint stays the same throughout, so no application changes are 
 Blue/Green deployments are not compatible with databases that have read replicas or `proxy` enabled.
 :::
 
-Read more in [this Pulumi article](https://www.pulumi.com/blog/aws-rds-blue-green-deployment-updates).
+Learn more in [this Pulumi article](https://www.pulumi.com/blog/aws-rds-blue-green-deployment-updates).
 
 ---
 
-## Deploy your upgrade
+## Upgrading steps
 
 Here's the recommended workflow for upgrading a production database.
 
 ### 1. Check compatibility
 
-Not all version jumps are allowed — you might need to go through intermediate versions.
+Not all version jumps are allowed. You might need to go through intermediate versions.
 
 - [PostgreSQL upgrade paths](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_UpgradeDBInstance.PostgreSQL.html)
 - [MySQL upgrade paths](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_UpgradeDBInstance.MySQL.html)
@@ -74,9 +72,7 @@ Not all version jumps are allowed — you might need to go through intermediate 
 
 ### 2. Pick a strategy
 
-- **In-place** — simplest, but plan for downtime during the upgrade.
-- **Multi-AZ** — reduces downtime to about 60 seconds by failing over to an upgraded standby.
-- **Blue/Green** — near-zero downtime by creating a staging copy and switching over.
+Pick based on your downtime needs.
 
 | Component | In-place | Multi-AZ | Blue/Green |
 | --- | --- | --- | --- |
@@ -93,7 +89,7 @@ Not all version jumps are allowed — you might need to go through intermediate 
     vpc,
 -   version: "16",
 +   version: "17",
-    blueGreen: true,
++   blueGreen: true,
   });
 ```
 
@@ -101,7 +97,7 @@ Not all version jumps are allowed — you might need to go through intermediate 
 
 Apply your chosen strategy to the production deploy.
 
-```ts title="sst.config.ts" {4}
+```ts title="sst.config.ts"
 const database = new sst.aws.Postgres("MyDatabase", {
   vpc,
   version: "17",

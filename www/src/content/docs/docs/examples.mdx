@@ -65,7 +65,8 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-apig-au
 An example on how to enable streaming for API Gateway REST API routes.
 
 ```ts title="sst.config.ts"
-api.route("GET /", "index.handler", {
+api.route("GET /", {
+  handler: "index.handler",
   streaming: true,
 });
 ```
@@ -75,35 +76,31 @@ The handler uses the native `awslambda.streamifyResponse` and
 
 ```ts title="index.ts"
 export const handler = awslambda.streamifyResponse(
-  async (_event: unknown, responseStream: any) => {
-    responseStream = awslambda.HttpResponseStream.from(responseStream, {
+  async (event, stream) => {
+    stream = awslambda.HttpResponseStream.from(stream, {
       statusCode: 200,
-      headers: { "Content-Type": "text/plain" },
+      headers: {
+        "Content-Type": "text/plain; charset=UTF-8",
+        "X-Content-Type-Options": "nosniff",
+      },
     });
 
-    responseStream.write("Hello");
+    stream.write("Hello ");
     await new Promise((resolve) => setTimeout(resolve, 3000));
-    responseStream.write(" World");
-    responseStream.end();
+    stream.write("World");
+
+    stream.end();
   },
 );
 ```
-
-:::note
-Streaming is currently not supported in `sst dev`.
-:::
-
-To test this in your terminal, use the `curl` command with the `--no-buffer` option.
-
-```bash "--no-buffer"
-curl --no-buffer https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/prod
-```
 ```ts title="sst.config.ts"
 const api = new sst.aws.ApiGatewayV1("MyApi");
-api.route("GET /", "index.handler", {
+api.route("GET /", {
+  handler: "index.handler",
   streaming: true,
 });
-api.route("GET /hono", "hono.handler", {
+api.route("GET /hono", {
+  handler: "hono.handler",
   streaming: true,
 });
 api.deploy();
@@ -1359,6 +1356,258 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-drizzle
 
 
 ---
+## AWS Aurora DSQL with Drizzle
+
+In this example, we use Drizzle ORM with an Aurora DSQL cluster.
+
+```ts title="sst.config.ts"
+const cluster = new sst.aws.Dsql("MyCluster");
+```
+
+And link it to a Lambda function.
+
+```ts title="sst.config.ts" {4}
+new sst.aws.Function("MyApi", {
+  handler: "src/api.handler",
+  link: [cluster],
+  url: true,
+});
+```
+
+Push the Drizzle schema to the database.
+
+```bash
+sst shell -- bun run push.ts
+```
+
+Now in the function we can connect to the cluster using Drizzle with the DSQL connector.
+Learn more about [DSQL Node.js connectors](https://docs.aws.amazon.com/aurora-dsql/latest/userguide/SECTION_Node-js-connectors.html).
+
+```ts title="src/drizzle.ts"
+import { drizzle } from "drizzle-orm/node-postgres";
+import { AuroraDSQLPool } from "@aws/aurora-dsql-node-postgres-connector";
+import { Resource } from "sst";
+
+const pool = new AuroraDSQLPool({
+  host: Resource.MyCluster.endpoint,
+  user: "admin",
+});
+
+export const db = drizzle(pool, { schema });
+```
+```ts title="sst.config.ts"
+const cluster = new sst.aws.Dsql("MyCluster");
+
+new sst.aws.Function("MyApi", {
+  handler: "src/api.handler",
+  link: [cluster],
+  url: true,
+});
+
+return {
+  endpoint: cluster.endpoint,
+  region: cluster.region,
+};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-dsql-drizzle).
+
+
+---
+## AWS Aurora DSQL Multi-Region
+
+In this example, we deploy a multi-region Aurora DSQL cluster and connect to both
+clusters from a Lambda function.
+
+:::note
+Multi-region with VPCs is not currently supported.
+:::
+
+Create the cluster with a witness region and a peer region. The witness must differ
+from both cluster regions.
+
+```ts title="sst.config.ts"
+const cluster = new sst.aws.Dsql("MultiRegion", {
+  regions: {
+    witness: "us-west-2",
+    peer: "us-east-2",
+  },
+});
+```
+
+Connect to both clusters from your function using the DSQL connector.
+Learn more about [DSQL Node.js connectors](https://docs.aws.amazon.com/aurora-dsql/latest/userguide/SECTION_Node-js-connectors.html).
+
+```ts title="lambda.ts"
+import { AuroraDSQLClient } from "@aws/aurora-dsql-node-postgres-connector";
+import { Resource } from "sst";
+
+async function connectToCluster(endpoint: string) {
+  const client = new AuroraDSQLClient({ host: endpoint, user: "admin" });
+  await client.connect();
+  return client;
+}
+
+// Cluster in us-east-1
+const usEast1 = await connectToCluster(Resource.MultiRegion.endpoint);
+
+// Cluster in us-east-2
+const usEast2 = await connectToCluster(Resource.MultiRegion.peer.endpoint);
+```
+```ts title="sst.config.ts"
+const cluster = new sst.aws.Dsql("MultiRegion", {
+  regions: {
+    witness: "us-west-2",
+    peer: "us-east-2",
+  },
+});
+
+const fn = new sst.aws.Function("MyFunction", {
+  handler: "lambda.handler",
+  link: [cluster],
+  url: true,
+});
+
+return {
+  endpoint: cluster.endpoint,
+  region: cluster.region,
+  peerEndpoint: cluster.peer.endpoint,
+  peerRegion: cluster.peer.region,
+};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-dsql-multiregion).
+
+
+---
+## AWS Aurora DSQL in a VPC
+
+In this example, we connect to an Aurora DSQL cluster privately from a Lambda
+function using VPC endpoints, without routing traffic over the public internet.
+
+Create a VPC, then create the cluster with a connection endpoint inside it.
+
+```ts title="sst.config.ts"
+const vpc = new sst.aws.Vpc("MyVpc");
+
+const cluster = new sst.aws.Dsql("MyCluster", {
+  vpc: {
+    instance: vpc,
+    endpoints: { connection: true },
+  },
+});
+```
+
+Link the cluster to a function that's also in the VPC. The linked `endpoint` will
+automatically resolve to the private VPC endpoint hostname instead of the public one.
+
+```ts title="sst.config.ts"
+new sst.aws.Function("MyFunction", {
+  handler: "lambda.handler",
+  vpc,
+  link: [cluster],
+});
+```
+
+Connect from your function using the DSQL connector — no config changes needed.
+Learn more about [DSQL Node.js connectors](https://docs.aws.amazon.com/aurora-dsql/latest/userguide/SECTION_Node-js-connectors.html).
+
+```ts title="lambda.ts"
+import { AuroraDSQLClient } from "@aws/aurora-dsql-node-postgres-connector";
+import { Resource } from "sst";
+
+const client = new AuroraDSQLClient({
+  host: Resource.MyCluster.endpoint,
+  user: "admin",
+});
+
+await client.connect();
+const result = await client.query("SELECT NOW()");
+await client.end();
+```
+```ts title="sst.config.ts"
+const vpc = new sst.aws.Vpc("singleClusterVpc");
+
+const cluster = new sst.aws.Dsql("MyCluster", {
+  vpc: {
+    instance: vpc,
+    endpoints: {
+      connection: true,
+      management: false,
+    },
+  },
+});
+
+const fn = new sst.aws.Function("MyFunction", {
+  handler: "lambda.handler",
+  vpc,
+  link: [cluster],
+  url: true,
+});
+
+return {
+  endpoint: cluster.endpoint,
+  region: cluster.region,
+};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-dsql-vpc).
+
+
+---
+## AWS Aurora DSQL
+
+In this example, we deploy an Aurora DSQL cluster.
+
+```ts title="sst.config.ts"
+const cluster = new sst.aws.Dsql("MyCluster");
+```
+
+And link it to a Lambda function.
+
+```ts title="sst.config.ts" {4}
+new sst.aws.Function("MyFunction", {
+  handler: "lambda.handler",
+  link: [cluster],
+  url: true,
+});
+```
+
+Now in the function we can connect to the cluster using the DSQL connector.
+Learn more about [DSQL Node.js connectors](https://docs.aws.amazon.com/aurora-dsql/latest/userguide/SECTION_Node-js-connectors.html).
+
+```ts title="lambda.ts"
+import { AuroraDSQLClient } from "@aws/aurora-dsql-node-postgres-connector";
+import { Resource } from "sst";
+
+const client = new AuroraDSQLClient({
+  host: Resource.MyCluster.endpoint,
+  user: "admin",
+});
+
+await client.connect();
+const result = await client.query("SELECT NOW()");
+await client.end();
+```
+```ts title="sst.config.ts"
+const cluster = new sst.aws.Dsql("MyCluster", {});
+
+const fn = new sst.aws.Function("MyFunction", {
+  handler: "lambda.handler",
+  link: [cluster],
+  url: true,
+});
+
+return {
+  endpoint: cluster.endpoint,
+  region: cluster.region,
+};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-dsql).
+
+
+---
 ## DynamoDB composite keys
 
 Create a DynamoDB table with multi-attribute composite keys in a global secondary index.
@@ -2364,6 +2613,63 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-lambda-
 
 
 ---
+## Lambda Durable Function using Python Runtime
+
+Creates an [Durable Function](https://docs.aws.amazon.com/lambda/latest/dg/durable-functions.html) using the Python runtime.
+```ts title="sst.config.ts"
+const durableFunction = new sst.aws.Function("Durable", {
+  handler: "durable/main.handler",
+  runtime: "python3.13",
+  durable: true,
+  url: true
+});
+
+new sst.aws.Function("Resolver", {
+  handler: "resolver/main.handler",
+  runtime: "python3.13",
+  url: true,
+  link: [durableFunction],
+});
+
+new sst.aws.Function("Invoker", {
+  handler: "invoker/main.handler",
+  runtime: "python3.13",
+  url: true,
+  link: [durableFunction],
+});
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-lambda-durable-python).
+
+
+---
+## Lambda Durable Function
+
+Creates an [Durable Function](https://docs.aws.amazon.com/lambda/latest/dg/durable-functions.html)
+```ts title="sst.config.ts"
+const durableFunction = new sst.aws.Function("Durable", {
+  handler: "src/index.handler",
+  durable: true,
+  url: true
+});
+
+new sst.aws.Function("Resolver", {
+  handler: "src/resolver.handler",
+  url: true,
+  link: [durableFunction],
+});
+
+new sst.aws.Function("Invoker", {
+  handler: "src/invoker.handler",
+  url: true,
+  link: [durableFunction],
+});
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-lambda-durable).
+
+
+---
 ## AWS Lambda Go
 
 This example shows how to use the [`go`](https://golang.org/) runtime in your Lambda
@@ -2741,33 +3047,24 @@ automatically during `sst dev` as well. For TypeScript types, importing from
 `@types/aws-lambda` will augment the global namespace.
 
 ```ts title="index.ts"
-import { APIGatewayProxyEventV2 } from "aws-lambda";
+export const handler = awslambda.streamifyResponse(
+  async (event, stream) => {
+    stream = awslambda.HttpResponseStream.from(stream, {
+      statusCode: 200,
+      headers: {
+        "Content-Type": "text/plain; charset=UTF-8",
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
 
-export const handler = awslambda.streamifyResponse(myHandler);
+    stream.write("Hello ");
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    stream.write("World");
 
-async function myHandler(
-  _event: APIGatewayProxyEventV2,
-  responseStream: awslambda.HttpResponseStream
-): Promise<void> {
-  return new Promise((resolve, _reject) => {
-    responseStream.setContentType('text/plain')
-    responseStream.write('Hello')
-    setTimeout(() => {
-      responseStream.write(' World')
-      responseStream.end()
-      resolve()
-    }, 3000)
-  })
-}
+    stream.end();
+  },
+);
 ```
-
-To test this in your terminal, use the `curl` command with the `--no-buffer` option.
-
-```bash "--no-buffer"
-curl --no-buffer https://u3dyblk457ghskwbmzrbylpxoi0ayrbb.lambda-url.us-east-1.on.aws
-```
-
-Streaming is also supported through API Gateway REST API.
 ```ts title="sst.config.ts"
 const fn = new sst.aws.Function("MyFunction", {
   url: true,
@@ -4625,7 +4922,7 @@ dev: {
 By providing the `dev` prop for Redis, SST will use the local Redis server and
 not deploy a new Redis ElastiCache cluster when running `sst dev`.
 
-It also allows us to access Redis through a Reosurce `link`.
+It also allows us to access Redis through a Resource `link`.
 
 ```ts title="index.ts"
 const client = Resource.MyRedis.host === "localhost"
@@ -5024,7 +5321,7 @@ We are deploying a service to a cluster in a VPC. And we can access it within th
 the service's cloud map hostname.
 
 ```ts title="lambda.ts"
-const reponse = await fetch(`http://${Resource.MyService.service}`);
+const response = await fetch(`http://${Resource.MyService.service}`);
 ```
 
 Here we are accessing it through a Lambda function that's linked to the service and is
@@ -5044,6 +5341,184 @@ new sst.aws.Function("MyFunction", {
 ```
 
 View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-service-discovery).
+
+
+---
+## AWS Shared ALB
+
+Creates a standalone ALB that is shared across stages. In dev, the ALB is
+referenced via `Alb.get()`. In production, it's created fresh.
+
+Uses the `$dev ? get : new` pattern to share infrastructure across stages.
+```ts title="sst.config.ts"
+const vpc = $dev
+  ? sst.aws.Vpc.get("MyVpc", "vpc-xxx")
+  : new sst.aws.Vpc("MyVpc");
+
+const cluster = $dev
+  ? sst.aws.Cluster.get("MyCluster", { id: "cluster-xxx", vpc })
+  : new sst.aws.Cluster("MyCluster", { vpc });
+
+const alb = $dev
+  ? sst.aws.Alb.get("SharedAlb", "arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/xxx")
+  : new sst.aws.Alb("SharedAlb", {
+      vpc,
+      listeners: [
+        { port: 80, protocol: "http" },
+      ],
+    });
+
+if ($dev) {
+  new sst.aws.Service("Web", {
+    cluster,
+    image: { context: "web/" },
+    loadBalancer: {
+      instance: alb,
+      rules: [
+        {
+          listen: "80/http",
+          forward: "3000/http",
+          conditions: { path: "/app/*" },
+          priority: 200,
+        },
+      ],
+    },
+  });
+}
+
+new sst.aws.Service("Api", {
+  cluster,
+  image: { context: "api/" },
+  loadBalancer: {
+    instance: alb,
+    rules: [
+      {
+        listen: "80/http",
+        forward: "3000/http",
+        conditions: { path: "/api/*" },
+        priority: 100,
+      },
+    ],
+  },
+});
+
+return {
+  url: alb.url,
+};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-shared-alb-static).
+
+
+---
+## AWS Shared ALB
+
+Creates a standalone ALB shared across multiple services.
+Shows advanced routing with path conditions, header conditions, and health checks.
+
+```ts title="sst.config.ts"
+const alb = new sst.aws.Alb("SharedAlb", {
+  vpc,
+  listeners: [
+    { port: 80, protocol: "http" },
+  ],
+});
+```
+
+Services can use header-based routing in addition to path-based:
+
+```ts title="sst.config.ts"
+new sst.aws.Service("InternalApi", {
+  cluster,
+  image: { context: "api/" },
+  loadBalancer: {
+    instance: alb,
+    rules: [
+      {
+        listen: "80/http",
+        forward: "3000/http",
+        conditions: {
+          path: "/api/*",
+          header: { name: "x-internal", values: ["true"] },
+        },
+        priority: 50,
+      },
+    ],
+  },
+});
+```
+
+This example creates:
+- A shared ALB with an HTTP listener
+- An API service with path-based routing and custom health check
+- A Web service with path-based routing
+- Both services share the same ALB
+```ts title="sst.config.ts"
+const vpc = new sst.aws.Vpc("MyVpc");
+const cluster = new sst.aws.Cluster("MyCluster", { vpc });
+
+// Create a shared ALB with an HTTP listener
+const alb = new sst.aws.Alb("SharedAlb", {
+  vpc,
+  listeners: [{ port: 80, protocol: "http" }],
+});
+
+// API service — handles /api/* with a custom health check path
+new sst.aws.Service("Api", {
+  cluster,
+  image: { context: "api/" },
+  loadBalancer: {
+    instance: alb,
+    rules: [
+      {
+        listen: "80/http",
+        forward: "3000/http",
+        conditions: { path: "/api/*" },
+        priority: 100,
+      },
+    ],
+    health: {
+      "3000/http": {
+        path: "/api/health",
+        interval: "10 seconds",
+        timeout: "5 seconds",
+        healthyThreshold: 2,
+        unhealthyThreshold: 3,
+      },
+    },
+  },
+});
+
+// Web service — handles everything else under /app/*
+new sst.aws.Service("Web", {
+  cluster,
+  image: { context: "web/" },
+  loadBalancer: {
+    instance: alb,
+    rules: [
+      {
+        listen: "80/http",
+        forward: "3000/http",
+        conditions: { path: "/app/*" },
+        priority: 200,
+      },
+    ],
+    health: {
+      "3000/http": {
+        path: "/app/health",
+        interval: "10 seconds",
+        timeout: "5 seconds",
+      },
+    },
+  },
+});
+
+return {
+  url: alb.url,
+};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-shared-alb).
 
 
 ---
@@ -5579,6 +6054,7 @@ const cluster = new sst.aws.Cluster("MyCluster", { vpc });
 
 const task = new sst.aws.Task("MyTask", {
   cluster,
+  public: true,
   link: [bucket],
   image: {
     context: "image",
