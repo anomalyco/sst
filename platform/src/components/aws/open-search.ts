@@ -20,7 +20,7 @@ export interface OpenSearchArgs {
    *
    * :::caution
    * Changing the version will cause the domain to restart on the next `sst deploy`,
-   * possibly causing downtime. Learn more about [upgrading databases](/docs/upgrade-aws-databases/).
+   * causing downtime. Learn more about [upgrading databases](/docs/upgrade-aws-databases/).
    * :::
    *
    * @default `"OpenSearch_2.17"`
@@ -71,7 +71,7 @@ export interface OpenSearchArgs {
    *
    * :::caution
    * Changing the instance type will cause the domain to restart on the next `sst deploy`,
-   * possibly causing downtime. Learn more about [upgrading databases](/docs/upgrade-aws-databases/).
+   * causing downtime. Learn more about [upgrading databases](/docs/upgrade-aws-databases/).
    * :::
    *
    * @default `"t3.small"`
@@ -399,16 +399,16 @@ Listening on "${dev.url}"...`,
       return args.password
         ? output(args.password)
         : new RandomPassword(
-          `${name}Password`,
-          {
-            length: 32,
-            minLower: 1,
-            minUpper: 1,
-            minNumeric: 1,
-            minSpecial: 1,
-          },
-          { parent: self },
-        ).result;
+            `${name}Password`,
+            {
+              length: 32,
+              minLower: 1,
+              minUpper: 1,
+              minNumeric: 1,
+              minSpecial: 1,
+            },
+            { parent: self },
+          ).result;
     }
 
     function createSecret() {

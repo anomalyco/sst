@@ -23,7 +23,7 @@ export interface PostgresArgs {
    *
    * :::caution
    * Changing the version will cause the database to restart on the next `sst deploy`,
-   * possibly causing downtime. Learn more about [upgrading databases](/docs/upgrade-aws-databases/).
+   * causing downtime. Learn more about [upgrading databases](/docs/upgrade-aws-databases/).
    * :::
    *
    * @default `"17"`

@@ -26,7 +26,7 @@ export interface PostgresArgs {
    *
    * :::caution
    * Changing the version will cause the database to restart on the next `sst deploy`,
-   * possibly causing downtime. Learn more about [upgrading databases](/docs/upgrade-aws-databases/).
+   * causing downtime. Learn more about [upgrading databases](/docs/upgrade-aws-databases/).
    * :::
    *
    * @default `"17"`
@@ -98,7 +98,7 @@ export interface PostgresArgs {
    *
    * :::caution
    * Changing the instance type will cause the database to restart on the next `sst deploy`,
-   * possibly causing downtime. Learn more about [upgrading databases](/docs/upgrade-aws-databases/).
+   * causing downtime. Learn more about [upgrading databases](/docs/upgrade-aws-databases/).
    * :::
    *
    * @default `"t4g.micro"`
@@ -768,8 +768,8 @@ Listening on "${dev.host}:${dev.port}"...`,
             allocatedStorage: 20,
             // Blue/green deployments require maxAllocatedStorage to be at least
             // 10% higher than allocatedStorage for autoscaling headroom.
-            maxAllocatedStorage: all([storage, blueGreen]).apply(
-              ([s, bg]) => (bg ? Math.max(s, 22) : s),
+            maxAllocatedStorage: all([storage, blueGreen]).apply(([s, bg]) =>
+              bg ? Math.max(s, 22) : s,
             ),
             multiAz,
             backupRetentionPeriod: 7,

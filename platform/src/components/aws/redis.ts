@@ -39,7 +39,7 @@ export interface RedisArgs {
    *
    * :::caution
    * Changing the version will cause the instance to restart on the next `sst deploy`,
-   * possibly causing downtime. Learn more about [upgrading databases](/docs/upgrade-aws-databases/).
+   * causing downtime. Learn more about [upgrading databases](/docs/upgrade-aws-databases/).
    * :::
    *
    * @default `"7.1"` for Redis, `"7.2"` for Valkey
@@ -56,7 +56,7 @@ export interface RedisArgs {
    *
    * :::caution
    * Changing the instance type will cause the instance to restart on the next `sst deploy`,
-   * possibly causing downtime. Learn more about [upgrading databases](/docs/upgrade-aws-databases/).
+   * causing downtime. Learn more about [upgrading databases](/docs/upgrade-aws-databases/).
    * :::
    *
    * @default `"t4g.micro"`
