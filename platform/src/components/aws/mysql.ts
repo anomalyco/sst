@@ -219,7 +219,7 @@ export interface MysqlArgs {
   multiAz?: Input<boolean>;
   /**
    * Enable [Blue/Green deployments](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/blue-green-deployments.html)
-   * for version and parameter group upgrades.
+   * for version, instance type, and parameter group upgrades.
    * Learn more about [upgrading databases](/docs/upgrade-aws-databases/).
    *
    * When enabled, a staging (green) instance is created, updated,
