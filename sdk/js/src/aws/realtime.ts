@@ -8,7 +8,7 @@ import { IoTCustomAuthorizerHandler, PolicyDocument } from "aws-lambda";
  * import { realtime } from "sst/aws/realtime";
  * ```
  */
-export module realtime {
+export namespace realtime {
   export interface AuthResult {
     /**
      * The principal ID of the authorized client. This could be a user ID, username, or
