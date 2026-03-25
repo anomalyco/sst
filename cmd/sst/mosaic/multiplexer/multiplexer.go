@@ -81,11 +81,15 @@ func New() (*Multiplexer, error) {
 }
 
 func (s *Multiplexer) mainRect() (int, int) {
-	return s.width - s.mainX(), s.mainHeight()
+	return s.mainWidth(), s.mainHeight()
 }
 
 func (s *Multiplexer) mainX() int {
 	return SIDEBAR_WIDTH + 1 + MAIN_PAD_WIDTH
+}
+
+func (s *Multiplexer) mainWidth() int {
+	return max(0, s.width-s.mainX()-MAIN_PAD_WIDTH)
 }
 
 func (s *Multiplexer) contentY() int {
@@ -104,7 +108,7 @@ func (s *Multiplexer) resize(width int, height int) {
 	s.width = width
 	s.height = height
 	s.root.Resize(PAD_WIDTH, s.contentY(), s.sidebarWidth(), s.mainHeight())
-	s.main.Resize(s.mainX(), s.contentY(), width-s.mainX(), s.mainHeight())
+	s.main.Resize(s.mainX(), s.contentY(), s.mainWidth(), s.mainHeight())
 	mw, mh := s.main.Size()
 	for _, p := range s.processes {
 		p.vt.Resize(mw, mh)
