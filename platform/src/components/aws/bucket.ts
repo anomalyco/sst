@@ -506,7 +506,7 @@ export interface BucketArgs {
    * @example
    * ```js
    * {
-   *   defaultServerSideEncryption: true
+   *   encryption: true
    * }
    * ```
    */
@@ -900,7 +900,7 @@ export class Bucket extends Component implements Link.Linkable {
 
     const bucket = createBucket();
     createVersioning();
-    createDefaultServerSideEncryption();
+    createEncryption();
     const publicAccessBlock = createPublicAccess();
     const policy = createBucketPolicy();
     createCorsRule();
@@ -976,7 +976,7 @@ export class Bucket extends Component implements Link.Linkable {
       });
     }
 
-    function createDefaultServerSideEncryption() {
+    function createEncryption() {
       if (!args.encryption) return;
 
       return new s3.BucketServerSideEncryptionConfiguration(
