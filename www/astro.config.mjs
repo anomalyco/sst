@@ -73,7 +73,7 @@ const sidebar = [
       { label: "Environment Variables", slug: "docs/environment-variables" },
       { label: "Policy Packs", slug: "docs/policy-packs" },
       { label: "PlanetScale", slug: "docs/planetscale" },
-      { label: "Upgrade Databases", slug: "docs/upgrade-databases" },
+      { label: "Upgrade Databases", slug: "docs/upgrade-aws-databases" },
     ],
   },
   {

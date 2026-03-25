@@ -24,7 +24,7 @@ export interface MysqlArgs {
    *
    * :::caution
    * Changing the version will cause the database to restart on the next `sst deploy`,
-   * possibly causing downtime. Learn more about [upgrading databases](/docs/upgrade-databases/).
+   * possibly causing downtime. Learn more about [upgrading databases](/docs/upgrade-aws-databases/).
    * :::
    *
    * @default `"8.0.40"`
@@ -96,7 +96,7 @@ export interface MysqlArgs {
    *
    * :::caution
    * Changing the instance type will cause the database to restart on the next `sst deploy`,
-   * possibly causing downtime. Learn more about [upgrading databases](/docs/upgrade-databases/).
+   * possibly causing downtime. Learn more about [upgrading databases](/docs/upgrade-aws-databases/).
    * :::
    *
    * @default `"t4g.micro"`
@@ -220,7 +220,7 @@ export interface MysqlArgs {
   /**
    * Enable [Blue/Green deployments](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/blue-green-deployments.html)
    * for version and parameter group upgrades.
-   * Learn more about [upgrading databases](/docs/upgrade-databases/).
+   * Learn more about [upgrading databases](/docs/upgrade-aws-databases/).
    *
    * When enabled, a staging (green) instance is created, updated,
    * verified, then promoted to replace the production (blue) instance.
