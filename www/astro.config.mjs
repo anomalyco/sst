@@ -72,6 +72,8 @@ const sidebar = [
       { label: "Reference Resources", slug: "docs/reference-resources" },
       { label: "Environment Variables", slug: "docs/environment-variables" },
       { label: "Policy Packs", slug: "docs/policy-packs" },
+      { label: "PlanetScale", slug: "docs/planetscale" },
+      { label: "Upgrade AWS Databases", slug: "docs/upgrade-aws-databases" },
     ],
   },
   {
@@ -306,7 +308,7 @@ export default defineConfig({
         dark: "./src/assets/logo-dark.svg",
         replacesTitle: true,
       },
-      lastUpdated: true,
+      lastUpdated: !process.env.CI,
       favicon: "/favicon.svg",
       pagination: false,
       markdown: {

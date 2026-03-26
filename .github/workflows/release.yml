@@ -47,6 +47,13 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ">=1.23.2"
+          cache: true
+
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Download Go modules
         run: go mod download
@@ -71,12 +78,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.SST_GITHUB_TOKEN }}
           AUR_KEY: ${{ secrets.AUR_KEY }}
-          NPM_CONFIG_PROVENANCE: false
 
       - name: Release JS SDK
         run: |
           cd sdk/js
           bun run release
-        env:
-          NPM_CONFIG_PROVENANCE: false
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

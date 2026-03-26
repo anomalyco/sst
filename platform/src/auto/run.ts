@@ -41,6 +41,8 @@ function addTransformationToRetainResourcesOnDelete() {
           "aws:s3/bucketV2:BucketV2",
           "planetscale:index/database:Database",
           "planetscale:index/branch:Branch",
+          "planetscale:index/vitessBranch:VitessBranch",
+          "planetscale:index/postgresBranch:PostgresBranch",
         ].includes(args.type))
     ) {
       args.opts.retainOnDelete = args.opts.retainOnDelete ?? true;

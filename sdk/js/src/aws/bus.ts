@@ -3,7 +3,7 @@ import { Resource } from "../resource.js";
 import { event } from "../event/index.js";
 import { EventBridgeEvent, EventBridgeHandler, Context } from "aws-lambda";
 
-export module bus {
+export namespace bus {
   export type Name = Extract<typeof Resource, { type: "sst.aws.Bus" }>["name"];
 
   function url(region?: string, options?: AwsOptions) {

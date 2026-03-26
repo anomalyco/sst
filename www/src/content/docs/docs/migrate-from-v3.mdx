@@ -3,13 +3,15 @@ title: Migrate From v3
 description: Migrate your SST v3 apps to v4.
 ---
 
-SST v4 upgrades the underlying [Pulumi AWS provider](https://www.pulumi.com/registry/packages/aws/) from v6 to v7. This guide covers migrating your SST v3 apps to v4.
+import TestimonialWall from "../../../components/TestimonialWall.astro";
 
-For the full list of upstream changes, refer to the [Pulumi AWS v7 migration guide](https://www.pulumi.com/registry/packages/aws/how-to-guides/7-0-migration).
+SST v4 upgrades the underlying [Pulumi AWS provider](https://www.pulumi.com/registry/packages/aws/) from v6 to v7. This guide covers migrating your SST v3 apps to v4.
 
 :::tip
 SST components are already updated for v7. Most users only need to run `sst refresh` and deploy.
 :::
+
+For the full list of upstream changes, refer to the [Pulumi AWS v7 migration guide](https://www.pulumi.com/registry/packages/aws/how-to-guides/7-0-migration).
 
 ---
 
@@ -76,3 +78,36 @@ When you update SST and the AWS provider version changes, `sst deploy` will be b
     ```
 
 That's it — once refreshed and deployed, your app is fully migrated to v4.
+
+---
+
+## Upgrade testimonials
+
+Upgrading your infra framework can feel scary. Here's what teams have shared in Discord after migrating:
+
+<TestimonialWall testimonials={[
+  {
+    name: "waterbear",
+    avatar: "/testimonials/waterbear.webp",
+    text: "Successfully migrated two projects to SST v4.",
+    url: "https://discord.com/channels/983865673656705025/985222825893822485/1484243262058397829"
+  },
+  {
+    name: "Zac",
+    avatar: "/testimonials/zac.webp",
+    text: "We just had a succesful upgrade too! Thanks team.",
+    url: "https://discord.com/channels/983865673656705025/1481358917106929786/1481383395618459771"
+  },
+  {
+    name: "Rodrigo",
+    avatar: "/testimonials/rodrigo.webp",
+    text: "I just migrated our production app to SST v4. It's a fairly complex app with frontends, REST APIs, plenty of backend processes, usage of S3 buckets, DynamoDB, RDS, etc.\n\nEverything just worked fine.",
+    url: "https://discord.com/channels/983865673656705025/983865673656705028/1481358917106929786"
+  },
+  {
+    name: "sockthedev",
+    avatar: "/testimonials/sockthedev.webp",
+    text: "Excellent work on the upgrade to v4! I did a large project upgrade with no problems.",
+    url: "https://discord.com/channels/983865673656705025/983865673656705028/1476430580173508800"
+  }
+]} />

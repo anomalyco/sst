@@ -23,7 +23,8 @@ export interface MysqlArgs {
    * The MySQL engine version. Check out the [available versions in your region](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/MySQL.Concepts.VersionMgmt.html).
    *
    * :::caution
-   * Changing the version will **immediately** apply the update on the next `sst deploy` possibly causing downtime.
+   * Changing the version will cause the database to restart on the next `sst deploy`,
+   * causing downtime. Learn more about [upgrading databases](/docs/upgrade-aws-databases/).
    * :::
    *
    * @default `"8.0.40"`
@@ -94,7 +95,8 @@ export interface MysqlArgs {
    * The type of instance to use for the database. Check out the [supported instance types](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.DBInstanceClass.Types.html).
    *
    * :::caution
-   * Changing the instance type will **immediately** apply the update on the next `sst deploy` possibly causing downtime.
+   * Changing the instance type will cause the database to restart on the next `sst deploy`,
+   * causing downtime. Learn more about [upgrading databases](/docs/upgrade-aws-databases/).
    * :::
    *
    * @default `"t4g.micro"`
@@ -144,53 +146,53 @@ export interface MysqlArgs {
   proxy?: Input<
     | boolean
     | {
-      /**
-       * Additional credentials the proxy can use to connect to the database. You don't
-       * need to specify the master user credentials as they are always added by default.
-       *
-       * :::note
-       * This component will not create the MySQL users listed here. You need to
-       * create them manually in the database.
-       * :::
-       *
-       * @example
-       * ```js
-       * {
-       *   credentials: [
-       *     {
-       *       username: "metabase",
-       *       password: "Passw0rd!"
-       *     }
-       *   ]
-       * }
-       * ```
-       *
-       * You can use a `Secret` to manage the password.
-       *
-       * ```js
-       * {
-       *   credentials: [
-       *     {
-       *       username: "metabase",
-       *       password: new sst.Secret("MyDBPassword").value
-       *     }
-       *   ]
-       * }
-       * ```
-       */
-      credentials?: Input<
-        Input<{
-          /**
-           * The username of the user.
-           */
-          username: Input<string>;
-          /**
-           * The password of the user.
-           */
-          password: Input<string>;
-        }>[]
-      >;
-    }
+        /**
+         * Additional credentials the proxy can use to connect to the database. You don't
+         * need to specify the master user credentials as they are always added by default.
+         *
+         * :::note
+         * This component will not create the MySQL users listed here. You need to
+         * create them manually in the database.
+         * :::
+         *
+         * @example
+         * ```js
+         * {
+         *   credentials: [
+         *     {
+         *       username: "metabase",
+         *       password: "Passw0rd!"
+         *     }
+         *   ]
+         * }
+         * ```
+         *
+         * You can use a `Secret` to manage the password.
+         *
+         * ```js
+         * {
+         *   credentials: [
+         *     {
+         *       username: "metabase",
+         *       password: new sst.Secret("MyDBPassword").value
+         *     }
+         *   ]
+         * }
+         * ```
+         */
+        credentials?: Input<
+          Input<{
+            /**
+             * The username of the user.
+             */
+            username: Input<string>;
+            /**
+             * The password of the user.
+             */
+            password: Input<string>;
+          }>[]
+        >;
+      }
   >;
   /**
    * Enable [Multi-AZ](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.MultiAZ.html)
@@ -215,6 +217,24 @@ export interface MysqlArgs {
    * ```
    */
   multiAz?: Input<boolean>;
+  /**
+   * Enable [Blue/Green deployments](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/blue-green-deployments.html)
+   * for version, instance type, and parameter group upgrades.
+   * Learn more about [upgrading databases](/docs/upgrade-aws-databases/).
+   *
+   * When enabled, a staging (green) instance is created, updated,
+   * verified, then promoted to replace the production (blue) instance.
+   * This minimizes downtime during upgrades.
+   *
+   * @default `false`
+   * @example
+   * ```js
+   * {
+   *   blueGreen: true
+   * }
+   * ```
+   */
+  blueGreen?: Input<boolean>;
   /**
    * @internal
    */
@@ -246,13 +266,13 @@ export interface MysqlArgs {
    * ```
    */
   vpc:
-  | Vpc
-  | Input<{
-    /**
-     * A list of subnet IDs in the VPC.
-     */
-    subnets: Input<Input<string>[]>;
-  }>;
+    | Vpc
+    | Input<{
+        /**
+         * A list of subnet IDs in the VPC.
+         */
+        subnets: Input<Input<string>[]>;
+      }>;
   /**
    * Configure how this component works in `sst dev`.
    *
@@ -477,6 +497,7 @@ export class Mysql extends Component implements Link.Linkable {
     const instanceType = output(args.instance).apply((v) => v ?? "t4g.micro");
     const username = output(args.username).apply((v) => v ?? "root");
     const storage = normalizeStorage();
+    const blueGreen = output(args.blueGreen).apply((v) => v ?? false);
     const dbName = output(args.database).apply(
       (v) => v ?? $app.name.replaceAll("-", "_"),
     );
@@ -516,8 +537,8 @@ export class Mysql extends Component implements Link.Linkable {
       const proxy = input.proxyId.apply((proxyId) =>
         proxyId
           ? rds.Proxy.get(`${name}Proxy`, proxyId, undefined, {
-            parent: self,
-          })
+              parent: self,
+            })
           : undefined,
       );
 
@@ -619,13 +640,13 @@ Listening on "${dev.host}:${dev.port}"...`,
       return args.password
         ? output(args.password)
         : new RandomPassword(
-          `${name}Password`,
-          {
-            length: 32,
-            special: false,
-          },
-          { parent: self },
-        ).result;
+            `${name}Password`,
+            {
+              length: 32,
+              special: false,
+            },
+            { parent: self },
+          ).result;
     }
 
     function createSubnetGroup() {
@@ -660,6 +681,7 @@ Listening on "${dev.host}:${dev.port}"...`,
           },
           {
             parent: self,
+            ignoreChanges: args.version ? [] : ["family"],
             // Necessary for the parameter group to be deleted AFTER upgrading the instance.
             // This is either a Pulumi bug or an undocumented feature.
             deleteBeforeReplace: false,
@@ -713,7 +735,11 @@ Listening on "${dev.host}:${dev.port}"...`,
             storageEncrypted: true,
             storageType: "gp3",
             allocatedStorage: 20,
-            maxAllocatedStorage: storage,
+            // Blue/green deployments require maxAllocatedStorage to be at least
+            // 10% higher than allocatedStorage for autoscaling headroom.
+            maxAllocatedStorage: all([storage, blueGreen]).apply(([s, bg]) =>
+              bg ? Math.max(s, 22) : s,
+            ),
             multiAz,
             backupRetentionPeriod: 7,
             // performance insights is only supported on .micro and .small MySQL instances
@@ -721,12 +747,17 @@ Listening on "${dev.host}:${dev.port}"...`,
             performanceInsightsEnabled: instanceType.apply(
               (v) => !v.endsWith(".micro") && !v.endsWith(".small"),
             ),
+            blueGreenUpdate: blueGreen.apply((bg) => ({ enabled: bg })),
             tags: {
               "sst:component-version": _version.toString(),
               "sst:ref:password": secret.id,
             },
           },
-          { parent: self, deleteBeforeReplace: true },
+          {
+            parent: self,
+            deleteBeforeReplace: true,
+            ignoreChanges: args.version ? [] : ["engineVersion"],
+          },
         ),
       );
     }
@@ -757,7 +788,10 @@ Listening on "${dev.host}:${dev.port}"...`,
                   (v) => v!,
                 ),
               },
-              { parent: self },
+              {
+                parent: self,
+                ignoreChanges: args.version ? [] : ["engineVersion"],
+              },
             ),
         ),
       );

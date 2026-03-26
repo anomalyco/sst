@@ -55,8 +55,10 @@ function useLinkHashes(module: TypeDoc.DeclarationReflection) {
 configureLogger();
 patchCode();
 if (!cmd || cmd === "components") {
-  const components = await buildComponents();
-  const sdks = await buildSdk();
+  const [components, sdks] = await Promise.all([
+    buildComponents(),
+    buildSdk(),
+  ]);
 
   for (const component of components) {
     const sourceFile = component.sources![0].fileName;
@@ -2269,7 +2271,7 @@ async function buildComponents() {
   })();
 
   // Generate JSON (generated for debugging purposes)
-  await app.generateJson(project, "components-doc.json");
+  if (process.env.DEBUG) await app.generateJson(project, "components-doc.json");
 
   return project.getChildrenByKind(TypeDoc.ReflectionKind.Module);
 }
@@ -2295,7 +2297,7 @@ async function buildSdk() {
   if (!project) throw new Error("Failed to convert project");
 
   // Generate JSON (generated for debugging purposes)
-  await app.generateJson(project, "sdk-doc.json");
+  if (process.env.DEBUG) await app.generateJson(project, "sdk-doc.json");
 
   return project.getChildrenByKind(TypeDoc.ReflectionKind.Module);
 }
@@ -2317,7 +2319,7 @@ async function buildExamples() {
   if (!project) throw new Error("Failed to convert project");
 
   // Generate JSON (generated for debugging purposes)
-  await app.generateJson(project, "examples-doc.json");
+  if (process.env.DEBUG) await app.generateJson(project, "examples-doc.json");
 
   return project.children!.filter(
     (c) =>

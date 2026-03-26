@@ -209,13 +209,23 @@ console.log("~j" + JSON.stringify(await mod.app({
 			}
 
 			for name, args := range proj.app.Providers {
-				if argsBool, ok := args.(bool); ok && argsBool {
-					proj.app.Providers[name] = make(map[string]interface{})
+				if _, ok := args.(bool); ok {
+					return nil, util.NewReadableError(nil,
+						fmt.Sprintf(`Setting providers.%s to true is deprecated. Specify the version explicitly instead.`, name),
+					)
 				}
 
 				if argsString, ok := args.(string); ok {
 					proj.app.Providers[name] = map[string]interface{}{
 						"version": argsString,
+					}
+				}
+
+				if argsMap, ok := args.(map[string]interface{}); ok {
+					if _, hasVersion := argsMap["version"]; !hasVersion && name != "aws" && name != "cloudflare" {
+						return nil, util.NewReadableError(nil,
+							fmt.Sprintf(`Provider %s is missing a version. Specify the version explicitly instead.`, name),
+						)
 					}
 				}
 			}

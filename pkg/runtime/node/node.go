@@ -214,6 +214,7 @@ func (r *Runtime) Run(ctx context.Context, input *runtime.RunInput) (runtime.Wor
 	cmd := process.Command(
 		"node",
 		"--enable-source-maps",
+		"--no-warnings",
 		filepath.Join(
 			path.ResolvePlatformDir(input.CfgPath),
 			"/dist/nodejs-runtime/index.js",
