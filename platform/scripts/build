@@ -19,8 +19,12 @@ cp ./dist/bridge/bootstrap ./dist/nodejs-bridge/bootstrap
 mkdir -p ./dist/python-runtime/
 cp ./functions/python-runtime/index.py ./dist/python-runtime/index.py
 
+mkdir -p ./dist/ruby-runtime/
+cp ./functions/ruby-runtime/index.rb ./dist/ruby-runtime/index.rb
+
 mkdir -p ./dist/dockerfiles/
 cp ./functions/docker/python.Dockerfile ./dist/dockerfiles/python.Dockerfile
+cp ./functions/docker/ruby.Dockerfile ./dist/dockerfiles/ruby.Dockerfile
 
 cd ./support/bridge-task
 mkdir -p build/amd64 build/arm64

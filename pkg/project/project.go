@@ -23,6 +23,7 @@ import (
 	"github.com/sst/sst/v3/pkg/runtime/golang"
 	"github.com/sst/sst/v3/pkg/runtime/node"
 	"github.com/sst/sst/v3/pkg/runtime/python"
+	"github.com/sst/sst/v3/pkg/runtime/ruby"
 	"github.com/sst/sst/v3/pkg/runtime/rust"
 	"github.com/sst/sst/v3/pkg/runtime/worker"
 )
@@ -133,6 +134,7 @@ func New(input *ProjectConfig) (*Project, error) {
 			worker.New(),
 			python.New(),
 			golang.New(),
+			ruby.New(),
 			rust.New(),
 		),
 	}
