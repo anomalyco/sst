@@ -20,13 +20,10 @@ import (
 	"github.com/sst/sst/v3/pkg/process"
 	"github.com/sst/sst/v3/pkg/project/path"
 	"github.com/sst/sst/v3/pkg/runtime"
+	"golang.org/x/sync/semaphore"
 )
 
 var (
-	// Limits concurrent builds to prevent system overload when Pulumi builds 100+ functions in parallel.
-	// Respects SST_BUILD_CONCURRENCY_FUNCTION env var, defaults to 4.
-	globalBuildSemaphore = make(chan struct{}, parseConcurrency())
-
 	// Per-cache-key locks — only one function installs per cache key at a time
 	globalDependencyInstallLocks      = make(map[string]*sync.Mutex)
 	globalDependencyInstallLocksMutex sync.Mutex
@@ -34,30 +31,6 @@ var (
 	// Clear .deps/ once per SST run so workspace package changes are picked up
 	globalDepsCacheClearOnce sync.Once
 )
-
-// parseConcurrency reads SST_BUILD_CONCURRENCY_FUNCTION and returns the desired
-// parallelism, defaulting to 4.
-func parseConcurrency() int {
-	raw := flag.SST_BUILD_CONCURRENCY_FUNCTION
-	if raw == "" {
-		raw = flag.SST_BUILD_CONCURRENCY
-	}
-	if raw == "" {
-		return 4
-	}
-	n, err := strconv.Atoi(raw)
-	if err != nil {
-		slog.Warn("invalid SST_BUILD_CONCURRENCY_FUNCTION, using default",
-			"value", raw, "default", 4)
-		return 4
-	}
-	if n < 1 {
-		slog.Warn("SST_BUILD_CONCURRENCY_FUNCTION must be >= 1, using default",
-			"value", n, "default", 4)
-		return 4
-	}
-	return n
-}
 
 type worker struct {
 	stdout io.ReadCloser
@@ -111,13 +84,23 @@ func (w *worker) Logs() io.ReadCloser {
 
 type PythonRuntime struct {
 	deployBuilder *deployBuilder
+	concurrency   *semaphore.Weighted
 
 	// Mutex for thread-safe access
 	mutex sync.RWMutex
 }
 
 func New() *PythonRuntime {
-	return &PythonRuntime{}
+	weight := int64(4)
+	if flag.SST_BUILD_CONCURRENCY_FUNCTION != "" {
+		weight, _ = strconv.ParseInt(flag.SST_BUILD_CONCURRENCY_FUNCTION, 10, 64)
+	} else if flag.SST_BUILD_CONCURRENCY != "" {
+		weight, _ = strconv.ParseInt(flag.SST_BUILD_CONCURRENCY, 10, 64)
+	}
+
+	return &PythonRuntime{
+		concurrency: semaphore.NewWeighted(weight),
+	}
 }
 
 func (r *PythonRuntime) Build(ctx context.Context, input *runtime.BuildInput) (*runtime.BuildOutput, error) {
@@ -133,10 +116,10 @@ func (r *PythonRuntime) Build(ctx context.Context, input *runtime.BuildInput) (*
 	})
 
 	// Acquire build semaphore (Pulumi calls Build() for all functions in parallel)
-	globalBuildSemaphore <- struct{}{}
-	defer func() {
-		<-globalBuildSemaphore
-	}()
+	if err := r.concurrency.Acquire(ctx, 1); err != nil {
+		return nil, fmt.Errorf("failed to acquire build semaphore: %w", err)
+	}
+	defer r.concurrency.Release(1)
 
 	_, err := r.getFile(input)
 	if err != nil {
