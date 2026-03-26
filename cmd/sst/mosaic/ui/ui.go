@@ -238,7 +238,7 @@ func (u *UI) Event(unknown interface{}) {
 		if len(evt.Errors) > 0 {
 			u.printEvent(TEXT_DANGER, "Build Error", u.functionName(evt.FunctionID))
 			for _, item := range evt.Errors {
-				u.printEvent(TEXT_DANGER, "", "↳ "+strings.TrimSpace(item))
+				u.printEvent(TEXT_DANGER, "", "  "+strings.TrimSpace(item))
 			}
 			return
 		}

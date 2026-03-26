@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -115,20 +114,13 @@ func (r *PythonRuntime) Build(ctx context.Context, input *runtime.BuildInput) (*
 		}
 	})
 
-	// Acquire build semaphore (Pulumi calls Build() for all functions in parallel)
-	if err := r.concurrency.Acquire(ctx, 1); err != nil {
-		return nil, fmt.Errorf("failed to acquire build semaphore: %w", err)
-	}
+	r.concurrency.Acquire(ctx, 1)
 	defer r.concurrency.Release(1)
 
-	_, err := r.getFile(input)
+	resolver := newProjectResolver(path.ResolveRootDir(input.CfgPath))
+	_, err := resolver.ResolveHandler(input.Handler)
 	if err != nil {
-		slog.Error("handler not found",
-			"functionID", input.FunctionID,
-			"handler", input.Handler,
-			"workingDir", path.ResolveRootDir(input.CfgPath),
-			"error", err)
-		return nil, fmt.Errorf("python runtime - handler not found: %v", err)
+		return nil, fmt.Errorf("Handler not found: %v", input.Handler)
 	}
 
 	result, err := r.CreateBuildAsset(ctx, input)
@@ -404,30 +396,16 @@ func (r *PythonRuntime) adjustHandlerForFlattenedLayout(handlerPath string) stri
 
 func (r *PythonRuntime) CreateBuildAsset(ctx context.Context, input *runtime.BuildInput) (*runtime.BuildOutput, error) {
 	if input.Dev {
-		// Dev mode: Copy source files but skip dependency management
-		return r.createSimpleDevBuild(ctx, input)
+		// Return metadata and defer runtime setup until Run().
+		return &runtime.BuildOutput{
+			Handler:    input.Handler,
+			Sourcemaps: []string{},
+			Errors:     []string{},
+			Out:        input.Out(),
+		}, nil
 	}
 
-	// Deployment mode: Full build with dependency management
-	type Properties struct {
-		Architecture string          `json:"architecture"`
-		Container    json.RawMessage `json:"container"`
-	}
-	var props Properties
-	if err := json.Unmarshal(input.Properties, &props); err != nil {
-		return nil, fmt.Errorf("failed to parse properties: %v", err)
-	}
-
-	arch := props.Architecture
-	if arch == "" {
-		arch = "x86_64"
-	}
-
-	if arch != "x86_64" && arch != "arm64" {
-		return nil, fmt.Errorf("invalid architecture %q - must be x86_64 or arm64 - %v", arch, string(input.Properties))
-	}
 	workingDir := path.ResolveRootDir(input.CfgPath)
-
 	result, err := r.createBuildAssetDeploy(ctx, input, workingDir)
 	if err != nil {
 		return nil, fmt.Errorf("deploy build failed: %w", err)
@@ -474,41 +452,6 @@ func (r *PythonRuntime) createBuildAssetDeploy(ctx context.Context, input *runti
 	slog.Info("built", "function", input.FunctionID, "elapsed", elapsed)
 
 	return result, nil
-}
-
-func (r *PythonRuntime) getFile(input *runtime.BuildInput) (string, error) {
-	rootDir := path.ResolveRootDir(input.CfgPath)
-
-	// Handler format is: path/to/file.function_name
-	lastDotIndex := strings.LastIndex(input.Handler, ".")
-	if lastDotIndex == -1 {
-		return "", fmt.Errorf("invalid handler format '%s': expected 'path/to/file.function_name'", input.Handler)
-	}
-
-	filePath := input.Handler[:lastDotIndex]
-
-	// Look for .py file
-	pythonFile := filepath.Join(rootDir, filePath+".py")
-	if _, err := os.Stat(pythonFile); err == nil {
-		return pythonFile, nil
-	}
-
-	// No Python file found — list what exists for debugging
-	dirPath := filepath.Join(rootDir, filepath.Dir(filePath))
-	if entries, err := os.ReadDir(dirPath); err == nil {
-		var files []string
-		for _, entry := range entries {
-			if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".py") {
-				files = append(files, entry.Name())
-			}
-		}
-		slog.Error("handler file not found", "expected", pythonFile, "pyFilesInDir", files)
-	}
-
-	return "", fmt.Errorf("could not find Python file '%s.py' for handler '%s' (looked in: %s)",
-		filepath.Base(filePath),
-		input.Handler,
-		pythonFile)
 }
 
 // copyFile copies a single file from src to dst, creating parent directories as needed.
@@ -618,21 +561,6 @@ func hashFileContents(filePath string) (string, error) {
 	}
 
 	return hex.EncodeToString(hasher.Sum(nil)), nil
-}
-
-// createSimpleDevBuild creates a minimal build for dev mode — all work deferred to Run()
-func (r *PythonRuntime) createSimpleDevBuild(ctx context.Context, input *runtime.BuildInput) (*runtime.BuildOutput, error) {
-	if err := os.MkdirAll(input.Out(), 0755); err != nil {
-		return nil, fmt.Errorf("failed to create artifact directory: %v", err)
-	}
-
-	// In dev mode, all copying/flattening happens just-in-time in Run()
-	return &runtime.BuildOutput{
-		Handler:    input.Handler,
-		Sourcemaps: []string{},
-		Errors:     []string{},
-		Out:        input.Out(),
-	}, nil
 }
 
 // hasWorkspaceLayoutPatterns checks for package/src/package patterns that need flattening
