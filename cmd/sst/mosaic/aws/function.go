@@ -226,7 +226,7 @@ func function(ctx context.Context, input input) {
 		return build
 	}
 
-	run := func(functionID string, workerID string) bool {
+	startWorker := func(functionID string, workerID string) bool {
 		build := getBuildOutput(functionID)
 		if build == nil {
 			return false
@@ -280,16 +280,13 @@ func function(ctx context.Context, input input) {
 		return true
 	}
 
-	// restartOrDeferWorker checks if a worker should restart eagerly or be deferred
-	// for lazy startup on next invocation. Runtimes like Python return false from
-	// ShouldRunEagerly to prevent "startup storms" when many functions change at once.
 	restartOrDeferWorker := func(workerID string, info *WorkerInfo) {
 		target, ok := targets[info.FunctionID]
 		if !ok {
 			return
 		}
 		if input.project.Runtime.ShouldRunEagerly(target.Runtime) {
-			run(info.FunctionID, workerID)
+			startWorker(info.FunctionID, workerID)
 		} else {
 			log.Info("lazy startup: deferring worker restart until invoked", "workerID", workerID, "functionID", info.FunctionID)
 			delete(workers, workerID)
@@ -321,7 +318,7 @@ func function(ctx context.Context, input input) {
 				}
 				log.Info("worker init", "workerID", msg.Source, "functionID", init.FunctionID)
 				workerEnv[workerID] = init.Environment
-				if ok := run(init.FunctionID, workerID); !ok {
+				if ok := startWorker(init.FunctionID, workerID); !ok {
 					result, err := http.Post("http://"+server+workerID+"/runtime/init/error", "application/json", strings.NewReader(`{"errorMessage":"Function failed to build"}`))
 					if err != nil {
 						continue
