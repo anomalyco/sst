@@ -25,10 +25,9 @@ import (
 )
 
 type deployBuilder struct {
-	projectResolver *projectResolver
-	uvRunner        *uvCommandRunner
-	contentFilter   *contentFilter
-	config          deployBuilderConfig
+	uvRunner      *uvCommandRunner
+	contentFilter *contentFilter
+	config        deployBuilderConfig
 }
 
 type deployBuilderConfig struct {
@@ -40,16 +39,18 @@ func newDeployBuilder(config deployBuilderConfig) (*deployBuilder, error) {
 	if config.CacheDir == "" {
 		return nil, fmt.Errorf("cache directory is required")
 	}
+	if config.ProjectRoot == "" {
+		return nil, fmt.Errorf("project root is required")
+	}
 
 	if err := os.MkdirAll(config.CacheDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
 	return &deployBuilder{
-		projectResolver: newProjectResolver(config.ProjectRoot),
-		uvRunner:        newUvCommandRunner(uvCommandRunnerConfig{}),
-		contentFilter:   newContentFilterForProject(config.ProjectRoot),
-		config:          config,
+		uvRunner:      newUvCommandRunner(uvCommandRunnerConfig{}),
+		contentFilter: newContentFilterForProject(config.ProjectRoot),
+		config:        config,
 	}, nil
 }
 
@@ -73,7 +74,7 @@ func (ib *deployBuilder) findWorkspaceRoot(projectInfo *projectInfo) string {
 		parentPyproject := filepath.Join(currentDir, "pyproject.toml")
 		if _, err := os.Stat(parentPyproject); err == nil {
 			best = currentDir
-			if config, parseErr := ib.projectResolver.ParsePyprojectToml(parentPyproject); parseErr == nil {
+			if config, parseErr := parsePyprojectToml(parentPyproject); parseErr == nil {
 				if len(config.Tool.UV.Workspace.Members) > 0 {
 					return currentDir
 				}
@@ -86,18 +87,12 @@ func (ib *deployBuilder) findWorkspaceRoot(projectInfo *projectInfo) string {
 }
 
 func (ib *deployBuilder) Build(ctx context.Context, input *runtime.BuildInput) (*runtime.BuildOutput, error) {
-	workingDir := filepath.Dir(input.CfgPath)
-	if workingDir == "" {
-		workingDir = "."
-	}
-	ib.projectResolver.projectRoot = workingDir
-
-	projectInfo, err := ib.projectResolver.ResolveHandler(input.Handler)
+	projectInfo, err := resolveHandler(ib.config.ProjectRoot, input.Handler)
 	if err != nil {
 		return nil, fmt.Errorf("project resolution: %w", err)
 	}
 
-	localPackages, err := discoverBuildablePackages(projectInfo, ib.projectResolver)
+	localPackages, err := discoverBuildablePackages(projectInfo)
 	if err != nil {
 		return nil, fmt.Errorf("package discovery: %w", err)
 	}
@@ -566,7 +561,7 @@ func (ib *deployBuilder) generateOrCopyRequirementsFile(ctx context.Context, inp
 	// Include dev dependencies for non-buildable source-only projects
 	noDev := true
 	if projectInfo.PyprojectPath != "" {
-		if config, err := ib.projectResolver.ParsePyprojectToml(projectInfo.PyprojectPath); err == nil {
+		if config, err := parsePyprojectToml(projectInfo.PyprojectPath); err == nil {
 			if config.Tool.SST.Buildable != nil && !*config.Tool.SST.Buildable {
 				noDev = false
 			}
@@ -590,7 +585,7 @@ func (ib *deployBuilder) generateOrCopyRequirementsFile(ctx context.Context, inp
 	workspaceRoot := ib.findWorkspaceRoot(projectInfo)
 
 	if projectInfo.PyprojectPath != "" {
-		if config, err := ib.projectResolver.ParsePyprojectToml(projectInfo.PyprojectPath); err == nil {
+		if config, err := parsePyprojectToml(projectInfo.PyprojectPath); err == nil {
 			if config.Project.Name != "" {
 				pyprojectDir := filepath.Dir(projectInfo.PyprojectPath)
 				if workspaceRoot != pyprojectDir {
@@ -1056,7 +1051,7 @@ func (ib *deployBuilder) filterEditableInstalls(inputPath, outputPath string) er
 func (ib *deployBuilder) cleanupInstalledDependencies(targetDir string, projectInfo *projectInfo) error {
 	includeLambdaRuntime := false
 	if projectInfo != nil && projectInfo.PyprojectPath != "" {
-		if config, err := ib.projectResolver.ParsePyprojectToml(projectInfo.PyprojectPath); err == nil {
+		if config, err := parsePyprojectToml(projectInfo.PyprojectPath); err == nil {
 			includeLambdaRuntime = config.Tool.SST.IncludeLambdaRuntime
 		}
 	}
@@ -1141,7 +1136,7 @@ func (ib *deployBuilder) getWorkspacePackageNames(projectInfo *projectInfo) []st
 
 	// Add the main package name
 	if projectInfo.PyprojectPath != "" {
-		if config, err := ib.projectResolver.ParsePyprojectToml(projectInfo.PyprojectPath); err == nil {
+		if config, err := parsePyprojectToml(projectInfo.PyprojectPath); err == nil {
 			if config.Project.Name != "" {
 				packages = append(packages, config.Project.Name)
 			} else if config.Tool.Poetry.Name != "" {
@@ -1237,7 +1232,7 @@ func (ib *deployBuilder) copyDependencyPackages(srcDir, destDir string) error {
 				// Try pyproject.toml for hatch build targets
 				pyprojectPath := filepath.Join(packageSourcePath, "pyproject.toml")
 				if _, err := os.Stat(pyprojectPath); err == nil {
-					if config, err := ib.projectResolver.ParsePyprojectToml(pyprojectPath); err == nil {
+					if config, err := parsePyprojectToml(pyprojectPath); err == nil {
 						// Check hatch build targets
 						if len(config.Tool.Hatch.Build.Targets.Wheel.Packages) > 0 {
 							pkgName := config.Tool.Hatch.Build.Targets.Wheel.Packages[0]
@@ -1291,7 +1286,7 @@ type localPackageInfo struct {
 
 // discoverBuildablePackages finds local packages that need building.
 // Checks pyproject.toml workspace members first, then falls back to directory scanning.
-func discoverBuildablePackages(projectInfo *projectInfo, resolver *projectResolver) ([]*localPackageInfo, error) {
+func discoverBuildablePackages(projectInfo *projectInfo) ([]*localPackageInfo, error) {
 	workspaceDir := projectInfo.SourceRoot
 	if projectInfo.PyprojectPath != "" {
 		workspaceDir = filepath.Dir(projectInfo.PyprojectPath)
@@ -1300,16 +1295,16 @@ func discoverBuildablePackages(projectInfo *projectInfo, resolver *projectResolv
 	// Try workspace members from pyproject.toml first
 	pyprojectPath := filepath.Join(workspaceDir, "pyproject.toml")
 	if _, err := os.Stat(pyprojectPath); err == nil {
-		if config, err := resolver.ParsePyprojectToml(pyprojectPath); err == nil {
+		if config, err := parsePyprojectToml(pyprojectPath); err == nil {
 			paths := workspacePackagePaths(config, workspaceDir)
 			if len(paths) > 0 {
-				return buildableFromPaths(paths, resolver)
+				return buildableFromPaths(paths)
 			}
 		}
 	}
 
 	// Fallback: scan common directories for buildable packages
-	return buildableFromScan(workspaceDir, resolver)
+	return buildableFromScan(workspaceDir)
 }
 
 // workspacePackagePaths extracts package paths from a parsed pyproject.toml
@@ -1342,7 +1337,7 @@ func workspacePackagePaths(config *pyprojectConfig, workspaceDir string) []strin
 }
 
 // buildableFromPaths filters a list of paths to only those with build configuration
-func buildableFromPaths(paths []string, resolver *projectResolver) ([]*localPackageInfo, error) {
+func buildableFromPaths(paths []string) ([]*localPackageInfo, error) {
 	var packages []*localPackageInfo
 	for _, p := range paths {
 		if !hasBuildConfig(p) {
@@ -1350,7 +1345,7 @@ func buildableFromPaths(paths []string, resolver *projectResolver) ([]*localPack
 		}
 		name := filepath.Base(p)
 		pyprojectPath := filepath.Join(p, "pyproject.toml")
-		if config, err := resolver.ParsePyprojectToml(pyprojectPath); err == nil && config.Project.Name != "" {
+		if config, err := parsePyprojectToml(pyprojectPath); err == nil && config.Project.Name != "" {
 			name = config.Project.Name
 		}
 		packages = append(packages, &localPackageInfo{Name: name, Path: p})
@@ -1359,13 +1354,13 @@ func buildableFromPaths(paths []string, resolver *projectResolver) ([]*localPack
 }
 
 // buildableFromScan scans common directories for buildable packages
-func buildableFromScan(workspaceDir string, resolver *projectResolver) ([]*localPackageInfo, error) {
+func buildableFromScan(workspaceDir string) ([]*localPackageInfo, error) {
 	var packages []*localPackageInfo
 
 	// Check workspace root
 	if hasBuildConfig(workspaceDir) {
 		name := filepath.Base(workspaceDir)
-		if config, err := resolver.ParsePyprojectToml(filepath.Join(workspaceDir, "pyproject.toml")); err == nil && config.Project.Name != "" {
+		if config, err := parsePyprojectToml(filepath.Join(workspaceDir, "pyproject.toml")); err == nil && config.Project.Name != "" {
 			name = config.Project.Name
 		}
 		packages = append(packages, &localPackageInfo{Name: name, Path: workspaceDir})
@@ -1387,7 +1382,7 @@ func buildableFromScan(workspaceDir string, resolver *projectResolver) ([]*local
 				continue
 			}
 			name := entry.Name()
-			if config, err := resolver.ParsePyprojectToml(filepath.Join(candidatePath, "pyproject.toml")); err == nil && config.Project.Name != "" {
+			if config, err := parsePyprojectToml(filepath.Join(candidatePath, "pyproject.toml")); err == nil && config.Project.Name != "" {
 				name = config.Project.Name
 			}
 			packages = append(packages, &localPackageInfo{Name: name, Path: candidatePath})
@@ -1417,7 +1412,7 @@ func buildableFromScan(workspaceDir string, resolver *projectResolver) ([]*local
 				continue
 			}
 			name := entry.Name()
-			if config, err := resolver.ParsePyprojectToml(filepath.Join(candidatePath, "pyproject.toml")); err == nil && config.Project.Name != "" {
+			if config, err := parsePyprojectToml(filepath.Join(candidatePath, "pyproject.toml")); err == nil && config.Project.Name != "" {
 				name = config.Project.Name
 			}
 			packages = append(packages, &localPackageInfo{Name: name, Path: candidatePath})

@@ -21,14 +21,13 @@ func TestWorkspacePackageIsolation(t *testing.T) {
 
 	t.Run("api package discovers its own packages", func(t *testing.T) {
 		apiDir := filepath.Join(exampleDir, "packages", "api")
-		resolver := newProjectResolver(apiDir)
 
 		projectInfo := &projectInfo{
 			ProjectRoot: apiDir,
 			SourceRoot:  apiDir,
 		}
 
-		packages, err := discoverBuildablePackages(projectInfo, resolver)
+		packages, err := discoverBuildablePackages(projectInfo)
 		if err != nil {
 			t.Fatalf("Failed to discover packages: %v", err)
 		}
@@ -47,14 +46,13 @@ func TestWorkspacePackageIsolation(t *testing.T) {
 
 	t.Run("worker package discovers its own packages", func(t *testing.T) {
 		workerDir := filepath.Join(exampleDir, "packages", "worker")
-		resolver := newProjectResolver(workerDir)
 
 		projectInfo := &projectInfo{
 			ProjectRoot: workerDir,
 			SourceRoot:  workerDir,
 		}
 
-		packages, err := discoverBuildablePackages(projectInfo, resolver)
+		packages, err := discoverBuildablePackages(projectInfo)
 		if err != nil {
 			t.Fatalf("Failed to discover packages: %v", err)
 		}
@@ -104,8 +102,7 @@ backend = { workspace = true }
 		os.WriteFile(fullPath, []byte(content), 0644)
 	}
 
-	resolver := newProjectResolver(tempDir)
-	info, err := resolver.ResolveHandler("packages/api-auth/login.handler")
+	info, err := resolveHandler(tempDir, "packages/api-auth/login.handler")
 	if err != nil {
 		t.Errorf("Failed to resolve flat workspace handler: %v", err)
 	}

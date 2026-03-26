@@ -112,8 +112,7 @@ func (r *PythonRuntime) Build(ctx context.Context, input *runtime.BuildInput) (*
 	r.concurrency.Acquire(ctx, 1)
 	defer r.concurrency.Release(1)
 
-	resolver := newProjectResolver(path.ResolveRootDir(input.CfgPath))
-	_, err := resolver.ResolveHandler(input.Handler)
+	_, err := resolveHandler(path.ResolveRootDir(input.CfgPath), input.Handler)
 	if err != nil {
 		return nil, fmt.Errorf("Handler not found: %v", input.Handler)
 	}

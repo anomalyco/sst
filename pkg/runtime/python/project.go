@@ -15,11 +15,6 @@ type uvSource struct {
 	Workspace bool   `toml:"workspace"`
 }
 
-// projectResolver provides Python project resolution
-type projectResolver struct {
-	projectRoot string
-}
-
 // projectInfo contains resolved project information
 type projectInfo struct {
 	ProjectRoot   string
@@ -72,34 +67,29 @@ type pyprojectConfig struct {
 	} `toml:"tool"`
 }
 
-// newProjectResolver creates a new project resolver
-func newProjectResolver(projectRoot string) *projectResolver {
-	return &projectResolver{projectRoot: projectRoot}
-}
-
-// ResolveHandler finds and resolves a Python handler
-func (pr *projectResolver) ResolveHandler(handlerPath string) (*projectInfo, error) {
-	handlerFile, err := pr.findPythonFile(handlerPath)
+// resolveHandler finds and resolves a Python handler.
+func resolveHandler(projectRoot, handlerPath string) (*projectInfo, error) {
+	handlerFile, err := findPythonFile(projectRoot, handlerPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find Python file for handler %s: %w", handlerPath, err)
 	}
 
-	pyprojectPath, _ := pr.findPyprojectToml(handlerFile)
+	pyprojectPath, _ := findPyprojectToml(projectRoot, handlerFile)
 
 	info := &projectInfo{
-		ProjectRoot:   pr.projectRoot,
+		ProjectRoot:   projectRoot,
 		PyprojectPath: pyprojectPath,
 	}
 
-	pr.setupSourceRoot(info)
+	info.SourceRoot = resolveSourceRoot(projectRoot, pyprojectPath)
 
 	return info, nil
 }
 
-// findPythonFile locates the Python file for the given handler path
-func (pr *projectResolver) findPythonFile(handlerPath string) (string, error) {
-	filePath := pr.extractFilePath(handlerPath)
-	candidates := pr.generateCandidatePaths(filePath)
+// findPythonFile locates the Python file for the given handler path.
+func findPythonFile(projectRoot, handlerPath string) (string, error) {
+	filePath := extractFilePath(handlerPath)
+	candidates := generateCandidatePaths(projectRoot, filePath)
 
 	for _, candidate := range candidates {
 		if info, err := os.Stat(candidate); err == nil && info.Mode().IsRegular() && strings.HasSuffix(candidate, ".py") {
@@ -114,29 +104,29 @@ func (pr *projectResolver) findPythonFile(handlerPath string) (string, error) {
 	return "", fmt.Errorf("handler not found: %s (searched %d candidate paths)", handlerPath, len(candidates))
 }
 
-// extractFilePath extracts the file path from a handler path (e.g., "path/to/file.func" -> "path/to/file")
-func (pr *projectResolver) extractFilePath(handlerPath string) string {
+// extractFilePath extracts the file path from a handler path.
+func extractFilePath(handlerPath string) string {
 	if lastDot := strings.LastIndex(handlerPath, "."); lastDot != -1 {
 		return handlerPath[:lastDot]
 	}
 	return handlerPath
 }
 
-// generateCandidatePaths creates a list of potential file locations
-func (pr *projectResolver) generateCandidatePaths(handlerPath string) []string {
+// generateCandidatePaths creates a list of potential file locations.
+func generateCandidatePaths(projectRoot, handlerPath string) []string {
 	var candidates []string
 
 	// Direct path and with .py extension
-	candidates = append(candidates, filepath.Join(pr.projectRoot, handlerPath))
+	candidates = append(candidates, filepath.Join(projectRoot, handlerPath))
 	if !strings.HasSuffix(handlerPath, ".py") {
-		candidates = append(candidates, filepath.Join(pr.projectRoot, handlerPath+".py"))
+		candidates = append(candidates, filepath.Join(projectRoot, handlerPath+".py"))
 	}
 
 	// Common Python project directories
 	for _, dir := range []string{"src", "app", "functions", "lambda", "handlers", "lib"} {
-		candidates = append(candidates, filepath.Join(pr.projectRoot, dir, handlerPath))
+		candidates = append(candidates, filepath.Join(projectRoot, dir, handlerPath))
 		if !strings.HasSuffix(handlerPath, ".py") {
-			candidates = append(candidates, filepath.Join(pr.projectRoot, dir, handlerPath+".py"))
+			candidates = append(candidates, filepath.Join(projectRoot, dir, handlerPath+".py"))
 		}
 	}
 
@@ -145,9 +135,9 @@ func (pr *projectResolver) generateCandidatePaths(handlerPath string) []string {
 		dir := filepath.Dir(handlerPath)
 		base := filepath.Base(handlerPath)
 		for _, commonDir := range []string{"src", "app", "functions", "lambda", "handlers", "lib"} {
-			candidates = append(candidates, filepath.Join(pr.projectRoot, commonDir, dir, base))
+			candidates = append(candidates, filepath.Join(projectRoot, commonDir, dir, base))
 			if !strings.HasSuffix(base, ".py") {
-				candidates = append(candidates, filepath.Join(pr.projectRoot, commonDir, dir, base+".py"))
+				candidates = append(candidates, filepath.Join(projectRoot, commonDir, dir, base+".py"))
 			}
 		}
 	}
@@ -155,8 +145,8 @@ func (pr *projectResolver) generateCandidatePaths(handlerPath string) []string {
 	return candidates
 }
 
-// findPyprojectToml searches for pyproject.toml starting from the handler file directory
-func (pr *projectResolver) findPyprojectToml(handlerFile string) (string, error) {
+// findPyprojectToml searches for pyproject.toml starting from the handler file directory.
+func findPyprojectToml(projectRoot, handlerFile string) (string, error) {
 	currentDir := filepath.Dir(handlerFile)
 	for {
 		pyprojectPath := filepath.Join(currentDir, "pyproject.toml")
@@ -164,7 +154,7 @@ func (pr *projectResolver) findPyprojectToml(handlerFile string) (string, error)
 			return pyprojectPath, nil
 		}
 		parentDir := filepath.Dir(currentDir)
-		if parentDir == currentDir || !strings.HasPrefix(currentDir, pr.projectRoot) {
+		if parentDir == currentDir || !strings.HasPrefix(currentDir, projectRoot) {
 			break
 		}
 		currentDir = parentDir
@@ -172,23 +162,21 @@ func (pr *projectResolver) findPyprojectToml(handlerFile string) (string, error)
 	return "", fmt.Errorf("no pyproject.toml found")
 }
 
-// setupSourceRoot determines the source root directory
-func (pr *projectResolver) setupSourceRoot(info *projectInfo) {
-	if info.PyprojectPath != "" {
-		pyprojectDir := filepath.Dir(info.PyprojectPath)
+// resolveSourceRoot determines the source root directory.
+func resolveSourceRoot(projectRoot, pyprojectPath string) string {
+	if pyprojectPath != "" {
+		pyprojectDir := filepath.Dir(pyprojectPath)
 		srcDir := filepath.Join(pyprojectDir, "src")
 		if _, err := os.Stat(srcDir); err == nil {
-			info.SourceRoot = srcDir
-			return
+			return srcDir
 		}
-		info.SourceRoot = pyprojectDir
-		return
+		return pyprojectDir
 	}
-	info.SourceRoot = pr.projectRoot
+	return projectRoot
 }
 
-// ParsePyprojectToml reads and parses a pyproject.toml file
-func (pr *projectResolver) ParsePyprojectToml(path string) (*pyprojectConfig, error) {
+// parsePyprojectToml reads and parses a pyproject.toml file.
+func parsePyprojectToml(path string) (*pyprojectConfig, error) {
 	content, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read pyproject.toml at %s: %w", path, err)
