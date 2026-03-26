@@ -1,8 +1,5 @@
-from shared.utils import format_response, get_current_time
+from shared.utils import api_response
 
 
 def main(event, context):
-    return format_response(200, {
-        "service": "api",
-        "timestamp": get_current_time().isoformat(),
-    })
+    return api_response("api")

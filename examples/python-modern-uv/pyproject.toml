@@ -1,17 +1,11 @@
 [project]
 name = "python-modern-uv"
 version = "0.1.0"
-description = "Test modern uv project structures"
-dependencies = ["requests>=2.31.0", "api", "worker", "shared"]
+description = "SST Python uv workspace example"
 requires-python = ">=3.11"
 
 [tool.uv]
 package = true
-
-[tool.uv.sources]
-api = { workspace = true }
-worker = { workspace = true }
-shared = { workspace = true }
 
 [tool.uv.workspace]
 members = ["packages/*"]

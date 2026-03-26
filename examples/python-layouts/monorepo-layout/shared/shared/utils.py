@@ -1,16 +1,13 @@
 import json
-from datetime import datetime, timezone
 
 
-def format_response(status_code, body):
+def api_response(service):
     return {
-        "statusCode": status_code,
-        "headers": {
-            "Content-Type": "application/json",
-        },
-        "body": json.dumps(body),
+        "statusCode": 200,
+        "headers": {"Content-Type": "application/json"},
+        "body": json.dumps({"layout": "monorepo", "service": service}),
     }
 
 
-def get_current_time():
-    return datetime.now(timezone.utc)
+def worker_result(job):
+    return {"layout": "monorepo", "job": job, "status": "completed"}

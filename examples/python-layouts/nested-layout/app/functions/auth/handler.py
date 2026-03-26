@@ -1,5 +1,5 @@
-from shared.utils import format_response
+from shared.utils import json_response
 
 
 def main(event, context):
-    return format_response(200, {"message": "hello from auth"})
+    return json_response({"layout": "nested", "service": "auth"})

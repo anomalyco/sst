@@ -1,9 +1,5 @@
-from shared.utils import get_current_time
+from shared.utils import worker_result
 
 
 def main(event, context):
-    return {
-        "status": "completed",
-        "taskType": event.get("taskType", "default"),
-        "timestamp": get_current_time().isoformat(),
-    }
+    return worker_result(event.get("job", "daily-report"))

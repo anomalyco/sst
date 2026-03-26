@@ -14,7 +14,7 @@
  * Each function is packaged with only the dependencies from its own `pyproject.toml`
  * and any workspace packages it depends on.
  * :::
- * 
+ *
  * In this example we deploy a handler from the `functions/` directory. It depends
  * on shared code from another uv workspace in the `core/` directory.
  *
@@ -36,9 +36,9 @@
  *
  * The `handler` is the path to the handler file and the name of the handler function
  * in it.
- * 
+ *
  * ```ts title="sst.config.ts" {2}
- * new sst.aws.Function("MyPythonFunction", {
+ * new sst.aws.Function("PythonFunction", {
  *   handler: "functions/src/functions/api.handler",
  *   runtime: "python3.11",
  *   link: [linkableValue],
@@ -67,7 +67,7 @@
  *
  * You also want to set the Python version in your `pyproject.toml` to the same
  * version as the one in Lambda.
- * 
+ *
  * ```toml title="functions/pyproject.toml"
  * requires-python = "==3.11.*"
  * ```
@@ -75,25 +75,25 @@
  * This makes sure that your functions work the same in `sst dev` as `sst deploy`.
  */
 export default $config({
-	app(input) {
-		return {
-			name: "aws-python",
-			removal: input?.stage === "production" ? "retain" : "remove",
-			home: "aws",
-		};
-	},
-	async run() {
-		const linkableValue = new sst.Linkable("MyLinkableValue", {
-			properties: {
-				foo: "Hello World",
-			},
-		});
+  app(input) {
+    return {
+      name: "aws-python",
+      removal: input?.stage === "production" ? "retain" : "remove",
+      home: "aws",
+    };
+  },
+  async run() {
+    const linkableValue = new sst.Linkable("MyLinkableValue", {
+      properties: {
+        foo: "Hello World",
+      },
+    });
 
-		new sst.aws.Function("MyPythonFunction", {
-			handler: "functions/src/functions/api.handler",
-			runtime: "python3.11",
-			link: [linkableValue],
-			url: true,
-		});
-	},
+    new sst.aws.Function("PythonFunction", {
+      handler: "functions/src/functions/api.handler",
+      runtime: "python3.11",
+      link: [linkableValue],
+      url: true,
+    });
+  },
 });

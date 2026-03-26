@@ -3,13 +3,7 @@ name = "api-service"
 version = "0.1.0"
 description = "API service"
 requires-python = ">=3.12"
-dependencies = [
-    "boto3>=1.34.0",
-    "requests>=2.31.0",
-    "fastapi>=0.104.0",
-    "pydantic>=2.5.0",
-    "shared",
-]
+dependencies = ["shared"]
 
 [build-system]
 requires = ["hatchling"]
@@ -18,7 +12,5 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["."]
 
-# Use workspace = true to reference the shared package from the UV workspace
-# This is cleaner than specifying relative paths in each service
 [tool.uv.sources]
 shared = { workspace = true }

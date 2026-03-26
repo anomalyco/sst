@@ -1,6 +1,5 @@
-"""Shared data models used by api and worker"""
+"""Shared helpers used by workspace members."""
 
 
-def create_response(message: str) -> str:
-    """Create a response message"""
-    return f"Response: {message}"
+def response(source: str) -> dict:
+    return {"layout": "modern-uv", "source": source}

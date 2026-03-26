@@ -3,9 +3,7 @@
 /**
  * ## Python Workspace Layout
  *
- * A single-package project using the standard `src/` layout recommended by the
- * [Python packaging guide](https://packaging.python.org/en/latest/discussions/src-layout-vs-flat-layout/).
- * Multiple handlers live inside the same package.
+ * Use the standard `src/` layout for a single Python package.
  *
  * ```txt
  * ├── sst.config.ts
@@ -17,53 +15,48 @@
  *         └── utils.py
  * ```
  *
- * Different handler functions in the same file can be deployed as separate Lambda
- * functions.
+ * Different functions in the same module can still become separate Lambdas.
  *
  * ```ts title="sst.config.ts"
- * new sst.aws.Function("ApiFunction", {
+ * new sst.aws.Function("Api", {
  *   handler: "src/mypackage/handler.api_handler",
  *   runtime: "python3.11",
  *   url: true,
  * });
  *
- * new sst.aws.Function("WorkerFunction", {
+ * new sst.aws.Function("Worker", {
  *   handler: "src/mypackage/handler.worker_handler",
  *   runtime: "python3.11",
  * });
  * ```
  *
- * Since both functions share the same package, they get the same dependencies and
- * source code bundled in.
+ * Both handlers share the same package and imports.
  */
 export default $config({
   app(input) {
     return {
       name: "workspace-example",
       removal: input?.stage === "production" ? "retain" : "remove",
-      home: "aws"
+      home: "aws",
     };
   },
   async run() {
-    // API function with workspace layout
-    const api = new sst.aws.Function("ApiFunction", {
+    const api = new sst.aws.Function("Api", {
       handler: "src/mypackage/handler.api_handler",
       runtime: "python3.11",
       timeout: "30 seconds",
-      url: true  // Enable function URL
+      url: true,
     });
 
-    // Worker function sharing the same package
-    const worker = new sst.aws.Function("WorkerFunction", {
+    const worker = new sst.aws.Function("Worker", {
       handler: "src/mypackage/handler.worker_handler",
       runtime: "python3.11",
-      timeout: "5 minutes"
-      // No URL needed for worker function
+      timeout: "5 minutes",
     });
 
     return {
       api: api.url,
-      worker: worker.name
+      worker: worker.name,
     };
-  }
+  },
 });

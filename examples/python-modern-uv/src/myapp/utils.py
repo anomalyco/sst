@@ -1,5 +1,5 @@
-"""Utility functions for the application"""
+"""Helpers for the root package."""
 
-def process_data(data: dict) -> str:
-    """Process data and return a result"""
-    return f"Processed: {data}"
+
+def greeting(source: str) -> str:
+    return f"Hello from {source}"

@@ -1,15 +1,4 @@
 {
   "app_name": "nested-example",
-  "version": "1.0.0",
-  "debug": true,
-  "database": {
-    "host": "localhost",
-    "port": 5432,
-    "name": "nested_app"
-  },
-  "features": {
-    "auth": true,
-    "analytics": false,
-    "caching": true
-  }
+  "feature_flag": true
 }

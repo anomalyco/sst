@@ -3,9 +3,8 @@
 /**
  * ## Python Nested Layout
  *
- * A single-package project where handlers live in nested directories under an
- * `app/` folder. Shared utilities and static data files are accessed via relative
- * paths.
+ * Keep handlers in nested folders while sharing one `pyproject.toml` at the
+ * project root.
  *
  * ```txt
  * ├── sst.config.ts
@@ -24,22 +23,21 @@
  *             └── handler.py
  * ```
  *
- * All handlers share the same `pyproject.toml` at the root. SST finds it by
- * traversing up from the handler path.
+ * SST walks up from the handler path to find the nearest `pyproject.toml`.
  *
  * ```ts title="sst.config.ts"
- * new sst.aws.Function("ApiFunction", {
+ * new sst.aws.Function("Api", {
  *   handler: "app/functions/api/handler.main",
  *   runtime: "python3.11",
  *   url: true,
  * });
  * ```
  *
- * Handlers can access static files using paths relative to `__file__`.
+ * Nested handlers can still read static files relative to `__file__`.
  *
  * ```py title="app/functions/api/handler.py"
  * from pathlib import Path
- * config = Path(__file__).parent / "../../data/config.json"
+ * config = Path(__file__).parents[2] / "data" / "config.json"
  * ```
  */
 export default $config({
@@ -47,23 +45,23 @@ export default $config({
     return {
       name: "nested-example",
       removal: input?.stage === "production" ? "retain" : "remove",
-      home: "aws"
+      home: "aws",
     };
   },
   async run() {
-    const api = new sst.aws.Function("ApiFunction", {
+    const api = new sst.aws.Function("Api", {
       handler: "app/functions/api/handler.main",
       runtime: "python3.11",
       url: true,
     });
 
-    const worker = new sst.aws.Function("WorkerFunction", {
+    const worker = new sst.aws.Function("Worker", {
       handler: "app/functions/worker/handler.main",
       runtime: "python3.11",
       timeout: "5 minutes",
     });
 
-    const auth = new sst.aws.Function("AuthFunction", {
+    const auth = new sst.aws.Function("Auth", {
       handler: "app/functions/auth/handler.main",
       runtime: "python3.11",
       url: true,
@@ -72,7 +70,7 @@ export default $config({
     return {
       api: api.url,
       worker: worker.name,
-      auth: auth.url
+      auth: auth.url,
     };
-  }
+  },
 });

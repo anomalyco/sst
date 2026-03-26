@@ -3,8 +3,8 @@
 /**
  * ## Python Flat Layout
  *
- * The simplest Python project layout for Lambda. All source files live in the
- * project root alongside `pyproject.toml`.
+ * The smallest Python layout SST supports. The handler lives at the project
+ * root alongside `pyproject.toml`.
  *
  * ```txt
  * ├── sst.config.ts
@@ -13,7 +13,7 @@
  * └── utils.py
  * ```
  *
- * The handler points directly to a file and function in the root.
+ * Point the handler directly at a root file.
  *
  * ```ts title="sst.config.ts"
  * new sst.aws.Function("ApiFunction", {
@@ -23,8 +23,7 @@
  * });
  * ```
  *
- * Multiple handlers can share the same source files. This is useful when you have
- * an API handler and a background worker that share utility code.
+ * Multiple functions can still share the same root files.
  */
 export default $config({
   app(input) {
@@ -48,7 +47,7 @@ export default $config({
 
     return {
       api: api.url,
-      worker: worker.name
+      worker: worker.name,
     };
   }
 });

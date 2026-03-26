@@ -3,9 +3,8 @@
 /**
  * ## Python Monorepo Layout
  *
- * A uv workspace with multiple services that share a common library. Each service
- * has its own `pyproject.toml` and handler, while shared code lives in a separate
- * workspace package.
+ * Put each service in its own workspace package and share code from a separate
+ * package.
  *
  * ```txt
  * ├── sst.config.ts
@@ -19,37 +18,17 @@
  *     ├── api
  *     │   ├── pyproject.toml
  *     │   └── handler.py
- *     ├── auth
- *     │   ├── pyproject.toml
- *     │   └── handler.py
  *     └── worker
  *         ├── pyproject.toml
  *         └── handler.py
  * ```
  *
- * The shared package uses a proper nested structure so it installs under the
- * `shared` namespace.
- *
- * ```toml title="shared/pyproject.toml"
- * [tool.hatch.build.targets.wheel]
- * packages = ["shared"]
- * ```
- *
- * Each service declares the shared package as a workspace dependency.
+ * Each service has its own `pyproject.toml` and points at the shared workspace
+ * package with `workspace = true`.
  *
  * ```toml title="services/api/pyproject.toml"
  * [tool.uv.sources]
  * shared = { workspace = true }
- * ```
- *
- * SST bundles the shared code into each function automatically.
- *
- * ```ts title="sst.config.ts"
- * new sst.aws.Function("ApiService", {
- *   handler: "services/api/handler.main",
- *   runtime: "python3.12",
- *   url: true,
- * });
  * ```
  */
 export default $config({
@@ -61,21 +40,12 @@ export default $config({
     };
   },
   async run() {
-    // Auth service
-    const auth = new sst.aws.Function("AuthService", {
-      handler: "services/auth/handler.main",
-      runtime: "python3.12",
-      url: true,
-    });
-
-    // API service
     const api = new sst.aws.Function("ApiService", {
       handler: "services/api/handler.main",
       runtime: "python3.12",
       url: true,
     });
 
-    // Worker service
     const worker = new sst.aws.Function("WorkerService", {
       handler: "services/worker/handler.main",
       runtime: "python3.12",
@@ -83,7 +53,6 @@ export default $config({
     });
 
     return {
-      auth: auth.url,
       api: api.url,
       worker: worker.name,
     };

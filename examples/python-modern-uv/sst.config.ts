@@ -3,13 +3,11 @@
 /**
  * ## AWS Python uv Workspaces
  *
- * Deploys Python Lambda functions from a
- * [uv workspace](https://docs.astral.sh/uv/concepts/projects/workspaces/) with
- * multiple packages and a `src/` layout.
+ * Deploy Python Lambda functions from a
+ * [uv workspace](https://docs.astral.sh/uv/concepts/projects/workspaces/) that
+ * uses `package = true` and a `src/` layout.
  *
- * SST traverses up from the handler path to find the nearest `pyproject.toml` and
- * uses it to resolve dependencies. Workspace members that depend on each other are
- * bundled automatically.
+ * SST traverses up from the handler path to find the nearest `pyproject.toml`.
  *
  * ```txt
  * ├── sst.config.ts
@@ -25,6 +23,11 @@
  *     │   └── src/api
  *     │       ├── __init__.py
  *     │       └── handler.py
+ *     ├── shared
+ *     │   ├── pyproject.toml
+ *     │   └── src/shared
+ *     │       ├── __init__.py
+ *     │       └── models.py
  *     └── worker
  *         ├── pyproject.toml
  *         └── src/worker
@@ -32,8 +35,7 @@
  *             └── handler.py
  * ```
  *
- * If your root package uses a `src/` layout, configure hatch so the package is
- * importable by its name rather than `src.myapp`.
+ * With `package = true`, the package is importable by name instead of `src.*`.
  *
  * ```toml title="pyproject.toml"
  * [tool.hatch.build.targets.wheel]
@@ -46,8 +48,7 @@
  * from myapp import utils
  * ```
  *
- * Each workspace member can be deployed as its own function. Members that import
- * other members will have those dependencies bundled in.
+ * Each workspace member can become its own function.
  *
  * ```ts title="sst.config.ts"
  * new sst.aws.Function("PackageHandler", {
@@ -66,21 +67,18 @@ export default $config({
     };
   },
   async run() {
-    // Test 1: Root entry point with src/ layout
     const rootHandler = new sst.aws.Function("RootHandler", {
       handler: "handler.lambda_handler",
       runtime: "python3.11",
       url: true,
     });
 
-    // Test 2: Package with [tool.uv] package = true
     const packageHandler = new sst.aws.Function("PackageHandler", {
       handler: "packages/api/src/api/handler.lambda_handler",
       runtime: "python3.11",
       url: true,
     });
 
-    // Test 3: Workspace member importing a shared workspace package
     const workspaceHandler = new sst.aws.Function("WorkspaceHandler", {
       handler: "packages/worker/src/worker/handler.lambda_handler",
       runtime: "python3.11",

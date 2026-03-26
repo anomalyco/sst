@@ -10,7 +10,7 @@ class Resource:
     class MyLinkableValue:
         foo: str
         type: str
-    class MyPythonFunction:
+    class PythonFunction:
         name: str
         type: str
         url: str

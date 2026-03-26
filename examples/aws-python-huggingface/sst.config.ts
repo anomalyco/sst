@@ -10,7 +10,7 @@
  * generate text using the
  * [TinyStories-33M](https://huggingface.co/roneneldan/TinyStories-33M) model. The
  * backend is the pytorch cpu runtime.
- * 
+ *
  * :::note
  * This is not a production ready example.
  * :::
@@ -21,23 +21,23 @@
  * as installing pytorch and pruning the build size.
  */
 export default $config({
-	app(input) {
-		return {
-			name: "aws-python-huggingface",
-			removal: input?.stage === "production" ? "retain" : "remove",
-			home: "aws",
-		};
-	},
-	async run() {
-		new sst.aws.Function("MyPythonFunction", {
-			python: {
-				container: true,
-			},
-			handler: "functions/src/functions/api.handler",
-			runtime: "python3.12",
-			memory: "2048 MB",
-			timeout: "120 seconds",
-			url: true,
-		});
-	},
+  app(input) {
+    return {
+      name: "aws-python-huggingface",
+      removal: input?.stage === "production" ? "retain" : "remove",
+      home: "aws",
+    };
+  },
+  async run() {
+    new sst.aws.Function("PythonFunction", {
+      python: {
+        container: true,
+      },
+      handler: "functions/src/functions/api.handler",
+      runtime: "python3.12",
+      memory: "2048 MB",
+      timeout: "120 seconds",
+      url: true,
+    });
+  },
 });

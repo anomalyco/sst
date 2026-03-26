@@ -11,10 +11,6 @@ class Resource:
     class App:
         name: str
         stage: str
-    class AuthService:
-        name: str
-        type: str
-        url: str
     class WorkerService:
         name: str
         type: str

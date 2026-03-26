@@ -1,21 +1,14 @@
-"""
-Test: Workspace member importing a shared workspace package
-This tests if cross-package imports work via a shared library
-Also tests that worker-only dependencies (arrow) are bundled correctly
-"""
-from shared import models
+import json
+
 import arrow
+from shared import models
 
 
 def lambda_handler(event, context):
-    result = models.create_response("Worker using shared models")
-
-    now = arrow.utcnow()
-    timestamp = now.isoformat()
+    body = models.response("worker package")
+    body["timestamp"] = arrow.utcnow().isoformat()
 
     return {
         "statusCode": 200,
-        "body": result,
-        "timestamp": timestamp,
-        "arrow_version": arrow.__version__
+        "body": json.dumps(body),
     }
