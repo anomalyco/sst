@@ -86,8 +86,6 @@ func (ib *deployBuilder) findWorkspaceRoot(projectInfo *projectInfo) string {
 }
 
 func (ib *deployBuilder) Build(ctx context.Context, input *runtime.BuildInput) (*runtime.BuildOutput, error) {
-	startTime := time.Now()
-
 	workingDir := filepath.Dir(input.CfgPath)
 	if workingDir == "" {
 		workingDir = "."
@@ -120,11 +118,6 @@ func (ib *deployBuilder) Build(ctx context.Context, input *runtime.BuildInput) (
 	if err != nil {
 		return nil, fmt.Errorf("build output: %w", err)
 	}
-
-	slog.Info("built",
-		"functionID", input.FunctionID,
-		"duration", time.Since(startTime),
-		"packagesBuilt", len(packagesBuilt))
 
 	return output, nil
 }

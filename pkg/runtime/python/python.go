@@ -13,7 +13,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/sst/sst/v3/pkg/flag"
 	"github.com/sst/sst/v3/pkg/process"
@@ -82,11 +81,7 @@ func (w *worker) Logs() io.ReadCloser {
 }
 
 type PythonRuntime struct {
-	deployBuilder *deployBuilder
-	concurrency   *semaphore.Weighted
-
-	// Mutex for thread-safe access
-	mutex sync.RWMutex
+	concurrency *semaphore.Weighted
 }
 
 func New() *PythonRuntime {
@@ -406,51 +401,21 @@ func (r *PythonRuntime) CreateBuildAsset(ctx context.Context, input *runtime.Bui
 	}
 
 	workingDir := path.ResolveRootDir(input.CfgPath)
-	result, err := r.createBuildAssetDeploy(ctx, input, workingDir)
+	builder, err := newDeployBuilder(deployBuilderConfig{
+		CacheDir:    filepath.Join(workingDir, ".sst/cache/deploy"),
+		ProjectRoot: workingDir,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("deploy build failed: %w", err)
+		return nil, fmt.Errorf("failed to create deploy builder: %w", err)
 	}
-	return result, nil
-}
-
-// createBuildAssetDeploy uses the shared deployBuilder for all function builds
-func (r *PythonRuntime) createBuildAssetDeploy(ctx context.Context, input *runtime.BuildInput, workingDir string) (*runtime.BuildOutput, error) {
-	startTime := time.Now()
-
-	// Reuse deployBuilder across all function builds to avoid overhead
-	// from creating one per 50+ functions.
-	r.mutex.Lock()
-	if r.deployBuilder == nil {
-		var cacheDir string
-		if input.Dev {
-			cacheDir = filepath.Join(workingDir, ".sst/cache/dev")
-		} else {
-			cacheDir = filepath.Join(workingDir, ".sst/cache/deploy")
-		}
-
-		var err error
-		r.deployBuilder, err = newDeployBuilder(deployBuilderConfig{
-			CacheDir:    cacheDir,
-			ProjectRoot: workingDir,
-		})
-		if err != nil {
-			r.mutex.Unlock()
-			return nil, fmt.Errorf("failed to create deploy builder: %w", err)
-		}
-	}
-	builder := r.deployBuilder
-	r.mutex.Unlock()
 
 	result, err := builder.Build(ctx, input)
-
-	elapsed := time.Since(startTime)
 	if err != nil {
-		slog.Error("build failed", "functionID", input.FunctionID, "elapsed", elapsed, "error", err)
+		slog.Error("build failed", "functionID", input.FunctionID, "error", err)
 		return nil, err
 	}
 
-	slog.Info("built", "function", input.FunctionID, "elapsed", elapsed)
-
+	slog.Info("function built", "functionID", input.FunctionID)
 	return result, nil
 }
 
