@@ -1124,6 +1124,24 @@ export interface FunctionArgs {
    */
   python?: Input<{
     /**
+     * Set this to `true` to include `boto3` and `botocore` in the function package.
+     *
+     * By default, SST strips these packages from the deployment artifact because
+     * Lambda provides them at runtime, saving ~22MB. Set this to `true` if you need
+     * a specific version that differs from what Lambda provides.
+     *
+     * @default `false`
+     * @example
+     * ```ts
+     * {
+     *   python: {
+     *     includeLambdaRuntime: true
+     *   }
+     * }
+     * ```
+     */
+    includeLambdaRuntime?: Input<boolean>;
+    /**
      * Set this to `true` if you want to deploy this function as a container image.
      * There are a couple of reasons why you might want to do this.
      *

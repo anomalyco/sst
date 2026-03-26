@@ -1,7 +1,6 @@
 package python
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,7 +29,9 @@ func TestDeployBuilder_CleanupInstalledDependencies(t *testing.T) {
 	}
 
 	builder := &deployBuilder{}
-	if err := builder.cleanupInstalledDependencies(tempDir, nil); err != nil {
+	if err := builder.cleanupInstalledDependencies(tempDir, &runtime.BuildInput{
+		Properties: []byte("{}"),
+	}); err != nil {
 		t.Fatalf("cleanupInstalledDependencies failed: %v", err)
 	}
 
@@ -97,7 +98,7 @@ func TestLegacyStructureRegressionFixes(t *testing.T) {
 		}
 
 		ib := &deployBuilder{}
-		err = ib.copySourceFilesSimple(context.Background(), input, projectInfo)
+		err = ib.copySourceFilesSimple(input, projectInfo)
 		if err != nil {
 			t.Fatalf("copySourceFilesSimple failed: %v", err)
 		}
@@ -371,29 +372,8 @@ func TestHasBuildConfig(t *testing.T) {
 			expected: false,
 		},
 		{
-			name: "tool.sst.buildable = false overrides build-system",
-			files: map[string]string{
-				"pyproject.toml": "[project]\nname = \"my-app\"\n\n[build-system]\nrequires = [\"hatchling\"]\n\n[tool.sst]\nbuildable = false\n",
-			},
-			expected: false,
-		},
-		{
-			name: "tool.sst.buildable = true marks as buildable without build-system",
-			files: map[string]string{
-				"pyproject.toml": "[project]\nname = \"my-app\"\n\n[tool.sst]\nbuildable = true\n",
-			},
-			expected: true,
-		},
-		{
 			name:     "empty directory is not buildable",
 			files:    map[string]string{},
-			expected: false,
-		},
-		{
-			name: "legacy magic string still works",
-			files: map[string]string{
-				"pyproject.toml": "[project]\nname = \"my-app\"\n# NOT a buildable package\n\n[build-system]\nrequires = [\"hatchling\"]\n",
-			},
 			expected: false,
 		},
 	}

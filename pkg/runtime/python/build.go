@@ -18,7 +18,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/BurntSushi/toml"
 	"github.com/sst/sst/v3/pkg/process"
 	"github.com/sst/sst/v3/pkg/project/path"
 	"github.com/sst/sst/v3/pkg/runtime"
@@ -49,7 +48,7 @@ func newDeployBuilder(config deployBuilderConfig) (*deployBuilder, error) {
 
 	return &deployBuilder{
 		uvRunner:      newUvCommandRunner(uvCommandRunnerConfig{}),
-		contentFilter: newContentFilterForProject(config.ProjectRoot),
+		contentFilter: newContentFilter(),
 		config:        config,
 	}, nil
 }
@@ -99,7 +98,7 @@ func (ib *deployBuilder) Build(ctx context.Context, input *runtime.BuildInput) (
 
 	var packagesBuilt []string
 	for _, pkg := range localPackages {
-		if err := ib.buildPackage(ctx, input, projectInfo, pkg); err != nil {
+		if err := ib.buildPackage(ctx, input, pkg); err != nil {
 			return nil, fmt.Errorf("build %s: %w", pkg.Name, err)
 		}
 		packagesBuilt = append(packagesBuilt, pkg.Name)
@@ -109,7 +108,7 @@ func (ib *deployBuilder) Build(ctx context.Context, input *runtime.BuildInput) (
 		return nil, fmt.Errorf("dependency installation: %w", err)
 	}
 
-	output, err := ib.createFinalBuildOutput(ctx, input, projectInfo)
+	output, err := ib.createFinalBuildOutput(input, projectInfo)
 	if err != nil {
 		return nil, fmt.Errorf("build output: %w", err)
 	}
@@ -117,7 +116,7 @@ func (ib *deployBuilder) Build(ctx context.Context, input *runtime.BuildInput) (
 	return output, nil
 }
 
-func (ib *deployBuilder) buildPackage(ctx context.Context, input *runtime.BuildInput, projectInfo *projectInfo, pkg *localPackageInfo) error {
+func (ib *deployBuilder) buildPackage(ctx context.Context, input *runtime.BuildInput, pkg *localPackageInfo) error {
 	buildType := "sdist"
 	if input.Dev {
 		buildType = "wheel"
@@ -134,14 +133,14 @@ func (ib *deployBuilder) buildPackage(ctx context.Context, input *runtime.BuildI
 		return fmt.Errorf("failed to build package %s: %w", pkg.Name, err)
 	}
 
-	if err := ib.extractAndProcessPackageArchive(input.Out(), projectInfo, pkg); err != nil {
+	if err := ib.extractAndProcessPackageArchive(input.Out(), pkg); err != nil {
 		return fmt.Errorf("package post-processing: %w", err)
 	}
 
 	return nil
 }
 
-func (ib *deployBuilder) createFinalBuildOutput(ctx context.Context, input *runtime.BuildInput, projectInfo *projectInfo) (*runtime.BuildOutput, error) {
+func (ib *deployBuilder) createFinalBuildOutput(input *runtime.BuildInput, projectInfo *projectInfo) (*runtime.BuildOutput, error) {
 	adjustedHandler, err := ib.adjustHandlerPath(input, projectInfo)
 	if err != nil {
 		return nil, fmt.Errorf("failed to adjust handler path: %w", err)
@@ -246,7 +245,7 @@ func (ib *deployBuilder) adjustHandlerPath(input *runtime.BuildInput, projectInf
 	return handler, nil
 }
 
-func (ib *deployBuilder) extractAndProcessPackageArchive(outputDir string, projectInfo *projectInfo, pkg *localPackageInfo) error {
+func (ib *deployBuilder) extractAndProcessPackageArchive(outputDir string, pkg *localPackageInfo) error {
 	// Python normalizes package names: dashes become underscores
 	normalizedName := strings.ReplaceAll(pkg.Name, "-", "_")
 
@@ -278,7 +277,7 @@ func (ib *deployBuilder) extractAndProcessPackageArchive(outputDir string, proje
 
 	// Process each archive file
 	for _, archiveFile := range files {
-		if err := ib.processPackageArchive(archiveFile, outputDir, projectInfo); err != nil {
+		if err := ib.processPackageArchive(archiveFile, outputDir); err != nil {
 			return fmt.Errorf("failed to process archive %s: %w", archiveFile, err)
 		}
 	}
@@ -287,7 +286,7 @@ func (ib *deployBuilder) extractAndProcessPackageArchive(outputDir string, proje
 }
 
 // processPackageArchive extracts and cleans up a single package archive
-func (ib *deployBuilder) processPackageArchive(archiveFile, outputDir string, projectInfo *projectInfo) error {
+func (ib *deployBuilder) processPackageArchive(archiveFile, outputDir string) error {
 	if strings.HasSuffix(archiveFile, ".whl") {
 		if err := extractZip(archiveFile, outputDir); err != nil {
 			return fmt.Errorf("failed to extract wheel: %w", err)
@@ -323,7 +322,7 @@ func (ib *deployBuilder) processPackageArchive(archiveFile, outputDir string, pr
 	targetDir := filepath.Join(outputDir, baseName)
 
 	// Move extracted directory to target
-	if err := ib.moveExtractedPackage(extractedDir, targetDir, baseName, projectInfo); err != nil {
+	if err := ib.moveExtractedPackage(extractedDir, targetDir, baseName); err != nil {
 		return fmt.Errorf("failed to move extracted package: %w", err)
 	}
 
@@ -435,7 +434,7 @@ func extractTarGz(archiveFile, destDir string) error {
 }
 
 // moveExtractedPackage moves the extracted package to the correct location
-func (ib *deployBuilder) moveExtractedPackage(extractedDir, targetDir, baseName string, projectInfo *projectInfo) error {
+func (ib *deployBuilder) moveExtractedPackage(extractedDir, targetDir, baseName string) error {
 	// For src layout, flatten src/{package_name} to {package_name}
 	srcPath := filepath.Join(extractedDir, "src", baseName)
 	if _, err := os.Stat(srcPath); err == nil {
@@ -537,7 +536,7 @@ func (ib *deployBuilder) installDependenciesForBuild(ctx context.Context, input 
 	}
 
 	requirementsFile := filepath.Join(input.Out(), "requirements.txt")
-	if err := ib.generateOrCopyRequirementsFile(ctx, input, projectInfo, requirementsFile); err != nil {
+	if err := ib.generateOrCopyRequirementsFile(ctx, projectInfo, requirementsFile); err != nil {
 		return fmt.Errorf("failed to generate requirements file: %w", err)
 	}
 
@@ -548,7 +547,7 @@ func (ib *deployBuilder) installDependenciesForBuild(ctx context.Context, input 
 	}
 
 	// Install dependencies for the target platform (Linux)
-	if err := ib.installDependenciesForLambda(ctx, input, projectInfo, requirementsFile, architecture); err != nil {
+	if err := ib.installDependenciesForLambda(ctx, input, projectInfo, architecture); err != nil {
 		return fmt.Errorf("failed to install dependencies: %w", err)
 	}
 
@@ -557,25 +556,13 @@ func (ib *deployBuilder) installDependenciesForBuild(ctx context.Context, input 
 
 // generateOrCopyRequirementsFile generates requirements.txt once per workspace,
 // then copies it to each function's output directory.
-func (ib *deployBuilder) generateOrCopyRequirementsFile(ctx context.Context, input *runtime.BuildInput, projectInfo *projectInfo, outputFile string) error {
-	// Include dev dependencies for non-buildable source-only projects
+func (ib *deployBuilder) generateOrCopyRequirementsFile(ctx context.Context, projectInfo *projectInfo, outputFile string) error {
+	// Include dev dependencies for projects without a build system (source-only projects).
+	// If the project has no [build-system], runtime deps may be in the dev group.
 	noDev := true
 	if projectInfo.PyprojectPath != "" {
-		if config, err := parsePyprojectToml(projectInfo.PyprojectPath); err == nil {
-			if config.Tool.SST.Buildable != nil && !*config.Tool.SST.Buildable {
-				noDev = false
-			}
-		}
-		// Legacy: magic comment strings for backwards compatibility
-		if noDev {
-			if content, err := os.ReadFile(projectInfo.PyprojectPath); err == nil {
-				contentStr := string(content)
-				if strings.Contains(contentStr, "NOT a buildable package") ||
-					strings.Contains(contentStr, "Development environment - not a buildable package") ||
-					strings.Contains(contentStr, "SST will treat this as source code") {
-					noDev = false
-				}
-			}
+		if !hasBuildConfig(filepath.Dir(projectInfo.PyprojectPath)) {
+			noDev = false
 		}
 	}
 
@@ -620,7 +607,8 @@ func (ib *deployBuilder) generateOrCopyRequirementsFile(ctx context.Context, inp
 
 // inputProperties represents the input properties structure
 type inputProperties struct {
-	Architecture string `json:"architecture"`
+	Architecture         string `json:"architecture"`
+	IncludeLambdaRuntime bool   `json:"includeLambdaRuntime"`
 }
 
 // parseInputProperties parses the input properties JSON
@@ -633,8 +621,8 @@ func (ib *deployBuilder) parseInputProperties(input *runtime.BuildInput) (*input
 	return &props, nil
 }
 
-func (ib *deployBuilder) installDependenciesForLambda(ctx context.Context, input *runtime.BuildInput, projectInfo *projectInfo, requirementsFile string, architecture string) error {
-	if err := ib.copySourceFilesSimple(ctx, input, projectInfo); err != nil {
+func (ib *deployBuilder) installDependenciesForLambda(ctx context.Context, input *runtime.BuildInput, projectInfo *projectInfo, architecture string) error {
+	if err := ib.copySourceFilesSimple(input, projectInfo); err != nil {
 		return fmt.Errorf("failed to copy source files: %w", err)
 	}
 
@@ -726,7 +714,7 @@ func (ib *deployBuilder) copyWorkspacePackagesForContainer(input *runtime.BuildI
 
 // copySourceFilesSimple copies handler source files to the build output.
 // Workspace packages are installed via uv pip install separately.
-func (ib *deployBuilder) copySourceFilesSimple(ctx context.Context, input *runtime.BuildInput, projectInfo *projectInfo) error {
+func (ib *deployBuilder) copySourceFilesSimple(input *runtime.BuildInput, projectInfo *projectInfo) error {
 	workspaceDir := projectInfo.SourceRoot
 	if projectInfo.PyprojectPath != "" {
 		workspaceDir = filepath.Dir(projectInfo.PyprojectPath)
@@ -763,7 +751,7 @@ func (ib *deployBuilder) copySourceFilesSimple(ctx context.Context, input *runti
 			candidate := parts[i]
 			candidatePath := filepath.Join(workspaceDir, candidate)
 			if info, err := os.Stat(candidatePath); err == nil && info.IsDir() {
-				if err := copyDir(candidatePath, filepath.Join(outputBase, candidate), ib.contentFilter, ""); err != nil {
+				if err := copyDir(candidatePath, filepath.Join(outputBase, candidate), ib.contentFilter); err != nil {
 					return fmt.Errorf("failed to copy directory %s: %w", candidate, err)
 				}
 				copied = true
@@ -990,7 +978,7 @@ func (ib *deployBuilder) copySyncedDependencies(ctx context.Context, input *runt
 			err, string(installOutput), input.FunctionID, input.Handler, installWorkspaceDir, projectInfo.PyprojectPath)
 	}
 
-	if err := ib.cleanupInstalledDependencies(depsCacheDir, projectInfo); err != nil {
+	if err := ib.cleanupInstalledDependencies(depsCacheDir, input); err != nil {
 		slog.Warn("failed to clean up installed dependencies", "error", err)
 	}
 
@@ -1048,12 +1036,10 @@ func (ib *deployBuilder) filterEditableInstalls(inputPath, outputPath string) er
 
 // cleanupInstalledDependencies removes __pycache__, .pyc files, .dist-info, test dirs,
 // and boto3/botocore (Lambda provides them, saves ~22MB) unless user opts in.
-func (ib *deployBuilder) cleanupInstalledDependencies(targetDir string, projectInfo *projectInfo) error {
+func (ib *deployBuilder) cleanupInstalledDependencies(targetDir string, input *runtime.BuildInput) error {
 	includeLambdaRuntime := false
-	if projectInfo != nil && projectInfo.PyprojectPath != "" {
-		if config, err := parsePyprojectToml(projectInfo.PyprojectPath); err == nil {
-			includeLambdaRuntime = config.Tool.SST.IncludeLambdaRuntime
-		}
+	if props, err := ib.parseInputProperties(input); err == nil {
+		includeLambdaRuntime = props.IncludeLambdaRuntime
 	}
 
 	// Remove boto3/botocore unless user opted in
@@ -1184,7 +1170,7 @@ func (ib *deployBuilder) copyDependencyPackages(srcDir, destDir string) error {
 		destPath := filepath.Join(destDir, name)
 
 		if entry.IsDir() {
-			if err := copyDir(srcPath, destPath, ib.contentFilter, ""); err != nil {
+			if err := copyDir(srcPath, destPath, ib.contentFilter); err != nil {
 				slog.Warn("failed to copy package", "package", name, "error", err)
 				continue
 			}
@@ -1260,7 +1246,7 @@ func (ib *deployBuilder) copyDependencyPackages(srcDir, destDir string) error {
 				"packageName", packageName,
 				"source", packageDir)
 
-			if err := copyDir(packageDir, packageDestPath, ib.contentFilter, ""); err != nil {
+			if err := copyDir(packageDir, packageDestPath, ib.contentFilter); err != nil {
 				slog.Warn("failed to copy package from .pth", "package", packageName, "error", err)
 				continue
 			}
@@ -1424,7 +1410,7 @@ func buildableFromScan(workspaceDir string) ([]*localPackageInfo, error) {
 
 // hasBuildConfig checks if a directory has build configuration (pyproject.toml with [build-system], setup.py, etc.)
 func hasBuildConfig(dir string) bool {
-	// setup.py or setup.cfg → buildable
+	// setup.py or setup.cfg → has build config
 	for _, f := range []string{"setup.py", "setup.cfg"} {
 		if _, err := os.Stat(filepath.Join(dir, f)); err == nil {
 			return true
@@ -1439,21 +1425,6 @@ func hasBuildConfig(dir string) bool {
 	}
 
 	contentStr := string(content)
-
-	// Check [tool.sst].buildable first (structured config, preferred)
-	var config pyprojectConfig
-	if err := toml.Unmarshal(content, &config); err == nil {
-		if config.Tool.SST.Buildable != nil {
-			return *config.Tool.SST.Buildable
-		}
-	}
-
-	// Legacy: magic comment strings for backwards compatibility
-	if strings.Contains(contentStr, "NOT a buildable package") ||
-		strings.Contains(contentStr, "Development environment - not a buildable package") ||
-		strings.Contains(contentStr, "SST will treat this as source code") {
-		return false
-	}
 
 	// Check for build system or tool-specific build config
 	buildIndicators := []string{
@@ -1693,22 +1664,12 @@ func (ur *uvCommandRunner) executeCommand(ctx context.Context, command string, a
 // contentFilter filters out unnecessary files and directories from deployment artifacts
 type contentFilter struct {
 	excludePatterns []string
-	projectRoot     string
-	pyprojectCache  *pyprojectConfig
 }
 
 // newContentFilter creates a new content filter with default exclude patterns
 func newContentFilter() *contentFilter {
 	return &contentFilter{
 		excludePatterns: getDefaultExcludePatterns(),
-	}
-}
-
-// newContentFilterForProject creates a content filter for a specific project
-func newContentFilterForProject(projectRoot string) *contentFilter {
-	return &contentFilter{
-		excludePatterns: getDefaultExcludePatterns(),
-		projectRoot:     projectRoot,
 	}
 }
 
@@ -1743,15 +1704,10 @@ func getDefaultExcludePatterns() []string {
 	}
 }
 
-// ShouldExclude checks if a file or directory should be excluded:
-// 1. Check pyproject.toml [tool.sst] overrides first
-// 2. Apply standard Python conventions
+// ShouldExclude checks if a file or directory should be excluded
+// based on standard Python conventions.
 func (cf *contentFilter) ShouldExclude(path string) bool {
 	normalizedPath := filepath.ToSlash(path)
-
-	if shouldSkip, found := cf.checkPyprojectConfig(normalizedPath); found {
-		return shouldSkip
-	}
 
 	for _, pattern := range cf.excludePatterns {
 		if cf.matchesPattern(normalizedPath, pattern) {
@@ -1792,48 +1748,4 @@ func (cf *contentFilter) matchesPattern(path, pattern string) bool {
 	}
 
 	return false
-}
-
-// checkPyprojectConfig checks [tool.sst] include/exclude configuration.
-func (cf *contentFilter) checkPyprojectConfig(path string) (bool, bool) {
-	if cf.projectRoot == "" {
-		return false, false
-	}
-
-	if cf.pyprojectCache == nil {
-		cf.loadPyprojectConfig()
-	}
-	if cf.pyprojectCache == nil {
-		return false, false
-	}
-
-	for _, pattern := range cf.pyprojectCache.Tool.SST.Include {
-		if cf.matchesPattern(path, pattern) {
-			return false, true
-		}
-	}
-	for _, pattern := range cf.pyprojectCache.Tool.SST.Exclude {
-		if cf.matchesPattern(path, pattern) {
-			return true, true
-		}
-	}
-	return false, false
-}
-
-// loadPyprojectConfig loads and parses the pyproject.toml file
-func (cf *contentFilter) loadPyprojectConfig() {
-	pyprojectPath := filepath.Join(cf.projectRoot, "pyproject.toml")
-	if _, err := os.Stat(pyprojectPath); os.IsNotExist(err) {
-		return
-	}
-
-	var config pyprojectConfig
-	if _, err := toml.DecodeFile(pyprojectPath, &config); err != nil {
-		slog.Warn("failed to parse pyproject.toml", "path", pyprojectPath, "error", err)
-		return
-	}
-
-	if len(config.Tool.SST.Include) > 0 || len(config.Tool.SST.Exclude) > 0 {
-		cf.pyprojectCache = &config
-	}
 }

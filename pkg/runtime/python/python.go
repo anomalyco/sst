@@ -445,7 +445,7 @@ func copyFile(src, dst string) error {
 
 // copyDir recursively copies a directory, applying ContentFilter if provided.
 // filterPrefix is prepended to relative paths for filter matching.
-func copyDir(src, dst string, filter *contentFilter, filterPrefix string) error {
+func copyDir(src, dst string, filter *contentFilter) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -463,11 +463,7 @@ func copyDir(src, dst string, filter *contentFilter, filterPrefix string) error 
 
 		// Apply content filter
 		if filter != nil {
-			filterPath := relPath
-			if filterPrefix != "" && relPath != "." {
-				filterPath = filepath.Join(filterPrefix, relPath)
-			}
-			if filter.ShouldExclude(filterPath) {
+			if filter.ShouldExclude(relPath) {
 				if info.IsDir() {
 					return filepath.SkipDir
 				}
@@ -602,7 +598,7 @@ func (r *PythonRuntime) flattenWorkspaceLayouts(artifactDir string) error {
 					destPath := filepath.Join(packageDir, innerEntry.Name())
 
 					if innerEntry.IsDir() {
-						err = copyDir(srcPath, destPath, contentFilter, "")
+						err = copyDir(srcPath, destPath, contentFilter)
 					} else {
 						err = copyFile(srcPath, destPath)
 					}

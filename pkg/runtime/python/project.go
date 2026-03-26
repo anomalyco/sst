@@ -57,13 +57,6 @@ type pyprojectConfig struct {
 				} `toml:"find"`
 			} `toml:"packages"`
 		} `toml:"setuptools"`
-
-		SST struct {
-			Include              []string `toml:"include"`
-			Exclude              []string `toml:"exclude"`
-			IncludeLambdaRuntime bool     `toml:"include-lambda-runtime"`
-			Buildable            *bool    `toml:"buildable"`
-		} `toml:"sst"`
 	} `toml:"tool"`
 }
 
