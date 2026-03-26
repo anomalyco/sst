@@ -2805,24 +2805,39 @@ export class Function extends Component implements Link.Linkable {
           {
             store: url.route.routerKvStoreArn,
             namespace: routeNamespace,
-            entries: all([fnUrl.functionUrl, isOac]).apply(
-              ([fnUrlValue, oac]) => ({
-                metadata: JSON.stringify({
-                  host: new URL(fnUrlValue).host,
-                  ...(oac
-                    ? {
-                        origin: {
-                          originAccessControlConfig: {
-                            enabled: true,
-                            signingBehavior: "always",
-                            signingProtocol: "sigv4",
-                            originType: "lambda",
-                          },
-                        },
-                      }
-                    : {}),
-                }),
-              }),
+            entries: all([fnUrl.functionUrl, isOac, url.route]).apply(
+              ([fnUrlValue, oac, route]) => {
+                const timeouts = [
+                  "connectionTimeout" as const,
+                  "readTimeout" as const,
+                  "keepAliveTimeout" as const,
+                ].flatMap((k) => {
+                  const value = route[k];
+                  return value ? [[k, toSeconds(value)]] : [];
+                });
+                return {
+                  metadata: JSON.stringify({
+                    host: new URL(fnUrlValue).host,
+                    rewrite: route.rewrite,
+                    origin: {
+                      ...(oac
+                        ? {
+                            originAccessControlConfig: {
+                              enabled: true,
+                              signingBehavior: "always",
+                              signingProtocol: "sigv4",
+                              originType: "lambda",
+                            },
+                          }
+                        : {}),
+                      connectionAttempts: route.connectionAttempts,
+                      ...(timeouts.length
+                        ? { timeouts: Object.fromEntries(timeouts) }
+                        : {}),
+                    },
+                  }),
+                };
+              },
             ),
             purge: false,
           },
