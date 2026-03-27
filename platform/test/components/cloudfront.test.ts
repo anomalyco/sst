@@ -336,6 +336,75 @@ describe("CloudFront router", () => {
     });
   });
 
+  describe("site base path routing", () => {
+    it("strips the base path before routing versioned assets to S3", async () => {
+      const requestedKeys: string[] = [];
+      const { context, event } = createContext({
+        uri: "/example-base-path/_next/static/chunks/app.css",
+        headers: {
+          host: { value: "example.com" },
+        },
+        kvGet: async (key) => {
+          requestedKeys.push(key);
+          if (key === "test:/_next/static/chunks/app.css") return "";
+          throw new Error("missing");
+        },
+        updateRequestOrigin(origin, currentEvent) {
+          currentEvent.request.origin = origin;
+        },
+      });
+
+      new vm.Script(`${CF_ROUTER_INJECTION};globalThis.__routeSite = routeSite;`).runInContext(
+        context,
+      );
+
+      await context.__routeSite!("test", {
+        base: "/example-base-path",
+        s3: {
+          dir: "/_assets",
+          domain: "assets.example.com",
+          routes: [],
+        },
+      });
+
+      expect(requestedKeys).toContain("test:/_next/static/chunks/app.css");
+      expect(event.request.uri).toBe("/_assets/_next/static/chunks/app.css");
+      expect(event.request.origin).toEqual(
+        expect.objectContaining({ domainName: "assets.example.com" }),
+      );
+    });
+
+    it("strips the base path before routing static routes to S3", async () => {
+      const { context, event } = createContext({
+        uri: "/example-base-path/examples",
+        headers: {
+          host: { value: "example.com" },
+        },
+        updateRequestOrigin(origin, currentEvent) {
+          currentEvent.request.origin = origin;
+        },
+      });
+
+      new vm.Script(`${CF_ROUTER_INJECTION};globalThis.__routeSite = routeSite;`).runInContext(
+        context,
+      );
+
+      await context.__routeSite!("test", {
+        base: "/example-base-path",
+        s3: {
+          dir: "/_assets",
+          domain: "assets.example.com",
+          routes: ["/examples"],
+        },
+      });
+
+      expect(event.request.uri).toBe("/_assets/examples/index.html");
+      expect(event.request.origin).toEqual(
+        expect.objectContaining({ domainName: "assets.example.com" }),
+      );
+    });
+  });
+
   describe("header sizing", () => {
     it("counts request headers and cookies", async () => {
       const { getRequestHeaderSize, routeSite } = loadRouteSite({

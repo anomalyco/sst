@@ -2755,7 +2755,7 @@ async function routeSite(kvNamespace, metadata) {
       : ["", ".html", "/index.html"];
     const v = await Promise.any(postfixes.map(p => cf.kvs().get(kvNamespace + ":" + u + p).then(v => p)));
     // files are stored in a subdirectory, add it to the request uri
-    event.request.uri = metadata.s3.dir + event.request.uri + v;
+    event.request.uri = metadata.s3.dir + baselessUri + v;
     setS3Origin(metadata.s3.domain);
     return;
   } catch (e) {}
@@ -2765,7 +2765,7 @@ async function routeSite(kvNamespace, metadata) {
     for (var i=0, l=metadata.s3.routes.length; i<l; i++) {
       const route = metadata.s3.routes[i];
       if (baselessUri.startsWith(route)) {
-        event.request.uri = metadata.s3.dir + event.request.uri;
+        event.request.uri = metadata.s3.dir + baselessUri;
         // uri ends with /, ie. /usage/ -> /usage/index.html
         if (event.request.uri.endsWith("/")) {
           event.request.uri += "index.html";
@@ -2789,7 +2789,7 @@ async function routeSite(kvNamespace, metadata) {
 
   // Route unmatched to S3 (triggers customErrorResponses)
   if (metadata.s3 && !metadata.servers) {
-    event.request.uri = metadata.s3.dir + event.request.uri;
+    event.request.uri = metadata.s3.dir + baselessUri;
     setS3Origin(metadata.s3.domain);
     return;
   }
