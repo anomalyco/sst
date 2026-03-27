@@ -7,6 +7,7 @@ export * from "./app-sync.js";
 export * from "./astro.js";
 export * from "./aurora.js";
 export * from "./auth.js";
+export * from "./bastion.js";
 export * from "./bucket.js";
 export * from "./bus.js";
 export * from "./cluster.js";

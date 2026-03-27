@@ -4,11 +4,15 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/xjasonlyu/tun2socks/v2/engine"
 
 	"github.com/sst/sst/v3/pkg/process"
 )
+
+// Version of the tunnel binary. Bump this when tunnel code changes and needs to be re-installed.
+const Version = "2"
 
 func IsRunning() bool {
 	return impl.isRunning()
@@ -25,12 +29,25 @@ type tunnelPlatform interface {
 var impl tunnelPlatform
 
 var BINARY_PATH = "/opt/sst/tunnel"
+var VERSION_PATH = "/opt/sst/tunnel.version"
 
 func NeedsInstall() bool {
-	if _, err := os.Stat(BINARY_PATH); err == nil {
-		return false
+	if _, err := os.Stat(BINARY_PATH); err != nil {
+		return true
 	}
-	return true
+
+	checkVersion := Version
+	if testVersion := os.Getenv("SST_TEST_TUNNEL_VERSION"); testVersion != "" {
+		checkVersion = testVersion
+	}
+
+	versionBytes, err := os.ReadFile(VERSION_PATH)
+	if err != nil {
+		return true
+	}
+
+	installedVersion := strings.TrimSpace(string(versionBytes))
+	return installedVersion != checkVersion
 }
 
 func Install() error {

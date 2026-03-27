@@ -86,6 +86,9 @@ type Tunnel struct {
 	Username   string   `json:"username"`
 	PrivateKey string   `json:"privateKey"`
 	Subnets    []string `json:"subnets"`
+	InstanceID string   `json:"instanceId"`
+	Region     string   `json:"region"`
+	Mode       string   `json:"mode"` // "ssh" or "ssm"
 }
 
 type ImportDiff struct {

@@ -41,6 +41,15 @@ func (p *darwinPlatform) install() error {
 		return err
 	}
 	err = os.Chmod(BINARY_PATH, 0755)
+	if err != nil {
+		return err
+	}
+
+	err = os.WriteFile(VERSION_PATH, []byte(Version), 0644)
+	if err != nil {
+		return err
+	}
+
 	user := os.Getenv("SUDO_USER")
 	sudoersPath := "/etc/sudoers.d/sst-" + user
 	slog.Info("creating sudoers file", "path", sudoersPath)

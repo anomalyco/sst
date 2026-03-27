@@ -44,6 +44,15 @@ func (p *linuxPlatform) install() error {
 		return err
 	}
 	err = os.Chmod(BINARY_PATH, 0755)
+	if err != nil {
+		return err
+	}
+
+	err = os.WriteFile(VERSION_PATH, []byte(Version), 0644)
+	if err != nil {
+		return err
+	}
+
 	user := os.Getenv("SUDO_USER")
 
 	if isNixOS() {

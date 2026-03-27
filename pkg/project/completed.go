@@ -96,18 +96,32 @@ func getCompletedEvent(ctx context.Context, passphrase string, workdir *PulumiWo
 		}
 
 		if match, ok := outputs["_tunnel"].(map[string]interface{}); ok {
-			ip, ipOk := match["ip"].(string)
-			username, usernameOk := match["username"].(string)
-			privateKey, privateKeyOk := match["privateKey"].(string)
-			if !ipOk || !usernameOk || !privateKeyOk {
-				continue
+			mode, _ := match["mode"].(string)
+			if mode == "" {
+				mode = "ssh"
 			}
+
 			tunnel := Tunnel{
-				IP:         ip,
-				Username:   username,
-				PrivateKey: privateKey,
-				Subnets:    []string{},
+				Mode:    mode,
+				Subnets: []string{},
 			}
+
+			if ip, ok := match["ip"].(string); ok {
+				tunnel.IP = ip
+			}
+			if username, ok := match["username"].(string); ok {
+				tunnel.Username = username
+			}
+			if privateKey, ok := match["privateKey"].(string); ok {
+				tunnel.PrivateKey = privateKey
+			}
+			if instanceId, ok := match["instanceId"].(string); ok {
+				tunnel.InstanceID = instanceId
+			}
+			if region, ok := match["region"].(string); ok {
+				tunnel.Region = region
+			}
+
 			if subnets, ok := match["subnets"].([]interface{}); ok {
 				for _, subnet := range subnets {
 					if s, ok := subnet.(string); ok {

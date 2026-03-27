@@ -1,10 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
+	"os/exec"
 	"os/user"
 	"strings"
 
@@ -30,7 +32,7 @@ var CmdTunnel = &cli.Command{
 			"```",
 			"",
 			"If your app has a VPC with `bastion` enabled, you can use this to connect to it.",
-			"This will forward traffic from the following ranges over SSH:",
+			"This will forward traffic from the following ranges using either SSH or SSM, depending on your bastion configuration:",
 			"- `10.0.4.0/22`",
 			"- `10.0.12.0/22`",
 			"- `10.0.0.0/22`",
@@ -39,7 +41,7 @@ var CmdTunnel = &cli.Command{
 			"The tunnel allows your local machine to access resources that are in the VPC.",
 			"",
 			":::note",
-			"The tunnel is only available for apps that have a VPC with `bastion` enabled.",
+			"The tunnel is only available for apps that have a VPC with `bastion` enabled, or apps that have a Bastion component",
 			":::",
 			"",
 			"If you are running `sst dev`, this tunnel will be started automatically under the",
@@ -57,6 +59,11 @@ var CmdTunnel = &cli.Command{
 			"",
 			"This needs a network interface on your local machine. You can create this",
 			"with the `sst tunnel install` command.",
+			"",
+			":::note",
+			"When using the Bastion component in SSM mode, the tunnel requires the AWS Session Manager Plugin to be installed.",
+			"https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html",
+			":::",
 		}, "\n"),
 	},
 	Run: func(c *cli.Cli) error {
@@ -104,41 +111,117 @@ var CmdTunnel = &cli.Command{
 		if len(completed.Tunnels) == 0 {
 			return util.NewReadableError(nil, "No tunnels found for stage "+stage)
 		}
-		var tun project.Tunnel
-		for _, item := range completed.Tunnels {
-			tun = item
+
+		var ssmConfigs []tunnel.SSMConfig
+		var sshConfigs []tunnel.SSHConfig
+		var allSubnets []string
+
+		for name, tun := range completed.Tunnels {
+			mode := tun.Mode
+
+			// backwards compatible for vpc bastion v1
+			if mode == "" {
+				mode = "ssh"
+			}
+
+			if mode == "ssm" {
+				if tun.InstanceID == "" {
+					slog.Warn("SSM tunnel missing instance ID, skipping", "name", name)
+					continue
+				}
+				if tun.Region == "" {
+					slog.Warn("SSM tunnel missing region, skipping", "name", name)
+					continue
+				}
+				ssmConfigs = append(ssmConfigs, tunnel.SSMConfig{
+					InstanceID: tun.InstanceID,
+					Region:     tun.Region,
+					Subnets:    tun.Subnets,
+				})
+			} else if mode == "ssh" {
+				if tun.IP == "" || tun.PrivateKey == "" {
+					slog.Warn("SSH tunnel missing IP or private key, skipping", "name", name)
+					continue
+				}
+				sshConfigs = append(sshConfigs, tunnel.SSHConfig{
+					Host:       tun.IP,
+					Username:   tun.Username,
+					PrivateKey: tun.PrivateKey,
+					Subnets:    tun.Subnets,
+				})
+			}
+
+			allSubnets = append(allSubnets, tun.Subnets...)
 		}
-		subnets := strings.Join(tun.Subnets, ",")
+
+		if len(ssmConfigs) == 0 && len(sshConfigs) == 0 {
+			return util.NewReadableError(nil, "No tunnels found. Make sure you have a bastion deployed.")
+		}
+
+		if len(ssmConfigs) > 0 {
+			if _, err := exec.LookPath("session-manager-plugin"); err != nil {
+				return util.NewReadableError(nil, "AWS Session Manager Plugin is required for SSM tunnels but was not found.\n\nInstall it from: https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html\n\nAlternatively, you can use SSH mode by setting `ssm: false` on your Bastion component.")
+			}
+		}
+
+		args := []string{
+			"-n", "-E",
+			tunnel.BINARY_PATH, "tunnel", "start",
+			"--subnets", strings.Join(allSubnets, ","),
+			"--print-logs",
+		}
+
+		if len(ssmConfigs) > 0 {
+			ssmJSON, err := json.Marshal(ssmConfigs)
+			if err != nil {
+				return fmt.Errorf("failed to serialize SSM config: %w", err)
+			}
+			args = append(args, "--ssm-config", string(ssmJSON))
+		}
+
+		if len(sshConfigs) > 0 {
+			sshJSON, err := json.Marshal(sshConfigs)
+			if err != nil {
+				return fmt.Errorf("failed to serialize SSH config: %w", err)
+			}
+			args = append(args, "--ssh-config", string(sshJSON))
+		}
+
 		// run as root
 		tunnelCmd := process.CommandContext(
 			c.Context,
-			"sudo", "-n", "-E",
-			tunnel.BINARY_PATH, "tunnel", "start",
-			"--subnets", subnets,
-			"--host", tun.IP,
-			"--user", tun.Username,
-			"--print-logs",
+			"sudo",
+			args...,
 		)
 		tunnelCmd.Env = append(
 			os.Environ(),
 			"SST_SKIP_LOCAL=true",
 			"SST_SKIP_DEPENDENCY_CHECK=true",
-			"SSH_PRIVATE_KEY="+tun.PrivateKey,
 			"SST_LOG="+strings.ReplaceAll(os.Getenv("SST_LOG"), ".log", "_sudo.log"),
 		)
 		tunnelCmd.Stdout = os.Stdout
 		slog.Info("starting tunnel", "cmd", tunnelCmd.Args)
 		fmt.Println(ui.TEXT_HIGHLIGHT_BOLD.Render("Tunnel"))
 		fmt.Println()
-		fmt.Print(ui.TEXT_HIGHLIGHT_BOLD.Render("▤"))
-		fmt.Println(ui.TEXT_NORMAL.Render("  " + tun.IP))
-		fmt.Println()
-		fmt.Print(ui.TEXT_SUCCESS_BOLD.Render("➜"))
-		fmt.Println(ui.TEXT_NORMAL.Render("  Ranges"))
-		for _, subnet := range tun.Subnets {
-			fmt.Println(ui.TEXT_DIM.Render("   " + subnet))
+
+		for _, cfg := range ssmConfigs {
+			fmt.Print(ui.TEXT_HIGHLIGHT_BOLD.Render("▤"))
+			fmt.Println(ui.TEXT_NORMAL.Render("  " + cfg.InstanceID + " (SSM, " + cfg.Region + ")"))
+			for _, subnet := range cfg.Subnets {
+				fmt.Println(ui.TEXT_DIM.Render("   " + subnet))
+			}
+			fmt.Println()
 		}
-		fmt.Println()
+
+		for _, cfg := range sshConfigs {
+			fmt.Print(ui.TEXT_HIGHLIGHT_BOLD.Render("▤"))
+			fmt.Println(ui.TEXT_NORMAL.Render("  " + cfg.Host + " (SSH)"))
+			for _, subnet := range cfg.Subnets {
+				fmt.Println(ui.TEXT_DIM.Render("   " + subnet))
+			}
+			fmt.Println()
+		}
+
 		fmt.Println(ui.TEXT_DIM.Render("Waiting for connections..."))
 		fmt.Println()
 		stderr, _ := tunnelCmd.StderrPipe()
@@ -201,56 +284,61 @@ var CmdTunnel = &cli.Command{
 					Name: "subnets",
 					Type: "string",
 					Description: cli.Description{
-						Short: "The subnet to use for the tunnel",
-						Long:  "The subnet to use for the tunnel",
+						Short: "The subnets to route through the tunnel",
+						Long:  "The subnets to route through the tunnel",
 					},
 				},
 				{
-					Name: "host",
+					Name: "ssm-config",
 					Type: "string",
 					Description: cli.Description{
-						Short: "The host to use for the tunnel",
-						Long:  "The host to use for the tunnel",
+						Short: "JSON-encoded SSM tunnel configurations",
+						Long:  "JSON-encoded SSM tunnel configurations",
 					},
 				},
 				{
-					Name: "port",
+					Name: "ssh-config",
 					Type: "string",
 					Description: cli.Description{
-						Short: "The port to use for the tunnel",
-						Long:  "The port to use for the tunnel",
-					},
-				},
-				{
-					Name: "user",
-					Type: "string",
-					Description: cli.Description{
-						Short: "The user to use for the tunnel",
-						Long:  "The user to use for the tunnel",
+						Short: "JSON-encoded SSH tunnel configurations",
+						Long:  "JSON-encoded SSH tunnel configurations",
 					},
 				},
 			},
 			Run: func(c *cli.Cli) error {
 				subnets := strings.Split(c.String("subnets"), ",")
-				host := c.String("host")
-				port := c.String("port")
-				user := c.String("user")
-				if port == "" {
-					port = "22"
+				ssmJSON := c.String("ssm-config")
+				sshJSON := c.String("ssh-config")
+
+				var ssmConfigs []tunnel.SSMConfig
+				var sshConfigs []tunnel.SSHConfig
+
+				if ssmJSON != "" {
+					if err := json.Unmarshal([]byte(ssmJSON), &ssmConfigs); err != nil {
+						return util.NewReadableError(err, "failed to parse SSM configuration")
+					}
 				}
-				slog.Info("starting tunnel", "subnet", subnets, "host", host, "port", port)
+
+				if sshJSON != "" {
+					if err := json.Unmarshal([]byte(sshJSON), &sshConfigs); err != nil {
+						return util.NewReadableError(err, "failed to parse SSH configuration")
+					}
+				}
+
+				if len(ssmConfigs) == 0 && len(sshConfigs) == 0 {
+					return util.NewReadableError(nil, "at least one SSM or SSH tunnel is required")
+				}
+
+				slog.Info("starting tunnel", "subnets", subnets, "ssm", len(ssmConfigs), "ssh", len(sshConfigs))
 				err := tunnel.Start(subnets...)
+				defer tunnel.Stop()
 				if err != nil {
 					return err
 				}
-				defer tunnel.Stop()
 				slog.Info("tunnel started")
-				err = tunnel.StartProxy(
-					c.Context,
-					user,
-					host+":"+port,
-					[]byte(os.Getenv("SSH_PRIVATE_KEY")),
-				)
+
+				err = tunnel.StartProxy(c.Context, ssmConfigs, sshConfigs)
+
 				if err != nil {
 					slog.Error("failed to start tunnel", "error", err)
 				}

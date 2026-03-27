@@ -101,6 +101,7 @@ const sidebar = [
           "docs/component/aws/queue",
           "docs/component/aws/vector",
           "docs/component/aws/aurora",
+          "docs/component/aws/bastion",
           "docs/component/aws/router",
           "docs/component/aws/analog",
           "docs/component/aws/bucket",
