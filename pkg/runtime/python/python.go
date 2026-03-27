@@ -400,15 +400,8 @@ func (r *PythonRuntime) CreateBuildAsset(ctx context.Context, input *runtime.Bui
 	}
 
 	workingDir := path.ResolveRootDir(input.CfgPath)
-	builder, err := newDeployBuilder(deployBuilderConfig{
-		CacheDir:    filepath.Join(workingDir, ".sst/cache/deploy"),
-		ProjectRoot: workingDir,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create deploy builder: %w", err)
-	}
 
-	result, err := builder.Build(ctx, input)
+	result, err := buildDeploy(ctx, input, filepath.Join(workingDir, ".sst/cache/deploy"), workingDir)
 	if err != nil {
 		slog.Error("build failed", "functionID", input.FunctionID, "error", err)
 		return nil, err

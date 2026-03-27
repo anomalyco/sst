@@ -28,8 +28,7 @@ func TestDeployBuilder_CleanupInstalledDependencies(t *testing.T) {
 		os.WriteFile(fullPath, []byte(content), 0644)
 	}
 
-	builder := &deployBuilder{}
-	if err := builder.cleanupInstalledDependencies(tempDir); err != nil {
+	if err := cleanupInstalledDependencies(tempDir); err != nil {
 		t.Fatalf("cleanupInstalledDependencies failed: %v", err)
 	}
 
@@ -90,8 +89,7 @@ func TestLegacyStructureRegressionFixes(t *testing.T) {
 			t.Fatalf("Failed to create output dir: %v", err)
 		}
 
-		ib := &deployBuilder{}
-		err = ib.copySourceFilesSimple(input, projectInfo)
+		err = copySourceFilesSimple(input, projectInfo)
 		if err != nil {
 			t.Fatalf("copySourceFilesSimple failed: %v", err)
 		}
@@ -126,8 +124,7 @@ boto3>=1.34.0`
 			t.Fatalf("Failed to write requirements.txt: %v", err)
 		}
 
-		ib := &deployBuilder{}
-		err = ib.filterEditableInstalls(inputPath, outputPath)
+		err = filterEditableInstalls(inputPath, outputPath)
 		if err != nil {
 			t.Fatalf("filterEditableInstalls failed: %v", err)
 		}
