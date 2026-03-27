@@ -96,11 +96,7 @@ var CmdDiff = &cli.Command{
 			Type: "bool",
 			Description: cli.Description{
 				Short: "Output as JSON",
-				Long: strings.Join([]string{
-					"Output the diff result as JSON to stdout.",
-					"",
-					"This is useful for CI pipelines and scripting.",
-				}, "\n"),
+				Long: "Output the diff result as JSON to stdout. Useful for CI pipelines and scripting.",
 			},
 		},
 	},
