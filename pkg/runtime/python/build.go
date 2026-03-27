@@ -275,13 +275,6 @@ func processPackageArchive(archiveFile, outputDir string) error {
 
 		os.Remove(archiveFile)
 
-		// Remove .dist-info directories (not needed for Lambda)
-		distInfoPattern := filepath.Join(outputDir, "*.dist-info")
-		distInfoDirs, _ := filepath.Glob(distInfoPattern)
-		for _, distInfoDir := range distInfoDirs {
-			os.RemoveAll(distInfoDir)
-		}
-
 		return nil
 	}
 
@@ -1041,12 +1034,6 @@ func cleanupInstalledDependencies(targetDir string) error {
 			if ext == ".pyi" || fileName == "py.typed" {
 				os.Remove(path)
 			}
-		}
-
-		// Remove .dist-info directories
-		if info.IsDir() && strings.HasSuffix(info.Name(), ".dist-info") {
-			os.RemoveAll(path)
-			return filepath.SkipDir
 		}
 
 		// Remove test directories
