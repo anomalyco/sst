@@ -29,22 +29,15 @@ func TestDeployBuilder_CleanupInstalledDependencies(t *testing.T) {
 	}
 
 	builder := &deployBuilder{}
-	if err := builder.cleanupInstalledDependencies(tempDir, &runtime.BuildInput{
-		Properties: []byte("{}"),
-	}); err != nil {
+	if err := builder.cleanupInstalledDependencies(tempDir); err != nil {
 		t.Fatalf("cleanupInstalledDependencies failed: %v", err)
 	}
 
-	// Lambda runtime packages should be removed
-	for _, pkg := range []string{"boto3", "botocore"} {
-		if _, err := os.Stat(filepath.Join(tempDir, pkg)); err == nil {
-			t.Errorf("Lambda runtime package %s should have been removed", pkg)
+	// All packages should be kept (no special stripping)
+	for _, pkg := range []string{"boto3", "botocore", "requests"} {
+		if _, err := os.Stat(filepath.Join(tempDir, pkg, "__init__.py")); err != nil {
+			t.Errorf("package %s should have been kept", pkg)
 		}
-	}
-
-	// Normal packages should be kept
-	if _, err := os.Stat(filepath.Join(tempDir, "requests", "__init__.py")); err != nil {
-		t.Error("requests package should have been kept")
 	}
 
 	// __pycache__ should be removed
@@ -158,38 +151,13 @@ boto3>=1.34.0`
 
 // --- Content filter tests (merged from content_filter_test.go) ---
 
-// newContentFilterWithPatterns creates a contentFilter with the given exclude patterns for testing
-func newContentFilterWithPatterns(patterns []string) *contentFilter {
-	filter := newContentFilter()
-	filter.excludePatterns = patterns
-	return filter
-}
-
-func TestContentFilter_ShouldExclude(t *testing.T) {
+func TestIsIgnored(t *testing.T) {
 	tests := []struct {
-		name            string
-		excludePatterns []string
-		testPaths       map[string]bool // path -> should be excluded
+		name      string
+		testPaths map[string]bool // path -> should be excluded
 	}{
 		{
 			name: "default exclude patterns",
-			excludePatterns: []string{
-				".sst",
-				".git",
-				"__pycache__",
-				".pytest_cache",
-				"node_modules",
-				".DS_Store",
-				"*.pyc",
-				"*.pyo",
-				"*.pyd",
-				".coverage",
-				"htmlcov",
-				".tox",
-				".venv",
-				"venv",
-				".env",
-			},
 			testPaths: map[string]bool{
 				"functions/handler.py":           false,
 				"core/models.py":                 false,
@@ -201,74 +169,20 @@ func TestContentFilter_ShouldExclude(t *testing.T) {
 				".DS_Store":                      true,
 				"test.pyc":                       true,
 				"module.pyo":                     true,
-				"extension.pyd":                  true,
 				".coverage":                      true,
 				"htmlcov/index.html":             true,
-				".tox/py39/lib":                  true,
 				".venv/bin/python":               true,
 				"venv/lib/python3.9":             true,
 				".env":                           true,
 				"requirements.txt":               false,
-				"setup.py":                       false,
-			},
-		},
-		{
-			name: "custom exclude patterns",
-			excludePatterns: []string{
-				"*.log",
-				"temp*",
-				"build/",
-				"dist/",
-			},
-			testPaths: map[string]bool{
-				"functions/handler.py":   false,
-				"debug.log":              true,
-				"application.log":        true,
-				"temp_file.txt":          true,
-				"temporary_data.json":    true,
-				"build/output.tar.gz":    true,
-				"dist/package-1.0.0.whl": true,
-				"src/main.py":            false,
-				"logs/info.txt":          false,
-			},
-		},
-		{
-			name: "nested path patterns",
-			excludePatterns: []string{
-				"**/test_*",
-				"**/.*",
-				"docs/**",
-			},
-			testPaths: map[string]bool{
-				"functions/handler.py":      false,
-				"functions/test_handler.py": true,
-				"core/models/test_user.py":  true,
-				"src/.hidden_file":          true,
-				"functions/.secret":         true,
-				"docs/README.md":            true,
-				"docs/api/endpoints.md":     true,
-				"src/docs_helper.py":        false,
-			},
-		},
-		{
-			name:            "empty exclude patterns",
-			excludePatterns: []string{},
-			testPaths: map[string]bool{
-				"functions/handler.py":           false,
-				".sst/cache/build.json":          false,
-				".git/config":                    false,
-				"functions/__pycache__/test.pyc": false,
-				"node_modules/package/index.js":  false,
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			filter := newContentFilterWithPatterns(tt.excludePatterns)
-
 			for testPath, shouldExclude := range tt.testPaths {
-				result := filter.ShouldExclude(testPath)
+				result := isIgnored(testPath)
 				if result != shouldExclude {
 					t.Errorf("Path %s: expected exclude=%v, got exclude=%v", testPath, shouldExclude, result)
 				}
@@ -277,7 +191,7 @@ func TestContentFilter_ShouldExclude(t *testing.T) {
 	}
 }
 
-func TestContentFilter_PatternMatching(t *testing.T) {
+func TestMatchesPattern(t *testing.T) {
 	tests := []struct {
 		name    string
 		pattern string
@@ -332,10 +246,8 @@ func TestContentFilter_PatternMatching(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			filter := newContentFilterWithPatterns([]string{tt.pattern})
-
 			for path, shouldMatch := range tt.paths {
-				result := filter.ShouldExclude(path)
+				result := matchesPattern(path, tt.pattern)
 				if result != shouldMatch {
 					t.Errorf("Pattern %s, Path %s: expected match=%v, got match=%v", tt.pattern, path, shouldMatch, result)
 				}

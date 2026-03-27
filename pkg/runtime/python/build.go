@@ -24,9 +24,7 @@ import (
 )
 
 type deployBuilder struct {
-	uvRunner      *uvCommandRunner
-	contentFilter *contentFilter
-	config        deployBuilderConfig
+	config deployBuilderConfig
 }
 
 type deployBuilderConfig struct {
@@ -47,9 +45,7 @@ func newDeployBuilder(config deployBuilderConfig) (*deployBuilder, error) {
 	}
 
 	return &deployBuilder{
-		uvRunner:      newUvCommandRunner(uvCommandRunnerConfig{}),
-		contentFilter: newContentFilter(),
-		config:        config,
+		config: config,
 	}, nil
 }
 
@@ -129,7 +125,7 @@ func (ib *deployBuilder) buildPackage(ctx context.Context, input *runtime.BuildI
 		BuildType:   buildType,
 	}
 
-	if err := ib.uvRunner.ExecuteBuildCommand(ctx, buildCmd); err != nil {
+	if err := runUvBuild(ctx, buildCmd); err != nil {
 		return fmt.Errorf("failed to build package %s: %w", pkg.Name, err)
 	}
 
@@ -598,7 +594,7 @@ func (ib *deployBuilder) generateOrCopyRequirementsFile(ctx context.Context, pro
 
 	// uv export is fast (~300ms, no network/installs) so we run it per function
 	// rather than caching. The .deps disk cache handles the expensive uv pip install.
-	if err := ib.uvRunner.ExecuteExportCommand(ctx, exportCmd); err != nil {
+	if err := runUvExport(ctx, exportCmd); err != nil {
 		return err
 	}
 
@@ -607,8 +603,7 @@ func (ib *deployBuilder) generateOrCopyRequirementsFile(ctx context.Context, pro
 
 // inputProperties represents the input properties structure
 type inputProperties struct {
-	Architecture         string `json:"architecture"`
-	IncludeLambdaRuntime bool   `json:"includeLambdaRuntime"`
+	Architecture string `json:"architecture"`
 }
 
 // parseInputProperties parses the input properties JSON
@@ -751,7 +746,7 @@ func (ib *deployBuilder) copySourceFilesSimple(input *runtime.BuildInput, projec
 			candidate := parts[i]
 			candidatePath := filepath.Join(workspaceDir, candidate)
 			if info, err := os.Stat(candidatePath); err == nil && info.IsDir() {
-				if err := copyDir(candidatePath, filepath.Join(outputBase, candidate), ib.contentFilter); err != nil {
+				if err := copyDir(candidatePath, filepath.Join(outputBase, candidate)); err != nil {
 					return fmt.Errorf("failed to copy directory %s: %w", candidate, err)
 				}
 				copied = true
@@ -978,7 +973,7 @@ func (ib *deployBuilder) copySyncedDependencies(ctx context.Context, input *runt
 			err, string(installOutput), input.FunctionID, input.Handler, installWorkspaceDir, projectInfo.PyprojectPath)
 	}
 
-	if err := ib.cleanupInstalledDependencies(depsCacheDir, input); err != nil {
+	if err := ib.cleanupInstalledDependencies(depsCacheDir); err != nil {
 		slog.Warn("failed to clean up installed dependencies", "error", err)
 	}
 
@@ -1036,35 +1031,7 @@ func (ib *deployBuilder) filterEditableInstalls(inputPath, outputPath string) er
 
 // cleanupInstalledDependencies removes __pycache__, .pyc files, .dist-info, test dirs,
 // and boto3/botocore (Lambda provides them, saves ~22MB) unless user opts in.
-func (ib *deployBuilder) cleanupInstalledDependencies(targetDir string, input *runtime.BuildInput) error {
-	includeLambdaRuntime := false
-	if props, err := ib.parseInputProperties(input); err == nil {
-		includeLambdaRuntime = props.IncludeLambdaRuntime
-	}
-
-	// Remove boto3/botocore unless user opted in
-	if !includeLambdaRuntime {
-		lambdaRuntimePackages := []string{"boto3", "botocore"}
-		for _, pkg := range lambdaRuntimePackages {
-			pkgDir := filepath.Join(targetDir, pkg)
-			if info, err := os.Stat(pkgDir); err == nil && info.IsDir() {
-				if err := os.RemoveAll(pkgDir); err != nil {
-					slog.Warn("failed to remove Lambda runtime package", "package", pkg, "error", err)
-				}
-			}
-			// Also remove the dist-info directory
-			entries, _ := os.ReadDir(targetDir)
-			for _, entry := range entries {
-				if entry.IsDir() && strings.HasPrefix(entry.Name(), pkg+"-") && strings.HasSuffix(entry.Name(), ".dist-info") {
-					distInfoDir := filepath.Join(targetDir, entry.Name())
-					if err := os.RemoveAll(distInfoDir); err != nil {
-						slog.Warn("failed to remove dist-info directory", "dir", entry.Name(), "error", err)
-					}
-				}
-			}
-		}
-	}
-
+func (ib *deployBuilder) cleanupInstalledDependencies(targetDir string) error {
 	err := filepath.Walk(targetDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil // Continue walking despite errors
@@ -1170,7 +1137,7 @@ func (ib *deployBuilder) copyDependencyPackages(srcDir, destDir string) error {
 		destPath := filepath.Join(destDir, name)
 
 		if entry.IsDir() {
-			if err := copyDir(srcPath, destPath, ib.contentFilter); err != nil {
+			if err := copyDir(srcPath, destPath); err != nil {
 				slog.Warn("failed to copy package", "package", name, "error", err)
 				continue
 			}
@@ -1246,7 +1213,7 @@ func (ib *deployBuilder) copyDependencyPackages(srcDir, destDir string) error {
 				"packageName", packageName,
 				"source", packageDir)
 
-			if err := copyDir(packageDir, packageDestPath, ib.contentFilter); err != nil {
+			if err := copyDir(packageDir, packageDestPath); err != nil {
 				slog.Warn("failed to copy package from .pth", "package", packageName, "error", err)
 				continue
 			}
@@ -1444,17 +1411,9 @@ func hasBuildConfig(dir string) bool {
 	return false
 }
 
-// --- UV command runner (merged from uv_runner.go) ---
+// --- UV commands ---
 
-// uvCommandRunner executes uv commands
-type uvCommandRunner struct {
-	commandTimeout time.Duration
-}
-
-// uvCommandRunnerConfig configures the UV command runner
-type uvCommandRunnerConfig struct {
-	CommandTimeout time.Duration
-}
+const uvCommandTimeout = 1 * time.Minute
 
 // commandResult represents the result of a UV command execution
 type commandResult struct {
@@ -1483,24 +1442,8 @@ type uvExportCommand struct {
 	AllPackages     bool
 }
 
-// newUvCommandRunner creates a new UV command runner
-func newUvCommandRunner(config uvCommandRunnerConfig) *uvCommandRunner {
-	timeout := config.CommandTimeout
-	if timeout == 0 {
-		timeout = 1 * time.Minute
-	}
-	return &uvCommandRunner{commandTimeout: timeout}
-}
-
-// ExecuteBuildCommand executes a UV build command for a single package
-func (ur *uvCommandRunner) ExecuteBuildCommand(ctx context.Context, cmd *uvBuildCommand) error {
-	if ur == nil {
-		return fmt.Errorf("UV command runner is nil")
-	}
-	if cmd == nil {
-		return fmt.Errorf("UV build command is nil")
-	}
-
+// runUvBuild executes a UV build command for a single package
+func runUvBuild(ctx context.Context, cmd *uvBuildCommand) error {
 	args := []string{"build"}
 
 	if cmd.PackageName != "" {
@@ -1524,7 +1467,7 @@ func (ur *uvCommandRunner) ExecuteBuildCommand(ctx context.Context, cmd *uvBuild
 		workingDir = "."
 	}
 
-	result, err := ur.executeCommand(ctx, "uv", args, workingDir)
+	result, err := runUvCommand(ctx, "uv", args, workingDir)
 	if err != nil {
 		slog.Error("UV build command failed",
 			"package", cmd.PackageName,
@@ -1540,8 +1483,8 @@ func (ur *uvCommandRunner) ExecuteBuildCommand(ctx context.Context, cmd *uvBuild
 	return nil
 }
 
-// ExecuteExportCommand executes a UV export command
-func (ur *uvCommandRunner) ExecuteExportCommand(ctx context.Context, cmd *uvExportCommand) error {
+// runUvExport executes a UV export command
+func runUvExport(ctx context.Context, cmd *uvExportCommand) error {
 	args := []string{"export"}
 
 	if cmd.AllPackages {
@@ -1566,20 +1509,20 @@ func (ur *uvCommandRunner) ExecuteExportCommand(ctx context.Context, cmd *uvExpo
 		args = append(args, "--no-dev")
 	}
 
-	result, err := ur.executeCommand(ctx, "uv", args, cmd.WorkspaceDir)
+	result, err := runUvCommand(ctx, "uv", args, cmd.WorkspaceDir)
 	if err != nil {
 		return fmt.Errorf("UV export failed: %w", err)
 	}
 
 	if !result.Success {
-		return ur.createDetailedExportError(result, cmd)
+		return detailedExportError(result, cmd)
 	}
 
 	return nil
 }
 
-// createDetailedExportError creates a detailed error message for export failures
-func (ur *uvCommandRunner) createDetailedExportError(result *commandResult, cmd *uvExportCommand) error {
+// detailedExportError creates a detailed error message for export failures
+func detailedExportError(result *commandResult, cmd *uvExportCommand) error {
 	errorMsg := fmt.Sprintf("UV export failed with exit code %d", result.ExitCode)
 
 	if cmd.PackageName != "" {
@@ -1603,15 +1546,11 @@ func (ur *uvCommandRunner) createDetailedExportError(result *commandResult, cmd 
 	return fmt.Errorf("%s", errorMsg)
 }
 
-// executeCommand executes a command with timeout and progress logging
-func (ur *uvCommandRunner) executeCommand(ctx context.Context, command string, args []string, workingDir string) (*commandResult, error) {
-	if ur == nil {
-		return nil, fmt.Errorf("UV command runner is nil")
-	}
-
+// runUvCommand executes a command with timeout and progress logging
+func runUvCommand(ctx context.Context, command string, args []string, workingDir string) (*commandResult, error) {
 	startTime := time.Now()
 
-	cmdCtx, cancel := context.WithTimeout(ctx, ur.commandTimeout)
+	cmdCtx, cancel := context.WithTimeout(ctx, uvCommandTimeout)
 	defer cancel()
 
 	cmd := process.CommandContext(cmdCtx, command, args...)
@@ -1661,56 +1600,41 @@ func (ur *uvCommandRunner) executeCommand(ctx context.Context, command string, a
 
 // --- Content filter (merged from content_filter.go) ---
 
-// contentFilter filters out unnecessary files and directories from deployment artifacts
-type contentFilter struct {
-	excludePatterns []string
-}
-
-// newContentFilter creates a new content filter with default exclude patterns
-func newContentFilter() *contentFilter {
-	return &contentFilter{
-		excludePatterns: getDefaultExcludePatterns(),
-	}
-}
-
-// getDefaultExcludePatterns returns patterns to exclude from deployment artifacts.
+// defaultExcludePatterns lists patterns to exclude from deployment artifacts.
 // Directory names (e.g. ".git") match all files underneath them.
-func getDefaultExcludePatterns() []string {
-	return []string{
-		".sst", ".git", ".gitignore", ".gitattributes",
+var defaultExcludePatterns = []string{
+	".sst", ".git", ".gitignore", ".gitattributes",
 
-		"__pycache__", "*.pyc", "*.pyo", "*.pyd",
-		".pytest_cache", "*.egg-info", ".coverage", "htmlcov",
+	"__pycache__", "*.pyc", "*.pyo", "*.pyd",
+	".pytest_cache", "*.egg-info", ".coverage", "htmlcov",
 
-		".venv", "venv", ".env", "env",
+	".venv", "venv", ".env", "env",
 
-		".vscode", ".idea", "*.swp", "*.swo", "*~", ".DS_Store",
+	".vscode", ".idea", "*.swp", "*.swo", "*~", ".DS_Store",
 
-		"node_modules", "package-lock.json", "yarn.lock", "bun.lockb",
+	"node_modules", "package-lock.json", "yarn.lock", "bun.lockb",
 
-		"README.md", "README.rst", "README.txt",
-		"CHANGELOG.md", "CHANGELOG.rst", "CHANGELOG.txt",
-		"LICENSE", "LICENSE.txt", "MANIFEST.in",
-		"setup.cfg", "tox.ini", "Makefile",
-		"Dockerfile", "docker-compose.yml", "docker-compose.yaml",
+	"README.md", "README.rst", "README.txt",
+	"CHANGELOG.md", "CHANGELOG.rst", "CHANGELOG.txt",
+	"LICENSE", "LICENSE.txt", "MANIFEST.in",
+	"setup.cfg", "tox.ini", "Makefile",
+	"Dockerfile", "docker-compose.yml", "docker-compose.yaml",
 
-		"tests", "test",
+	"tests", "test",
 
-		"pyproject.toml", "setup.py",
-		"requirements-dev.txt", "requirements.dev.txt", "dev-requirements.txt",
-		".python-version", ".pre-commit-config.yaml",
+	"pyproject.toml", "setup.py",
+	"requirements-dev.txt", "requirements.dev.txt", "dev-requirements.txt",
+	".python-version", ".pre-commit-config.yaml",
 
-		"*.log", "*.tmp", "tmp", "temp",
-	}
+	"*.log", "*.tmp", "tmp", "temp",
 }
 
-// ShouldExclude checks if a file or directory should be excluded
-// based on standard Python conventions.
-func (cf *contentFilter) ShouldExclude(path string) bool {
+// isIgnored checks if a file or directory should be excluded from deployment artifacts.
+func isIgnored(path string) bool {
 	normalizedPath := filepath.ToSlash(path)
 
-	for _, pattern := range cf.excludePatterns {
-		if cf.matchesPattern(normalizedPath, pattern) {
+	for _, pattern := range defaultExcludePatterns {
+		if matchesPattern(normalizedPath, pattern) {
 			return true
 		}
 	}
@@ -1720,7 +1644,7 @@ func (cf *contentFilter) ShouldExclude(path string) bool {
 // matchesPattern checks if a path matches a pattern.
 // Supports wildcards (*.pyc), directory names (.git matches .git/anything),
 // and ** glob patterns.
-func (cf *contentFilter) matchesPattern(path, pattern string) bool {
+func matchesPattern(path, pattern string) bool {
 	if dir, ok := strings.CutSuffix(pattern, "/"); ok {
 		return strings.HasPrefix(path, dir+"/") || path == dir
 	}

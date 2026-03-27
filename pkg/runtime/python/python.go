@@ -443,9 +443,9 @@ func copyFile(src, dst string) error {
 	return nil
 }
 
-// copyDir recursively copies a directory, applying ContentFilter if provided.
+// copyDir recursively copies a directory, skipping ignored files.
 // filterPrefix is prepended to relative paths for filter matching.
-func copyDir(src, dst string, filter *contentFilter) error {
+func copyDir(src, dst string) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -462,13 +462,11 @@ func copyDir(src, dst string, filter *contentFilter) error {
 		}
 
 		// Apply content filter
-		if filter != nil {
-			if filter.ShouldExclude(relPath) {
-				if info.IsDir() {
-					return filepath.SkipDir
-				}
-				return nil
+		if isIgnored(relPath) {
+			if info.IsDir() {
+				return filepath.SkipDir
 			}
+			return nil
 		}
 
 		dstPath := filepath.Join(dst, relPath)
@@ -561,7 +559,6 @@ func (r *PythonRuntime) hasWorkspaceLayoutPatterns(projectRoot string) bool {
 
 // flattenWorkspaceLayouts detects and flattens package/src/package structures for all legacy projects
 func (r *PythonRuntime) flattenWorkspaceLayouts(artifactDir string) error {
-	contentFilter := newContentFilter()
 
 	// flattenDir checks all immediate subdirectories of dir for the package/src/package pattern
 	flattenDir := func(dir string) error {
@@ -590,7 +587,7 @@ func (r *PythonRuntime) flattenWorkspaceLayouts(artifactDir string) error {
 				}
 
 				for _, innerEntry := range innerEntries {
-					if contentFilter.ShouldExclude(innerEntry.Name()) {
+					if isIgnored(innerEntry.Name()) {
 						continue
 					}
 
@@ -598,7 +595,7 @@ func (r *PythonRuntime) flattenWorkspaceLayouts(artifactDir string) error {
 					destPath := filepath.Join(packageDir, innerEntry.Name())
 
 					if innerEntry.IsDir() {
-						err = copyDir(srcPath, destPath, contentFilter)
+						err = copyDir(srcPath, destPath)
 					} else {
 						err = copyFile(srcPath, destPath)
 					}
