@@ -194,10 +194,8 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 		ctx,
 		"uv",
 		"run",
-		"--with=requests",
 		lambdaBridgePath,
 		handlerPath,
-		input.WorkerID,
 	)
 
 	// Set up environment
