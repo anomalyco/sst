@@ -490,8 +490,8 @@ func flattenPackageToRoot(extractedDir, outputDir string) error {
 	}
 
 	for _, srcFile := range pythonFiles {
-		fileName := filepath.Base(srcFile)
-		destFile := filepath.Join(outputDir, fileName)
+		relPath, _ := filepath.Rel(extractedDir, srcFile)
+		destFile := filepath.Join(outputDir, relPath)
 
 		if err := copyFile(srcFile, destFile); err != nil {
 			return fmt.Errorf("failed to copy %s to %s: %w", srcFile, destFile, err)
