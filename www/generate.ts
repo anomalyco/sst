@@ -789,7 +789,7 @@ function renderType(
 
     // @ts-expect-error
     delete type._project;
-    console.log(JSON.stringify(type, null, 2));
+    console.log(type);
     throw new Error(`Unsupported type "${type.type}"`);
   }
   function renderIntrisicType(type: TypeDoc.IntrinsicType) {
