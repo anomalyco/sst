@@ -327,6 +327,9 @@ export class Component extends ComponentResource {
               { lower: true },
             ],
             "cloudflare:index/r2Bucket:R2Bucket": ["name", 64, { lower: true }],
+            "aws:backup/vault:Vault": ["name", 50],
+            "aws:backup/plan:Plan": ["name", 50],
+            "aws:backup/selection:Selection": ["name", 50],
             "cloudflare:index/workersScript:WorkersScript": [
               "scriptName",
               64,
