@@ -40,16 +40,16 @@
 export default $config({
   app(input) {
     return {
-      name: 'aws-dsql',
-      removal: input?.stage === 'production' ? 'retain' : 'remove',
-      home: 'aws',
+      name: "aws-dsql",
+      removal: input?.stage === "production" ? "retain" : "remove",
+      home: "aws",
     };
   },
   async run() {
-    const cluster = new sst.aws.Dsql('MyCluster', {});
+    const cluster = new sst.aws.Dsql("MyCluster", {});
 
-    const fn = new sst.aws.Function('MyFunction', {
-      handler: 'lambda.handler',
+    const fn = new sst.aws.Function("MyFunction", {
+      handler: "lambda.handler",
       link: [cluster],
       url: true,
     });
