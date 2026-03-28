@@ -60,7 +60,8 @@ export interface AuroraArgs {
    * - Aurora MySQL 3.08.0 and higher
    *
    * :::caution
-   * Changing the version will **immediately** apply the update on the next `sst deploy` possibly causing downtime.
+   * Changing the version will cause the database to restart on the next `sst deploy`,
+   * causing downtime. Learn more about [upgrading databases](/docs/upgrade-aws-databases/).
    * :::
    *
    * @default `"17"` for Postgres, `"3.08.0"` for MySQL

@@ -23,13 +23,19 @@ func CmdUI(c *cli.Cli) error {
 	}
 	types := []interface{}{}
 	filter := c.String("filter")
-	var u *ui.UI
-	opts := []ui.Option{
-		ui.WithDev,
+	isWorker := filter == "worker"
+	if isWorker {
+		filter = "function"
 	}
+	var u *ui.UI
+	opts := []ui.Option{}
 	if filter == "function" || filter == "" {
 		if filter != "" {
-			fmt.Println(ui.TEXT_HIGHLIGHT_BOLD.Render("Function Logs"))
+			title := "Function Logs"
+			if isWorker {
+				title = "Worker Logs"
+			}
+			fmt.Println(ui.TEXT_HIGHLIGHT_BOLD.Render(title))
 			fmt.Println()
 			fmt.Println(ui.TEXT_GRAY.Render("Waiting for invocations..."))
 			fmt.Println()
@@ -65,7 +71,7 @@ func CmdUI(c *cli.Cli) error {
 		types = append(types, ui.PaneFilterEvent{})
 	}
 	if filter == "sst" || filter == "" {
-		u = ui.New(c.Context, ui.WithDev)
+		u = ui.New(c.Context)
 		types = append(types,
 			common.StdoutEvent{},
 			deployer.DeployFailedEvent{},

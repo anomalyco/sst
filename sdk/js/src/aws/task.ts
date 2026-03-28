@@ -11,7 +11,7 @@ import { AwsOptions, client } from "./client.js";
  * [`RunTask`](https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_RunTask.html) to
  * run a task.
  */
-export module task {
+export namespace task {
   function url(region?: string, options?: AwsOptions) {
     if (options?.region) region = options.region;
     return `https://ecs.${region}.amazonaws.com/`;

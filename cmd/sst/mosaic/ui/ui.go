@@ -61,7 +61,6 @@ type UI struct {
 type Options struct {
 	Silent bool
 	Log    *os.File
-	Dev    bool
 	Filter string
 }
 
@@ -74,10 +73,6 @@ type Option func(*Options)
 
 func WithSilent(u *Options) {
 	u.Silent = true
-}
-
-func WithDev(u *Options) {
-	u.Dev = true
 }
 
 func (u *UI) SetFilter(filter string, paneKey string) {
@@ -432,16 +427,7 @@ func (u *UI) Event(unknown interface{}) {
 		if evt.Old {
 			break
 		}
-		if evt.UpdateID != "" && len(evt.Errors) == 0 {
-			u.blank()
-			u.println(
-				TEXT_INFO.Render("↗"),
-				"  ",
-				TEXT_NORMAL_BOLD.Render("Permalink"),
-				"   ",
-				TEXT_NORMAL.Render(`https://sst.dev/u/`+evt.UpdateID[len(evt.UpdateID)-8:]),
-			)
-		}
+
 		u.blank()
 		if len(evt.Errors) == 0 && evt.Finished {
 			u.print(TEXT_SUCCESS_BOLD.Render(IconCheck))
@@ -547,25 +533,26 @@ func (u *UI) Event(unknown interface{}) {
 				}
 			}
 
-			if evt.UpdateID != "" {
-				u.blank()
-				u.println(
-					TEXT_NORMAL_BOLD.Render("View more in the console:"),
-					" ",
-					TEXT_INFO.Render(`https://sst.dev/u/`+evt.UpdateID[len(evt.UpdateID)-8:]),
-				)
-			}
 		}
 		u.blank()
 	case *cloudflare.WorkerBuildEvent:
+		if !u.matchFilter(evt.WorkerID) {
+			return
+		}
 		if len(evt.Errors) > 0 {
 			u.printEvent(TEXT_DANGER, "Build Error", u.functionName(evt.WorkerID)+" "+strings.Join(evt.Errors, "\n"))
 			return
 		}
 		u.printEvent(TEXT_INFO, "Build", u.functionName(evt.WorkerID))
 	case *cloudflare.WorkerUpdatedEvent:
+		if !u.matchFilter(evt.WorkerID) {
+			return
+		}
 		u.printEvent(TEXT_INFO, "Reload", u.functionName(evt.WorkerID))
 	case *cloudflare.WorkerInvokedEvent:
+		if !u.matchFilter(evt.WorkerID) {
+			return
+		}
 		url, _ := url.Parse(evt.TailEvent.Event.Request.URL)
 		u.printEvent(
 			u.getColor(evt.WorkerID),
@@ -680,12 +667,6 @@ func (u *UI) header(version, app, stage string) {
 		TEXT_GRAY.Render(stage),
 	)
 
-	if u.options.Dev {
-		u.println(
-			TEXT_NORMAL_BOLD.Render(fmt.Sprintf("   %-12s", "Console:")),
-			TEXT_GRAY.Render("https://console.sst.dev/local/"+app+"/"+stage),
-		)
-	}
 	u.blank()
 	u.hasHeader = true
 }

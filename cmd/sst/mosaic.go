@@ -257,6 +257,14 @@ func CmdMosaic(c *cli.Cli) error {
 			"SST_STAGE="+p.App().Stage,
 		)
 		serverURL := fmt.Sprintf("http://localhost:%v", server.Port)
+		_, hasAWS := p.App().Providers["aws"]
+		showWorkers := p.App().Home == "cloudflare" && !hasAWS
+		fnTitle := "Functions"
+		fnFilter := "function"
+		if showWorkers {
+			fnTitle = "Workers"
+			fnFilter = "worker"
+		}
 		multi.AddProcess(multiplexer.PaneConfig{
 			Key:       "deploy",
 			Args:      []string{currentExecutable, "ui", "--filter=sst"},
@@ -267,13 +275,13 @@ func CmdMosaic(c *cli.Cli) error {
 		})
 		multi.AddProcess(multiplexer.PaneConfig{
 			Key:            "function",
-			Args:           []string{currentExecutable, "ui", "--filter=function"},
+			Args:           []string{currentExecutable, "ui", "--filter=" + fnFilter},
 			Icon:           "λ",
-			Title:          "Functions",
+			Title:          fnTitle,
 			Autostart:      true,
 			Filterable:     true,
-			FilterTitle:    "Functions",
-			FilterSubtitle: "Select a function to filter logs",
+			FilterTitle:    fnTitle,
+			FilterSubtitle: "Select to filter logs",
 			OnFilterChanged: func(value string) {
 				bus.Publish(&ui.PaneFilterEvent{PaneKey: "function", Value: value})
 			},
@@ -317,86 +325,86 @@ func CmdMosaic(c *cli.Cli) error {
 					return nil
 				case unknown := <-evts:
 					switch evt := unknown.(type) {
-				case *project.CompleteEvent:
-					for _, d := range evt.Devs {
-						if d.Command == "" {
-							continue
+					case *project.CompleteEvent:
+						for _, d := range evt.Devs {
+							if d.Command == "" {
+								continue
+							}
+							dir := filepath.Join(cwd, d.Directory)
+							title := d.Title
+							if title == "" {
+								title = d.Name
+							}
+							multi.AddProcess(multiplexer.PaneConfig{
+								Key:       d.Name,
+								Args:      []string{currentExecutable, "dev"},
+								Icon:      "→",
+								Title:     title,
+								Cwd:       dir,
+								Killable:  true,
+								Autostart: d.Autostart,
+								Env:       append([]string{"SST_CHILD=" + d.Name}, multiEnv...),
+							})
 						}
-						dir := filepath.Join(cwd, d.Directory)
-						title := d.Title
-						if title == "" {
-							title = d.Name
+						for name := range evt.Tunnels {
+							multi.AddProcess(multiplexer.PaneConfig{
+								Key:       "tunnel",
+								Args:      []string{currentExecutable, "tunnel", "--stage", p.App().Stage},
+								Icon:      "⇌",
+								Title:     "Tunnel",
+								Killable:  true,
+								Autostart: true,
+								Env:       append(multiEnv, "SST_LOG="+p.PathLog("tunnel_"+name)),
+							})
 						}
-						multi.AddProcess(multiplexer.PaneConfig{
-							Key:       d.Name,
-							Args:      []string{currentExecutable, "dev"},
-							Icon:      "→",
-							Title:     title,
-							Cwd:       dir,
-							Killable:  true,
-							Autostart: d.Autostart,
-							Env:       append([]string{"SST_CHILD=" + d.Name}, multiEnv...),
-						})
-					}
-					for name := range evt.Tunnels {
-						multi.AddProcess(multiplexer.PaneConfig{
-							Key:       "tunnel",
-							Args:      []string{currentExecutable, "tunnel", "--stage", p.App().Stage},
-							Icon:      "⇌",
-							Title:     "Tunnel",
-							Killable:  true,
-							Autostart: true,
-							Env:       append(multiEnv, "SST_LOG="+p.PathLog("tunnel_"+name)),
-						})
-					}
-					if len(evt.Tasks) > 0 {
-						multi.AddProcess(multiplexer.PaneConfig{
-							Key:            "task",
-							Args:           []string{currentExecutable, "ui", "--filter=task"},
-							Icon:           "⧉",
-							Title:          "Tasks",
-							Autostart:      true,
-							Filterable:     true,
-							FilterTitle:    "Tasks",
-							FilterSubtitle: "Select a task to filter logs",
-							OnFilterChanged: func(value string) {
-								bus.Publish(&ui.PaneFilterEvent{PaneKey: "task", Value: value})
-							},
-							ListOptions: func() []multiplexer.FilterOption {
-								completed, err := dev.Completed(c.Context, serverURL)
-								if err != nil || completed == nil {
-									return nil
-								}
-								var options []multiplexer.FilterOption
-								for name, t := range completed.Tasks {
-									desc := ""
-									if t.Command != nil {
-										desc = *t.Command
+						if len(evt.Tasks) > 0 {
+							multi.AddProcess(multiplexer.PaneConfig{
+								Key:            "task",
+								Args:           []string{currentExecutable, "ui", "--filter=task"},
+								Icon:           "⧉",
+								Title:          "Tasks",
+								Autostart:      true,
+								Filterable:     true,
+								FilterTitle:    "Tasks",
+								FilterSubtitle: "Select a task to filter logs",
+								OnFilterChanged: func(value string) {
+									bus.Publish(&ui.PaneFilterEvent{PaneKey: "task", Value: value})
+								},
+								ListOptions: func() []multiplexer.FilterOption {
+									completed, err := dev.Completed(c.Context, serverURL)
+									if err != nil || completed == nil {
+										return nil
 									}
-									options = append(options, multiplexer.FilterOption{
-										Label:       name,
-										Description: desc,
-										Value:       name,
-									})
-								}
-								return options
-							},
-							Env: append(multiEnv, "SST_LOG="+p.PathLog("ui-task")),
-						})
-					}
-					var fnNames []string
-					for _, r := range evt.Resources {
-						if string(r.Type) == "sst:aws:Function" || string(r.Type) == "sst:cloudflare:Worker" {
-							fnNames = append(fnNames, r.URN.Name())
+									var options []multiplexer.FilterOption
+									for name, t := range completed.Tasks {
+										desc := ""
+										if t.Command != nil {
+											desc = *t.Command
+										}
+										options = append(options, multiplexer.FilterOption{
+											Label:       name,
+											Description: desc,
+											Value:       name,
+										})
+									}
+									return options
+								},
+								Env: append(multiEnv, "SST_LOG="+p.PathLog("ui-task")),
+							})
 						}
-					}
-					multi.CheckFilter("function", fnNames)
-					var taskNames []string
-					for name := range evt.Tasks {
-						taskNames = append(taskNames, name)
-					}
-					multi.CheckFilter("task", taskNames)
-					break
+						var fnNames []string
+						for _, r := range evt.Resources {
+							if string(r.Type) == "sst:aws:Function" || string(r.Type) == "sst:cloudflare:Worker" {
+								fnNames = append(fnNames, r.URN.Name())
+							}
+						}
+						multi.CheckFilter("function", fnNames)
+						var taskNames []string
+						for name := range evt.Tasks {
+							taskNames = append(taskNames, name)
+						}
+						multi.CheckFilter("task", taskNames)
+						break
 					}
 				}
 			}
@@ -412,8 +420,15 @@ func CmdMosaic(c *cli.Cli) error {
 
 	if mode == "mono" {
 		mono := monoplexer.New()
+		_, hasAWS := p.App().Providers["aws"]
+		fnTitle := "Function"
+		fnFilter := "function"
+		if p.App().Home == "cloudflare" && !hasAWS {
+			fnTitle = "Worker"
+			fnFilter = "worker"
+		}
 		mono.AddProcess("deploy", []string{currentExecutable, "ui", "--filter=sst"}, "", "SST")
-		mono.AddProcess("function", []string{currentExecutable, "ui", "--filter=function"}, "", "Function")
+		mono.AddProcess("function", []string{currentExecutable, "ui", "--filter=" + fnFilter}, "", fnTitle)
 
 		wg.Go(func() error {
 			defer c.Cancel()

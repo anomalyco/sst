@@ -1,6 +1,6 @@
 import { Input, all } from "@pulumi/pulumi";
 
-export module Hint {
+export namespace Hint {
   let hints = {} as Record<string, Input<string>>;
   export function reset() {
     hints = {};

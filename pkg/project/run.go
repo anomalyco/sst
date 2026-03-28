@@ -266,7 +266,7 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 		"PULUMI_IGNORE_AMBIENT_PLUGINS=true",
 		// "PULUMI_DISABLE_AUTOMATIC_PLUGIN_ACQUISITION=true",
 		"NODE_OPTIONS="+func() string {
-			nodeOptions := "--enable-source-maps --no-deprecation"
+			nodeOptions := "--enable-source-maps --no-deprecation --no-warnings"
 			if existing := os.Getenv("NODE_OPTIONS"); existing != "" {
 				nodeOptions = existing + " " + nodeOptions
 			}
@@ -520,7 +520,7 @@ loop:
 		}
 
 		if event.DiagnosticEvent != nil && event.DiagnosticEvent.Severity == "error" {
-			if strings.HasPrefix(event.DiagnosticEvent.Message, "update failed") || strings.Contains(event.DiagnosticEvent.Message, "failed to register new resource") {
+			if strings.HasPrefix(event.DiagnosticEvent.Message, "update failed") || strings.HasPrefix(event.DiagnosticEvent.Message, "update cancelled") || strings.Contains(event.DiagnosticEvent.Message, "failed to register new resource") {
 				continue
 			}
 

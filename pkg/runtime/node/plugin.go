@@ -32,7 +32,7 @@ func plugin(path string) api.Plugin {
 		Name: "nodejs-plugin",
 		Setup: func(build api.PluginBuild) {
 			slog.Info("nodejs plugin", "path", path)
-			cmd := process.Command("node", ".sst/platform/functions/nodejs-runtime/plugin.mjs", path)
+			cmd := process.Command("node", "--no-warnings", ".sst/platform/functions/nodejs-runtime/plugin.mjs", path)
 			var wg errgroup.Group
 			// cmd.Stderr = os.Stderr
 			stdin, err := cmd.StdinPipe()

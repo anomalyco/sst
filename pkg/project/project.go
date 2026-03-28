@@ -217,6 +217,14 @@ console.log("~j" + JSON.stringify(await mod.app({
 						"version": argsString,
 					}
 				}
+
+				if argsMap, ok := args.(map[string]interface{}); ok {
+					if _, hasVersion := argsMap["version"]; !hasVersion && name != "aws" && name != "cloudflare" {
+						return nil, util.NewReadableError(nil,
+							fmt.Sprintf(`Provider %s is missing a version. Specify the version explicitly instead.`, name),
+						)
+					}
+				}
 			}
 
 			if proj.app.Name == "" {

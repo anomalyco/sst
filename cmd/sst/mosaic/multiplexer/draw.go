@@ -139,7 +139,7 @@ func (s *Multiplexer) drawFilterSelect(selected *pane) {
 	startX := s.mainX()
 	startY := s.contentY()
 	endY := s.height - s.contentY()
-	mainW := s.width - startX
+	mainW := s.mainWidth()
 	softGray := tcell.NewRGBColor(138, 138, 138)
 	dimStyle := tcell.StyleDefault.Foreground(tcell.ColorGray)
 	grayStyle := tcell.StyleDefault.Foreground(softGray)

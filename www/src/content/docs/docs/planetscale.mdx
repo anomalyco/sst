@@ -18,25 +18,37 @@ This adds the provider to your `sst.config.ts`.
 ```ts title="sst.config.ts" {3}
 {
   providers: {
-    planetscale: "0.4.1",
+    planetscale: "1.0.0",
   },
 }
 ```
 
-Then set the `PLANETSCALE_SERVICE_TOKEN` and `PLANETSCALE_SERVICE_TOKEN_ID` environment variables. You can create a service token in the PlanetScale dashboard under [Settings > Service tokens](https://app.planetscale.com/~/settings/service-tokens).
+Then set the `PLANETSCALE_SERVICE_TOKEN` and `PLANETSCALE_SERVICE_TOKEN_ID` environment variables. You can create a service token in the PlanetScale dashboard under [Settings > Service tokens](https://app.planetscale.com/~/settings/service-tokens). The token needs at least the following permissions for the upcoming examples:
+
+- `connect_branch`
+- `connect_production_branch`
+- `create_branch`
+- `delete_branch`
+- `delete_branch_password`
+- `read_branch`
+- `read_database`
 
 ---
 
 ## Reference a database
 
-Reference an existing PlanetScale database directly from your SST config.
+Reference an existing PlanetScale Vitess database directly from your SST config.
 
 ```ts title="sst.config.ts"
-const db = planetscale.getDatabaseOutput({
-  name: "mydb",
+const db = planetscale.getDatabaseVitessOutput({
+  id: "mydb",
   organization: "myorg",
 });
 ```
+
+:::note
+This guide uses the Vitess resources. PlanetScale also supports Postgres with equivalent resources and functions: `PostgresBranch`, `PostgresBranchRole`, `getDatabasePostgresOutput`, and `getPostgresBranchOutput`.
+:::
 
 ---
 
@@ -49,20 +61,20 @@ Conditionally create or reference a branch based on the current stage.
 ```ts title="sst.config.ts"
 const branch =
   $app.stage === "production"
-    ? planetscale.getBranchOutput({
-        name: "production",
+    ? planetscale.getVitessBranchOutput({
+        id: db.defaultBranch,
         organization: db.organization,
         database: db.name,
       })
-    : new planetscale.Branch("DatabaseBranch", {
+    : new planetscale.VitessBranch("DatabaseBranch", {
         database: db.name,
         organization: db.organization,
         name: $app.stage,
-        parentBranch: "production",
+        parentBranch: db.defaultBranch,
       });
 ```
 
-In production, it references the existing `production` branch. In any other stage, it creates a new branch from production. So `sst deploy --stage pr-42` creates a `pr-42` branch in PlanetScale.
+In production, it references the existing default branch. In any other stage, it creates a new branch from it. So `sst deploy --stage pr-42` creates a `pr-42` branch in PlanetScale.
 
 :::tip
 Configure [Autodeploy](/docs/console/#autodeploy) in the SST Console to do this automatically on every pull request.
@@ -77,7 +89,7 @@ This is a pattern used in production by [terminal.shop](https://github.com/termi
 Create a password for the branch and wrap it in a `sst.Linkable`.
 
 ```ts title="sst.config.ts"
-const password = new planetscale.Password("DatabasePassword", {
+const password = new planetscale.VitessBranchPassword("DatabasePassword", {
   database: db.name,
   organization: db.organization,
   branch: branch.name,
@@ -89,7 +101,7 @@ export const database = new sst.Linkable("Database", {
   properties: {
     host: password.accessHostUrl,
     username: password.username,
-    password: password.plaintext,
+    password: password.plainText,
     database: db.name,
     port: 3306,
   },
@@ -127,3 +139,12 @@ export const db = drizzle({
 ```
 
 You can use any other ORM or database driver the same way.
+
+---
+
+## Examples
+
+Check out the full examples:
+
+- [PlanetScale with Drizzle and MySQL](/docs/examples/#aws-planetscale-drizzle-mysql)
+- [PlanetScale with Drizzle and Postgres](/docs/examples/#aws-planetscale-drizzle-postgres)

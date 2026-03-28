@@ -90,6 +90,9 @@ func (m *footer) Start(ctx context.Context) {
 }
 
 func (m *footer) clear() {
+	if m.previous == "" {
+		return
+	}
 	oldLines := strings.Split(m.previous, "\n")
 	out := &bytes.Buffer{}
 	if len(oldLines) > 0 {
@@ -105,18 +108,25 @@ func (m *footer) clear() {
 }
 
 func (m *footer) Render(width int, next string) {
-	oldLines := strings.Split(m.previous, "\n")
-	nextLines := strings.Split(next, "\n")
+	if next == m.previous {
+		return
+	}
+
+	var oldLines []string
+	if m.previous != "" {
+		oldLines = strings.Split(m.previous, "\n")
+	}
+
+	var nextLines []string
+	if next != "" {
+		nextLines = strings.Split(next, "\n")
+	}
 
 	out := &bytes.Buffer{}
 
-	// if next == m.previous {
-	// 	return
-	// }
-
 	if len(oldLines) > 0 {
 		for i := range oldLines {
-			if i < len(oldLines)-len(nextLines) || next == "" {
+			if i < len(oldLines)-len(nextLines) {
 				out.WriteString(ansi.EraseEntireLine)
 			}
 			if i < len(oldLines)-1 {
@@ -129,15 +139,16 @@ func (m *footer) Render(width int, next string) {
 		if i == 0 {
 			out.WriteByte('\r')
 		}
-		truncated := ansi.Truncate(line, width, "…")
-		out.WriteString(truncated)
+		out.WriteString(ansi.Truncate(line, width, "…"))
 		out.WriteString(ansi.EraseLine(0))
 		if i < len(nextLines)-1 {
 			out.WriteString("\r\n")
 		}
 	}
-	out.WriteString(ansi.CursorLeft(10000))
-	os.Stdout.Write(out.Bytes())
+	if out.Len() > 0 {
+		out.WriteString(ansi.CursorLeft(10000))
+		os.Stdout.Write(out.Bytes())
+	}
 	m.previous = next
 }
 
