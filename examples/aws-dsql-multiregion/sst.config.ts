@@ -46,33 +46,37 @@
 export default $config({
   app(input) {
     return {
-      name: "aws-dsql-multiregion",
-      removal: input?.stage === "production" ? "retain" : "remove",
-      home: "aws",
+      name: 'aws-dsql-multiregion',
+      removal: input?.stage === 'production' ? 'retain' : 'remove',
+      home: 'aws',
       providers: {
-        aws: { region: "us-east-1" },
+        aws: { region: 'us-east-1' },
       },
     };
   },
   async run() {
-    const cluster = new sst.aws.Dsql("MultiRegion", {
+    const cluster = new sst.aws.Dsql('MultiRegion', {
       regions: {
-        witness: "us-west-2",
-        peer: "us-east-2",
+        witness: 'us-west-2',
+        peer: { region: 'us-east-2' },
+      },
+      backup: {
+        retention: 45,
+        timezone: 'Australia/Melbourne',
       },
     });
 
-    const fn = new sst.aws.Function("MyFunction", {
-      handler: "lambda.handler",
+    const fn = new sst.aws.Function('MyFunction', {
+      handler: 'lambda.handler',
       link: [cluster],
       url: true,
     });
 
     return {
-      endpoint: cluster.endpoint,
+      endpoint: cluster.publicEndpoint,
       region: cluster.region,
-      peerEndpoint: cluster.peer.endpoint,
-      peerRegion: cluster.peer.region,
+      peerEndpoint: cluster.peerPublicEndpoint,
+      peerRegion: cluster.peerRegion,
     };
   },
 });

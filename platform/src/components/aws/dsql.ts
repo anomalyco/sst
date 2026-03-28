@@ -1,6 +1,7 @@
-import { ComponentResourceOptions, Output } from "@pulumi/pulumi";
+import { ComponentResourceOptions, Output, provider } from "@pulumi/pulumi";
 import { Component, transform, Transform } from "../component";
 import { Link } from "../link";
+import { VisibleError } from "../error";
 import { dsql } from "@pulumi/aws";
 import { permission } from "./permission";
 import { useProvider } from "./helpers/provider";
@@ -39,20 +40,64 @@ export interface DsqlArgs {
   };
 
   /**
-   * Enable automatic backups for the cluster using AWS Backup.
-   * Retains daily backups for 35 days. If multi-region is enabled, identical backup resources
-   * are created in both regions.
-   * * Set to `false` to explicitly disable backups.
+   * Configure automatic backups for the cluster using AWS Backup.
+   * If multi-region is enabled, identical backup resources are created in both regions.
    *
-   * @default true
+   * Omit to skip backup creation entirely.
+   *
    * @example
+   * Enable with defaults (daily at noon UTC, 30 day retention).
    * ```ts title="sst.config.ts"
    * const cluster = new sst.aws.Dsql("MyCluster", {
-   * backup: false
+   *   backup: {}
+   * });
+   * ```
+   *
+   * Custom schedule, timezone, and retention.
+   * ```ts title="sst.config.ts"
+   * const cluster = new sst.aws.Dsql("MyCluster", {
+   *   backup: {
+   *     schedule: "cron(0 2 ? * * *)",
+   *     timezone: "Australia/Melbourne",
+   *     retention: 90
+   *   }
    * });
    * ```
    */
-  backup?: boolean;
+  backup?: {
+    /**
+     * The backup schedule as an AWS cron expression (6 fields).
+     * Evaluated in UTC by default, or in the timezone specified by `timezone`.
+     *
+     * See https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-cron-expressions.html
+     * @default `"cron(0 12 ? * * *)"`
+     * @example
+     * Every day at midnight.
+     * ```ts
+     * schedule: "cron(0 0 ? * * *)"
+     * ```
+     * Every Monday at 3am.
+     * ```ts
+     * schedule: "cron(0 3 ? * MON *)"
+     * ```
+     */
+    schedule?: Input<string>;
+    /**
+     * The IANA timezone for the backup schedule.
+     *
+     * @default `"UTC"`
+     * @example
+     * ```ts
+     * timezone: "Australia/Melbourne"
+     * ```
+     */
+    timezone?: Input<string>;
+    /**
+     * Number of days to retain backups.
+     * @default 30
+     */
+    retention?: Input<number>;
+  };
 
   /**
    * :::note
@@ -108,6 +153,9 @@ export interface DsqlArgs {
   transform?: {
     cluster?: Transform<dsql.ClusterArgs>;
     peerCluster?: Transform<dsql.ClusterArgs>;
+    backupVault?: Transform<aws.backup.VaultArgs>;
+    backupPlan?: Transform<aws.backup.PlanArgs>;
+    backupSelection?: Transform<aws.backup.SelectionArgs>;
   };
 }
 
@@ -115,6 +163,13 @@ interface DsqlRef {
   ref: boolean;
   cluster: dsql.Cluster;
   peerCluster?: dsql.Cluster;
+}
+
+interface BackupResources {
+  vault: aws.backup.Vault;
+  plan: aws.backup.Plan;
+  selection: aws.backup.Selection;
+  role: aws.iam.Role;
 }
 
 /**
@@ -152,6 +207,18 @@ interface DsqlRef {
  * });
  * ```
  *
+ * #### With backups
+ *
+ * ```ts title="sst.config.ts"
+ * const cluster = new sst.aws.Dsql("MyCluster", {
+ *   backup: {
+ *     schedule: "cron(0 2 ? * * *)",
+ *     timezone: "Australia/Melbourne",
+ *     retention: 90
+ *   }
+ * });
+ * ```
+ *
  * #### Link to a function
  *
  * ```ts title="sst.config.ts"
@@ -167,6 +234,8 @@ export class Dsql extends Component implements Link.Linkable {
   private cluster: dsql.Cluster;
   private peerCluster: dsql.Cluster | undefined;
   private connectionEndpoint: aws.ec2.VpcEndpoint | undefined;
+  private backup: BackupResources | undefined;
+  private peerBackup: BackupResources | undefined;
 
   constructor(
     name: string,
@@ -199,21 +268,44 @@ export class Dsql extends Component implements Link.Linkable {
       createPeerings(createdPeerCluster, peerProvider);
     }
 
-    const backupEnabled = args.backup !== false;
+    if (args.backup !== undefined) {
+      const schedule = args.backup.schedule ?? "cron(0 12 ? * * *)";
+      const timezone = args.backup.timezone ?? "UTC";
+      const retention = args.backup.retention ?? 30;
 
-    if (backupEnabled) {
-      createBackupSetup(primaryCluster, undefined, "");
+      if (typeof schedule === "string" && !schedule.startsWith("cron(")) {
+        throw new VisibleError(
+          `Invalid backup schedule "${schedule}". Must be an AWS cron expression with 6 fields, e.g. "cron(0 12 ? * * *)". See https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-cron-expressions.html`,
+        );
+      }
+
+      this.backup = createBackupSetup(
+        primaryCluster,
+        schedule,
+        timezone,
+        retention,
+      );
 
       if (multiRegion && createdPeerCluster && peerProvider) {
-        createBackupSetup(createdPeerCluster, peerProvider, "Peer");
+        this.peerBackup = createBackupSetup(
+          createdPeerCluster,
+          schedule,
+          timezone,
+          retention,
+          peerProvider,
+          "Peer",
+        );
       }
     }
 
     function createBackupSetup(
       targetCluster: dsql.Cluster,
+      schedule: Input<string>,
+      timezone: Input<string>,
+      retention: Input<number>,
       provider?: aws.Provider,
       suffix: string = "",
-    ) {
+    ): BackupResources {
       const role = new aws.iam.Role(
         `${name}BackupRole${suffix}`,
         {
@@ -228,35 +320,47 @@ export class Dsql extends Component implements Link.Linkable {
       );
 
       const vault = new aws.backup.Vault(
-        `${name}BackupVault${suffix}`,
-        {},
-        { parent, provider },
+        ...transform(
+          args.transform?.backupVault,
+          `${name}BackupVault${suffix}`,
+          {},
+          { parent, provider },
+        ),
       );
 
       const plan = new aws.backup.Plan(
-        `${name}BackupPlan${suffix}`,
-        {
-          rules: [
-            {
-              ruleName: "Daily",
-              targetVaultName: vault.name,
-              schedule: "cron(0 12 * * ? *)",
-              lifecycle: { deleteAfter: 35 },
-            },
-          ],
-        },
-        { parent, provider },
+        ...transform(
+          args.transform?.backupPlan,
+          `${name}BackupPlan${suffix}`,
+          {
+            rules: [
+              {
+                ruleName: `${name}BackupPlan`,
+                targetVaultName: vault.name,
+                schedule,
+                scheduleExpressionTimezone: timezone,
+                lifecycle: { deleteAfter: retention },
+              },
+            ],
+          },
+          { parent, provider },
+        ),
       );
 
-      new aws.backup.Selection(
-        `${name}BackupSelection${suffix}`,
-        {
-          planId: plan.id,
-          iamRoleArn: role.arn,
-          resources: [targetCluster.arn],
-        },
-        { parent, provider },
+      const selection = new aws.backup.Selection(
+        ...transform(
+          args.transform?.backupSelection,
+          `${name}BackupSelection${suffix}`,
+          {
+            planId: plan.id,
+            iamRoleArn: role.arn,
+            resources: [targetCluster.arn],
+          },
+          { parent, provider },
+        ),
       );
+
+      return { vault, plan, selection, role };
     }
 
     function createPrimaryCluster() {
@@ -488,6 +592,22 @@ export class Dsql extends Component implements Link.Linkable {
     return {
       cluster: this.cluster,
       peerCluster: this.peerCluster,
+      backup: this.backup
+        ? {
+            vault: this.backup.vault,
+            plan: this.backup.plan,
+            selection: this.backup.selection,
+            role: this.backup.role,
+          }
+        : undefined,
+      peerBackup: this.peerBackup
+        ? {
+            vault: this.peerBackup.vault,
+            plan: this.peerBackup.plan,
+            selection: this.peerBackup.selection,
+            role: this.peerBackup.role,
+          }
+        : undefined,
     };
   }
 
