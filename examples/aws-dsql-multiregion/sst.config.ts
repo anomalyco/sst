@@ -58,11 +58,7 @@ export default $config({
     const cluster = new sst.aws.Dsql('MultiRegion', {
       regions: {
         witness: 'us-west-2',
-        peer: { region: 'us-east-2' },
-      },
-      backup: {
-        retention: 45,
-        timezone: 'Australia/Melbourne',
+        peer: 'us-east-2',
       },
     });
 
