@@ -256,7 +256,7 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 
 		if len(installPackages) > 0 {
 			log.Info("installing", "packages", installPackages)
-			src, err := fs.FindUp(filepath.Dir(target), "package.json")
+			src, err := fs.FindUp(filepath.Dir(file), "package.json")
 			if err != nil {
 				return nil, err
 			}
