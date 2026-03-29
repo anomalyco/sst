@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"debug/elf"
 	"fmt"
 	"io"
 	"log/slog"
@@ -54,16 +55,9 @@ func InstallBun(ctx context.Context) error {
 	goos := runtime.GOOS
 	arch := runtime.GOARCH
 
-	// Check for MUSL on Linux
 	isMusl := false
 	if goos == "linux" {
-		if _, err := os.Stat("/lib/ld-musl-x86_64.so.1"); err == nil {
-			isMusl = true
-		} else {
-			cmd := exec.Command("ldd", "--version")
-			output, _ := cmd.CombinedOutput()
-			isMusl = strings.Contains(strings.ToLower(string(output)), "musl")
-		}
+		isMusl = linuxUsesMusl()
 	}
 
 	var filename string
@@ -162,4 +156,65 @@ func InstallBun(ctx context.Context) error {
 		return nil, nil
 	})
 	return err
+}
+
+func linuxUsesMusl() bool {
+	isMusl, ok := muslFromLdd()
+	if ok {
+		return isMusl
+	}
+
+	for _, path := range []string{"/bin/sh", "/usr/bin/env", "/bin/busybox"} {
+		isMusl, ok := muslFromELF(path)
+		if ok {
+			return isMusl
+		}
+	}
+
+	return false
+}
+
+func muslFromLdd() (bool, bool) {
+	lddPath, err := exec.LookPath("ldd")
+	if err != nil {
+		return false, false
+	}
+
+	output, err := exec.Command(lddPath, "--version").CombinedOutput()
+	if err != nil && len(output) == 0 {
+		return false, false
+	}
+
+	return strings.Contains(strings.ToLower(string(output)), "musl"), true
+}
+
+func muslFromELF(path string) (bool, bool) {
+	interpreter, err := elfInterpreter(path)
+	if err != nil || interpreter == "" {
+		return false, false
+	}
+
+	return strings.Contains(strings.ToLower(interpreter), "musl"), true
+}
+
+func elfInterpreter(path string) (string, error) {
+	file, err := elf.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	for _, prog := range file.Progs {
+		if prog.Type != elf.PT_INTERP {
+			continue
+		}
+
+		interpreter, err := io.ReadAll(prog.Open())
+		if err != nil {
+			return "", err
+		}
+		return strings.TrimRight(string(interpreter), "\x00"), nil
+	}
+
+	return "", fmt.Errorf("no ELF interpreter found for %s", path)
 }
