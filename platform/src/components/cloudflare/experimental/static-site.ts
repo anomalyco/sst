@@ -10,7 +10,8 @@ import {
   prepare,
 } from "../../base/base-static-site.js";
 
-export interface StaticSiteArgs extends BaseStaticSiteArgs {
+export interface StaticSiteArgs
+  extends Omit<BaseStaticSiteArgs, "indexPage" | "errorPage" | "vite"> {
   /**
    * Path to the directory where your static site is located. By default this assumes your static site is in the root of your SST app.
    *
@@ -70,6 +71,13 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
    * ```
    */
   domain?: Input<string>;
+  htmlHandling?: Input<
+    | "auto-trailing-slash"
+    | "force-trailing-slash"
+    | "drop-trailing-slash"
+    | "none"
+  >;
+  notFoundHandling?: Input<"404-page" | "single-page-application" | "none">;
 }
 
 /**
@@ -106,7 +114,8 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
  *   build: {
  *     command: "npm run build",
  *     output: "dist"
- *   }
+ *   },
+ *  notFoundHandling: "single-page-application"
  * });
  * ```
  *
@@ -161,19 +170,6 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
  * });
  * ```
  *
- * #### Redirect www to apex domain
- *
- * Redirect `www.my-app.com` to `my-app.com`.
- *
- * ```js {4}
- * new sst.cloudflare.x.StaticSite("MyWeb", {
- *   domain: {
- *     name: "my-app.com",
- *     redirects: ["www.my-app.com"]
- *   }
- * });
- * ```
- *
  * #### Set environment variables
  *
  * Set `environment` variables for the build process of your static site. These will be used locally and on deploy.
@@ -211,7 +207,7 @@ export class StaticSite extends Component implements Link.Linkable {
     super(__pulumiType, name, args, opts);
 
     const self = this;
-    const { sitePath, environment, indexPage } = prepare(args);
+    const { sitePath, environment } = prepare(args);
     const outputPath = $dev
       ? path.join($cli.paths.platform, "functions", "empty-site")
       : buildApp(self, name, args.build, sitePath, environment);
@@ -246,14 +242,16 @@ export class StaticSite extends Component implements Link.Linkable {
           ),
           environment: environment.apply((e) => ({
             ...e,
-            INDEX_PAGE: indexPage,
-            ...(args.errorPage ? { ERROR_PAGE: args.errorPage } : {}),
           })),
           url: true,
           dev: false,
           domain: args.domain,
           assets: {
             directory: outputPath,
+            htmlHandling: args.htmlHandling
+              ? args.htmlHandling
+              : "auto-trailing-slash",
+            notFoundHandling: args.notFoundHandling,
           },
         },
         { parent: self },

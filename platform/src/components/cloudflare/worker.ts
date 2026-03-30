@@ -22,8 +22,6 @@ import { Permission } from "../aws/permission.js";
 import { binding } from "./binding.js";
 import { DEFAULT_ACCOUNT_ID } from "./account-id.js";
 import { rpc } from "../rpc/rpc.js";
-import { WorkerAssets } from "./providers/worker-assets";
-import { globSync } from "glob";
 import { VisibleError } from "../error";
 import { getContentType } from "../base/base-site";
 import { physicalName } from "../naming";
@@ -181,6 +179,13 @@ export interface WorkerArgs {
      * The directory containing the assets.
      */
     directory: Input<string>;
+    htmlHandling?: Input<
+      | "auto-trailing-slash"
+      | "force-trailing-slash"
+      | "drop-trailing-slash"
+      | "none"
+    >;
+    notFoundHandling?: Input<"404-page" | "single-page-application" | "none">;
   }>;
   /**
    * Configure [placement](https://developers.cloudflare.com/workers/configuration/placement/)
@@ -512,18 +517,32 @@ export class Worker extends Component implements Link.Linkable {
                     assets.directory,
                   );
                   let headers;
+                  let redirects;
                   try {
                     headers = await fs.readFile(
                       path.join(directory, "_headers"),
                       "utf-8",
                     );
                   } catch (e) {}
+
+                  try {
+                    redirects = await fs.readFile(
+                      path.join(directory, "_redirects"),
+                      "utf-8",
+                    );
+                  } catch (e) {}
                   return {
                     directory,
-                    config: { headers },
+                    config: {
+                      headers,
+                      redirects,
+                      htmlHandling: assets.htmlHandling,
+                      notFoundHandling: assets.notFoundHandling,
+                    },
                   };
                 })
               : undefined,
+
             bindings: all([args.environment, iamCredentials, bindings]).apply(
               ([environment, iamCredentials, bindings]) => [
                 ...bindings,

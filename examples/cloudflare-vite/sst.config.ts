@@ -19,9 +19,7 @@ export default $config({
         command: "pnpm run build",
         output: "dist",
       },
-      assets: {
-        notFoundHandling: "single-page-application",
-      },
+      notFoundHandling: "single-page-application",
     });
   },
 });
