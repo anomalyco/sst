@@ -73,6 +73,13 @@ func TestRenderDiffJSON_WithChanges(t *testing.T) {
 		},
 		{
 			Metadata: apitype.StepEventMetadata{
+				URN:  "urn:pulumi:dev::app::aws:ecs/service:Service::Replacement",
+				Type: "aws:ecs/service:Service",
+				Op:   apitype.OpCreateReplacement,
+			},
+		},
+		{
+			Metadata: apitype.StepEventMetadata{
 				URN:  "urn:pulumi:dev::app::aws:lambda/function:Function::OldFn",
 				Type: "aws:lambda/function:Function",
 				Op:   apitype.OpSame,
@@ -91,9 +98,9 @@ func TestRenderDiffJSON_WithChanges(t *testing.T) {
 		t.Fatalf("invalid JSON: %v\noutput: %s", err, out)
 	}
 
-	// OpSame should be filtered out
-	if len(result) != 2 {
-		t.Fatalf("expected 2 changes, got %d", len(result))
+	// OpSame should be filtered out, but replacement steps should be kept.
+	if len(result) != 3 {
+		t.Fatalf("expected 3 changes, got %d", len(result))
 	}
 
 	update := result[0]
@@ -119,5 +126,10 @@ func TestRenderDiffJSON_WithChanges(t *testing.T) {
 	create := result[1]
 	if create.Op != apitype.OpCreate {
 		t.Errorf("expected op 'create', got %q", create.Op)
+	}
+
+	replacement := result[2]
+	if replacement.Op != apitype.OpCreateReplacement {
+		t.Errorf("expected op 'create-replacement', got %q", replacement.Op)
 	}
 }

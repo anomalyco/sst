@@ -34,7 +34,7 @@ func main() {
 	binary, _ := os.Executable()
 	if _, err := os.Stat(nodeModulesBinPath); err == nil && !strings.Contains(binary, "node_modules") && os.Getenv("SST_SKIP_LOCAL") != "true" && version != "dev" {
 		// forward command to node_modules/.bin/sst
-		fmt.Println(ui.TEXT_WARNING_BOLD.Render("Warning: ") + "You are using a global installation of SST but you also have a local installation specified in your package.json. The local installation will be used but you should typically run it through your package manager.")
+		fmt.Fprintln(os.Stderr, ui.TEXT_WARNING_BOLD.Render("Warning: ")+"You are using a global installation of SST but you also have a local installation specified in your package.json. The local installation will be used but you should typically run it through your package manager.")
 		cmd := process.Command(nodeModulesBinPath, os.Args[1:]...)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
@@ -69,7 +69,7 @@ func main() {
 			if msg != "" {
 				ui.Error(readableErr.Error())
 				if readableErr.IsHinted() {
-					fmt.Println("   " + ui.TEXT_DIM.Render(readableErr.Unwrap().Error()))
+					fmt.Fprintln(os.Stderr, "   "+ui.TEXT_DIM.Render(readableErr.Unwrap().Error()))
 				}
 			}
 		} else {

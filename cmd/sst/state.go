@@ -146,8 +146,7 @@ var CmdState = &cli.Command{
 				}
 				encoder := json.NewEncoder(os.Stdout)
 				encoder.SetIndent("", "  ")
-				encoder.Encode(exported)
-				return err
+				return encoder.Encode(exported)
 			},
 		},
 		{

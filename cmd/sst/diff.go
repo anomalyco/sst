@@ -96,7 +96,7 @@ var CmdDiff = &cli.Command{
 			Type: "bool",
 			Description: cli.Description{
 				Short: "Output as JSON",
-				Long: "Output the diff result as JSON to stdout. Useful for CI pipelines and scripting.",
+				Long:  "Output the diff result as JSON to stdout. Useful for CI pipelines and scripting.",
 			},
 		},
 	},
@@ -140,9 +140,13 @@ var CmdDiff = &cli.Command{
 		}
 
 		var wg errgroup.Group
-		defer wg.Wait()
 		outputs := []*apitype.ResOutputsEvent{}
-		u := ui.New(c.Context)
+		uiOptions := []ui.Option{}
+		if jsonOutput {
+			// Keep stdout machine-readable when attached to a TTY.
+			uiOptions = append(uiOptions, ui.WithSilent)
+		}
+		u := ui.New(c.Context, uiOptions...)
 		s, err := server.New()
 		if err != nil {
 			return err
@@ -153,7 +157,6 @@ var CmdDiff = &cli.Command{
 		})
 
 		events := bus.SubscribeAll()
-		defer close(events)
 		wg.Go(func() error {
 			for evt := range events {
 				if !jsonOutput {
@@ -167,7 +170,6 @@ var CmdDiff = &cli.Command{
 			return nil
 		})
 		defer u.Destroy()
-		defer c.Cancel()
 		err = p.Run(c.Context, &project.StackInput{
 			Command:    "diff",
 			ServerPort: s.Port,
@@ -177,6 +179,12 @@ var CmdDiff = &cli.Command{
 			Verbose:    c.Bool("verbose"),
 			PolicyPath: c.String("policy"),
 		})
+		bus.Unsubscribe(events)
+		close(events)
+		c.Cancel()
+		if waitErr := wg.Wait(); waitErr != nil && err == nil {
+			err = waitErr
+		}
 
 		if jsonOutput {
 			if jsonErr := renderDiffJSON(outputs); jsonErr != nil {
@@ -191,8 +199,21 @@ var CmdDiff = &cli.Command{
 	},
 }
 
+func textDiffIcon(op apitype.OpType) string {
+	switch op {
+	case apitype.OpImport, apitype.OpReplace, apitype.OpCreate:
+		return ui.TEXT_SUCCESS_BOLD.Render("+")
+	case apitype.OpDelete:
+		return ui.TEXT_DANGER_BOLD.Render("-")
+	case apitype.OpUpdate:
+		return ui.TEXT_WARNING_BOLD.Render("*")
+	default:
+		return ""
+	}
+}
+
 func renderDiffJSON(outputs []*apitype.ResOutputsEvent) error {
-	filtered := []apitype.StepEventMetadata{}
+	filtered := make([]apitype.StepEventMetadata, 0, len(outputs))
 	for _, output := range outputs {
 		if output.Metadata.Op == apitype.OpSame {
 			continue
@@ -205,7 +226,14 @@ func renderDiffJSON(outputs []*apitype.ResOutputsEvent) error {
 }
 
 func renderDiffText(outputs []*apitype.ResOutputsEvent, u *ui.UI) error {
-	if len(outputs) == 0 {
+	rendered := make([]*apitype.ResOutputsEvent, 0, len(outputs))
+	for _, output := range outputs {
+		if textDiffIcon(output.Metadata.Op) == "" {
+			continue
+		}
+		rendered = append(rendered, output)
+	}
+	if len(rendered) == 0 {
 		fmt.Println(
 			ui.TEXT_HIGHLIGHT_BOLD.Render("➜"),
 			ui.TEXT_NORMAL_BOLD.Render(" No changes"),
@@ -213,27 +241,8 @@ func renderDiffText(outputs []*apitype.ResOutputsEvent, u *ui.UI) error {
 		fmt.Println()
 		return nil
 	}
-	for _, output := range outputs {
-		icon := ""
-		if output.Metadata.Op == apitype.OpImport {
-			icon = ui.TEXT_SUCCESS_BOLD.Render("+")
-		}
-		if output.Metadata.Op == apitype.OpDelete {
-			icon = ui.TEXT_DANGER_BOLD.Render("-")
-		}
-		if output.Metadata.Op == apitype.OpReplace {
-			icon = ui.TEXT_SUCCESS_BOLD.Render("+")
-		}
-		if output.Metadata.Op == apitype.OpUpdate {
-			icon = ui.TEXT_WARNING_BOLD.Render("*")
-		}
-		if output.Metadata.Op == apitype.OpCreate {
-			icon = ui.TEXT_SUCCESS_BOLD.Render("+")
-		}
-		if icon == "" {
-			continue
-		}
-
+	for _, output := range rendered {
+		icon := textDiffIcon(output.Metadata.Op)
 		fmt.Println(icon, "", ui.TEXT_NORMAL_BOLD.Render(u.FormatURN(output.Metadata.URN)))
 		sorted := make([]string, 0, len(output.Metadata.DetailedDiff))
 		for path := range output.Metadata.DetailedDiff {
