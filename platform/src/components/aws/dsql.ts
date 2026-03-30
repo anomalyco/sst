@@ -41,16 +41,17 @@ export interface DsqlArgs {
   };
 
   /**
-   * Configure automatic backups for the cluster using AWS Backup.
+   * Configure automatic backups for the cluster using AWS Backup. Set to `true`
+   * to use the defaults, or pass an object to customize the schedule and retention.
    * If multi-region is enabled, identical backup resources are created in both regions.
    *
-   * Omit to skip backup creation entirely.
+   * Omit or set to `false` to skip backup creation entirely.
    *
    * @example
-   * Enable with defaults (daily at noon UTC, 30-day retention).
+   * Enable with defaults (daily at 5 AM UTC, 7-day retention).
    * ```ts title="sst.config.ts"
    * const cluster = new sst.aws.Dsql("MyCluster", {
-   *   backup: {}
+   *   backup: true
    * });
    * ```
    *
@@ -64,30 +65,33 @@ export interface DsqlArgs {
    * });
    * ```
    */
-  backup?: {
-    /**
-     * The backup schedule as an AWS Backup cron expression.
-     * This uses the same 6-field `cron(...)` format as EventBridge and is always evaluated in UTC.
-     *
-     * See https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-cron-expressions.html
-     * @default `"cron(0 12 ? * * *)"`
-     * @example
-     * Every day at midnight UTC.
-     * ```ts
-     * schedule: "cron(0 0 ? * * *)"
-     * ```
-     * Every Monday at 3am UTC.
-     * ```ts
-     * schedule: "cron(0 3 ? * MON *)"
-     * ```
-     */
-    schedule?: Input<string>;
-    /**
-     * How long to retain backups. Use a day duration like `"30 days"`.
-     * @default `"30 days"`
-     */
-    retention?: Input<DurationDays>;
-  };
+  backup?:
+    | boolean
+    | {
+        /**
+         * The schedule for the backups as an [AWS Backup cron expression](https://docs.aws.amazon.com/aws-backup/latest/devguide/API_BackupRule.html).
+         *
+         * This uses the same 6-field `cron(...)` format as EventBridge and is evaluated in UTC.
+         *
+         * @default `"cron(0 5 ? * * *)"`
+         * @example
+         * Back up every day at midnight UTC.
+         * ```ts
+         * schedule: "cron(0 0 ? * * *)"
+         * ```
+         *
+         * Back up every Monday at 3 AM UTC.
+         * ```ts
+         * schedule: "cron(0 3 ? * MON *)"
+         * ```
+         */
+        schedule?: Input<string>;
+        /**
+         * How long to retain backups. Use a day duration like `"7 days"`.
+         * @default `"7 days"`
+         */
+        retention?: Input<DurationDays>;
+      };
 
   /**
    *
@@ -172,15 +176,15 @@ export interface DsqlArgs {
     /**
      * Transform the AWS Backup vault resource.
      */
-     backupVault?: Transform<backup.VaultArgs>;
+    backupVault?: Transform<backup.VaultArgs>;
     /**
      * Transform the AWS Backup plan resource.
      */
-     backupPlan?: Transform<backup.PlanArgs>;
+    backupPlan?: Transform<backup.PlanArgs>;
     /**
      * Transform the AWS Backup selection resource.
      */
-     backupSelection?: Transform<backup.SelectionArgs>;
+    backupSelection?: Transform<backup.SelectionArgs>;
   };
 }
 
@@ -249,10 +253,7 @@ interface DsqlRef {
  *
  * ```ts title="sst.config.ts"
  * const cluster = new sst.aws.Dsql("MyCluster", {
- *   backup: {
- *     schedule: "cron(0 2 ? * * *)",
- *     retention: "90 days"
- *   }
+ *   backup: true
  * });
  * ```
  *
@@ -316,33 +317,33 @@ export class Dsql extends Component implements Link.Linkable {
       );
 
     const vpc = normalizeVpc();
+    const backupConfig = normalizeBackup();
 
     const cluster = createCluster();
     const peerCluster = createPeerCluster();
     const endpoints = createVpcEndpoints();
 
-    this.cluster = cluster;
-    this.peerCluster = peerCluster;
-    this.connectionEndpoint = endpoints?.connection;
-
-    if (args.backup !== undefined) {
-      const schedule = args.backup.schedule ?? "cron(0 12 ? * * *)";
-      const retention = output(args.backup.retention).apply((retention) =>
-        toDays(retention ?? "30 days"),
+    if (backupConfig) {
+      createBackupSetup(
+        cluster,
+        backupConfig.schedule,
+        backupConfig.retention,
       );
-
-      createBackupSetup(cluster, schedule, retention);
 
       if (regions && peerCluster) {
         createBackupSetup(
           peerCluster,
-          schedule,
-          retention,
+          backupConfig.schedule,
+          backupConfig.retention,
           "Peer",
           useProvider(regions.peer as Region),
         );
       }
     }
+
+    this.cluster = cluster;
+    this.peerCluster = peerCluster;
+    this.connectionEndpoint = endpoints?.connection;
 
     function createCluster() {
       return new dsql.Cluster(
@@ -461,6 +462,16 @@ export class Dsql extends Component implements Link.Linkable {
           { parent, provider },
         ),
       );
+    }
+
+    function normalizeBackup() {
+      if (!args.backup) return;
+
+      const config = args.backup === true ? {} : args.backup;
+      return {
+        schedule: output(config.schedule).apply((v) => v ?? "cron(0 5 ? * * *)"),
+        retention: output(config.retention).apply((v) => toDays(v ?? "7 days")),
+      };
     }
 
     function normalizeVpc() {
