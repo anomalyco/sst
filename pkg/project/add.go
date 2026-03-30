@@ -12,6 +12,7 @@ import (
 func (p *Project) Add(provider string, version string, pkg string) error {
 	var stderr bytes.Buffer
 	cmd := process.Command("node",
+		"--no-warnings",
 		filepath.Join(p.PathPlatformDir(), "src/ast/add.mjs"),
 		p.PathConfig(),
 		provider,

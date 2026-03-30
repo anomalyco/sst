@@ -5,6 +5,17 @@
     "platform",
     "sdk/js"
   ],
+  "scripts": {
+    "setup": "bun install && go mod tidy && bun run build:platform",
+    "build:platform": "bun run --filter @sst/platform build",
+    "build:cli": "go build ./cmd/sst",
+    "test:cli": "go test ./...",
+    "typecheck": "bun run typecheck:platform && bun run typecheck:sdk",
+    "typecheck:platform": "tsc --noEmit -p platform/tsconfig.json",
+    "typecheck:sdk": "tsc --noEmit -p sdk/js/tsconfig.json",
+    "docs:generate": "bun run --filter www generate",
+    "docs:dev": "bun run --filter www dev"
+  },
   "overrides": {
     "google-protobuf": "3.21.2"
   }

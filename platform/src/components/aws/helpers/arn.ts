@@ -151,3 +151,32 @@ export function parseOpenSearch(arn: string) {
     );
   return { tableName };
 }
+
+export function parseDsqlPublicEndpoint(arn: string) {
+  const parts = arn.split(":");
+  const region = parts[3];
+  const clusterId = parts[5]?.split("/")[1];
+  if (!arn.startsWith("arn:") || !clusterId)
+    throw new VisibleError(
+      `The provided ARN "${arn}" is not a DSQL cluster ARN.`,
+    );
+  return `${clusterId}.dsql.${region}.on.aws`;
+}
+
+export function parseDsqlPrivateEndpoint(
+  clusterArn: string,
+  dnsEntries: { dnsName?: string }[],
+) {
+  const clusterId = clusterArn.split(":")[5]?.split("/")[1];
+  if (!clusterArn.startsWith("arn:") || !clusterId)
+    throw new VisibleError(
+      `The provided ARN "${clusterArn}" is not a DSQL cluster ARN.`,
+    );
+  const wildcardEntry = dnsEntries.find((e) => e.dnsName?.startsWith("*."));
+  const privateDnsName = wildcardEntry?.dnsName ?? dnsEntries[0]?.dnsName;
+  if (!privateDnsName)
+    throw new VisibleError(
+      `The VPC endpoint has no DNS entries.`,
+    );
+  return privateDnsName.replace("*", clusterId);
+}

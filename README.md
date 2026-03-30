@@ -14,8 +14,6 @@
 
 Build full-stack apps on your own infrastructure.
 
-SST v3 uses a new engine for deploying SST apps. It uses Pulumi and Terraform, as opposed to CDK and CloudFormation. [Read the full announcement here](https://sst.dev/blog/sst-v3).
-
 ## Installation
 
 If you are using SST as a part of your Node project, we recommend installing it locally.
@@ -70,10 +68,7 @@ Here's how you can contribute:
 
 ## Running Locally
 
-1. Clone the repo
-2. `bun install`
-3. `go mod tidy`
-4. `cd platform && bun run build`
+Run `bun run setup`. You need [Go](https://go.dev/) and [Bun](https://bun.sh/) installed.
 
 Now you can run the CLI locally on any of the `examples/` apps.
 
@@ -82,10 +77,9 @@ cd examples/aws-api
 go run ../../cmd/sst <command>
 ```
 
-If you want to build the CLI, you can run `go build ./cmd/sst` from the root. This will create a
-`sst` binary that you can use.
+If you want to build the CLI binary, run `bun run build:cli`. This will create a `sst` binary that you can use.
 
-For building the docs, you need to run `bun generate` and `bun dev` inside the `www` directory.
+For building the docs, run `bun run docs:generate` and `bun run docs:dev`.
 
 ---
 
