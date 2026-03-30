@@ -171,6 +171,16 @@ func linuxUsesMusl() bool {
 		}
 	}
 
+	isMusl, ok = muslFromAlpineRelease()
+	if ok {
+		return isMusl
+	}
+
+	isMusl, ok = muslFromLoaderPath()
+	if ok {
+		return isMusl
+	}
+
 	return false
 }
 
@@ -195,6 +205,34 @@ func muslFromELF(path string) (bool, bool) {
 	}
 
 	return strings.Contains(strings.ToLower(interpreter), "musl"), true
+}
+
+func muslFromAlpineRelease() (bool, bool) {
+	_, err := os.Stat("/etc/alpine-release")
+	if err == nil {
+		return true, true
+	}
+
+	return false, false
+}
+
+func muslFromLoaderPath() (bool, bool) {
+	var path string
+	switch runtime.GOARCH {
+	case "amd64":
+		path = "/lib/ld-musl-x86_64.so.1"
+	case "arm64":
+		path = "/lib/ld-musl-aarch64.so.1"
+	default:
+		return false, false
+	}
+
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, true
+	}
+
+	return false, false
 }
 
 func elfInterpreter(path string) (string, error) {
