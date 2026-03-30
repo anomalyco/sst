@@ -41,10 +41,14 @@ export interface DsqlArgs {
   };
 
   /**
-   * Configure automatic backups for the cluster using AWS Backup. Set to `true`
-   * to use the defaults, or pass an object to customize the schedule and retention.
+   * Configure automatic backups for the cluster using AWS Backup.
+   *
+   * Set to `true` to use the defaults, or pass an object to customize the schedule and retention.
+   *
+   * :::tip
    * If multi-region is enabled, backups are scheduled in the current region and
    * copied to the peer region.
+   * :::
    *
    * Omit or set to `false` to skip backup creation entirely.
    *
