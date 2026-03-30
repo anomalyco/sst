@@ -43,7 +43,8 @@ export interface DsqlArgs {
   /**
    * Configure automatic backups for the cluster using AWS Backup. Set to `true`
    * to use the defaults, or pass an object to customize the schedule and retention.
-   * If multi-region is enabled, identical backup resources are created in both regions.
+   * If multi-region is enabled, backups are scheduled in the current region and
+   * copied to the peer region.
    *
    * Omit or set to `false` to skip backup creation entirely.
    *
@@ -322,24 +323,7 @@ export class Dsql extends Component implements Link.Linkable {
     const cluster = createCluster();
     const peerCluster = createPeerCluster();
     const endpoints = createVpcEndpoints();
-
-    if (backupConfig) {
-      createBackupSetup(
-        cluster,
-        backupConfig.schedule,
-        backupConfig.retention,
-      );
-
-      if (regions && peerCluster) {
-        createBackupSetup(
-          peerCluster,
-          backupConfig.schedule,
-          backupConfig.retention,
-          "Peer",
-          useProvider(regions.peer as Region),
-        );
-      }
-    }
+    createBackup();
 
     this.cluster = cluster;
     this.peerCluster = peerCluster;
@@ -402,15 +386,11 @@ export class Dsql extends Component implements Link.Linkable {
       return peerCluster;
     }
 
-    function createBackupSetup(
-      targetCluster: dsql.Cluster,
-      schedule: Input<string>,
-      retention: Input<number>,
-      suffix = "",
-      provider?: Provider,
-    ) {
+    function createBackup() {
+      if (!backupConfig) return;
+
       const role = new iam.Role(
-        `${name}BackupRole${suffix}`,
+        `${name}BackupRole`,
         {
           assumeRolePolicy: iam.assumeRolePolicyForPrincipal({
             Service: "backup.amazonaws.com",
@@ -419,46 +399,61 @@ export class Dsql extends Component implements Link.Linkable {
             "arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup",
           ],
         },
-        { parent, provider },
+        { parent },
       );
 
-      const vault = new backup.Vault(
-        ...transform(
-          args.transform?.backupVault,
-          `${name}BackupVault${suffix}`,
-          {},
-          { parent, provider },
-        ),
-      );
+      const vault = createBackupVault();
+      const peerVault = regions
+        ? createBackupVault("Peer", useProvider(regions.peer as Region))
+        : undefined;
 
       const plan = new backup.Plan(
         ...transform(
           args.transform?.backupPlan,
-          `${name}BackupPlan${suffix}`,
+          `${name}BackupPlan`,
           {
             rules: [
               {
-                ruleName: `${name}BackupRule${suffix}`,
+                ruleName: `${name}BackupRule`,
                 targetVaultName: vault.name,
-                schedule,
+                schedule: backupConfig.schedule,
                 scheduleExpressionTimezone: "UTC",
-                lifecycle: { deleteAfter: retention },
+                lifecycle: { deleteAfter: backupConfig.retention },
+                copyActions: peerVault
+                  ? [
+                      {
+                        destinationVaultArn: peerVault.arn,
+                        lifecycle: { deleteAfter: backupConfig.retention },
+                      },
+                    ]
+                  : undefined,
               },
             ],
           },
-          { parent, provider },
+          { parent },
         ),
       );
 
       new backup.Selection(
         ...transform(
           args.transform?.backupSelection,
-          `${name}BackupSelection${suffix}`,
+          `${name}BackupSelection`,
           {
             planId: plan.id,
             iamRoleArn: role.arn,
-            resources: [targetCluster.arn],
+            resources: [cluster.arn],
           },
+          { parent },
+        ),
+      );
+    }
+
+    function createBackupVault(suffix = "", provider?: Provider) {
+      return new backup.Vault(
+        ...transform(
+          args.transform?.backupVault,
+          `${name}BackupVault${suffix}`,
+          {},
           { parent, provider },
         ),
       );
@@ -468,8 +463,11 @@ export class Dsql extends Component implements Link.Linkable {
       if (!args.backup) return;
 
       const config = args.backup === true ? {} : args.backup;
+
       return {
-        schedule: output(config.schedule).apply((v) => v ?? "cron(0 5 ? * * *)"),
+        schedule: output(config.schedule).apply(
+          (v) => v ?? "cron(0 5 ? * * *)",
+        ),
         retention: output(config.retention).apply((v) => toDays(v ?? "7 days")),
       };
     }
