@@ -1,0 +1,103 @@
+---
+interface Testimonial {
+  name: string;
+  avatar: string;
+  text: string;
+  url?: string;
+}
+
+interface Props {
+  testimonials: Testimonial[];
+}
+
+const { testimonials } = Astro.props;
+---
+
+<div class="not-content testimonial-wall">
+  {testimonials.map((t) => {
+    const Tag = t.url ? 'a' : 'div';
+    return (
+      <Tag
+        class="testimonial-card"
+        {...(t.url ? { href: t.url, target: "_blank", rel: "noopener noreferrer" } : {})}
+      >
+        <p class="testimonial-text">{t.text}</p>
+        <div class="testimonial-author">
+          <img src={t.avatar} alt={t.name} class="testimonial-avatar" loading="lazy" />
+          <span class="testimonial-name">{t.name}</span>
+        </div>
+      </Tag>
+    );
+  })}
+</div>
+
+<style>
+.testimonial-wall {
+  columns: 3;
+  column-gap: 1rem;
+}
+@media (max-width: 50rem) {
+  .testimonial-wall {
+    columns: 2;
+  }
+}
+@media (max-width: 30rem) {
+  .testimonial-wall {
+    columns: 1;
+  }
+}
+.testimonial-card {
+  display: block;
+  break-inside: avoid;
+  margin-bottom: 1rem;
+  padding: 1.25rem;
+  border: 1px solid var(--divider-color);
+  border-radius: calc(2 * var(--border-radius));
+  text-decoration: none;
+  color: inherit;
+  transition: border-color var(--color-transition), background-color var(--color-transition), transform var(--color-transition);
+}
+.testimonial-card:hover {
+  border-color: hsla(198, 39%, 56%, 0.4);
+  background-color: hsla(var(--hue), var(--sat), 50%, 0.05);
+  transform: translateY(-1px);
+  text-decoration: none;
+}
+.testimonial-text {
+  margin: 0 0 1rem;
+  font-size: var(--sl-text-sm);
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+  white-space: pre-line;
+}
+.testimonial-author {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+.testimonial-avatar {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.testimonial-name {
+  font-size: var(--sl-text-sm);
+  font-weight: 500;
+  color: var(--color-text);
+}
+a.testimonial-card .testimonial-name {
+  text-decoration: underline;
+  text-underline-offset: 0.25rem;
+  text-decoration-color: var(--divider-color);
+}
+a.testimonial-card:hover .testimonial-name {
+  text-decoration-color: var(--sl-color-text-accent);
+}
+a.testimonial-card {
+  cursor: pointer;
+}
+div.testimonial-card {
+  cursor: default;
+}
+</style>

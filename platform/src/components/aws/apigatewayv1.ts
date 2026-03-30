@@ -620,20 +620,7 @@ export interface ApiGatewayV1RouteArgs {
    */
   apiKey?: Input<boolean>;
   /**
-   * Enable streaming for the route. The route handler must use `awslambda.streamifyResponse`
-   * to stream responses.
-   *
-   * :::note
-   * Streaming is only supported for API Gateway REST APIs, not HTTP APIs.
-   * :::
-   *
-   * @default `false`
-   * @example
-   * ```js
-   * {
-   *   streaming: true
-   * }
-   * ```
+   * @deprecated Set `streaming: true` on the function definition passed to `api.route()` instead.
    */
   streaming?: Input<boolean>;
   /**

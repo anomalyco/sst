@@ -123,7 +123,7 @@ export interface CronArgs {
    * console.log(event.foo);
    * ```
    */
-  event?: Input<Record<string, Input<string>>>;
+  event?: Input<any>;
   /**
    * The schedule for the cron job.
    *

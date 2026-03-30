@@ -134,7 +134,7 @@ var CmdSecretLoad = &cli.Command{
 			"sst secret load --stage production ./secrets.env",
 			"```",
 			"",
-			"This works becase `secret list` outputs the secrets in the right format.",
+			"This works because `secret list` outputs the secrets in the right format.",
 		}, "\n"),
 	},
 	Args: []cli.Argument{
@@ -349,7 +349,7 @@ var CmdSecretSet = &cli.Command{
 				if err != nil {
 					if err == io.EOF {
 						if input != "" {
-						    value += input
+							value += input
 						}
 						break
 					}

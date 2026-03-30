@@ -72,6 +72,8 @@ const sidebar = [
       { label: "Reference Resources", slug: "docs/reference-resources" },
       { label: "Environment Variables", slug: "docs/environment-variables" },
       { label: "Policy Packs", slug: "docs/policy-packs" },
+      { label: "PlanetScale", slug: "docs/planetscale" },
+      { label: "Upgrade AWS Databases", slug: "docs/upgrade-aws-databases" },
     ],
   },
   {
@@ -88,6 +90,7 @@ const sidebar = [
           "docs/component/aws/cron-v2",
           "docs/component/aws/auth",
           "docs/component/aws/nuxt",
+          "docs/component/aws/dsql",
           "docs/component/aws/astro",
           "docs/component/aws/redis",
           "docs/component/aws/email",
@@ -125,6 +128,7 @@ const sidebar = [
             label: "Internal",
             collapsed: true,
             items: [
+              "docs/component/aws/alb",
               "docs/component/aws/cdn",
               "docs/component/aws/app-sync-resolver",
               "docs/component/aws/app-sync-function",
@@ -304,7 +308,7 @@ export default defineConfig({
         dark: "./src/assets/logo-dark.svg",
         replacesTitle: true,
       },
-      lastUpdated: true,
+      lastUpdated: !process.env.CI,
       favicon: "/favicon.svg",
       pagination: false,
       markdown: {
