@@ -303,7 +303,7 @@ func (d *decoder) setColour(args []string) error {
 			A: 0xff,
 		}
 	default:
-		return fmt.Errorf("invalid colour co-ordinate system '%s'", args[1])
+		return fmt.Errorf("invalid colour coordinate system '%s'", args[1])
 	}
 
 	d.colourMap.SetColour(uint8(colourID), colour)

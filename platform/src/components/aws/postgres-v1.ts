@@ -20,6 +20,12 @@ function parseACU(acu: ACU) {
 export interface PostgresArgs {
   /**
    * The Postgres engine version. Check out the [available versions in your region](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Concepts.Aurora_Fea_Regions_DB-eng.Feature.ServerlessV2.html#Concepts.Aurora_Fea_Regions_DB-eng.Feature.ServerlessV2.apg).
+   *
+   * :::caution
+   * Changing the version will cause the database to restart on the next `sst deploy`,
+   * causing downtime. Learn more about [upgrading databases](/docs/upgrade-aws-databases/).
+   * :::
+   *
    * @default `"17"`
    * @example
    * ```js
@@ -320,6 +326,7 @@ export class Postgres extends Component implements Link.Linkable {
             masterUsername: "postgres",
             manageMasterUserPassword: true,
             serverlessv2ScalingConfiguration: scaling,
+            applyImmediately: true,
             allowMajorVersionUpgrade: true,
             skipFinalSnapshot: true,
             enableHttpEndpoint: true,

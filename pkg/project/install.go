@@ -2,7 +2,6 @@ package project
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -160,7 +159,7 @@ func (p *Project) writeTypes() error {
 	file.WriteString(`  interface Providers {` + "\n")
 	file.WriteString(`    providers?: {` + "\n")
 	for _, entry := range p.lock {
-		file.WriteString(`      "` + entry.Name + `"?:  (_` + entry.Alias + `.ProviderArgs & { package?: string, version?: string }) | boolean | string;` + "\n")
+		file.WriteString(`      "` + entry.Name + `"?:  (_` + entry.Alias + `.ProviderArgs & { package?: string, version: string }) | string;` + "\n")
 	}
 	file.WriteString(`    }` + "\n")
 	file.WriteString(`  }` + "\n")
@@ -184,7 +183,7 @@ func (p *Project) fetchDeps() error {
 	cmd.Dir = p.PathPlatformDir()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return errors.New("failed to run bun install " + string(output))
+		return fmt.Errorf("failed to run %s install: %w\n%s", manager, err, output)
 	}
 	return nil
 }

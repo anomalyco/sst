@@ -16,7 +16,6 @@ if (snapshot) {
 }
 
 console.log("publishing", nextPkg.version);
-console.log(`npm dist-tag add ${pkg.name}@${pkg.version} ion`);
 
 await fs.rmdir("dist", { recursive: true }).catch(() => {});
 await $`bun run build`;
@@ -71,8 +70,6 @@ try {
   await Bun.write("package.json", JSON.stringify(nextPkg, null, 2));
   await fs.cp("../../README.md", "README.md");
   await $`npm publish --access public --tag ${tag}`;
-  if (!snapshot)
-    await $`npm dist-tag add ${nextPkg.name}@${nextPkg.version} ion`;
 } finally {
   await Bun.write("package.json", JSON.stringify(pkg, null, 2));
   await fs.rmdir(tmp, { recursive: true });

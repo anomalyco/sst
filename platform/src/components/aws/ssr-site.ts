@@ -1062,6 +1062,7 @@ async function handler(event) {
                 function: server.nodes.function.name,
                 principal: "cloudfront.amazonaws.com",
                 sourceArn: distributionArn,
+                invokedViaFunctionUrl: true,
               },
               { provider, parent: self },
             );
@@ -1102,6 +1103,7 @@ async function handler(event) {
                 function: imgOptimizer.nodes.function.name,
                 principal: "cloudfront.amazonaws.com",
                 sourceArn: distributionArn,
+                invokedViaFunctionUrl: true,
               },
               { parent: self },
             );
@@ -1317,7 +1319,7 @@ async function handler(event) {
             `${name}EdgeFunction`,
             {
               name: physicalName(64, `${name}EdgeFn`),
-              runtime: "nodejs22.x",
+              runtime: "nodejs24.x",
               handler: "index.handler",
               role: edgeRole.arn,
               code: new pulumiAsset.FileArchive(

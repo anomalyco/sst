@@ -1,7 +1,7 @@
 import { dynamic } from "@pulumi/pulumi";
 import http from "http";
 
-export module rpc {
+export namespace rpc {
   export class MethodNotFoundError extends Error {
     constructor(public method: string) {
       super(`Method "${method}" not found`);

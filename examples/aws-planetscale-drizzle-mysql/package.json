@@ -1,5 +1,5 @@
 {
-  "name": "aws-planetscale-drizzle",
+  "name": "aws-planetscale-drizzle-mysql",
   "version": "0.0.0",
   "scripts": {
     "db": "sst shell drizzle-kit",
@@ -8,8 +8,8 @@
   },
   "dependencies": {
     "@planetscale/database": "^1.19.0",
-    "drizzle-kit": "^0.30.4",
-    "drizzle-orm": "^0.38.4",
+    "drizzle-kit": "^0.31.10",
+    "drizzle-orm": "^0.45.1",
     "sst": "^4"
   }
 }

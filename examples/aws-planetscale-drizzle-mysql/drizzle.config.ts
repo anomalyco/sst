@@ -4,10 +4,7 @@ import { Resource } from "sst";
 export default defineConfig({
   dialect: "mysql",
   dbCredentials: {
-    host: Resource.Database.host,
-    user: Resource.Database.username,
-    password: Resource.Database.password,
-    database: Resource.Database.database,
+    url: `mysql://${Resource.Database.username}:${Resource.Database.password}@${Resource.Database.host}/${Resource.Database.database}?ssl={"rejectUnauthorized":true}`,
   },
   schema: ["./src/schema.ts"],
 });

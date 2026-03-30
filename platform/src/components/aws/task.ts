@@ -2,9 +2,10 @@ import { all, ComponentResourceOptions, Output, output } from "@pulumi/pulumi";
 import { Component, Prettify } from "../component.js";
 import { Link } from "../link.js";
 import { Cluster } from "./cluster.js";
-import { ecs, iam } from "@pulumi/aws";
+import { ec2, ecs, iam } from "@pulumi/aws";
 import { permission } from "./permission.js";
 import { Vpc } from "./vpc.js";
+import { VisibleError } from "../error.js";
 import { Function } from "./function.js";
 import {
   FargateBaseArgs,
@@ -72,22 +73,30 @@ export interface TaskArgs extends FargateBaseArgs {
    */
   containers?: Input<Prettify<FargateContainerArgs>>[];
   /**
-   * Assign a public IP address to the task.
+   * Make the task publicly accessible from the internet.
    *
-   * Defaults:
-   * - If an SST VPC component is passed to the `vpc` property, tasks run in public subnets
-   * by default and `publicIp` defaults to `true`.
-   * - If a non-SST VPC is used, tasks run in the specified subnets and `publicIp` defaults
-   * to `false`.
+   * :::note
+   * Tasks in an SST VPC are placed in public subnets with a public IP by default for
+   * outbound internet access. The `public` property controls whether the task is
+   * _reachable_ from the internet.
+   * :::
+   *
+   * If you are using a custom VPC, you must also set `vpc.publicSubnets` on the Cluster.
+   *
+   * @default false
    *
    * @example
    * ```ts
    * {
-   *   publicIp: true
+   *   public: true
    * }
    * ```
    */
-  publicIp?: Input<boolean>;
+  public?: boolean;
+  /**
+   * @deprecated Use `public` instead.
+   */
+  publicIp?: boolean;
   /**
    * Configure how this component works in `sst dev`.
    *
@@ -252,8 +261,8 @@ export interface TaskArgs extends FargateBaseArgs {
  *
  * By default, this uses a _Linux/X86_ _Fargate_ container with 0.25 vCPUs at $0.04048 per
  * vCPU per hour and 0.5 GB of memory at $0.004445 per GB per hour. It includes 20GB of
- * _Ephemeral Storage_ for free with additional storage at $0.000111 per GB per hour. Each
- * container also gets a public IPv4 address at $0.005 per hour.
+ * _Ephemeral Storage_ for free with additional storage at $0.000111 per GB per hour. When
+ * using an SST VPC, each task also gets a public IPv4 address at $0.005 per hour.
  *
  * It works out to $0.04048 x 0.25 + $0.004445 x 0.5 + $0.005. Or **$0.02 per hour**
  * your task runs for.
@@ -267,15 +276,19 @@ export interface TaskArgs extends FargateBaseArgs {
  */
 export class Task extends Component implements Link.Linkable {
   private readonly _cluster: Cluster;
+  private readonly publicSecurityGroup?: ec2.SecurityGroup;
   private readonly vpc: {
+    id: Input<string>;
     isSstVpc: boolean;
-    containerSubnets: Output<Output<string>[]>;
-    securityGroups: Output<Output<string>[]>;
+    publicSubnets: Output<Input<string>[]>;
+    containerSubnets: Output<Input<string>[]>;
+    securityGroups: Output<Input<string>[]>;
   };
   private readonly executionRole: iam.Role;
   private readonly taskRole: iam.Role;
   private readonly _taskDefinition: Output<ecs.TaskDefinition>;
-  private readonly _publicIp: Output<boolean>;
+  private readonly isPublic: boolean;
+  private readonly hasPublicIp: boolean;
   private readonly containerNames: Output<Output<string>[]>;
   private readonly dev: boolean;
 
@@ -293,8 +306,14 @@ export class Task extends Component implements Link.Linkable {
     const memory = normalizeMemory(cpu, args);
     const storage = normalizeStorage(args);
     const containers = normalizeContainers("task", args, name, architecture);
+    if (args.public !== undefined && args.publicIp !== undefined)
+      throw new VisibleError(
+        `Do not set both "public" and "publicIp" for the "${name}" Task. "publicIp" has been deprecated, use "public" instead.`,
+      );
+    const isPublic = args.public ?? false;
     const vpc = normalizeVpc();
-    const publicIp = normalizePublicIp();
+    const hasPublicIp = isPublic || (args.publicIp ?? vpc.isSstVpc);
+    const publicSecurityGroup = createPublicSecurityGroup();
 
     const taskRole = createTaskRole(
       name,
@@ -349,10 +368,12 @@ export class Task extends Component implements Link.Linkable {
     );
 
     this._cluster = args.cluster;
+    this.publicSecurityGroup = publicSecurityGroup;
     this.vpc = vpc;
     this.executionRole = executionRole;
     this._taskDefinition = taskDefinition;
-    this._publicIp = publicIp;
+    this.isPublic = isPublic;
+    this.hasPublicIp = hasPublicIp;
     this.containerNames = containers.apply((v) => v.map((v) => output(v.name)));
     this.registerOutputs({
       _task: all([args.dev, containers]).apply(([v, containers]) => ({
@@ -377,7 +398,9 @@ export class Task extends Component implements Link.Linkable {
       if (args.cluster.vpc instanceof Vpc) {
         const vpc = args.cluster.vpc;
         return {
+          id: vpc.id,
           isSstVpc: true,
+          publicSubnets: vpc.publicSubnets,
           containerSubnets: vpc.publicSubnets,
           securityGroups: vpc.securityGroups,
         };
@@ -385,7 +408,15 @@ export class Task extends Component implements Link.Linkable {
 
       // "vpc" is object
       return {
+        id: output(args.cluster.vpc).apply((v) => v.id),
         isSstVpc: false,
+        publicSubnets: output(args.cluster.vpc).apply((v) => {
+          if (isPublic && !v.publicSubnets?.length)
+            throw new VisibleError(
+              `Set "vpc.publicSubnets" on the Cluster to use "public" on the "${name}" Task.`,
+            );
+          return (v.publicSubnets ?? []).map((v) => output(v));
+        }),
         containerSubnets: output(args.cluster.vpc).apply((v) =>
           v.containerSubnets.map((v) => output(v)),
         ),
@@ -395,9 +426,32 @@ export class Task extends Component implements Link.Linkable {
       };
     }
 
-    function normalizePublicIp() {
-      return all([args.publicIp, vpc.isSstVpc]).apply(
-        ([publicIp, isSstVpc]) => publicIp ?? isSstVpc,
+
+    function createPublicSecurityGroup() {
+      if (!isPublic) return;
+      return new ec2.SecurityGroup(
+        `${name}PublicSecurityGroup`,
+        {
+          description: "Managed by SST",
+          vpcId: vpc.id,
+          egress: [
+            {
+              fromPort: 0,
+              toPort: 0,
+              protocol: "-1",
+              cidrBlocks: ["0.0.0.0/0"],
+            },
+          ],
+          ingress: [
+            {
+              fromPort: 0,
+              toPort: 0,
+              protocol: "-1",
+              cidrBlocks: ["0.0.0.0/0"],
+            },
+          ],
+        },
+        { parent: self },
       );
     }
   }
@@ -430,6 +484,10 @@ export class Task extends Component implements Link.Linkable {
    * @internal
    */
   public get securityGroups() {
+    if (this.isPublic && this.publicSecurityGroup)
+      return all([this.vpc.securityGroups, this.publicSecurityGroup.id]).apply(
+        ([sgs, publicSgId]) => [...sgs, publicSgId],
+      );
     return this.vpc.securityGroups;
   }
 
@@ -438,6 +496,7 @@ export class Task extends Component implements Link.Linkable {
    * @internal
    */
   public get subnets() {
+    if (this.isPublic || this.vpc.isSstVpc) return this.vpc.publicSubnets;
     return this.vpc.containerSubnets;
   }
 
@@ -446,7 +505,7 @@ export class Task extends Component implements Link.Linkable {
    * @internal
    */
   public get assignPublicIp() {
-    return this._publicIp;
+    return output(this.hasPublicIp);
   }
 
   /**
@@ -466,6 +525,11 @@ export class Task extends Component implements Link.Linkable {
        * The Amazon ECS Task Definition.
        */
       taskDefinition: this._taskDefinition,
+      /**
+       * The AWS Security Group for public tasks. Only created when `public`
+       * is `true`.
+       */
+      publicSecurityGroup: this.publicSecurityGroup,
     };
   }
 
