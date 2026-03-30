@@ -84,6 +84,10 @@ jobs:
           cd sdk/js
           bun run release
 
+      - name: Authenticate crates.io
+        id: crates-auth
+        uses: rust-lang/crates-io-auth-action@v1
+
       - name: Release Rust SDK
         run: |
           VERSION=$(jq -r .version dist/metadata.json)
@@ -91,4 +95,4 @@ jobs:
           sed -i "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
           cargo publish --allow-dirty
         env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ steps.crates-auth.outputs.token }}
