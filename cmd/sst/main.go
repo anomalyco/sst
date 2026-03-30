@@ -34,7 +34,7 @@ func main() {
 	binary, _ := os.Executable()
 	if _, err := os.Stat(nodeModulesBinPath); err == nil && !strings.Contains(binary, "node_modules") && os.Getenv("SST_SKIP_LOCAL") != "true" && version != "dev" {
 		// forward command to node_modules/.bin/sst
-		fmt.Println(ui.TEXT_WARNING_BOLD.Render("Warning: ") + "You are using a global installation of SST but you also have a local installation specified in your package.json. The local installation will be used but you should typically run it through your package manager.")
+		fmt.Fprintln(os.Stderr, ui.TEXT_WARNING_BOLD.Render("Warning: ")+"You are using a global installation of SST but you also have a local installation specified in your package.json. The local installation will be used but you should typically run it through your package manager.")
 		cmd := process.Command(nodeModulesBinPath, os.Args[1:]...)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
@@ -69,7 +69,7 @@ func main() {
 			if msg != "" {
 				ui.Error(readableErr.Error())
 				if readableErr.IsHinted() {
-					fmt.Println("   " + ui.TEXT_DIM.Render(readableErr.Unwrap().Error()))
+					fmt.Fprintln(os.Stderr, "   "+ui.TEXT_DIM.Render(readableErr.Unwrap().Error()))
 				}
 			}
 		} else {
@@ -107,6 +107,7 @@ func run() error {
 
 	if !flag.SST_SKIP_DEPENDENCY_CHECK {
 		spin := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
+		spin.Color("cyan")
 		spin.Suffix = "  Download dependencies..."
 		if global.NeedsPulumi() {
 			spin.Suffix = "  Installing pulumi..."
@@ -566,6 +567,7 @@ var root = &cli.Command{
 			Run: func(cli *cli.Cli) error {
 				pkg := cli.Positional(0)
 				spin := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
+				spin.Color("cyan")
 				spin.Suffix = "  Adding provider..."
 				spin.Start()
 				defer spin.Stop()
@@ -591,11 +593,19 @@ var root = &cli.Command{
 						return err
 					}
 				}
-				entry, err := project.FindProvider(pkg, "latest")
+				entry, err := project.FindProvider(pkg, "latest", pkg)
 				if err != nil {
 					return util.NewReadableError(err, "Could not find provider "+pkg)
 				}
-				err = p.Add(entry.Name, entry.Version)
+				// When the user passed a full package name (e.g. @paynearme/pulumi-jetstream),
+				// use the alias as the config key and set the package override
+				providerName := entry.Name
+				pkgOverride := ""
+				if entry.Name == entry.Package {
+					providerName = entry.Alias
+					pkgOverride = entry.Package
+				}
+				err = p.Add(providerName, entry.Version, pkgOverride)
 				if err != nil {
 					return util.NewReadableError(err, err.Error())
 				}
@@ -657,6 +667,7 @@ var root = &cli.Command{
 				}
 
 				spin := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
+				spin.Color("cyan")
 				defer spin.Stop()
 				spin.Suffix = "  Installing providers..."
 				spin.Start()

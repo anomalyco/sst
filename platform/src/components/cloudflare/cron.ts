@@ -6,10 +6,12 @@ import { WorkerArgs } from "./worker";
 import { DEFAULT_ACCOUNT_ID } from "./account-id.js";
 import { Input } from "../input.js";
 import { WorkerBuilder, workerBuilder } from "./helpers/worker-builder";
+import { VisibleError } from "../error";
 
 export interface CronArgs {
   /**
    * The worker that'll be executed when the cron job runs.
+   * @deprecated Use `worker` instead.
    *
    * @example
    *
@@ -30,7 +32,30 @@ export interface CronArgs {
    * }
    * ```
    */
-  job: Input<string | WorkerArgs>;
+  job?: Input<string | WorkerArgs>;
+  /**
+   * The worker that'll be executed when the cron job runs.
+   *
+   * @example
+   *
+   * ```ts
+   * {
+   *   worker: "src/cron.ts"
+   * }
+   * ```
+   *
+   * You can pass in the full worker props.
+   *
+   * ```ts
+   * {
+   *   worker: {
+   *     handler: "src/cron.ts",
+   *     link: [bucket]
+   *   }
+   * }
+   * ```
+   */
+  worker?: Input<string | WorkerArgs>;
   /**
    * The schedule for the cron job.
    *
@@ -84,21 +109,21 @@ export interface CronArgs {
  * };
  * ```
  *
- * Pass in a `schedules` and a `job` worker that'll be executed.
+ * Pass in a `schedules` and a `worker` that'll be executed.
  *
  * ```ts title="sst.config.ts"
  * new sst.cloudflare.Cron("MyCronJob", {
- *   job: "cron.ts",
+ *   worker: "cron.ts",
  *   schedules: ["* * * * *"]
  * });
  * ```
  *
- * #### Customize the function
+ * #### Customize the worker
  *
  * ```js title="sst.config.ts"
  * new sst.cloudflare.Cron("MyCronJob", {
  *   schedules: ["* * * * *"],
- *   job: {
+ *   worker: {
  *     handler: "cron.ts",
  *     link: [bucket]
  *   }
@@ -114,14 +139,27 @@ export class Cron extends Component {
 
     const parent = this;
 
+    const workerArgs = normalizeWorker();
     const worker = createWorker();
     const trigger = createTrigger();
 
     this.worker = worker;
     this.trigger = trigger;
 
+    function normalizeWorker() {
+      if (args.job && args.worker)
+        throw new VisibleError(
+          `You cannot provide both "job" and "worker" in the "${name}" Cron component. The "job" property has been deprecated. Use "worker" instead.`,
+        );
+      return args.worker ?? args.job;
+    }
+
     function createWorker() {
-      return workerBuilder(`${name}Handler`, args.job);
+      if (!workerArgs)
+        throw new VisibleError(
+          `You must provide a "worker" for the "${name}" Cron component.`,
+        );
+      return workerBuilder(`${name}Handler`, workerArgs);
     }
 
     function createTrigger() {

@@ -1,4 +1,4 @@
-import { all, CustomResourceOptions } from "@pulumi/pulumi";
+import { all, output, CustomResourceOptions } from "@pulumi/pulumi";
 import { Semaphore } from "../../../util/semaphore";
 import { local } from "@pulumi/command";
 
@@ -11,18 +11,18 @@ export function siteBuilder(
   args: local.CommandArgs,
   opts?: CustomResourceOptions,
 ) {
+  const ready = output(limiter.acquire(name));
   // Wait for the all args values to be resolved before acquiring the semaphore
-  return all([args]).apply(async ([args]) => {
-    await limiter.acquire(name);
+  return all([args, ready]).apply(([args]) => {
 
     let waitOn;
 
     const command = new local.Command(name, args, opts);
     waitOn = command.urn;
 
-    // When running `sst diff`, `local.Command`'s `create` and `update` are not called.
-    // So we will also run `local.runOutput` to get the output of the command.
-    if ($cli.command === "diff") {
+    // When running `sst diff` or `sst refresh`, `local.Command`'s `create` and `update` are not called.
+    // So we also run `local.runOutput` to get the output of the command.
+    if ($cli.command === "diff" || $cli.command === "refresh") {
       waitOn = local.runOutput(
         {
           command: args.create!,

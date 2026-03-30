@@ -8,7 +8,7 @@ import {
 } from "../component";
 import { Link } from "../link";
 import type { Input } from "../input";
-import { FunctionArgs, FunctionArn } from "./function";
+import { FunctionArgs, FunctionArn } from "./function.js";
 import { hashStringToPrettyString, physicalName, logicalName } from "../naming";
 import { VisibleError } from "../error";
 import { DnsValidatedCertificate } from "./dns-validated-certificate";
@@ -1014,6 +1014,12 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
    * Add a route to the API Gateway HTTP API. The route is a combination of
    * - An HTTP method and a path, `{METHOD} /{path}`.
    * - Or a `$default` route.
+   *
+   * :::caution
+   * [API Gateway has strict rate limits](https://docs.aws.amazon.com/apigateway/latest/developerguide/limits.html) for creating and updating resources. Creating one Lambda function for every endpoint can significantly slow down your deployments.
+   *
+   * Use a single Lambda and handle routing in code if you don't need specific API Gateway features.
+   * :::
    *
    * :::tip
    * The `$default` route is a default or catch-all route. It'll match if no other route matches.

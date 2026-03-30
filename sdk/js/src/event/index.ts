@@ -1,6 +1,6 @@
 import { Prettify } from "../auth/handler.js";
 
-export module event {
+export namespace event {
   export type Definition = {
     type: string;
     $input: any;

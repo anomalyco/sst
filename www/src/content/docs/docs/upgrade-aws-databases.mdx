@@ -1,0 +1,108 @@
+---
+title: Upgrade AWS Databases
+description: How to upgrade your database and minimize downtime.
+---
+
+Sometimes database components like [`Postgres`](/docs/component/aws/postgres/) and [`Mysql`](/docs/component/aws/mysql/) need to be upgraded as your application scales.
+
+When you change fields like `version` or `instance`, SST applies the update on the next `sst deploy`.
+
+By default, AWS performs the upgrade in place. This restarts the database and causes temporary downtime until your application can reconnect.
+
+This guide covers the different strategies to minimize that downtime.
+
+---
+
+## Multi-AZ
+
+[`Postgres`](/docs/component/aws/postgres/) and [`Mysql`](/docs/component/aws/mysql/) support Multi-AZ deployments. AWS maintains a standby replica in a different availability zone. During the upgrade, changes are applied to the standby first, then it fails over. This reduces downtime to around 60-120 seconds instead of the full upgrade duration.
+
+```ts title="sst.config.ts" {4}
+const database = new sst.aws.Postgres("MyDatabase", {
+  vpc,
+  version: "17",
+  multiAz: true,
+});
+```
+
+Multi-AZ roughly doubles the cost since a standby instance is always running. You can enable it temporarily for the upgrade and disable it after.
+
+:::caution
+Major version upgrades restart both instances, making Multi-AZ ineffective for reducing downtime.
+:::
+
+Enabling [RDS Proxy](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/rds-proxy.html) through the `proxy` property can help further reduce failover downtime by detecting the new primary directly instead of waiting for DNS propagation. This can bring downtime down to just a few seconds.
+
+---
+
+## Blue/Green
+
+[`Postgres`](/docs/component/aws/postgres/) and [`Mysql`](/docs/component/aws/mysql/) support [AWS RDS Blue/Green deployments](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/blue-green-deployments.html) through the `blueGreen` property. This creates a staging copy of your database, applies the changes there, and switches over with near-zero downtime.
+
+```ts title="sst.config.ts" {4}
+const database = new sst.aws.Postgres("MyDatabase", {
+  vpc,
+  version: "17",
+  blueGreen: true,
+});
+```
+
+Your database endpoint stays the same throughout, so no application changes are needed. The overall deploy takes significantly longer but actual downtime is near zero.
+
+:::caution
+Blue/Green deployments are not compatible with databases that have read replicas or `proxy` enabled.
+:::
+
+Learn more in [this Pulumi article](https://www.pulumi.com/blog/aws-rds-blue-green-deployment-updates).
+
+---
+
+## Upgrading steps
+
+Here's the recommended workflow for upgrading a production database.
+
+### 1. Check compatibility
+
+Not all version jumps are allowed. You might need to go through intermediate versions.
+
+- [PostgreSQL upgrade paths](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_UpgradeDBInstance.PostgreSQL.html)
+- [MySQL upgrade paths](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_UpgradeDBInstance.MySQL.html)
+- [Aurora PostgreSQL upgrade paths](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_UpgradeDBInstance.PostgreSQL.html)
+- [Aurora MySQL upgrade paths](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/AuroraMySQL.Updates.MajorVersionUpgrade.html)
+
+### 2. Pick a strategy
+
+Use in-place if some downtime is fine, Multi-AZ to reduce it, or Blue/Green for the shortest switchover when supported.
+
+| Component | In-place | Multi-AZ | Blue/Green |
+| --- | --- | --- | --- |
+| [`Postgres`](/docs/component/aws/postgres/) | ✓ | ✓ | ✓ |
+| [`Mysql`](/docs/component/aws/mysql/) | ✓ | ✓ | ✓ |
+| [`Aurora`](/docs/component/aws/aurora/) | ✓ | ✕ | ✕ |
+| [`Redis`](/docs/component/aws/redis/) | ✓ | ✕ | ✕ |
+| [`OpenSearch`](/docs/component/aws/open-search/) | ✓ | ✕ | ✕ |
+
+### 3. Verify in a test stage
+
+Apply the change in a test stage first to ensure the upgrade works as expected.
+
+```diff lang="ts" title="sst.config.ts"
+  const database = new sst.aws.Postgres("MyDatabase", {
+    vpc,
+-   version: "16",
++   version: "17",
++   blueGreen: true,
+  });
+```
+
+### 4. Deploy to production
+
+Finally, deploy the upgrade to your production stage.
+
+```ts title="sst.config.ts"
+const database = new sst.aws.Postgres("MyDatabase", {
+  vpc,
+  version: "17",
+  blueGreen: true,
+});
+```

@@ -9,7 +9,7 @@ import { hashStringToPrettyString, logicalName } from "../naming";
 import { Component, Prettify, Transform, transform } from "../component";
 import { Link } from "../link";
 import type { Input } from "../input";
-import { FunctionArgs, FunctionArn } from "./function";
+import { FunctionArgs, FunctionArn } from "./function.js";
 import { Duration, DurationDays, toSeconds } from "../duration";
 import { VisibleError } from "../error";
 import { parseBucketArn } from "./helpers/arn";
@@ -72,7 +72,7 @@ interface BucketCorsArgs {
   allowMethods?: Input<Input<"DELETE" | "GET" | "HEAD" | "POST" | "PUT">[]>;
   /**
    * The HTTP headers you want to expose to an origin that calls the bucket.
-   * @default `[]`
+   * @default `["ETag"]`
    * @example
    * ```js
    * {
@@ -439,7 +439,7 @@ export interface BucketArgs {
    *     allowHeaders: ["*"],
    *     allowOrigins: ["*"],
    *     allowMethods: ["DELETE", "GET", "HEAD", "POST", "PUT"],
-   *     exposeHeaders: [],
+   *     exposeHeaders: ["ETag"],
    *     maxAge: "0 seconds"
    *   }
    * }
@@ -1122,7 +1122,7 @@ export class Bucket extends Component implements Link.Linkable {
                     "PUT",
                   ],
                   allowedOrigins: cors?.allowOrigins ?? ["*"],
-                  exposeHeaders: cors?.exposeHeaders,
+                  exposeHeaders: cors?.exposeHeaders ?? ["ETag"],
                   maxAgeSeconds: toSeconds(cors?.maxAge ?? "0 seconds"),
                 },
               ],

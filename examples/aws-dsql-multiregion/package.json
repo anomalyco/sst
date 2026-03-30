@@ -1,0 +1,19 @@
+{
+  "name": "aws-dsql-multiregion",
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "sst dev",
+    "deploy": "sst deploy",
+    "remove": "sst remove"
+  },
+  "dependencies": {
+    "@aws-sdk/credential-providers": "^3.844.0",
+    "@aws/aurora-dsql-node-postgres-connector": "^0.1.8",
+    "sst": "^4"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.133",
+    "@types/pg": "^8.10.9"
+  }
+}

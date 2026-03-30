@@ -3,13 +3,15 @@ title: Migrate From v3
 description: Migrate your SST v3 apps to v4.
 ---
 
-SST v4 upgrades the underlying [Pulumi AWS provider](https://www.pulumi.com/registry/packages/aws/) from v6 to v7. This guide covers migrating your SST v3 apps to v4.
+import TestimonialWall from "../../../components/TestimonialWall.astro";
 
-For the full list of upstream changes, refer to the [Pulumi AWS v7 migration guide](https://www.pulumi.com/registry/packages/aws/how-to-guides/7-0-migration).
+SST v4 upgrades the underlying [Pulumi AWS provider](https://www.pulumi.com/registry/packages/aws/) from v6 to v7. This guide covers migrating your SST v3 apps to v4.
 
 :::tip
 SST components are already updated for v7. Most users only need to run `sst refresh` and deploy.
 :::
+
+For the full list of upstream changes, refer to the [Pulumi AWS v7 migration guide](https://www.pulumi.com/registry/packages/aws/how-to-guides/7-0-migration).
 
 ---
 
@@ -25,46 +27,87 @@ The internal changes to SST components were minimal: mostly S3 resource renames 
 
 When you update SST and the AWS provider version changes, `sst deploy` will be blocked until you migrate your state:
 
-1. **Update your config**
+1. **Install the latest v4**
+
+    Make sure you're on the latest v4 version before running any commands.
+
+2. **Update your config**
 
    If you have any breaking changes from above, update your `sst.config.ts` accordingly.
 
-2. **Review changes**
+3. **Review changes**
 
-   Run `sst diff` to preview what will change. This is a **one-way migration**, so it's worth reviewing first.
+    Run `sst diff` to preview what will change. This is a **one-way migration**, so it's worth reviewing first.
 
-   ```bash frame="none"
-   npx sst diff
-   ```
+    ```bash frame="none"
+    sst diff
+    ```
 
-3. **Migrate state**
+4. **Migrate state**
 
-   Run `sst refresh` to migrate your state.
+    Run `sst refresh` to migrate your state.
 
-   ```bash frame="none"
-   npx sst refresh
-   ```
+    :::caution
+    Do not use the `--target` flag during migration. The state refresh must cover all resources to ensure a consistent migration.
+    :::
 
-   Repeat for each stage.
+    ```bash frame="none"
+    sst refresh
+    ```
 
-   ```bash frame="none"
-   npx sst refresh --stage production
-   ```
+    Repeat for each stage.
 
-   If the stage was deployed using `sst dev`, use the `--dev` flag.
+    ```bash frame="none"
+    sst refresh --stage production
+    ```
 
-   ```bash frame="none"
-   npx sst refresh --dev
-   ```
+    If the stage was deployed using `sst dev`, use the `--dev` flag.
 
-   If you [share resources across stages](/docs/share-across-stages), run `sst refresh` on the stage where the resource is created first — not the stage that references it via `.get()`.
+    ```bash frame="none"
+    sst refresh --dev
+    ```
 
-4. **Deploy**
+    If you [share resources across stages](/docs/share-across-stages), run `sst refresh` on the stage where the resource is created first — not the stage that references it via `.get()`.
 
-   Once refreshed, deploy as usual.
+5. **Deploy**
 
-   ```bash frame="none"
-   npx sst deploy
-   ```
+    Once refreshed, deploy as usual.
+
+    ```bash frame="none"
+    sst deploy
+    ```
 
 That's it — once refreshed and deployed, your app is fully migrated to v4.
+
+---
+
+## Upgrade testimonials
+
+Upgrading your infra framework can feel scary. Here's what teams have shared in Discord after migrating:
+
+<TestimonialWall testimonials={[
+  {
+    name: "waterbear",
+    avatar: "/testimonials/waterbear.webp",
+    text: "Successfully migrated two projects to SST v4.",
+    url: "https://discord.com/channels/983865673656705025/985222825893822485/1484243262058397829"
+  },
+  {
+    name: "Zac",
+    avatar: "/testimonials/zac.webp",
+    text: "We just had a succesful upgrade too! Thanks team.",
+    url: "https://discord.com/channels/983865673656705025/1481358917106929786/1481383395618459771"
+  },
+  {
+    name: "Rodrigo",
+    avatar: "/testimonials/rodrigo.webp",
+    text: "I just migrated our production app to SST v4. It's a fairly complex app with frontends, REST APIs, plenty of backend processes, usage of S3 buckets, DynamoDB, RDS, etc.\n\nEverything just worked fine.",
+    url: "https://discord.com/channels/983865673656705025/983865673656705028/1481358917106929786"
+  },
+  {
+    name: "sockthedev",
+    avatar: "/testimonials/sockthedev.webp",
+    text: "Excellent work on the upgrade to v4! I did a large project upgrade with no problems.",
+    url: "https://discord.com/channels/983865673656705025/983865673656705028/1476430580173508800"
+  }
+]} />

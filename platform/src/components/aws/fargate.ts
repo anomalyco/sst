@@ -4,7 +4,7 @@ import { ComponentResourceOptions, interpolate, secret } from "@pulumi/pulumi";
 import { all, output } from "@pulumi/pulumi";
 import { Input } from "../input";
 import { Efs } from "./efs";
-import { FunctionArgs } from "./function";
+import { FunctionArgs } from "./function.js";
 import { RETENTION } from "./logging";
 import { toGBs, toMBs } from "../size";
 import { VisibleError } from "../error";
@@ -192,6 +192,44 @@ export interface FargateContainerArgs {
          */
         args?: Input<Record<string, Input<string>>>;
         /**
+         * Key-value pairs of [build secrets](https://docs.docker.com/build/building/secrets/) to pass to the Docker build.
+         *
+         * Unlike build args, secrets are not persisted in the final image. They are
+         * available in the Dockerfile via [`--mount=type=secret`](https://docs.docker.com/build/building/secrets/#secret-mounts).
+         *
+         * @example
+         * ```js
+         * {
+         *   secrets: {
+         *     MY_TOKEN: "my-secret-token",
+         *   }
+         * }
+         * ```
+         *
+         * Then in the Dockerfile, reference it as a file:
+         * ```dockerfile title="Dockerfile"
+         * RUN --mount=type=secret,id=MY_TOKEN \
+         *   cat /run/secrets/MY_TOKEN
+         * ```
+         *
+         * Or as an environment variable:
+         * ```dockerfile title="Dockerfile"
+         * RUN --mount=type=secret,id=MY_TOKEN,env=MY_TOKEN \
+         *   echo $MY_TOKEN
+         * ```
+         */
+        secrets?: Input<Record<string, Input<string>>>;
+        /**
+         * Tags to apply to the Docker image.
+         * @example
+         * ```js
+         * {
+         *   tags: ["v1.0.0", "commit-613c1b2"]
+         * }
+         * ```
+         */
+        tags?: Input<Input<string>[]>;
+        /**
          * The stage to build up to. Same as the top-level [`image.target`](#image-target).
          */
         target?: Input<string>;
@@ -244,7 +282,7 @@ export interface FargateContainerArgs {
   ssm?: FargateBaseArgs["ssm"];
   /**
    * Mount Amazon EFS file systems into the container. Same as the top-level
-   * [`efs`](#efs).
+   * [`volumes`](#volumes).
    */
   volumes?: FargateBaseArgs["volumes"];
 }
@@ -466,6 +504,34 @@ export interface FargateBaseArgs {
          * ```
          */
         args?: Input<Record<string, Input<string>>>;
+        /**
+         * Key-value pairs of [build secrets](https://docs.docker.com/build/building/secrets/) to pass to the Docker build.
+         *
+         * Unlike build args, secrets are not persisted in the final image. They are
+         * available in the Dockerfile via [`--mount=type=secret`](https://docs.docker.com/build/building/secrets/#secret-mounts).
+         *
+         * @example
+         * ```js
+         * {
+         *   secrets: {
+         *     MY_TOKEN: "my-secret-token",
+         *   }
+         * }
+         * ```
+         *
+         * Then in the Dockerfile, reference it as a file:
+         * ```dockerfile title="Dockerfile"
+         * RUN --mount=type=secret,id=MY_TOKEN \
+         *   cat /run/secrets/MY_TOKEN
+         * ```
+         *
+         * Or as an environment variable:
+         * ```dockerfile title="Dockerfile"
+         * RUN --mount=type=secret,id=MY_TOKEN,env=MY_TOKEN \
+         *   echo $MY_TOKEN
+         * ```
+         */
+        secrets?: Input<Record<string, Input<string>>>;
         /**
          * Tags to apply to the Docker image.
          * @example
@@ -782,7 +848,7 @@ export function normalizeStorage(args: FargateBaseArgs) {
 
 export function normalizeContainers(
   type: "service" | "task",
-  args: ServiceArgs,
+  args: Omit<ServiceArgs, "public">,
   name: string,
   architecture: ReturnType<typeof normalizeArchitecture>,
 ) {
@@ -1003,7 +1069,7 @@ export function createExecutionRole(
 
 export function createTaskDefinition(
   name: string,
-  args: ServiceArgs,
+  args: Omit<ServiceArgs, "public">,
   opts: ComponentResourceOptions,
   parent: Component,
   containers: ReturnType<typeof normalizeContainers>,
@@ -1054,7 +1120,9 @@ export function createTaskDefinition(
               context: { location: contextPath },
               dockerfile: { location: dockerfilePath },
               buildArgs: containerImage.args,
-              secrets: linkEnvs,
+              secrets: all([linkEnvs, containerImage.secrets ?? {}]).apply(
+                ([link, secrets]) => ({ ...link, ...secrets }),
+              ),
               target: container.image.target,
               platforms: [container.image.platform],
               tags: [container.name, ...(container.image.tags ?? [])].map(

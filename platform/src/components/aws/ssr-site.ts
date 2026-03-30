@@ -844,7 +844,7 @@ export abstract class SsrSite extends Component implements Link.Linkable {
             headersConfig: {
               headerBehavior: "whitelist",
               headers: {
-                items: ["x-open-next-cache-key"],
+                items: ["x-open-next-cache-key", "x-forwarded-host"],
               },
             },
             queryStringsConfig: {
@@ -898,8 +898,8 @@ async function handler(event) {
     metadata = JSON.parse(v);
   } catch (e) {}
 
-  await routeSite(kvNamespace, metadata);
-  return event.request;
+  const response = await routeSite(kvNamespace, metadata);
+  return response || event.request;
 }`,
           },
           { parent: self },
@@ -1062,6 +1062,7 @@ async function handler(event) {
                 function: server.nodes.function.name,
                 principal: "cloudfront.amazonaws.com",
                 sourceArn: distributionArn,
+                invokedViaFunctionUrl: true,
               },
               { provider, parent: self },
             );
@@ -1102,6 +1103,7 @@ async function handler(event) {
                 function: imgOptimizer.nodes.function.name,
                 principal: "cloudfront.amazonaws.com",
                 sourceArn: distributionArn,
+                invokedViaFunctionUrl: true,
               },
               { parent: self },
             );
@@ -1317,7 +1319,7 @@ async function handler(event) {
             `${name}EdgeFunction`,
             {
               name: physicalName(64, `${name}EdgeFn`),
-              runtime: "nodejs22.x",
+              runtime: "nodejs24.x",
               handler: "index.handler",
               role: edgeRole.arn,
               code: new pulumiAsset.FileArchive(

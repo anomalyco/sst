@@ -72,6 +72,8 @@ const sidebar = [
       { label: "Reference Resources", slug: "docs/reference-resources" },
       { label: "Environment Variables", slug: "docs/environment-variables" },
       { label: "Policy Packs", slug: "docs/policy-packs" },
+      { label: "PlanetScale", slug: "docs/planetscale" },
+      { label: "Upgrade AWS Databases", slug: "docs/upgrade-aws-databases" },
     ],
   },
   {
@@ -85,9 +87,10 @@ const sidebar = [
           "docs/component/aws/bus",
           "docs/component/aws/vpc",
           "docs/component/aws/task",
-          "docs/component/aws/cron",
+          "docs/component/aws/cron-v2",
           "docs/component/aws/auth",
           "docs/component/aws/nuxt",
+          "docs/component/aws/dsql",
           "docs/component/aws/astro",
           "docs/component/aws/redis",
           "docs/component/aws/email",
@@ -125,6 +128,7 @@ const sidebar = [
             label: "Internal",
             collapsed: true,
             items: [
+              "docs/component/aws/alb",
               "docs/component/aws/cdn",
               "docs/component/aws/app-sync-resolver",
               "docs/component/aws/app-sync-function",
@@ -197,6 +201,7 @@ const sidebar = [
             label: "Deprecated",
             collapsed: true,
             items: [
+              { label: "Cron", slug: "docs/component/aws/cron" },
               { label: "OpenControl", slug: "docs/component/aws/opencontrol" },
               { label: "Vpc.v1", slug: "docs/component/aws/vpc-v1" },
               { label: "Redis.v1", slug: "docs/component/aws/redis-v1" },
@@ -211,10 +216,20 @@ const sidebar = [
         label: "Cloudflare",
         collapsed: true,
         items: [
-          "docs/component/cloudflare/kv",
-          "docs/component/cloudflare/d1",
-          "docs/component/cloudflare/worker",
+          "docs/component/cloudflare/ai",
           "docs/component/cloudflare/bucket",
+          "docs/component/cloudflare/cron",
+          "docs/component/cloudflare/d1",
+          "docs/component/cloudflare/kv",
+          "docs/component/cloudflare/queue",
+          "docs/component/cloudflare/worker",
+          {
+            label: "Internal",
+            collapsed: true,
+            items: [
+              "docs/component/cloudflare/queue-worker-subscriber",
+            ],
+          },
         ],
       },
       {
@@ -293,7 +308,7 @@ export default defineConfig({
         dark: "./src/assets/logo-dark.svg",
         replacesTitle: true,
       },
-      lastUpdated: true,
+      lastUpdated: !process.env.CI,
       favicon: "/favicon.svg",
       pagination: false,
       markdown: {
