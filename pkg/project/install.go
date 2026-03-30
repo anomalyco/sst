@@ -159,7 +159,11 @@ func (p *Project) writeTypes() error {
 	file.WriteString(`  interface Providers {` + "\n")
 	file.WriteString(`    providers?: {` + "\n")
 	for _, entry := range p.lock {
-		file.WriteString(`      "` + entry.Name + `"?:  (_` + entry.Alias + `.ProviderArgs & { package?: string, version: string }) | string;` + "\n")
+		versionField := "version: string"
+		if entry.Name == "aws" || entry.Name == "cloudflare" {
+			versionField = "version?: string"
+		}
+		file.WriteString(`      "` + entry.Name + `"?:  (_` + entry.Alias + `.ProviderArgs & { package?: string, ` + versionField + ` }) | string;` + "\n")
 	}
 	file.WriteString(`    }` + "\n")
 	file.WriteString(`  }` + "\n")
