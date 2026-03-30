@@ -2,7 +2,6 @@ package project
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -184,7 +183,7 @@ func (p *Project) fetchDeps() error {
 	cmd.Dir = p.PathPlatformDir()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return errors.New("failed to run bun install " + string(output))
+		return fmt.Errorf("failed to run %s install: %w\n%s", manager, err, output)
 	}
 	return nil
 }

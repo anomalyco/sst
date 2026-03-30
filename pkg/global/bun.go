@@ -22,6 +22,9 @@ import (
 )
 
 func BunPath() string {
+	if flag.SST_BUN_PATH != "" {
+		return flag.SST_BUN_PATH
+	}
 	path := filepath.Join(BinPath(), "bun")
 	if runtime.GOOS == "windows" {
 		path += ".exe"
@@ -31,6 +34,9 @@ func BunPath() string {
 
 func NeedsBun() bool {
 	if flag.SST_NO_BUN {
+		return false
+	}
+	if flag.SST_BUN_PATH != "" {
 		return false
 	}
 	path := BunPath()
