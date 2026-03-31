@@ -1,6 +1,6 @@
 import { Prettify } from "../auth/handler.js";
 
-export module event {
+export namespace event {
   export type Definition = {
     type: string;
     $input: any;
@@ -47,7 +47,7 @@ export module event {
           ? typeof input.metadata === "function"
             ? input.metadata(type, properties)
             : input.metadata(metadata)
-          : {};
+          : metadata ?? {};
         properties = validate(properties);
         return {
           type,

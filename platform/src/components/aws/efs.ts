@@ -138,7 +138,8 @@ interface EfsRef {
  *
  * ```ts title="sst.config.ts" {7}
  * const cluster = new sst.aws.Cluster("MyCluster", { vpc });
- * cluster.addService("MyService", {
+ * new sst.aws.Service("MyService", {
+ *   cluster,
  *   public: {
  *     ports: [{ listen: "80/http" }],
  *   },

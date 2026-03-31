@@ -21,7 +21,7 @@
  * The data is persisted to the `.sst/storage` directory. So if you restart the dev server,
  * the data will still be there.
  *
- * We then configure the `dev` property of the Redis component with the settings for the
+ * We then configure the `dev` property of the `Redis` component with the settings for the
  * local Redis server.
  *
  * ```ts title="sst.config.ts"
@@ -34,7 +34,7 @@
  * By providing the `dev` prop for Redis, SST will use the local Redis server and
  * not deploy a new Redis ElastiCache cluster when running `sst dev`.
  *
- * It also allows us to access Redis through a Reosurce `link`.
+ * It also allows us to access Redis through a Resource `link`.
  *
  * ```ts title="index.ts"
  * const client = Resource.MyRedis.host === "localhost"

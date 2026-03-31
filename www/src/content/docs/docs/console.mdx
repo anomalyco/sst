@@ -3,14 +3,38 @@ title: Console
 description: Manage and monitor your apps with the SST Console.
 ---
 
+import { Image } from "astro:assets"
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-The Console is a web based dashboard to manage your SST apps. With it you can **invoke functions**, **debug issues**, **view logs**, and **_git push to deploy_** your apps, with your team — [**console.sst.dev**](https://console.sst.dev)
+import consoleHomeLight from '../../../assets/docs/console/sst-console-home-light.png';
+import consoleHomeDark from '../../../assets/docs/console/sst-console-home-dark.png';
+import consoleLogsLight from '../../../assets/docs/console/sst-console-logs-light.png';
+import consoleLogsDark from '../../../assets/docs/console/sst-console-logs-dark.png';
+import consoleIssuesLight from '../../../assets/docs/console/sst-console-issues-light.png';
+import consoleIssuesDark from '../../../assets/docs/console/sst-console-issues-dark.png';
+import consoleLocalLight from '../../../assets/docs/console/sst-console-local-light.png';
+import consoleLocalDark from '../../../assets/docs/console/sst-console-local-dark.png';
+import consoleResourcesLight from '../../../assets/docs/console/sst-console-resources-light.png';
+import consoleResourcesDark from '../../../assets/docs/console/sst-console-resources-dark.png';
+import consoleUpdatesLight from '../../../assets/docs/console/sst-console-updates-light.png';
+import consoleUpdatesDark from '../../../assets/docs/console/sst-console-updates-dark.png';
+import consoleAutodeployLight from '../../../assets/docs/console/sst-console-autodeploy-light.png';
+import consoleAutodeployDark from '../../../assets/docs/console/sst-console-autodeploy-dark.png';
 
-[![SST Console](../../../assets/docs/console/sst-console-home.png)](https://console.sst.dev)
+The Console is a web based dashboard to manage your SST apps — [**console.sst.dev**](https://console.sst.dev)
+
+With it, you and your team can see all your apps, their **resources** and **updates**, **view logs**, **get alerts** on any issues, and **_git push to deploy_** them.
+
+<a href="https://console.sst.dev" target="_blank" rel="noopener noreferrer">
+  <picture>
+    <source srcset={consoleHomeDark.src} media="(prefers-color-scheme: dark)" />
+    <source srcset={consoleHomeLight.src} media="(prefers-color-scheme: light)" />
+    <Image src={consoleHomeLight} alt="SST Console" />
+  </picture>
+</a>
 
 :::tip
-The Console is completely optional and comes with a generous free tier.
+The Console is completely optional and comes with a free tier.
 :::
 
 ---
@@ -45,6 +69,24 @@ Currently the Console only supports apps **deployed to AWS**.
 
    This stack will scan all the regions in your account for SST apps and subscribe to them. Once created, you'll see all your apps, stages, and the functions in the apps.
 
+   If you are connecting a newly created AWS account, you might run into the following error while creating the stack.
+
+   > Resource handler returned message: "Specified ReservedConcurrentExecutions for function decreases account's UnreservedConcurrentExecution below its minimum value
+
+   This happens because AWS has been limiting the concurrency of Lambda functions for new accounts. It's a good idea to increase this limit before you go to production anyway.
+
+   To do so, you can [request a quota increase](https://repost.aws/knowledge-center/lambda-concurrency-limit-increase) to the default value of 1000. You can also do the following to expedite the request.
+
+   <details>
+   <summary>Expedite the request</summary>
+   If you want to expedite the request:
+
+   1. Submit the request.
+   2. Click the **Quota request history** link in the sidebar.
+   3. Click on **AWS Support Center Case** to open your request case details.
+   4. Hit the **Reply** button and select **Chat** to chat with an AWS representative to expedite it.
+   </details>
+
 3. **Invite your team**
 
    Use the email address of your teammates to invite them. They just need to login with the email you've used and they'll be able to join your workspace.
@@ -63,15 +105,9 @@ At a high level, here's how the Console works.
 
   Once you've connected your AWS accounts, it'll deploy a separate CloudFormation stack and connect to any SST apps in it. And all your apps and stages will show up automatically.
 
-- You can manage your apps
+- It's open-source and built with SST
 
-  You can view all the functions in your app. You can view all the issues in your functions in real-time with the source maps automatically applied. You can view their logs, invoke them, or replay invocations. You can also save event payloads to your workspace.
-
-  For your functions running [Live](/docs/live/), the logs will be streamed in real-time from your local machine.
-
-- It's open-source, built with SST, and deployed with [Seed](https://seed.run)
-
-  The Console is a full-stack SST app. You can view the [source on GitHub](https://github.com/sst/console).
+  The Console is an SST app. You can view the [source on GitHub](https://github.com/sst/console). It's also auto-deployed using itself.
 
 ---
 
@@ -211,15 +247,55 @@ To customize IAM permissions for the CloudFormation stack:
 
 ## Pricing
 
-The Console pricing is based on the number of times the Lambda functions in your SST apps are invoked per month and it uses the following tiers.
+[Starting Feb 1, 2025](/blog/console-pricing-update), the Console will be priced based on the number of active resources in your SST apps.
+
+| Resources | Rate per resource |
+|-----------|-----------|
+| First 2000   | $0.086  |
+| 2000+        | $0.032 |
+
+**Free Tier**: Workspaces with 350 active resources or fewer.
+
+So for example, if you go over the free tier and have 351 active resources in a month, your bill will be 351 x $0.086 = $30.2.
+
+A couple of things to note.
+
+- These are calculated for a given workspace every month.
+- A resource is what SST creates in your cloud provider. [Learn more below](#faq).
+- You can always access personal stages, even if you're above the free tier.
+- A resource is considered active if it comes from a stage:
+  - That has been around for at least 2 weeks.
+  - And, was updated during the month.
+- For volume pricing, feel free to [contact us][contact-us].
+
+[Learn more in the FAQ](#faq).
+
+---
+
+##### Active resources
+
+A resource is considered active if it comes from a stage that has been around for at least 2 weeks. And, was updated during the month.
+
+Let's look at a few different scenarios to see how this works.
+
+- A stage that was created 5 months ago and was deployed this month, is active.
+- A stage that was created 5 months ago but was not deployed this month, is not active.
+- A stage that was created 12 days ago, is not active.
+- A stage that was created 20 days ago and was removed 10 days ago, is not active.
+- A stage that was created 5 months ago, deployed this month, then removed this month, is active.
+- A stage created 5 months ago, was not deployed this month, and removed this month, is not active.
+
+---
+
+#### Old pricing
+
+Previously, the Console pricing was based on the number of times the Lambda functions in your SST apps are invoked per month and it used the following tiers.
 
 | Invocations | Rate (per invocation) |
 |-------------|------|
 | First 1M    | Free |
 | 1M - 10M    | $0.00002 |
 | 10M+        | $0.000002 |
-
-A couple of things to note.
 
 - These are calculated for a given workspace on a monthly basis.
 - This does not apply to personal stages, they'll be free forever.
@@ -232,11 +308,12 @@ A couple of things to note.
 
 Here are a few of the things the Console does for you.
 
-1. [**Logs**](#logs): View logs from the functions in your app
-2. [**Issues**](#issues): Get real-time alerts for any errors in your functions
+1. [**Logs**](#logs): View logs from any log group in your app
+2. [**Issues**](#issues): Get real-time alerts for any errors in your app
 3. [**Local logs**](#local-logs): View logs from your local `sst dev` session
-4. [**Resources**](#resources): View the resources in your app and their history
-5. [**Autodeploy**](#autodeploy): Auto-deploy your app when you _git push_ to your repo
+4. [**Updates**](#updates): View the details of every update made to your app
+5. [**Resources**](#resources): View all the resources in your app and their props
+6. [**Autodeploy**](#autodeploy): Auto-deploy your app when you _git push_ to your repo
 
 ---
 
@@ -244,118 +321,155 @@ Here are a few of the things the Console does for you.
 
 With the Console, you don't need to go to CloudWatch to look at the logs for your functions, containers and other log groups. You can view:
 
-- Past logs
-- Live logs
+- View recent logs
 - Jump to a specific time
+- Search for logs with a given string
 
-![SST Console logs](../../../assets/docs/console/sst-console-logs.png)
+<picture>
+  <source srcset={consoleLogsDark.src} media="(prefers-color-scheme: dark)" />
+  <source srcset={consoleLogsLight.src} media="(prefers-color-scheme: light)" />
+  <Image src={consoleLogsLight} alt="SST Console Logs" />
+</picture>
 
 ---
 
 ### Issues
 
-The Console will automatically show you any errors in your Node.js Lambda functions in real-time. And notify you through Slack or email.
+The Console will automatically show you any errors in your Node.js Lambda functions and containers in real-time. And notify you through Slack or email.
 
-![SST Console Issues](../../../assets/docs/console/sst-console-issues.png)
+<picture>
+  <source srcset={consoleIssuesDark.src} media="(prefers-color-scheme: dark)" />
+  <source srcset={consoleIssuesLight.src} media="(prefers-color-scheme: light)" />
+  <Image src={consoleIssuesLight} alt="SST Console Issues" />
+</picture>
 
 With Issues, there is:
 
 - **Nothing to setup**, no code to instrument
 - **Source maps** are supported **automatically**
-- **No impact on performance** or cold starts, since the functions aren't modified
+- **No impact on performance**, since your code isn't modified
 
-:::tip
-Issues works out of the box and has no impact on performance or cold starts.
+:::note
+Issues works out of the box and has no impact on performance.
 :::
 
-Issues currently only supports Node.js functions. Other runtimes and containers are on the roadmap.
-
----
-
-#### Behind the scenes
-
-Here's how it works.
-
-1. When an app is deployed or when an account is first synced, we add a log subscriber to your Lambda functions. 
-   - There's a maximum of 2 subscribers allowed. More on this below.
-2. The subscriber filters for anything that looks like an error and processes those log lines.
-3. It applies the source maps to the error stack trace.
-4. Finally, it groups similar looking errors together.
-
----
-
-#### Log subscriber
-
-The process of adding a log subscriber to your Lambda functions might fail. This can happen if:
-
-- We don't have enough permissions to add a subscriber. In this case, update the permissions that you've granted to the Console.
-- We've hit the limit for the number of subscribers. To fix this, you can remove one of the existing subscribers.
-
-You can see these errors in the Issues tab. Once you've fixed these issues, you can hit **Retry** and it'll try attaching the subscriber again. 
+Issues currently only supports Node.js functions and containers. Other languages and runtimes are on the roadmap.
 
 ---
 
 #### Error detection
 
-Issues reports Lambda function failures. In addition, for Node.js it reports errors that are logged using `console.error(new Error("my-error"))`.
+For the Console to automatically report your errors, you need to `console.error` an error object.
 
-:::tip
-In Node.js functions you can use `console.error` to report your errors.
-:::
-
-For the Console to automatically report your errors, you need to pass in an error object with the `console.error` call.
-
-```js title="src/lambda.ts"
+```js title="src/index.ts"
 console.error(new Error("my-error"));
 ```
 
+This works a little differently for containers and functions.
+
+- **Containers**
+
+  In a container applications, your code needs to also import the [SST JS SDK](/docs/reference/sdk/).
+
+  ```js title="src/index.ts" {1}
+  import "sst";
+
+  console.error(new Error("my-error"));
+  ```
+
+  This applies a polyfill to the `console` object to prepend the log lines with a marker that allows Issues to detect errors. [More on this below](#how-it-works-1).
+
+  If you are already importing the SDK, you won't need to add an additional import.
+
+- **Functions**
+
+  In addition, to errors logged using `console.error(new Error("my-error"))`, Issues also reports Lambda function failures.
+
+  ```js title="src/lambda.ts"
+  console.error(new Error("my-error"));
+  ```
+
+  In Lambda you don't need to import the SDK to polyfill the `console` object. Since the Lambda runtime does this automatically for you. 
+
 ---
 
-#### Limits
+#### How it works
 
-There's a soft limit of 10K issues per hour per workspace. If your account goes over this limit, Issues will be temporarily paused. You can [contact us][contact-us] if this happens.
+Here's how Issues works behind the scenes.
 
----
-
-### Local logs
-
-When the Console starts up, it checks if you are running `sst dev` locally. If so, then it'll show you real-time logs from your local terminal. This works by connecting to a local server that's run as a part of the SST CLI.
-
-![SST Console local logs](../../../assets/docs/console/sst-console-local.png)
-
-:::info
-The local server only allows access from `localhost` and `console.sst.dev`.
-:::
-
-The local logs works in all browsers and environments. But for certain browsers like Safari or Brave, and Gitpod, it needs some additional configuration.
+1. When an app is deployed or when an account is first synced, we add a log subscriber to the CloudWatch Log groups in your SST apps.
+   - This is added to your AWS account and includes a Lambda function. More on this below.
+2. If the subscriber filter matches anything that looks like an error it invokes the Lambda function.
+   - In case of errors from a Lambda function, the Lambda runtime automatically adds a marker to the logs that the filter matches for.
+   - For containers, the SST SDK polyfills the `console` object to add the marker.
+3. The Lambda function tries to parse the error. If the error comes from a Lambda function, it fetches the source maps from the state bucket in your account.
+4. It then hits an endpoint in the SST Console and passes in that error.
+5. Finally, the Console groups similar looking errors together and displays them.
 
 ---
 
-#### Safari & Brave
+#### Log subscriber
 
-Certain browsers like Safari and Brave require the local connection between the browser and the `sst dev` CLI to be running on HTTPS.
+The log subscriber also includes the following:
 
-SST can automatically generate a locally-trusted certificate using the [`sst cert`](/docs/reference/cli#cert) command.
+1. **Lambda function** that'll be invoked when a log with an error is matched.
+   - This function has a max concurrency set to 10.
+   - If it falls behind on processing by over 10 minutes, it'll discard the logs.
+   - This prevents it from scaling indefinitely when there's a burst of errors.
+   - This also means that if there are a lot of errors, the alerts might be delayed by up to 10 minutes.
+2. **IAM role** that gives it access to query the logs and the state bucket for the source maps.
+3. **Log group** with a 1 day retention.
 
-```bash
-sst cert
+These are added to **every region** in your AWS account that has a CloudWatch log group from your SST apps. It's deployed using a CloudFormation stack.
+
+This process of adding a log subscriber might fail if we:
+
+- Don't have enough permissions. In this case, update the permissions that you've granted to the Console.
+- Hit the limit for the number of subscribers, there's a maximum of 2 subscribers. To fix this, you can remove one of the existing subscribers.
+
+You can see these errors in the Issues tab. Once you've fixed these issues, you can hit **Retry** and it'll try attaching the subscriber again. 
+
+---
+
+#### Costs
+
+AWS will bill you for the Lambda function log subscriber that's in your account. This is usually fairly minimal.
+
+Even if your apps are generating an infinite number of errors, the Lambda function is limited to a concurrency of 10. So the **maximum** you'll be charged $43 x 10 = **$430 per month x # of regions** that are being monitored.
+
+You can also disable Issues from your workspace settings, if you are using a separate service for monitoring.
+
+[Learn more about Lambda pricing](https://aws.amazon.com/lambda/pricing/).
+
+---
+
+### Updates
+
+Each update in your app also gets a unique URL, a **_permalink_**. This is printed out by the SST CLI.
+
+```bash title="sst deploy"
+↗  Permalink  https://sst.dev/u/318d3879 
 ```
 
-You'll only need to **run this once** on your machine.
+You can view these updates in the Console. Each update shows:
 
----
+1. Full list of **all the resources** that were modified
+2. Changes in their **inputs and outputs**
+3. Any Docker or site **builds logs**
+4. **CLI command** that triggered the update
+5. **Git commit**, if it was an auto-deploy
 
-#### Gitpod
+The permalink is useful for sharing with your team and debugging any issues with your deploys.
 
-If you are using [Gitpod](https://www.gitpod.io/), you can use the Gitpod Local Companion app to connect to the `sst dev`  process running inside your Gitpod workspace.
+<picture>
+  <source srcset={consoleUpdatesDark.src} media="(prefers-color-scheme: dark)" />
+  <source srcset={consoleUpdatesLight.src} media="(prefers-color-scheme: light)" />
+  <Image src={consoleUpdatesLight} alt="SST Console Updates" />
+</picture>
 
-To get started:
+The CLI updates your [state](/docs/state/) with the event log from each update and generated a globally unique id. If your AWS account is connected to the Console, it'll pull the state and event log to generate the details for the update permalink.
 
-1. [Install Gitpod Local Companion app](https://www.gitpod.io/blog/local-app#installation)
-2. [Run the Companion app](https://www.gitpod.io/blog/local-app#running)
-3. Navigate to Console in the browser
-
-The companion app runs locally and creates a tunnelled connection to your Gitpod workspace.
+When you visit the permalink, the Console looks up the id of the update and redirects you to the right app in your workspace.
 
 ---
 
@@ -366,18 +480,12 @@ The Console shows you the complete [state of the resources](/docs/state/) in you
 1. Each resource in your app 
 2. The relation between resources
 3. The outputs of a given resource
-4. The full URN of the resource
-5. The update where the resource was created or modified
 
-![SST Console resources](../../../assets/docs/console/sst-console-resources.png)
-
----
-
-#### Update history
-
-The Console also tracks all the updates that were made to your app. And the resources that were modified as a part of the update.
-
-It also shows the SST command that was run that triggered the update. If the update was a part of an [Autodeploy](#autodeploy), it shows the related git commit as well.
+<picture>
+  <source srcset={consoleResourcesDark.src} media="(prefers-color-scheme: dark)" />
+  <source srcset={consoleResourcesLight.src} media="(prefers-color-scheme: light)" />
+  <Image src={consoleResourcesLight} alt="SST Console Resources" />
+</picture>
 
 ---
 
@@ -385,7 +493,11 @@ It also shows the SST command that was run that triggered the update. If the upd
 
 The Console can auto-deploy your apps when you _git push_ to your GitHub repo. Autodeploy uses [AWS CodeBuild](https://aws.amazon.com/codebuild/) in your account to run the build.
 
-![SST Console Autodeploy](../../../assets/docs/console/sst-console-autodeploy.png)
+<picture>
+  <source srcset={consoleAutodeployDark.src} media="(prefers-color-scheme: dark)" />
+  <source srcset={consoleAutodeployLight.src} media="(prefers-color-scheme: light)" />
+  <Image src={consoleAutodeployLight} alt="SST Console Autodeploy" />
+</picture>
 
 We designed Autodeploy to be a better fit for SST apps when compared to alternatives like GitHub Actions or CircleCI.
 
@@ -401,12 +513,6 @@ We designed Autodeploy to be a better fit for SST apps when compared to alternat
 4. **Integrates with the Console**
    - You can see which resources were updated in a deploy.
    - Your resource updates will also show you the related git commit.
-
-:::note
-Autodeploy is currently free while in beta.
-:::
-
-Autodeploy is free while in beta. But AWS will charge you for the CodeBuild build minutes that are used. [Learn more about CodeBuild pricing](https://aws.amazon.com/codebuild/pricing/).
 
 ---
 
@@ -594,19 +700,107 @@ Both `target` and `runner` are optional and come with defaults, but they can be 
 
 ---
 
+#### Costs
+
+AWS will bill you for the **CodeBuild build minutes** that are used to run your builds. [Learn more about CodeBuild pricing](https://aws.amazon.com/codebuild/pricing/).
+
+---
+
+### Local logs
+
+When the Console starts up, it checks if you are running `sst dev` locally. If so, then it'll show you real-time logs from your local terminal. This works by connecting to a local server that's run as a part of the SST CLI.
+
+<picture>
+  <source srcset={consoleLocalDark.src} media="(prefers-color-scheme: dark)" />
+  <source srcset={consoleLocalLight.src} media="(prefers-color-scheme: light)" />
+  <Image src={consoleLocalLight} alt="SST Console Local logs" />
+</picture>
+
+:::info
+The local server only allows access from `localhost` and `console.sst.dev`.
+:::
+
+The local logs works in all browsers and environments. But for certain browsers like Safari or Brave, and Gitpod, it needs some additional configuration.
+
+---
+
+#### Safari & Brave
+
+Certain browsers like Safari and Brave require the local connection between the browser and the `sst dev` CLI to be running on HTTPS.
+
+SST can automatically generate a locally-trusted certificate using the [`sst cert`](/docs/reference/cli#cert) command.
+
+```bash
+sst cert
+```
+
+You'll only need to **run this once** on your machine.
+
+---
+
+#### Gitpod
+
+If you are using [Gitpod](https://www.gitpod.io/), you can use the Gitpod Local Companion app to connect to the `sst dev`  process running inside your Gitpod workspace.
+
+To get started:
+
+1. [Install Gitpod Local Companion app](https://www.gitpod.io/blog/local-app#installation)
+2. [Run the Companion app](https://www.gitpod.io/blog/local-app#running)
+3. Navigate to Console in the browser
+
+The companion app runs locally and creates a tunnelled connection to your Gitpod workspace.
+
+---
+
 ## FAQ
+
+Here are some frequently asked questions about the Console.
 
 - Do I need to use the Console to use SST?
 
-  You don't need the Console to use SST. It displays the local logs from your terminal in a UI that's more convenient.
+  You **don't need the Console** to use SST. It compliments the CLI and has some features that help with managing your apps in production.
 
-- What if I don't want to pay for the Console?
+  That said, it is completely free to get started. You can create an account and invite your team, **without** having to add a **credit card**.
 
-  You can still invite your team and use it to view your local logs and stages.
+- Is there a free tier?
 
-- Do I need a credit card to get started?
+  If your workspace has 350 active resources or fewer for the month, it's considered to be in the free tier. This count also resets every month.
 
-  The Console is free to get started and **doesn't need a credit card**.
+- What happens if I go over the free tier?
+
+  You won't be able to access the _production_ or deployed stages till you add your billing details in the workspace settings.
+
+  Note that, you can continue to **access your personal stages**. Just make sure you have `sst dev` running locally. Otherwise the Console won't be able to detect that it's a personal stage.
+
+- What counts as a resource?
+
+  Resources are what SST creates in your cloud provider. This includes the resources created by both SST's built-in components, like `Function`, `Nextjs`, `Bucket`, and the ones created by any other Terraform/Pulumi provider.
+
+  Some components, like `Nextjs` and `StaticSite`, create multiple resources. In general, the more complex the component, the more resources it'll create.
+
+  You can see a [full list of resources](#resources) if you go to an app in your Console and navigate to a stage in it.
+
+  For some context, the Console is itself a pretty large [SST app](https://github.com/sst/console) and it has around 320 resources.
+
+- Do PR stages also count?
+
+  A stage has to be around for at least 2 weeks before the resources in it are counted as active. So if a PR stage is created and removed within 2 weeks, they don't count.
+
+  However, if you remove a stage and create a new one with the same name, it does not reset the 2 week initial period.
+
+---
+
+#### Old pricing FAQ
+
+Here were some frequently asked questions about the old pricing plan for the Console.
+
+- Do I need to switch to the new pricing?
+
+   If you are currently on the old plan, you don't have to switch and you won't be automatically switched over either.
+
+   You can go to the workspace settings and check out how much you'll be billed based on both the plans. To switch over, you can cancel your current plan and then subscribe to the new plan.
+
+   At some point in the future, we'll remove the old plan. But there's no specific timeline for it yet.
 
 - Which Lambda functions are included in the number of invocations?
 
@@ -616,13 +810,10 @@ Both `target` and `runner` are optional and come with defaults, but they can be 
 
   Lambda functions that are invoked **locally are not included**.
 
-- Can I access the personal stages if I'm above the free tier?
-
-  If you go above the free tier in your _production_ stages, you **can still access your personal stages**. Just make sure you have `sst dev` running locally, otherwise the Console won't be able to detect that it's a personal stage.
-
 - My invocation volume is far higher than the listed tiers. Are there any other options?
 
   Feel free to [contact us][contact-us] and we can figure out a pricing plan that works for you.
+
 
 If you have any further questions, feel free to [send us an email][contact-us].
 

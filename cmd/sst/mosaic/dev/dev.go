@@ -24,6 +24,11 @@ type Message struct {
 func Start(ctx context.Context, p *project.Project, server *server.Server) error {
 	var complete *project.CompleteEvent
 	var wg errgroup.Group
+
+	log := slog.Default().With("service", "dev")
+	log.Info("starting")
+	defer log.Info("done")
+
 	wg.Go(func() error {
 		evts := bus.Subscribe(&project.CompleteEvent{})
 		for {
@@ -39,11 +44,12 @@ func Start(ctx context.Context, p *project.Project, server *server.Server) error
 	server.Mux.HandleFunc("/stream", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("content-type", "application/x-ndjson")
 		w.WriteHeader(http.StatusOK)
-		slog.Info("subscribed", "addr", r.RemoteAddr)
+		log.Info("subscribed", "addr", r.RemoteAddr)
 		flusher, _ := w.(http.Flusher)
 		flusher.Flush()
 		ctx := r.Context()
 		events := bus.SubscribeAll()
+		defer bus.Unsubscribe(events)
 		if complete != nil {
 			go func() {
 				events <- complete
@@ -70,7 +76,7 @@ func Start(ctx context.Context, p *project.Project, server *server.Server) error
 	})
 
 	server.Mux.HandleFunc(("/api/deploy"), func(w http.ResponseWriter, r *http.Request) {
-		slog.Info("deploy requested")
+		log.Info("deploy requested")
 		bus.Publish(&deployer.DeployRequestedEvent{})
 	})
 
@@ -80,14 +86,17 @@ func Start(ctx context.Context, p *project.Project, server *server.Server) error
 		cwd, _ := os.Getwd()
 		for _, d := range complete.Devs {
 			full := filepath.Join(cwd, d.Directory)
-			slog.Info("matching dev", "full", full, "directory", directory)
+			log.Info("matching dev", "full", full, "directory", directory)
 			if (directory != "" && full == directory) || (name != "" && d.Name == name) {
 				env, err := p.EnvFor(ctx, complete, d.Name)
 				if err != nil {
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 					return
 				}
-				body, err := json.Marshal(env)
+				body, err := json.Marshal(map[string]interface{}{
+					"env":     env,
+					"command": d.Command,
+				})
 				if err != nil {
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 					return
@@ -98,10 +107,16 @@ func Start(ctx context.Context, p *project.Project, server *server.Server) error
 				return
 			}
 		}
-		slog.Info("dev not found", "directory", directory)
+		log.Info("dev not found", "directory", directory)
 		http.Error(w, "dev not found", http.StatusNotFound)
 		return
+	})
 
+	server.Mux.HandleFunc("/api/completed", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("content-type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(complete)
+		return
 	})
 
 	return wg.Wait()
@@ -160,7 +175,12 @@ func Stream(ctx context.Context, url string, types ...interface{}) (chan any, er
 	return out, nil
 }
 
-func Env(ctx context.Context, query string, url string) (map[string]string, error) {
+type EnvResponse struct {
+	Env     map[string]string `json:"env"`
+	Command string            `json:"command"`
+}
+
+func Env(ctx context.Context, query string, url string) (*EnvResponse, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", url+"/api/env?"+query, nil)
 	if err != nil {
 		return nil, err
@@ -170,12 +190,12 @@ func Env(ctx context.Context, query string, url string) (map[string]string, erro
 		return nil, err
 	}
 	defer resp.Body.Close()
-	var result map[string]string
+	var result EnvResponse
 	err = json.NewDecoder(resp.Body).Decode(&result)
 	if err != nil {
 		return nil, err
 	}
-	return result, nil
+	return &result, nil
 }
 
 func Deploy(ctx context.Context, url string) error {
@@ -188,4 +208,22 @@ func Deploy(ctx context.Context, url string) error {
 		return err
 	}
 	return nil
+}
+
+func Completed(ctx context.Context, url string) (*project.CompleteEvent, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", url+"/api/completed", nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var result project.CompleteEvent
+	err = json.NewDecoder(resp.Body).Decode(&result)
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
 }

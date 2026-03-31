@@ -1,0 +1,9 @@
+{
+  "name": "aws-bundle",
+  "version": "0.0.0",
+  "type": "module",
+  "dependencies": {
+    "@types/node": "^22.13.2",
+    "sst": "^4"
+  }
+}

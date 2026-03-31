@@ -7,8 +7,9 @@
  *
  * This deploys Deno as a Fargate service to ECS and it's linked to Redis.
  *
- * ```ts title="sst.config.ts" {2}
- * cluster.addService("MyService", {
+ * ```ts title="sst.config.ts" {3}
+ * new sst.aws.Service("MyService", {
+ *   cluster,
  *   link: [redis],
  *   loadBalancer: {
  *     ports: [{ listen: "80/http", forward: "8000/http" }],
@@ -43,7 +44,7 @@
 export default $config({
   app(input) {
     return {
-      name: "aws-deno",
+      name: "aws-deno-redis",
       removal: input?.stage === "production" ? "retain" : "remove",
       home: "aws",
     };
@@ -53,7 +54,8 @@ export default $config({
     const redis = new sst.aws.Redis("MyRedis", { vpc });
     const cluster = new sst.aws.Cluster("MyCluster", { vpc });
 
-    cluster.addService("MyService", {
+    new sst.aws.Service("MyService", {
+      cluster,
       link: [redis],
       loadBalancer: {
         ports: [{ listen: "80/http", forward: "8000/http" }],

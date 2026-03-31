@@ -12,12 +12,12 @@ export default $config({
     const vpc = new sst.aws.Vpc("MyVpc", { bastion: true });
     const rds = new sst.aws.Postgres("MyPostgres", { vpc });
 
-    const DATABASE_URL =
-      $interpolate`postgresql://${rds.username}:${rds.password}@${rds.host}:${rds.port}/${rds.database}`;
+    const DATABASE_URL = $interpolate`postgresql://${rds.username}:${rds.password}@${rds.host}:${rds.port}/${rds.database}`;
 
     const cluster = new sst.aws.Cluster("MyCluster", { vpc });
 
-    cluster.addService("MyService", {
+    new sst.aws.Service("MyService", {
+      cluster,
       link: [rds],
       environment: { DATABASE_URL },
       loadBalancer: {

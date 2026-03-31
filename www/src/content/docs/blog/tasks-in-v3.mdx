@@ -7,10 +7,10 @@ lastUpdated: 2024-12-29
 pagefind: false
 ---
 
-import { Image } from 'astro:assets';
-import { YouTube } from '@astro-community/astro-embed-youtube';
-import cliImage from '../../../assets/blog/task-cli.png';
-import consoleImage from '../../../assets/blog/task-console.png';
+import { Image } from "astro:assets";
+import { YouTube } from "@astro-community/astro-embed-youtube";
+import cliImage from "../../../assets/blog/task-cli.png";
+import consoleImage from "../../../assets/blog/task-console.png";
 
 We are adding [`Task`](/docs/component/aws/cluster#tasks), a new component, powered by AWS Fargate that allows you to run asynchronous tasks in your apps. Here's a video where we talk about this and async jobs in general.
 
@@ -45,17 +45,18 @@ Tasks are built on AWS Fargate and are tied to an Amazon ECS cluster. And so `Ta
 
 ```ts title="sst.config.ts"
 const cluster = new sst.aws.Cluster("MyCluster", { vpc });
-const task = cluster.addTask("MyTask");
+const task = new sst.aws.Task("MyTask", { cluster });
 ```
 
 By default, this looks for a `Dockerfile` in the root directory. You can configure this.
 
 ```ts title="sst.config.ts"
-cluster.addTask("MyTask", {
+new sst.aws.Task("MyTask", {
+  cluster,
   image: {
     context: "./app",
-    dockerfile: "Dockerfile"
-  }
+    dockerfile: "Dockerfile",
+  },
 });
 ```
 
@@ -70,26 +71,26 @@ Once created, you can run the task through:
    With the [Task JS SDK](/docs/component/aws/task#sdk), you can run your tasks, stop your tasks, and get the status of your tasks.
 
    You can call this from your functions, frontends, or container services. For example, you can link the task to a function.
-   
+
    ```ts title="sst.config.ts" {3}
    new sst.aws.Function("MyFunction", {
      handler: "src/lambda.handler",
-     link: [task]
+     link: [task],
    });
    ```
-   
+
    Then from your function start the task.
-   
+
    ```ts title="src/lambda.ts" {4}
    import { Resource } from "sst";
    import { task } from "sst/aws/task";
-   
+
    const runRet = await task.run(Resource.MyTask);
    const taskArn = runRet.tasks[0].taskArn;
    ```
-   
+
    **Other languages**
-   
+
    The JS SDK is calling the AWS ECS SDK behind the scenes. So if you are using a different language, you can directly call the AWS SDK. Here's [how to run a task](https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_RunTask.html).
 
 2. **Cron jobs**
@@ -99,7 +100,7 @@ Once created, you can run the task through:
    ```ts title="sst.config.ts" {2}
    new sst.aws.Cron("MyCronJob", {
      task,
-     schedule: "rate(1 day)"
+     schedule: "rate(1 day)",
    });
    ```
 
@@ -118,8 +119,8 @@ Any tasks that are invoked remotely are proxied to your local machine that runs 
 ```ts title="sst.config.ts" {3}
 new sst.aws.Task("MyTask", {
   dev: {
-    command: "node src/tasks.js"
-  }
+    command: "node src/tasks.js",
+  },
 });
 ```
 
@@ -167,4 +168,3 @@ If you are coming from SST v2, there are a couple of differences between `Task` 
 2. Since `Task` is natively based on Fargate, you can use the AWS SDK to interact with it, even in runtimes the SST SDK doesn't support.
 3. In dev mode, `Task` uses Fargate only, whereas `Job` used Lambda.
 4. While CodeBuild is billed per minute, Fargate is a lot cheaper than CodeBuild. Roughly **$0.02 per hour** vs **$0.3 per hour** on X86 machines.
-

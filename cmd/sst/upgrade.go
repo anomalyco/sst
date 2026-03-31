@@ -33,7 +33,7 @@ func CmdUpgrade(c *cli.Cli) error {
 		}
 		if hasAny {
 			cwd, _ := os.Getwd()
-			mgr := npm.DetectPackageManager(cwd)
+			mgr, _ := npm.DetectPackageManager(cwd)
 			if mgr != "" {
 				cmd := process.Command(mgr, "install")
 				fmt.Println()

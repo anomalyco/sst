@@ -9,7 +9,6 @@ import (
 	"runtime/debug"
 	"strings"
 	"sync"
-	"syscall"
 	"unicode"
 
 	"github.com/creack/pty"
@@ -166,14 +165,7 @@ func (vt *VT) Start(cmd *exec.Cmd) error {
 		Cols: uint16(w),
 		Rows: uint16(h),
 	}
-	vt.pty, err = pty.StartWithAttrs(
-		cmd,
-		&winsize,
-		&syscall.SysProcAttr{
-			Setsid:  true,
-			Setctty: true,
-			Ctty:    1,
-		})
+	vt.pty, err = pty.StartWithAttrs(cmd, &winsize, getPtyAttr())
 	if err != nil {
 		return err
 	}
@@ -263,7 +255,7 @@ func (vt *VT) recover() {
 
 	vt.postEvent(&EventPanic{
 		EventTerminal: newEventTerminal(vt),
-		Error:         fmt.Errorf(ret.String()),
+		Error:         fmt.Errorf("%s", ret.String()),
 	})
 	vt.Close()
 }
@@ -513,6 +505,10 @@ func (vt *VT) ScrollDown(offset int) {
 
 func (vt *VT) ScrollReset() {
 	vt.scroll = -1
+}
+
+func (vt *VT) ClearScrollback() {
+	vt.primaryScrollback = [][]cell{}
 }
 
 func (vt *VT) Scrollable() bool {

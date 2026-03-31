@@ -6,12 +6,12 @@ import {
   output,
 } from "@pulumi/pulumi";
 import { Component, transform } from "../component";
-import { Function, FunctionArgs } from "./function";
+import { Function, FunctionArgs } from "./function.js";
 import { RealtimeSubscriberArgs } from "./realtime";
 import { lambda } from "@pulumi/aws";
 import { iot } from "@pulumi/aws";
 import { FunctionBuilder, functionBuilder } from "./helpers/function-builder";
-import { parseFunctionArn } from "./helpers/arn";
+import { splitQualifiedFunctionArn } from "./helpers/arn";
 
 export interface Args extends RealtimeSubscriberArgs {
   /**
@@ -91,7 +91,8 @@ export class RealtimeLambdaSubscriber extends Component {
         `${name}Permission`,
         {
           action: "lambda:InvokeFunction",
-          function: fn.arn.apply((arn) => parseFunctionArn(arn).functionName),
+          function: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).unqualifiedArn),
+          qualifier: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).qualifier!),
           principal: "iot.amazonaws.com",
           sourceArn: rule.arn,
         },

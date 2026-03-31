@@ -1,5 +1,4 @@
 import { AwsOptions, client } from "./client.js";
-
 /**
  * The `task` client SDK is available through the following.
  *
@@ -12,7 +11,7 @@ import { AwsOptions, client } from "./client.js";
  * [`RunTask`](https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_RunTask.html) to
  * run a task.
  */
-export module task {
+export namespace task {
   function url(region?: string, options?: AwsOptions) {
     if (options?.region) region = options.region;
     return `https://ecs.${region}.amazonaws.com/`;
@@ -25,7 +24,7 @@ export module task {
    * For example, let's say you have a task.
    *
    * ```js title="sst.config.ts"
-   * cluster.addTask("MyTask");
+   * new sst.aws.Task("MyTask", { cluster });
    * ```
    *
    * `Resource.MyTask` will have all the link data.
@@ -69,6 +68,27 @@ export module task {
      * [`AWSClient`](https://github.com/mhart/aws4fetch?tab=readme-ov-file#new-awsclientoptions) used internally by the SDK.
      */
     aws?: AwsOptions;
+  }
+
+  export interface RunOptions extends Options {
+    /**
+     * Configure the capacity provider; regular Fargate or Fargate Spot, for this task.
+     *
+     * @default `"fargate"`
+     */
+    capacity?: "fargate" | "spot";
+    /**
+     * Overrides the memory allocated for this task in the task definition.
+     */
+    memory?: `${number} GB`;
+    /**
+     * Overrides the CPU allocated for this task in the task definition.
+     */
+    cpu?: `${number} vCPU`;
+    /**
+     * Overrides the ephemeral storage allocated for this task in the task definition.
+     */
+    storage?: `${number} GB`;
   }
 
   interface Task {
@@ -176,7 +196,7 @@ export module task {
    * For example, let's say you have defined a task.
    *
    * ```js title="sst.config.ts"
-   * cluster.addTask("MyTask");
+   * new sst.aws.Task("MyTask", { cluster });
    * ```
    *
    * You can then run the task in your application with the SDK.
@@ -209,7 +229,7 @@ export module task {
   export async function run(
     resource: Resource,
     environment?: Record<string, string>,
-    options?: Options
+    options?: RunOptions
   ): Promise<RunResponse> {
     const c = await client();
     const u = url(c.region, options?.aws);
@@ -221,8 +241,14 @@ export module task {
         "Content-Type": "application/x-amz-json-1.1",
       },
       body: JSON.stringify({
+        capacityProviderStrategy: [
+          {
+            capacityProvider:
+              options?.capacity === "spot" ? "FARGATE_SPOT" : "FARGATE",
+            weight: 1,
+          },
+        ],
         cluster: resource.cluster,
-        launchType: "FARGATE",
         taskDefinition: resource.taskDefinition,
         networkConfiguration: {
           awsvpcConfiguration: {
@@ -232,6 +258,10 @@ export module task {
           },
         },
         overrides: {
+          ...(options?.cpu ? { cpu: (parseFloat(options.cpu.replace(" vCPU", "")) * 1024).toString() } : {}),
+          ...(options?.memory ? { memory: (parseFloat(options.memory.replace(" GB", "")) * 1024).toString() } : {}),
+          ...(options?.storage ? { ephemeralStorage: { sizeInGiB: parseInt(options.storage.replace(" GB", "")) } } : {}),
+
           containerOverrides: resource.containers.map((name) => ({
             name,
             environment: Object.entries(environment ?? {}).map(
@@ -280,7 +310,7 @@ export module task {
    * ```
    *
    * Stopping a task is asnychronous. When you call `stop`, AWS marks a task to be stopped,
-   * but it may take a few minutes for the task to actually stop. 
+   * but it may take a few minutes for the task to actually stop.
    *
    * :::note
    * Stopping a task in asyncrhonous.

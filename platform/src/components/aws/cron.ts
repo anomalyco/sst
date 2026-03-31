@@ -1,9 +1,10 @@
-import { ComponentResourceOptions, output, Output } from "@pulumi/pulumi";
+import { all, ComponentResourceOptions, output, Output } from "@pulumi/pulumi";
 import { Component, Transform, transform } from "../component";
-import { FunctionArgs, FunctionArn } from "./function";
+import { FunctionArgs, FunctionArn } from "./function.js";
 import { Input } from "../input.js";
 import { cloudwatch, iam, lambda } from "@pulumi/aws";
 import { functionBuilder, FunctionBuilder } from "./helpers/function-builder";
+import { splitQualifiedFunctionArn } from "./helpers/arn";
 import { Task } from "./task";
 import { VisibleError } from "../error";
 
@@ -80,7 +81,7 @@ export interface CronArgs {
    *
    * ```js title="sst.config.ts"
    * const myCluster = new sst.aws.Cluster("MyCluster");
-   * const myTask = myCluster.addTask("MyTask");
+   * const myTask = new sst.aws.Task("MyTask", { cluster: myCluster });
    * ```
    *
    * You can then pass in the task to the cron job.
@@ -94,6 +95,35 @@ export interface CronArgs {
    *
    */
   task?: Task;
+  /**
+   * The event that'll be passed to the function or task.
+   *
+   * @example
+   * ```ts
+   * {
+   *   event: {
+   *     foo: "bar",
+   *   }
+   * }
+   * ```
+   *
+   * For Lambda functions, the event will be passed to the function as an event.
+   *
+   * ```ts
+   * function handler(event) {
+   *   console.log(event.foo);
+   * }
+   * ```
+   *
+   * For ECS Fargate tasks, the event will be passed to the task as the `SST_EVENT`
+   * environment variable.
+   *
+   * ```ts
+   * const event = JSON.parse(process.env.SST_EVENT);
+   * console.log(event.foo);
+   * ```
+   */
+  event?: Input<any>;
   /**
    * The schedule for the cron job.
    *
@@ -126,6 +156,17 @@ export interface CronArgs {
    */
   schedule: Input<`rate(${string})` | `cron(${string})`>;
   /**
+   * Configures whether the cron job is enabled. When disabled, the cron job won't run.
+   * @default true
+   * @example
+   * ```ts
+   * {
+   *   enabled: false
+   * }
+   * ```
+   */
+  enabled?: Input<boolean>;
+  /**
    * [Transform](/docs/components#transform) how this component creates its underlying resources.
    */
   transform?: {
@@ -141,8 +182,16 @@ export interface CronArgs {
 }
 
 /**
+ * The `Cron` component has been deprecated. Use [`CronV2`](https://sst.dev/docs/component/aws/cron-v2) instead.
+ *
+ * :::caution
+ * This component has been deprecated.
+ * :::
+ *
  * The `Cron` component lets you add cron jobs to your app
  * using [Amazon Event Bus](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-event-bus.html). The cron job can invoke a `Function` or a container `Task`.
+ *
+ * @deprecated Use [`CronV2`](https://sst.dev/docs/component/aws/cron-v2) instead.
  *
  * @example
  * #### Cron job function
@@ -162,7 +211,7 @@ export interface CronArgs {
  *
  * ```ts title="sst.config.ts" {5}
  * const myCluster = new sst.aws.Cluster("MyCluster");
- * const myTask = myCluster.addTask("MyTask");
+ * const myTask = new sst.aws.Task("MyTask", { cluster: myCluster });
  *
  * new sst.aws.Cron("MyCronJob", {
  *   task: myTask,
@@ -194,7 +243,9 @@ export class Cron extends Component {
     const parent = this;
 
     const fnArgs = normalizeFunction();
+    const event = output(args.event || {});
     normalizeTargets();
+    const enabled = output(args.enabled ?? true);
     const rule = createRule();
     const fn = createFunction();
     const role = createRole();
@@ -229,6 +280,7 @@ export class Cron extends Component {
           `${name}Rule`,
           {
             scheduleExpression: args.schedule,
+            state: enabled.apply((v) => (v ? "ENABLED" : "DISABLED")),
           },
           { parent },
         ),
@@ -248,7 +300,8 @@ export class Cron extends Component {
         `${name}Permission`,
         {
           action: "lambda:InvokeFunction",
-          function: fn.arn,
+          function: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).unqualifiedArn),
+          qualifier: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).qualifier!),
           principal: "events.amazonaws.com",
           sourceArn: rule.arn,
         },
@@ -298,21 +351,40 @@ export class Cron extends Component {
           args.transform?.target,
           `${name}Target`,
           fn
-            ? { arn: fn.arn, rule: rule.name }
+            ? {
+                arn: fn.arn,
+                rule: rule.name,
+                input: event.apply((event) => JSON.stringify(event)),
+              }
             : {
-              arn: args.task!.cluster,
-              rule: rule.name,
-              ecsTarget: {
-                launchType: "FARGATE",
-                taskDefinitionArn: args.task!.nodes.taskDefinition.arn,
-                networkConfiguration: {
-                  subnets: args.task!.subnets,
-                  securityGroups: args.task!.securityGroups,
-                  assignPublicIp: args.task!.assignPublicIp,
+                arn: args.task!.cluster,
+                rule: rule.name,
+                ecsTarget: {
+                  launchType: "FARGATE",
+                  taskDefinitionArn: args.task!.nodes.taskDefinition.arn,
+                  networkConfiguration: {
+                    subnets: args.task!.subnets,
+                    securityGroups: args.task!.securityGroups,
+                    assignPublicIp: args.task!.assignPublicIp,
+                  },
                 },
+                roleArn: role!.arn,
+                input: all([event, args.task!.containers]).apply(
+                  ([event, containers]) => {
+                    return JSON.stringify({
+                      containerOverrides: containers.map((name) => ({
+                        name,
+                        environment: [
+                          {
+                            name: "SST_EVENT",
+                            value: JSON.stringify(event),
+                          },
+                        ],
+                      })),
+                    });
+                  },
+                ),
               },
-              roleArn: role!.arn,
-            },
           { parent },
         ),
       );

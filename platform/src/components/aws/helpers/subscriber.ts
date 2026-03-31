@@ -1,5 +1,5 @@
 import { Input, output } from "@pulumi/pulumi";
-import { FunctionArgs, FunctionArn } from "../function";
+import { FunctionArgs, FunctionArn } from "../function.js";
 import { Queue } from "../queue";
 
 export function isFunctionSubscriber(

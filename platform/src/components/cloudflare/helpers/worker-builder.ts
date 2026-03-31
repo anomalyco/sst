@@ -10,7 +10,7 @@ import * as cloudflare from "@pulumi/cloudflare";
 
 export type WorkerBuilder = Output<{
   getWorker: () => Worker;
-  script: Output<cloudflare.WorkerScript>;
+  script: cloudflare.WorkerScript;
 }>;
 
 export function workerBuilder(
@@ -23,12 +23,7 @@ export function workerBuilder(
     if (typeof definition === "string") {
       // Case 1: The definition is a handler
       const worker = new Worker(
-        ...transform(
-          argsTransform,
-          name,
-          { handler: definition },
-          opts || {},
-        ),
+        ...transform(argsTransform, name, { handler: definition }, opts || {}),
       );
       return {
         getWorker: () => worker,

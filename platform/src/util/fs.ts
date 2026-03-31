@@ -1,4 +1,5 @@
 import fs from "fs/promises";
+import fsSync from "fs";
 import path from "path";
 
 export async function findAbove(

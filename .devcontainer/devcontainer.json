@@ -1,0 +1,40 @@
+{
+  "image": "mcr.microsoft.com/devcontainers/universal:2",
+  "features": {
+    "ghcr.io/audacioustux/devcontainers/bun:1": {},
+    "ghcr.io/devcontainers/features/aws-cli:1": {}
+  },
+  "postCreateCommand": "bun install && cd platform && bun run build",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.splitCwd": "workspaceRoot"
+      },
+      "extensions": [
+        "esbuild.bun-vscode"
+      ],
+      "tasks": {
+        "version": "2.0.0",
+        "tasks": [
+          {
+            "label": "Run Bun Dev",
+            "type": "shell",
+            "command": "bun dev",
+            "options": {
+              "cwd": "${workspaceFolder}/packages/platform"
+            },
+            "problemMatcher": [],
+            "group": {
+              "kind": "build",
+              "isDefault": true
+            },
+            "presentation": {
+              "reveal": "always",
+              "panel": "new"
+            }
+          }
+        ]
+      }
+    }
+  }
+}

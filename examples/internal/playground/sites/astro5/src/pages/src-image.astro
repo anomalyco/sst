@@ -1,0 +1,7 @@
+---
+import { Image } from 'astro:assets';
+import myImage from '../assets/spongebob-src.jpg';
+---
+
+<p> This image is in src/assets with dimentions 2992x2248. This image SHOULD be transformed.</p>
+<Image src={myImage} alt="Spongebob" width={299} height={224} />

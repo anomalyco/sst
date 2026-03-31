@@ -10,7 +10,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/evanw/esbuild/pkg/api"
 	esbuild "github.com/evanw/esbuild/pkg/api"
 	"github.com/sst/sst/v3/internal/fs"
 	"github.com/sst/sst/v3/pkg/js"
@@ -22,7 +21,19 @@ var forceExternal = []string{
 	"sharp", "pg-native",
 }
 
+var targetMap = map[string]esbuild.Target{
+	"nodejs24.x": esbuild.ES2024,
+	"nodejs22.x": esbuild.ES2023,
+	"nodejs20.x": esbuild.ES2023,
+	"nodejs18.x": esbuild.ES2022,
+	"nodejs16.x": esbuild.ES2021,
+	"nodejs14.x": esbuild.ES2020,
+	"nodejs12.x": esbuild.ES2019,
+}
+
 func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtime.BuildOutput, error) {
+	log := slog.Default().With("service", "runtime.node").With("functionID", input.FunctionID)
+
 	r.concurrency.Acquire(ctx, 1)
 	defer r.concurrency.Release(1)
 	var properties NodeProperties
@@ -43,11 +54,11 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 
 	handler := "bundle" + filepath.Ext(input.Handler)
 	target := filepath.Join(input.Out(), "bundle"+extension)
-	slog.Info("loader info", "loader", properties.Loader)
+	log.Info("loader info", "loader", properties.Loader)
 
 	loader := map[string]esbuild.Loader{}
 	for key, value := range properties.Loader {
-		mapped, ok := loaderMap[value]
+		mapped, ok := LoaderMap[value]
 		if !ok {
 			continue
 		}
@@ -59,10 +70,10 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 			Name: "sst-version-check",
 			Setup: func(build esbuild.PluginBuild) {
 				skipResolve := struct{}{}
-				build.OnResolve(api.OnResolveOptions{Filter: `^sst$`}, func(args api.OnResolveArgs) (api.OnResolveResult, error) {
+				build.OnResolve(esbuild.OnResolveOptions{Filter: `^sst$`}, func(args esbuild.OnResolveArgs) (esbuild.OnResolveResult, error) {
 					// avoid recursion
 					if args.PluginData == skipResolve {
-						return api.OnResolveResult{}, nil
+						return esbuild.OnResolveResult{}, nil
 					}
 					pkg := build.Resolve("sst", esbuild.ResolveOptions{
 						ResolveDir: args.ResolveDir,
@@ -76,22 +87,22 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 					if pkg.Path != "" {
 						path, err := fs.FindUp(pkg.Path, "package.json")
 						if err != nil {
-							return api.OnResolveResult{}, err
+							return esbuild.OnResolveResult{}, err
 						}
 						var pkgjson js.PackageJson
 						data, err := os.Open(path)
 						if err != nil {
-							return api.OnResolveResult{}, err
+							return esbuild.OnResolveResult{}, err
 						}
 						err = json.NewDecoder(data).Decode(&pkgjson)
 						if err != nil {
-							return api.OnResolveResult{}, err
+							return esbuild.OnResolveResult{}, err
 						}
 						if r.version != "dev" && pkgjson.Version != r.version {
-							return api.OnResolveResult{}, fmt.Errorf("The sst package your application is importing (%v) does not match the sst cli version (%v). Make sure the version of sst in package.json is correct across your entire repo.", pkgjson.Version, r.version)
+							return esbuild.OnResolveResult{}, fmt.Errorf("The sst package your application is importing (%v) does not match the sst cli version (%v). Make sure the version of sst in package.json is correct across your entire repo.", pkgjson.Version, r.version)
 						}
 					}
-					return api.OnResolveResult{Path: pkg.Path}, nil
+					return esbuild.OnResolveResult{Path: pkg.Path}, nil
 				})
 			},
 		},
@@ -99,30 +110,35 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 	if properties.Plugins != "" {
 		plugins = append(plugins, plugin(properties.Plugins))
 	}
-	external := append(forceExternal, func() []string {
-		result := make([]string, 0, len(properties.Install))
-		for key := range properties.Install {
-			result = append(result, key)
-		}
-		return result
-	}()...)
+	external := append(forceExternal, installPackageNames(properties.Install)...)
 	external = append(external, properties.ESBuild.External...)
+	slog.Debug("esbuild options",
+		"target", properties.ESBuild.Target,
+		"sourcemap", strings.Trim(string(properties.ESBuild.Sourcemap), "\""),
+		"keepNames", properties.ESBuild.KeepNames != nil && *properties.ESBuild.KeepNames,
+		"define", properties.ESBuild.Define,
+		"banner", properties.ESBuild.Banner,
+		"external", properties.ESBuild.External,
+		"mainFields", properties.ESBuild.MainFields,
+		"conditions", properties.ESBuild.Conditions,
+	)
 	options := esbuild.BuildOptions{
 		EntryPoints: []string{file},
 		Platform:    esbuild.PlatformNode,
 		External:    external,
 		Loader:      loader,
-		KeepNames:   true,
+		KeepNames:   properties.ESBuild.ResolveKeepNames(true),
 		Bundle:      true,
 		Splitting:   properties.Splitting,
 		Metafile:    true,
 		Outfile:     target,
 		Plugins:     plugins,
-		Sourcemap:   esbuild.SourceMapLinked,
+		Sourcemap:   properties.ESBuild.ResolveSourcemap(esbuild.SourceMapLinked),
 		Write:       true,
 		Format:      esbuild.FormatESModule,
-		Target:      esbuild.ESNext,
-		MainFields:  []string{"module", "main"},
+		Target:      properties.ESBuild.ResolveTarget(targetMap[input.Runtime]),
+		MainFields:  properties.ESBuild.ResolveMainFields([]string{"module", "main"}),
+		Conditions:  properties.ESBuild.ResolveConditions(nil),
 		Banner: map[string]string{
 			"js": strings.Join([]string{
 				`import { createRequire as topLevelCreateRequire } from 'module';`,
@@ -134,17 +150,13 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 			}, "\n"),
 		},
 		NodePaths: properties.ESBuild.NodePaths,
+		Define:    properties.ESBuild.Define,
 	}
 
 	if !isESM {
 		options.Format = esbuild.FormatCommonJS
-		options.Target = esbuild.ESNext
 		options.Banner["js"] = properties.Banner
-		options.MainFields = []string{"main"}
-	}
-
-	if properties.ESBuild.Target != 0 {
-		options.Target = properties.ESBuild.Target
+		options.MainFields = properties.ESBuild.ResolveMainFields([]string{"main"})
 	}
 
 	if properties.Splitting {
@@ -153,6 +165,7 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 			".js": ".mjs",
 		}
 		options.Outfile = ""
+		options.EntryNames = "bundle"
 	}
 
 	if !input.Dev {
@@ -166,12 +179,17 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		}
 	}
 
-	if properties.ESBuild.Target != 0 {
-		options.Target = properties.ESBuild.Target
-	}
-
 	var result esbuild.BuildResult
 
+	slog.Debug("esbuild resolved options",
+		"target", options.Target,
+		"sourcemap", options.Sourcemap,
+		"keepNames", options.KeepNames,
+		"define", options.Define,
+		"mainFields", options.MainFields,
+		"conditions", options.Conditions,
+	)
+	log.Info("running esbuild")
 	if !input.Dev {
 		context, _ := esbuild.Context(options)
 		result = context.Rebuild()
@@ -187,6 +205,7 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		result = match.(esbuild.BuildContext).Rebuild()
 		r.results.Store(input.FunctionID, result)
 	}
+	log.Info("esbuild finished")
 
 	errors := []string{}
 	for _, error := range result.Errors {
@@ -197,10 +216,10 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		errors = append(errors, text)
 	}
 	for _, error := range result.Errors {
-		slog.Error("esbuild error", "error", error)
+		log.Error("esbuild error", "error", error)
 	}
 	for _, warning := range result.Warnings {
-		slog.Error("esbuild error", "error", warning)
+		log.Error("esbuild error", "error", warning)
 	}
 
 	if input.Dev {
@@ -222,13 +241,7 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		var metafile js.Metafile
 		json.Unmarshal([]byte(result.Metafile), &metafile)
 
-		installPackages := func() []string {
-			packages := make([]string, 0, len(properties.Install))
-			for pkg := range properties.Install {
-				packages = append(packages, pkg)
-			}
-			return packages
-		}()
+		installPackages := installPackageNames(properties.Install)
 		for _, pkg := range forceExternal {
 			if slices.Contains(properties.ESBuild.External, pkg) {
 				continue
@@ -243,7 +256,8 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		}
 
 		if len(installPackages) > 0 {
-			src, err := fs.FindUp(filepath.Dir(target), "package.json")
+			log.Info("installing", "packages", installPackages)
+			src, err := fs.FindUp(filepath.Dir(file), "package.json")
 			if err != nil {
 				return nil, err
 			}
@@ -259,14 +273,7 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 			}
 			dependencies := map[string]string{}
 			for _, pkg := range installPackages {
-				if val, ok := properties.Install[pkg]; ok {
-					dependencies[pkg] = val
-				} else {
-					dependencies[pkg] = "*"
-				}
-				if parsed.Dependencies[pkg] != "" {
-					dependencies[pkg] = parsed.Dependencies[pkg]
-				}
+				dependencies[pkg] = resolveInstallVersion(pkg, properties.Install, parsed)
 			}
 			outPkg := filepath.Join(input.Out(), "package.json")
 			outFile, err := os.Create(outPkg)
@@ -280,6 +287,7 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 
 			cmd := []string{
 				"install",
+				// npm will refuse to install packages if platform does not match
 				"--force",
 				"--platform=linux",
 				"--os=linux",
@@ -295,10 +303,13 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 			}
 			proc := process.Command("npm", cmd...)
 			proc.Dir = input.Out()
-			err = proc.Run()
+			log.Info("running npm", "cmd", cmd)
+			output, err := proc.CombinedOutput()
+			slog.Info("npm output", "output", string(output))
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("failed to run npm install: %w", err)
 			}
+			log.Info("done installing", "packages", installPackages)
 		}
 	}
 
@@ -307,4 +318,22 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		Errors:     errors,
 		Sourcemaps: sourcemaps,
 	}, nil
+}
+
+func installPackageNames(install map[string]string) []string {
+	result := make([]string, 0, len(install))
+	for pkg := range install {
+		result = append(result, pkg)
+	}
+	return result
+}
+
+func resolveInstallVersion(pkg string, install map[string]string, packageJSON js.PackageJson) string {
+	if version, ok := install[pkg]; ok && version != "" && version != "*" {
+		return version
+	}
+	if version := packageJSON.Dependencies[pkg]; version != "" {
+		return version
+	}
+	return "*"
 }

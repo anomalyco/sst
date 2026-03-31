@@ -5,12 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
-	"strings"
+	"os"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	"github.com/aws/aws-sdk-go-v2/service/ecs/types"
+	"github.com/kballard/go-shellquote"
 	"github.com/sst/sst/v3/cmd/sst/mosaic/aws/bridge"
 	"github.com/sst/sst/v3/pkg/bus"
 	"github.com/sst/sst/v3/pkg/process"
@@ -36,6 +37,10 @@ type TaskLogEvent struct {
 type TaskCompleteEvent struct {
 	TaskID   string
 	WorkerID string
+}
+
+type TaskMissingCommandEvent struct {
+	Name string
 }
 
 func task(ctx context.Context, input input) {
@@ -116,10 +121,20 @@ func task(ctx context.Context, input input) {
 				if !ok {
 					continue
 				}
-				fields := strings.Fields(task.Command)
+				if task.Command == nil {
+					bus.Publish(&TaskMissingCommandEvent{
+						Name: task.Name,
+					})
+					continue
+				}
+				fields, err := shellquote.Split(*task.Command)
+				if err != nil {
+					log.Error("failed to parse command", "err", err)
+					continue
+				}
 				cmd := process.Command(fields[0], fields[1:]...)
 				cmd.Dir = task.Directory
-				cmd.Env = body.Environment
+				cmd.Env = append(os.Environ(), body.Environment...)
 				stdout, _ := cmd.StdoutPipe()
 				stderr, _ := cmd.StderrPipe()
 				go func() {

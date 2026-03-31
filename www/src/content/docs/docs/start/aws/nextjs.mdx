@@ -3,6 +3,12 @@ title: Next.js on AWS with SST
 description: Create and deploy a Next.js app to AWS with SST.
 ---
 
+import { Image } from "astro:assets"
+
+import nextApp from "../../../../../assets/docs/start/start-nextjs-local.png"
+import nextAppContainer from "../../../../../assets/docs/start/start-nextjs-local-container.png"
+import consoleAutodeploy from "../../../../../assets/docs/start/sst-console-autodeploy.png"
+
 There are two ways to deploy a Next.js app to AWS with SST.
 
 1. [Serverless with OpenNext](#serverless)
@@ -44,7 +50,7 @@ npx create-next-app@latest aws-nextjs
 cd aws-nextjs
 ```
 
-We are picking all the default options.
+We are picking **TypeScript** and not selecting **ESLint**.
 
 ---
 
@@ -215,7 +221,7 @@ npm install @aws-sdk/client-s3 @aws-sdk/s3-request-presigner
 
 Head over to the local Next.js app in your browser, `http://localhost:3000` and try **uploading an image**. You should see it upload and then download the image.
 
-![SST Next.js app local](../../../../../assets/docs/start/start-nextjs-local.png)
+<Image src={nextApp} alt="SST Next.js app local" />
 
 ---
 
@@ -254,7 +260,7 @@ npx create-next-app@latest aws-nextjs-container
 cd aws-nextjs-container
 ```
 
-We are picking all the default options.
+We are picking **TypeScript** and not selecting **ESLint**.
 
 ---
 
@@ -274,12 +280,13 @@ Select the defaults and pick **AWS**. This'll create a `sst.config.ts` file in y
 
 To deploy our Next.js app in a container, we'll use [AWS Fargate](https://aws.amazon.com/fargate/) with [Amazon ECS](https://aws.amazon.com/ecs/). Replace the `run` function in your `sst.config.ts`.
 
-```js title="sst.config.ts" {9-11}
+```js title="sst.config.ts" {10-12}
 async run() {
   const vpc = new sst.aws.Vpc("MyVpc");
   const cluster = new sst.aws.Cluster("MyCluster", { vpc });
 
-  cluster.addService("MyService", {
+  new sst.aws.Service("MyService", {
+    cluster,
     loadBalancer: {
       ports: [{ listen: "80/http", forward: "3000/http" }],
     },
@@ -293,7 +300,7 @@ async run() {
 This creates a VPC, and an ECS Cluster with a Fargate service in it.
 
 :::note
-By default, your service in not deployed when running in _dev_.
+By default, your service is not deployed when running in _dev_.
 :::
 
 The `dev.command` tells SST to instead run our Next.js app locally in dev mode.
@@ -331,7 +338,7 @@ Add this below the `Vpc` component.
 Now, link the bucket to the container.
 
 ```ts title="sst.config.ts" {3}
-cluster.addService("MyService", {
+new sst.aws.Service("MyService", {
   // ...
   link: [bucket],
 });
@@ -460,7 +467,7 @@ npm install @aws-sdk/client-s3 @aws-sdk/s3-request-presigner
 
 Head over to the local Next.js app in your browser, `http://localhost:3000` and try **uploading an image**. You should see it upload and then download the image.
 
-![SST Next.js app local](../../../../../assets/docs/start/start-nextjs-local-container.png)
+<Image src={nextAppContainer} alt="SST Next.js app local" />
 
 ---
 
@@ -493,10 +500,12 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# If static pages need linked resources
-# ARG SST_RESOUCE_MyResource
-
+# If static pages do not need linked resources
 RUN npm run build
+
+# If static pages need linked resources
+# RUN --mount=type=secret,id=SST_RESOURCE_MyResource,env=SST_RESOURCE_MyResource \
+#   npm run build
 
 # Stage 3: Production server
 FROM base AS runner
@@ -518,7 +527,7 @@ You need to be running [Docker Desktop](https://www.docker.com/products/docker-d
 If your Next.js app is building static pages that need linked resources, you can need to declare them in your `Dockerfile`. For example, if we need the linked `MyBucket` component from above.
 
 ```dockerfile
-ARG SST_RESOURCE_MyBucket
+RUN --mount=type=secret,id=SST_RESOURCE_MyBucket,env=SST_RESOURCE_MyBucket npm run build
 ```
 
 You'll need to do this for each linked resource.
@@ -547,7 +556,7 @@ Congrats! Your app should now be live!
 
 As a next step, you can setup the [SST Console](/docs/console/) to _**git push to deploy**_ your app and view logs from it.
 
-![SST Console Autodeploy](../../../../../assets/docs/start/sst-console-autodeploy.png)
+<Image src={consoleAutodeploy} alt="SST Console Autodeploy" />
 
 You can [create a free account](https://console.sst.dev) and connect it to your AWS account.
 

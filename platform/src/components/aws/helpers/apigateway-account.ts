@@ -13,13 +13,14 @@ export function setupApiGatewayAccount(
   const account = apigateway.Account.get(
     `${namePrefix}APIGatewayAccount`,
     "APIGatewayAccount",
+    undefined,
+    { provider: opts.provider },
   );
 
   return account.cloudwatchRoleArn.apply((arn) => {
     if (arn) return account;
 
     const partition = getPartitionOutput(undefined, opts).partition;
-    $print("!@#!@#!@#!@# PARTITION", partition);
     const role = new iam.Role(
       `APIGatewayPushToCloudWatchLogsRole`,
       {
@@ -39,11 +40,15 @@ export function setupApiGatewayAccount(
           interpolate`arn:${partition}:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs`,
         ],
       },
-      { retainOnDelete: true },
+      { retainOnDelete: true, provider: opts.provider },
     );
 
-    return new apigateway.Account(`${namePrefix}APIGatewayAccountSetup`, {
-      cloudwatchRoleArn: role.arn,
-    });
+    return new apigateway.Account(
+      `${namePrefix}APIGatewayAccountSetup`,
+      {
+        cloudwatchRoleArn: role.arn,
+      },
+      { provider: opts.provider },
+    );
   });
 }

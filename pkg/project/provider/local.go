@@ -3,10 +3,13 @@ package provider
 import (
 	"bytes"
 	"fmt"
-	"github.com/sst/sst/v3/pkg/global"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
+
+	"github.com/sst/sst/v3/internal/util"
+	"github.com/sst/sst/v3/pkg/global"
 )
 
 type LocalHome struct {
@@ -17,6 +20,10 @@ func NewLocalHome() *LocalHome {
 }
 
 func (l *LocalHome) Bootstrap() error {
+	return nil
+}
+
+func (l *LocalHome) cleanup(key, app, stage string) error {
 	return nil
 }
 
@@ -80,4 +87,32 @@ func (c *LocalHome) getPassphrase(app, stage string) (string, error) {
 
 func (l *LocalHome) pathForData(key, app, stage string) string {
 	return filepath.Join(global.ConfigDir(), "state", key, app, fmt.Sprintf("%v.json", stage))
+}
+
+func (a *LocalHome) listStages(app string) ([]string, error) {
+	path := filepath.Join(global.ConfigDir(), "state", "app", app)
+
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var stages []string
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".json") {
+			stageName := strings.TrimSuffix(entry.Name(), ".json")
+			if hasResources(a, app, stageName) {
+				stages = append(stages, stageName)
+			}
+		}
+	}
+
+	return stages, nil
+}
+
+func (c *LocalHome) info() (util.KeyValuePairs[string], error) {
+	return util.KeyValuePairs[string]{
+		{Key: "Provider", Value: "Local"},
+		{Key: "Path", Value: global.ConfigDir()},
+	}, nil
 }

@@ -7,7 +7,7 @@ lastUpdated: 2024-11-08
 pagefind: false
 ---
 
-import { YouTube } from '@astro-community/astro-embed-youtube';
+import { YouTube } from "@astro-community/astro-embed-youtube";
 
 Historically, SST has primarily supported deploying serverless applications. But over the last month we've slowly expanded native support for containers on AWS.
 
@@ -28,7 +28,8 @@ There's a new family of components that'll help you build with containers.
   ```ts title="sst.config.ts"
   const cluster = new sst.aws.Cluster("MyCluster", { vpc });
 
-  cluster.addService("MyService", {
+  new sst.aws.Service("MyService", {
+    cluster,
     loadBalancer: {
       ports: [{ listen: "80/http", forward: "3000/http" }],
     },
@@ -50,7 +51,7 @@ There's a new family of components that'll help you build with containers.
 
 - [`Postgres`](/docs/component/aws/postgres), [`Redis`](/docs/component/aws/redis), & [`Efs`](/docs/component/aws/efs)
 
-   While these components are not specifically for containers, they've been designed to work well with the above `Cluster` and `Vpc` components. 
+  While these components are not specifically for containers, they've been designed to work well with the above `Cluster` and `Vpc` components.
 
 ---
 

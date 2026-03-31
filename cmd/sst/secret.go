@@ -8,7 +8,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/fatih/color"
 	"github.com/sst/sst/v3/cmd/sst/cli"
 	"github.com/sst/sst/v3/cmd/sst/mosaic/dev"
 	"github.com/sst/sst/v3/cmd/sst/mosaic/ui"
@@ -79,13 +78,16 @@ var CmdSecretList = &cli.Command{
 			return util.NewReadableError(nil, "No secrets found")
 		}
 		if len(fallback) > 0 {
-			color.White("# fallback")
+			fmt.Println(ui.TEXT_DIM.Render("# fallback"))
 			for key, value := range fallback {
 				fmt.Println(key + "=" + value)
 			}
 		}
 		if len(secrets) > 0 {
-			color.White("# %s/%s", p.App().Name, p.App().Stage)
+			if len(fallback) > 0 {
+				fmt.Println()
+			}
+			fmt.Println(ui.TEXT_DIM.Render(fmt.Sprintf("# %s/%s", p.App().Name, p.App().Stage)))
 			for key, value := range secrets {
 				fmt.Println(key + "=" + value)
 			}
@@ -115,7 +117,7 @@ var CmdSecretLoad = &cli.Command{
 			"Optionally, set the secrets in a specific stage.",
 			"",
 			"```bash frame=\"none\"",
-			"sst secret load ./prod.env --stage production",
+			"sst secret load --stage production ./prod.env",
 			"```",
 			"",
 			"Set these secrets as _fallback_ values.",
@@ -123,6 +125,16 @@ var CmdSecretLoad = &cli.Command{
 			"```bash frame=\"none\" frame=\"none\"",
 			"sst secret load ./secrets.env --fallback",
 			"```",
+			"",
+			"This command can be paired with the `secret list` command to get all the",
+			"secrets from one stage and load them into another.",
+			"",
+			"```bash frame=\"none\"",
+			"sst secret list > ./secrets.env",
+			"sst secret load --stage production ./secrets.env",
+			"```",
+			"",
+			"This works because `secret list` outputs the secrets in the right format.",
 		}, "\n"),
 	},
 	Args: []cli.Argument{
@@ -174,14 +186,34 @@ var CmdSecretLoad = &cli.Command{
 		scanner := bufio.NewScanner(file)
 		for scanner.Scan() {
 			line := scanner.Text()
-			if strings.HasPrefix(line, "#") {
+			// Skip comments and empty lines
+			if strings.HasPrefix(line, "#") || strings.TrimSpace(line) == "" {
 				continue
 			}
 			parts := strings.SplitN(line, "=", 2)
 			if len(parts) == 2 {
-				ui.Success(fmt.Sprintf("Setting %s", parts[0]))
 				key := strings.TrimSpace(parts[0])
 				value := strings.TrimSpace(parts[1])
+
+				// Handle quoted values (both single and double quotes)
+				if len(value) >= 2 {
+					// Check for double quotes
+					if strings.HasPrefix(value, "\"") && strings.HasSuffix(value, "\"") {
+						// Remove the quotes
+						value = value[1 : len(value)-1]
+						// Handle escaped characters within double quotes
+						value = strings.ReplaceAll(value, "\\\"", "\"")
+						value = strings.ReplaceAll(value, "\\n", "\n")
+						value = strings.ReplaceAll(value, "\\r", "\r")
+						value = strings.ReplaceAll(value, "\\t", "\t")
+						// Check for single quotes
+					} else if strings.HasPrefix(value, "'") && strings.HasSuffix(value, "'") {
+						// Remove the quotes - single quotes typically don't process escapes in .env files
+						value = value[1 : len(value)-1]
+					}
+				}
+
+				ui.Success(fmt.Sprintf("Setting %s", key))
 				secrets[key] = value
 			}
 		}
@@ -255,7 +287,7 @@ var CmdSecretSet = &cli.Command{
 			"Then set the secret from the file.",
 			"",
 			"```bash frame=\"none\"",
-			"sst secret set Key -- \"$(cat tmp.txt)\"",
+			"sst secret set Key < tmp.txt",
 			"```",
 			"",
 			"And make sure to delete the temp file.",
@@ -316,6 +348,9 @@ var CmdSecretSet = &cli.Command{
 				input, err := reader.ReadString('\n')
 				if err != nil {
 					if err == io.EOF {
+						if input != "" {
+							value += input
+						}
 						break
 					}
 					return err

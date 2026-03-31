@@ -18,33 +18,41 @@ type DeployFailedEvent struct {
 	Error string
 }
 
-func Start(ctx context.Context, p *project.Project, server *server.Server) error {
-	defer slog.Info("deployer done")
+func Start(ctx context.Context, p *project.Project, server *server.Server, policyPath string) error {
+	log := slog.Default().With("service", "deployer")
+	log.Info("starting")
+	defer log.Info("done")
 	watchedFiles := make(map[string]bool)
 	events := bus.Subscribe(ctx, &watcher.FileChangedEvent{}, &DeployRequestedEvent{}, &project.BuildSuccessEvent{})
+	lastBuildHash := ""
 	for {
-		slog.Info("deployer waiting for trigger")
+		log.Info("waiting for trigger")
 		select {
 		case <-ctx.Done():
 			return nil
 		case evt := <-events:
 			switch evt := evt.(type) {
 			case *project.BuildSuccessEvent:
+				lastBuildHash = evt.Hash
+				log.Info("build hash", "hash", lastBuildHash)
 				for _, file := range evt.Files {
 					watchedFiles[file] = true
 				}
+				continue
 			case *watcher.FileChangedEvent, *DeployRequestedEvent:
 				if evt, ok := evt.(*watcher.FileChangedEvent); !ok || watchedFiles[evt.Path] {
-					slog.Info("deployer deploying")
+					log.Info("deploying")
 					err := p.Run(ctx, &project.StackInput{
 						Command:    "deploy",
 						Dev:        true,
 						ServerPort: server.Port,
+						SkipHash:   lastBuildHash,
+						PolicyPath: policyPath,
 					})
 					if err != nil {
-						slog.Error("stack deploy error", "error", err)
+						log.Error("stack deploy error", "error", err)
 						transformed := errors.Transform(err)
-						if _, ok := transformed.(*util.ReadableError); ok {
+						if _, ok := transformed.(*util.ReadableError); ok && transformed.Error() != "" {
 							bus.Publish(&DeployFailedEvent{Error: transformed.Error()})
 						}
 					}

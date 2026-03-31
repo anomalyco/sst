@@ -1,5 +1,11 @@
 /// <reference path="./.sst/platform/config.d.ts" />
 
+/**
+ * ## Zero sync engine
+ *
+ * Deploy the Zero sync engine with a Postgres database configured for logical
+ * replication in a VPC cluster.
+ */
 export default $config({
   app(input) {
     return {
@@ -38,7 +44,8 @@ export default $config({
     });
     const cluster = new sst.aws.Cluster("Cluster", { vpc });
     const connection = $interpolate`postgres://${db.username}:${db.password}@${db.host}:${db.port}`;
-    cluster.addService("Zero", {
+    new sst.aws.Service("Zero", {
+      cluster,
       image: "rocicorp/zero",
       dev: {
         command: "npx zero-cache",

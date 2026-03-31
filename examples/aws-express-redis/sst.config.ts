@@ -7,8 +7,9 @@
  *
  * This deploys Express as a Fargate service to ECS and it's linked to Redis.
  *
- * ```ts title="sst.config.ts" {8}
- * cluster.addService("MyService", {
+ * ```ts title="sst.config.ts" {9}
+ * new sst.aws.Service("MyService", {
+ *   cluster,
  *   loadBalancer: {
  *     ports: [{ listen: "80/http" }],
  *   },
@@ -53,7 +54,8 @@ export default $config({
     const redis = new sst.aws.Redis("MyRedis", { vpc });
     const cluster = new sst.aws.Cluster("MyCluster", { vpc });
 
-    cluster.addService("MyService", {
+    new sst.aws.Service("MyService", {
+      cluster,
       link: [redis],
       loadBalancer: {
         ports: [{ listen: "80/http" }],

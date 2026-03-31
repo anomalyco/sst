@@ -3,6 +3,8 @@ title: Components
 description: Components are the building blocks of your app.
 ---
 
+import VideoAside from "../../../components/VideoAside.astro";
+
 Every SST app is made up of components. These are logical units that represent features in your app; like your frontends, APIs, databases, or queues.
 
 There are two types of components in SST:
@@ -270,9 +272,7 @@ For example, the `Function` component exposes the following [nodes](/docs/compon
 
 The properties of a component are typically of a special type that looks something like, _`Output<primitive>`_.
 
-:::tip
-Output types are what allows SST to deploy your resources as concurrently as possible.
-:::
+<VideoAside title="Watch a video on how inputs and outputs work" href="https://youtu.be/zQTtZS4dIbQ" />
 
 These are values that are not available yet and will be resolved as the deploy progresses. However, these outputs can be used as args in other components.
 

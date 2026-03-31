@@ -20,7 +20,8 @@ export default $config({
     const vpc = new sst.aws.Vpc("MyVpc", { bastion: true });
 
     const cluster = new sst.aws.Cluster("MyCluster", { vpc });
-    cluster.addService("MyService", {
+    new sst.aws.Service("MyService", {
+      cluster,
       loadBalancer: {
         public: false,
         ports: [{ listen: "80/http" }],

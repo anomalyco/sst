@@ -6,6 +6,7 @@ export default $config({
       name: "www",
       removal: input?.stage === "production" ? "retain" : "remove",
       home: "aws",
+      version: "3.13.20",
     };
   },
   console: {
@@ -19,12 +20,14 @@ export default $config({
           return { stage: "production" };
         }
       },
-      workflow(ctx) {
-        ctx.install();
-        ctx.shell("goenv install 1.21.3 && goenv global 1.21.3");
-        ctx.shell("cd ../platform && ./scripts/build");
-        ctx.shell("bun i sst-linux-x64");
-        ctx.deploy();
+      async workflow({ $, event }) {
+        await $`bun i`;
+        await $`goenv install 1.21.3 && goenv global 1.21.3`;
+        await $`cd ../platform && ./scripts/build`;
+        await $`bun i sst-linux-x64`;
+        event.action === "removed"
+          ? await $`bun sst remove`
+          : await $`bun sst deploy`;
       },
     },
   },
@@ -57,6 +60,73 @@ export default $config({
               `    statusDescription: 'Found',`,
               `    headers: {`,
               `      location: { value: "https://guide.sst.dev" + request.uri }`,
+              `    },`,
+              `  };`,
+              `}`,
+            ].join("\n"),
+          }).arn,
+        },
+      ],
+      forwardedValues: {
+        queryString: true,
+        headers: ["Origin"],
+        cookies: { forward: "none" },
+      },
+    };
+
+    // Redirect /u/* to api.console.sst.dev/link/*
+    const redirectToConsoleBehavior = {
+      targetOriginId: "redirect",
+      viewerProtocolPolicy: "redirect-to-https",
+      allowedMethods: ["GET", "HEAD", "OPTIONS"],
+      cachedMethods: ["GET", "HEAD"],
+      functionAssociations: [
+        {
+          eventType: "viewer-request",
+          functionArn: new aws.cloudfront.Function("ConsoleRedirect", {
+            runtime: "cloudfront-js-2.0",
+            code: [
+              `async function handler(event) {`,
+              `  const request = event.request;`,
+              // ie. request.uri is /u/123
+              `  return {`,
+              `    statusCode: 302,`,
+              `    statusDescription: 'Found',`,
+              `    headers: {`,
+              `      location: { value: "https://api.console.sst.dev/link" + request.uri }`,
+              `    },`,
+              `  };`,
+              `}`,
+            ].join("\n"),
+          }).arn,
+        },
+      ],
+      forwardedValues: {
+        queryString: true,
+        headers: ["Origin"],
+        cookies: { forward: "none" },
+      },
+    };
+
+    // Redirect /install to https://raw.githubusercontent.com/sst/sst/dev/install
+    const redirectToInstallBehavior = {
+      targetOriginId: "redirect",
+      viewerProtocolPolicy: "redirect-to-https",
+      allowedMethods: ["GET", "HEAD", "OPTIONS"],
+      cachedMethods: ["GET", "HEAD"],
+      functionAssociations: [
+        {
+          eventType: "viewer-request",
+          functionArn: new aws.cloudfront.Function("InstallRedirect", {
+            runtime: "cloudfront-js-2.0",
+            code: [
+              `async function handler(event) {`,
+              `  const request = event.request;`,
+              `  return {`,
+              `    statusCode: 302,`,
+              `    statusDescription: 'Found',`,
+              `    headers: {`,
+              `      location: { value: "https://raw.githubusercontent.com/sst/sst/dev/install" }`,
               `    },`,
               `  };`,
               `}`,
@@ -106,15 +176,37 @@ export default $config({
       domain:
         $app.stage === "production"
           ? {
-            name: domain,
-            redirects: [
-              "www.sst.dev",
-              "ion.sst.dev",
-              "serverless-stack.com",
-              "www.serverless-stack.com",
-            ],
-          }
+              name: domain,
+              redirects: [
+                "www.sst.dev",
+                "ion.sst.dev",
+                "serverless-stack.com",
+                "www.serverless-stack.com",
+              ],
+            }
           : domain,
+      edge: {
+        // Rewrite /docs/* to .md when Accept: text/markdown (for AI agents)
+        viewerRequest: {
+          injection: [
+            `var uri = event.request.uri;`,
+            `var accept = (event.request.headers['accept'] || {}).value || '';`,
+            `if (uri.startsWith('/docs') && accept.includes('text/markdown') && !/\\.[a-z0-9]+$/i.test(uri)) {`,
+            `  event.request.uri = (uri === '/docs' || uri === '/docs/')`,
+            `    ? '/docs/index.md'`,
+            `    : uri.replace(/\\/$/, '') + '.md';`,
+            `}`,
+          ].join("\n"),
+        },
+        // Fix Content-Type on .md responses (S3 serves them as octet-stream)
+        viewerResponse: {
+          injection: [
+            `if (event.request.uri.endsWith('.md')) {`,
+            `  event.response.headers['content-type'] = { value: 'text/markdown; charset=utf-8' };`,
+            `}`,
+          ].join("\n"),
+        },
+      },
       transform: {
         cdn: (args) => {
           args.origins = $output(args.origins).apply((origins) => [
@@ -132,20 +224,53 @@ export default $config({
             },
           ]);
           args.orderedCacheBehaviors = $output(
-            args.orderedCacheBehaviors
+            args.orderedCacheBehaviors,
           ).apply((cacheBehaviors) => [
             ...(cacheBehaviors || []),
             { pathPattern: "/blog/*.html", ...stripHtmlBehavior },
+            { pathPattern: "/install", ...redirectToInstallBehavior },
             { pathPattern: "/examples*", ...redirectToGuideBehavior },
             { pathPattern: "/chapters*", ...redirectToGuideBehavior },
             { pathPattern: "/archives*", ...redirectToGuideBehavior },
+            { pathPattern: "/u/*", ...redirectToConsoleBehavior },
           ]);
         },
       },
     });
 
+    // Redirect docs.sst.dev to sst.dev/docs
+    if ($app.stage === "production") {
+      new sst.aws.Router("DocsRouter", {
+        domain: {
+          name: "docs.sst.dev",
+          aliases: ["docs.serverless-stack.com"],
+        },
+        routes: {
+          "/*": {
+            url: `https://sst.dev/docs`,
+            edge: {
+              viewerRequest: {
+                injection: `
+return {
+  statusCode: 301,
+  statusDescription: 'Moved Permanently',
+  headers: {
+    location: { value: "https://sst.dev/docs" }
+  }
+};
+              `,
+              },
+            },
+          },
+        },
+      });
+    }
+
+    // Redirect telemetry.ion.sst.dev to us.i.posthog.com
     new sst.aws.Router("TelemetryRouter", {
-      domain: "telemetry.ion." + domain,
+      domain: {
+        name: "telemetry.ion." + domain,
+      },
       routes: {
         "/*": "https://us.i.posthog.com",
       },

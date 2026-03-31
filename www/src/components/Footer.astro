@@ -4,12 +4,18 @@ import type { Props } from '@astrojs/starlight/props';
 import { Icon } from '@astrojs/starlight/components';
 import config from '../../config';
 
-const slug = Astro.props.entry.slug;
-const { lang, lastUpdated } = Astro.props;
-const { template } = Astro.props.entry.data;
+const slug = Astro.url.pathname.replace(/^\//, "").replace(/\/$/, "");
 const editLink = userConfig.editLink.baseUrl;
 
-let editUrl = Astro.props.editUrl;
+const {
+  lang,
+  lastUpdated,
+	entry: {
+		data: { template },
+	},
+} = Astro.locals.starlightRoute;
+
+let editUrl = Astro.locals.starlightRoute.editUrl;
 
 // Change path for component source files
 if (slug.startsWith("docs/component/")) {

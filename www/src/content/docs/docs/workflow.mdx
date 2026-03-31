@@ -126,6 +126,8 @@ There are some exceptions to this. You might have resources that are not defined
 
 Let's say you wanted your function from the above example to upload a file to the S3 bucket, you'd need to hardcode the name of the bucket in your API.
 
+<VideoAside title="Watch a video on linking resources" href="https://youtu.be/s8cWklU4Akw" />
+
 SST avoids this by allowing you to **link resources** together.
 
 ```ts title="sst.config.ts" {3}
@@ -219,7 +221,7 @@ So if you:
 
 You will now have two apps in your AWS account called `my-sst-app` and `my-new-sst-app`.
 
-If you want to rename your app, you'll need to remove the old app first and then deploy a new one with the new name.
+If you want to rename your app, you'll need to [remove](/docs/workflow/#remove) the old app first and then deploy a new one with the new name.
 
 ---
 
@@ -232,7 +234,7 @@ It's useful to have multiple versions of your app because it lets you make chang
 You create a new stage by deploying to it with the `--stage <name>` CLI option. The stage name is used as a namespace to create a new version of your app. It's similar to how the app name is used as a namespace.
 
 :::caution
-To rename a stage, you'll need to remove the resources from the old one and deploy to the new one.
+To rename a stage, you'll need to [remove](/docs/workflow/#remove) the resources from the old one and deploy to the new one.
 :::
 
 Similar to app names, stages cannot be renamed. So if you wanted to rename a `development` stage to `dev`; you'll need to first remove `development` and then deploy `dev`.
@@ -252,7 +254,7 @@ We'll look at this in detail below.
 Most resources that are created in AWS (and many other providers) belong to a specific region. So when you deploy your app, it's deployed to a specific region.
 
 :::caution
-To switch regions, you'll need to remove the resources from one region and deploy to the new one.
+To switch regions, you'll need to [remove](/docs/workflow/#remove) the resources from one region and deploy to the new one.
 :::
 
 For AWS, the region comes from your AWS credentials but it can be specified in the `sst.config.ts`.
@@ -347,6 +349,8 @@ removal: input?.stage === "production" ? "retain" : "remove",
 ```
 
 This is telling SST that if the stage is called `production` then on remove, retain critical resources like buckets and databases. This should avoid any accidental data loss.
+
+<VideoAside title="Watch a video on how to protect your prod resources" href="https://youtu.be/fb6UBGwgDuA" />
 
 Learn more about [removal policies](/docs/reference/config/#removal).
 

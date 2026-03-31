@@ -44,8 +44,12 @@ func Start(
 			if time.Since(now) > time.Second*10 {
 				return ErrAppsyncNotReady
 			}
-			time.Sleep(time.Second)
-			continue
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-time.After(time.Second):
+				continue
+			}
 		}
 		break
 	}

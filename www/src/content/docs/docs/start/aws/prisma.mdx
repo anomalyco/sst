@@ -125,10 +125,11 @@ This will run the given command in dev.
 
 To deploy our Express app, let's add an [AWS Fargate](https://aws.amazon.com/fargate/) container with [Amazon ECS](https://aws.amazon.com/ecs/). Add this at the end of your `sst.config.ts`.
 
-```ts title="sst.config.ts" {5}
+```ts title="sst.config.ts" {6}
 const cluster = new sst.aws.Cluster("MyCluster", { vpc });
 
-cluster.addService("MyService", {
+new sst.aws.Service("MyService", {
+  cluster,
   link: [rds],
   environment: { DATABASE_URL },
   loadBalancer: {

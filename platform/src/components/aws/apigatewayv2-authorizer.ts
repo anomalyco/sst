@@ -9,7 +9,8 @@ import { ApiGatewayV2AuthorizerArgs } from "./apigatewayv2";
 import { apigatewayv2, lambda } from "@pulumi/aws";
 import { VisibleError } from "../error";
 import { toSeconds } from "../duration";
-import { Function } from "./function";
+import { functionBuilder } from "./helpers/function-builder";
+import { splitQualifiedFunctionArn } from "./helpers/arn";
 
 export interface AuthorizerArgs extends ApiGatewayV2AuthorizerArgs {
   /**
@@ -64,7 +65,7 @@ export class ApiGatewayV2Authorizer extends Component {
     validateSingleAuthorizer();
     const fn = createFunction();
     const authorizer = createAuthorizer();
-    const permission = createPermission();
+    createPermission();
 
     this.authorizer = authorizer;
 
@@ -85,9 +86,15 @@ export class ApiGatewayV2Authorizer extends Component {
     function createFunction() {
       if (!lamb) return;
 
-      return Function.fromDefinition(`${name}Function`, lamb.function, {
-        description: interpolate`${api.name} authorizer`,
-      });
+      return functionBuilder(
+        `${name}Handler`,
+        lamb.function,
+        {
+          description: interpolate`${api.name} authorizer`,
+        },
+        undefined,
+        { parent: self },
+      );
     }
 
     function createAuthorizer() {
@@ -108,7 +115,7 @@ export class ApiGatewayV2Authorizer extends Component {
                   identitySources: lamb.apply(
                     (lamb) => lamb.identitySources ?? [defaultIdentitySource],
                   ),
-                  authorizerUri: fn!.nodes.function.invokeArn,
+                  authorizerUri: fn!.invokeArn,
                   ...(args.type === "http"
                     ? {
                         authorizerResultTtlInSeconds: lamb.apply((lamb) =>
@@ -148,7 +155,8 @@ export class ApiGatewayV2Authorizer extends Component {
         `${name}Permission`,
         {
           action: "lambda:InvokeFunction",
-          function: fn.arn,
+          function: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).unqualifiedArn),
+          qualifier: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).qualifier!),
           principal: "apigateway.amazonaws.com",
           sourceArn: interpolate`${api.executionArn}/authorizers/${authorizer.id}`,
         },

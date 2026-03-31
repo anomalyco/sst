@@ -41,6 +41,7 @@ type BuildInput struct {
 		From string `json:"from"`
 		To   string `json:"to"`
 	} `json:"copyFiles"`
+	IsContainer bool `json:"isContainer,omitempty"`
 }
 
 func (input *BuildInput) Out() string {
@@ -151,7 +152,7 @@ func (c *Collection) Build(ctx context.Context, input *BuildInput) (*BuildOutput
 					}
 				}
 			}
-			// copying fiels still happens in node
+			// copying files still happens in node
 			if !input.Dev && false {
 				sourceFile, err := os.Open(from)
 				if err != nil {

@@ -1,0 +1,27 @@
+{
+  "name": "example-basic",
+  "type": "module",
+  "scripts": {
+    "use:base": "sed -i '' 's/baseURL: .*/baseURL: \"\\/solid\",/' app.config.ts",
+    "use:no-base": "sed -i '' 's/baseURL: .*/baseURL: undefined,/' app.config.ts",
+    "build": "vinxi build",
+    "build:base": "npm run use:base && npm run build",
+    "build:no-base": "npm run use:no-base && npm run build",
+    "dev": "vinxi dev",
+    "start": "vinxi start",
+    "version": "vinxi version"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.670.0",
+    "@aws-sdk/s3-request-presigner": "^3.670.0",
+    "@solidjs/meta": "^0.29.4",
+    "@solidjs/router": "^0.15.0",
+    "@solidjs/start": "^1.1.0",
+    "solid-js": "^1.9.5",
+    "sst": "latest",
+    "vinxi": "^0.5.3"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

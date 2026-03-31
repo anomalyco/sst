@@ -113,8 +113,7 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 }
 
 func (r *Runtime) Run(ctx context.Context, input *runtime.RunInput) (runtime.Worker, error) {
-	cmd := process.CommandContext(
-		ctx,
+	cmd := process.Command(
 		filepath.Join(input.Build.Out, input.Build.Handler),
 	)
 	slog.Info("running go run", "server", input.Server)

@@ -3,9 +3,9 @@ import {
   jsonStringify,
   Output,
 } from "@pulumi/pulumi";
-import { Component } from "../component";
+import { Component, Transform, transform } from "../component";
 import { Link } from "../link";
-import { FunctionArgs, Function, Dynamo, CdnArgs, Router } from ".";
+import { FunctionArgs, Function, Dynamo, CdnArgs, Router, RouterArgs } from ".";
 import { functionBuilder } from "./helpers/function-builder";
 import { env } from "../linkable";
 import { Auth as AuthV1 } from "./auth-v1";
@@ -13,8 +13,8 @@ import { Input } from "../input";
 
 export interface AuthArgs {
   /**
-   * The authorizer function.
-   *
+   * The issuer function.
+   * @deprecated renamed to `issuer`
    * @example
    * ```js
    * {
@@ -33,7 +33,52 @@ export interface AuthArgs {
    * }
    * ```
    */
-  authorizer: Input<string | FunctionArgs>;
+  authorizer?: Input<string | FunctionArgs>;
+  /**
+   * The function that's running your OpenAuth server.
+   *
+   * @example
+   * ```js
+   * {
+   *   issuer: "src/auth.handler"
+   * }
+   * ```
+   *
+   * You can also pass in the full `FunctionArgs`.
+   *
+   * ```js
+   * {
+   *   issuer: {
+   *     handler: "src/auth.handler",
+   *     link: [table]
+   *   }
+   * }
+   * ```
+   *
+   * Since the `issuer` function is a Hono app, you want to export it with the Lambda adapter.
+   *
+   * ```ts title="src/auth.ts"
+   * import { handle } from "hono/aws-lambda";
+   * import { issuer } from "@openauthjs/openauth";
+   *
+   * const app = issuer({
+   *   // ...
+   * });
+   *
+   * export const handler = handle(app);
+   * ```
+   *
+   * This `Auth` component will always use the
+   * [`DynamoStorage`](https://openauth.js.org/docs/storage/dynamo/) storage provider.
+   *
+   * :::note
+   * This will always use the `DynamoStorage` storage provider.
+   * :::
+   *
+   * Learn more on the [OpenAuth docs](https://openauth.js.org/docs/issuer/) on how to configure
+   * the `issuer` function.
+   */
+  issuer?: Input<string | FunctionArgs>;
   /**
    * Set a custom domain for your Auth server.
    *
@@ -69,6 +114,40 @@ export interface AuthArgs {
    */
   domain?: CdnArgs["domain"];
   /**
+   * [Transform](/docs/components#transform) how this component creates its underlying
+   * resources.
+   */
+  transform?: {
+    /**
+     * Transform the Router resource created for the custom domain.
+     *
+     * @example
+     *
+     * Attach a WAF to the CloudFront distribution.
+     *
+     * ```ts
+     * new sst.aws.Auth("MyAuth", {
+     *   issuer: "src/auth.handler",
+     *   domain: "auth.example.com",
+     *   transform: {
+     *     router: (args) => {
+     *       args.transform = {
+     *         cdn: {
+     *           transform: {
+     *             distribution: {
+     *               webAclId: "arn:aws:wafv2:...",
+     *             },
+     *           },
+     *         },
+     *       };
+     *     },
+     *   },
+     * });
+     * ```
+     */
+    router?: Transform<RouterArgs>;
+  };
+  /**
    * Force upgrade from `Auth.v1` to the latest `Auth` version. The only valid value
    * is `v2`, which is the version of the new `Auth`.
    *
@@ -89,6 +168,8 @@ export interface AuthArgs {
    *
    * This upgrades your component and the resources it created. You can now optionally
    * remove the prop.
+   *
+   * @internal
    */
   forceUpgrade?: "v2";
 }
@@ -104,28 +185,77 @@ export interface AuthArgs {
  *
  * @example
  *
- * #### Create a Auth server
+ * #### Create an OpenAuth server
  *
  * ```ts title="sst.config.ts"
  * const auth = new sst.aws.Auth("MyAuth", {
- *   authorizer: "src/auth.handler"
+ *   issuer: "src/auth.handler"
  * });
  * ```
  *
+ * Where the `issuer` function might look like this.
+ *
+ * ```ts title="src/auth.ts"
+ * import { handle } from "hono/aws-lambda";
+ * import { issuer } from "@openauthjs/openauth";
+ * import { CodeProvider } from "@openauthjs/openauth/provider/code";
+ * import { subjects } from "./subjects";
+ *
+ * const app = issuer({
+ *   subjects,
+ *   providers: {
+ *     code: CodeProvider()
+ *   },
+ *   success: async (ctx, value) => {}
+ * });
+ *
+ * export const handler = handle(app);
+ * ```
+ *
+ * This `Auth` component will always use the
+ * [`DynamoStorage`](https://openauth.js.org/docs/storage/dynamo/) storage provider.
+ *
+ * Learn more on the [OpenAuth docs](https://openauth.js.org/docs/issuer/) on how to configure
+ * the `issuer` function.
+ *
  * #### Add a custom domain
  *
- * Set a custom domain for your Auth server.
+ * Set a custom domain for your auth server.
  *
- * ```js {2} title="sst.config.ts"
+ * ```js {3} title="sst.config.ts"
  * new sst.aws.Auth("MyAuth", {
- *   authorizer: "src/auth.handler",
+ *   issuer: "src/auth.handler",
  *   domain: "auth.example.com"
+ * });
+ * ```
+ *
+ * #### Link to a resource
+ *
+ * You can link the auth server to other resources, like a function or your Next.js app,
+ * that needs authentication.
+ *
+ * ```ts title="sst.config.ts" {2}
+ * new sst.aws.Nextjs("MyWeb", {
+ *   link: [auth]
+ * });
+ * ```
+ *
+ * Once linked, you can now use it to create an [OpenAuth
+ * client](https://openauth.js.org/docs/client/).
+ *
+ * ```ts title="app/page.tsx" {1,6}
+ * import { Resource } from "sst"
+ * import { createClient } from "@openauthjs/openauth/client"
+ *
+ * export const client = createClient({
+ *   clientID: "nextjs",
+ *   issuer: Resource.MyAuth.url
  * });
  * ```
  */
 export class Auth extends Component implements Link.Linkable {
   private readonly _table: Dynamo;
-  private readonly _authorizer: Output<Function>;
+  private readonly _issuer: Output<Function>;
   private readonly _router?: Router;
   public static v1 = AuthV1;
 
@@ -153,11 +283,11 @@ export class Auth extends Component implements Link.Linkable {
     });
 
     const table = createTable();
-    const authorizer = createAuthorizer();
+    const issuer = createIssuer();
     const router = createRouter();
 
     this._table = table;
-    this._authorizer = authorizer;
+    this._issuer = issuer;
     this._router = router;
     registerOutputs();
 
@@ -179,10 +309,12 @@ export class Auth extends Component implements Link.Linkable {
       );
     }
 
-    function createAuthorizer() {
+    function createIssuer() {
+      const fn = args.authorizer || args.issuer;
+      if (!fn) throw new Error("Auth: issuer field must be set");
       return functionBuilder(
-        `${name}Authorizer`,
-        args.authorizer,
+        `${name}Issuer`,
+        fn,
         {
           link: [table],
           environment: {
@@ -195,6 +327,7 @@ export class Auth extends Component implements Link.Linkable {
         },
         (args) => {
           args.url = {
+            ...(typeof args.url === "object" ? args.url : {}),
             cors: false,
           };
         },
@@ -205,29 +338,37 @@ export class Auth extends Component implements Link.Linkable {
     function createRouter() {
       if (!args.domain) return;
 
-      return new Router(
-        `${name}Router`,
-        {
-          domain: args.domain,
-          routes: {
-            "/*": authorizer.url,
+      const router = new Router(
+        ...transform(
+          args.transform?.router,
+          `${name}Router`,
+          {
+            domain: args.domain,
+            _skipHint: true,
           },
-          _skipHint: true,
-        },
-        { parent: self },
+          { parent: self },
+        ),
       );
+      router.route(
+        "/",
+        issuer.url.apply((url) => url!),
+      );
+
+      return router;
     }
   }
 
   /**
    * The URL of the Auth component.
    *
-   * If the `domain` is set, this is the URL with the custom domain.
-   * Otherwise, it's the autogenerated function URL for the authorizer.
+   * If the `domain` is set, this is the URL of the Router created for the custom domain.
+   * If the `issuer` function is linked to a custom domain, this is the URL of the issuer.
+   * Otherwise, it's the auto-generated function URL for the issuer.
    */
   public get url() {
     return (
-      this._router?.url ?? this._authorizer.url.apply((v) => v.slice(0, -1))
+      this._router?.url ??
+      this._issuer.url.apply((v) => (v?.endsWith("/") ? v.slice(0, -1) : v))
     );
   }
 
@@ -241,9 +382,14 @@ export class Auth extends Component implements Link.Linkable {
        */
       table: this._table,
       /**
-       * The Function component for the authorizer.
+       * The Function component for the issuer.
        */
-      authorizer: this._authorizer,
+      issuer: this._issuer,
+      /**
+       * @deprecated Use `issuer` instead.
+       * The Function component for the issuer.
+       */
+      authorizer: this._issuer,
       /**
        * The Router component for the custom domain.
        */
@@ -259,7 +405,7 @@ export class Auth extends Component implements Link.Linkable {
       },
       include: [
         env({
-          OPENAUTH_ISSUER: this.url,
+          OPENAUTH_ISSUER: this.url.apply((url) => url!),
         }),
       ],
     };

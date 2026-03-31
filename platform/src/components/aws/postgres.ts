@@ -23,11 +23,17 @@ export type { PostgresArgs as PostgresV1Args } from "./postgres-v1";
 export interface PostgresArgs {
   /**
    * The Postgres engine version. Check out the [available versions in your region](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/PostgreSQL.Concepts.General.DBVersions.html).
-   * @default `"16.4"`
+   *
+   * :::caution
+   * Changing the version will cause the database to restart on the next `sst deploy`,
+   * causing downtime. Learn more about [upgrading databases](/docs/upgrade-aws-databases/).
+   * :::
+   *
+   * @default `"17"`
    * @example
    * ```js
    * {
-   *   version: "17.2"
+   *   version: "17.1"
    * }
    * ```
    */
@@ -35,7 +41,7 @@ export interface PostgresArgs {
   /**
    * The username of the master user.
    *
-   * :::caution
+   * :::danger
    * Changing the username will cause the database to be destroyed and recreated.
    * :::
    *
@@ -58,7 +64,8 @@ export interface PostgresArgs {
    * }
    * ```
    *
-   * Use [Secrets](/docs/component/secret) to manage the password.
+   * You can use a `Secret` to manage the password.
+   *
    * ```js
    * {
    *   password: new sst.Secret("MyDBPassword").value
@@ -73,6 +80,10 @@ export interface PostgresArgs {
    * underscores. By default, it takes the name of the app, and replaces the hyphens with
    * underscores.
    *
+   * :::danger
+   * Changing the database name will cause the database to be destroyed and recreated.
+   * :::
+   *
    * @default Based on the name of the current app
    * @example
    * ```js
@@ -84,6 +95,11 @@ export interface PostgresArgs {
   database?: Input<string>;
   /**
    * The type of instance to use for the database. Check out the [supported instance types](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.DBInstanceClass.Types.html).
+   *
+   * :::caution
+   * Changing the instance type will cause the database to restart on the next `sst deploy`,
+   * causing downtime. Learn more about [upgrading databases](/docs/upgrade-aws-databases/).
+   * :::
    *
    * @default `"t4g.micro"`
    * @example
@@ -105,8 +121,8 @@ export interface PostgresArgs {
    * :::
    *
    * By default, [gp3 storage volumes](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/CHAP_Storage.html#Concepts.Storage.GeneralSSD)
-   * are used without additional provisioned IOPS. This provides a good baseline performance
-   * for most use cases.
+   * are used without additional provisioned IOPS. This provides good baseline
+   * performance for most use cases.
    *
    * The minimum storage size is 20 GB. And the maximum storage size is 64 TB.
    *
@@ -147,19 +163,20 @@ export interface PostgresArgs {
          *   credentials: [
          *     {
          *       username: "metabase",
-         *       password: "Passw0rd!",
+         *       password: "Passw0rd!"
          *     }
          *   ]
          * }
          * ```
          *
-         * Use [Secrets](/docs/component/secret) to manage the password.
+         * You can use a `Secret` to manage the password.
+         *
          * ```js
          * {
          *   credentials: [
          *     {
          *       username: "metabase",
-         *       password: new sst.Secret("MyDBPassword").value,
+         *       password: new sst.Secret("MyDBPassword").value
          *     }
          *   ]
          * }
@@ -203,6 +220,24 @@ export interface PostgresArgs {
    */
   multiAz?: Input<boolean>;
   /**
+   * Enable [Blue/Green deployments](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/blue-green-deployments.html)
+   * for version, instance type, and parameter group upgrades.
+   * Learn more about [upgrading databases](/docs/upgrade-aws-databases/).
+   *
+   * When enabled, a staging (green) instance is created, updated,
+   * verified, then promoted to replace the production (blue) instance.
+   * This minimizes downtime during upgrades.
+   *
+   * @default `false`
+   * @example
+   * ```js
+   * {
+   *   blueGreen: true
+   * }
+   * ```
+   */
+  blueGreen?: Input<boolean>;
+  /**
    * @internal
    */
   replicas?: Input<number>;
@@ -213,14 +248,14 @@ export interface PostgresArgs {
    * ```js
    * {
    *   vpc: {
-   *     subnets: ["subnet-0db7376a7ad4db5fd ", "subnet-06fc7ee8319b2c0ce"],
+   *     subnets: ["subnet-0db7376a7ad4db5fd ", "subnet-06fc7ee8319b2c0ce"]
    *   }
    * }
    * ```
    *
    * Or create a `Vpc` component.
    *
-   * ```js
+   * ```ts title="sst.config.ts"
    * const myVpc = new sst.aws.Vpc("MyVpc");
    * ```
    *
@@ -247,7 +282,7 @@ export interface PostgresArgs {
    * connect to a locally running Postgres database, you can configure the `dev` prop.
    *
    * :::note
-   * By default, this creates a new RDS database even in `sst dev`.
+   * This will not create an RDS database in `sst dev`.
    * :::
    *
    * This will skip deploying an RDS database and link to the locally running Postgres database
@@ -391,7 +426,7 @@ interface PostgresRef {
  *   -e POSTGRES_USER=postgres \
  *   -e POSTGRES_PASSWORD=password \
  *   -e POSTGRES_DB=local \
- *   postgres:16.4
+ *   postgres:18
  * ```
  *
  * You can connect to it in `sst dev` by configuring the `dev` prop.
@@ -431,7 +466,7 @@ interface PostgresRef {
  *
  * That works out to an **additional** $0.015 x 2 x 24 x 30 or **$22 per month**.
  *
- * The above are rough estimates for _us-east-1_, check out the
+ * This is a rough estimate for _us-east-1_, check out the
  * [RDS Proxy pricing](https://aws.amazon.com/rds/proxy/pricing/) for more details.
  */
 export class Postgres extends Component implements Link.Linkable {
@@ -467,10 +502,11 @@ export class Postgres extends Component implements Link.Linkable {
 
     registerVersion();
     const multiAz = output(args.multiAz).apply((v) => v ?? false);
-    const engineVersion = output(args.version).apply((v) => v ?? "16.4");
+    const engineVersion = output(args.version).apply((v) => v ?? "17");
     const instanceType = output(args.instance).apply((v) => v ?? "t4g.micro");
     const username = output(args.username).apply((v) => v ?? "postgres");
     const storage = normalizeStorage();
+    const blueGreen = output(args.blueGreen).apply((v) => v ?? false);
     const dbName = output(args.database).apply(
       (v) => v ?? $app.name.replaceAll("-", "_"),
     );
@@ -500,7 +536,7 @@ export class Postgres extends Component implements Link.Linkable {
         parent: self,
       });
 
-      const input = instance.tags.apply((tags) => {
+      const input = instance.tagsAll.apply((tags) => {
         registerVersion(
           tags?.["sst:component-version"]
             ? parseInt(tags["sst:component-version"])
@@ -674,7 +710,13 @@ Listening on "${dev.host}:${dev.port}"...`,
               },
             ],
           },
-          { parent: self },
+          {
+            parent: self,
+            ignoreChanges: args.version ? [] : ["family"],
+            // Necessary for the parameter group to be deleted AFTER upgrading the instance.
+            // This is either a Pulumi bug or an undocumented feature.
+            deleteBeforeReplace: false,
+          },
         ),
       );
     }
@@ -717,20 +759,32 @@ Listening on "${dev.host}:${dev.port}"...`,
             username,
             password,
             parameterGroupName: parameterGroup.name,
+            applyImmediately: true,
+            allowMajorVersionUpgrade: true,
+            autoMinorVersionUpgrade: false,
             skipFinalSnapshot: true,
             storageEncrypted: true,
             storageType: "gp3",
             allocatedStorage: 20,
-            maxAllocatedStorage: storage,
+            // Blue/green deployments require maxAllocatedStorage to be at least
+            // 10% higher than allocatedStorage for autoscaling headroom.
+            maxAllocatedStorage: all([storage, blueGreen]).apply(([s, bg]) =>
+              bg ? Math.max(s, 22) : s,
+            ),
             multiAz,
             backupRetentionPeriod: 7,
             performanceInsightsEnabled: true,
+            blueGreenUpdate: blueGreen.apply((bg) => ({ enabled: bg })),
             tags: {
               "sst:component-version": _version.toString(),
               "sst:lookup:password": secret.id,
             },
           },
-          { parent: self, deleteBeforeReplace: true },
+          {
+            parent: self,
+            deleteBeforeReplace: true,
+            ignoreChanges: args.version ? [] : ["engineVersion"],
+          },
         ),
       );
     }
@@ -752,6 +806,7 @@ Listening on "${dev.host}:${dev.port}"...`,
                 username: instance.username,
                 password: instance.password.apply((v) => v!),
                 parameterGroupName: instance.parameterGroupName,
+                applyImmediately: true,
                 skipFinalSnapshot: true,
                 storageEncrypted: instance.storageEncrypted.apply((v) => v!),
                 storageType: instance.storageType,
@@ -760,14 +815,17 @@ Listening on "${dev.host}:${dev.port}"...`,
                   (v) => v!,
                 ),
               },
-              { parent: self },
+              {
+                parent: self,
+                ignoreChanges: args.version ? [] : ["engineVersion"],
+              },
             ),
         ),
       );
     }
 
     function createProxy() {
-      return all([args.proxy]).apply(([proxy]) => {
+      return output(args.proxy).apply((proxy) => {
         if (!proxy) return;
 
         const credentials = proxy === true ? [] : proxy.credentials ?? [];
@@ -877,9 +935,8 @@ Listening on "${dev.host}:${dev.port}"...`,
    * The identifier of the Postgres instance.
    */
   public get id() {
-    return this.dev?.enabled
-      ? output("placeholder")
-      : this.instance!.identifier;
+    if (this.dev?.enabled) return output("placeholder");
+    return this.instance!.identifier;
   }
 
   /**
@@ -907,7 +964,7 @@ Listening on "${dev.host}:${dev.port}"...`,
   /** The password of the master user. */
   public get password() {
     if (this.dev?.enabled) return this.dev.password;
-    return this._password;
+    return this._password!;
   }
 
   /**
@@ -977,10 +1034,10 @@ Listening on "${dev.host}:${dev.port}"...`,
    * const database = $app.stage === "frank"
    *   ? sst.aws.Postgres.get("MyDatabase", {
    *       id: "app-dev-mydatabase",
-   *       proxyId: "app-dev-mydatabase-proxy",
+   *       proxyId: "app-dev-mydatabase-proxy"
    *     })
    *   : new sst.aws.Postgres("MyDatabase", {
-   *       proxy: true,
+   *       proxy: true
    *     });
    * ```
    *
@@ -991,7 +1048,7 @@ Listening on "${dev.host}:${dev.port}"...`,
    * ```ts title="sst.config.ts"
    * return {
    *   id: database.id,
-   *   proxyId: database.proxyId,
+   *   proxyId: database.proxyId
    * };
    * ```
    */

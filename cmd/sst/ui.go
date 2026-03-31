@@ -23,15 +23,21 @@ func CmdUI(c *cli.Cli) error {
 	}
 	types := []interface{}{}
 	filter := c.String("filter")
-	var u *ui.UI
-	opts := []ui.Option{
-		ui.WithDev,
+	isWorker := filter == "worker"
+	if isWorker {
+		filter = "function"
 	}
+	var u *ui.UI
+	opts := []ui.Option{}
 	if filter == "function" || filter == "" {
 		if filter != "" {
-			fmt.Println(ui.TEXT_HIGHLIGHT_BOLD.Render("Function Logs"))
+			title := "Function Logs"
+			if isWorker {
+				title = "Worker Logs"
+			}
+			fmt.Println(ui.TEXT_HIGHLIGHT_BOLD.Render(title))
 			fmt.Println()
-			fmt.Println(ui.TEXT_DIM.Render("Waiting for invocations..."))
+			fmt.Println(ui.TEXT_GRAY.Render("Waiting for invocations..."))
 			fmt.Println()
 		}
 		types = append(types,
@@ -50,7 +56,7 @@ func CmdUI(c *cli.Cli) error {
 		if filter != "" {
 			fmt.Println(ui.TEXT_HIGHLIGHT_BOLD.Render("Task Logs"))
 			fmt.Println()
-			fmt.Println(ui.TEXT_DIM.Render("Waiting for tasks..."))
+			fmt.Println(ui.TEXT_GRAY.Render("Waiting for tasks..."))
 			fmt.Println()
 		}
 		types = append(types,
@@ -58,17 +64,23 @@ func CmdUI(c *cli.Cli) error {
 			aws.TaskStartEvent{},
 			aws.TaskLogEvent{},
 			aws.TaskCompleteEvent{},
+			aws.TaskMissingCommandEvent{},
 		)
 	}
+	if filter == "function" || filter == "task" {
+		types = append(types, ui.PaneFilterEvent{})
+	}
 	if filter == "sst" || filter == "" {
-		u = ui.New(c.Context, ui.WithDev)
+		u = ui.New(c.Context)
 		types = append(types,
 			common.StdoutEvent{},
 			deployer.DeployFailedEvent{},
 			project.StackCommandEvent{},
+			project.CancelledEvent{},
 			project.ConcurrentUpdateEvent{},
 			project.StackCommandEvent{},
 			project.BuildFailedEvent{},
+			project.SkipEvent{},
 			apitype.ResourcePreEvent{},
 			apitype.ResOpFailedEvent{},
 			apitype.ResOutputsEvent{},
@@ -98,7 +110,14 @@ func CmdUI(c *cli.Cli) error {
 				c.Cancel()
 				return nil
 			}
-			u.Event(evt)
+			switch e := evt.(type) {
+			case *ui.PaneFilterEvent:
+				if e.PaneKey == filter {
+					u.SetFilter(e.Value, e.PaneKey)
+				}
+			default:
+				u.Event(evt)
+			}
 		}
 	}
 }

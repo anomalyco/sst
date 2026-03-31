@@ -3,9 +3,13 @@ title: Express on AWS with SST
 description: Create and deploy an Express app to AWS with SST.
 ---
 
-You can use SST to deploy an Express app in a container to AWS. It uses Fargate and ECS.
+We are going to build an app with Express, add an S3 Bucket for file uploads, and deploy it to AWS in a container with SST.
 
-We'll build a simple app below.
+:::tip[View source]
+You can [view the source](https://github.com/sst/sst/tree/dev/examples/aws-express) of this example in our repo.
+:::
+
+Before you get started, make sure to [configure your AWS credentials](/docs/iam-credentials#credentials).
 
 ---
 
@@ -15,16 +19,6 @@ We also have a few other Express examples that you can refer to.
 
 - [Build a hit counter with Express and Redis](/docs/examples/#aws-express-redis)
 - [Use service discovery to connect to your Express app](/docs/examples/#aws-cluster-service-discovery)
-
----
-
-We are going to build a hit counter using Express and Redis. We'll the deploy it to AWS in a container.
-
-:::tip[View source]
-You can [view the source](https://github.com/sst/sst/tree/dev/examples/aws-express) of this example in our repo.
-:::
-
-Before you get started, make sure to [configure your AWS credentials](/docs/iam-credentials#credentials).
 
 ---
 
@@ -79,12 +73,13 @@ This'll create a `sst.config.ts` file in your project root.
 
 To deploy our Express app, let's add an [AWS Fargate](https://aws.amazon.com/fargate/) container with [Amazon ECS](https://aws.amazon.com/ecs/). Update your `sst.config.ts`.
 
-```js title="sst.config.ts" {9-11}
+```js title="sst.config.ts" {10-12}
 async run() {
   const vpc = new sst.aws.Vpc("MyVpc");
   const cluster = new sst.aws.Cluster("MyCluster", { vpc });
 
-  cluster.addService("MyService", {
+  new sst.aws.Service("MyService", {
+    cluster,
     loadBalancer: {
       ports: [{ listen: "80/http" }],
     },
@@ -132,7 +127,7 @@ const bucket = new sst.aws.Bucket("MyBucket");
 Now, link the bucket to the container.
 
 ```ts title="sst.config.ts" {3}
-cluster.addService("MyService", {
+new sst.aws.Service("MyService", {
   // ...
   link: [bucket],
 });

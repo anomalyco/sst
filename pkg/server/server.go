@@ -23,9 +23,10 @@ import (
 )
 
 type Server struct {
-	Port int
-	Mux  *http.ServeMux
-	Rpc  *rpc.Server
+	Port  int
+	Mux   *http.ServeMux
+	Rpc   *rpc.Server
+	Ready chan struct{}
 }
 
 func New() (*Server, error) {
@@ -35,9 +36,10 @@ func New() (*Server, error) {
 		return nil, err
 	}
 	result := &Server{
-		Port: port,
-		Mux:  http.NewServeMux(),
-		Rpc:  rpc.NewServer(),
+		Port:  port,
+		Mux:   http.NewServeMux(),
+		Rpc:   rpc.NewServer(),
+		Ready: make(chan struct{}),
 	}
 	result.Mux.HandleFunc("/rpc", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
@@ -51,7 +53,9 @@ func New() (*Server, error) {
 }
 
 func (s *Server) Start(ctx context.Context, p *project.Project) error {
-	defer slog.Info("server done")
+	log := slog.Default().With("service", "server")
+	log.Info("starting")
+	defer log.Info("server done")
 
 	resource.Register(ctx, p, s.Rpc)
 	aws.Register(ctx, p, s.Rpc)
@@ -62,17 +66,29 @@ func (s *Server) Start(ctx context.Context, p *project.Project) error {
 		Handler: s.Mux,
 	}
 	server.Addr = fmt.Sprintf("0.0.0.0:%d", s.Port)
-	slog.Info("server", "addr", server.Addr)
+	log.Info("server", "addr", server.Addr)
 	serverPath := resolveServerFile(p.PathConfig(), p.App().Stage)
 	u, _ := url.Parse("http://" + server.Addr)
 	os.WriteFile(serverPath, []byte(u.String()), 0644)
 	defer os.Remove(serverPath)
-	go server.ListenAndServe()
+
+	listener, err := net.Listen("tcp", server.Addr)
+	if err != nil {
+		close(s.Ready)
+		return fmt.Errorf("failed to listen on %s: %w", server.Addr, err)
+	}
+
+	go func() {
+		server.Serve(listener)
+	}()
+
+	close(s.Ready)
+	log.Info("server ready to accept connections")
 
 	keyPath := filepath.Join(global.CertPath(), "key.pem")
 	certPath := filepath.Join(global.CertPath(), "cert.pem")
 	if _, err := os.Stat(keyPath); err == nil {
-		slog.Info("https enabled")
+		log.Info("https enabled")
 		proxy := httputil.NewSingleHostReverseProxy(u)
 		go http.ListenAndServeTLS(
 			fmt.Sprintf("0.0.0.0:%d", s.Port+1000),
@@ -81,13 +97,13 @@ func (s *Server) Start(ctx context.Context, p *project.Project) error {
 			proxy,
 		)
 		if err != nil {
-			slog.Error("failed to start https server", "err", err)
+			log.Error("failed to start https server", "err", err)
 			return err
 		}
 	}
 
 	<-ctx.Done()
-	slog.Info("shutting down server")
+	log.Info("shutting down server")
 	go server.Shutdown(ctx)
 	return nil
 }

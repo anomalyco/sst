@@ -12,9 +12,6 @@ import { Dns } from "../dns";
 import { dns as awsDns } from "./dns.js";
 import { ses, sesv2 } from "@pulumi/aws";
 import { permission } from "./permission";
-import { RandomId } from "@pulumi/random";
-import { hashNumberToPrettyString, physicalName } from "../naming";
-import { VisibleError } from "../error";
 
 interface Events {
   /**
@@ -175,8 +172,7 @@ export interface EmailArgs {
 
 interface EmailRef {
   ref: boolean;
-  identity: sesv2.EmailIdentity;
-  configurationSet: sesv2.ConfigurationSet;
+  sender: Input<string>;
 }
 
 /**
@@ -191,7 +187,7 @@ interface EmailRef {
  * :::
  *
  * By default, new AWS SES accounts are in the _sandbox mode_ and can only send
- * email to verified email addresses and domains. It also limits your account has to a sending
+ * email to verified email addresses and domains. It also limits your account to a sending
  * quota. To remove these restrictions, you need to [request production access](https://docs.aws.amazon.com/ses/latest/dg/request-production-access.html).
  *
  * #### Sending from an email address
@@ -265,16 +261,16 @@ export class Email extends Component implements Link.Linkable {
 
   constructor(name: string, args: EmailArgs, opts?: ComponentResourceOptions) {
     super(__pulumiType, name, args, opts);
+    const self = this;
 
     if (args && "ref" in args) {
-      const ref = args as unknown as EmailRef;
+      const ref = reference();
       this._sender = ref.identity.emailIdentity;
       this.identity = ref.identity;
       this.configurationSet = ref.configurationSet;
       return;
     }
 
-    const parent = this;
     const isDomain = checkIsDomain();
     const dns = normalizeDns();
     const dmarc = normalizeDmarc();
@@ -291,6 +287,27 @@ export class Email extends Component implements Link.Linkable {
     this._sender = output(args.sender);
     this.identity = identity;
     this.configurationSet = configurationSet;
+
+    function reference() {
+      const ref = args as EmailRef;
+      const identity = sesv2.EmailIdentity.get(
+        `${name}Identity`,
+        ref.sender,
+        undefined,
+        { parent: self },
+      );
+      const configurationSet = sesv2.ConfigurationSet.get(
+        `${name}Config`,
+        identity.configurationSetName.apply((v) => v!),
+        undefined,
+        { parent: self },
+      );
+
+      return {
+        identity,
+        configurationSet,
+      };
+    }
 
     function checkIsDomain() {
       return output(args.sender).apply((sender) => !sender.includes("@"));
@@ -319,29 +336,14 @@ export class Email extends Component implements Link.Linkable {
     }
 
     function createConfigurationSet() {
-      const transformed = transform(
-        args.transform?.configurationSet,
-        `${name}Config`,
-        {} as sesv2.ConfigurationSetArgs,
-        { parent },
+      return new sesv2.ConfigurationSet(
+        ...transform(
+          args.transform?.configurationSet,
+          `${name}Config`,
+          { configurationSetName: "" },
+          { parent: self },
+        ),
       );
-
-      if (!transformed[1].configurationSetName) {
-        const randomId = new RandomId(
-          `${name}Id`,
-          { byteLength: 6 },
-          { parent },
-        );
-        transformed[1].configurationSetName = randomId.dec.apply((dec) =>
-          physicalName(
-            64,
-            name,
-            `-${hashNumberToPrettyString(parseInt(dec), 8)}`,
-          ).toLowerCase(),
-        );
-      }
-
-      return new sesv2.ConfigurationSet(...transformed);
     }
 
     function createIdentity() {
@@ -353,7 +355,7 @@ export class Email extends Component implements Link.Linkable {
             emailIdentity: args.sender,
             configurationSetName: configurationSet.configurationSetName,
           },
-          { parent },
+          { parent: self },
         ),
       );
     }
@@ -379,7 +381,7 @@ export class Email extends Component implements Link.Linkable {
                 enabled: true,
               },
             },
-            { parent },
+            { parent: self },
           );
         }),
       );
@@ -398,7 +400,7 @@ export class Email extends Component implements Link.Linkable {
                 name: interpolate`${token}._domainkey.${args.sender}`,
                 value: `${token}.dkim.amazonses.com`,
               },
-              { parent },
+              { parent: self },
             ),
           );
         },
@@ -416,7 +418,7 @@ export class Email extends Component implements Link.Linkable {
             name: interpolate`_dmarc.${args.sender}`,
             value: dmarc,
           },
-          { parent },
+          { parent: self },
         );
       });
     }
@@ -427,7 +429,7 @@ export class Email extends Component implements Link.Linkable {
         {
           domain: args.sender,
         },
-        { parent, dependsOn: identity },
+        { parent: self, dependsOn: identity },
       );
     }
   }
@@ -477,7 +479,11 @@ export class Email extends Component implements Link.Linkable {
         // When the SES account is in sandbox mode, it seems you have to include verified
         // receipients inside `resources`. Needs further investigation.
         permission({
-          actions: ["ses:SendEmail", "ses:SendRawEmail"],
+          actions: [
+            "ses:SendEmail",
+            "ses:SendRawEmail",
+            "ses:SendTemplatedEmail",
+          ],
           resources: ["*"],
         }),
       ],
@@ -510,24 +516,14 @@ export class Email extends Component implements Link.Linkable {
     sender: Input<string>,
     opts?: ComponentResourceOptions,
   ) {
-    const identity = sesv2.EmailIdentity.get(
-      `${name}Identity`,
-      sender,
-      undefined,
+    return new Email(
+      name,
+      {
+        ref: true,
+        sender,
+      } as EmailArgs,
       opts,
     );
-    const configSet = sesv2.ConfigurationSet.get(
-      `${name}Config`,
-      identity.configurationSetName.apply((v) => v!),
-      undefined,
-      opts,
-    );
-
-    return new Email(name, {
-      ref: true,
-      identity,
-      configurationSet: configSet,
-    } as unknown as EmailArgs);
   }
 }
 

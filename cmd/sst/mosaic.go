@@ -2,10 +2,12 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
+	goruntime "runtime"
 	"strings"
 	"time"
 
@@ -18,11 +20,14 @@ import (
 	"github.com/sst/sst/v3/cmd/sst/mosaic/monoplexer"
 	"github.com/sst/sst/v3/cmd/sst/mosaic/multiplexer"
 	"github.com/sst/sst/v3/cmd/sst/mosaic/socket"
+	"github.com/sst/sst/v3/cmd/sst/mosaic/ui"
 	"github.com/sst/sst/v3/cmd/sst/mosaic/watcher"
 	"github.com/sst/sst/v3/internal/util"
 	"github.com/sst/sst/v3/pkg/bus"
+	"github.com/sst/sst/v3/pkg/flag"
 	"github.com/sst/sst/v3/pkg/process"
 	"github.com/sst/sst/v3/pkg/project"
+	"github.com/sst/sst/v3/pkg/project/path"
 	"github.com/sst/sst/v3/pkg/runtime"
 	"github.com/sst/sst/v3/pkg/server"
 	"golang.org/x/sync/errgroup"
@@ -32,14 +37,12 @@ func CmdMosaic(c *cli.Cli) error {
 	cwd, _ := os.Getwd()
 	var wg errgroup.Group
 
+	child := os.Getenv("SST_CHILD")
 	// spawning child process
-	if len(c.Arguments()) > 0 {
-		var args []string
-		for _, arg := range c.Arguments() {
-			args = append(args, strings.Fields(arg)...)
-		}
+	if len(c.Arguments()) > 0 || child != "" {
+		args := c.Arguments()
 		slog.Info("dev mode with target", "args", c.Arguments())
-		cfgPath, err := project.Discover()
+		cfgPath, err := c.Discover()
 		stage, err := c.Stage(cfgPath)
 		if err != nil {
 			return err
@@ -56,7 +59,8 @@ func CmdMosaic(c *cli.Cli) error {
 		cwd, _ := os.Getwd()
 		currentDir := cwd
 		for {
-			newPath := filepath.Join(currentDir, "node_modules", ".bin") + string(os.PathListSeparator) + os.Getenv("PATH")
+			nodeBinPath := filepath.Join(currentDir, "node_modules", ".bin")
+			newPath := nodeBinPath + string(os.PathListSeparator) + os.Getenv("PATH")
 			os.Setenv("PATH", newPath)
 			parentDir := filepath.Dir(currentDir)
 			if parentDir == currentDir {
@@ -65,9 +69,12 @@ func CmdMosaic(c *cli.Cli) error {
 			currentDir = parentDir
 		}
 		var cmd *exec.Cmd
-		env := map[string]string{}
+		var last *dev.EnvResponse
 		processExited := make(chan bool)
 		timeout := time.Minute * 50
+		timer := time.NewTimer(timeout)
+		defer timer.Stop()
+
 		for {
 			select {
 			case <-c.Context.Done():
@@ -75,52 +82,68 @@ func CmdMosaic(c *cli.Cli) error {
 			case <-processExited:
 				c.Cancel()
 				continue
-			case <-time.After(timeout):
-				env = map[string]string{}
+			case <-timer.C:
+				last = nil
 				go func() {
 					evts <- true
 				}()
-				fmt.Println("[timeout]")
+				fmt.Println("\n" + ui.TEXT_DIM.Render("[timeout]"))
+				timer.Reset(timeout)
 				continue
 			case _, ok := <-evts:
 				if !ok {
 					return nil
 				}
 				query := "directory=" + cwd
-				if os.Getenv("SST_CHILD") != "" {
-					query = "name=" + os.Getenv("SST_CHILD")
+				if child != "" {
+					query = "name=" + child
 				}
 				nextEnv, err := dev.Env(c.Context, query, url)
 				if err != nil {
 					return err
 				}
-				if _, ok := nextEnv["AWS_ACCESS_KEY_ID"]; ok {
+				if _, ok := nextEnv.Env["AWS_ACCESS_KEY_ID"]; ok {
 					timeout = time.Minute * 45
 				}
-				if diff(env, nextEnv) {
+				if last == nil || diff(last.Env, nextEnv.Env) || last.Command != nextEnv.Command {
 					if cmd != nil && cmd.Process != nil {
 						process.Kill(cmd.Process)
 						<-processExited
 						fmt.Println("\n[restarting]")
 					}
+					fields, _ := shellquote.Split(nextEnv.Command)
+					if len(args) > 0 {
+						fields = args
+					}
 					cmd = process.Command(
-						args[0],
-						args[1:]...,
+						fields[0],
+						fields[1:]...,
 					)
 					cmd.Env = os.Environ()
-					for k, v := range nextEnv {
+					cmd.Env = append(cmd.Env, "FORCE_COLOR=1")
+					for k, v := range nextEnv.Env {
 						cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 					}
+					process.DetachSession(cmd)
 					cmd.Stdin = os.Stdin
 					cmd.Stdout = os.Stdout
 					cmd.Stderr = os.Stderr
+					if child != "" && flag.SST_LOG_CHILDREN {
+						slog.Info("creating log file for child process")
+						file, err := os.Create(filepath.Join(path.ResolveLogDir(cfgPath), child+".log"))
+						if err != nil {
+							return err
+						}
+						cmd.Stdout = io.MultiWriter(file, os.Stdout)
+						cmd.Stderr = io.MultiWriter(file, os.Stderr)
+					}
 					cmd.Start()
 					go func() {
 						cmd.Wait()
 						processExited <- true
 					}()
 				}
-				env = nextEnv
+				last = nextEnv
 			}
 		}
 	}
@@ -133,12 +156,21 @@ func CmdMosaic(c *cli.Cli) error {
 	if err != nil {
 		return err
 	}
+	policyPath := c.String("policy")
+	if policyPath != "" {
+		if _, err := p.ResolvePolicyPackPath(policyPath); err != nil {
+			return util.NewReadableError(nil, err.Error())
+		}
+	}
 	os.Setenv("SST_STAGE", p.App().Stage)
 	slog.Info("mosaic", "project", p.PathRoot())
 
 	wg.Go(func() error {
 		defer c.Cancel()
-		return watcher.Start(c.Context, p.PathRoot())
+		return watcher.Start(c.Context, watcher.WatchConfig{
+			Root:  p.PathRoot(),
+			Watch: p.App().Watch,
+		})
 	})
 
 	server, err := server.New()
@@ -176,6 +208,9 @@ func CmdMosaic(c *cli.Cli) error {
 		args := a
 		switch name {
 		case "aws":
+			if flag.SST_SKIP_APPSYNC {
+				continue
+			}
 			wg.Go(func() error {
 				defer c.Cancel()
 				return aws.Start(c.Context, p, server, args.(map[string]interface{}))
@@ -193,16 +228,26 @@ func CmdMosaic(c *cli.Cli) error {
 		return server.Start(c.Context, p)
 	})
 
-	wg.Go(func() error {
-		defer c.Cancel()
-		return deployer.Start(c.Context, p, server)
-	})
-
 	currentExecutable, _ := os.Executable()
 
 	mode := c.String("mode")
+
 	if mode == "" {
-		multi, err := multiplexer.New(c.Context)
+		mode = "multi"
+		if goruntime.GOOS == "windows" {
+			mode = "mono"
+		}
+	}
+
+	evts := bus.Subscribe(&project.CompleteEvent{})
+
+	wg.Go(func() error {
+		defer c.Cancel()
+		return deployer.Start(c.Context, p, server, policyPath)
+	})
+
+	if mode == "multi" {
+		multi, err := multiplexer.New()
 		if err != nil {
 			return err
 		}
@@ -211,16 +256,68 @@ func CmdMosaic(c *cli.Cli) error {
 			fmt.Sprintf("SST_SERVER=http://localhost:%v", server.Port),
 			"SST_STAGE="+p.App().Stage,
 		)
-		multi.AddProcess("deploy", []string{currentExecutable, "ui", "--filter=sst"}, "⑆", "SST", "", false, true, append(multiEnv, "SST_LOG="+p.PathLog("ui-deploy"))...)
-		multi.AddProcess("function", []string{currentExecutable, "ui", "--filter=function"}, "λ", "Functions", "", false, true, append(multiEnv, "SST_LOG="+p.PathLog("ui-function"))...)
-		// multi.AddProcess("task", []string{currentExecutable, "ui", "--filter=task"}, "λ", "Tasks", "", false, true, append(multiEnv, "SST_LOG="+p.PathLog("ui-task"))...)
-		wg.Go(func() error {
-			defer c.Cancel()
-			multi.Start()
-			return nil
+		serverURL := fmt.Sprintf("http://localhost:%v", server.Port)
+		_, hasAWS := p.App().Providers["aws"]
+		showWorkers := p.App().Home == "cloudflare" && !hasAWS
+		fnTitle := "Functions"
+		fnFilter := "function"
+		if showWorkers {
+			fnTitle = "Workers"
+			fnFilter = "worker"
+		}
+		multi.AddProcess(multiplexer.PaneConfig{
+			Key:       "deploy",
+			Args:      []string{currentExecutable, "ui", "--filter=sst"},
+			Icon:      "⑆",
+			Title:     "SST",
+			Autostart: true,
+			Env:       append(multiEnv, "SST_LOG="+p.PathLog("ui-deploy")),
 		})
+		multi.AddProcess(multiplexer.PaneConfig{
+			Key:            "function",
+			Args:           []string{currentExecutable, "ui", "--filter=" + fnFilter},
+			Icon:           "λ",
+			Title:          fnTitle,
+			Autostart:      true,
+			Filterable:     true,
+			FilterTitle:    fnTitle,
+			FilterSubtitle: "Select to filter logs",
+			OnFilterChanged: func(value string) {
+				bus.Publish(&ui.PaneFilterEvent{PaneKey: "function", Value: value})
+			},
+			ListOptions: func() []multiplexer.FilterOption {
+				completed, err := dev.Completed(c.Context, serverURL)
+				if err != nil || completed == nil {
+					return nil
+				}
+				var options []multiplexer.FilterOption
+				for _, r := range completed.Resources {
+					if string(r.Type) == "sst:aws:Function" || string(r.Type) == "sst:cloudflare:Worker" {
+						name := r.URN.Name()
+						handler := name
+						if meta, ok := r.Outputs["_metadata"].(map[string]interface{}); ok {
+							if h, ok := meta["handler"].(string); ok {
+								handler = h
+							}
+						}
+						options = append(options, multiplexer.FilterOption{
+							Label:       name,
+							Description: handler,
+							Value:       name,
+						})
+					}
+				}
+				return options
+			},
+			Env: append(multiEnv, "SST_LOG="+p.PathLog("ui-function")),
+		})
+		defer func() {
+			multi.Exit()
+		}()
+		go func() {
+			multi.Start()
+		}()
 		wg.Go(func() error {
-			evts := bus.Subscribe(&project.CompleteEvent{})
 			defer c.Cancel()
 			for {
 				select {
@@ -234,30 +331,79 @@ func CmdMosaic(c *cli.Cli) error {
 								continue
 							}
 							dir := filepath.Join(cwd, d.Directory)
-							words, _ := shellquote.Split(d.Command)
 							title := d.Title
 							if title == "" {
 								title = d.Name
 							}
-							multi.AddProcess(
-								d.Name,
-								append([]string{currentExecutable, "dev", "--"}, words...),
-								"→",
-								title,
-								dir,
-								true,
-								d.Autostart,
-								append([]string{"SST_CHILD=" + d.Name}, multiEnv...)...,
-							)
+							multi.AddProcess(multiplexer.PaneConfig{
+								Key:       d.Name,
+								Args:      []string{currentExecutable, "dev"},
+								Icon:      "→",
+								Title:     title,
+								Cwd:       dir,
+								Killable:  true,
+								Autostart: d.Autostart,
+								Env:       append([]string{"SST_CHILD=" + d.Name}, multiEnv...),
+							})
 						}
 						for name := range evt.Tunnels {
-							multi.AddProcess("tunnel", []string{currentExecutable, "tunnel", "--stage", p.App().Stage}, "⇌", "Tunnel", "", true, true, append(os.Environ(),
-								"SST_LOG="+p.PathLog("tunnel_"+name),
-							)...)
+							multi.AddProcess(multiplexer.PaneConfig{
+								Key:       "tunnel",
+								Args:      []string{currentExecutable, "tunnel", "--stage", p.App().Stage},
+								Icon:      "⇌",
+								Title:     "Tunnel",
+								Killable:  true,
+								Autostart: true,
+								Env:       append(multiEnv, "SST_LOG="+p.PathLog("tunnel_"+name)),
+							})
 						}
 						if len(evt.Tasks) > 0 {
-							multi.AddProcess("task", []string{currentExecutable, "ui", "--filter=task"}, "⧉", "Tasks", "", false, true, append(multiEnv, "SST_LOG="+p.PathLog("ui-task"))...)
+							multi.AddProcess(multiplexer.PaneConfig{
+								Key:            "task",
+								Args:           []string{currentExecutable, "ui", "--filter=task"},
+								Icon:           "⧉",
+								Title:          "Tasks",
+								Autostart:      true,
+								Filterable:     true,
+								FilterTitle:    "Tasks",
+								FilterSubtitle: "Select a task to filter logs",
+								OnFilterChanged: func(value string) {
+									bus.Publish(&ui.PaneFilterEvent{PaneKey: "task", Value: value})
+								},
+								ListOptions: func() []multiplexer.FilterOption {
+									completed, err := dev.Completed(c.Context, serverURL)
+									if err != nil || completed == nil {
+										return nil
+									}
+									var options []multiplexer.FilterOption
+									for name, t := range completed.Tasks {
+										desc := ""
+										if t.Command != nil {
+											desc = *t.Command
+										}
+										options = append(options, multiplexer.FilterOption{
+											Label:       name,
+											Description: desc,
+											Value:       name,
+										})
+									}
+									return options
+								},
+								Env: append(multiEnv, "SST_LOG="+p.PathLog("ui-task")),
+							})
 						}
+						var fnNames []string
+						for _, r := range evt.Resources {
+							if string(r.Type) == "sst:aws:Function" || string(r.Type) == "sst:cloudflare:Worker" {
+								fnNames = append(fnNames, r.URN.Name())
+							}
+						}
+						multi.CheckFilter("function", fnNames)
+						var taskNames []string
+						for name := range evt.Tasks {
+							taskNames = append(taskNames, name)
+						}
+						multi.CheckFilter("task", taskNames)
 						break
 					}
 				}
@@ -267,14 +413,22 @@ func CmdMosaic(c *cli.Cli) error {
 
 	if mode == "basic" {
 		wg.Go(func() error {
+			<-server.Ready
 			return CmdUI(c)
 		})
 	}
 
 	if mode == "mono" {
 		mono := monoplexer.New()
+		_, hasAWS := p.App().Providers["aws"]
+		fnTitle := "Function"
+		fnFilter := "function"
+		if p.App().Home == "cloudflare" && !hasAWS {
+			fnTitle = "Worker"
+			fnFilter = "worker"
+		}
 		mono.AddProcess("deploy", []string{currentExecutable, "ui", "--filter=sst"}, "", "SST")
-		mono.AddProcess("function", []string{currentExecutable, "ui", "--filter=function"}, "", "Function")
+		mono.AddProcess("function", []string{currentExecutable, "ui", "--filter=" + fnFilter}, "", fnTitle)
 
 		wg.Go(func() error {
 			defer c.Cancel()
@@ -282,7 +436,6 @@ func CmdMosaic(c *cli.Cli) error {
 		})
 
 		wg.Go(func() error {
-			evts := bus.Subscribe(&project.CompleteEvent{})
 			defer c.Cancel()
 			for {
 				select {
@@ -306,6 +459,7 @@ func CmdMosaic(c *cli.Cli) error {
 								append([]string{currentExecutable, "dev", "--"}, words...),
 								dir,
 								title,
+								"SST_CHILD="+d.Name,
 							)
 						}
 						for range evt.Tunnels {
@@ -318,16 +472,9 @@ func CmdMosaic(c *cli.Cli) error {
 		})
 	}
 
-	wg.Go(func() error {
-		<-c.Context.Done()
-		fmt.Println("Cleaning up...")
-		return nil
-	})
-
 	err = wg.Wait()
 	slog.Info("done mosaic", "err", err)
 	return err
-
 }
 
 func diff(a map[string]string, b map[string]string) bool {

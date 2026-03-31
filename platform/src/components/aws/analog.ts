@@ -1,23 +1,8 @@
 import fs from "fs";
 import path from "path";
-import { ComponentResourceOptions, Output, all, output } from "@pulumi/pulumi";
-import { Function } from "./function.js";
-import {
-  SsrSiteArgs,
-  createBucket,
-  createDevServer,
-  createServersAndDistribution,
-  prepare,
-  useCloudFrontFunctionHostHeaderInjection,
-  validatePlan,
-} from "./ssr-site.js";
-import { Cdn } from "./cdn.js";
-import { Bucket } from "./bucket.js";
-import { Component } from "../component.js";
-import { Link } from "../link.js";
-import { buildApp } from "../base/base-ssr-site.js";
-import { URL_UNAVAILABLE } from "./linkable.js";
+import { ComponentResourceOptions, Output } from "@pulumi/pulumi";
 import { VisibleError } from "../error.js";
+import { Plan, SsrSite, SsrSiteArgs } from "./ssr-site.js";
 
 export interface AnalogArgs extends SsrSiteArgs {
   /**
@@ -204,6 +189,111 @@ export interface AnalogArgs extends SsrSiteArgs {
    */
   domain?: SsrSiteArgs["domain"];
   /**
+   * Serve your Analog app through a `Router` instead of a standalone CloudFront
+   * distribution.
+   *
+   * By default, this component creates a new CloudFront distribution. But you might
+   * want to serve it through the distribution of your `Router` as a:
+   *
+   * - A path like `/docs`
+   * - A subdomain like `docs.example.com`
+   * - Or a combined pattern like `dev.example.com/docs`
+   *
+   * @example
+   *
+   * To serve your Analog app **from a path**, you'll need to configure the root domain
+   * in your `Router` component.
+   *
+   * ```ts title="sst.config.ts" {2}
+   * const router = new sst.aws.Router("Router", {
+   *   domain: "example.com"
+   * });
+   * ```
+   *
+   * Now set the `router` and the `path`.
+   *
+   * ```ts {3,4}
+   * {
+   *   router: {
+   *     instance: router,
+   *     path: "/docs"
+   *   }
+   * }
+   * ```
+   *
+   * You also need to set the `base` and `apiPrefix` options in your `vite.config.ts`.
+   * The `apiPrefix` value should not begin with a slash.
+   *
+   * :::caution
+   * If routing to a path, you need to set that as the base path in your Analog
+   * app as well.
+   * :::
+   *
+   * ```js title="vite.config.ts" {5,8}
+   * export default defineConfig(({ mode }) => ({
+   *   plugins: [
+   *     analog({
+   *       // Does NOT start with a slash
+   *       apiPrefix: "docs/api"
+   *     })
+   *   ],
+   *   base: "/docs"
+   * }));
+   * ```
+   *
+   * To serve your Analog app **from a subdomain**, you'll need to configure the
+   * domain in your `Router` component to match both the root and the subdomain.
+   *
+   * ```ts title="sst.config.ts" {3,4}
+   * const router = new sst.aws.Router("Router", {
+   *   domain: {
+   *     name: "example.com",
+   *     aliases: ["*.example.com"]
+   *   }
+   * });
+   * ```
+   *
+   * Now set the `domain` in the `router` prop.
+   *
+   * ```ts {4}
+   * {
+   *   router: {
+   *     instance: router,
+   *     domain: "docs.example.com"
+   *   }
+   * }
+   * ```
+   *
+   * Finally, to serve your Analog app **from a combined pattern** like
+   * `dev.example.com/docs`, you'll need to configure the domain in your `Router` to
+   * match the subdomain.
+   *
+   * ```ts title="sst.config.ts" {3,4}
+   * const router = new sst.aws.Router("Router", {
+   *   domain: {
+   *     name: "example.com",
+   *     aliases: ["*.example.com"]
+   *   }
+   * });
+   * ```
+   *
+   * And set the `domain` and the `path`.
+   *
+   * ```ts {4,5}
+   * {
+   *   router: {
+   *     instance: router,
+   *     domain: "dev.example.com",
+   *     path: "/docs"
+   *   }
+   * }
+   * ```
+   *
+   * Also, make sure to set the base path and API prefix in your `vite.config.ts`,
+   * like above.
+   */
+  router?: SsrSiteArgs["router"];
+  /**
    * The command used internally to build your Analog app.
    *
    * @default `"npm run build"`
@@ -234,22 +324,6 @@ export interface AnalogArgs extends SsrSiteArgs {
    */
   assets?: SsrSiteArgs["assets"];
   /**
-   * Configure the [server function](#nodes-server) in your Analog app to connect
-   * to private subnets in a virtual private cloud or VPC. This allows your app to
-   * access private resources.
-   *
-   * @example
-   * ```js
-   * {
-   *   vpc: {
-   *     securityGroups: ["sg-0399348378a4c256c"],
-   *     subnets: ["subnet-0b6a2b73896dc8c4c", "subnet-021389ebee680c2f0"]
-   *   }
-   * }
-   * ```
-   */
-  vpc?: SsrSiteArgs["vpc"];
-  /**
    * Configure the Analog app to use an existing CloudFront cache policy.
    *
    * :::note
@@ -260,7 +334,7 @@ export interface AnalogArgs extends SsrSiteArgs {
    * By default, a new cache policy is created for it. This allows you to reuse an existing
    * policy instead of creating a new one.
    *
-   * @default A new cache plolicy is created
+   * @default A new cache policy is created
    * @example
    * ```js
    * {
@@ -278,7 +352,7 @@ export interface AnalogArgs extends SsrSiteArgs {
  *
  * #### Minimal example
  *
- * Deploy a Analog app that's in the project root.
+ * Deploy an Analog app that's in the project root.
  *
  * ```js title="sst.config.ts"
  * new sst.aws.Analog("MyWeb");
@@ -339,224 +413,62 @@ export interface AnalogArgs extends SsrSiteArgs {
  * console.log(Resource.MyBucket.name);
  * ```
  */
-export class Analog extends Component implements Link.Linkable {
-  private cdn?: Output<Cdn>;
-  private assets?: Bucket;
-  private server?: Output<Function>;
-  private devUrl?: Output<string>;
-
+export class Analog extends SsrSite {
   constructor(
     name: string,
     args: AnalogArgs = {},
     opts: ComponentResourceOptions = {},
   ) {
     super(__pulumiType, name, args, opts);
+  }
 
-    const parent = this;
-    const { sitePath, partition } = prepare(parent, args);
-    const dev = normalizeDev();
+  protected normalizeBuildCommand() { }
 
-    if (dev) {
-      const server = createDevServer(parent, name, args);
-      this.devUrl = dev.url;
-      this.registerOutputs({
-        _metadata: {
-          mode: "placeholder",
-          path: sitePath,
-          server: server.arn,
-        },
-        _dev: {
-          links: output(args.link || [])
-            .apply(Link.build)
-            .apply((links) => links.map((link) => link.name)),
-          aws: {
-            role: server.nodes.role.arn,
-          },
-          environment: args.environment,
-          command: dev.command,
-          directory: dev.directory,
-          autostart: dev.autostart,
-        },
-      });
-      return;
-    }
-
-    const { access, bucket } = createBucket(parent, name, partition, args);
-    const outputPath = buildApp(parent, name, args, sitePath);
-    const preset = outputPath.apply((output) => {
+  protected buildPlan(outputPath: Output<string>): Output<Plan> {
+    return outputPath.apply((outputPath) => {
       const nitro = JSON.parse(
-        fs.readFileSync(path.join(output, "dist/analog/nitro.json")).toString(),
+        fs.readFileSync(
+          path.join(outputPath, "dist", "analog", "nitro.json"),
+          "utf-8",
+        ),
       );
+
       if (!["aws-lambda"].includes(nitro.preset)) {
         throw new VisibleError(
           `Analog's vite.config.ts must be configured to use the "aws-lambda" preset. It is currently set to "${nitro.preset}".`,
         );
       }
-      return nitro.preset;
-    });
-    const buildMeta = loadBuildMetadata();
-    const plan = buildPlan();
-    const { distribution, ssrFunctions, edgeFunctions } =
-      createServersAndDistribution(
-        parent,
-        name,
-        args,
-        outputPath,
-        access,
-        bucket,
-        plan,
-      );
-    const serverFunction = ssrFunctions[0] ?? Object.values(edgeFunctions)[0];
 
-    this.assets = bucket;
-    this.cdn = distribution;
-    this.server = serverFunction;
-    this.registerOutputs({
-      _hint: all([this.cdn.domainUrl, this.cdn.url]).apply(
-        ([domainUrl, url]) => domainUrl ?? url,
-      ),
-      _metadata: {
-        mode: "deployed",
-        path: sitePath,
-        url: distribution.apply((d) => d.domainUrl ?? d.url),
-        server: serverFunction.arn,
-      },
-    });
-
-    function normalizeDev() {
-      if (!$dev) return undefined;
-      if (args.dev === false) return undefined;
+      const basepath = fs
+        .readFileSync(path.join(outputPath, "vite.config.ts"), "utf-8")
+        .match(/base: ['"](.*)['"]/)?.[1];
 
       return {
-        ...args.dev,
-        url: output(args.dev?.url ?? URL_UNAVAILABLE),
-        command: output(args.dev?.command ?? "npm run dev"),
-        autostart: output(args.dev?.autostart ?? true),
-        directory: output(args.dev?.directory ?? sitePath),
-      };
-    }
-
-    function loadBuildMetadata() {
-      return outputPath.apply((outputPath) => {
-        const assetsPath = path.join("dist/analog", "public");
-
-        return {
-          assetsPath,
-          // create 1 behaviour for each top level asset file/folder
-          staticRoutes: fs
-            .readdirSync(path.join(outputPath, assetsPath), {
-              withFileTypes: true,
-            })
-            .map((item) => (item.isDirectory() ? `${item.name}/*` : item.name)),
-        };
-      });
-    }
-
-    function buildPlan() {
-      return all([outputPath, buildMeta]).apply(([outputPath, buildMeta]) => {
-        const serverConfig = {
+        base: basepath,
+        server: {
           description: "Server handler for Analog",
           handler: "index.handler",
-          bundle: path.join(outputPath, "dist/analog", "server"),
-        };
-
-        return validatePlan({
-          edge: false,
-          cloudFrontFunctions: {
-            serverCfFunction: {
-              injections: [useCloudFrontFunctionHostHeaderInjection()],
-            },
+          bundle: path.join(outputPath, "dist", "analog", "server"),
+        },
+        assets: [
+          {
+            from: path.join("dist", "analog", "public"),
+            to: "",
+            cached: true,
           },
-          origins: {
-            server: {
-              server: {
-                function: serverConfig,
-              },
-            },
-            s3: {
-              s3: {
-                copy: [
-                  {
-                    from: buildMeta.assetsPath,
-                    to: "",
-                    cached: true,
-                  },
-                ],
-              },
-            },
-            fallthrough: {
-              group: {
-                primaryOriginName: "s3",
-                fallbackOriginName: "server",
-                fallbackStatusCodes: [403, 404],
-              },
-            },
-          },
-          behaviors: [
-            {
-              cacheType: "server",
-              cfFunction: "serverCfFunction",
-              origin: "server",
-            },
-            {
-              pattern: "_server/",
-              cacheType: "server",
-              cfFunction: "serverCfFunction",
-              origin: "server",
-            },
-            ...buildMeta.staticRoutes.map(
-              (route) =>
-                ({
-                  cacheType: "static",
-                  pattern: route,
-                  origin: "s3",
-                }) as const,
-            ),
-          ],
-        });
-      });
-    }
+        ],
+      };
+    });
   }
 
   /**
    * The URL of the Analog app.
    *
    * If the `domain` is set, this is the URL with the custom domain.
-   * Otherwise, it's the autogenerated CloudFront URL.
+   * Otherwise, it's the auto-generated CloudFront URL.
    */
   public get url() {
-    return all([this.cdn?.domainUrl, this.cdn?.url, this.devUrl]).apply(
-      ([domainUrl, url, dev]) => domainUrl ?? url ?? dev!,
-    );
-  }
-
-  /**
-   * The underlying [resources](/docs/components/#nodes) this component creates.
-   */
-  public get nodes() {
-    return {
-      /**
-       * The AWS Lambda server function that renders the site.
-       */
-      server: this.server,
-      /**
-       * The Amazon S3 Bucket that stores the assets.
-       */
-      assets: this.assets,
-      /**
-       * The Amazon CloudFront CDN that serves the site.
-       */
-      cdn: this.cdn,
-    };
-  }
-
-  /** @internal */
-  public getSSTLink() {
-    return {
-      properties: {
-        url: this.url,
-      },
-    };
+    return super.url;
   }
 }
 

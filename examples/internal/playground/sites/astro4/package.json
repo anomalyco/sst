@@ -1,0 +1,21 @@
+{
+  "name": "aws-astro",
+  "type": "module",
+  "version": "0.0.1",
+  "scripts": {
+    "dev": "astro dev",
+    "start": "astro dev",
+    "build": "astro check && astro build",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@astrojs/check": "^0.5.10",
+    "@aws-sdk/client-s3": "^3.540.0",
+    "@aws-sdk/s3-request-presigner": "^3.540.0",
+    "astro": "^4.5.9",
+    "astro-sst": "^2.41.2",
+    "sst": "latest",
+    "typescript": "^5.4.3"
+  }
+}

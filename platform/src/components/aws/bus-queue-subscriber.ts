@@ -19,7 +19,7 @@ export interface Args extends BusBaseSubscriberArgs {
  * This component is not intended to be created directly.
  * :::
  *
- * You'll find this component returned by the `subscribe` method of the `Bus` component.
+ * You'll find this component returned by the `subscribeQueue` method of the `Bus` component.
  */
 export class BusQueueSubscriber extends Component {
   private readonly policy: sqs.QueuePolicy;

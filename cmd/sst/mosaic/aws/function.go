@@ -68,6 +68,7 @@ type input struct {
 }
 
 func function(ctx context.Context, input input) {
+	log := slog.Default().With("service", "aws.function")
 	server := fmt.Sprintf("localhost:%d/lambda/", input.server.Port)
 	type WorkerInfo struct {
 		FunctionID       string
@@ -75,6 +76,7 @@ func function(ctx context.Context, input input) {
 		Worker           runtime.Worker
 		CurrentRequestID string
 		Env              []string
+		Streaming        bool
 	}
 	workerShutdownChan := make(chan *WorkerInfo, 1000)
 	nextChan := map[string]chan io.Reader{}
@@ -83,18 +85,15 @@ func function(ctx context.Context, input input) {
 	go fileLogger(input.project)
 
 	input.server.Mux.HandleFunc(`/lambda/{workerID}/2018-06-01/runtime/invocation/next`, func(w http.ResponseWriter, r *http.Request) {
-		slog.Info("got next request", "workerID", r.PathValue("workerID"))
+		log.Info("got next request", "workerID", r.PathValue("workerID"))
 		workerID := r.PathValue("workerID")
 		ch := nextChan[workerID]
 		select {
 		case <-r.Context().Done():
-			slog.Info("worker disconnected", "workerID", workerID)
+			log.Info("worker disconnected", "workerID", workerID)
 			return
 		case reader := <-ch:
-			slog.Info("worker got next request", "workerID", workerID)
-			writer := input.client.NewWriter(bridge.MessagePing, input.prefix+"/"+r.PathValue("workerID")+"/in")
-			json.NewEncoder(writer).Encode(bridge.PingBody{})
-			writer.Close()
+			log.Info("worker got next request", "workerID", workerID)
 			resp, _ := http.ReadResponse(bufio.NewReader(reader), r)
 			requestID := resp.Header.Get("lambda-runtime-aws-request-id")
 			for key, values := range resp.Header {
@@ -121,7 +120,7 @@ func function(ctx context.Context, input input) {
 
 	input.server.Mux.HandleFunc(`/lambda/{workerID}/2018-06-01/runtime/init/error`, func(w http.ResponseWriter, r *http.Request) {
 		workerID := r.PathValue("workerID")
-		slog.Info("got init error", "workerID", workerID, "requestID", r.PathValue("requestID"))
+		log.Info("got init error", "workerID", workerID, "requestID", r.PathValue("requestID"))
 		writer := input.client.NewWriter(bridge.MessageInitError, input.prefix+"/"+workerID+"/in")
 		var buf bytes.Buffer
 		tee := io.TeeReader(r.Body, &buf)
@@ -142,29 +141,42 @@ func function(ctx context.Context, input input) {
 	input.server.Mux.HandleFunc(`/lambda/{workerID}/2018-06-01/runtime/invocation/{requestID}/response`, func(w http.ResponseWriter, r *http.Request) {
 		workerID := r.PathValue("workerID")
 		requestID := r.PathValue("requestID")
-		slog.Info("got response", "workerID", workerID, "requestID", r.PathValue("requestID"))
+		log.Info("got response", "workerID", workerID, "requestID", r.PathValue("requestID"))
 		writer := input.client.NewWriter(bridge.MessageResponse, input.prefix+"/"+workerID+"/in")
 		writer.SetID(requestID)
-		var buf bytes.Buffer
-		tee := io.TeeReader(r.Body, &buf)
-		io.Copy(writer, tee)
-		writer.Close()
-		w.WriteHeader(202)
 		info, ok := workers[workerID]
-		if ok {
+		if ok && info.Streaming {
+			writer.SetStreaming(true)
+			io.Copy(writer, r.Body)
+			writer.Close()
+			w.WriteHeader(202)
 			bus.Publish(&FunctionResponseEvent{
 				FunctionID: info.FunctionID,
 				WorkerID:   workerID,
 				RequestID:  requestID,
-				Output:     buf.Bytes(),
+				Output:     []byte("[streaming response]"),
 			})
+		} else {
+			var buf bytes.Buffer
+			tee := io.TeeReader(r.Body, &buf)
+			io.Copy(writer, tee)
+			writer.Close()
+			w.WriteHeader(202)
+			if ok {
+				bus.Publish(&FunctionResponseEvent{
+					FunctionID: info.FunctionID,
+					WorkerID:   workerID,
+					RequestID:  requestID,
+					Output:     buf.Bytes(),
+				})
+			}
 		}
 	})
 
 	input.server.Mux.HandleFunc(`/lambda/{workerID}/2018-06-01/runtime/invocation/{requestID}/error`, func(w http.ResponseWriter, r *http.Request) {
 		workerID := r.PathValue("workerID")
 		requestID := r.PathValue("requestID")
-		slog.Info("got error", "workerID", workerID, "requestID", r.PathValue("requestID"))
+		log.Info("got error", "workerID", workerID, "requestID", r.PathValue("requestID"))
 		writer := input.client.NewWriter(bridge.MessageError, input.prefix+"/"+workerID+"/in")
 		writer.SetID(requestID)
 		var buf bytes.Buffer
@@ -233,13 +245,21 @@ func function(ctx context.Context, input input) {
 			Env:        workerEnv[workerID],
 		})
 		if err != nil {
-			slog.Error("failed to run worker", "error", err)
+			log.Error("failed to run worker", "error", err)
 			return false
+		}
+		streaming := false
+		for _, e := range workerEnv[workerID] {
+			if e == "SST_FUNCTION_STREAMING=true" {
+				streaming = true
+				break
+			}
 		}
 		info := &WorkerInfo{
 			FunctionID: functionID,
 			Worker:     worker,
 			WorkerID:   workerID,
+			Streaming:  streaming,
 		}
 		go func() {
 			logs := worker.Logs()
@@ -275,13 +295,15 @@ func function(ctx context.Context, input input) {
 				init := bridge.InitBody{}
 				json.NewDecoder(msg.Body).Decode(&init)
 				if _, ok := targets[init.FunctionID]; !ok {
+					log.Error("function not found", "functionID", init.FunctionID)
 					continue
 				}
 				workerID := msg.Source
 				if _, ok := workers[workerID]; ok {
+					log.Error("got reboot but worker already exists", "workerID", workerID, "functionID", init.FunctionID)
 					continue
 				}
-				slog.Info("worker init", "workerID", msg.Source, "functionID", init.FunctionID)
+				log.Info("worker init", "workerID", msg.Source, "functionID", init.FunctionID)
 				workerEnv[workerID] = init.Environment
 				if ok := run(init.FunctionID, workerID); !ok {
 					result, err := http.Post("http://"+server+workerID+"/runtime/init/error", "application/json", strings.NewReader(`{"errorMessage":"Function failed to build"}`))
@@ -293,7 +315,7 @@ func function(ctx context.Context, input input) {
 					if err != nil {
 						continue
 					}
-					slog.Info("error", "body", string(body), "status", result.StatusCode)
+					log.Info("error", "body", string(body), "status", result.StatusCode)
 
 					if result.StatusCode != 202 {
 						result, err := http.Get("http://" + server + workerID + "/runtime/invocation/next")
@@ -310,10 +332,13 @@ func function(ctx context.Context, input input) {
 						if err != nil {
 							continue
 						}
-						slog.Info("error", "body", string(body), "status", result.StatusCode)
+						log.Info("error", "body", string(body), "status", result.StatusCode)
 					}
 				}
 			case bridge.MessageNext:
+				writer := input.client.NewWriter(bridge.MessagePing, input.prefix+"/"+msg.Source+"/in")
+				json.NewEncoder(writer).Encode(bridge.PingBody{})
+				writer.Close()
 				ch, ok := nextChan[msg.Source]
 				if !ok {
 					ch = make(chan io.Reader, 100)
@@ -321,7 +346,7 @@ func function(ctx context.Context, input input) {
 				}
 				_, ok = workers[msg.Source]
 				if !ok {
-					slog.Info("asking for reboot", "workerID", msg.Source)
+					log.Info("asking for reboot", "workerID", msg.Source)
 					writer := input.client.NewWriter(bridge.MessageReboot, input.prefix+"/"+msg.Source+"/in")
 					json.NewEncoder(writer).Encode(bridge.RebootBody{})
 					writer.Close()
@@ -331,14 +356,14 @@ func function(ctx context.Context, input input) {
 			}
 
 		case info := <-workerShutdownChan:
-			slog.Info("worker died", "workerID", info.WorkerID)
+			log.Info("worker died", "workerID", info.WorkerID)
 			existing, ok := workers[info.WorkerID]
 			if !ok {
 				continue
 			}
 			// only delete if a new worker hasn't already been started
 			if existing == info {
-				slog.Info("deleting worker", "workerID", info.WorkerID)
+				log.Info("deleting worker", "workerID", info.WorkerID)
 				delete(workers, info.WorkerID)
 				delete(nextChan, info.WorkerID)
 			}
@@ -365,7 +390,7 @@ func function(ctx context.Context, input input) {
 			case *runtime.BuildInput:
 				targets[evt.FunctionID] = evt
 			case *watcher.FileChangedEvent:
-				slog.Info("checking if code needs to be rebuilt", "file", evt.Path)
+				log.Info("checking if code needs to be rebuilt", "file", evt.Path)
 				toBuild := map[string]bool{}
 
 				for functionID := range builds {
@@ -376,7 +401,7 @@ func function(ctx context.Context, input input) {
 					if input.project.Runtime.ShouldRebuild(target.Runtime, target.FunctionID, evt.Path) {
 						for _, worker := range workers {
 							if worker.FunctionID == functionID {
-								slog.Info("stopping", "workerID", worker.WorkerID, "functionID", worker.FunctionID)
+								log.Info("stopping", "workerID", worker.WorkerID, "functionID", worker.FunctionID)
 								worker.Worker.Stop()
 							}
 						}

@@ -6,7 +6,8 @@
  * system.
  *
  * ```ts title="sst.config.ts"
- * const server = cluster.addService("MyService", {
+ * const server = new sst.aws.Service("MyService", {
+ *   cluster,
  *   architecture: "arm64",
  *   image: "surrealdb/surrealdb:v2.0.2",
  *   // ...
@@ -63,7 +64,8 @@ export default $config({
 
     // Run SurrealDB server in a container
     const cluster = new sst.aws.Cluster("MyCluster", { vpc });
-    const server = cluster.addService("MyService", {
+    const server = new sst.aws.Service("MyService", {
+      cluster,
       architecture: "arm64",
       image: "surrealdb/surrealdb:v2.0.2",
       command: [
@@ -79,9 +81,7 @@ export default $config({
         "surrealkv://data/data.skv",
         "--allow-scripting",
       ],
-      volumes: [
-        { efs, path: "/data" },
-      ],
+      volumes: [{ efs, path: "/data" }],
     });
 
     // Lambda client to connect to SurrealDB

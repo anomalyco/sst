@@ -1,6 +1,5 @@
 import path from "path";
 import { Input } from "../input";
-import { Semaphore } from "../../util/semaphore";
 
 export interface BaseSiteDev {
   /**
@@ -55,9 +54,11 @@ export interface BaseSiteFileOptions {
 }
 
 export function getContentType(filename: string, textEncoding: string) {
-  const ext = filename.endsWith(".well-known/site-association-json")
-    ? ".json"
-    : path.extname(filename);
+  const ext =
+    filename.endsWith(".well-known/site-association-json") ||
+    filename.endsWith(".well-known/apple-app-site-association")
+      ? ".json"
+      : path.extname(filename);
   const extensions = {
     [".txt"]: { mime: "text/plain", isText: true },
     [".htm"]: { mime: "text/html", isText: true },

@@ -3,57 +3,65 @@ title: Reference Resources
 description: Reference externally created resources in your app.
 ---
 
-Referencing is the process of _using_ some externally created resources in your SST app. But without having SST to manage them.
+Referencing is the process of _using_ some externally created resources in your SST app; without having SST manage them.
 
 This is for when you have some resources that are either managed by a different team or a different IaC tool. Typically these are low-level resources and not SST's built-in components.
 
----
-
-## How it works
-
-When you create a resource in your SST app, two things happen. First, the resource is created by making a bunch of calls to your cloud provider. Second, SST makes a call to _get_ the resource from the cloud provider. The data that it gets back is stored in your [state](/docs/state/).
-
-:::note
-When you reference a resource or create it, you get the same type of object.
-:::
-
-When you reference a resource, it skips the creation step and just gets the resource. It does this every time you deploy. But the object you get in both cases is the same.
+There are a few different ways this shows up in SST.
 
 ---
 
-## How to reference
+## Lookup a resource
 
-You reference a resource by passing in a property of the resource. These properties are the same ones that you'd use if you were trying to import them.
+Let's say you have an existing resource that you want to use in your SST app.
 
-:::tip
-You can look up a resource with its [Import Property](/docs/import-resources/#import-properties).
-:::
-
-We've compiled a list of the most commonly referenced low-level resources and their [Import Properties](/docs/import-resources/#import-properties).
-
-Most low-level resources come with a `static get` method that use this property to look up the resource.
-
----
-
-#### Look up the resource
-
-Say you want to reference a previously created S3 Bucket with the following name.
+You can look it up by passing in a property of the resource. For example, to look up a previously created S3 Bucket with the following name.
 
 ```txt
 mybucket-xnbmhcvd
 ```
 
-We are going use the [`static aws.s3.BucketV2.get`](https://www.pulumi.com/registry/packages/aws/api-docs/s3/bucketv2/#look-up) method.
+We can use the [`static aws.s3.BucketV2.get`](https://www.pulumi.com/registry/packages/aws/api-docs/s3/bucketv2/#look-up) method.
 
 ```ts title="sst.config.ts"
 const bucket = aws.s3.BucketV2.get("MyBucket", "mybucket-xnbmhcvd");
 ```
 
-This gives you the same bucket object that you'd get if you had created this resource in your app. Let's take it a step further.
+This gives you the same bucket object that you'd get if you had created this resource in your app.
+
+Here we are assuming the bucket wasn't created through an SST app. This is why we are using the low-level `aws.s3.BucketV2`. If this was created in an SST app or in another stage in the same app, there's a similar `static sst.aws.Bucket.get` method. Learn more about [sharing across stages](/docs/share-across-stages).
+
+---
+
+#### How it works
+
+When you create a resource in your SST app, two things happen. First, the resource is created by making a bunch of calls to your cloud provider. Second, SST makes a call to _get_ the resource from the cloud provider. The data that it gets back is stored in your [state](/docs/state/).
+
+:::note
+When you lookup a resource or create it, you get the same type of object.
+:::
+
+When you lookup a resource, it skips the creation step and just gets the resource. It does this every time you deploy. But the object you get in both cases is the same.
+
+---
+
+#### Lookup properties
+
+The properties used to do a lookup are the same ones that you'd use if you were trying to import them.
+
+:::tip
+You can look up a resource with its [Import Property](/docs/import-resources/#import-properties).
+:::
+
+We've compiled a list of the most commonly lookedup low-level resources and their [Import Properties](/docs/import-resources/#import-properties).
+
+Most low-level resources come with a `static get` method that use this property to look up the resource.
 
 ---
 
 #### Make it linkable
+
+Let's take it a step further.
 
 You can use the [`sst.Linkable`](/docs/component/linkable/) component, to be able to link any property of this resource.
 
@@ -90,4 +98,68 @@ console.log(Resource.MyStorage.domain);
 
 ---
 
-Check out the list of [Import Properties](/docs/import-resources/#import-properties) if you want to reference other low-level resources.
+## Pass in a resource
+
+Aside from looking up resources, you can also pass existing resources in to the built-in SST components. This is typically when you are trying to create a new resource and it takes another resource as a part of it.
+
+For example, let's say you want to add a previously created function as a subscriber to a queue. You can do so by passing its ARN.
+
+```ts title="sst.config.ts" {3}
+const queue = new sst.aws.Queue("MyQueue");
+
+queue.subscribe("arn:aws:lambda:us-east-1:123456789012:function:my-function");
+```
+
+---
+
+#### How it works
+
+SST is simply asking for the props the underlying resource needs. In this case, it only needs the function ARN.
+
+However, for more complicated resources like VPCs, you might have to pass in a lot more. Here we are creating a new function in an existing VPC.
+
+```ts title="sst.config.ts"
+new sst.aws.Function("MyFunction", {
+  handler: "src/lambda.handler",
+  vpc: {
+    subnets: ["subnet-0be8fa4de860618bb"],
+    securityGroups: ["sg-0be8fa4de860618bb"]
+  }
+});
+```
+
+Whereas, for the `Cluster` component, you might need to pass in a lot more.
+
+```ts title="sst.config.ts"
+new sst.aws.Cluster("MyCluster", {
+  vpc: {
+    id: "vpc-0be8fa4de860618bb",
+    securityGroups: ["sg-0be8fa4de860618bb"],
+    containerSubnets: ["subnet-0be8fa4de860618bb"],
+    loadBalancerSubnets: ["subnet-8be8fa4de850618ff"]
+  }
+});
+```
+
+These are listed under the `vpc` prop of the `Cluster` component.
+
+---
+
+## Attach to a resource
+
+Referencing existing resources also comes in handy when you are attaching to an existing resource. For example, to add a subscriber to an externally created queue:
+
+```ts title="sst.config.ts" {3}
+sst.aws.Queue.subscribe("arn:aws:sqs:us-east-1:123456789012:MyQueue", "src/subscriber.handler");
+```
+
+Here we are using the `static subscribe` method of the `Queue` component. And it takes the queue ARN that you are trying to attach to.
+
+There are a few other built-in SST components that have `static` methods like this.
+
+- `Bus`
+- `Dynamo`
+- `SnsTopic`
+- `KinesisStream`
+
+With this you can continue to manage the root resource outside of SST, while still being able to attach to them.

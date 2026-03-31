@@ -442,6 +442,9 @@ mobile-starlight-toc nav .dropdown a[aria-current=true] {
   .main-frame > div > .main-pane {
     min-width: 0;
   }
+  body > .page > .main-frame .main-pane > main > .content-panel .sl-container {
+    margin-inline: auto;
+  }
 }
 
 /**

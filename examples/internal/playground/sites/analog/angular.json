@@ -1,0 +1,57 @@
+{
+  "$schema": "./node_modules/@angular/cli/lib/config/schema.json",
+  "version": 1,
+  "newProjectRoot": "projects",
+  "projects": {
+    "my-app": {
+      "projectType": "application",
+      "root": ".",
+      "sourceRoot": "src",
+      "prefix": "app",
+      "architect": {
+        "build": {
+          "builder": "@analogjs/platform:vite",
+          "options": {
+            "configFile": "vite.config.ts",
+            "main": "src/main.ts",
+            "outputPath": "dist/client",
+            "tsConfig": "tsconfig.app.json"
+          },
+          "defaultConfiguration": "production",
+          "configurations": {
+            "development": {
+              "mode": "development"
+            },
+            "production": {
+              "sourcemap": false,
+              "mode": "production"
+            }
+          }
+        },
+        "serve": {
+          "builder": "@analogjs/platform:vite-dev-server",
+          "defaultConfiguration": "development",
+          "options": {
+            "buildTarget": "my-app:build",
+            "port": 5173
+          },
+          "configurations": {
+            "development": {
+              "buildTarget": "my-app:build:development",
+              "hmr": true
+            },
+            "production": {
+              "buildTarget": "my-app:build:production"
+            }
+          }
+        },
+        "test": {
+          "builder": "@analogjs/vitest-angular:test"
+        }
+      }
+    }
+  },
+  "cli": {
+    "analytics": false
+  }
+}

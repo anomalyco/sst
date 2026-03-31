@@ -12,9 +12,12 @@ import (
 	"os"
 	"time"
 
+	"github.com/pulumi/pulumi/pkg/v3/resource/stack"
+	"github.com/pulumi/pulumi/sdk/v3/go/common/encoding"
+	"github.com/sst/sst/v3/internal/util"
 	"github.com/sst/sst/v3/pkg/flag"
+	"github.com/sst/sst/v3/pkg/id"
 	"golang.org/x/exp/slog"
-	"golang.org/x/sync/errgroup"
 )
 
 type Home interface {
@@ -24,6 +27,9 @@ type Home interface {
 	removeData(key, app, stage string) error
 	setPassphrase(app, stage string, passphrase string) error
 	getPassphrase(app, stage string) (string, error)
+	listStages(app string) ([]string, error)
+	cleanup(key, app, stage string) error
+	info() (util.KeyValuePairs[string], error)
 }
 
 type DevTransport struct {
@@ -146,10 +152,20 @@ func PutSummary(backend Home, app, stage, updateID string, summary Summary) erro
 	return putData(backend, "summary", app, stage+"/"+updateID, false, summary)
 }
 
-func PutUpdate(backend Home, app, stage string, update Update) error {
+func PutUpdate(backend Home, app, stage string, update *Update) error {
 	slog.Info("putting update", "app", app, "stage", stage)
-	update.RunID = os.Getenv("SST_RUN_ID")
+	update.RunID = flag.SST_RUN_ID
 	return putData(backend, "update", app, stage+"/"+update.ID, false, update)
+}
+
+func Cleanup(backend Home, app, stage string) error {
+	if err := backend.cleanup("eventlog", app, stage); err != nil {
+		return err
+	}
+	if err := backend.cleanup("snapshot", app, stage); err != nil {
+		return err
+	}
+	return nil
 }
 
 func GetSecrets(backend Home, app, stage string) (map[string]string, error) {
@@ -175,34 +191,10 @@ func PutSecrets(backend Home, app, stage string, data map[string]string) error {
 	return putData(backend, "secret", app, stage, true, data)
 }
 
-func PushState(backend Home, updateID, app, stage, from string) error {
-	slog.Info("pushing state", "app", app, "stage", stage, "from", from)
-	file, err := os.Open(from)
-	if err != nil {
-		return nil
-	}
-	var group errgroup.Group
-	fileBytes, err := io.ReadAll(file)
-	if err != nil {
-		return err
-	}
-	err = json.Unmarshal(fileBytes, &map[string]interface{}{})
-	if err != nil {
-		return fmt.Errorf("something has corrupted the state file - refusing to upload: %w", err)
-	}
-	group.Go(func() error {
-		return backend.putData("app", app, stage, bytes.NewReader(fileBytes))
-	})
-	group.Go(func() error {
-		return backend.putData("snapshot", app, stage+"/"+updateID, bytes.NewReader(fileBytes))
-	})
-	return group.Wait()
-}
-
 func PushPartialState(backend Home, updateID, app, stage string, data []byte) error {
 	slog.Info("pushing partial state", "updateID", updateID)
 	err := json.Unmarshal(data, &map[string]interface{}{})
-	if err != nil {
+	if err != nil || len(data) == 0 {
 		return fmt.Errorf("something has corrupted the state file - refusing to upload: %w", err)
 	}
 	return backend.putData("app", app, stage, bytes.NewReader(data))
@@ -215,6 +207,11 @@ func PushSnapshot(backend Home, updateID, app, stage string, data []byte) error 
 		return fmt.Errorf("something has corrupted the state file - refusing to upload: %w", err)
 	}
 	return backend.putData("snapshot", app, stage+"/"+updateID, bytes.NewReader(data))
+}
+
+func PushEventLog(backend Home, updateID, app, stage string, reader io.Reader) error {
+	slog.Info("pushing eventlog", "updateID", updateID)
+	return backend.putData("eventlog", app, stage+"/"+updateID, reader)
 }
 
 var ErrStateNotFound = fmt.Errorf("state not found")
@@ -248,15 +245,16 @@ type lockData struct {
 	Ignore   bool      `json:"ignore"`
 }
 
-func Lock(backend Home, updateID, version, command, app, stage string) error {
+func Lock(backend Home, version, command, app, stage string) (*Update, error) {
+	updateID := id.Descending()
 	slog.Info("locking", "app", app, "stage", stage)
 	var lockData lockData
 	err := getData(backend, "lock", app, stage, false, &lockData)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if !lockData.Created.IsZero() {
-		return ErrLockExists
+		return nil, ErrLockExists
 	}
 	lockData.RunID = os.Getenv("SST_RUN_ID")
 	lockData.Created = time.Now()
@@ -265,21 +263,22 @@ func Lock(backend Home, updateID, version, command, app, stage string) error {
 	lockData.Ignore = true
 	err = putData(backend, "lock", app, stage, false, lockData)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	err = PutUpdate(backend, app, stage, Update{
+	update := &Update{
 		ID:          updateID,
 		Version:     version,
 		Command:     command,
 		Errors:      nil,
 		TimeStarted: time.Now().UTC().Format(time.RFC3339),
-	})
+	}
+	err = PutUpdate(backend, app, stage, update)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	return update, nil
 }
 
 func Unlock(backend Home, version, app, stage string) error {
@@ -294,11 +293,8 @@ func ForceUnlock(backend Home, version, app, stage string) error {
 	if err != nil {
 		return err
 	}
-	// if lockData.UpdateID == "" {
-	// 	return ErrLockNotFound
-	// }
 	if lockData.UpdateID != "" {
-		err = PutUpdate(backend, app, stage, Update{
+		err = PutUpdate(backend, app, stage, &Update{
 			ID:            lockData.UpdateID,
 			Command:       lockData.Command,
 			RunID:         lockData.RunID,
@@ -317,8 +313,36 @@ func ForceUnlock(backend Home, version, app, stage string) error {
 	return removeData(backend, "lock", app, stage)
 }
 
+func ListStages(backend Home, app string) ([]string, error) {
+	slog.Info("listing stages", "app", app)
+	return backend.listStages(app)
+}
+
+func Info(backend Home) (util.KeyValuePairs[string], error) {
+	slog.Info("fetching backend configuration info")
+	return backend.info()
+}
+
+func hasResources(backend Home, app, stage string) bool {
+	data, err := backend.getData("app", app, stage)
+	if err != nil {
+		return false
+	}
+
+	bytes, err := io.ReadAll(data)
+	if err != nil {
+		return false
+	}
+
+	checkpoint, _, _, err := stack.UnmarshalVersionedCheckpointToLatestCheckpoint(encoding.JSON, bytes)
+	if err != nil {
+		return false
+	}
+
+	return checkpoint != nil && checkpoint.Latest != nil && len(checkpoint.Latest.Resources) > 0
+}
+
 func putData(backend Home, key, app, stage string, encrypt bool, data interface{}) error {
-	slog.Info("putting data", "key", key, "app", app, "stage", stage)
 	jsonBytes, err := json.Marshal(data)
 	if err != nil {
 		return err

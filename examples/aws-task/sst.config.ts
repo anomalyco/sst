@@ -48,7 +48,9 @@ export default $config({
 
     const cluster = new sst.aws.Cluster("MyCluster", { vpc });
 
-    const task = cluster.addTask("MyTask", {
+    const task = new sst.aws.Task("MyTask", {
+      cluster,
+      public: true,
       link: [bucket],
       image: {
         context: "image",

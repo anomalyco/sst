@@ -13,7 +13,8 @@ export default $config({
     const redis = new sst.aws.Redis("MyRedis", { vpc });
     const cluster = new sst.aws.Cluster("MyCluster", { vpc });
 
-    cluster.addService("MyService", {
+    new sst.aws.Service("MyService", {
+      cluster,
       link: [redis],
       loadBalancer: {
         ports: [{ listen: "80/http", forward: "3000/http" }],
@@ -22,5 +23,5 @@ export default $config({
         command: "bun dev",
       },
     });
-  }
+  },
 });

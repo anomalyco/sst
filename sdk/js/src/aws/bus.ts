@@ -1,9 +1,9 @@
 import { AwsOptions, client } from "../aws/client.js";
 import { Resource } from "../resource.js";
 import { event } from "../event/index.js";
-import { EventBridgeEvent, EventBridgeHandler } from "aws-lambda";
+import { EventBridgeEvent, EventBridgeHandler, Context } from "aws-lambda";
 
-export module bus {
+export namespace bus {
   export type Name = Extract<typeof Resource, { type: "sst.aws.Bus" }>["name"];
 
   function url(region?: string, options?: AwsOptions) {
@@ -18,15 +18,16 @@ export module bus {
         [K in Events["type"]]: Extract<Events, { type: K }>["$payload"];
       }[Events["type"]],
       raw: EventBridgeEvent<string, any>,
+      context: Context
     ) => Promise<void>,
   ): EventBridgeHandler<string, any, void> {
-    return async function (event) {
+    return async function (event, context) {
       const payload = {
         type: event["detail-type"],
         properties: event.detail.properties,
         metadata: event.detail.metadata,
       };
-      return cb(payload, event);
+      return cb(payload, event, context);
     };
   }
 
@@ -54,27 +55,32 @@ export module bus {
             metadata: options?.metadata || {},
           }
         : await def.create(properties, options?.metadata);
-    const res = await c.fetch(u, {
-      method: "POST",
-      aws: options?.aws,
-      headers: {
-        "X-Amz-Target": "AWSEvents.PutEvents",
-        "Content-Type": "application/x-amz-json-1.1",
-      },
-      body: JSON.stringify({
-        Entries: [
-          {
-            Source: [Resource.App.name, Resource.App.stage].join("."),
-            DetailType: evt.type,
-            Detail: JSON.stringify({
-              metadata: evt.metadata,
-              properties: evt.properties,
-            }),
-            EventBusName: typeof name === "string" ? name : name.name,
-          },
-        ],
-      }),
-    });
+    const res = await c
+      .fetch(u, {
+        method: "POST",
+        aws: options?.aws,
+        headers: {
+          "X-Amz-Target": "AWSEvents.PutEvents",
+          "Content-Type": "application/x-amz-json-1.1",
+        },
+        body: JSON.stringify({
+          Entries: [
+            {
+              Source: [Resource.App.name, Resource.App.stage].join("."),
+              DetailType: evt.type,
+              Detail: JSON.stringify({
+                metadata: evt.metadata,
+                properties: evt.properties,
+              }),
+              EventBusName: typeof name === "string" ? name : name.name,
+            },
+          ],
+        }),
+      })
+      .catch((e) => {
+        if (e instanceof Error) console.log("cause", e.cause);
+        throw e;
+      });
     if (!res.ok) throw new PublishError(res);
     return res.json();
   }

@@ -3,8 +3,8 @@ import {
   ComponentResourceOptions,
   output,
   interpolate,
+  all,
 } from "@pulumi/pulumi";
-import crypto from "crypto";
 import { DnsValidatedCertificate } from "./dns-validated-certificate.js";
 import { HttpsRedirect } from "./https-redirect.js";
 import { useProvider } from "./helpers/provider.js";
@@ -14,7 +14,6 @@ import { DistributionDeploymentWaiter } from "./providers/distribution-deploymen
 import { Dns } from "../dns.js";
 import { dns as awsDns } from "./dns.js";
 import { cloudfront } from "@pulumi/aws";
-import { DistributionInvalidation } from "./providers/distribution-invalidation.js";
 import { logicalName } from "../naming.js";
 
 export interface CdnDomainArgs {
@@ -240,78 +239,20 @@ export interface CdnArgs {
    */
   wait?: Input<boolean>;
   /**
-   * Configure how the CloudFront cache invalidations are handled.
-   * :::tip
-   * You get 1000 free invalidations per month. After that you pay $0.005 per invalidation path. [Read more here](https://aws.amazon.com/cloudfront/pricing/).
-   * :::
-   * @default `false`
-   * @example
-   * Enable invalidations. Setting this to `true` will invalidate all paths. It is equivalent
-   * to passing in `{ paths: ["/*"] }`.
+   * Tags to apply to the distribution.
+   */
+  tags?: Input<Record<string, Input<string>>>;
+  /**
+   * The ARN of a WAF WebACL to associate with the CloudFront distribution.
    *
-   * ```js
+   * @example
+   * ```ts
    * {
-   *   invalidation: true
+   *   webAclArn: "arn:aws:wafv2:us-east-1:123456789012:global/webacl/my-acl/abc123"
    * }
    * ```
    */
-  invalidation?: Input<
-    | boolean
-    | {
-        /**
-         * Configure if `sst deploy` should wait for the CloudFront cache invalidation to finish.
-         *
-         * :::tip
-         * For non-prod environments it might make sense to pass in `false`.
-         * :::
-         *
-         * Waiting for this process to finish ensures that new content will be available after the deploy finishes. However, this process can sometimes take more than 5 mins.
-         * @default `false`
-         * @example
-         * ```js
-         * {
-         *   invalidation: {
-         *     wait: true
-         *   }
-         * }
-         * ```
-         */
-        wait?: Input<boolean>;
-        /**
-         * The invalidation token is used to determine if the cache should be invalidated. If the
-         * token is the same as the previous deployment, the cache will not be invalidated.
-         *
-         * @default A unique value is auto-generated on each deploy
-         * @example
-         * ```js
-         * {
-         *   invalidation: {
-         *     token: "foo123"
-         *   }
-         * }
-         * ```
-         */
-        token?: Input<string>;
-        /**
-         * Specify an array of glob pattern of paths to invalidate.
-         *
-         * :::note
-         * Each glob pattern counts as a single invalidation. However, invalidating `/*` counts as a single invalidation as well.
-         * :::
-         * @default `["/*"]`
-         * @example
-         * Invalidate the `index.html` and all files under the `products/` route. This counts as two invalidations.
-         * ```js
-         * {
-         *   invalidation: {
-         *     paths: ["/index.html", "/products/*"]
-         *   }
-         * }
-         * ```
-         */
-        paths?: Input<Input<string>[]>;
-      }
-  >;
+  webAclArn?: Input<string>;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying resources.
    */
@@ -367,12 +308,10 @@ export class Cdn extends Component {
     }
 
     const domain = normalizeDomain();
-    const invalidation = normalizeInvalidation();
 
     const certificateArn = createSsl();
     const distribution = createDistribution();
     const waiter = createDistributionDeploymentWaiter();
-    createInvalidation();
     createDnsRecords();
     createRedirects();
 
@@ -396,22 +335,15 @@ export class Cdn extends Component {
     function normalizeDomain() {
       if (!args.domain) return;
 
-      // validate
-      output(args.domain).apply((domain) => {
-        if (typeof domain === "string") return;
+      return output(args.domain).apply((domain) => {
+        const norm = typeof domain === "string" ? { name: domain } : domain;
 
-        if (!domain.name) throw new Error(`Missing "name" for domain.`);
-        if (domain.dns === false && !domain.cert)
+        // validate
+        if (!norm.name) throw new Error(`Missing "name" for domain.`);
+        if (norm.dns === false && !norm.cert)
           throw new Error(
             `Need to provide a validated certificate via "cert" when DNS is disabled`,
           );
-        if (domain.dns === false && domain.redirects?.length)
-          throw new Error(`Redirects are not supported when DNS is disabled`);
-      });
-
-      // normalize
-      return output(args.domain).apply((domain) => {
-        const norm = typeof domain === "string" ? { name: domain } : domain;
 
         return {
           name: norm.name,
@@ -423,22 +355,11 @@ export class Cdn extends Component {
       });
     }
 
-    function normalizeInvalidation() {
-      if (!args.invalidation) return;
-
-      return output(args.invalidation).apply((invalidation) => ({
-        paths: ["/*"],
-        wait: false,
-        token: crypto.randomUUID(),
-        ...(invalidation === true ? {} : invalidation),
-      }));
-    }
-
     function createSsl() {
-      if (!domain) return;
+      if (!domain) return output(undefined);
 
-      return domain.apply((domain) => {
-        if (domain.cert) return output(domain.cert);
+      return domain.cert.apply((cert) => {
+        if (cert) return domain.cert;
 
         // Certificates used for CloudFront distributions are required to be
         // created in the us-east-1 region
@@ -447,7 +368,7 @@ export class Cdn extends Component {
           {
             domainName: domain.name,
             alternativeNames: domain.aliases,
-            dns: domain.dns!,
+            dns: domain.dns.apply((dns) => dns!),
           },
           { parent, provider: useProvider("us-east-1") },
         ).arn;
@@ -479,34 +400,24 @@ export class Cdn extends Component {
                   ...domain.aliases,
                 ])
               : [],
-            viewerCertificate: certificateArn
-              ? {
-                  acmCertificateArn: certificateArn,
-                  sslSupportMethod: "sni-only",
-                  minimumProtocolVersion: "TLSv1.2_2021",
-                }
-              : {
-                  cloudfrontDefaultCertificate: true,
-                },
+            viewerCertificate: certificateArn.apply((arn) =>
+              arn
+                ? {
+                    acmCertificateArn: arn,
+                    sslSupportMethod: "sni-only",
+                    minimumProtocolVersion: "TLSv1.2_2021",
+                  }
+                : {
+                    cloudfrontDefaultCertificate: true,
+                  },
+            ),
             waitForDeployment: false,
+            tags: args.tags,
+            // CloudFront API confusingly names the WAF ARN field "webAclId"
+            webAclId: args.webAclArn,
           },
           { parent },
         ),
-      );
-    }
-
-    function createInvalidation() {
-      if (!invalidation) return;
-
-      new DistributionInvalidation(
-        `${name}Invalidation`,
-        {
-          distributionId: distribution.id,
-          paths: invalidation.paths,
-          version: invalidation.token,
-          wait: invalidation.wait,
-        },
-        { parent },
       );
     }
 
@@ -570,20 +481,22 @@ export class Cdn extends Component {
     function createRedirects(): void {
       if (!domain) return;
 
-      output(domain).apply((domain) => {
-        if (!domain.redirects.length) return;
+      all([domain.cert, domain.redirects, domain.dns]).apply(
+        ([cert, redirects, dns]) => {
+          if (!redirects.length) return;
 
-        new HttpsRedirect(
-          `${name}Redirect`,
-          {
-            sourceDomains: domain.redirects,
-            targetDomain: domain.name,
-            cert: domain.cert,
-            dns: domain.dns!,
-          },
-          { parent },
-        );
-      });
+          new HttpsRedirect(
+            `${name}Redirect`,
+            {
+              sourceDomains: redirects,
+              targetDomain: domain.name,
+              cert: cert ? domain.cert.apply((cert) => cert!) : undefined,
+              dns: dns ? domain.dns.apply((dns) => dns!) : undefined,
+            },
+            { parent },
+          );
+        },
+      );
     }
   }
 

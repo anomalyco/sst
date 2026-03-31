@@ -1,1 +1,0 @@
-# aws-jsx-email

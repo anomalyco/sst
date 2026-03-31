@@ -11,7 +11,7 @@ You can use the SDK in your **functions**, **frontends**, and **container applic
 Check out the _SDK_ section in a component's API reference doc.
 :::
 
-Currently, the SDK is only available for JavaScript/TypeScript and Golang. Support for other languages is on the roadmap.
+Currently, the SDK is only available for JS/TS, Python, Golang, and Rust. Support for other languages is on the roadmap.
 
 ---
 
@@ -93,6 +93,42 @@ The JS SDK first checks the `process.env` and then the `globalThis` for the link
 
 ---
 
+## Python
+
+SST uses [uv](https://docs.astral.sh/uv/) to package your Python functions. Your functions need to be in a [uv workspace](https://docs.astral.sh/uv/concepts/projects/workspaces/#workspace-sources).
+
+To use the SDK, add it to your `pyproject.toml`.
+
+```toml title="functions/pyproject.toml"
+[tool.uv.sources]
+sst = { git = "https://github.com/sst/sst.git", subdirectory = "sdk/python", branch = "dev" }
+```
+
+And in your function, import the `resource` module and access the linked resource.
+
+```py title="functions/src/functions/api.py" {1} "Resource.MyBucket.name"
+from sst import Resource
+
+def handler(event, context):
+    print(Resource.MyBucket.name)
+```
+
+Here `MyBucket` is the name of a bucket that's linked to the function.
+
+```ts title="sst.config.ts" {6}
+const bucket = new sst.aws.Bucket("MyBucket");
+
+new sst.aws.Function("MyFunction", {
+  handler: "functions/src/functions/api.handler",
+  runtime: "python3.11",
+  link: [bucket]
+});
+```
+
+Client functions are currently **not supported** in the Python SDK.
+
+---
+
 ## Golang
 
 Use the SST Go SDK package in your Golang functions or container applications.
@@ -128,3 +164,47 @@ resource.Get("App", "stage")
 ```
 
 Client functions are currently **not supported** in the Go SDK.
+
+---
+
+## Rust
+
+Use the SST Rust SDK package in your Rust functions or container applications.
+
+```bash
+cargo install sst_sdk
+```
+
+In your runtime, use the `Resource::get()` function to access linked resources as a typesafe struct, or a `serde_json::Value`.
+
+```rust title="main.rs"
+use sst_sdk::Resource;
+
+#[derive(serde::Deserialize, Debug)]
+struct Bucket {
+    name: String,
+}
+
+fn main() {
+    let resource = Resource::init().unwrap();
+    // access your linked resources as a typesafe struct that implements Deserialize
+    let Bucket { name } = resource.get("MyBucket").unwrap();
+    // or as a weakly typed json value (that also implements Deserialize)
+    let openai_key: serde_json::Value = resource.get("OpenaiSecret").unwrap();
+}
+```
+
+where `MyBucket` and `OpenaiSecret` are linked to the function.
+
+```ts title="sst.config.ts"
+const bucket = new sst.aws.Bucket("MyBucket");
+const openai = new sst.Secret("OpenaiSecret");
+
+new sst.aws.Function("MyFunction", {
+  handler: "./",
+  link: [bucket, openai],
+  runtime: "rust"
+});
+```
+
+Client functions are currently **not supported** in the Rust SDK.

@@ -11,6 +11,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"os"
 	"sync"
 	"time"
 
@@ -20,18 +22,78 @@ import (
 	"github.com/sst/sst/v3/pkg/id"
 )
 
-var log = slog.Default().WithGroup("appsync")
+var log = slog.Default().With("service", "appsync.connection")
+
+var ErrSubscriptionFailed = fmt.Errorf("appsync subscription failed")
+var ErrConnectionFailed = fmt.Errorf("appsync connection failed")
+
+func getProxyURL(isHTTPS bool) (*url.URL, error) {
+	var proxyEnv string
+
+	if isHTTPS {
+		proxyEnv = os.Getenv("HTTPS_PROXY")
+		if proxyEnv == "" {
+			proxyEnv = os.Getenv("https_proxy")
+		}
+	}
+
+	if proxyEnv == "" {
+		proxyEnv = os.Getenv("HTTP_PROXY")
+		if proxyEnv == "" {
+			proxyEnv = os.Getenv("http_proxy")
+		}
+	}
+
+	if proxyEnv != "" {
+		noProxy := os.Getenv("NO_PROXY")
+		if noProxy == "" {
+			noProxy = os.Getenv("no_proxy")
+		}
+
+		if noProxy == "*" {
+			return nil, nil
+		}
+	}
+
+	if proxyEnv == "" {
+		return nil, nil
+	}
+
+	return url.Parse(proxyEnv)
+}
+
+func getHTTPClient() *http.Client {
+	proxyURL, err := getProxyURL(true)
+	if err != nil {
+		log.Warn("failed to parse proxy URL", "err", err)
+		return http.DefaultClient
+	}
+
+	if proxyURL == nil {
+		return http.DefaultClient
+	}
+
+	log.Info("using proxy for HTTP requests", "proxy", proxyURL.String())
+	return &http.Client{
+		Transport: &http.Transport{
+			Proxy: http.ProxyURL(proxyURL),
+		},
+	}
+}
 
 type Connection struct {
 	conn             *websocket.Conn
 	cfg              aws.Config
 	httpEndpoint     string
 	realtimeEndpoint string
-	subscriptions    map[string]SubscriptionChannel
+	subscriptions    map[string]SubscriptionInfo
 	lock             sync.Mutex
 }
 
-type SubscriptionChannel = chan string
+type SubscriptionInfo struct {
+	Channel string
+	Out     chan string
+}
 
 type SubscribeEvent struct {
 	Type          string      `json:"type"`
@@ -50,7 +112,7 @@ func Dial(
 		cfg:              cfg,
 		httpEndpoint:     httpEndpoint,
 		realtimeEndpoint: realtimeEndpoint,
-		subscriptions:    map[string]SubscriptionChannel{},
+		subscriptions:    map[string]SubscriptionInfo{},
 	}
 
 	err := result.connect(ctx)
@@ -63,14 +125,15 @@ func Dial(
 		if result.conn != nil {
 			result.conn.Close()
 		}
-		for _, out := range result.subscriptions {
-			close(out)
+		for _, item := range result.subscriptions {
+			close(item.Out)
 		}
 	}()
 	return result, nil
 }
 
 func (c *Connection) connect(ctx context.Context) error {
+	log.Info("connecting")
 	auth, err := c.getAuth(ctx, map[string]interface{}{})
 	if err != nil {
 		return err
@@ -80,41 +143,106 @@ func (c *Connection) connect(ctx context.Context) error {
 		return err
 	}
 	auth64 := base64.URLEncoding.WithPadding(base64.NoPadding).EncodeToString(authJson)
+
+	// Configure WebSocket dialer with proxy support
 	dialer := websocket.Dialer{
 		Subprotocols: []string{"aws-appsync-event-ws", "header-" + auth64},
 	}
+
+	// Add proxy support to WebSocket dialer
+	proxyURL, err := getProxyURL(true) // WebSocket uses wss:// (HTTPS)
+	if err != nil {
+		log.Warn("failed to parse proxy URL", "err", err)
+	} else if proxyURL != nil {
+		dialer.Proxy = http.ProxyURL(proxyURL)
+		log.Info("using proxy for WebSocket connection", "proxy", proxyURL.String())
+	}
+
 	conn, _, err := dialer.DialContext(ctx, "wss://"+c.realtimeEndpoint+"/event/realtime", nil)
 	if err != nil {
 		return err
 	}
+	conn.WriteJSON(map[string]interface{}{
+		"type": "connection_init",
+	})
 	c.conn = conn
+
+	msg := map[string]interface{}{}
+	err = conn.ReadJSON(&msg)
+	if err != nil {
+		log.Error("write to connection failed", "err", err)
+		return ErrConnectionFailed
+	}
+	log.Info("connect message", "msg", msg)
+	if msg["type"] != "connection_ack" {
+		return ErrConnectionFailed
+	}
+	duration := time.Millisecond * time.Duration(msg["connectionTimeoutMs"].(float64))
+
+	timer := time.NewTimer(duration)
+	go func() {
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+			log.Info("connection timeout")
+			conn.Close()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					err := c.connect(ctx)
+					if err != nil {
+						log.Info("failed to reconnect", "err", err)
+						time.Sleep(time.Second * 5)
+						continue
+					}
+					for id, sub := range c.subscriptions {
+						log.Info("resubscribing", "channel", sub.Channel, "id", id)
+						err := c.subscribe(ctx, sub.Channel, id)
+						if err != nil {
+							log.Error("failed to resubscribe", "err", err)
+							continue
+						}
+					}
+					return
+				}
+			}
+		}
+	}()
+
 	go func() {
 		for {
 			msg := map[string]interface{}{}
 			err := conn.ReadJSON(&msg)
 			if err != nil {
-				for {
-					log.Info("trying to reconnect", "err", err)
-					err := c.connect(ctx)
-					if err == nil {
-						break
-					}
-					time.Sleep(time.Second * 3)
-				}
+				log.Info("connection closed")
+				timer.Reset(1 * time.Millisecond)
 				return
 			}
-			if msg["type"] == "ka" {
+			log.Info("msg", "type", msg["type"], "id", msg["id"])
+
+			if msg["type"] == "connection_ack" {
+				duration = time.Millisecond * time.Duration(msg["connectionTimeoutMs"].(float64))
+				log.Info("keep alive set", "duration", duration.Seconds())
+				timer.Reset(duration)
 			}
+
+			if msg["type"] == "ka" {
+				timer.Reset(duration)
+			}
+
 			if msg["type"] == "subscribe_success" {
 				id := msg["id"].(string)
-				if out, ok := c.subscriptions[id]; ok {
-					out <- "ok"
+				if item, ok := c.subscriptions[id]; ok {
+					item.Out <- "ok"
 				}
 			}
 			if t := msg["type"]; t == "data" {
 				id := msg["id"].(string)
-				if out, ok := c.subscriptions[id]; ok {
-					out <- msg["event"].(string)
+				if item, ok := c.subscriptions[id]; ok {
+					item.Out <- msg["event"].(string)
 				}
 			}
 		}
@@ -123,31 +251,53 @@ func (c *Connection) connect(ctx context.Context) error {
 	return nil
 }
 
-var ErrSubscriptionFailed = fmt.Errorf("subscription failed")
+func (c *Connection) Subscribe(ctx context.Context, channel string) (chan string, error) {
+	out := make(chan string, 1000)
+	subscriptionID := id.Ascending()
+	c.subscriptions[subscriptionID] = SubscriptionInfo{
+		Channel: channel,
+		Out:     out,
+	}
+	err := c.subscribe(ctx, channel, subscriptionID)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
 
-func (c *Connection) Subscribe(ctx context.Context, channel string) (SubscriptionChannel, error) {
+func (c *Connection) subscribe(ctx context.Context, channel string, subscriptionID string) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	auth, err := c.getAuth(ctx, map[string]interface{}{
 		"channel": channel,
 	})
 	if err != nil {
-		return nil, err
+		return err
 	}
-	subscriptionID := id.Ascending()
+	old := c.subscriptions[subscriptionID].Out
+	tmp := make(chan string, 1)
+	defer func() {
+		c.subscriptions[subscriptionID] = SubscriptionInfo{
+			Channel: channel,
+			Out:     old,
+		}
+	}()
+	c.subscriptions[subscriptionID] = SubscriptionInfo{
+		Channel: channel,
+		Out:     tmp,
+	}
 	c.conn.WriteJSON(map[string]interface{}{
 		"type":          "subscribe",
 		"id":            subscriptionID,
 		"channel":       channel,
 		"authorization": auth,
 	})
-	out := make(SubscriptionChannel, 1000)
-	c.subscriptions[subscriptionID] = out
 	select {
-	case <-out:
-		return out, nil
+	case <-tmp:
+		log.Info("subscribed", "channel", channel, "id", subscriptionID)
+		return nil
 	case <-time.After(time.Second * 3):
-		return nil, ErrSubscriptionFailed
+		return ErrSubscriptionFailed
 	}
 }
 
@@ -225,7 +375,10 @@ func (c *Connection) Publish(ctx context.Context, channel string, event interfac
 	if err != nil {
 		return err
 	}
-	resp, err := http.DefaultClient.Do(req)
+
+	// Use HTTP client that respects proxy settings
+	client := getHTTPClient()
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}

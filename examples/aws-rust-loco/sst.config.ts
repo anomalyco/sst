@@ -1,5 +1,11 @@
 /// <reference path="./.sst/platform/config.d.ts" />
 
+/**
+ * ## Rust Loco
+ *
+ * Deploy a Rust Loco app with a Postgres database, Redis, and a background worker
+ * service.
+ */
 export default $config({
   app(input) {
     return {
@@ -17,15 +23,20 @@ export default $config({
 
     const redis = new sst.aws.Redis("LocoRedis", { vpc });
 
-    const DATABASE_URL = $interpolate`postgres://${database.username}:${database.password.apply(encodeURIComponent)
-      }@${database.host}:${database.port}/${database.database}`;
-    const REDIS_URL = $interpolate`redis://${redis.username}:${redis.password.apply(encodeURIComponent)
-      }@${redis.host}:${redis.port}`;
+    const DATABASE_URL = $interpolate`postgres://${
+      database.username
+    }:${database.password.apply(encodeURIComponent)}@${database.host}:${
+      database.port
+    }/${database.database}`;
+    const REDIS_URL = $interpolate`redis://${
+      redis.username
+    }:${redis.password.apply(encodeURIComponent)}@${redis.host}:${redis.port}`;
 
     const locoCluster = new sst.aws.Cluster("LocoCluster", { vpc });
 
     // external facing http service
-    const locoServer = locoCluster.addService("LocoApp", {
+    const locoServer = new sst.aws.Service("LocoApp", {
+      cluster: locoCluster,
       architecture: "x86_64",
       scaling: { min: 2, max: 4 },
       command: ["start"],
@@ -43,7 +54,8 @@ export default $config({
     });
 
     // add a worker that uses redis to process jobs off a queue
-    locoCluster.addService("LocoWorker", {
+    new sst.aws.Service("LocoWorker", {
+      cluster: locoCluster,
       architecture: "x86_64",
       command: ["start", "--worker"],
       environment: {

@@ -14,7 +14,8 @@ export default $config({
 
     const cluster = new sst.aws.Cluster("MyCluster", { vpc });
 
-    cluster.addService("MyService", {
+    new sst.aws.Service("MyService", {
+      cluster,
       link: [bucket],
       loadBalancer: {
         ports: [{ listen: "80/http" }],
@@ -23,5 +24,5 @@ export default $config({
         command: "node --watch index.mjs",
       },
     });
-  }
+  },
 });

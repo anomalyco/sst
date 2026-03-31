@@ -21,10 +21,8 @@ import (
 	"github.com/sst/sst/v3/internal/util"
 	"github.com/sst/sst/v3/pkg/flag"
 	"github.com/sst/sst/v3/pkg/global"
-	"github.com/sst/sst/v3/pkg/id"
 	"github.com/sst/sst/v3/pkg/process"
 	"github.com/sst/sst/v3/pkg/project"
-	"github.com/sst/sst/v3/pkg/project/provider"
 	"github.com/sst/sst/v3/pkg/telemetry"
 )
 
@@ -36,7 +34,7 @@ func main() {
 	binary, _ := os.Executable()
 	if _, err := os.Stat(nodeModulesBinPath); err == nil && !strings.Contains(binary, "node_modules") && os.Getenv("SST_SKIP_LOCAL") != "true" && version != "dev" {
 		// forward command to node_modules/.bin/sst
-		fmt.Println(ui.TEXT_WARNING_BOLD.Render("Warning: ") + "You are using a global installation of SST but you also have a local installation specified in your package.json. The local installation will be used but you should typically run it through your package manager.")
+		fmt.Fprintln(os.Stderr, ui.TEXT_WARNING_BOLD.Render("Warning: ")+"You are using a global installation of SST but you also have a local installation specified in your package.json. The local installation will be used but you should typically run it through your package manager.")
 		cmd := process.Command(nodeModulesBinPath, os.Args[1:]...)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
@@ -71,7 +69,7 @@ func main() {
 			if msg != "" {
 				ui.Error(readableErr.Error())
 				if readableErr.IsHinted() {
-					fmt.Println("   " + ui.TEXT_DIM.Render(readableErr.Unwrap().Error()))
+					fmt.Fprintln(os.Stderr, "   "+ui.TEXT_DIM.Render(readableErr.Unwrap().Error()))
 				}
 			}
 		} else {
@@ -109,6 +107,7 @@ func run() error {
 
 	if !flag.SST_SKIP_DEPENDENCY_CHECK {
 		spin := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
+		spin.Color("cyan")
 		spin.Suffix = "  Download dependencies..."
 		if global.NeedsPulumi() {
 			spin.Suffix = "  Installing pulumi..."
@@ -151,7 +150,7 @@ var root = &cli.Command{
 			"```",
 			"",
 			":::note",
-			"The CLI currently supports macOS, Linux, and WSL. Windows support is coming soon.",
+			"The CLI currently supports macOS, Linux, and WSL. Windows support is in beta.",
 			":::",
 			"",
 			"To install a specific version.",
@@ -166,7 +165,7 @@ var root = &cli.Command{
 			"",
 			"- **macOS**",
 			"",
-			"  The CLI is available via a Homebrew Tap, and as downloadable binary in the [releases](https://github.com/sst/sst/v3/releases/latest).",
+			"  The CLI is available via a Homebrew Tap, and as downloadable binary in the [releases](https://github.com/sst/sst/releases/latest).",
 			"",
 			"  ```bash",
 			"  brew install sst/tap/sst",
@@ -179,7 +178,7 @@ var root = &cli.Command{
 			"",
 			"- **Linux**",
 			"",
-			"  The CLI is available as downloadable binaries in the [releases](https://github.com/sst/sst/v3/releases/latest). Download the `.deb` or `.rpm` and install with `sudo dpkg -i` and `sudo rpm -i`.",
+			"  The CLI is available as downloadable binaries in the [releases](https://github.com/sst/sst/releases/latest). Download the `.deb` or `.rpm` and install with `sudo dpkg -i` and `sudo rpm -i`.",
 			"",
 			"  For Arch Linux, it's available in the [aur](https://aur.archlinux.org/packages/sst-bin).",
 			"---",
@@ -284,6 +283,26 @@ var root = &cli.Command{
 			},
 		},
 		{
+			Name: "config",
+			Type: "string",
+			Description: cli.Description{
+				Short: "Path to the config file",
+				Long: strings.Join([]string{
+					"",
+					"Optionally, pass in a path to the SST config file. This default to",
+					"`sst.config.ts` in the current directory.",
+					"",
+					"```bash",
+					"sst --config path/to/config.ts [command]",
+					"```",
+					"",
+					"This is useful when your monorepo has multiple SST apps in it.",
+					"You can run the SST CLI for a specific app by passing in the path to",
+					"its config file.",
+				}, "\n"),
+			},
+		},
+		{
 			Name: "help",
 			Type: "bool",
 			Description: cli.Description{
@@ -356,9 +375,9 @@ var root = &cli.Command{
 					"Run your app in dev mode. By default, this starts a multiplexer with processes that",
 					" deploy your app, run your functions, and start your frontend.",
 					"",
-					"```bash frame=\"none\"",
-					"sst dev",
-					"```",
+					":::note",
+					"The tabbed terminal UI is only available on Linux/macOS and WSL.",
+					":::",
 					"",
 					"Each process is run in a separate tab that you can click on in the sidebar.",
 					"",
@@ -380,7 +399,8 @@ var root = &cli.Command{
 					"    servers started in a separate tab and are not deployed.",
 					"  - `Service` components are not deployed, and instead their `dev.command` is",
 					"    started in a separate tab.",
-					"  - `Postgres` and `Redis` link to a local database if the `dev` prop is set.",
+					"  - `Postgres`, `Aurora`, and `Redis` link to a local database if the `dev` prop is",
+					"    set.",
 					"- Start an [`sst tunnel`](#tunnel) session in a new tab if your app has a `Vpc`",
 					"  with `bastion` enabled.",
 					"- Load any [linked resources](/docs/linking) in the environment.",
@@ -391,7 +411,8 @@ var root = &cli.Command{
 					"deployed by `sst dev`.",
 					":::",
 					"",
-					"Optionally, you can disable the multiplexer and run `sst dev` in basic mode.",
+					"Optionally, you can disable the multiplexer and not spawn any child",
+					"processes by running `sst dev` in basic mode.",
 					"",
 					"```bash frame=\"none\"",
 					"sst dev --mode=basic",
@@ -415,6 +436,18 @@ var root = &cli.Command{
 					"```bash frame=\"none\"",
 					"sst dev -- next dev --turbo",
 					"```",
+					"",
+					"You can also disable the tabbed terminal UI by running `sst dev` in",
+					"mono mode.",
+					"",
+					"```bash frame=\"none\"",
+					"sst dev --mode=mono",
+					"```",
+					"",
+					"Unlike `basic` mode, this'll spawn child processes. But instead of",
+					"a tabbed UI it'll show their outputs in a single stream.",
+					"",
+					"This is used by default in Windows.",
 				}, "\n"),
 			},
 			Flags: []cli.Flag{
@@ -422,8 +455,16 @@ var root = &cli.Command{
 					Name: "mode",
 					Type: "string",
 					Description: cli.Description{
-						Short: "Use mode=basic to turn off multiplexer",
-						Long:  "Defaults to using the multiplexer or `mosaic` mode. Use `basic` to turn it off.",
+						Short: "mode=mono to turn off multiplexer. mode=basic to not spawn any child processes",
+						Long:  "Defaults to using `multi` mode. Use `mono` to get a single stream of all child process logs or `basic` to not spawn any child processes.",
+					},
+				},
+				{
+					Name: "policy",
+					Type: "string",
+					Description: cli.Description{
+						Short: "Path to policy pack",
+						Long:  "Run policy pack validation against the preview changes.",
 					},
 				},
 			},
@@ -458,69 +499,7 @@ var root = &cli.Command{
 			Run: CmdMosaic,
 		},
 		CmdDeploy,
-		{
-			Name: "diff",
-			Description: cli.Description{
-				Short: "See what changes will be made",
-				Long: strings.Join([]string{
-					"Builds your app to see what changes will be made when you deploy it.",
-					"",
-					"It displays a list of resources that will be created, updated, or deleted.",
-					"For each of these resources, it'll also show the properties that are changing.",
-					"",
-					":::tip",
-					"Run a `sst diff` to see what changes will be made when you deploy your app.",
-					":::",
-					"",
-					"This is useful for cases when you pull some changes from a teammate and want to",
-					"see what will be deployed; before doing the actual deploy.",
-					"",
-					"Optionally, you can diff a specific set of resources by passing in a list of their URNs.",
-					"",
-					"```bash frame=\"none\"",
-					"sst diff --target urn:pulumi:prod::www::sst:aws:Astro::Astro,urn:pulumi:prod::www::sst:aws:Bucket::Assets",
-					"```",
-					"",
-					"By default, this compares to the last deploy of the given stage as it would be",
-					"deployed using `sst deploy`. But if you are working in dev mode using `sst dev`,",
-					"you can use the `--dev` flag.",
-					"",
-					"```bash frame=\"none\"",
-					"sst diff --dev",
-					"```",
-					"",
-					"This is useful because in dev mode, you app is deployed a little differently.",
-				}, "\n"),
-			},
-			Flags: []cli.Flag{
-				{
-					Name: "target",
-					Description: cli.Description{
-						Short: "Comma separated list of target URNs",
-						Long:  "Comma separated list of target URNs.",
-					},
-				},
-				{
-					Name: "dev",
-					Type: "bool",
-					Description: cli.Description{
-						Short: "Compare to sst dev",
-						Long: strings.Join([]string{
-							"Compare to the dev of this stage.",
-						}, "\n"),
-					},
-				},
-			},
-			Examples: []cli.Example{
-				{
-					Content: "sst diff --stage production",
-					Description: cli.Description{
-						Short: "See changes to production",
-					},
-				},
-			},
-			Run: CmdDiff,
-		},
+		CmdDiff,
 		{
 			Name: "add",
 			Description: cli.Description{
@@ -571,6 +550,8 @@ var root = &cli.Command{
 					"```bash frame=\"none\"",
 					"NPM_REGISTRY=https://my-registry.com sst add aws",
 					"```",
+					"",
+					"You can also set the registry in your `.npmrc` file. If your registry requires authentication, SST supports `_authToken`, `_auth`, and `username`/`_password` from `.npmrc`.",
 				}, "\n"),
 			},
 			Args: []cli.Argument{
@@ -586,10 +567,11 @@ var root = &cli.Command{
 			Run: func(cli *cli.Cli) error {
 				pkg := cli.Positional(0)
 				spin := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
+				spin.Color("cyan")
 				spin.Suffix = "  Adding provider..."
 				spin.Start()
 				defer spin.Stop()
-				cfgPath, err := project.Discover()
+				cfgPath, err := cli.Discover()
 				if err != nil {
 					return err
 				}
@@ -611,13 +593,21 @@ var root = &cli.Command{
 						return err
 					}
 				}
-				entry, err := project.FindProvider(pkg, "latest")
+				entry, err := project.FindProvider(pkg, "latest", pkg)
 				if err != nil {
 					return util.NewReadableError(err, "Could not find provider "+pkg)
 				}
-				err = p.Add(entry.Name, entry.Version)
+				// When the user passed a full package name (e.g. @paynearme/pulumi-jetstream),
+				// use the alias as the config key and set the package override
+				providerName := entry.Name
+				pkgOverride := ""
+				if entry.Name == entry.Package {
+					providerName = entry.Alias
+					pkgOverride = entry.Package
+				}
+				err = p.Add(providerName, entry.Version, pkgOverride)
 				if err != nil {
-					return err
+					return util.NewReadableError(err, err.Error())
 				}
 				spin.Suffix = "  Downloading provider..."
 				p, err = project.New(&project.ProjectConfig{
@@ -657,7 +647,7 @@ var root = &cli.Command{
 				}, "\n"),
 			},
 			Run: func(cli *cli.Cli) error {
-				cfgPath, err := project.Discover()
+				cfgPath, err := cli.Discover()
 				if err != nil {
 					return err
 				}
@@ -677,6 +667,7 @@ var root = &cli.Command{
 				}
 
 				spin := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
+				spin.Color("cyan")
 				defer spin.Stop()
 				spin.Suffix = "  Installing providers..."
 				spin.Start()
@@ -703,7 +694,10 @@ var root = &cli.Command{
 				Long: strings.Join([]string{
 					"Manage the secrets in your app defined with `sst.Secret`.",
 					"",
+					"<VideoAside title=\"Watch a video on how secrets work\" href=\"https://youtu.be/7tW2L3P6LKw\" />",
+					"",
 					"The `--fallback` flag can be used to manage the fallback values of a secret.",
+					"",
 					"Applies to all the sub-commands in `sst secret`.",
 				}, "\n"),
 			},
@@ -739,8 +733,8 @@ var root = &cli.Command{
 				{
 					Name: "target",
 					Description: cli.Description{
-						Short: "Target to run against",
-						Long:  "Target to run against.",
+						Short: "Run it only for a component",
+						Long:  "Only run it for the given component.",
 					},
 				},
 			},
@@ -789,6 +783,14 @@ var root = &cli.Command{
 					"```",
 					"",
 					"This is useful if you want to run multiple commands, all while accessing the resources in your app.",
+					"",
+					"Optionally, you can run this for a specific component by passing in the name of the component.",
+					"",
+					"```bash frame=\"none\" frame=\"none\"",
+					"sst shell --target MyComponent",
+					"```",
+					"",
+					"Here the linked resources for `MyComponent` and its environment variables are available.",
 				}, "\n"),
 			},
 			Examples: []cli.Example{
@@ -812,18 +814,17 @@ var root = &cli.Command{
 					"The resources in your app are removed based on the `removal` setting in your `sst.config.ts`.",
 					":::",
 					"",
-					"This does not remove the SST _state_ and _bootstrap_ resources in your account as these might still be in use by other apps. You can remove them manually if you want to reset your account, [learn more](docs/providers/#state).",
+					"This does not remove the SST _state_ and _bootstrap_ resources in your account as these might still be in use by other apps. You can remove them manually if you want to reset your account, [learn more](/docs/state/#reset).",
 					"",
 					"Optionally, remove your app from a specific stage.",
 					"",
 					"```bash frame=\"none\" frame=\"none\"",
 					"sst remove --stage production",
 					"```",
-					"Optionally, remove specific resources by passing in a list of their URNs.",
-					"You can get the URN of a resource from the [Console](/docs/console/#resources).",
+					"You can also remove a specific component by passing in the name of the component from your `sst.config.ts`.",
 					"",
 					"```bash frame=\"none\"",
-					"sst remove --target urn:pulumi:prod::www::sst:aws:Astro::Astro,urn:pulumi:prod::www::sst:aws:Bucket::Assets",
+					"sst remove --target MyComponent",
 					"```",
 				}, "\n"),
 			},
@@ -832,8 +833,8 @@ var root = &cli.Command{
 					Name: "target",
 					Type: "string",
 					Description: cli.Description{
-						Short: "Comma separated list of target URNs",
-						Long:  "Comma separated list of target URNs.",
+						Short: "Run it only for a component",
+						Long:  "Only run it for the given component.",
 					},
 				},
 			},
@@ -982,11 +983,23 @@ var root = &cli.Command{
 					":::note",
 					"The `sst refresh` does not make changes to the resources in the cloud provider.",
 					":::",
-					"Optionally, refresh specific resources by passing in a list of their URNs.",
-					"You can get the URN of a resource from the [Console](/docs/console/#resources).",
+					"",
+					"By default, this refreshes the stage as it would be deployed using `sst deploy`. If the stage was deployed using `sst dev`, use the `--dev` flag.",
 					"",
 					"```bash frame=\"none\"",
-					"sst refresh --target urn:pulumi:prod::www::sst:aws:Astro::Astro,urn:pulumi:prod::www::sst:aws:Bucket::Assets",
+					"sst refresh --dev",
+					"```",
+					"",
+					"You can also refresh a specific component by passing in the name of the component.",
+					"",
+					"```bash frame=\"none\"",
+					"sst refresh --target MyComponent",
+					"```",
+					"",
+					"Alternatively, exclude a specific component from the refresh.",
+					"",
+					"```bash frame=\"none\"",
+					"sst refresh --exclude MyComponent",
 					"```",
 					"",
 					"This is useful for cases where you want to ensure that your local state is in sync with your cloud provider. [Learn more about how state works](/docs/providers/#how-state-works).",
@@ -997,76 +1010,30 @@ var root = &cli.Command{
 					Name: "target",
 					Type: "string",
 					Description: cli.Description{
-						Short: "Comma separated list of target URNs",
-						Long:  "Comma separated list of target URNs.",
+						Short: "Run it only for a component",
+						Long:  "Only run it for the given component.",
+					},
+				},
+				{
+					Name: "exclude",
+					Type: "string",
+					Description: cli.Description{
+						Short: "Exclude a component",
+						Long:  "Exclude the specified component from the operation.",
+					},
+				},
+				{
+					Name: "dev",
+					Type: "bool",
+					Description: cli.Description{
+						Short: "Refresh in dev mode",
+						Long:  "Refresh the dev version of this stage.",
 					},
 				},
 			},
 			Run: CmdRefresh,
 		},
-		{
-			Name:   "state",
-			Hidden: true,
-			Description: cli.Description{
-				Short: "Manage state of your deployment",
-			},
-			Children: []*cli.Command{
-				{
-					Name: "edit",
-					Description: cli.Description{
-						Short: "Edit the state of your deployment",
-					},
-					Run: func(c *cli.Cli) error {
-						p, err := c.InitProject()
-						if err != nil {
-							return err
-						}
-						defer p.Cleanup()
-
-						var update provider.Update
-						update.Version = version
-						update.ID = id.Descending()
-						update.TimeStarted = time.Now().UTC().Format(time.RFC3339)
-						err = p.Lock(update.ID, "edit")
-						if err != nil {
-							return util.NewReadableError(err, "Could not lock state")
-						}
-						defer p.Unlock()
-						defer func() {
-							update.TimeCompleted = time.Now().UTC().Format(time.RFC3339)
-							provider.PutUpdate(p.Backend(), p.App().Name, p.App().Stage, update)
-						}()
-						workdir, err := p.NewWorkdir()
-						if err != nil {
-							return err
-						}
-						path, err := workdir.Pull()
-						if err != nil {
-							return util.NewReadableError(err, "Could not pull state")
-						}
-						defer workdir.Cleanup()
-						editor := os.Getenv("EDITOR")
-						if editor == "" {
-							editor = "vim"
-						}
-						editorArgs := append(strings.Fields(editor), path)
-						fmt.Println(editorArgs)
-						cmd := process.Command(editorArgs[0], editorArgs[1:]...)
-						cmd.Stdin = os.Stdin
-						cmd.Stdout = os.Stdout
-						cmd.Stderr = os.Stderr
-						if err := cmd.Start(); err != nil {
-							return util.NewReadableError(err, "Could not start editor")
-						}
-						if err := cmd.Wait(); err != nil {
-							return util.NewReadableError(err, "Editor exited with error")
-						}
-
-						return workdir.Push(update.ID)
-					},
-				},
-			},
-		},
+		CmdState,
 		CmdCert,
 		CmdTunnel,
 		CmdDiagnostic,

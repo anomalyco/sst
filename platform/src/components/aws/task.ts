@@ -1,10 +1,15 @@
 import { all, ComponentResourceOptions, Output, output } from "@pulumi/pulumi";
 import { Component, Prettify } from "../component.js";
 import { Link } from "../link.js";
+import { Cluster } from "./cluster.js";
+import { ec2, ecs, iam } from "@pulumi/aws";
+import { permission } from "./permission.js";
+import { Vpc } from "./vpc.js";
+import { VisibleError } from "../error.js";
+import { Function } from "./function.js";
 import {
-  Cluster,
-  ClusterTaskArgs,
-  ClusterVpcsNormalizedArgs,
+  FargateBaseArgs,
+  FargateContainerArgs,
   createExecutionRole,
   createTaskDefinition,
   createTaskRole,
@@ -13,43 +18,277 @@ import {
   normalizeCpu,
   normalizeMemory,
   normalizeStorage,
-} from "./cluster.js";
-import { ecs, iam } from "@pulumi/aws";
-import { permission } from "./permission.js";
-import { Vpc } from "./vpc.js";
-import { Function } from "./function.js";
+} from "./fargate.js";
+import { Input } from "../input.js";
 
-export interface TaskArgs extends ClusterTaskArgs {
+export interface TaskArgs extends FargateBaseArgs {
   /**
-   * The cluster to use for the task.
+   * The containers to run in the task.
+   *
+   * :::tip
+   * You can optionally run multiple containers in a task.
+   * :::
+   *
+   * By default this starts a single container. To add multiple containers in the task, pass
+   * in an array of containers args.
+   *
+   * ```ts
+   * {
+   *   containers: [
+   *     {
+   *       name: "app",
+   *       image: "nginxdemos/hello:plain-text"
+   *     },
+   *     {
+   *       name: "admin",
+   *       image: {
+   *         context: "./admin",
+   *         dockerfile: "Dockerfile"
+   *       }
+   *     }
+   *   ]
+   * }
+   * ```
+   *
+   * If you specify `containers`, you cannot list the above args at the top-level. For example,
+   * you **cannot** pass in `image` at the top level.
+   *
+   * ```diff lang="ts"
+   * {
+   * -  image: "nginxdemos/hello:plain-text",
+   *   containers: [
+   *     {
+   *       name: "app",
+   *       image: "nginxdemos/hello:plain-text"
+   *     },
+   *     {
+   *       name: "admin",
+   *       image: "nginxdemos/hello:plain-text"
+   *     }
+   *   ]
+   * }
+   * ```
+   *
+   * You will need to pass in `image` as a part of the `containers`.
    */
-  cluster: Cluster;
+  containers?: Input<Prettify<FargateContainerArgs>>[];
   /**
-   * The VPC to use for the cluster.
+   * Make the task publicly accessible from the internet.
+   *
+   * :::note
+   * Tasks in an SST VPC are placed in public subnets with a public IP by default for
+   * outbound internet access. The `public` property controls whether the task is
+   * _reachable_ from the internet.
+   * :::
+   *
+   * If you are using a custom VPC, you must also set `vpc.publicSubnets` on the Cluster.
+   *
+   * @default false
+   *
+   * @example
+   * ```ts
+   * {
+   *   public: true
+   * }
+   * ```
    */
-  vpc: Vpc | Output<Prettify<ClusterVpcsNormalizedArgs>>;
+  public?: boolean;
+  /**
+   * @deprecated Use `public` instead.
+   */
+  publicIp?: boolean;
+  /**
+   * Configure how this component works in `sst dev`.
+   *
+   * :::note
+   * In `sst dev` a _stub_ version of your task is deployed.
+   * :::
+   *
+   * By default, your task in not deployed in `sst dev`. Instead, you can set the `dev.command`
+   * and it'll run locally in a **Tasks** tab in the `sst dev` multiplexer.
+   *
+   * Here's what happens when you run `sst dev`:
+   *
+   * 1. A _stub_ version of your task is deployed. This is a minimal image that starts up
+   *    faster.
+   * 2. When your task is started through the SDK, the stub version is provisioned. This can
+   *    take roughly **10 - 20 seconds**.
+   * 3. The stub version proxies the payload to your local machine using the same events
+   *    system used by [Live](/docs/live/).
+   * 4. The `dev.command` is called to run your task locally. Once complete, the stub version
+   *    of your task is stopped as well.
+   *
+   * The advantage with this approach is that you can test your task locally even it's invoked
+   * remotely, or through a cron job.
+   *
+   * :::note
+   * You are charged for the time it takes to run the stub version of your task.
+   * :::
+   *
+   * Since the stub version runs while your task is running, you are charged for the time it
+   * takes to run. This is roughly **$0.02 per hour**.
+   *
+   * To disable this and deploy your task in `sst dev`, pass in `false`. Read more about
+   * [Live](/docs/live/) and [`sst dev`](/docs/reference/cli/#dev).
+   */
+  dev?:
+    | false
+    | {
+        /**
+         * The command that `sst dev` runs in dev mode.
+         */
+        command?: Input<string>;
+        /**
+         * Change the directory from where the `command` is run.
+         * @default Uses the `image.dockerfile` path
+         */
+        directory?: Input<string>;
+      };
 }
 
 /**
- * The `Task` component is internally used by the `Cluster` component to deploy tasks to
- * [Amazon ECS](https://aws.amazon.com/ecs/). It uses [AWS Fargate](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/AWS_Fargate.html).
+ * The `Task` component lets you create containers that are used for long running asynchronous
+ * work, like data processing. It uses [Amazon ECS](https://aws.amazon.com/ecs/) on
+ * [AWS Fargate](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/AWS_Fargate.html).
  *
- * :::note
- * This component is not meant to be created directly.
- * :::
+ * @example
  *
- * This component is returned by the `addTask` method of the `Cluster` component.
+ * #### Create a Task
+ *
+ * Tasks are run inside an ECS Cluster. If you haven't already, create one.
+ *
+ * ```ts title="sst.config.ts"
+ * const vpc = new sst.aws.Vpc("MyVpc");
+ * const cluster = new sst.aws.Cluster("MyCluster", { vpc });
+ * ```
+ *
+ * Add the task to it.
+ *
+ * ```ts title="sst.config.ts"
+ * const task = new sst.aws.Task("MyTask", { cluster });
+ * ```
+ *
+ * #### Configure the container image
+ *
+ * By default, the task will look for a Dockerfile in the root directory. Optionally,
+ * configure the image context and dockerfile.
+ *
+ * ```ts title="sst.config.ts"
+ * new sst.aws.Task("MyTask", {
+ *   cluster,
+ *   image: {
+ *     context: "./app",
+ *     dockerfile: "Dockerfile"
+ *   }
+ * });
+ * ```
+ *
+ * To add multiple containers in the task, pass in an array of containers args.
+ *
+ * ```ts title="sst.config.ts"
+ * new sst.aws.Task("MyTask", {
+ *   cluster,
+ *   containers: [
+ *     {
+ *       name: "app",
+ *       image: "nginxdemos/hello:plain-text"
+ *     },
+ *     {
+ *       name: "admin",
+ *       image: {
+ *         context: "./admin",
+ *         dockerfile: "Dockerfile"
+ *       }
+ *     }
+ *   ]
+ * });
+ * ```
+ *
+ * This is useful for running sidecar containers.
+ *
+ * #### Link resources
+ *
+ * [Link resources](/docs/linking/) to your task. This will grant permissions
+ * to the resources and allow you to access it in your app.
+ *
+ * ```ts {5} title="sst.config.ts"
+ * const bucket = new sst.aws.Bucket("MyBucket");
+ *
+ * new sst.aws.Task("MyTask", {
+ *   cluster,
+ *   link: [bucket]
+ * });
+ * ```
+ *
+ * You can use the [SDK](/docs/reference/sdk/) to access the linked resources in your task.
+ *
+ * ```ts title="app.ts"
+ * import { Resource } from "sst";
+ *
+ * console.log(Resource.MyBucket.name);
+ * ```
+ *
+ * #### Task SDK
+ *
+ * With the [Task JS SDK](/docs/component/aws/task#sdk), you can run your tasks, stop your
+ * tasks, and get the status of your tasks.
+ *
+ * For example, you can link the task to a function in your app.
+ *
+ * ```ts title="sst.config.ts" {3}
+ * new sst.aws.Function("MyFunction", {
+ *   handler: "src/lambda.handler",
+ *   link: [task]
+ * });
+ * ```
+ *
+ * Then from your function run the task.
+ *
+ * ```ts title="src/lambda.ts"
+ * import { Resource } from "sst";
+ * import { task } from "sst/aws/task";
+ *
+ * const runRet = await task.run(Resource.MyTask);
+ * const taskArn = runRet.arn;
+ * ```
+ *
+ * If you are not using Node.js, you can use the AWS SDK instead. Here's
+ * [how to run a task](https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_RunTask.html).
+ *
+ * ---
+ *
+ * ### Cost
+ *
+ * By default, this uses a _Linux/X86_ _Fargate_ container with 0.25 vCPUs at $0.04048 per
+ * vCPU per hour and 0.5 GB of memory at $0.004445 per GB per hour. It includes 20GB of
+ * _Ephemeral Storage_ for free with additional storage at $0.000111 per GB per hour. When
+ * using an SST VPC, each task also gets a public IPv4 address at $0.005 per hour.
+ *
+ * It works out to $0.04048 x 0.25 + $0.004445 x 0.5 + $0.005. Or **$0.02 per hour**
+ * your task runs for.
+ *
+ * Adjust this for the `cpu`, `memory` and `storage` you are using. And
+ * check the prices for _Linux/ARM_ if you are using `arm64` as your `architecture`.
+ *
+ * The above are rough estimates for _us-east-1_, check out the
+ * [Fargate pricing](https://aws.amazon.com/fargate/pricing/) and the
+ * [Public IPv4 Address pricing](https://aws.amazon.com/vpc/pricing/) for more details.
  */
 export class Task extends Component implements Link.Linkable {
   private readonly _cluster: Cluster;
+  private readonly publicSecurityGroup?: ec2.SecurityGroup;
   private readonly vpc: {
+    id: Input<string>;
     isSstVpc: boolean;
-    containerSubnets: Output<Output<string>[]>;
-    securityGroups: Output<Output<string>[]>;
+    publicSubnets: Output<Input<string>[]>;
+    containerSubnets: Output<Input<string>[]>;
+    securityGroups: Output<Input<string>[]>;
   };
   private readonly executionRole: iam.Role;
   private readonly taskRole: iam.Role;
   private readonly _taskDefinition: Output<ecs.TaskDefinition>;
+  private readonly isPublic: boolean;
+  private readonly hasPublicIp: boolean;
   private readonly containerNames: Output<Output<string>[]>;
   private readonly dev: boolean;
 
@@ -67,13 +306,21 @@ export class Task extends Component implements Link.Linkable {
     const memory = normalizeMemory(cpu, args);
     const storage = normalizeStorage(args);
     const containers = normalizeContainers("task", args, name, architecture);
+    if (args.public !== undefined && args.publicIp !== undefined)
+      throw new VisibleError(
+        `Do not set both "public" and "publicIp" for the "${name}" Task. "publicIp" has been deprecated, use "public" instead.`,
+      );
+    const isPublic = args.public ?? false;
     const vpc = normalizeVpc();
+    const hasPublicIp = isPublic || (args.publicIp ?? vpc.isSstVpc);
+    const publicSecurityGroup = createPublicSecurityGroup();
 
     const taskRole = createTaskRole(
       name,
       args,
       opts,
       self,
+      dev,
       dev
         ? [
             {
@@ -98,7 +345,7 @@ export class Task extends Component implements Link.Linkable {
             return [
               {
                 ...v[0],
-                image: output("ghcr.io/sst/sst/bridge-task:20241224005724"),
+                image: output("ghcr.io/anomalyco/sst/bridge-task:latest"),
                 environment: {
                   ...v[0].environment,
                   SST_TASK_ID: name,
@@ -121,9 +368,12 @@ export class Task extends Component implements Link.Linkable {
     );
 
     this._cluster = args.cluster;
+    this.publicSecurityGroup = publicSecurityGroup;
     this.vpc = vpc;
     this.executionRole = executionRole;
     this._taskDefinition = taskDefinition;
+    this.isPublic = isPublic;
+    this.hasPublicIp = hasPublicIp;
     this.containerNames = containers.apply((v) => v.map((v) => output(v.name)));
     this.registerOutputs({
       _task: all([args.dev, containers]).apply(([v, containers]) => ({
@@ -145,10 +395,12 @@ export class Task extends Component implements Link.Linkable {
 
     function normalizeVpc() {
       // "vpc" is a Vpc component
-      if (args.vpc instanceof Vpc) {
-        const vpc = args.vpc;
+      if (args.cluster.vpc instanceof Vpc) {
+        const vpc = args.cluster.vpc;
         return {
+          id: vpc.id,
           isSstVpc: true,
+          publicSubnets: vpc.publicSubnets,
           containerSubnets: vpc.publicSubnets,
           securityGroups: vpc.securityGroups,
         };
@@ -156,14 +408,51 @@ export class Task extends Component implements Link.Linkable {
 
       // "vpc" is object
       return {
+        id: output(args.cluster.vpc).apply((v) => v.id),
         isSstVpc: false,
-        containerSubnets: output(args.vpc).apply((v) =>
+        publicSubnets: output(args.cluster.vpc).apply((v) => {
+          if (isPublic && !v.publicSubnets?.length)
+            throw new VisibleError(
+              `Set "vpc.publicSubnets" on the Cluster to use "public" on the "${name}" Task.`,
+            );
+          return (v.publicSubnets ?? []).map((v) => output(v));
+        }),
+        containerSubnets: output(args.cluster.vpc).apply((v) =>
           v.containerSubnets.map((v) => output(v)),
         ),
-        securityGroups: output(args.vpc).apply((v) =>
+        securityGroups: output(args.cluster.vpc).apply((v) =>
           v.securityGroups.map((v) => output(v)),
         ),
       };
+    }
+
+
+    function createPublicSecurityGroup() {
+      if (!isPublic) return;
+      return new ec2.SecurityGroup(
+        `${name}PublicSecurityGroup`,
+        {
+          description: "Managed by SST",
+          vpcId: vpc.id,
+          egress: [
+            {
+              fromPort: 0,
+              toPort: 0,
+              protocol: "-1",
+              cidrBlocks: ["0.0.0.0/0"],
+            },
+          ],
+          ingress: [
+            {
+              fromPort: 0,
+              toPort: 0,
+              protocol: "-1",
+              cidrBlocks: ["0.0.0.0/0"],
+            },
+          ],
+        },
+        { parent: self },
+      );
     }
   }
 
@@ -195,6 +484,10 @@ export class Task extends Component implements Link.Linkable {
    * @internal
    */
   public get securityGroups() {
+    if (this.isPublic && this.publicSecurityGroup)
+      return all([this.vpc.securityGroups, this.publicSecurityGroup.id]).apply(
+        ([sgs, publicSgId]) => [...sgs, publicSgId],
+      );
     return this.vpc.securityGroups;
   }
 
@@ -203,6 +496,7 @@ export class Task extends Component implements Link.Linkable {
    * @internal
    */
   public get subnets() {
+    if (this.isPublic || this.vpc.isSstVpc) return this.vpc.publicSubnets;
     return this.vpc.containerSubnets;
   }
 
@@ -211,7 +505,7 @@ export class Task extends Component implements Link.Linkable {
    * @internal
    */
   public get assignPublicIp() {
-    return this.vpc.isSstVpc;
+    return output(this.hasPublicIp);
   }
 
   /**
@@ -231,6 +525,11 @@ export class Task extends Component implements Link.Linkable {
        * The Amazon ECS Task Definition.
        */
       taskDefinition: this._taskDefinition,
+      /**
+       * The AWS Security Group for public tasks. Only created when `public`
+       * is `true`.
+       */
+      publicSecurityGroup: this.publicSecurityGroup,
     };
   }
 

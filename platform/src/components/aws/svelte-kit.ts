@@ -1,23 +1,7 @@
 import fs from "fs";
 import path from "path";
-import { ComponentResourceOptions, Output, all, output } from "@pulumi/pulumi";
-import { Function } from "./function.js";
-import {
-  SsrSiteArgs,
-  createBucket,
-  createDevServer,
-  createServersAndDistribution,
-  prepare,
-  useCloudFrontFunctionHostHeaderInjection,
-  validatePlan,
-} from "./ssr-site.js";
-import { Cdn } from "./cdn.js";
-import { Bucket } from "./bucket.js";
-import { Component } from "../component.js";
-import { Link } from "../link.js";
-import type { Input } from "../input.js";
-import { buildApp } from "../base/base-ssr-site.js";
-import { URL_UNAVAILABLE } from "./linkable.js";
+import { ComponentResourceOptions, Output } from "@pulumi/pulumi";
+import { Plan, SsrSite, SsrSiteArgs } from "./ssr-site.js";
 
 export interface SvelteKitArgs extends SsrSiteArgs {
   /**
@@ -201,6 +185,108 @@ export interface SvelteKitArgs extends SsrSiteArgs {
    */
   domain?: SsrSiteArgs["domain"];
   /**
+   * Serve your SvelteKit app through a `Router` instead of a standalone CloudFront
+   * distribution.
+   *
+   * By default, this component creates a new CloudFront distribution. But you might
+   * want to serve it through the distribution of your `Router` as a:
+   *
+   * - A path like `/docs`
+   * - A subdomain like `docs.example.com`
+   * - Or a combined pattern like `dev.example.com/docs`
+   *
+   * @example
+   *
+   * To serve your SvelteKit app **from a path**, you'll need to configure the root domain
+   * in your `Router` component.
+   *
+   * ```ts title="sst.config.ts" {2}
+   * const router = new sst.aws.Router("Router", {
+   *   domain: "example.com"
+   * });
+   * ```
+   *
+   * Now set the `router` and the `path`.
+   *
+   * ```ts {3,4}
+   * {
+   *   router: {
+   *     instance: router,
+   *     path: "/docs"
+   *   }
+   * }
+   * ```
+   *
+   * You also need to set the [`base`](https://kit.svelte.dev/docs/configuration#paths)
+   * to `/docs` in your `svelte.config.js` without a trailing slash.
+   *
+   * :::caution
+   * If routing to a path, you need to set that as the base path in your
+   * SvelteKit app as well.
+   * :::
+   *
+   * ```js title="svelte.config.js" {4}
+   * export default {
+   *   kit: {
+   *     paths: {
+   *       base: "/docs"
+   *     }
+   *   }
+   * };
+   * ```
+   *
+   * To serve your SvelteKit app **from a subdomain**, you'll need to configure the
+   * domain in your `Router` component to match both the root and the subdomain.
+   *
+   * ```ts title="sst.config.ts" {3,4}
+   * const router = new sst.aws.Router("Router", {
+   *   domain: {
+   *     name: "example.com",
+   *     aliases: ["*.example.com"]
+   *   }
+   * });
+   * ```
+   *
+   * Now set the `domain` in the `router` prop.
+   *
+   * ```ts {4}
+   * {
+   *   router: {
+   *     instance: router,
+   *     domain: "docs.example.com"
+   *   }
+   * }
+   * ```
+   *
+   * Finally, to serve your SvelteKit app **from a combined pattern** like
+   * `dev.example.com/docs`, you'll need to configure the domain in your `Router` to
+   * match the subdomain.
+   *
+   * ```ts title="sst.config.ts" {3,4}
+   * const router = new sst.aws.Router("Router", {
+   *   domain: {
+   *     name: "example.com",
+   *     aliases: ["*.example.com"]
+   *   }
+   * });
+   * ```
+   *
+   * And set the `domain` and the `path`.
+   *
+   * ```ts {4,5}
+   * {
+   *   router: {
+   *     instance: router,
+   *     domain: "dev.example.com",
+   *     path: "/docs"
+   *   }
+   * }
+   * ```
+   *
+   * Also, make sure to set the base path in your `svelte.config.js`, like above.
+   */
+  router?: SsrSiteArgs["router"];
+  /**
    * The command used internally to build your SvelteKit app.
    *
    * @default `"npm run build"`
@@ -231,30 +317,6 @@ export interface SvelteKitArgs extends SsrSiteArgs {
    */
   assets?: SsrSiteArgs["assets"];
   /**
-   * Configure where the [server function](#nodes-server) is deployed.
-   *
-   * By default, it's deployed to AWS Lambda in a single region. Enable this option if you want to instead deploy it to Lambda@Edge.
-   * @default `false`
-   * @internal
-   */
-  edge?: Input<boolean>;
-  /**
-   * Configure the [server function](#nodes-server) in your SvelteKit app to connect
-   * to private subnets in a virtual private cloud or VPC. This allows your app to
-   * access private resources.
-   *
-   * @example
-   * ```js
-   * {
-   *   vpc: {
-   *     securityGroups: ["sg-0399348378a4c256c"],
-   *     subnets: ["subnet-0b6a2b73896dc8c4c", "subnet-021389ebee680c2f0"]
-   *   }
-   * }
-   * ```
-   */
-  vpc?: SsrSiteArgs["vpc"];
-  /**
    * Configure the SvelteKit app to use an existing CloudFront cache policy.
    *
    * :::note
@@ -265,7 +327,7 @@ export interface SvelteKitArgs extends SsrSiteArgs {
    * By default, a new cache policy is created for it. This allows you to reuse an existing
    * policy instead of creating a new one.
    *
-   * @default A new cache plolicy is created
+   * @default A new cache policy is created
    * @example
    * ```js
    * {
@@ -344,290 +406,95 @@ export interface SvelteKitArgs extends SsrSiteArgs {
  * console.log(Resource.MyBucket.name);
  * ```
  */
-export class SvelteKit extends Component implements Link.Linkable {
-  private cdn?: Output<Cdn>;
-  private assets?: Bucket;
-  private server?: Output<Function>;
-  private devUrl?: Output<string>;
-
+export class SvelteKit extends SsrSite {
   constructor(
     name: string,
     args: SvelteKitArgs = {},
     opts: ComponentResourceOptions = {},
   ) {
     super(__pulumiType, name, args, opts);
+  }
 
-    const parent = this;
-    const edge = normalizeEdge();
-    const { sitePath, partition } = prepare(parent, args);
-    const dev = normalizeDev();
+  protected normalizeBuildCommand() {}
 
-    if (dev) {
-      const server = createDevServer(parent, name, args);
-      this.devUrl = dev.url;
-      this.registerOutputs({
-        _metadata: {
-          mode: "placeholder",
-          path: sitePath,
-          edge,
-          server: server.arn,
-        },
-        _dev: {
-          links: output(args.link || [])
-            .apply(Link.build)
-            .apply((links) => links.map((link) => link.name)),
-          aws: {
-            role: server.nodes.role.arn,
-          },
-          environment: args.environment,
-          command: dev.command,
-          directory: dev.directory,
-          autostart: dev.autostart,
-        },
-      });
-      return;
-    }
-
-    const { access, bucket } = createBucket(parent, name, partition, args);
-    const outputPath = buildApp(parent, name, args, sitePath);
-    const buildMeta = loadBuildMetadata();
-    const plan = buildPlan();
-    const { distribution, ssrFunctions, edgeFunctions } =
-      createServersAndDistribution(
-        parent,
-        name,
-        args,
+  protected buildPlan(outputPath: Output<string>): Output<Plan> {
+    return outputPath.apply((outputPath) => {
+      const serverOutputPath = path.join(
         outputPath,
-        access,
-        bucket,
-        plan,
+        ".svelte-kit",
+        "svelte-kit-sst",
+        "server",
       );
-    const serverFunction = ssrFunctions[0] ?? Object.values(edgeFunctions)[0];
-
-    this.assets = bucket;
-    this.cdn = distribution;
-    this.server = serverFunction;
-    this.registerOutputs({
-      _hint: all([this.cdn.domainUrl, this.cdn.url]).apply(
-        ([domainUrl, url]) => domainUrl ?? url,
-      ),
-      _metadata: {
-        mode: "deployed",
-        path: sitePath,
-        url: distribution.apply((d) => d.domainUrl ?? d.url),
-        edge,
-        server: serverFunction.arn,
-      },
-    });
-
-    function normalizeDev() {
-      if (!$dev) return undefined;
-      if (args.dev === false) return undefined;
+      let basepath: string | undefined;
+      try {
+        const manifest = fs
+          .readFileSync(path.join(serverOutputPath, "manifest.js"))
+          .toString();
+        const appDir = manifest.match(/appDir: "(.+?)"/)?.[1];
+        const appPath = manifest.match(/appPath: "(.+?)"/)?.[1];
+        if (appDir && appPath && appPath.endsWith(appDir)) {
+          basepath = appPath.substring(0, appPath.length - appDir.length);
+        }
+      } catch (e) {}
 
       return {
-        ...args.dev,
-        url: output(args.dev?.url ?? URL_UNAVAILABLE),
-        command: output(args.dev?.command ?? "npm run dev"),
-        autostart: output(args.dev?.autostart ?? true),
-        directory: output(args.dev?.directory ?? sitePath),
-      };
-    }
-
-    function normalizeEdge() {
-      return output(args?.edge).apply((edge) => edge ?? false);
-    }
-
-    function loadBuildMetadata() {
-      const serverPath = ".svelte-kit/svelte-kit-sst/server";
-      const assetsPath = ".svelte-kit/svelte-kit-sst/client";
-
-      return outputPath.apply((outputPath) => {
-        let basePath = "";
-        try {
-          const manifest = fs
-            .readFileSync(path.join(serverPath, "manifest.js"))
-            .toString();
-          const appDir = manifest.match(/appDir: "(.+?)"/)?.[1];
-          const appPath = manifest.match(/appPath: "(.+?)"/)?.[1];
-          if (appDir && appPath && appPath.endsWith(appDir)) {
-            basePath = appPath.substring(0, appPath.length - appDir.length);
-          }
-        } catch (e) { }
-
-        return {
-          basePath,
-          serverPath,
-          serverFiles: ".svelte-kit/svelte-kit-sst/prerendered",
-          prerenderedPath: ".svelte-kit/svelte-kit-sst/prerendered",
-          assetsPath,
-          assetsVersionedSubDir: "_app",
-          // create 1 behaviour for each top level asset file/folder
-          staticRoutes: fs
-            .readdirSync(path.join(outputPath, assetsPath), {
-              withFileTypes: true,
-            })
-            .map((item) =>
-              item.isDirectory()
-                ? `${basePath}${item.name}/*`
-                : `${basePath}${item.name}`,
-            ),
-        };
-      });
-    }
-
-    function buildPlan() {
-      return all([outputPath, edge, buildMeta]).apply(
-        ([outputPath, edge, buildMeta]) => {
-          const serverConfig = {
-            handler: path.join(
-              outputPath,
-              buildMeta.serverPath,
-              "lambda-handler",
-              "index.handler",
-            ),
-            nodejs: {
-              esbuild: {
-                minify: process.env.SST_DEBUG ? false : true,
-                sourcemap: process.env.SST_DEBUG ? ("inline" as const) : false,
-                define: {
-                  "process.env.SST_DEBUG": process.env.SST_DEBUG
-                    ? "true"
-                    : "false",
-                },
+        base: basepath,
+        server: {
+          handler: path.join(
+            serverOutputPath,
+            "lambda-handler",
+            "index.handler",
+          ),
+          nodejs: {
+            esbuild: {
+              minify: process.env.SST_DEBUG ? false : true,
+              sourcemap: process.env.SST_DEBUG ? ("inline" as const) : false,
+              define: {
+                "process.env.SST_DEBUG": process.env.SST_DEBUG
+                  ? "true"
+                  : "false",
               },
             },
-            copyFiles: buildMeta.serverFiles
-              ? [
-                {
-                  from: path.join(outputPath, buildMeta.serverFiles),
-                  to: "prerendered",
-                },
-              ]
-              : undefined,
-          };
-
-          return validatePlan({
-            edge,
-            cloudFrontFunctions: {
-              serverCfFunction: {
-                injections: [
-                  useCloudFrontFunctionHostHeaderInjection(),
-                  useCloudFrontFormActionInjection(),
-                ],
-              },
-            },
-            edgeFunctions: edge
-              ? {
-                server: { function: serverConfig },
-              }
-              : undefined,
-            origins: {
-              ...(edge
-                ? {}
-                : {
-                  server: {
-                    server: { function: serverConfig },
-                  },
-                }),
-              s3: {
-                s3: {
-                  copy: [
-                    {
-                      from: buildMeta.assetsPath,
-                      to: buildMeta.basePath,
-                      cached: true,
-                      versionedSubDir: buildMeta.assetsVersionedSubDir,
-                    },
-                    {
-                      from: buildMeta.prerenderedPath,
-                      to: buildMeta.basePath,
-                      cached: false,
-                    },
-                  ],
-                },
-              },
-            },
-            behaviors: [
-              edge
-                ? {
-                  cacheType: "server",
-                  cfFunction: "serverCfFunction",
-                  edgeFunction: "server",
-                  origin: "s3",
-                }
-                : {
-                  cacheType: "server",
-                  cfFunction: "serverCfFunction",
-                  origin: "server",
-                },
-              ...buildMeta.staticRoutes.map(
-                (route) =>
-                  ({
-                    cacheType: "static",
-                    pattern: route,
-                    origin: "s3",
-                  }) as const,
+          },
+          copyFiles: [
+            {
+              from: path.join(
+                outputPath,
+                ".svelte-kit",
+                "svelte-kit-sst",
+                "prerendered",
               ),
-            ],
-          });
+              to: "prerendered",
+            },
+          ],
         },
-      );
-    }
+        assets: [
+          {
+            from: path.join(".svelte-kit", "svelte-kit-sst", "client"),
+            to: "",
+            cached: true,
+            versionedSubDir: "_app",
+            deepRoute: "_app",
+          },
+          {
+            from: path.join(".svelte-kit", "svelte-kit-sst", "prerendered"),
+            to: "",
+            cached: false,
+          },
+        ],
+      };
+    });
   }
 
   /**
    * The URL of the SvelteKit app.
    *
    * If the `domain` is set, this is the URL with the custom domain.
-   * Otherwise, it's the autogenerated CloudFront URL.
+   * Otherwise, it's the auto-generated CloudFront URL.
    */
   public get url() {
-    return all([this.cdn?.domainUrl, this.cdn?.url, this.devUrl]).apply(
-      ([domainUrl, url, dev]) => domainUrl ?? url ?? dev!,
-    );
+    return super.url;
   }
-
-  /**
-   * The underlying [resources](/docs/components/#nodes) this component creates.
-   */
-  public get nodes() {
-    return {
-      /**
-       * The AWS Lambda server function that renders the app.
-       */
-      server: this.server,
-      /**
-       * The Amazon S3 Bucket that stores the assets.
-       */
-      assets: this.assets,
-      /**
-       * The Amazon CloudFront CDN that serves the app.
-       */
-      cdn: this.cdn,
-    };
-  }
-
-  /** @internal */
-  public getSSTLink() {
-    return {
-      properties: {
-        url: this.url,
-      },
-    };
-  }
-}
-
-function useCloudFrontFormActionInjection() {
-  // Note: form action requests contain "/" in request query string
-  //       ie. POST request with query string "?/action"
-  //       CloudFront does not allow query string with "/". It needs to be encoded.
-  return `
-for (var key in event.request.querystring) {
-  if (key.includes("/")) {
-    event.request.querystring[encodeURIComponent(key)] = event.request.querystring[key];
-    delete event.request.querystring[key];
-  }
-}`;
 }
 
 const __pulumiType = "sst:aws:SvelteKit";

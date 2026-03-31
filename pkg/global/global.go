@@ -13,7 +13,7 @@ var BUN_VERSION = func() string {
 	if flag.SST_BUN_VERSION != "" {
 		return flag.SST_BUN_VERSION
 	}
-	return "1.1.38"
+	return "1.2.1"
 }()
 
 const UV_VERSION = "0.3.2"
@@ -24,7 +24,6 @@ var configDir = (func() string {
 		panic(err)
 	}
 	result := filepath.Join(home, "sst")
-	os.Setenv("PATH", result+"/bin:"+os.Getenv("PATH"))
 	os.MkdirAll(result, 0755)
 	os.MkdirAll(filepath.Join(result, "bin"), 0755)
 	return result

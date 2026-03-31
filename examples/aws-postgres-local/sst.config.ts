@@ -24,7 +24,7 @@
  * The data is saved to the `.sst/storage` directory. So if you restart the dev server, the
  * data will still be there.
  *
- * We then configure the `dev` property of the Postgres component with the settings for the
+ * We then configure the `dev` property of the `Postgres` component with the settings for the
  * local Postgres instance.
  *
  * ```ts title="sst.config.ts"
@@ -39,7 +39,7 @@
  * By providing the `dev` prop for Postgres, SST will use the local Postgres instance and
  * not deploy a new RDS database when running `sst dev`.
  *
- * It also allows us to access the database through a Reosurce `link` without having to
+ * It also allows us to access the database through a Resource `link` without having to
  * conditionally check if we are running locally.
  *
  * ```ts title="index.ts"

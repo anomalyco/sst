@@ -8,6 +8,8 @@ export type Duration = `${number} ${
   | "day"
   | "days"}`;
 
+export type DurationSeconds = `${number} ${"second" | "seconds"}`;
+
 export type DurationMinutes = `${number} ${
   | "second"
   | "seconds"
@@ -22,7 +24,11 @@ export type DurationHours = `${number} ${
   | "hour"
   | "hours"}`;
 
-export function toSeconds(duration: Duration | DurationMinutes) {
+export type DurationDays = `${number} ${"day" | "days"}`;
+
+export function toSeconds(
+  duration: Duration | DurationMinutes | DurationSeconds | DurationDays,
+) {
   const [count, unit] = duration.split(" ");
   const countNum = parseInt(count);
   const unitLower = unit.toLowerCase();
@@ -37,4 +43,25 @@ export function toSeconds(duration: Duration | DurationMinutes) {
   }
 
   throw new Error(`Invalid duration ${duration}`);
+}
+
+export function toMilliseconds(
+  duration: Duration | DurationMinutes | DurationSeconds | DurationDays,
+) {
+  return toSeconds(duration) * 1000;
+}
+
+export function toDays(duration: Duration) {
+  const [count, unit] = duration.split(" ");
+  const countNum = parseInt(count);
+  const unitLower = unit.toLowerCase();
+
+  if (unitLower.startsWith("day")) {
+    return countNum;
+  }
+
+  const DAYS_IN_SECONDS = 86400;
+  const seconds = toSeconds(duration);
+  const result = seconds / DAYS_IN_SECONDS;
+  return Math.ceil(result);
 }

@@ -20,6 +20,7 @@ func (p *Project) CheckPlatform(version string) bool {
 	slog.Info("checking platform")
 	contents, err := os.ReadFile(filepath.Join(p.PathPlatformDir(), "version"))
 	if err != nil {
+		slog.Error(err.Error())
 		return false
 	}
 	return string(contents) == version

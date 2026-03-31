@@ -2,10 +2,12 @@ import { ComponentResourceOptions, all, output } from "@pulumi/pulumi";
 import { DnsValidatedCertificate } from "./dns-validated-certificate.js";
 import { Bucket } from "./bucket.js";
 import { Component } from "../component.js";
+import { logicalName } from "../naming.js";
 import { useProvider } from "./helpers/provider.js";
 import { Input } from "../input.js";
 import { Dns } from "../dns.js";
 import { cloudfront, s3 } from "@pulumi/aws";
+import { CF_BLOCK_CLOUDFRONT_URL_INJECTION } from "./router.js";
 
 /**
  * Properties to configure an HTTPS Redirect
@@ -31,7 +33,7 @@ export interface HttpsRedirectArgs {
   /**
    * The DNS adapter you want to use for managing DNS records.
    */
-  dns: Input<Dns & {}>;
+  dns?: Input<Dns & {}>;
 }
 
 /**
@@ -48,87 +50,19 @@ export class HttpsRedirect extends Component {
 
     const parent = this;
 
+    validateArgs();
     const certificateArn = createSsl();
+    const bucket = createBucket();
+    const bucketWebsite = createBucketWebsite();
+    const distribution = createDistribution();
+    createDnsRecords();
 
-    const bucket = new Bucket(`${name}Bucket`, {}, { parent });
-
-    const bucketWebsite = new s3.BucketWebsiteConfigurationV2(
-      `${name}BucketWebsite`,
-      {
-        bucket: bucket.name,
-        redirectAllRequestsTo: {
-          hostName: args.targetDomain,
-          protocol: "https",
-        },
-      },
-      { parent },
-    );
-
-    const distribution = new cloudfront.Distribution(
-      `${name}Distribution`,
-      {
-        enabled: true,
-        waitForDeployment: false,
-        aliases: args.sourceDomains,
-        restrictions: {
-          geoRestriction: {
-            restrictionType: "none",
-          },
-        },
-        comment: all([args.targetDomain, args.sourceDomains]).apply(
-          ([targetDomain, sourceDomains]) => {
-            const comment = `Redirect to ${targetDomain} from ${sourceDomains.join(
-              ", ",
-            )}`;
-            return comment.length > 128
-              ? comment.slice(0, 125) + "..."
-              : comment;
-          },
-        ),
-        priceClass: "PriceClass_All",
-        viewerCertificate: {
-          acmCertificateArn: certificateArn,
-          sslSupportMethod: "sni-only",
-        },
-        defaultCacheBehavior: {
-          allowedMethods: ["GET", "HEAD", "OPTIONS"],
-          targetOriginId: "s3Origin",
-          viewerProtocolPolicy: "redirect-to-https",
-          cachedMethods: ["GET", "HEAD"],
-          forwardedValues: {
-            cookies: { forward: "none" },
-            queryString: false,
-          },
-        },
-        origins: [
-          {
-            originId: "s3Origin",
-            domainName: bucketWebsite.websiteEndpoint,
-            customOriginConfig: {
-              httpPort: 80,
-              httpsPort: 443,
-              originProtocolPolicy: "http-only",
-              originSslProtocols: ["TLSv1.2"],
-            },
-          },
-        ],
-      },
-      { parent },
-    );
-
-    all([args.dns, args.sourceDomains]).apply(([dns, sourceDomains]) => {
-      for (const recordName of sourceDomains) {
-        dns.createAlias(
-          name,
-          {
-            name: recordName,
-            aliasName: distribution.domainName,
-            aliasZone: distribution.hostedZoneId,
-          },
-          { parent },
+    function validateArgs() {
+      if (!args.dns && !args.cert)
+        throw new Error(
+          `Need to provide a validated certificate via "cert" when DNS is disabled`,
         );
-      }
-    });
+    }
 
     function createSsl() {
       if (args.cert) return args.cert;
@@ -140,10 +74,137 @@ export class HttpsRedirect extends Component {
           alternativeNames: output(args.sourceDomains).apply((domains) =>
             domains.slice(1),
           ),
-          dns: args.dns,
+          dns: args.dns!,
         },
         { parent, provider: useProvider("us-east-1") },
       ).arn;
+    }
+
+    function createBucket() {
+      return new Bucket(`${name}Bucket`, {}, { parent });
+    }
+
+    function createBucketWebsite() {
+      return new s3.BucketWebsiteConfiguration(
+        `${name}BucketWebsite`,
+        {
+          bucket: bucket.name,
+          redirectAllRequestsTo: {
+            hostName: args.targetDomain,
+            protocol: "https",
+          },
+        },
+        { parent },
+      );
+    }
+
+    function createDistribution() {
+      return new cloudfront.Distribution(
+        `${name}Distribution`,
+        {
+          enabled: true,
+          waitForDeployment: false,
+          aliases: args.sourceDomains,
+          restrictions: {
+            geoRestriction: {
+              restrictionType: "none",
+            },
+          },
+          comment: all([args.targetDomain, args.sourceDomains]).apply(
+            ([targetDomain, sourceDomains]) => {
+              const comment = `Redirect to ${targetDomain} from ${sourceDomains.join(
+                ", ",
+              )}`;
+              return comment.length > 128
+                ? comment.slice(0, 125) + "..."
+                : comment;
+            },
+          ),
+          priceClass: "PriceClass_All",
+          viewerCertificate: {
+            acmCertificateArn: certificateArn,
+            sslSupportMethod: "sni-only",
+          },
+          defaultCacheBehavior: {
+            allowedMethods: ["GET", "HEAD", "OPTIONS"],
+            targetOriginId: "s3Origin",
+            viewerProtocolPolicy: "redirect-to-https",
+            cachedMethods: ["GET", "HEAD"],
+            forwardedValues: {
+              cookies: { forward: "none" },
+              queryString: false,
+            },
+            functionAssociations: [
+              {
+                eventType: "viewer-request",
+                functionArn: new cloudfront.Function(
+                  `${name}CloudfrontFunctionRequest`,
+                  {
+                    runtime: "cloudfront-js-2.0",
+                    code: `
+import cf from "cloudfront";
+async function handler(event) {
+  ${CF_BLOCK_CLOUDFRONT_URL_INJECTION}
+  return event.request;
+}`,
+                  },
+                ).arn,
+              },
+            ],
+          },
+          origins: [
+            {
+              originId: "s3Origin",
+              domainName: bucketWebsite.websiteEndpoint,
+              customOriginConfig: {
+                httpPort: 80,
+                httpsPort: 443,
+                originProtocolPolicy: "http-only",
+                originSslProtocols: ["TLSv1.2"],
+              },
+            },
+          ],
+        },
+        { parent },
+      );
+    }
+
+    function createDnsRecords() {
+      if (!args.dns) return;
+
+      all([args.dns, args.sourceDomains]).apply(([dns, sourceDomains]) => {
+        const existing: string[] = [];
+        for (const [i, recordName] of sourceDomains.entries()) {
+          // Note: The way `dns` is implemented, the logical name for the DNS record is
+          // based on the sanitized version of the record name (ie. logicalName()). This
+          // means the logical name for `*.sst.sh` and `sst.sh` will trash b/c `*.` is
+          // stripped out.
+          // ```
+          // domain: {
+          //   name: "*.sst.sh",
+          //   aliases: ['sst.sh'],
+          // },
+          // ```
+          //
+          // Ideally, we don't sanitize the logical name. But that's a breaking change.
+          //
+          // As a workaround, starting v3.19.2, we prefix the logical name with a unique
+          // index for records with logical names that will trash.
+          const key = logicalName(recordName);
+          const namePrefix = existing.includes(key) ? `${name}${i}` : name;
+          existing.push(key);
+
+          dns.createAlias(
+            namePrefix,
+            {
+              name: recordName,
+              aliasName: distribution.domainName,
+              aliasZone: distribution.hostedZoneId,
+            },
+            { parent },
+          );
+        }
+      });
     }
   }
 }

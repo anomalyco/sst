@@ -22,20 +22,20 @@ func generateID(descending bool) string {
 		now = ^now
 	}
 
-	timeBytes := make([]byte, 8)
-	for i := 0; i < 8; i++ {
-		timeBytes[i] = byte(now >> (56 - 8*i))
+	timeBytes := make([]byte, 6)
+	for i := 0; i < 6; i++ {
+		timeBytes[i] = byte(now >> (40 - 8*i))
 	}
 
-	randomBytes := make([]byte, (LENGTH-16)/2)
+	randomBytes := make([]byte, (LENGTH-12)/2)
 	_, err := rand.Read(randomBytes)
 	if err != nil {
 		panic(err)
 	}
 
 	result := make([]byte, LENGTH)
-	hex.Encode(result[:16], timeBytes)
-	hex.Encode(result[16:], randomBytes)
+	hex.Encode(result[:12], timeBytes)
+	hex.Encode(result[12:], randomBytes)
 
 	return string(result)
 }

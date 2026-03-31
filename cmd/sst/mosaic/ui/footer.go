@@ -90,6 +90,9 @@ func (m *footer) Start(ctx context.Context) {
 }
 
 func (m *footer) clear() {
+	if m.previous == "" {
+		return
+	}
 	oldLines := strings.Split(m.previous, "\n")
 	out := &bytes.Buffer{}
 	if len(oldLines) > 0 {
@@ -105,18 +108,25 @@ func (m *footer) clear() {
 }
 
 func (m *footer) Render(width int, next string) {
-	oldLines := strings.Split(m.previous, "\n")
-	nextLines := strings.Split(next, "\n")
+	if next == m.previous {
+		return
+	}
+
+	var oldLines []string
+	if m.previous != "" {
+		oldLines = strings.Split(m.previous, "\n")
+	}
+
+	var nextLines []string
+	if next != "" {
+		nextLines = strings.Split(next, "\n")
+	}
 
 	out := &bytes.Buffer{}
 
-	// if next == m.previous {
-	// 	return
-	// }
-
 	if len(oldLines) > 0 {
 		for i := range oldLines {
-			if i < len(oldLines)-len(nextLines) || next == "" {
+			if i < len(oldLines)-len(nextLines) {
 				out.WriteString(ansi.EraseEntireLine)
 			}
 			if i < len(oldLines)-1 {
@@ -129,15 +139,16 @@ func (m *footer) Render(width int, next string) {
 		if i == 0 {
 			out.WriteByte('\r')
 		}
-		truncated := ansi.Truncate(line, width, "…")
-		out.WriteString(truncated)
+		out.WriteString(ansi.Truncate(line, width, "…"))
 		out.WriteString(ansi.EraseLine(0))
 		if i < len(nextLines)-1 {
 			out.WriteString("\r\n")
 		}
 	}
-	out.WriteString(ansi.CursorLeft(10000))
-	os.Stdout.Write(out.Bytes())
+	if out.Len() > 0 {
+		out.WriteString(ansi.CursorLeft(10000))
+		os.Stdout.Write(out.Bytes())
+	}
 	m.previous = next
 }
 
@@ -156,6 +167,8 @@ func (m *footer) Update(msg any) {
 	switch msg := msg.(type) {
 	case *spinnerTick:
 		m.spinner++
+	case *project.CancelledEvent:
+		m.cancelled = true
 	case *project.StackCommandEvent:
 		m.Reset()
 		m.started = true
@@ -180,6 +193,9 @@ func (m *footer) Update(msg any) {
 		m.Reset()
 		break
 	case *deployer.DeployFailedEvent:
+		m.Reset()
+		break
+	case *project.SkipEvent:
 		m.Reset()
 		break
 	case *apitype.ResourcePreEvent:
@@ -220,10 +236,14 @@ func (m *footer) Destroy() {
 var TEXT_HIGHLIGHT = lipgloss.NewStyle().Foreground(lipgloss.Color("14"))
 var TEXT_HIGHLIGHT_BOLD = TEXT_HIGHLIGHT.Copy().Bold(true)
 
+var SPINNER_STYLE = lipgloss.NewStyle().Foreground(lipgloss.Color("14"))
+
 var TEXT_DIM = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 var TEXT_DIM_BOLD = TEXT_DIM.Copy().Bold(true)
+var TEXT_GRAY = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+var TEXT_GRAY_BOLD = TEXT_GRAY.Copy().Bold(true)
 
-var TEXT_NORMAL = lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
+var TEXT_NORMAL = lipgloss.NewStyle()
 var TEXT_NORMAL_BOLD = TEXT_NORMAL.Copy().Bold(true)
 
 var TEXT_WARNING = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
@@ -242,7 +262,7 @@ func (m *footer) View(width int) string {
 	if !m.started || m.complete != nil {
 		return ""
 	}
-	spinner := spinner.MiniDot.Frames[m.spinner%len(spinner.MiniDot.Frames)]
+	spinner := SPINNER_STYLE.Render(spinner.MiniDot.Frames[m.spinner%len(spinner.MiniDot.Frames)])
 	result := []string{}
 	keys := make([]string, 0, len(m.downloading))
 	for k := range m.downloading {
@@ -293,10 +313,10 @@ func (m *footer) View(width int) string {
 			label = "Deploying"
 		}
 		if m.cancelled {
-			label = "Cancelling, waiting for pending operations to complete"
+			label = "Cancelling  Waiting for pending operations to complete. Press ctrl+c again to force cancel."
 		}
 	}
-	if m.skipped > 0 {
+	if m.skipped > 0 && !m.cancelled {
 		label = fmt.Sprintf("%-11s", label)
 		label += TEXT_DIM.Render(fmt.Sprintf(" %d skipped", m.skipped))
 	}

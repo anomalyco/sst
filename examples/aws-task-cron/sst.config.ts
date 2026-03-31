@@ -41,7 +41,8 @@ export default $config({
     const vpc = new sst.aws.Vpc("MyVpc");
 
     const cluster = new sst.aws.Cluster("MyCluster", { vpc });
-    const task = cluster.addTask("MyTask", {
+    const task = new sst.aws.Task("MyTask", {
+      cluster,
       link: [bucket],
       dev: {
         command: "node index.mjs",

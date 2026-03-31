@@ -42,7 +42,8 @@ export default $config({
 
     // Create a service that increments the same counter
     const cluster = new sst.aws.Cluster("MyCluster", { vpc });
-    cluster.addService("MyService", {
+    new sst.aws.Service("MyService", {
+      cluster,
       loadBalancer: {
         ports: [{ listen: "80/http" }],
       },

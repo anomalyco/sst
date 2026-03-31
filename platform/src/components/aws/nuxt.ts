@@ -1,22 +1,7 @@
 import fs from "fs";
 import path from "path";
-import { ComponentResourceOptions, Output, all, output } from "@pulumi/pulumi";
-import { Function } from "./function.js";
-import {
-  SsrSiteArgs,
-  createBucket,
-  createDevServer,
-  createServersAndDistribution,
-  prepare,
-  useCloudFrontFunctionHostHeaderInjection,
-  validatePlan,
-} from "./ssr-site.js";
-import { Cdn } from "./cdn.js";
-import { Bucket } from "./bucket.js";
-import { Component } from "../component.js";
-import { Link } from "../link.js";
-import { buildApp } from "../base/base-ssr-site.js";
-import { URL_UNAVAILABLE } from "./linkable.js";
+import { ComponentResourceOptions, Output } from "@pulumi/pulumi";
+import { Plan, SsrSite, SsrSiteArgs } from "./ssr-site.js";
 
 export interface NuxtArgs extends SsrSiteArgs {
   /**
@@ -204,6 +189,181 @@ export interface NuxtArgs extends SsrSiteArgs {
    */
   domain?: SsrSiteArgs["domain"];
   /**
+   * Serve your Nuxt app through a `Router` component instead of a standalone CloudFront
+   * distribution.
+   *
+   * Let's say you have a Router component.
+   *
+   * ```ts title="sst.config.ts"
+   * const router = new sst.aws.Router("Router", {
+   *   domain: "*.example.com",
+   * });
+   * ```
+   *
+   * You can then match a pattern and route to your app based on:
+   *
+   * - A path like `/docs`
+   * - A domain pattern like `docs.example.com`
+   * - A combined pattern like `dev.example.com/docs`
+   *
+   * For example, to match a path.
+   *
+   * ```ts title="sst.config.ts"
+   * {
+   *   router: {
+   *     instance: router,
+   *     path: "/docs",
+   *   },
+   * }
+   * ```
+   *
+   * Or match a domain.
+   *
+   * ```ts title="sst.config.ts"
+   * {
+   *   router: {
+   *     instance: router,
+   *     domain: "docs.example.com",
+   *   },
+   * }
+   * ```
+   *
+   * Route by both domain and path:
+   *
+   * ```ts title="sst.config.ts"
+   * {
+   *   router: {
+   *     instance: router,
+   *     domain: "dev.example.com",
+   *     path: "/docs",
+   *   },
+   * }
+   * ```
+   *
+   * If you are routing to a path like `/docs`, you must configure the
+   * base path in your Nuxt app. The base path must match the path in your
+   * route prop.
+   *
+   * :::caution
+   * If routing to a path, you need to configure that as the base path in your
+   * Nuxt app as well.
+   * :::
+   *
+   * For example, if you are routing `/docs` to a Nuxt app, you need to set
+   * [`baseURL`](https://nuxt.com/docs/api/nuxt-config#baseurl)
+   * to `/docs` in your `nuxt.config.ts` without a trailing slash.
+   *
+   * ```js title="nuxt.config.ts" {3}
+   * export default defineNuxtConfig({
+   *   app: {
+   *     baseURL: '/docs'
+   *   }
+   * });
+   * ```
+   */
+  /**
+   * Serve your Nuxt app through a `Router` instead of a standalone CloudFront
+   * distribution.
+   *
+   * By default, this component creates a new CloudFront distribution. But you might
+   * want to serve it through the distribution of your `Router` as a:
+   *
+   * - A path like `/docs`
+   * - A subdomain like `docs.example.com`
+   * - Or a combined pattern like `dev.example.com/docs`
+   *
+   * @example
+   *
+   * To serve your Nuxt app **from a path**, you'll need to configure the root domain
+   * in your `Router` component.
+   *
+   * ```ts title="sst.config.ts" {2}
+   * const router = new sst.aws.Router("Router", {
+   *   domain: "example.com"
+   * });
+   * ```
+   *
+   * Now set the `router` and the `path`.
+   *
+   * ```ts {3,4}
+   * {
+   *   router: {
+   *     instance: router,
+   *     path: "/docs"
+   *   }
+   * }
+   * ```
+   *
+   * You also need to set the
+   * [`baseURL`](https://nuxt.com/docs/api/nuxt-config#baseurl) in your
+   * `nuxt.config.ts`.
+   *
+   * :::caution
+   * If routing to a path, you need to set that as the base path in your Nuxt
+   * app as well.
+   * :::
+   *
+   * ```js title="nuxt.config.ts" {3}
+   * export default defineNuxtConfig({
+   *   app: {
+   *     baseURL: "/docs"
+   *   }
+   * });
+   * ```
+   *
+   * To serve your Nuxt app **from a subdomain**, you'll need to configure the
+   * domain in your `Router` component to match both the root and the subdomain.
+   *
+   * ```ts title="sst.config.ts" {3,4}
+   * const router = new sst.aws.Router("Router", {
+   *   domain: {
+   *     name: "example.com",
+   *     aliases: ["*.example.com"]
+   *   }
+   * });
+   * ```
+   *
+   * Now set the `domain` in the `router` prop.
+   *
+   * ```ts {4}
+   * {
+   *   router: {
+   *     instance: router,
+   *     domain: "docs.example.com"
+   *   }
+   * }
+   * ```
+   *
+   * Finally, to serve your Nuxt app **from a combined pattern** like
+   * `dev.example.com/docs`, you'll need to configure the domain in your `Router` to
+   * match the subdomain.
+   *
+   * ```ts title="sst.config.ts" {3,4}
+   * const router = new sst.aws.Router("Router", {
+   *   domain: {
+   *     name: "example.com",
+   *     aliases: ["*.example.com"]
+   *   }
+   * });
+   * ```
+   *
+   * And set the `domain` and the `path`.
+   *
+   * ```ts {4,5}
+   * {
+   *   router: {
+   *     instance: router,
+   *     domain: "dev.example.com",
+   *     path: "/docs"
+   *   }
+   * }
+   * ```
+   *
+   * Also, make sure to set this as the `basePath` in your `nuxt.config.ts`, like
+   * above.
+   */
+  router?: SsrSiteArgs["router"];
+  /**
    * The command used internally to build your Nuxt app.
    *
    * @default `"npm run build"`
@@ -234,22 +394,6 @@ export interface NuxtArgs extends SsrSiteArgs {
    */
   assets?: SsrSiteArgs["assets"];
   /**
-   * Configure the [server function](#nodes-server) in your Nuxt app to connect
-   * to private subnets in a virtual private cloud or VPC. This allows your app to
-   * access private resources.
-   *
-   * @example
-   * ```js
-   * {
-   *   vpc: {
-   *     securityGroups: ["sg-0399348378a4c256c"],
-   *     subnets: ["subnet-0b6a2b73896dc8c4c", "subnet-021389ebee680c2f0"]
-   *   }
-   * }
-   * ```
-   */
-  vpc?: SsrSiteArgs["vpc"];
-  /**
    * Configure the Nuxt app to use an existing CloudFront cache policy.
    *
    * :::note
@@ -260,7 +404,7 @@ export interface NuxtArgs extends SsrSiteArgs {
    * By default, a new cache policy is created for it. This allows you to reuse an existing
    * policy instead of creating a new one.
    *
-   * @default A new cache plolicy is created
+   * @default A new cache policy is created
    *
    * @example
    * ```js
@@ -340,206 +484,56 @@ export interface NuxtArgs extends SsrSiteArgs {
  * console.log(Resource.MyBucket.name);
  * ```
  */
-export class Nuxt extends Component implements Link.Linkable {
-  private cdn?: Output<Cdn>;
-  private assets?: Bucket;
-  private server?: Output<Function>;
-  private devUrl?: Output<string>;
-
+export class Nuxt extends SsrSite {
   constructor(
     name: string,
     args: NuxtArgs = {},
     opts: ComponentResourceOptions = {},
   ) {
     super(__pulumiType, name, args, opts);
+  }
 
-    const parent = this;
-    const { sitePath, partition } = prepare(parent, args);
-    const dev = normalizeDev();
+  protected normalizeBuildCommand() { }
 
-    if (dev) {
-      const server = createDevServer(parent, name, args);
-      this.devUrl = dev.url;
-      this.registerOutputs({
-        _metadata: {
-          mode: "placeholder",
-          path: sitePath,
-          server: server.arn,
-        },
-        _dev: {
-          links: output(args.link || [])
-            .apply(Link.build)
-            .apply((links) => links.map((link) => link.name)),
-          aws: {
-            role: server.nodes.role.arn,
-          },
-          environment: args.environment,
-          command: dev.command,
-          directory: dev.directory,
-          autostart: dev.autostart,
-        },
-      });
-      return;
-    }
-
-    const { access, bucket } = createBucket(parent, name, partition, args);
-    const outputPath = buildApp(parent, name, args, sitePath);
-    const buildMeta = loadBuildMetadata();
-    const plan = buildPlan();
-    const { distribution, ssrFunctions, edgeFunctions } =
-      createServersAndDistribution(
-        parent,
-        name,
-        args,
-        outputPath,
-        access,
-        bucket,
-        plan,
+  protected buildPlan(outputPath: Output<string>): Output<Plan> {
+    return outputPath.apply((outputPath) => {
+      const nitro = JSON.parse(
+        fs.readFileSync(
+          path.join(outputPath, ".output", "nitro.json"),
+          "utf-8",
+        ),
       );
-    const serverFunction = ssrFunctions[0] ?? Object.values(edgeFunctions)[0];
-
-    this.assets = bucket;
-    this.cdn = distribution;
-    this.server = serverFunction;
-    this.registerOutputs({
-      _hint: all([this.cdn.domainUrl, this.cdn.url]).apply(
-        ([domainUrl, url]) => domainUrl ?? url,
-      ),
-      _metadata: {
-        mode: "deployed",
-        path: sitePath,
-        url: distribution.apply((d) => d.domainUrl ?? d.url),
-        server: serverFunction.arn,
-      },
-    });
-
-    function normalizeDev() {
-      if (!$dev) return undefined;
-      if (args.dev === false) return undefined;
+      const basepath = fs
+        .readFileSync(path.join(outputPath, "nuxt.config.ts"), "utf-8")
+        .match(/baseURL: ['"](.*)['"]/)?.[1];
 
       return {
-        ...args.dev,
-        url: output(args.dev?.url ?? URL_UNAVAILABLE),
-        command: output(args.dev?.command ?? "npm run dev"),
-        autostart: output(args.dev?.autostart ?? true),
-        directory: output(args.dev?.directory ?? sitePath),
-      };
-    }
-
-    function loadBuildMetadata() {
-      return outputPath.apply((outputPath) => {
-        const assetsPath = path.join(".output", "public");
-
-        return {
-          assetsPath,
-          // create 1 behaviour for each top level asset file/folder
-          staticRoutes: fs
-            .readdirSync(path.join(outputPath, assetsPath), {
-              withFileTypes: true,
-            })
-            .map((item) => (item.isDirectory() ? `${item.name}/*` : item.name)),
-        };
-      });
-    }
-
-    function buildPlan() {
-      return all([outputPath, buildMeta]).apply(([outputPath, buildMeta]) => {
-        const serverConfig = {
+        base: basepath,
+        server: {
           description: "Server handler for Nuxt",
           handler: "index.handler",
           bundle: path.join(outputPath, ".output", "server"),
-        };
-
-        return validatePlan({
-          edge: false,
-          cloudFrontFunctions: {
-            serverCfFunction: {
-              injections: [useCloudFrontFunctionHostHeaderInjection()],
-            },
+          streaming: nitro?.config?.awsLambda?.streaming === true,
+        },
+        assets: [
+          {
+            from: path.join(".output", "public"),
+            to: "",
+            cached: true,
           },
-          origins: {
-            server: {
-              server: {
-                function: serverConfig,
-              },
-            },
-            s3: {
-              s3: {
-                copy: [
-                  {
-                    from: buildMeta.assetsPath,
-                    to: "",
-                    cached: true,
-                  },
-                ],
-              },
-            },
-          },
-          behaviors: [
-            {
-              cacheType: "server",
-              cfFunction: "serverCfFunction",
-              origin: "server",
-            },
-            {
-              pattern: "_server/",
-              cacheType: "server",
-              cfFunction: "serverCfFunction",
-              origin: "server",
-            },
-            ...buildMeta.staticRoutes.map(
-              (route) =>
-                ({
-                  cacheType: "static",
-                  pattern: route,
-                  origin: "s3",
-                }) as const,
-            ),
-          ],
-        });
-      });
-    }
+        ],
+      };
+    });
   }
 
   /**
    * The URL of the Nuxt app.
    *
    * If the `domain` is set, this is the URL with the custom domain.
-   * Otherwise, it's the autogenerated CloudFront URL.
+   * Otherwise, it's the auto-generated CloudFront URL.
    */
   public get url() {
-    return all([this.cdn?.domainUrl, this.cdn?.url, this.devUrl]).apply(
-      ([domainUrl, url, dev]) => domainUrl ?? url ?? dev!,
-    );
-  }
-
-  /**
-   * The underlying [resources](/docs/components/#nodes) this component creates.
-   */
-  public get nodes() {
-    return {
-      /**
-       * The AWS Lambda server function that renders the site.
-       */
-      server: this.server,
-      /**
-       * The Amazon S3 Bucket that stores the assets.
-       */
-      assets: this.assets,
-      /**
-       * The Amazon CloudFront CDN that serves the site.
-       */
-      cdn: this.cdn,
-    };
-  }
-
-  /** @internal */
-  public getSSTLink() {
-    return {
-      properties: {
-        url: this.url,
-      },
-    };
+    return super.url;
   }
 }
 

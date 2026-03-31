@@ -4,8 +4,11 @@ description: Link resources together and access them in a typesafe and secure wa
 ---
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
+import VideoAside from "../../../components/VideoAside.astro";
 
 Resource Linking  allows you to access your **infrastructure** in your **runtime code** in a typesafe and secure way.
+
+<VideoAside title="Watch a video on linking resources" href="https://youtu.be/s8cWklU4Akw" />
 
 1. Create a resource that you want to link to. For example, a bucket.
 
@@ -83,8 +86,10 @@ Resource Linking  allows you to access your **infrastructure** in your **runtime
    </Tabs>
 
    :::tip
-   The SDK currently supports JavaScript/TypeScript and Golang.
+   The SDK currently supports JS/TS, Python, Golang, and Rust.
    :::
+
+Learn how to use the SDK in [Python](/docs/reference/sdk/#python), [Golang](/docs/reference/sdk/#golang), and [Rust](/docs/reference/sdk/#rust).
 
 ---
 
@@ -149,7 +154,7 @@ Resource links are injected into your function or frontend package when you run 
 
 #### Functions
 
-The functions in SST are tree shaken and bundled using [esbuild](https://esbuild.github.io/). While bundling, SST injects the resource links into the [`globalThis`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/globalThis).
+The functions in SST are tree shaken and bundled using [esbuild](https://esbuild.github.io/). While bundling, SST injects the resource links into the [`globalThis`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/globalThis). These are encrypted and added to the function bundle. And they are synchronously decrypted on load by the SST SDK.
 
 #### Frontends
 
@@ -157,14 +162,20 @@ The frontends are not bundled by SST. Instead, when they are built, SST injects 
 
 This is why when you are running your frontend locally, it needs to be wrapped in the `sst dev` command.
 
+:::note
+Links are only available on the server of your frontend.
+:::
+
+Resource links are only available on the server-side of your frontend. If you want to access them in your client components, you'll need to pass them in explicitly.
+
 ---
 
 ### Generating types
 
 When you run `sst dev` or `sst deploy`, it generates the types to access the linked resources. These are generated as:
 
-1. A `sst-env.d.ts` file in the same directory of the nearest `package.json` of the function or frontend that's _receiving_ the links. This contains the types for the resources that are linked to it.
-2. A `.sst/types.generated.ts` file that can be referenced from a `sst-env.d.ts`. This is useful for monorepo packages that don't have a function or frontend. For example, if you have a _core_ package that contains some shared code. 
+2. A `sst-env.d.ts` file in the project root with types for **all** the linked resources in the app.
+1. A `sst-env.d.ts` file in the same directory of the nearest `package.json` of the function or frontend that's _receiving_ the links. This references the root `sst-env.d.ts` file.
 
 You can check the generated `sst-env.d.ts` types into source control. This will let your teammates see the types without having to run `sst dev` when they pull your changes.
 
@@ -267,3 +278,38 @@ You can also modify the links SST creates. For example, you might want to change
  This overrides the existing link and lets you create your own.
 
 Read more about [`sst.Linkable.wrap`](/docs/component/linkable/#static-wrap).
+
+---
+
+### Link integration with external providers
+
+If you want to pass links to compute not managed by SST, like a native ECS task definition or a Kubernetes pod, use `Linkable.env()`. It converts your linked resources into `SST_RESOURCE_*` environment variables so `Resource.MyResource` works at runtime.
+
+```ts title="sst.config.ts"
+const bucket = new sst.aws.Bucket("MyBucket");
+
+const environment = sst.Linkable.env([bucket]);
+```
+
+This returns an `Output<Record<string, string>>` that you can pass to any provider that accepts environment variables.
+
+```ts title="sst.config.ts"
+new kubernetes.apps.v1.Deployment("MyDeployment", {
+  spec: {
+    template: {
+      spec: {
+        containers: [{
+          name: "app",
+          image: "my-image",
+          env: sst.Linkable.env([bucket]).apply((env) =>
+            // Kubernetes requires environment variables to be an array of objects
+            Object.entries(env).map(([name, value]) => ({ name, value: String(value) })),
+          ),
+        }],
+      },
+    },
+  },
+});
+```
+
+Read more about [`sst.Linkable.env`](/docs/component/linkable/#static-env). [Check out an example](/docs/examples/#aws-linkable-env).

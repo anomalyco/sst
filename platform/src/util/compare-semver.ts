@@ -14,6 +14,10 @@ export function compareSemver(v1: string, v2: string): number {
   return patch1 - patch2;
 }
 
-export function getOpenNextPackage(openNextVersion: string): string {
-  return compareSemver(openNextVersion, "3.1.3") <= 0 ? "open-next" : "@opennextjs/aws";
+export function isALteB(a: string, b: string): boolean {
+  return compareSemver(a, b) <= 0;
+}
+
+export function isALtB(a: string, b: string): boolean {
+  return compareSemver(a, b) < 0;
 }

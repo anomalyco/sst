@@ -76,7 +76,8 @@ Like your API deployed in a container. Or any Lambda functions, Postgres databas
   ```ts title="sst.config.ts"
   const cluster = new sst.aws.Cluster("MyCluster", { vpc });
 
-  cluster.addService("MyService", {
+  new sst.aws.Service("MyService", {
+    cluster,
     loadBalancer: {
       ports: [{ listen: "80/http" }]
     }
@@ -187,6 +188,8 @@ Learn more about [Providers](/docs/providers) and check out the full list in the
 
 Once you've added a couple of features, SST can help you link them together. This is great because you **won't need to hardcode** anything in your app.
 
+<VideoAside title="Watch a video on linking resources" href="https://youtu.be/s8cWklU4Akw" />
+
 Let's say you are deploying an Express app in a container and you want to upload files to an S3 bucket. You can `link` the bucket to your container.
 
 ```ts title="sst.config.ts" {6}
@@ -194,7 +197,8 @@ const bucket = new sst.aws.Bucket("MyBucket");
 
 const cluster = new sst.aws.Cluster("MyCluster", { vpc });
 
-cluster.addService("MyService", {
+new sst.aws.Service("MyService", {
+  cluster,
   link: [bucket],
   loadBalancer: {
     ports: [{ listen: "80/http" }]
@@ -276,11 +280,7 @@ Or if you are not using Node, you can install it globally.
 curl -fsSL https://sst.dev/install | bash
 ```
 
-:::note
-SST currently supports **macOS, Linux, and WSL**. Support for Windows is on the roadmap.
-:::
-
-The CLI currently supports macOS, Linux, and WSL. Learn more about the [CLI](/docs/reference/cli/).
+Learn more about the [CLI](/docs/reference/cli/).
 
 ---
 
@@ -298,7 +298,6 @@ This brings up a _multiplexer_ that:
 2. Runs your functions [_Live_](/docs/live/), letting you make and test changes without having to redeploy them.
 3. Creates a [_tunnel_](/docs/reference/cli#tunnel) to connect your local machine to any resources in a VPC.
 4. Starts your frontend and container services in dev mode and links it to your infrastructure.
-
 
 <VideoAside title="Watch a video about dev mode" href="https://youtu.be/mefLc137EB0" />
 

@@ -23,11 +23,16 @@ var CmdDeploy = &cli.Command{
 			"sst deploy --stage production",
 			"```",
 			"",
-			"Optionally, deploy specific resources by passing in a list of their URNs.",
-			"You can get the URN of a resource from the [Console](/docs/console/#resources).",
+			"Optionally, deploy a specific component by passing in the name of the component from your `sst.config.ts`.",
 			"",
 			"```bash frame=\"none\"",
-			"sst deploy --target urn:pulumi:prod::www::sst:aws:Astro::Astro,urn:pulumi:prod::www::sst:aws:Bucket::Assets",
+			"sst deploy --target MyComponent",
+			"```",
+			"",
+			"Alternatively, exclude a specific component from the deploy.",
+			"",
+			"```bash frame=\"none\"",
+			"sst deploy --exclude MyComponent",
 			"```",
 			"",
 			"All the resources are deployed as concurrently as possible, based on their dependencies.",
@@ -61,14 +66,41 @@ var CmdDeploy = &cli.Command{
 			"```bash frame=\"none\"",
 			"SST_BUILD_CONCURRENCY_SITE=2 SST_BUILD_CONCURRENCY_CONTAINER=2 SST_BUILD_CONCURRENCY_FUNCTION=8 sst deploy",
 			"```",
+			"Typically, this command exits when there's an error deploying a resource.",
+			"But sometimes you want to be able to `--continue` deploying as many resources as possible;",
+			"",
+			"```bash frame=\"none\"",
+			"sst deploy --continue",
+			"```",
+			"",
+			"This is useful when deploying a new stage with a lot of resources. You want",
+			"to be able to deploy as many resources as possible and then come back and",
+			"fix the errors.",
+			"",
+			"The `sst dev` command deploys your resources a little differently. It skips",
+			"deploying resources that are going to be run locally. Sometimes you want to",
+			"deploy a personal stage without starting `sst dev`.",
+			"",
+			"```bash frame=\"none\"",
+			"sst deploy --dev",
+			"```",
+			"The `--dev` flag will deploy your resources as if you were running `sst dev`.",
 		}, "\n"),
 	},
 	Flags: []cli.Flag{
 		{
 			Name: "target",
 			Description: cli.Description{
-				Short: "Comma separated list of target URNs",
-				Long:  "Comma separated list of target URNs.",
+				Short: "Run it only for a component",
+				Long:  "Only run it for the given component.",
+			},
+		},
+		{
+			Name: "exclude",
+			Type: "string",
+			Description: cli.Description{
+				Short: "Exclude a component",
+				Long:  "Exclude the specified component from the operation.",
 			},
 		},
 		{
@@ -76,7 +108,7 @@ var CmdDeploy = &cli.Command{
 			Type: "bool",
 			Description: cli.Description{
 				Short: "Continue on error",
-				Long:  "Continue on error.",
+				Long:  "Continue on error and try to deploy as many resources as possible.",
 			},
 		},
 		{
@@ -84,7 +116,15 @@ var CmdDeploy = &cli.Command{
 			Type: "bool",
 			Description: cli.Description{
 				Short: "Deploy in dev mode",
-				Long:  "Deploy in dev mode.",
+				Long:  "Deploy resources like `sst dev` would.",
+			},
+		},
+		{
+			Name: "policy",
+			Type: "string",
+			Description: cli.Description{
+				Short: "Path to policy pack",
+				Long:  "Run policy pack validation against the preview changes.",
 			},
 		},
 	},
@@ -93,6 +133,12 @@ var CmdDeploy = &cli.Command{
 			Content: "sst deploy --stage production",
 			Description: cli.Description{
 				Short: "Deploy to production",
+			},
+		},
+		{
+			Content: "sst deploy --stage production --policy ./policies/production",
+			Description: cli.Description{
+				Short: "Deploy to production with policy validation",
 			},
 		},
 	},
@@ -106,6 +152,11 @@ var CmdDeploy = &cli.Command{
 		target := []string{}
 		if c.String("target") != "" {
 			target = strings.Split(c.String("target"), ",")
+		}
+
+		exclude := []string{}
+		if c.String("exclude") != "" {
+			exclude = strings.Split(c.String("exclude"), ",")
 		}
 
 		var wg errgroup.Group
@@ -134,10 +185,12 @@ var CmdDeploy = &cli.Command{
 		err = p.Run(c.Context, &project.StackInput{
 			Command:    "deploy",
 			Target:     target,
+			Exclude:    exclude,
 			Dev:        c.Bool("dev"),
 			ServerPort: s.Port,
 			Verbose:    c.Bool("verbose"),
 			Continue:   c.Bool("continue"),
+			PolicyPath: c.String("policy"),
 		})
 		if err != nil {
 			return err

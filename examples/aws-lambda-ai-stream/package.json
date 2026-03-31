@@ -1,0 +1,11 @@
+{
+  "name": "aws-lambda-ai-stream",
+  "type": "module",
+  "dependencies": {
+    "ai": "^6.0.116",
+    "sst": "^4"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "8.10.145"
+  }
+}

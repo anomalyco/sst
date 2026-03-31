@@ -5,18 +5,12 @@ import {
   all,
   Output,
 } from "@pulumi/pulumi";
-import { RandomId } from "@pulumi/random";
-import {
-  physicalName,
-  hashNumberToPrettyString,
-  hashStringToPrettyString,
-  logicalName,
-} from "../naming";
+import { hashStringToPrettyString, logicalName } from "../naming";
 import { Component, Prettify, Transform, transform } from "../component";
 import { Link } from "../link";
 import type { Input } from "../input";
-import { FunctionArgs, FunctionArn } from "./function";
-import { Duration, toSeconds } from "../duration";
+import { FunctionArgs, FunctionArn } from "./function.js";
+import { Duration, DurationDays, toSeconds } from "../duration";
 import { VisibleError } from "../error";
 import { parseBucketArn } from "./helpers/arn";
 import { BucketLambdaSubscriber } from "./bucket-lambda-subscriber";
@@ -78,7 +72,7 @@ interface BucketCorsArgs {
   allowMethods?: Input<Input<"DELETE" | "GET" | "HEAD" | "POST" | "PUT">[]>;
   /**
    * The HTTP headers you want to expose to an origin that calls the bucket.
-   * @default `[]`
+   * @default `["ETag"]`
    * @example
    * ```js
    * {
@@ -103,6 +97,70 @@ interface BucketCorsArgs {
    * ```
    */
   maxAge?: Input<Duration>;
+}
+
+interface BucketLifecycleArgs {
+  /**
+   * The unique identifier for the lifecycle rule.
+   *
+   * This ID must be unique across all lifecycle rules in the bucket and cannot exceed 255 characters.
+   * Whitespace-only values are not allowed.
+   *
+   * If not provided, SST will generate a unique ID based on the bucket component name and rule index.
+   *
+   * @example
+   * Use stable IDs to ensure rule identity is preserved when reordering rules.
+   * ```js
+   * {
+   *   id: "expire-tmp-files",
+   *   prefix: "/tmp",
+   *   expiresIn: "7 days"
+   * }
+   * ```
+   */
+  id?: Input<string>;
+  /**
+   * An S3 object key prefix that the lifecycle rule applies to.
+   * @example
+   * Applies to all the objects in the `images/` folder.
+   * ```js
+   * {
+   *   prefix: "images/"
+   * }
+   * ```
+   */
+  prefix?: Input<string>;
+  /**
+   * Whether the lifecycle rule is enabled.
+   * @example
+   * ```js
+   * {
+   *  enabled: true
+   * }
+   * ```
+   * @default `true`
+   */
+  enabled?: Input<boolean>;
+  /**
+   * Days after which the objects in the bucket should expire.
+   * @example
+   * ```js
+   * {
+   *  expiresIn: "30 days"
+   * }
+   * ```
+   */
+  expiresIn?: Input<DurationDays>;
+  /**
+   * Date after which the objects in the bucket should expire. Defaults to midnight UTC time.
+   * @example
+   * ```js
+   * {
+   *  expiresAt: "2023-08-22"
+   * }
+   * ```
+   */
+  expiresAt?: Input<string>;
 }
 
 export interface BucketArgs {
@@ -145,6 +203,234 @@ export interface BucketArgs {
    */
   access?: Input<"public" | "cloudfront">;
   /**
+   * Configure the policy for the bucket.
+   *
+   * @example
+   * Restrict Access to Specific IP Addresses
+   *
+   * ```js
+   * {
+   *   policy: [{
+   *     actions: ["s3:*"],
+   *     principals: "*",
+   *     conditions: [
+   *       {
+   *         test: "IpAddress",
+   *         variable: "aws:SourceIp",
+   *         values: ["10.0.0.0/16"]
+   *       }
+   *     ]
+   *   }]
+   * }
+   * ```
+   *
+   * Allow Specific IAM User Access
+   *
+   * ```js
+   * {
+   *   policy: [{
+   *     actions: ["s3:*"],
+   *     principals: [{
+   *       type: "aws",
+   *       identifiers: ["arn:aws:iam::123456789012:user/specific-user"]
+   *     }],
+   *   }]
+   * }
+   * ```
+   *
+   * Cross-Account Access
+   *
+   * ```js
+   * {
+   *   policy: [{
+   *     actions: ["s3:GetObject", "s3:ListBucket"],
+   *     principals: [{
+   *       type: "aws",
+   *       identifiers: ["123456789012"]
+   *     }],
+   *   }]
+   * }
+   * ```
+   */
+  policy?: Input<
+    Input<{
+      /**
+       * Configures whether the permission is allowed or denied.
+       * @default `"allow"`
+       * @example
+       * ```ts
+       * {
+       *   effect: "deny"
+       * }
+       * ```
+       */
+      effect?: Input<"allow" | "deny">;
+      /**
+       * The [IAM actions](https://docs.aws.amazon.com/service-authorization/latest/reference/reference_policies_actions-resources-contextkeys.html#actions_table) that can be performed.
+       * @example
+       * ```js
+       * {
+       *   actions: ["s3:*"]
+       * }
+       * ```
+       */
+      actions: Input<Input<string>[]>;
+      /**
+       * The principals that can perform the actions.
+       * @example
+       * Allow anyone to perform the actions.
+       *
+       * ```js
+       * {
+       *   principals: "*"
+       * }
+       * ```
+       *
+       * Allow anyone within an AWS account.
+       *
+       * ```js
+       * {
+       *   principals: [{ type: "aws", identifiers: ["123456789012"] }]
+       * }
+       * ```
+       *
+       * Allow specific IAM roles.
+       * ```js
+       * {
+       *   principals: [{
+       *     type: "aws",
+       *     identifiers: [
+       *       "arn:aws:iam::123456789012:role/MyRole",
+       *       "arn:aws:iam::123456789012:role/MyOtherRole"
+       *     ]
+       *   }]
+       * }
+       * ```
+       *
+       * Allow AWS CloudFront.
+       * ```js
+       * {
+       *   principals: [{ type: "service", identifiers: ["cloudfront.amazonaws.com"] }]
+       * }
+       * ```
+       *
+       * Allow OIDC federated users.
+       * ```js
+       * {
+       *   principals: [{
+       *     type: "federated",
+       *     identifiers: ["accounts.google.com"]
+       *   }]
+       * }
+       * ```
+       *
+       * Allow SAML federated users.
+       * ```js
+       * {
+       *   principals: [{
+       *     type: "federated",
+       *     identifiers: ["arn:aws:iam::123456789012:saml-provider/provider-name"]
+       *   }]
+       * }
+       * ```
+       *
+       * Allow Canonical User IDs.
+       * ```js
+       * {
+       *   principals: [{
+       *     type: "canonical",
+       *     identifiers: ["79a59df900b949e55d96a1e698fbacedfd6e09d98eacf8f8d5218e7cd47ef2be"]
+       *   }]
+       * }
+       * ```
+       *
+       * Allow specific IAM users.
+       *
+       */
+      principals: Input<
+        | "*"
+        | Input<{
+            type: Input<"aws" | "service" | "federated" | "canonical">;
+            identifiers: Input<Input<string>[]>;
+          }>[]
+      >;
+      /**
+       * Configure specific conditions for when the policy is in effect.
+       * @example
+       * ```js
+       * {
+       *   conditions: [
+       *     {
+       *       test: "StringEquals",
+       *       variable: "s3:x-amz-server-side-encryption",
+       *       values: ["AES256"]
+       *     }
+       *   ]
+       * }
+       * ```
+       */
+      conditions?: Input<
+        Input<{
+          /**
+           * Name of the [IAM condition operator](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_condition_operators.html) to evaluate.
+           */
+          test: Input<string>;
+          /**
+           * Name of a [Context Variable](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements.html#AvailableKeys) to apply the condition to. Context variables may either be standard AWS variables starting with `aws:` or service-specific variables prefixed with the service name.
+           */
+          variable: Input<string>;
+          /**
+           * The values to evaluate the condition against. If multiple values are provided, the condition matches if at least one of them applies. That is, AWS evaluates multiple values as though using an "OR" boolean operation.
+           */
+          values: Input<Input<string>[]>;
+        }>[]
+      >;
+      /**
+       * The S3 file paths that the policy is applied to. The paths are specified using
+       * the [S3 path format](https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-prefixes.html).
+       * The bucket arn will be prepended to the paths when constructing the policy.
+       * @default `["", "*"]`
+       * @example
+       * Apply the policy to the bucket itself.
+       * ```js
+       * {
+       *   paths: [""]
+       * }
+       * ```
+       *
+       * Apply to all files in the bucket.
+       * ```js
+       * {
+       *   paths: ["*"]
+       * }
+       * ```
+       *
+       * Apply to all files in the `images/` folder.
+       * ```js
+       * {
+       *   paths: ["images/*"]
+       * }
+       * ```
+       */
+      paths?: Input<Input<string>[]>;
+    }>[]
+  >;
+  /**
+   * Enforce HTTPS for all requests to the bucket.
+   *
+   * By default, the bucket policy will automatically block any HTTP requests.
+   * This is done using the `aws:SecureTransport` condition key.
+   *
+   * @default true
+   * @example
+   * ```js
+   * {
+   *   enforceHttps: false
+   * }
+   * ```
+   */
+  enforceHttps?: Input<boolean>;
+  /**
    * The CORS configuration for the bucket. Defaults to `true`, which is the same as:
    *
    * ```js
@@ -153,7 +439,7 @@ export interface BucketArgs {
    *     allowHeaders: ["*"],
    *     allowOrigins: ["*"],
    *     allowMethods: ["DELETE", "GET", "HEAD", "POST", "PUT"],
-   *     exposeHeaders: [],
+   *     exposeHeaders: ["ETag"],
    *     maxAge: "0 seconds"
    *   }
    * }
@@ -162,6 +448,40 @@ export interface BucketArgs {
    * @default `true`
    */
   cors?: Input<false | Prettify<BucketCorsArgs>>;
+  /**
+   * The lifecycle configuration for the bucket.
+   * @example
+   * Delete objects in the "/tmp" directory after 30 days.
+   * ```js
+   * {
+   *   lifecycle: [
+   *     {
+   *       prefix: "/tmp",
+   *       expiresIn: "30 days"
+   *     }
+   *   ]
+   * }
+   * ```
+   *
+   * Use stable IDs to preserve rule identity when reordering.
+   * ```js
+   * {
+   *   lifecycle: [
+   *     {
+   *       id: "expire-tmp-files",
+   *       prefix: "/tmp",
+   *       expiresIn: "7 days"
+   *     },
+   *     {
+   *       id: "archive-old-logs",
+   *       prefix: "/logs",
+   *       expiresIn: "90 days"
+   *     }
+   *   ]
+   * }
+   * ```
+   */
+  lifecycle?: Input<Input<Prettify<BucketLifecycleArgs>>[]>;
   /**
    * Enable versioning for the bucket.
    *
@@ -185,11 +505,11 @@ export interface BucketArgs {
     /**
      * Transform the S3 Bucket resource.
      */
-    bucket?: Transform<s3.BucketV2Args>;
+    bucket?: Transform<s3.BucketArgs>;
     /**
      * Transform the S3 Bucket CORS configuration resource.
      */
-    cors?: Transform<s3.BucketCorsConfigurationV2Args>;
+    cors?: Transform<s3.BucketCorsConfigurationArgs>;
     /**
      * Transform the S3 Bucket Policy resource.
      */
@@ -197,7 +517,11 @@ export interface BucketArgs {
     /**
      * Transform the S3 Bucket versioning resource.
      */
-    versioning?: Transform<s3.BucketVersioningV2Args>;
+    versioning?: Transform<s3.BucketVersioningArgs>;
+    /**
+     * Transform the S3 Bucket lifecycle resource.
+     * */
+    lifecycle?: Transform<s3.BucketLifecycleConfigurationArgs>;
     /**
      * Transform the public access block resource that's attached to the Bucket.
      *
@@ -221,16 +545,17 @@ export interface BucketNotificationsArgs {
        * The function that'll be notified.
        *
        * @example
-       * ```js title="sst.config.ts"
+       * ```js
        * {
        *   name: "MySubscriber",
-       *   function: "src/subscriber.handler",
+       *   function: "src/subscriber.handler"
        * }
        * ```
        *
-       * Customize the subscriber function. The `link` ensures the subscriber can access the bucket.
+       * Customize the subscriber function. The `link` ensures the subscriber can access the
+       * bucket through the [SDK](/docs/reference/sdk/).
        *
-       * ```js title="sst.config.ts"
+       * ```js
        * {
        *   name: "MySubscriber",
        *   function: {
@@ -243,16 +568,16 @@ export interface BucketNotificationsArgs {
        *
        * Or pass in the ARN of an existing Lambda function.
        *
-       * ```js title="sst.config.ts"
+       * ```js
        * {
        *   name: "MySubscriber",
-       *   function: "arn:aws:lambda:us-east-1:123456789012:function:my-function",
+       *   function: "arn:aws:lambda:us-east-1:123456789012:function:my-function"
        * }
        * ```
        */
       function?: Input<string | FunctionArgs | FunctionArn>;
       /**
-       * The queue that'll be notified.
+       * The Queue that'll be notified.
        *
        * @example
        * For example, let's say you have a queue.
@@ -263,25 +588,25 @@ export interface BucketNotificationsArgs {
        *
        * You can subscribe to this bucket with it.
        *
-       * ```js title="sst.config.ts"
+       * ```js
        * {
        *   name: "MySubscriber",
-       *   queue: myQueue,
+       *   queue: myQueue
        * }
        * ```
        *
        * Or pass in the ARN of an existing SQS queue.
        *
-       * ```js title="sst.config.ts"
+       * ```js
        * {
        *   name: "MySubscriber",
-       *   queue: "arn:aws:sqs:us-east-1:123456789012:my-queue",
+       *   queue: "arn:aws:sqs:us-east-1:123456789012:my-queue"
        * }
        * ```
        */
       queue?: Input<string | Queue>;
       /**
-       * The topic that'll be notified.
+       * The SNS topic that'll be notified.
        *
        * @example
        * For example, let's say you have a topic.
@@ -292,25 +617,25 @@ export interface BucketNotificationsArgs {
        *
        * You can subscribe to this bucket with it.
        *
-       * ```js title="sst.config.ts"
+       * ```js
        * {
        *   name: "MySubscriber",
-       *   topic: myTopic,
+       *   topic: myTopic
        * }
        * ```
        *
        * Or pass in the ARN of an existing SNS topic.
        *
-       * ```js title="sst.config.ts"
+       * ```js
        * {
        *   name: "MySubscriber",
-       *   topic: "arn:aws:sns:us-east-1:123456789012:my-topic",
+       *   topic: "arn:aws:sns:us-east-1:123456789012:my-topic"
        * }
        * ```
        */
       topic?: Input<string | SnsTopic>;
       /**
-       * A list of S3 event types that'll trigger the notification.
+       * A list of S3 event types that'll trigger a notification.
        * @default All S3 events
        * @example
        * ```js
@@ -351,9 +676,9 @@ export interface BucketNotificationsArgs {
         >[]
       >;
       /**
-       * An S3 object key prefix that will trigger the notification.
+       * An S3 object key prefix that will trigger a notification.
        * @example
-       * To filter for all the objects in the `images/` folder.
+       * To be notified for all the objects in the `images/` folder.
        * ```js
        * {
        *   filterPrefix: "images/"
@@ -364,7 +689,7 @@ export interface BucketNotificationsArgs {
       /**
        * An S3 object key suffix that will trigger the notification.
        * @example
-       * To filter for all the objects with the `.jpg` suffix.
+       * To be notified for all the objects with the `.jpg` suffix.
        * ```js
        * {
        *  filterSuffix: ".jpg"
@@ -467,7 +792,7 @@ export interface BucketSubscriberArgs {
 
 interface BucketRef {
   ref: boolean;
-  bucket: s3.BucketV2;
+  bucket: s3.Bucket;
 }
 
 /**
@@ -495,7 +820,14 @@ interface BucketRef {
  * #### Add a subscriber
  *
  * ```ts title="sst.config.ts"
- * bucket.subscribe("src/subscriber.handler");
+ * bucket.notify({
+ *   notifications: [
+ *     {
+ *       name: "MySubscriber",
+ *       function: "src/subscriber.handler"
+ *     }
+ *   ]
+ * });
  * ```
  *
  * #### Link the bucket to a resource
@@ -526,7 +858,7 @@ export class Bucket extends Component implements Link.Linkable {
   private constructorName: string;
   private constructorOpts: ComponentResourceOptions;
   private isSubscribed: boolean = false;
-  private bucket: Output<s3.BucketV2>;
+  private bucket: Output<s3.Bucket>;
 
   constructor(
     name: string,
@@ -545,12 +877,15 @@ export class Bucket extends Component implements Link.Linkable {
 
     const parent = this;
     const access = normalizeAccess();
+    const enforceHttps = output(args.enforceHttps ?? true);
+    const policyArgs = normalizePolicy();
 
     const bucket = createBucket();
     createVersioning();
     const publicAccessBlock = createPublicAccess();
     const policy = createBucketPolicy();
     createCorsRule();
+    createLifecycle();
 
     // Ensure the policy is created when the bucket is used in another component
     // (ie. bucket.name). Also, a bucket can only have one policy. We want to ensure
@@ -564,39 +899,49 @@ export class Bucket extends Component implements Link.Linkable {
       );
     }
 
-    function createBucket() {
-      const transformed = transform(
-        args.transform?.bucket,
-        `${name}Bucket`,
-        {
-          forceDestroy: true,
-        },
-        { parent },
+    function normalizePolicy() {
+      return output(args.policy ?? []).apply((policy) =>
+        policy.map((p) => ({
+          ...p,
+          effect:
+            p.effect && p.effect.charAt(0).toUpperCase() + p.effect.slice(1),
+          principals:
+            p.principals === "*"
+              ? [{ type: "*", identifiers: ["*"] }]
+              : p.principals.map((i) => ({
+                  ...i,
+                  type: {
+                    aws: "AWS",
+                    service: "Service",
+                    federated: "Federated",
+                    canonical: "Canonical",
+                  }[i.type],
+                })),
+          paths: p.paths
+            ? p.paths.map((path) => path.replace(/^\//, ""))
+            : ["", "*"],
+        })),
       );
+    }
 
-      if (!transformed[1].bucket) {
-        const randomId = new RandomId(
-          `${name}Id`,
-          { byteLength: 6 },
+    function createBucket() {
+      return new s3.Bucket(
+        ...transform(
+          args.transform?.bucket,
+          `${name}Bucket`,
+          {
+            forceDestroy: true,
+          },
           { parent },
-        );
-        transformed[1].bucket = randomId.dec.apply((dec) =>
-          physicalName(
-            63,
-            name,
-            `-${hashNumberToPrettyString(parseInt(dec), 8)}`,
-          ).toLowerCase(),
-        );
-      }
-
-      return new s3.BucketV2(...transformed);
+        ),
+      );
     }
 
     function createVersioning() {
       return output(args.versioning).apply((versioning) => {
         if (!versioning) return;
 
-        return new s3.BucketVersioningV2(
+        return new s3.BucketVersioning(
           ...transform(
             args.transform?.versioning,
             `${name}Versioning`,
@@ -605,6 +950,68 @@ export class Bucket extends Component implements Link.Linkable {
               versioningConfiguration: {
                 status: "Enabled",
               },
+            },
+            { parent },
+          ),
+        );
+      });
+    }
+
+    function createLifecycle() {
+      return output(args.lifecycle).apply((lifecycleRules) => {
+        if (!lifecycleRules || lifecycleRules.length === 0) return;
+
+        const seenIds = new Map<string, number>();
+
+        const resolvedIds = lifecycleRules.map((rule, index) => {
+          const rawId = rule.id ?? `${name}LifecycleRule${index}`;
+          const resolvedId = rawId.trim();
+
+          if (resolvedId.length === 0) {
+            throw new VisibleError(
+              `Lifecycle rule at index ${index} has an empty or whitespace-only "id". Please provide a valid id or omit it to use the auto-generated id.`,
+            );
+          }
+
+          if (resolvedId.length > 255) {
+            throw new VisibleError(
+              `Lifecycle rule at index ${index} has an "id" that is ${resolvedId.length} characters long. AWS S3 lifecycle rule IDs cannot exceed 255 characters.`,
+            );
+          }
+
+          const existingIndex = seenIds.get(resolvedId);
+          if (existingIndex !== undefined) {
+            throw new VisibleError(
+              `Lifecycle rule "id" values must be unique. The id "${resolvedId}" is used by rules at indexes ${existingIndex} and ${index}.`,
+            );
+          }
+          seenIds.set(resolvedId, index);
+
+          return resolvedId;
+        });
+
+        return new s3.BucketLifecycleConfiguration(
+          ...transform(
+            args.transform?.lifecycle,
+            `${name}Lifecycle`,
+            {
+              bucket: bucket.bucket,
+              rules: lifecycleRules.map((rule, index) => ({
+                id: resolvedIds[index],
+                status: rule.enabled !== false ? "Enabled" : "Disabled",
+                expiration:
+                  rule.expiresIn || rule.expiresAt
+                    ? {
+                        days: rule.expiresIn
+                          ? toSeconds(rule.expiresIn) / 86400
+                          : undefined,
+                        date: rule.expiresAt
+                          ? `${rule.expiresAt}T00:00:00Z`
+                          : undefined,
+                      }
+                    : undefined,
+                filter: rule.prefix ? { prefix: rule.prefix } : undefined,
+              })),
             },
             { parent },
           ),
@@ -632,58 +1039,73 @@ export class Bucket extends Component implements Link.Linkable {
     }
 
     function createBucketPolicy() {
-      return access.apply((access) => {
-        const statements = [];
-        if (access) {
-          statements.push({
-            principals: [
-              access === "public"
-                ? { type: "*", identifiers: ["*"] }
-                : {
-                    type: "Service",
-                    identifiers: ["cloudfront.amazonaws.com"],
-                  },
-            ],
-            actions: ["s3:GetObject"],
-            resources: [interpolate`${bucket.arn}/*`],
-          });
-        }
-        statements.push({
-          effect: "Deny",
-          principals: [{ type: "*", identifiers: ["*"] }],
-          actions: ["s3:*"],
-          resources: [bucket.arn, interpolate`${bucket.arn}/*`],
-          conditions: [
-            {
-              test: "Bool",
-              variable: "aws:SecureTransport",
-              values: ["false"],
-            },
-          ],
-        });
+      return all([access, enforceHttps, policyArgs]).apply(
+        ([access, enforceHttps, policyArgs]) => {
+          const statements = [];
+          if (access) {
+            statements.push({
+              principals: [
+                access === "public"
+                  ? { type: "*", identifiers: ["*"] }
+                  : {
+                      type: "Service",
+                      identifiers: ["cloudfront.amazonaws.com"],
+                    },
+              ],
+              actions: ["s3:GetObject"],
+              resources: [interpolate`${bucket.arn}/*`],
+            });
+          }
+          if (enforceHttps) {
+            statements.push({
+              effect: "Deny",
+              principals: [{ type: "*", identifiers: ["*"] }],
+              actions: ["s3:*"],
+              resources: [bucket.arn, interpolate`${bucket.arn}/*`],
+              conditions: [
+                {
+                  test: "Bool",
+                  variable: "aws:SecureTransport",
+                  values: ["false"],
+                },
+              ],
+            });
+          }
+          statements.push(
+            ...policyArgs.map((policy) => ({
+              effect: policy.effect,
+              principals: policy.principals,
+              actions: policy.actions,
+              conditions: policy.conditions,
+              resources: policy.paths.map((path) =>
+                path === "" ? bucket.arn : interpolate`${bucket.arn}/${path}`,
+              ),
+            })),
+          );
 
-        return new s3.BucketPolicy(
-          ...transform(
-            args.transform?.policy,
-            `${name}Policy`,
-            {
-              bucket: bucket.bucket,
-              policy: iam.getPolicyDocumentOutput({ statements }).json,
-            },
-            {
-              parent,
-              dependsOn: publicAccessBlock,
-            },
-          ),
-        );
-      });
+          return new s3.BucketPolicy(
+            ...transform(
+              args.transform?.policy,
+              `${name}Policy`,
+              {
+                bucket: bucket.bucket,
+                policy: iam.getPolicyDocumentOutput({ statements }).json,
+              },
+              {
+                parent,
+                dependsOn: publicAccessBlock,
+              },
+            ),
+          );
+        },
+      );
     }
 
     function createCorsRule() {
       return output(args.cors).apply((cors) => {
         if (cors === false) return;
 
-        return new s3.BucketCorsConfigurationV2(
+        return new s3.BucketCorsConfiguration(
           ...transform(
             args.transform?.cors,
             `${name}Cors`,
@@ -700,7 +1122,7 @@ export class Bucket extends Component implements Link.Linkable {
                     "PUT",
                   ],
                   allowedOrigins: cors?.allowOrigins ?? ["*"],
-                  exposeHeaders: cors?.exposeHeaders,
+                  exposeHeaders: cors?.exposeHeaders ?? ["ETag"],
                   maxAgeSeconds: toSeconds(cors?.maxAge ?? "0 seconds"),
                 },
               ],
@@ -784,79 +1206,51 @@ export class Bucket extends Component implements Link.Linkable {
   ) {
     return new Bucket(name, {
       ref: true,
-      bucket: s3.BucketV2.get(`${name}Bucket`, bucketName, undefined, opts),
+      bucket: s3.Bucket.get(`${name}Bucket`, bucketName, undefined, opts),
     } as BucketArgs);
   }
 
   /**
-   * Subscribe to event notifications from this bucket.
+   * Subscribe to event notifications from this bucket. You can subscribe to these
+   * notifications with a function, a queue, or a topic.
    *
-   * @param args The configuration for the event notifications.
+   * @param args The config for the event notifications.
    *
    * @example
    *
-   * Notify a function.
+   * For exmaple, to notify a function:
    *
-   * ```js
+   * ```js title="sst.config.ts" {5}
    * bucket.notify({
    *   notifications: [
    *     {
    *       name: "MySubscriber",
-   *       function: "src/subscriber.handler",
+   *       function: "src/subscriber.handler"
    *     }
    *   ]
    * });
    * ```
    *
-   * Notify on specific S3 events.
+   * Or let's say you have a queue.
    *
-   * ```js
-   * bucket.notify({
-   *   notifications: [
-   *     {
-   *       name: "MySubscriber",
-   *       function: "src/subscriber.handler",
-   *       events: ["s3:ObjectCreated:*", "s3:ObjectRemoved:*"],
-   *     }
-   *   ]
-   * });
-   * ```
-   *
-   * Notify on specific S3 events from a specific folder.
-   *
-   * ```js
-   * bucket.notify({
-   *   notifications: [
-   *     {
-   *       name: "MySubscriber",
-   *       function: "src/subscriber.handler",
-   *       events: ["s3:ObjectCreated:*", "s3:ObjectRemoved:*"],
-   *       filterPrefix: "images/",
-   *     }
-   *   ]
-   * });
-   * ```
-   *
-   * Notify a queue. For example, let's say you have a queue.
-   *
-   * ```js
+   * ```js title="sst.config.ts"
    * const myQueue = new sst.aws.Queue("MyQueue");
    * ```
    *
    * You can notify it by passing in the queue.
    *
-   * ```js
+   * ```js title="sst.config.ts" {5}
    * bucket.notify({
    *   notifications: [
    *     {
    *       name: "MySubscriber",
-   *       queue: myQueue,
+   *       queue: myQueue
    *     }
    *   ]
    * });
    * ```
    *
-   * Notify a SNS topic. For example, let's say you have a topic.
+   * Or let's say you have a topic.
    *
    * ```js title="sst.config.ts"
    * const myTopic = new sst.aws.SnsTopic("MyTopic");
@@ -864,12 +1258,40 @@ export class Bucket extends Component implements Link.Linkable {
    *
    * You can notify it by passing in the topic.
    *
-   * ```js
+   * ```js title="sst.config.ts" {5}
    * bucket.notify({
    *   notifications: [
    *     {
    *       name: "MySubscriber",
-   *       topic: myTopic,
+   *       topic: myTopic
+   *     }
+   *   ]
+   * });
+   * ```
+   *
+   * You can also set it to only send notifications for specific S3 events.
+   *
+   * ```js {6}
+   * bucket.notify({
+   *   notifications: [
+   *     {
+   *       name: "MySubscriber",
+   *       function: "src/subscriber.handler",
+   *       events: ["s3:ObjectCreated:*", "s3:ObjectRemoved:*"]
+   *     }
+   *   ]
+   * });
+   * ```
+   *
+   * And you can add filters to be only notified from specific files in the bucket.
+   *
+   * ```js {6}
+   * bucket.notify({
+   *   notifications: [
+   *     {
+   *       name: "MySubscriber",
+   *       function: "src/subscriber.handler",
+   *       filterPrefix: "images/"
    *     }
    *   ]
    * });

@@ -10,6 +10,7 @@ import (
 
 	"github.com/sst/sst/v3/cmd/sst/cli"
 	"github.com/sst/sst/v3/cmd/sst/mosaic/ui"
+	"github.com/sst/sst/v3/pkg/id"
 	"github.com/sst/sst/v3/pkg/project"
 )
 
@@ -24,7 +25,7 @@ var CmdDiagnostic = &cli.Command{
 		}, "\n"),
 	},
 	Run: func(c *cli.Cli) error {
-		cfg, err := project.Discover()
+		cfg, err := c.Discover()
 		if err != nil {
 			return err
 		}
@@ -84,15 +85,16 @@ var CmdDiagnostic = &cli.Command{
 		if err != nil {
 			return err
 		}
-		workdir, err := p.NewWorkdir()
-		if err != nil {
-			return err
-		}
-		statePath, err := workdir.Pull()
+		workdir, err := p.NewWorkdir(id.Descending())
 		if err != nil {
 			return err
 		}
 		defer workdir.Cleanup()
+
+		statePath, err := workdir.Pull()
+		if err != nil {
+			return err
+		}
 		err = addFile(statePath, "state.json")
 		if err != nil {
 			return err

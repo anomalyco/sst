@@ -5,7 +5,7 @@ description: Use 150+ Pulumi or Terraform providers in your app.
 
 import VideoAside from "../../../components/VideoAside.astro";
 
-Aside from the [built-in](/docs/components#built-in) components, SST supports any of the **150+** Pulumi and Terrarform providers.
+Aside from the [built-in](/docs/components#built-in) components, SST supports any of the **150+** Pulumi and Terraform providers.
 
 Check out the full list in the [Directory](#directory).
 
@@ -54,7 +54,7 @@ Once added, you can use a resource from the provider in your `sst.config.ts`.
 
 For example, use a Stripe resource in your config's `run` function.
 
-```ts title="sst.config.ts" {4-11}
+```ts title="sst.config.ts" {4-7}
 export default $config({
   // ...
   async run() {
@@ -187,7 +187,7 @@ If you want SST to support a Terraform provider or update a version, you can **s
 | [Kubernetes](https://www.pulumi.com/registry/packages/kubernetes) | `kubernetes` |
 | [Kubernetes Cert Manager](https://www.pulumi.com/registry/packages/kubernetes-cert-manager) | `kubernetes-cert-manager` |
 | [Kubernetes CoreDNS](https://www.pulumi.com/registry/packages/kubernetes-coredns) | `kubernetes-coredns` |
-| [LaunchDarkly](https://www.pulumi.com/registry/packages/launchdarkly) | `@lbrlabs/pulumi-lauchdarkly` |
+| [LaunchDarkly](https://registry.terraform.io/providers/launchdarkly/launchdarkly) | `lauchdarkly` |
 | [LBr Labs EKS](https://www.pulumi.com/registry/packages/lbrlabs-eks) | `@lbrlabs/pulumi-eks` |
 | [libvirt](https://www.pulumi.com/registry/packages/libvirt) | `libvirt` |
 | [Linode](https://www.pulumi.com/registry/packages/linode) | `linode` |
@@ -224,6 +224,7 @@ If you want SST to support a Terraform provider or update a version, you can **s
 | [Qovery](https://www.pulumi.com/registry/packages/qovery) | `@ediri/qovery` |
 | [RabbitMQ](https://www.pulumi.com/registry/packages/rabbitmq) | `rabbitmq` |
 | [Rancher2](https://www.pulumi.com/registry/packages/rancher2) | `rancher2` |
+| [Railway](https://registry.terraform.io/providers/terraform-community-providers/railway/latest) | `railway` |
 | [random](https://www.pulumi.com/registry/packages/random) | `random` |
 | [Redis Cloud](https://www.pulumi.com/registry/packages/rediscloud) | `@rediscloud/pulumi-rediscloud` |
 | [Rootly](https://www.pulumi.com/registry/packages/rootly) | `@rootly/pulumi` |
@@ -252,7 +253,7 @@ If you want SST to support a Terraform provider or update a version, you can **s
 | [Unifi](https://www.pulumi.com/registry/packages/unifi) | `@pulumiverse/unifi` |
 | [Upstash](https://www.pulumi.com/registry/packages/upstash) | `@upstash/pulumi` |
 | [Venafi](https://www.pulumi.com/registry/packages/venafi) | `venafi` |
-| [Vercel](https://www.pulumi.com/registry/packages/vercel) | `@pulumiverse/vercel` |
+| [Vercel](https://www.pulumi.com/registry/packages/vercel) | `vercel` |
 | [VMware vSphere](https://www.pulumi.com/registry/packages/vsphere) | `vsphere` |
 | [Volcengine](https://www.pulumi.com/registry/packages/volcengine) | `@volcengine/pulumi` |
 | [vSphere](https://www.pulumi.com/registry/packages/vsphere) | `vsphere` |

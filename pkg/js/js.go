@@ -11,6 +11,8 @@ import (
 	esbuild "github.com/evanw/esbuild/pkg/api"
 )
 
+var ErrTopLevelImport = fmt.Errorf("ErrTopLevelImport")
+
 type EvalOptions struct {
 	Dir     string
 	Outfile string
@@ -33,8 +35,12 @@ type Metafile struct {
 	Inputs map[string]struct {
 		Bytes   int `json:"bytes"`
 		Imports []struct {
-			Path string `json:"path"`
-			Kind string `json:"kind"`
+			Path        string `json:"path"`
+			Kind        string `json:"kind"`
+			External    bool   `json:"external,omitempty"`
+			Original    string `json:"original,omitempty"`
+			Namespace   string `json:"namespace,omitempty"`
+			SideEffects bool   `json:"sideEffects,omitempty"`
 		} `json:"imports"`
 	} `json:"inputs"`
 	Outputs map[string]struct {
@@ -53,6 +59,7 @@ func Build(input EvalOptions) (esbuild.BuildResult, error) {
 		outfile = filepath.Join(input.Dir, ".sst", "platform", fmt.Sprintf("sst.config.%v.mjs", time.Now().UnixMilli()))
 	}
 	slog.Info("esbuild building", "out", outfile)
+	var err error
 	result := esbuild.Build(esbuild.BuildOptions{
 		Banner: map[string]string{
 			"js": `
@@ -78,10 +85,25 @@ const __dirname = topLevelFileUrlToPath(new topLevelURL(".", import.meta.url))
 		},
 		Plugins: []esbuild.Plugin{
 			{
+				Name: "DisallowImports",
+				Setup: func(build esbuild.PluginBuild) {
+					build.OnResolve(esbuild.OnResolveOptions{Filter: ".*"}, func(args esbuild.OnResolveArgs) (esbuild.OnResolveResult, error) {
+						if input.Globals == "" && filepath.Base(args.Importer) == "sst.config.ts" && args.Kind == esbuild.ResolveJSImportStatement {
+							err = ErrTopLevelImport
+							return esbuild.OnResolveResult{}, ErrTopLevelImport
+						}
+						return esbuild.OnResolveResult{}, nil
+					})
+				},
+			},
+			{
 				Name: "InjectGlobals",
 				Setup: func(build esbuild.PluginBuild) {
 					build.OnLoad(esbuild.OnLoadOptions{Filter: `\.(js|ts|jsx|tsx)$`},
 						func(args esbuild.OnLoadArgs) (esbuild.OnLoadResult, error) {
+							if filepath.HasPrefix(args.Path, filepath.Join(input.Dir, ".sst")) {
+								return esbuild.OnLoadResult{}, nil
+							}
 							contents, err := os.ReadFile(args.Path)
 							if err != nil {
 								return esbuild.OnLoadResult{}, err
@@ -116,6 +138,9 @@ const __dirname = topLevelFileUrlToPath(new topLevelURL(".", import.meta.url))
 		Bundle:   true,
 		Metafile: true,
 	})
+	if err != nil {
+		return esbuild.BuildResult{}, err
+	}
 	if len(result.Errors) > 0 {
 		for _, err := range result.Errors {
 			slog.Error("esbuild error", "text", err.Text)

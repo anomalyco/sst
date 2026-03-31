@@ -13,6 +13,7 @@ import (
 )
 
 var mapping = map[string]string{
+	"aiBindings":          "Ai",
 	"r2BucketBindings":    "R2Bucket",
 	"d1DatabaseBindings":  "D1Database",
 	"kvNamespaceBindings": "KVNamespace",
@@ -37,11 +38,18 @@ func Generate(root string, links common.Links) error {
 		"/* tslint:disable */",
 		"/* eslint-disable */",
 		"/* deno-fmt-ignore-file */",
-		"import \"sst\"",
-		"export {}",
+		"/* biome-ignore-all lint: auto-generated */",
+		"",
 		"",
 	}, "\n"))
+	footer := []byte(strings.Join([]string{
+		"",
+		"import \"sst\"",
+		"export {}",
+	}, "\n"))
+
 	packageJsons := fs.FindDown(root, "package.json")
+	rootEnv := filepath.Join(root, "sst-env.d.ts")
 	for _, packageJson := range packageJsons {
 		packageJsonFile, err := os.Open(packageJson)
 		if err != nil {
@@ -59,6 +67,7 @@ func Generate(root string, links common.Links) error {
 		}
 		defer envFile.Close()
 		envFile.Write(header)
+		defer envFile.Write(footer)
 
 		properties := map[string]interface{}{}
 		for name, link := range links {
@@ -89,9 +98,15 @@ func Generate(root string, links common.Links) error {
 			}
 			continue
 		}
-		envFile.Write([]byte("declare module \"sst\" {\n"))
-		envFile.Write([]byte("  export interface Resource " + infer(properties, "  ") + "\n"))
-		envFile.Write([]byte("}\n"))
+
+		if rootEnv == envPath {
+			envFile.Write([]byte("declare module \"sst\" {\n"))
+			envFile.Write([]byte("  export interface Resource " + infer(properties, "  ") + "\n"))
+			envFile.Write([]byte("}\n"))
+		}
+
+		rel, err := filepath.Rel(filepath.Dir(envPath), rootEnv)
+		envFile.WriteString("/// <reference path=\"" + filepath.ToSlash(rel) + "\" />\n")
 	}
 
 	return nil

@@ -1,7 +1,7 @@
 import { dynamic } from "@pulumi/pulumi";
 import http from "http";
 
-export module rpc {
+export namespace rpc {
   export class MethodNotFoundError extends Error {
     constructor(public method: string) {
       super(`Method "${method}" not found`);
@@ -96,6 +96,13 @@ export module rpc {
     async read(id: string, props: any): Promise<dynamic.ReadResult> {
       return call(this.name("Read"), { id, props }).catch((ex) => {
         if (ex instanceof MethodNotFoundError) return { id, props };
+        throw ex;
+      });
+    }
+
+    async diff(id: string, olds: any, news: any): Promise<dynamic.DiffResult> {
+      return call(this.name("Diff"), { id, olds, news }).catch((ex) => {
+        if (ex instanceof MethodNotFoundError) return { id, olds, news };
         throw ex;
       });
     }

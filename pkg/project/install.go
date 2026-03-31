@@ -2,7 +2,6 @@ package project
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -35,7 +34,15 @@ func (p *Project) NeedsInstall() bool {
 		return true
 	}
 	for _, entry := range p.lock {
-		config := p.app.Providers[entry.Name].(map[string]interface{})
+		match, ok := p.app.Providers[entry.Name]
+		if !ok {
+			return false
+		}
+		config := match.(map[string]interface{})
+		pkg := config["package"]
+		if pkg != nil && pkg != "" && pkg != entry.Package {
+			return true
+		}
 		version := config["version"]
 		if version == nil || version == "" {
 			continue
@@ -104,6 +111,7 @@ func (p *Project) writePackageJson() error {
 		slog.Info("adding dependency", "name", entry.Name)
 		dependencies[entry.Package] = entry.Version
 	}
+	dependencies["@pulumi/pulumi"] = global.PULUMI_VERSION
 
 	dataToWrite, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
@@ -151,13 +159,17 @@ func (p *Project) writeTypes() error {
 	file.WriteString(`  interface Providers {` + "\n")
 	file.WriteString(`    providers?: {` + "\n")
 	for _, entry := range p.lock {
-		file.WriteString(`      "` + entry.Name + `"?:  (_` + entry.Alias + `.ProviderArgs & { version?: string }) | boolean | string;` + "\n")
+		versionField := "version: string"
+		if entry.Name == "aws" || entry.Name == "cloudflare" {
+			versionField = "version?: string"
+		}
+		file.WriteString(`      "` + entry.Name + `"?:  (_` + entry.Alias + `.ProviderArgs & { package?: string, ` + versionField + ` }) | string;` + "\n")
 	}
 	file.WriteString(`    }` + "\n")
 	file.WriteString(`  }` + "\n")
 	file.WriteString(`  export const $config: (` + "\n")
 	file.WriteString(`    input: Omit<Config, "app"> & {` + "\n")
-	file.WriteString(`      app(input: AppInput): Omit<App, "providers"> & Providers;` + "\n")
+	file.WriteString(`      app(input: AppInput): Promise<Omit<App, "providers"> & Providers> | (Omit<App, "providers"> & Providers);` + "\n")
 	file.WriteString(`    },` + "\n")
 	file.WriteString(`  ) => Config;` + "\n")
 	file.WriteString(`}` + "\n")
@@ -168,14 +180,14 @@ func (p *Project) writeTypes() error {
 func (p *Project) fetchDeps() error {
 	slog.Info("fetching deps")
 	manager := global.BunPath()
-	if flag.NO_BUN {
+	if flag.SST_NO_BUN {
 		manager = "npm"
 	}
 	cmd := process.Command(manager, "install")
 	cmd.Dir = p.PathPlatformDir()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return errors.New("failed to run bun install " + string(output))
+		return fmt.Errorf("failed to run %s install: %w\n%s", manager, err, output)
 	}
 	return nil
 }
@@ -213,12 +225,17 @@ func (p *Project) generateProviderLock() error {
 	}
 	for name, config := range p.app.Providers {
 		n := name
+		// Use the explicit package name if set, otherwise default to the provider name
+		pkgName := config.(map[string]interface{})["package"]
+		if pkgName == nil || pkgName == "" {
+			pkgName = n
+		}
 		version := config.(map[string]interface{})["version"]
 		if version == nil || version == "" {
 			version = "latest"
 		}
 		wg.Go(func() error {
-			result, err := FindProvider(n, version.(string))
+			result, err := FindProvider(n, version.(string), pkgName.(string))
 			if err != nil {
 				return err
 			}
@@ -252,32 +269,37 @@ func (p *Project) generateProviderLock() error {
 	return nil
 }
 
-func FindProvider(name string, version string) (*ProviderLockEntry, error) {
+func FindProvider(provider string, version string, pkg string) (*ProviderLockEntry, error) {
+	registry := npm.LoadRegistry()
 	for _, prefix := range []string{"@sst-provider/", "@pulumi/", "@pulumiverse/", "pulumi-", "@", ""} {
-		pkg, err := npm.Get(prefix+name, version)
+		npmPkg, err := npm.Get(registry, prefix+pkg, version)
 		if err != nil {
 			continue
 		}
-		if pkg.Pulumi == nil {
+		if npmPkg.Pulumi == nil {
 			continue
 		}
-		alias := pkg.Pulumi.Name
+		alias := npmPkg.Pulumi.Name
 		if alias == "" || alias == "terraform-provider" {
-			alias = pkg.Name
-			alias = strings.ReplaceAll(alias, "@sst-provider", "")
-			alias = strings.ReplaceAll(alias, "/", "")
-			alias = strings.ReplaceAll(alias, "@", "")
-			alias = strings.ReplaceAll(alias, "pulumi", "")
+			if npmPkg.Pulumi.Parameterization != nil && npmPkg.Pulumi.Parameterization.Name != "" {
+				alias = npmPkg.Pulumi.Parameterization.Name
+			} else {
+				alias = npmPkg.Name
+				alias = strings.ReplaceAll(alias, "@sst-provider", "")
+				alias = strings.ReplaceAll(alias, "/", "")
+				alias = strings.ReplaceAll(alias, "@", "")
+				alias = strings.ReplaceAll(alias, "pulumi", "")
+			}
 		}
 		alias = strings.ReplaceAll(alias, "-", "")
 		return &ProviderLockEntry{
-			Name:    name,
-			Package: pkg.Name,
-			Version: pkg.Version,
+			Name:    provider,
+			Package: npmPkg.Name,
+			Version: npmPkg.Version,
 			Alias:   alias,
 		}, nil
 	}
-	return nil, fmt.Errorf("provider %s not found", name)
+	return nil, fmt.Errorf("provider %s not found", provider)
 }
 
 func (p *Project) writeProviderLock() error {

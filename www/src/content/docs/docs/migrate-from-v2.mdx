@@ -31,15 +31,8 @@ While the goal with v3 is to support most of what's in v2, there are a few thing
 
 | Construct | GitHub Issue |
 |----------|-------|
-| `Auth` | [In beta](https://github.com/sst/sst/issues/4893) |
 | `Script` | [#811](https://github.com/sst/sst/issues/4323) |
-| `EventBus` | [#67](https://github.com/sst/sst/issues/4699) |
-| `RDS` MySQL | [#812](https://github.com/sst/sst/issues/4322) |
-| `Function` non-Node.js runtimes | [Python](https://github.com/sst/sst/issues/4669), [Container](https://github.com/sst/sst/issues/4462), [Custom](https://github.com/sst/sst/issues/4826) |
-
-:::note
-Currently, v3 only support WSL. Windows support is on the roadmap — [#347](https://github.com/sst/ion/issues/347)
-:::
+| `Function` non-Node.js runtimes | [Container](https://github.com/sst/sst/issues/4462), [Custom](https://github.com/sst/sst/issues/4826) |
 
 Feel free to let us know via the linked GitHub issues if these are blockers for you. It'll help us prioritize this list.
 
@@ -279,7 +272,7 @@ For example, in the [monorepo notes app](https://github.com/sst/demo-notes-app/p
   
       return {
         UserPool: auth.userPool.id,
-        Region: aws.getRegionOutput().name,
+        Region: aws.getRegionOutput().region,
         IdentityPool: auth.identityPool.id,
         UserPoolClient: auth.userPoolClient.id,
       };
@@ -538,7 +531,7 @@ There are a couple of global variables, `$app` and `$dev` that replace the `app`
 3. `$dev === true` tells you if you are in dev mode. Used to be `app.mode === "dev`.
 4. `$dev === false` tells you if it's being deployed. Used to be `app.mode === "deploy`.
 5. There is no `app.mode === remove` replacement since your components are not evaluated on `sst remove`.
-6. There is no `app.region` since in v3 you can deploy resources to different regions or AWS profiles or _providers_. To get the default AWS provider you can use `aws.getRegionOutput().name`.
+6. There is no `app.region` since in v3 you can deploy resources to different regions or AWS profiles or _providers_. To get the default AWS provider you can use `aws.getRegionOutput().region`.
 
 ---
 
@@ -764,7 +757,8 @@ The `Task` component that replaces `Job` is based on AWS Fargate. It runs a cont
   ```ts title="sst.config.ts"
   const cluster = new sst.aws.Cluster("MyCluster", { vpc });
 
-  cluster.addTask("MyTask", {
+  new sst.aws.Task("MyTask", {
+    cluster,
     image: {
       context: "./src",
       dockerfile: "Dockerfile"
@@ -797,7 +791,10 @@ Learn more about [`Task`](/blog/tasks-in-v3).
 <Tabs>
   <TabItem label="v3">
   ```ts title="sst.config.ts"
-  new sst.aws.Postgres("MyDatabase", {
+  const vpc = new sst.aws.Vpc("MyVpc");
+  new sst.aws.Aurora("MyDatabase", {
+    vpc,
+    engine: "postgres",
     version: "15.5",
     databaseName: "acme"
   });
@@ -813,6 +810,8 @@ Learn more about [`Task`](/blog/tasks-in-v3).
   ```
   </TabItem>
 </Tabs>
+
+The `Aurora` component uses [Amazon Aurora Serverless v2](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/aurora-serverless-v2.html).
 
 For migrations, we recommend using [Drizzle Kit](https://orm.drizzle.team/kit-docs/overview). Check out our [Drizzle example](/docs/start/aws/drizzle/).
 
@@ -1036,7 +1035,8 @@ In your function you'd access this using.
     }
   });
 
-  cluster.addService("MyService", {
+  new sst.aws.Service("MyService", {
+    cluster,
     loadBalancer: {
       domain: "my-app.com",
       ports: [
@@ -1124,6 +1124,44 @@ In your function you'd access this using.
   ```ts title="sst.config.ts"
   new AstroSite(stack, "MyWeb", {
     customDomain: "my-app.com"
+  });
+  ```
+  </TabItem>
+</Tabs>
+
+---
+
+### EventBus
+
+<Tabs>
+  <TabItem label="v3">
+  ```ts title="sst.config.ts"
+  const bus = new sst.aws.Bus("Bus");
+
+  bus.subscribe("MySubscriber1", "src/function1.handler", {
+    pattern: {
+      source: ["myevent"]
+    }
+  });
+  bus.subscribe("MySubscriber2", "src/function2.handler", {
+    pattern: {
+      source: ["myevent"]
+    }
+  });
+  ```
+  </TabItem>
+  <TabItem label="v2">
+  ```ts title="sst.config.ts"
+  new EventBus(stack, "Bus", {
+    rules: {
+      myRule: {
+        pattern: { source: ["myevent"] },
+        targets: {
+          myTarget1: "src/function1.handler",
+          myTarget2: "src/function2.handler"
+        }
+      }
+    }
   });
   ```
   </TabItem>

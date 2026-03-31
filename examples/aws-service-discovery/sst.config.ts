@@ -2,7 +2,7 @@
 
 /**
  * ## AWS Cluster Service Discovery
- * 
+ *
  * In this example, we are connecting to a service running on a cluster using its AWS Cloud
  * Map service host name. This is useful for service discovery.
  *
@@ -10,7 +10,7 @@
  * the service's cloud map hostname.
  *
  * ```ts title="lambda.ts"
- * const reponse = await fetch(`http://${Resource.MyService.service}`);
+ * const response = await fetch(`http://${Resource.MyService.service}`);
  * ```
  *
  * Here we are accessing it through a Lambda function that's linked to the service and is
@@ -28,7 +28,7 @@ export default $config({
     const vpc = new sst.aws.Vpc("MyVpc", { nat: "ec2" });
 
     const cluster = new sst.aws.Cluster("MyCluster", { vpc });
-    const service = cluster.addService("MyService");
+    const service = new sst.aws.Service("MyService", { cluster });
 
     new sst.aws.Function("MyFunction", {
       vpc,

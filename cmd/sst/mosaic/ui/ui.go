@@ -20,6 +20,7 @@ import (
 	"github.com/sst/sst/v3/cmd/sst/mosaic/cloudflare"
 	"github.com/sst/sst/v3/cmd/sst/mosaic/deployer"
 	"github.com/sst/sst/v3/cmd/sst/mosaic/ui/common"
+	"github.com/sst/sst/v3/pkg/flag"
 	"github.com/sst/sst/v3/pkg/project"
 
 	"golang.org/x/crypto/ssh/terminal"
@@ -60,7 +61,12 @@ type UI struct {
 type Options struct {
 	Silent bool
 	Log    *os.File
-	Dev    bool
+	Filter string
+}
+
+type PaneFilterEvent struct {
+	PaneKey string `json:"paneKey"`
+	Value   string `json:"value"`
 }
 
 type Option func(*Options)
@@ -69,8 +75,17 @@ func WithSilent(u *Options) {
 	u.Silent = true
 }
 
-func WithDev(u *Options) {
-	u.Dev = true
+func (u *UI) SetFilter(filter string, paneKey string) {
+	icons := map[string]string{"function": "λ", "task": "⧉"}
+	icon := icons[paneKey]
+	u.options.Filter = filter
+	u.blank()
+	if filter != "" {
+		u.println(TEXT_HIGHLIGHT.Render(icon), "  ", TEXT_NORMAL_BOLD.Render("Filter"), "   ", TEXT_GRAY.Render(filter))
+	} else {
+		u.println(TEXT_DANGER.Render(icon), "  ", TEXT_NORMAL_BOLD.Render("Filter"), "   ", TEXT_DIM.Render("Removed"))
+	}
+	u.blank()
 }
 
 func WithLog(file *os.File) Option {
@@ -154,37 +169,67 @@ func (u *UI) Event(unknown interface{}) {
 		u.println(evt.Line)
 
 	case *aws.TaskProvisionEvent:
-		u.printEvent(u.getColor(""), TEXT_NORMAL_BOLD.Render(fmt.Sprintf("%-11s", "Provision")), evt.Name)
+		if !u.matchFilter(evt.Name) {
+			return
+		}
+		u.printEvent(u.getColor(""), fmt.Sprintf("%-11s", "Provision"), evt.Name)
 
 	case *aws.TaskStartEvent:
+		if !u.matchFilter(evt.TaskID) {
+			return
+		}
 		u.workerTime[evt.WorkerID] = time.Now()
 		u.printEvent(u.getColor(evt.WorkerID), fmt.Sprintf("%-11s", "Start"), evt.Command)
 
 	case *aws.TaskLogEvent:
+		if !u.matchFilter(evt.TaskID) {
+			return
+		}
 		duration := time.Since(u.workerTime[evt.WorkerID]).Round(time.Millisecond)
 		formattedDuration := fmt.Sprintf("%.9s", fmt.Sprintf("+%v", duration))
 		u.printEvent(u.getColor(evt.WorkerID), formattedDuration, evt.Line)
 
 	case *aws.TaskCompleteEvent:
+		if !u.matchFilter(evt.TaskID) {
+			return
+		}
 		duration := time.Since(u.workerTime[evt.WorkerID]).Round(time.Millisecond)
 		formattedDuration := fmt.Sprintf("took %.9s", fmt.Sprintf("+%v", duration))
 		u.printEvent(u.getColor(evt.WorkerID), "Done", formattedDuration)
 
+	case *aws.TaskMissingCommandEvent:
+		if !u.matchFilter(evt.Name) {
+			return
+		}
+		u.printEvent(TEXT_DANGER, fmt.Sprintf("%-11s", "Missing"), fmt.Sprintf("Dev command not configured for the \"%s\" task. Set `dev.command` to configure how the task works in `sst dev`.", evt.Name))
+
 	case *aws.FunctionInvokedEvent:
+		if !u.matchFilter(evt.FunctionID) {
+			return
+		}
 		u.workerTime[evt.WorkerID] = time.Now()
 		u.printEvent(u.getColor(evt.WorkerID), TEXT_NORMAL_BOLD.Render(fmt.Sprintf("%-11s", "Invoke")), u.functionName(evt.FunctionID))
 
 	case *aws.FunctionResponseEvent:
+		if !u.matchFilter(evt.FunctionID) {
+			return
+		}
 		duration := time.Since(u.workerTime[evt.WorkerID]).Round(time.Millisecond)
 		formattedDuration := fmt.Sprintf("took %.9s", fmt.Sprintf("+%v", duration))
 		u.printEvent(u.getColor(evt.WorkerID), "Done", formattedDuration)
 
 	case *aws.FunctionLogEvent:
+		if !u.matchFilter(evt.FunctionID) {
+			return
+		}
 		duration := time.Since(u.workerTime[evt.WorkerID]).Round(time.Millisecond)
 		formattedDuration := fmt.Sprintf("%.9s", fmt.Sprintf("+%v", duration))
 		u.printEvent(u.getColor(evt.WorkerID), formattedDuration, evt.Line)
 
 	case *aws.FunctionBuildEvent:
+		if !u.matchFilter(evt.FunctionID) {
+			return
+		}
 		if len(evt.Errors) > 0 {
 			u.printEvent(TEXT_DANGER, "Build Error", u.functionName(evt.FunctionID))
 			for _, item := range evt.Errors {
@@ -195,6 +240,9 @@ func (u *UI) Event(unknown interface{}) {
 		u.printEvent(TEXT_SUCCESS, "Build", u.functionName(evt.FunctionID))
 
 	case *aws.FunctionErrorEvent:
+		if !u.matchFilter(evt.FunctionID) {
+			return
+		}
 		u.printEvent(u.getColor(evt.WorkerID), TEXT_DANGER.Render(fmt.Sprintf("%-11s", "Error")), u.functionName(evt.FunctionID))
 		u.printEvent(u.getColor(evt.WorkerID), "", evt.ErrorMessage)
 		for _, item := range evt.Trace {
@@ -210,7 +258,12 @@ func (u *UI) Event(unknown interface{}) {
 
 	case *deployer.DeployFailedEvent:
 		u.reset()
-		u.printEvent(TEXT_DANGER, "Error", evt.Error)
+		if evt.Error != "" {
+			u.printEvent(TEXT_DANGER, "Error", evt.Error)
+		}
+
+	case *project.PolicyAdvisoryEvent:
+		u.printEvent(TEXT_WARNING, "Warning", u.FormatURN(evt.URN)+" "+evt.Policy+": "+evt.Message)
 
 	case *project.StackCommandEvent:
 		u.reset()
@@ -249,6 +302,15 @@ func (u *UI) Event(unknown interface{}) {
 	case *project.BuildFailedEvent:
 		u.reset()
 		u.printEvent(TEXT_DANGER, "Error", evt.Error)
+		break
+
+	case *project.SkipEvent:
+		u.println(
+			TEXT_INFO_BOLD.Render("~"),
+			TEXT_NORMAL_BOLD.Render("  No changes"),
+		)
+		u.reset()
+		break
 
 	case *apitype.ResourcePreEvent:
 		u.timing[evt.Metadata.URN] = time.Now()
@@ -340,7 +402,7 @@ func (u *UI) Event(unknown interface{}) {
 	case *apitype.DiagnosticEvent:
 		if evt.Severity == "error" {
 			message := []string{u.FormatURN(evt.URN)}
-			message = append(message, parseError(evt.Message)...)
+			message = append(message, parseError(strings.TrimSpace(evt.Message))...)
 			u.printEvent(TEXT_DANGER, "Error", message...)
 		}
 
@@ -365,6 +427,7 @@ func (u *UI) Event(unknown interface{}) {
 		if evt.Old {
 			break
 		}
+
 		u.blank()
 		if len(evt.Errors) == 0 && evt.Finished {
 			u.print(TEXT_SUCCESS_BOLD.Render(IconCheck))
@@ -396,20 +459,20 @@ func (u *UI) Event(unknown interface{}) {
 				for k, v := range evt.Hints {
 					splits := strings.Split(k, "::")
 					u.println(
-						TEXT_DIM_BOLD.Render("   "),
-						TEXT_DIM_BOLD.Render(splits[len(splits)-1]+": "),
+						TEXT_GRAY_BOLD.Render("   "),
+						TEXT_GRAY_BOLD.Render(splits[len(splits)-1]+": "),
 						TEXT_NORMAL.Render(v),
 					)
 				}
 			}
 			if len(evt.Outputs) > 0 {
 				if len(evt.Hints) > 0 {
-					u.println(TEXT_DIM_BOLD.Render("   ---"))
+					u.println(TEXT_GRAY_BOLD.Render("   ---"))
 				}
 				for k, v := range evt.Outputs {
 					u.println(
-						TEXT_DIM_BOLD.Render("   "),
-						TEXT_DIM_BOLD.Render(k+": "),
+						TEXT_GRAY_BOLD.Render("   "),
+						TEXT_GRAY_BOLD.Render(k+": "),
 						TEXT_NORMAL.Render(fmt.Sprint(v)),
 					)
 				}
@@ -427,19 +490,21 @@ func (u *UI) Event(unknown interface{}) {
 				TEXT_NORMAL_BOLD.Render("  Failed    "),
 			)
 
+			u.blank()
 			for _, status := range evt.Errors {
 				if status.URN != "" {
-					u.println(TEXT_DANGER_BOLD.Render("   " + u.FormatURN(status.URN)))
+					u.println(TEXT_DANGER_BOLD.Render(u.FormatURN(status.URN)))
 				}
 				for _, line := range parseError(status.Message) {
-					u.println(TEXT_NORMAL.Render("   " + line))
+					u.println(TEXT_NORMAL.Render(line))
 				}
 				for i, line := range status.Help {
 					if i == 0 {
 						u.println()
 					}
-					u.println(TEXT_NORMAL.Render("   " + line))
+					u.println(TEXT_NORMAL.Render(line))
 				}
+
 				importDiffs, ok := evt.ImportDiffs[status.URN]
 				if ok {
 					isSSTComponent := strings.Contains(status.URN, "::sst")
@@ -461,23 +526,33 @@ func (u *UI) Event(unknown interface{}) {
 						if !isSSTComponent {
 							u.print(TEXT_INFO.Render("`" + string(diff.Input) + ": " + string(value) + ",`"))
 						}
-						u.println()
+						u.blank()
 					}
 				} else {
-					u.println()
+					u.blank()
 				}
 			}
+
 		}
 		u.blank()
 	case *cloudflare.WorkerBuildEvent:
+		if !u.matchFilter(evt.WorkerID) {
+			return
+		}
 		if len(evt.Errors) > 0 {
 			u.printEvent(TEXT_DANGER, "Build Error", u.functionName(evt.WorkerID)+" "+strings.Join(evt.Errors, "\n"))
 			return
 		}
 		u.printEvent(TEXT_INFO, "Build", u.functionName(evt.WorkerID))
 	case *cloudflare.WorkerUpdatedEvent:
+		if !u.matchFilter(evt.WorkerID) {
+			return
+		}
 		u.printEvent(TEXT_INFO, "Reload", u.functionName(evt.WorkerID))
 	case *cloudflare.WorkerInvokedEvent:
+		if !u.matchFilter(evt.WorkerID) {
+			return
+		}
 		url, _ := url.Parse(evt.TailEvent.Event.Request.URL)
 		u.printEvent(
 			u.getColor(evt.WorkerID),
@@ -553,12 +628,11 @@ func (u *UI) printEvent(barColor lipgloss.Style, label string, message ...string
 		u.print(TEXT_DIM.Render(fmt.Sprint(fmt.Sprintf("%-11s", label), " ")))
 	}
 	if len(message) > 0 {
-		u.print(TEXT_DIM.Render(message[0]))
+		u.print(TEXT_NORMAL.Render(message[0]))
 	}
 	u.println()
 	for _, msg := range message[1:] {
-		u.print(barColor.Copy().Bold(true).Render("|  "))
-		u.println(TEXT_DIM.Render(msg))
+		u.println(TEXT_NORMAL.Render(msg))
 	}
 }
 
@@ -575,27 +649,24 @@ func (u *UI) header(version, app, stage string) {
 	if u.hasHeader {
 		return
 	}
+	if flag.SST_EXPERIMENTAL {
+		version = version + " (experimental)"
+	}
 	u.println(
 		TEXT_HIGHLIGHT_BOLD.Render("SST "+version),
-		TEXT_DIM.Render("  ready!"),
+		TEXT_GRAY.Render(" ready!"),
 	)
 	u.blank()
 	u.println(
 		TEXT_HIGHLIGHT_BOLD.Render("➜  "),
 		TEXT_NORMAL_BOLD.Render(fmt.Sprintf("%-12s", "App:")),
-		TEXT_DIM.Render(app),
+		TEXT_GRAY.Render(app),
 	)
 	u.println(
 		TEXT_NORMAL_BOLD.Render(fmt.Sprintf("   %-12s", "Stage:")),
-		TEXT_DIM.Render(stage),
+		TEXT_GRAY.Render(stage),
 	)
 
-	if u.options.Dev {
-		u.println(
-			TEXT_NORMAL_BOLD.Render(fmt.Sprintf("   %-12s", "Console:")),
-			TEXT_DIM.Render("https://console.sst.dev/local/"+app+"/"+stage),
-		)
-	}
 	u.blank()
 	u.hasHeader = true
 }
@@ -632,9 +703,24 @@ func (u *UI) FormatURN(urn string) string {
 }
 
 func Success(msg string) {
-	fmt.Fprint(os.Stderr, strings.TrimSpace(TEXT_SUCCESS_BOLD.Render(IconCheck)+"  "+TEXT_NORMAL.Render(fmt.Sprintln(msg))))
+	fmt.Fprintln(os.Stderr, strings.TrimSpace(TEXT_SUCCESS_BOLD.Render(IconCheck)+"  "+TEXT_NORMAL.Render(msg)))
 }
 
 func Error(msg string) {
-	fmt.Fprint(os.Stderr, strings.TrimSpace(TEXT_DANGER_BOLD.Render(IconX)+"  "+TEXT_NORMAL.Render(fmt.Sprintln(msg))))
+	fmt.Fprintln(os.Stderr, strings.TrimSpace(TEXT_DANGER_BOLD.Render(IconX)+"  "+TEXT_NORMAL.Render(msg)))
+}
+
+func (u *UI) matchFilter(id string) bool {
+	if u.options.Filter == "" {
+		return true
+	}
+	filter := strings.ToLower(u.options.Filter)
+	if strings.Contains(strings.ToLower(id), filter) {
+		return true
+	}
+	name := u.functionName(id)
+	if strings.Contains(strings.ToLower(name), filter) {
+		return true
+	}
+	return false
 }

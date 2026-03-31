@@ -13,7 +13,7 @@ import {
 
 export interface Args extends ApiGatewayV2BaseRouteArgs {
   /**
-   * The ARN of the AWS Load Balander or Cloud Map service.
+   * The ARN of the AWS Load Balancer or Cloud Map service.
    * @example
    * ```js
    * {

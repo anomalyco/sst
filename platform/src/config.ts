@@ -87,6 +87,7 @@
  *
  * @packageDocumentation
  */
+import type { Shell } from "bun";
 
 type Prettify<T> = {
   [K in keyof T]: T[K];
@@ -159,7 +160,9 @@ export interface App {
    * This applies to not just the `sst remove` command but also cases where you remove a
    * resource from the `sst.config.ts` and run `sst dev` or `sst deploy`.
    *
-   * To control how a stage is handled on `sst remove`, check out the `protected` prop.
+   * <VideoAside title="Watch a video on how to protect your prod resources" href="https://youtu.be/fb6UBGwgDuA" />
+   *
+   * To control how a stage is handled on `sst remove`, check out the `protect` prop.
    *
    * @default `"retain"`
    */
@@ -255,15 +258,34 @@ export interface App {
    *
    * ```ts
    * {
-   *   protected: input.stage === "production"
+   *   protect: input.stage === "production"
    * }
    * ```
    *
-   * However, this only applies to `sst remove` for stages. If you accidentally remove a
-   * resource from the `sst.config.ts` and run `sst deploy` or `sst dev`, it'll still get
-   * removed. To avoid this, check out the `removal` prop.
+   * However, this only applies to `sst remove` for stages.
+   *
+   * <VideoAside title="Watch a video on how to protect your prod resources" href="https://youtu.be/fb6UBGwgDuA" />
+   *
+   * If you accidentally remove a resource from the `sst.config.ts` and run `sst deploy` or
+   * `sst dev`, it'll still get removed. To avoid this, check out the `removal` prop.
    */
-  protected?: boolean;
+  protect?: boolean;
+
+  /**
+   * Configure which directories should be watched for changes when running `sst dev`.
+   * By default, all directories are watched (except node_modules and hidden directories).
+   *
+   * @example
+   * ```ts
+   * {
+   *   watch: ["packages/www", "packages/api"]
+   * }
+   * ```
+   *
+   * This will only watch the `packages/www` and `packages/api` directories.
+   * The paths are relative to the project root.
+   */
+  watch?: string[];
 }
 
 export interface AppInput {
@@ -286,13 +308,6 @@ export interface RunnerInput {
   stage: string;
 }
 
-export interface Target {
-  /**
-   * The stage the app will be deployed to.
-   */
-  stage: string;
-}
-
 export interface Runner {
   /**
    * The service used to run the build. Currently, only AWS CodeBuild is supported.
@@ -305,10 +320,9 @@ export interface Runner {
   timeout?: `${number} ${"minute" | "minutes" | "hour" | "hours"}`;
   /**
    * The architecture of the build machine.
-   * @default `x86_64`
    *
-   * The `x86_64` machine uses the [`al2/standard/5.0`](https://github.com/aws/aws-codebuild-docker-images/tree/master/al2/x86_64/standard/5.0) build image.
-   * While `arm64` uses the [`al2/aarch64/standard/3.0`](https://github.com/aws/aws-codebuild-docker-images/tree/master/al2/aarch64/standard/3.0) image instead.
+   * The `x86_64` machine uses the [`al/standard/5.0`](https://github.com/aws/aws-codebuild-docker-images/tree/master/al/x86_64/standard/5.0) build image.
+   * While `arm64` uses the [`al/aarch64/standard/3.0`](https://github.com/aws/aws-codebuild-docker-images/tree/master/al/aarch64/standard/3.0) image instead.
    *
    * You can also configure what's used in the image:
    *
@@ -344,14 +358,27 @@ export interface Runner {
    *   To specify the package manager you want to use you can configure it through your
    *   `package.json`.
    *
-   *   ```js title="package.json"
-   *   {
-   *     packageManager: "pnpm@8.6.3"
-   *   }
-   *   ```
+   *   <Tabs>
+   *     <TabItem label="pnpm">
+   *     ```js title="package.json"
+   *     {
+   *       packageManager: "pnpm@8.6.3"
+   *     }
+   *     ```
+   *     </TabItem>
+   *     <TabItem label="bun">
+   *     ```js title="package.json"
+   *     {
+   *       packageManager: "bun@1.2.0"
+   *     }
+   *     ```
+   *     </TabItem>
+   *   </Tabs>
    *
-   * Feel free to get in touch if you want to use your own build image or configure what's used
-   * in the build image.
+   * Feel free to get in touch if you want to use your own build image or
+   * configure what's used in the build image.
+   *
+   * @default `x86_64`
    */
   architecture?: "x86_64" | "arm64";
   /**
@@ -688,6 +715,10 @@ export interface PullRequestEvent {
    */
   number: number;
   /**
+   * The title of the pull request.
+   */
+  title: string;
+  /**
    * The base branch of the PR. This is the branch the code is being merged into.
    */
   base: string;
@@ -719,6 +750,89 @@ export interface PullRequestEvent {
   sender: Prettify<GitSender>;
 }
 
+/**
+ * A user event for when the user manually triggers a deploy. For example:
+ * ```js
+ * {
+ *   type: "user",
+ *   action: "deploy",
+ *   repo: {
+ *     id: 1296269,
+ *     owner: "octocat",
+ *     repo: "Hello-World"
+ *   },
+ *   ref: "main",
+ *   commit: {
+ *     id: "b7e7c4c559e0e5b4bc6f8d98e0e5e5e5e5e5e5e5",
+ *     message: "Update the README with new information"
+ *   }
+ * }
+ * ```
+ */
+export interface UserEvent {
+  /**
+   * The user event type.
+   */
+  type: "user";
+  /**
+   * The type of the user action.
+   *
+   * - `deploy` is when you manually trigger a deploy
+   * - `remove` is when you manually remove a stage
+   */
+  action: "deploy" | "remove";
+  /**
+   * The Git repository the event is coming from. This might look like:
+   *
+   * ```js
+   * {
+   *   id: 1296269,
+   *   owner: "octocat",
+   *   repo: "Hello-World"
+   * }
+   * ```
+   */
+  repo: Prettify<GitRepo>;
+  /**
+   * The reference to the Git commit. This can be the branch, tag, or commit hash.
+   */
+  ref: string;
+  /**
+   * Info about the commit in the event. This might look like:
+   *
+   * ```js
+   * {
+   *   id: "b7e7c4c559e0e5b4bc6f8d98e0e5e5e5e5e5e5e5",
+   *   message: "Update the README with new information"
+   * }
+   * ```
+   */
+  commit: Prettify<GitCommit>;
+}
+
+export interface Target {
+  /**
+   * The stage or a list of stages the app will be deployed to.
+   */
+  stage: string | string[];
+}
+
+export interface WorkflowInput {
+  /**
+   * The [Bun shell](https://bun.sh/docs/runtime/shell). It's a cross-platform
+   * _bash-like_ shell for scripting with JavaScript and TypeScript.
+   */
+  $: Shell;
+  /**
+   * The event that triggered the workflow.
+   *
+   * This includes git branch, pull request, or tag events. And it also
+   * includes a user event for manual deploys that are triggered through the
+   * Console.
+   */
+  event: BranchEvent | PullRequestEvent | TagEvent | UserEvent;
+}
+
 export interface Config {
   /**
    * The config for your app. It needs to return an object of type [`App`](#app-1). The `app`
@@ -748,7 +862,7 @@ export interface Config {
    * },
    * ```
    */
-  app(input: AppInput): App;
+  app(input: AppInput): App | Promise<App>;
   /**
    * Configure how your app works with the SST Console.
    */
@@ -776,11 +890,23 @@ export interface Config {
      * are asked to sepcify the stage you want to deploy to. So in this case, it skips step 1
      * from above and does not call `autodeploy.target`.
      *
-     * Both `target` and `runner` are optional and come with defaults, so you don't need to
-     * configure anything. But you can customize them.
+     * You can further configure Autodeploy through the `autodeploy` prop.
      *
-     * ```ts title="sst.config.ts" {"target", "runner"}
+     * ```ts title="sst.config.ts"
      * console: {
+     *   autodeploy: {
+     *     target(event) {}, // Customize the target stage
+     *     runner(stage) {}, // Customize the runner
+     *     async workflow({ $, input }) {} // Customize the workflow
+     *   }
+     * }
+     * ```
+     *
+     * Here, `target`, `runner`, and `workflow` are all optional and come with defaults, so
+     * you don't need to configure anything. But you can customize them.
+     *
+     * ```ts
+     * {
      *   autodeploy: {
      *     target(event) {
      *       if (
@@ -800,17 +926,36 @@ export interface Config {
      *
      * For example, here we are only auto-deploying to the `production` stage when you git push
      * to the `main` branch. We are also setting the timeout to 3 hours for the `production`
-     * stage.
+     * stage. You can read more about the `target` and `runner` props below.
+     *
+     * Finally, if you want to configure exactly what happens in the build, you can pass in
+     * a `workflow` function.
+     *
+     * ```ts
+     * {
+     *   autodeploy: {
+     *     async workflow({ $, event }) {
+     *       await $`npm i -g pnpm`;
+     *       await $`pnpm i`;
+     *       event.action === "removed"
+     *         ? await $`pnpm sst remove`
+     *         : await $`pnpm sst deploy`;
+     *     }
+     *   }
+     * }
+     * ```
+     *
+     * You can read more the `workflow` prop below.
      *
      * @default Auto-deploys branches and PRs.
      */
     autodeploy: {
       /**
-       * Defines the stage the app will be auto-deployed to.
+       * Defines the stage or a list of stages the app will be auto-deployed to.
        *
        * When a git event is received, Autodeploy will run the `target` function with the
-       * git event. This function should return the stage the app will be deployed to.
-       * Or `undefined` if the deploy should be skipped.
+       * git event. This function should return the stage or a list of stages the app will
+       * be deployed to. Or `undefined` if the deploy should be skipped.
        *
        * :::tip
        * Return `undefined` to skip the deploy.
@@ -894,11 +1039,17 @@ export interface Config {
        * If you don't want to auto-deploy for a given event, you can return `undefined`. For
        * example, to skip any deploys to the `staging` stage.
        *
-       * ```ts title="sst.config.ts" {2}
-       * target(event) {
-       *   if (event.type === "branch" && event.branch === "staging") return;
-       *   if (event.type === "branch" && event.branch === "main" && event.action === "pushed") {
-       *     return { stage: "production" };
+       * ```ts {3}
+       * {
+       *   target(event) {
+       *     if (event.type === "branch" && event.branch === "staging") return;
+       *     if (
+       *       event.type === "branch" &&
+       *       event.branch === "main" &&
+       *       event.action === "pushed"
+       *     ) {
+       *       return { stage: "production" };
+       *     }
        *   }
        * }
        * ```
@@ -985,6 +1136,101 @@ export interface Config {
        * [Learn more about CodeBuild pricing](https://aws.amazon.com/codebuild/pricing/).
        */
       runner?: Runner | ((input: RunnerInput) => Runner);
+      /**
+       * Customize the commands that are run during the build process. This is
+       * useful for running tests, or completely customizing the build process.
+       *
+       * The default workflow automatically figures out the package manager you
+       * are using, installs the dependencies, and runs `sst deploy` or `sst remove`
+       * based on the event.
+       *
+       * For example, if you are using pnpm, the following is equivalent to the
+       * default workflow.
+       *
+       * ```ts
+       * {
+       *   async workflow({ $, event }) {
+       *     await $`npm i -g pnpm`;
+       *     await $`pnpm i`;
+       *     event.action === "removed"
+       *       ? await $`pnpm sst remove`
+       *       : await $`pnpm sst deploy`;
+       *   }
+       * }
+       * ```
+       *
+       * The workflow function is run inside a Bun process. It passes in `$`
+       * as the [Bun Shell](https://bun.sh/docs/runtime/shell). This makes
+       * _bash-like_ scripting easier.
+       *
+       * :::tip
+       * Use the Bun Shell to make running commands easier.
+       * :::
+       *
+       * For example, here's how you can run tests before deploying.
+       *
+       * ```ts {5}
+       * {
+       *   async workflow({ $, event }) {
+       *     await $`npm i -g pnpm`;
+       *     await $`pnpm i`;
+       *     await $`pnpm test`;
+       *     event.action === "removed"
+       *       ? await $`pnpm sst remove`
+       *       : await $`pnpm sst deploy`;
+       *   }
+       * }
+       * ```
+       *
+       * When you pass in a `workflow`, you are effectively taking control of what
+       * runs in your build.
+       *
+       * :::caution
+       * If you don't run `sst deploy`, your app won't be deployed.
+       * :::
+       *
+       * This means that if you don't run `sst deploy`, your app won't be deployed.
+       *
+       * :::tip
+       * Throwing an error will fail the build and display the error in the Console.
+       * :::
+       *
+       * If you throw an error in the workflow, the deploy will fail and the error
+       * will be displayed in the Autodeploy logs.
+       *
+       * Here's a more detailed example of using the Bun Shell to handle failures.
+       *
+       * ```ts {6,9}
+       * {
+       *   async workflow({ $, event }) {
+       *     await $`npm i -g pnpm`;
+       *     await $`pnpm i`;
+       *
+       *     const { exitCode } = await $`pnpm test`.nothrow();
+       *     if (exitCode !== 0) {
+       *       // Process the test report and then fail the build
+       *       throw new Error("Failed to run tests");
+       *     }
+       *
+       *     event.action === "removed"
+       *       ? await $`pnpm sst remove`
+       *       : await $`pnpm sst deploy`;
+       *   }
+       * }
+       * ```
+       *
+       * You'll notice we are not passing in `--stage` to the SST commands. This is because the `SST_STAGE` environment variable is already set in
+       * the build process.
+       *
+       * :::tip
+       * You don't need to pass in `--stage` to the SST commands.
+       * :::
+       *
+       * The build process is run inside an
+       * [Amazon Linux 2](https://aws.amazon.com/amazon-linux-2/) machine based on
+       * the `architecture` used.
+       */
+      workflow?(input: WorkflowInput): Promise<void>;
     };
   };
   /**
@@ -1016,10 +1262,10 @@ export interface Config {
    * bucket: bucket-jOaikGu4rla
    * ```
    *
-   * These outputs are also written to a `.sst/output.json` file after every successful deploy.
+   * These outputs are also written to a `.sst/outputs.json` file after every successful deploy.
    * It contains the above outputs in JSON.
    *
-   * ```json title=".sst/output.json"
+   * ```json title=".sst/outputs.json"
    * {"bucket": "bucket-jOaikGu4rla"}
    * ```
    */

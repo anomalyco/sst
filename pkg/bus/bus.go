@@ -39,6 +39,25 @@ func SubscribeAll() chan interface{} {
 	return ch
 }
 
+func Unsubscribe(ch chan interface{}) {
+	bus.mu.Lock()
+	defer bus.mu.Unlock()
+
+	for i := len(bus.all) - 1; i >= 0; i-- {
+		if bus.all[i] == ch {
+			bus.all = append(bus.all[:i], bus.all[i+1:]...)
+		}
+	}
+
+	for _, channels := range bus.subscribers {
+		for i := len(channels) - 1; i >= 0; i-- {
+			if channels[i] == ch {
+				channels = append(channels[:i], channels[i+1:]...)
+			}
+		}
+	}
+}
+
 func Publish(event interface{}) {
 	t := reflect.TypeOf(event)
 	bus.mu.RLock()
