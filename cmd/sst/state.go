@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/sst/sst/v3/cmd/sst/cli"
 	"github.com/sst/sst/v3/cmd/sst/mosaic/ui"
 	"github.com/sst/sst/v3/internal/util"
@@ -16,8 +15,6 @@ import (
 	"github.com/sst/sst/v3/pkg/project/provider"
 	"github.com/sst/sst/v3/pkg/state"
 )
-
-var textWarningDim = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 
 var CmdState = &cli.Command{
 	Name: "state",
@@ -486,5 +483,5 @@ func renderCurrentStage(stage string, deployed bool) string {
 	if deployed {
 		return result
 	}
-	return result + " " + textWarningDim.Render("(not deployed)")
+	return result + " " + ui.TEXT_WARNING_DIM.Render("(not deployed)")
 }
