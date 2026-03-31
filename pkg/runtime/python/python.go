@@ -98,6 +98,17 @@ func New() *PythonRuntime {
 }
 
 func (r *PythonRuntime) Build(ctx context.Context, input *runtime.BuildInput) (*runtime.BuildOutput, error) {
+	if input.Dev {
+		// Dev mode: no building needed, just return metadata.
+		// Run() handles everything at invocation time.
+		return &runtime.BuildOutput{
+			Handler:    input.Handler,
+			Sourcemaps: []string{},
+			Errors:     []string{},
+			Out:        input.Out(),
+		}, nil
+	}
+
 	// Clear deps cache once per SST run
 	globalDepsCacheClearOnce.Do(func() {
 		artifactsDir := filepath.Dir(input.Out())
@@ -242,9 +253,38 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 }
 
 func (r *PythonRuntime) ShouldRebuild(functionID string, file string) bool {
-	// Always rebuild — Python imports are dynamic so we can't track per-function deps.
-	// This is negligible for now and will get faster when we can move to uv's native build system.
-	return true
+	normalizedFile := filepath.ToSlash(file)
+
+	// Ignore build artifacts and cache directories that cause feedback loops
+	for _, ignore := range []string{
+		".sst", "__pycache__", ".pytest_cache", ".mypy_cache",
+		".git", "node_modules", ".venv", "venv", ".tox",
+	} {
+		if strings.Contains(normalizedFile, ignore+"/") || strings.HasSuffix(normalizedFile, "/"+ignore) {
+			return false
+		}
+	}
+
+	// Ignore non-Python file extensions
+	for _, ext := range []string{".pyc", ".pyo", ".pyd", ".log", ".tmp", ".swp", ".swo", ".DS_Store"} {
+		if strings.HasSuffix(file, ext) {
+			return false
+		}
+	}
+
+	// Only rebuild for Python-relevant files
+	for _, ext := range []string{".py", ".toml", ".lock", ".cfg"} {
+		if strings.HasSuffix(file, ext) {
+			return true
+		}
+	}
+	for _, name := range []string{"pyproject.toml", "requirements.txt", "uv.lock", "setup.py", "setup.cfg"} {
+		if filepath.Base(file) == name {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (r *PythonRuntime) syncArtifactsIfNeeded(input *runtime.RunInput) (bool, error) {
@@ -387,16 +427,6 @@ func (r *PythonRuntime) adjustHandlerForFlattenedLayout(handlerPath string) stri
 }
 
 func (r *PythonRuntime) CreateBuildAsset(ctx context.Context, input *runtime.BuildInput) (*runtime.BuildOutput, error) {
-	if input.Dev {
-		// Return metadata and defer runtime setup until Run().
-		return &runtime.BuildOutput{
-			Handler:    input.Handler,
-			Sourcemaps: []string{},
-			Errors:     []string{},
-			Out:        input.Out(),
-		}, nil
-	}
-
 	workingDir := path.ResolveRootDir(input.CfgPath)
 
 	result, err := buildDeploy(ctx, input, filepath.Join(workingDir, ".sst/cache/deploy"), workingDir)
