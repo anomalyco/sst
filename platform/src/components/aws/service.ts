@@ -1226,11 +1226,13 @@ export interface ServiceArgs extends FargateBaseArgs {
    * {
    *   gpu: "nvidia/t4",
    *   cpu: "4 vCPU",
-   *   memory: "16 GB",
-   *   infrastructureRole: "arn:aws:iam::123456789012:role/ecs-infra",
-   *   instanceProfile: "arn:aws:iam::123456789012:instance-profile/ecs-managed"
+   *   memory: "10 GB"
    * }
    * ```
+   *
+   * By default, SST creates the managed instances infrastructure role and instance profile for
+   * you. You can override them with `infrastructureRole`, `instanceProfile`, or the
+   * corresponding `transform` hooks.
    *
    * The GPU value must be in the form `<manufacturer>/<name>`. Valid manufacturers are
    * `amazon-web-services`, `amd`, `nvidia`, `xilinx`, and `habana`.
@@ -2538,6 +2540,9 @@ export class Service extends Component implements Link.Linkable {
                 desiredCount: scaling.min,
                 ...(managed
                   ? {
+                      // Managed capacity providers cannot be deleted while ECS still has
+                      // tasks draining for the service.
+                      forceDelete: true,
                       forceNewDeployment: true,
                       capacityProviderStrategies: [
                         {
@@ -2618,6 +2623,8 @@ export class Service extends Component implements Link.Linkable {
     }
 
     function createAutoScaling() {
+      if (!args.scaling) return;
+
       const target = new appautoscaling.Target(
         ...transform(
           args.transform?.autoScalingTarget,

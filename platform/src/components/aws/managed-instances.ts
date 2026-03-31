@@ -141,25 +141,8 @@ export function normalizeManagedCapacity(
   name: string,
   args: ManagedServiceArgs,
 ) {
-  return all([
-    args.gpu,
-    args.cpu,
-    args.memory,
-    args.storage,
-    args.infrastructureRole,
-    args.instanceProfile,
-  ]).apply(([gpu, cpu, memory, storage, infrastructureRole, instanceProfile]) => {
-      if (!infrastructureRole) {
-        throw new VisibleError(
-          `You must provide \"infrastructureRole\" for the \"${name}\" Service when \"gpu\" is set.`,
-        );
-      }
-      if (!instanceProfile) {
-        throw new VisibleError(
-          `You must provide \"instanceProfile\" for the \"${name}\" Service when \"gpu\" is set.`,
-        );
-      }
-
+  return all([args.gpu, args.cpu, args.memory, args.storage]).apply(
+    ([gpu, cpu, memory, storage]) => {
       const hostCpu = normalizeHostCpu(cpu);
       const hostMemory = normalizeHostMemory(memory);
       const hostStorage = normalizeStorage(storage);
@@ -172,12 +155,13 @@ export function normalizeManagedCapacity(
         hostStorage,
         gpu: normalizeGpu(gpu),
       } satisfies NormalizedManagedCapacity;
-    });
+    },
+  );
 
   function normalizeHostCpu(cpu?: `${number} vCPU`) {
     if (cpu) {
       const min = parseFloat(cpu.split(" ")[0]);
-      return { min, max: min };
+      return { min };
     }
     throw new VisibleError(
       `You must provide top-level \"cpu\" for the \"${name}\" Service when \"gpu\" is set.`,
@@ -187,7 +171,7 @@ export function normalizeManagedCapacity(
   function normalizeHostMemory(memory?: `${number} GB`) {
     if (memory) {
       const min = toMBs(memory);
-      return { min, max: min };
+      return { min };
     }
     throw new VisibleError(
       `You must provide top-level \"memory\" for the \"${name}\" Service when \"gpu\" is set.`,

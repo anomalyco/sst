@@ -1,6 +1,15 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
+import glob
 import json
 import os
+
+
+def read_file(path):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        return None
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -12,7 +21,13 @@ class Handler(BaseHTTPRequestHandler):
         self.respond(
             {
                 "message": "hello from ecs managed instances",
-                "gpu": os.getenv("NVIDIA_VISIBLE_DEVICES", "unknown"),
+                "gpu": {
+                    "visibleDevicesEnv": os.getenv("NVIDIA_VISIBLE_DEVICES"),
+                    "deviceFiles": sorted(glob.glob("/dev/nvidia*")),
+                    "procGpus": sorted(glob.glob("/proc/driver/nvidia/gpus/*")),
+                    "driverVersion": read_file("/proc/driver/nvidia/version"),
+                    "cudaVersion": os.getenv("CUDA_VERSION"),
+                },
             }
         )
 
