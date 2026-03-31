@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/sst/sst/v3/cmd/sst/cli"
 	"github.com/sst/sst/v3/cmd/sst/mosaic/ui"
 	"github.com/sst/sst/v3/internal/util"
@@ -15,6 +16,8 @@ import (
 	"github.com/sst/sst/v3/pkg/project/provider"
 	"github.com/sst/sst/v3/pkg/state"
 )
+
+var textWarningDim = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 
 var CmdState = &cli.Command{
 	Name: "state",
@@ -151,8 +154,6 @@ var CmdState = &cli.Command{
 		},
 		{
 			Name: "list",
-			// TODO: Fix https://github.com/sst/sst/issues/5566 before enabling
-			Hidden: true,
 			Description: cli.Description{
 				Short: "List all deployed stages",
 				Long: strings.Join([]string{
@@ -182,6 +183,7 @@ var CmdState = &cli.Command{
 				}
 				defer p.Cleanup()
 				backend := p.Backend()
+				currentStage := p.App().Stage
 
 				stages, err := provider.ListStages(backend, p.App().Name)
 				if err != nil {
@@ -207,16 +209,7 @@ var CmdState = &cli.Command{
 					renderKeyValue(line.Key, line.Value)
 				}
 
-				if len(stages) == 0 {
-					return nil
-				}
-
-				renderKeyValue("Stages", stages[0])
-				if len(stages) > 1 {
-					for _, stage := range stages[1:] {
-						fmt.Println(indent("") + ui.TEXT_INFO.Render(stage))
-					}
-				}
+				renderStageList(stages, currentStage)
 
 				return nil
 			},
@@ -453,5 +446,45 @@ func indent(key string) string {
 }
 
 func renderKeyValue(key string, value string) {
-	fmt.Println(ui.TEXT_NORMAL_BOLD.Render(indent(key+":")) + ui.TEXT_INFO.Render(value))
+	fmt.Println(ui.TEXT_NORMAL_BOLD.Render(indent(key+":")) + ui.TEXT_GRAY.Render(value))
+}
+
+func renderStageList(stages []string, currentStage string) {
+	currentDeployed := false
+	rendered := []string{}
+
+	if len(stages) == 0 {
+		rendered = append(rendered, renderCurrentStage(currentStage, false))
+	} else {
+		for _, stage := range stages {
+			if stage == currentStage {
+				currentDeployed = true
+				rendered = append(rendered, renderCurrentStage(stage, true))
+				continue
+			}
+			rendered = append(rendered, ui.TEXT_GRAY.Render(stage))
+		}
+	}
+
+	if !currentDeployed && len(stages) > 0 {
+		rendered = append(rendered, renderCurrentStage(currentStage, false))
+	}
+
+	if len(rendered) == 0 {
+		fmt.Println(ui.TEXT_NORMAL_BOLD.Render(indent("Stages:")))
+		return
+	}
+
+	fmt.Println(ui.TEXT_NORMAL_BOLD.Render(indent("Stages:")) + rendered[0])
+	for _, stage := range rendered[1:] {
+		fmt.Println(indent("") + stage)
+	}
+}
+
+func renderCurrentStage(stage string, deployed bool) string {
+	result := ui.TEXT_NORMAL.Render(stage)
+	if deployed {
+		return result
+	}
+	return result + " " + textWarningDim.Render("(not deployed)")
 }
