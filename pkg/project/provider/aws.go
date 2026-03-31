@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -128,9 +129,12 @@ func (a *AwsProvider) Init(app string, stage string, args map[string]interface{}
 	if args["region"] == nil {
 		args["region"] = cfg.Region
 	}
-	_, err = a.Bootstrap(cfg.Region)
+	bootstrap, err := a.Bootstrap(cfg.Region)
 	if err != nil {
 		return err
+	}
+	if err := a.applyLifecycleRules(ctx, cfg, bootstrap); err != nil {
+		slog.Warn("failed to apply lifecycle rules", "error", err)
 	}
 	return nil
 }
@@ -198,6 +202,71 @@ func (p *AwsProvider) Bootstrap(region string) (*AwsBootstrapData, error) {
 	}
 	p.bootstrapCache[region] = bootstrapData
 	return bootstrapData, nil
+}
+
+func (a *AwsProvider) applyLifecycleRules(ctx context.Context, cfg aws.Config, data *AwsBootstrapData) error {
+	if os.Getenv("SST_LIFECYCLE") != "true" {
+		return nil
+	}
+
+	type prefixConfig struct {
+		name   string
+		prefix string
+		id     string
+	}
+
+	configs := []prefixConfig{
+		{"APP", "app/", "sst-app-cleanup"},
+		{"LOCK", "lock/", "sst-lock-cleanup"},
+		{"EVENTLOG", "eventlog/", "sst-eventlog-cleanup"},
+		{"SNAPSHOT", "snapshot/", "sst-snapshot-cleanup"},
+		{"UPDATE", "update/", "sst-update-cleanup"},
+	}
+
+	var rules []s3types.LifecycleRule
+	for _, c := range configs {
+		daysStr := os.Getenv("SST_LIFECYCLE_" + c.name + "_DAYS")
+		if daysStr == "" {
+			continue
+		}
+		days, err := strconv.Atoi(daysStr)
+		if err != nil || days <= 0 {
+			continue
+		}
+
+		rule := s3types.LifecycleRule{
+			ID:     aws.String(c.id),
+			Filter: &s3types.LifecycleRuleFilterMemberPrefix{Value: c.prefix},
+			Status: s3types.ExpirationStatusEnabled,
+			Expiration: &s3types.LifecycleExpiration{
+				Days: aws.Int32(int32(days)),
+			},
+			NoncurrentVersionExpiration: &s3types.NoncurrentVersionExpiration{
+				NoncurrentDays: aws.Int32(1),
+			},
+		}
+
+		versionsStr := os.Getenv("SST_LIFECYCLE_" + c.name + "_VERSIONS")
+		if versionsStr != "" {
+			if versions, err := strconv.Atoi(versionsStr); err == nil && versions > 0 {
+				rule.NoncurrentVersionExpiration.NewerNoncurrentVersions = aws.Int32(int32(versions))
+			}
+		}
+
+		rules = append(rules, rule)
+	}
+
+	if len(rules) == 0 {
+		return nil
+	}
+
+	slog.Info("applying lifecycle rules to state bucket", "bucket", data.State, "ruleCount", len(rules))
+	s3Client := s3.NewFromConfig(cfg)
+	_, err := s3Client.PutBucketLifecycleConfiguration(ctx, &s3.PutBucketLifecycleConfigurationInput{
+		Bucket:                 aws.String(data.State),
+		LifecycleConfiguration: &s3types.BucketLifecycleConfiguration{Rules: rules},
+	})
+	return err
 }
 
 func (app *AwsProvider) ResolveAppSync(ctx context.Context) (string, string, error) {
