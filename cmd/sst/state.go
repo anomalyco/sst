@@ -199,15 +199,15 @@ var CmdState = &cli.Command{
 
 				currentDeployed := false
 				for i, stage := range stages {
-					if i == 0 {
-						fmt.Println(ui.TEXT_NORMAL_BOLD.Render(indent("Stages:")) + rendered)
-						continue
-					}
-
 					rendered := ui.TEXT_GRAY.Render(stage)
 					if stage == currentStage {
 						rendered = ui.TEXT_NORMAL.Render(stage)
 						currentDeployed = true
+					}
+
+					if i == 0 {
+						fmt.Println(ui.TEXT_NORMAL_BOLD.Render(indent("Stages:")) + rendered)
+						continue
 					}
 
 					fmt.Println(indent("") + rendered)
