@@ -110,7 +110,7 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 	if properties.Plugins != "" {
 		plugins = append(plugins, plugin(properties.Plugins))
 	}
-	external := append(forceExternal, installPackageNames(properties.Install)...)
+	external := append(forceExternal, resolveInstallPackages(properties.Install)...)
 	external = append(external, properties.ESBuild.External...)
 	slog.Debug("esbuild options",
 		"target", properties.ESBuild.Target,
@@ -241,7 +241,7 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		var metafile js.Metafile
 		json.Unmarshal([]byte(result.Metafile), &metafile)
 
-		installPackages := installPackageNames(properties.Install)
+		installPackages := resolveInstallPackages(properties.Install)
 		for _, pkg := range forceExternal {
 			if slices.Contains(properties.ESBuild.External, pkg) {
 				continue
@@ -320,7 +320,7 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 	}, nil
 }
 
-func installPackageNames(install map[string]string) []string {
+func resolveInstallPackages(install map[string]string) []string {
 	result := make([]string, 0, len(install))
 	for pkg := range install {
 		result = append(result, pkg)
