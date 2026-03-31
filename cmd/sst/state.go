@@ -154,25 +154,15 @@ var CmdState = &cli.Command{
 			Description: cli.Description{
 				Short: "List all deployed stages",
 				Long: strings.Join([]string{
-					"Lists all the deployed stages of your app for the current set of credentials.",
+					"Lists all the stages of your app for the current set of credentials.",
 					"",
 					":::note",
-					"This does not list stages that are deployed in other accounts.",
+					"This does not list the stages that are deployed in other accounts.",
 					":::",
 					"",
-					"This pull the state of your app from the cloud provider and then prints out all the stages that are listed in the state.",
+					"This pulls the state of your app from the cloud provider and then prints out all the stages that are listed in the state.",
 				}, "\n"),
 			},
-			// Flags: []cli.Flag{
-			// 	{
-			// 		Name: "simple",
-			// 		Type: "bool",
-			// 		Description: cli.Description{
-			// 			Short: "Output a basic list of stages",
-			// 			Long:  "Output a basic list of stages without additional information about the provider.",
-			// 		},
-			// 	},
-			// },
 			Run: func(c *cli.Cli) error {
 				p, err := c.InitProject()
 				if err != nil {
@@ -187,17 +177,10 @@ var CmdState = &cli.Command{
 					return err
 				}
 
-				// Not sure if we need to enable this yet
-				// if c.Bool("simple") {
-				// 	for _, stage := range stages {
-				// 		fmt.Println(stage)
-				// 	}
-				// 	return nil
-				// }
-
 				lines, err := provider.Info(backend)
 				if err != nil {
 					ui.Error("Failed to load provider information")
+					return err
 				}
 
 				renderKeyValue("App", p.App().Name)
@@ -206,7 +189,33 @@ var CmdState = &cli.Command{
 					renderKeyValue(line.Key, line.Value)
 				}
 
-				renderStageList(stages, currentStage)
+				if len(stages) == 0 {
+					fmt.Println(
+						ui.TEXT_NORMAL_BOLD.Render(indent("Stages:")) +
+							ui.TEXT_NORMAL.Render(currentStage) + " " + ui.TEXT_WARNING_DIM.Render("(not deployed)"),
+					)
+					return nil
+				}
+
+				currentDeployed := false
+				for i, stage := range stages {
+					if i == 0 {
+						fmt.Println(ui.TEXT_NORMAL_BOLD.Render(indent("Stages:")) + rendered)
+						continue
+					}
+
+					rendered := ui.TEXT_GRAY.Render(stage)
+					if stage == currentStage {
+						rendered = ui.TEXT_NORMAL.Render(stage)
+						currentDeployed = true
+					}
+
+					fmt.Println(indent("") + rendered)
+				}
+
+				if !currentDeployed {
+					fmt.Println(indent("") + ui.TEXT_NORMAL.Render(currentStage) + " " + ui.TEXT_WARNING_DIM.Render("(not deployed)"))
+				}
 
 				return nil
 			},
@@ -444,44 +453,4 @@ func indent(key string) string {
 
 func renderKeyValue(key string, value string) {
 	fmt.Println(ui.TEXT_NORMAL_BOLD.Render(indent(key+":")) + ui.TEXT_GRAY.Render(value))
-}
-
-func renderStageList(stages []string, currentStage string) {
-	currentDeployed := false
-	rendered := []string{}
-
-	if len(stages) == 0 {
-		rendered = append(rendered, renderCurrentStage(currentStage, false))
-	} else {
-		for _, stage := range stages {
-			if stage == currentStage {
-				currentDeployed = true
-				rendered = append(rendered, renderCurrentStage(stage, true))
-				continue
-			}
-			rendered = append(rendered, ui.TEXT_GRAY.Render(stage))
-		}
-	}
-
-	if !currentDeployed && len(stages) > 0 {
-		rendered = append(rendered, renderCurrentStage(currentStage, false))
-	}
-
-	if len(rendered) == 0 {
-		fmt.Println(ui.TEXT_NORMAL_BOLD.Render(indent("Stages:")))
-		return
-	}
-
-	fmt.Println(ui.TEXT_NORMAL_BOLD.Render(indent("Stages:")) + rendered[0])
-	for _, stage := range rendered[1:] {
-		fmt.Println(indent("") + stage)
-	}
-}
-
-func renderCurrentStage(stage string, deployed bool) string {
-	result := ui.TEXT_NORMAL.Render(stage)
-	if deployed {
-		return result
-	}
-	return result + " " + ui.TEXT_WARNING_DIM.Render("(not deployed)")
 }
