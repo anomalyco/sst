@@ -512,10 +512,10 @@ export class Worker extends Component implements Link.Linkable {
             compatibilityFlags: ["nodejs_compat"],
             assets: args.assets
               ? output(args.assets).apply(async (assets) => {
-                  const directory = path.join(
-                    $cli.paths.root,
-                    assets.directory,
-                  );
+                  const directory = path.isAbsolute(assets.directory)
+                    ? assets.directory
+                    : path.join($cli.paths.root, assets.directory);
+
                   let headers;
                   let redirects;
                   try {
