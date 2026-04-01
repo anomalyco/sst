@@ -2540,9 +2540,6 @@ export class Service extends Component implements Link.Linkable {
                 desiredCount: scaling.min,
                 ...(managed
                   ? {
-                      // Managed capacity providers cannot be deleted while ECS still has
-                      // tasks draining for the service.
-                      forceDelete: true,
                       forceNewDeployment: true,
                       capacityProviderStrategies: [
                         {
