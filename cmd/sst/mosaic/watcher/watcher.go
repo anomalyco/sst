@@ -24,7 +24,7 @@ type WatchConfig struct {
 }
 
 type fileChange struct {
-	at         time.Time
+	timestamp  time.Time
 	discovered bool
 }
 
@@ -141,48 +141,11 @@ func normalizePath(path string) string {
 	return strings.TrimPrefix(path, "./")
 }
 
-func watchTree(log *slog.Logger, watcher *fsnotify.Watcher, root string, ignore []string, path string, onFile func(string)) error {
-	return filepath.Walk(path, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			if os.IsNotExist(err) {
-				return nil
-			}
-			return err
-		}
-
-		if info.IsDir() {
-			if shouldSkipDir(root, ignore, path, info) {
-				return filepath.SkipDir
-			}
-
-			log.Info("watching", "path", path)
-			return watcher.Add(path)
-		}
-
-		if onFile != nil && !isIgnored(root, ignore, path) {
-			onFile(path)
-		}
-
-		return nil
-	})
-}
-
-func publishFileChanged(limiter map[string]fileChange, path string, discovered bool) {
-	last, ok := limiter[path]
-	if ok && time.Since(last.at) <= 500*time.Millisecond {
-		if discovered || !last.discovered {
-			return
-		}
-	}
-
-	limiter[path] = fileChange{at: time.Now(), discovered: discovered}
-	bus.Publish(&FileChangedEvent{Path: path})
-}
-
 func Start(ctx context.Context, config WatchConfig) error {
 	log := slog.Default().With("service", "watcher")
+	log.Info("starting", "root", config.Root)
 	defer log.Info("done")
-	log.Info("starting watcher", "root", config.Root)
+
 	roots, ignore, err := resolveWatch(config.Root, config.Watch)
 	if err != nil {
 		return err
@@ -198,8 +161,49 @@ func Start(ctx context.Context, config WatchConfig) error {
 		return err
 	}
 
+	limiter := map[string]fileChange{}
+
+	publishChange := func(path string, discovered bool) {
+		last, ok := limiter[path]
+		if ok && time.Since(last.timestamp) <= 500*time.Millisecond {
+			if discovered || !last.discovered {
+				return
+			}
+		}
+
+		limiter[path] = fileChange{timestamp: time.Now(), discovered: discovered}
+		bus.Publish(&FileChangedEvent{Path: path})
+	}
+
+	watchTree := func(path string, publish bool) error {
+		return filepath.Walk(path, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				if os.IsNotExist(err) {
+					return nil
+				}
+				return err
+			}
+
+			if info.IsDir() {
+				if shouldSkipDir(config.Root, ignore, path, info) {
+					return filepath.SkipDir
+				}
+
+				log.Info("watching", "path", path)
+				return watcher.Add(path)
+			}
+
+			if publish && !isIgnored(config.Root, ignore, path) {
+				log.Info("discovered new file in directory", "path", path)
+				publishChange(path, true)
+			}
+
+			return nil
+		})
+	}
+
 	for _, match := range roots {
-		err = watchTree(log, watcher, config.Root, ignore, match, nil)
+		err = watchTree(match, false)
 		if err != nil {
 			return err
 		}
@@ -207,7 +211,6 @@ func Start(ctx context.Context, config WatchConfig) error {
 
 	headFile := filepath.Join(config.Root, ".git/HEAD")
 	watcher.Add(headFile)
-	limiter := map[string]fileChange{}
 	for {
 		select {
 		case event, ok := <-watcher.Events:
@@ -229,10 +232,7 @@ func Start(ctx context.Context, config WatchConfig) error {
 						continue
 					}
 
-					err = watchTree(log, watcher, config.Root, ignore, event.Name, func(path string) {
-						log.Info("discovered file in new directory", "path", path)
-						publishFileChanged(limiter, path, true)
-					})
+					err = watchTree(event.Name, true)
 					if err != nil {
 						return err
 					}
@@ -244,7 +244,7 @@ func Start(ctx context.Context, config WatchConfig) error {
 				continue
 			}
 			log.Info("file event", "path", event.Name, "op", event.Op)
-			publishFileChanged(limiter, event.Name, false)
+			publishChange(event.Name, false)
 		case <-ctx.Done():
 			return nil
 		}
