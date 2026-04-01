@@ -205,7 +205,7 @@ func (p *AwsProvider) Bootstrap(region string) (*AwsBootstrapData, error) {
 }
 
 func (a *AwsProvider) applyLifecycleRules(ctx context.Context, cfg aws.Config, data *AwsBootstrapData) error {
-	if os.Getenv("SST_LIFECYCLE") != "true" {
+	if os.Getenv("SST_S3_LIFECYCLE") != "true" {
 		return nil
 	}
 
@@ -223,15 +223,33 @@ func (a *AwsProvider) applyLifecycleRules(ctx context.Context, cfg aws.Config, d
 		{"UPDATE", "update/", "sst-update-cleanup"},
 	}
 
+	// Default lifecycle values
+	defaults := map[string]struct{ days, versions int }{
+		"APP":       {days: 7, versions: 10},
+		"LOCK":      {days: 7, versions: 0},
+		"EVENTLOG":  {days: 7, versions: 0},
+		"SNAPSHOT":  {days: 30, versions: 0},
+		"UPDATE":    {days: 30, versions: 0},
+	}
+
 	var rules []s3types.LifecycleRule
 	for _, c := range configs {
-		daysStr := os.Getenv("SST_LIFECYCLE_" + c.name + "_DAYS")
+		daysStr := os.Getenv("SST_S3_LIFECYCLE_" + c.name + "_DAYS")
+		var days int
+		var err error
+
 		if daysStr == "" {
-			continue
-		}
-		days, err := strconv.Atoi(daysStr)
-		if err != nil || days <= 0 {
-			continue
+			// Use default value
+			if defaultConfig, ok := defaults[c.name]; ok {
+				days = defaultConfig.days
+			} else {
+				continue
+			}
+		} else {
+			days, err = strconv.Atoi(daysStr)
+			if err != nil || days <= 0 {
+				continue
+			}
 		}
 
 		rule := s3types.LifecycleRule{
@@ -246,11 +264,19 @@ func (a *AwsProvider) applyLifecycleRules(ctx context.Context, cfg aws.Config, d
 			},
 		}
 
-		versionsStr := os.Getenv("SST_LIFECYCLE_" + c.name + "_VERSIONS")
+		versionsStr := os.Getenv("SST_S3_LIFECYCLE_" + c.name + "_VERSIONS")
+		var versions int
 		if versionsStr != "" {
-			if versions, err := strconv.Atoi(versionsStr); err == nil && versions > 0 {
-				rule.NoncurrentVersionExpiration.NewerNoncurrentVersions = aws.Int32(int32(versions))
+			if v, err := strconv.Atoi(versionsStr); err == nil && v > 0 {
+				versions = v
 			}
+		} else if defaultConfig, ok := defaults[c.name]; ok && defaultConfig.versions > 0 {
+			// Use default version count
+			versions = defaultConfig.versions
+		}
+
+		if versions > 0 {
+			rule.NoncurrentVersionExpiration.NewerNoncurrentVersions = aws.Int32(int32(versions))
 		}
 
 		rules = append(rules, rule)
