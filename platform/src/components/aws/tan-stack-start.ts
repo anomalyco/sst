@@ -218,7 +218,7 @@ export interface TanStackStartArgs extends SsrSiteArgs {
    *   }
    * }
    * ```
-   * 
+   *
    * Finally, to serve your TanStack Start app **from a combined pattern** like
    * `dev.example.com/docs`, you'll need to configure the domain in your `Router` to
    * match the subdomain, and set the `domain` and the `path`.
@@ -427,12 +427,12 @@ export class TanStackStart extends SsrSite {
         );
       }
 
-      const serverOutputPath = path.join(outputPath, ".output", "server");
+      const serverOutputPath = path.resolve(outputPath, ".output", "server");
 
       // If basepath is configured, nitro.mjs will have a line that looks like this:
       // return createRouter$2({ routeTree: Nr, defaultPreload: "intent", defaultErrorComponent: ce, defaultNotFoundComponent: () => jsx(de, {}), scrollRestoration: true, basepath: "/tan" });
       let basepath;
-      
+
       try {
         const serverNitroChunk = fs.readFileSync(
           path.join(serverOutputPath, "chunks", "_", "server.mjs"),

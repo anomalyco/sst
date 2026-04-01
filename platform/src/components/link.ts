@@ -9,7 +9,7 @@ import {
 import { VisibleError } from "./error.js";
 import { Linkable } from "./linkable.js";
 
-export module Link {
+export namespace Link {
   export interface Definition<
     Properties extends Record<string, any> = Record<string, any>,
   > {

@@ -47,6 +47,13 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ">=1.23.2"
+          cache: true
+
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Download Go modules
         run: go mod download
@@ -62,7 +69,7 @@ jobs:
         env:
           DOCKER_PUSH: true
 
-      - name: Release
+      - name: Release CLI
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
@@ -71,12 +78,21 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.SST_GITHUB_TOKEN }}
           AUR_KEY: ${{ secrets.AUR_KEY }}
-          NPM_CONFIG_PROVENANCE: false
 
       - name: Release JS SDK
         run: |
           cd sdk/js
           bun run release
+
+      - name: Authenticate crates.io
+        id: crates-auth
+        uses: rust-lang/crates-io-auth-action@v1
+
+      - name: Release Rust SDK
+        run: |
+          VERSION=$(jq -r .version dist/metadata.json)
+          cd sdk/rust
+          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
+          cargo publish --allow-dirty
         env:
-          NPM_CONFIG_PROVENANCE: false
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ steps.crates-auth.outputs.token }}

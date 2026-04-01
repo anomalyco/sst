@@ -38,7 +38,8 @@ export interface RedisArgs {
    * Check out the [supported versions](https://docs.aws.amazon.com/AmazonElastiCache/latest/red-ug/supported-engine-versions.html).
    *
    * :::caution
-   * Changing the version will **immediately** apply the update on the next `sst deploy` possibly causing downtime.
+   * Changing the version will cause the instance to restart on the next `sst deploy`,
+   * causing downtime. Learn more about [upgrading databases](/docs/upgrade-aws-databases/).
    * :::
    *
    * @default `"7.1"` for Redis, `"7.2"` for Valkey
@@ -54,7 +55,8 @@ export interface RedisArgs {
    * The type of instance to use for the nodes of the Redis instance. Check out the [supported instance types](https://docs.aws.amazon.com/AmazonElastiCache/latest/red-ug/CacheNodes.SupportedTypes.html).
    *
    * :::caution
-   * Changing the instance type will **immediately** apply the update on the next `sst deploy` possibly causing downtime.
+   * Changing the instance type will cause the instance to restart on the next `sst deploy`,
+   * causing downtime. Learn more about [upgrading databases](/docs/upgrade-aws-databases/).
    * :::
    *
    * @default `"t4g.micro"`

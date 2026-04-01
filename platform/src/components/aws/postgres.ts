@@ -25,7 +25,8 @@ export interface PostgresArgs {
    * The Postgres engine version. Check out the [available versions in your region](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/PostgreSQL.Concepts.General.DBVersions.html).
    *
    * :::caution
-   * Changing the version will **immediately** apply the update on the next `sst deploy` possibly causing downtime.
+   * Changing the version will cause the database to restart on the next `sst deploy`,
+   * causing downtime. Learn more about [upgrading databases](/docs/upgrade-aws-databases/).
    * :::
    *
    * @default `"17"`
@@ -96,7 +97,8 @@ export interface PostgresArgs {
    * The type of instance to use for the database. Check out the [supported instance types](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.DBInstanceClass.Types.html).
    *
    * :::caution
-   * Changing the instance type will **immediately** apply the update on the next `sst deploy` possibly causing downtime.
+   * Changing the instance type will cause the database to restart on the next `sst deploy`,
+   * causing downtime. Learn more about [upgrading databases](/docs/upgrade-aws-databases/).
    * :::
    *
    * @default `"t4g.micro"`
@@ -217,6 +219,24 @@ export interface PostgresArgs {
    * ```
    */
   multiAz?: Input<boolean>;
+  /**
+   * Enable [Blue/Green deployments](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/blue-green-deployments.html)
+   * for version, instance type, and parameter group upgrades.
+   * Learn more about [upgrading databases](/docs/upgrade-aws-databases/).
+   *
+   * When enabled, a staging (green) instance is created, updated,
+   * verified, then promoted to replace the production (blue) instance.
+   * This minimizes downtime during upgrades.
+   *
+   * @default `false`
+   * @example
+   * ```js
+   * {
+   *   blueGreen: true
+   * }
+   * ```
+   */
+  blueGreen?: Input<boolean>;
   /**
    * @internal
    */
@@ -486,6 +506,7 @@ export class Postgres extends Component implements Link.Linkable {
     const instanceType = output(args.instance).apply((v) => v ?? "t4g.micro");
     const username = output(args.username).apply((v) => v ?? "postgres");
     const storage = normalizeStorage();
+    const blueGreen = output(args.blueGreen).apply((v) => v ?? false);
     const dbName = output(args.database).apply(
       (v) => v ?? $app.name.replaceAll("-", "_"),
     );
@@ -745,10 +766,15 @@ Listening on "${dev.host}:${dev.port}"...`,
             storageEncrypted: true,
             storageType: "gp3",
             allocatedStorage: 20,
-            maxAllocatedStorage: storage,
+            // Blue/green deployments require maxAllocatedStorage to be at least
+            // 10% higher than allocatedStorage for autoscaling headroom.
+            maxAllocatedStorage: all([storage, blueGreen]).apply(([s, bg]) =>
+              bg ? Math.max(s, 22) : s,
+            ),
             multiAz,
             backupRetentionPeriod: 7,
             performanceInsightsEnabled: true,
+            blueGreenUpdate: blueGreen.apply((bg) => ({ enabled: bg })),
             tags: {
               "sst:component-version": _version.toString(),
               "sst:lookup:password": secret.id,

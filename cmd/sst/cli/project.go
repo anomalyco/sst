@@ -98,7 +98,7 @@ func (c *Cli) InitProject() (*project.Project, error) {
 	}
 	c.configureLog()
 
-	spin := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
+	spin := spinner.New(spinner.CharSets[14], 100*time.Millisecond, spinner.WithWriterFile(os.Stderr))
 	spin.Color("cyan")
 	defer spin.Stop()
 	if !p.CheckPlatform(c.version) {

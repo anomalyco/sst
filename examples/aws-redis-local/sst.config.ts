@@ -34,7 +34,7 @@
  * By providing the `dev` prop for Redis, SST will use the local Redis server and
  * not deploy a new Redis ElastiCache cluster when running `sst dev`.
  *
- * It also allows us to access Redis through a Reosurce `link`.
+ * It also allows us to access Redis through a Resource `link`.
  *
  * ```ts title="index.ts"
  * const client = Resource.MyRedis.host === "localhost"
