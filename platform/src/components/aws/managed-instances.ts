@@ -533,7 +533,6 @@ export function createManagedTaskDefinition(
           interval: toSeconds(container.health.interval ?? "30 seconds"),
           retries: container.health.retries ?? 3,
         },
-        pseudoTerminal: true,
         portMappings: [{ containerPortRange: "1-65535" }],
         logConfiguration: {
           logDriver: "awslogs",
