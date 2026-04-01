@@ -1,10 +1,13 @@
 package watcher
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/sst/sst/v3/pkg/bus"
 	"github.com/sst/sst/v3/pkg/project"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -84,10 +87,127 @@ func TestResolveWatchSkipsBuiltInDirs(t *testing.T) {
 	assert.False(t, shouldSkipDir(root, ignore, filepath.Join(root, "src"), normal))
 }
 
+func TestStartDiscoversFilesInNewDirectories(t *testing.T) {
+	root := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	events := bus.SubscribeAll()
+	defer bus.Unsubscribe(events)
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- Start(ctx, WatchConfig{Root: root, Watch: project.Watch{}})
+	}()
+
+	waitForWatcherReady(t, root, events)
+
+	path := filepath.Join(root, "src", "newpkg", "handler.go")
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0755))
+	require.NoError(t, os.WriteFile(path, []byte("package newpkg\n"), 0644))
+	require.True(t, waitForFileChangedEvent(events, path, 5*time.Second), "expected file change for %s", path)
+
+	cancel()
+	require.NoError(t, <-errCh)
+}
+
+func TestStartWatchesNewDirectories(t *testing.T) {
+	root := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	events := bus.SubscribeAll()
+	defer bus.Unsubscribe(events)
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- Start(ctx, WatchConfig{Root: root, Watch: project.Watch{}})
+	}()
+
+	waitForWatcherReady(t, root, events)
+
+	dir := filepath.Join(root, "src", "newpkg")
+	require.NoError(t, os.MkdirAll(dir, 0755))
+
+	path := filepath.Join(dir, "handler.go")
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		require.NoError(t, os.WriteFile(path, []byte(time.Now().String()), 0644))
+		if waitForFileChangedEvent(events, path, 200*time.Millisecond) {
+			cancel()
+			require.NoError(t, <-errCh)
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	t.Fatalf("expected file change for %s", path)
+}
+
+func TestStartPicksUpImmediateEditsAfterNewFileDiscovery(t *testing.T) {
+	root := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	events := bus.SubscribeAll()
+	defer bus.Unsubscribe(events)
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- Start(ctx, WatchConfig{Root: root, Watch: project.Watch{}})
+	}()
+
+	waitForWatcherReady(t, root, events)
+
+	dir := filepath.Join(root, "src", "newpkg")
+	require.NoError(t, os.MkdirAll(dir, 0755))
+
+	path := filepath.Join(dir, "handler.go")
+	require.NoError(t, os.WriteFile(path, []byte("package newpkg\n"), 0644))
+	require.True(t, waitForFileChangedEvent(events, path, 5*time.Second), "expected initial file change for %s", path)
+
+	require.NoError(t, os.WriteFile(path, []byte("package newpkg\n\nfunc Handler() {}\n"), 0644))
+	require.True(t, waitForFileChangedEvent(events, path, 1*time.Second), "expected immediate follow-up file change for %s", path)
+
+	cancel()
+	require.NoError(t, <-errCh)
+}
+
 func mustInfo(t *testing.T, path string) os.FileInfo {
 	t.Helper()
 	require.NoError(t, os.MkdirAll(path, 0755))
 	info, err := os.Stat(path)
 	require.NoError(t, err)
 	return info
+}
+
+func waitForWatcherReady(t *testing.T, root string, events <-chan interface{}) {
+	t.Helper()
+
+	probe := filepath.Join(root, "watcher-ready.txt")
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		require.NoError(t, os.WriteFile(probe, []byte(time.Now().String()), 0644))
+		if waitForFileChangedEvent(events, probe, 200*time.Millisecond) {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	t.Fatalf("timed out waiting for watcher startup")
+}
+
+func waitForFileChangedEvent(events <-chan interface{}, path string, timeout time.Duration) bool {
+	deadline := time.After(timeout)
+	for {
+		select {
+		case evt := <-events:
+			changed, ok := evt.(*FileChangedEvent)
+			if ok && changed.Path == path {
+				return true
+			}
+		case <-deadline:
+			return false
+		}
+	}
 }
