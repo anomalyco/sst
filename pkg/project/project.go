@@ -35,11 +35,39 @@ type App struct {
 	Home      string                 `json:"home"`
 	Version   string                 `json:"version"`
 	Protect   bool                   `json:"protect"`
-	Watch     []string               `json:"watch"`
+	Watch     Watch                  `json:"watch"`
 	// Deprecated: Backend is now Home
 	Backend string `json:"backend"`
 	// Deprecated: RemovalPolicy is now Removal
 	RemovalPolicy string `json:"removalPolicy"`
+}
+
+type Watch struct {
+	Paths  []string `json:"paths"`
+	Ignore []string `json:"ignore"`
+}
+
+func (w *Watch) UnmarshalJSON(data []byte) error {
+	var paths []string
+	if err := json.Unmarshal(data, &paths); err == nil {
+		w.Paths = paths
+		w.Ignore = nil
+		return nil
+	}
+
+	type value struct {
+		Paths  []string `json:"paths"`
+		Ignore []string `json:"ignore"`
+	}
+
+	var decoded value
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+
+	w.Paths = decoded.Paths
+	w.Ignore = decoded.Ignore
+	return nil
 }
 
 type Project struct {
