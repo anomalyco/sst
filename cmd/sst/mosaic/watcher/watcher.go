@@ -89,10 +89,6 @@ func shouldSkipDir(root string, ignore []string, path string, info os.FileInfo) 
 	return isIgnored(root, ignore, path)
 }
 
-func shouldIgnoreEvent(root string, ignore []string, path string) bool {
-	return isIgnored(root, ignore, path)
-}
-
 func isIgnored(root string, ignore []string, path string) bool {
 	if len(ignore) == 0 {
 		return false
@@ -122,7 +118,7 @@ func matchesIgnore(pattern string, path string) bool {
 		return path == pattern || strings.HasPrefix(path, pattern+"/")
 	}
 
-	for _, part := range strings.Split(path, "/") {
+	for part := range strings.SplitSeq(path, "/") {
 		matched, err := pathpkg.Match(pattern, part)
 		if err == nil && matched {
 			return true
@@ -194,7 +190,7 @@ func Start(ctx context.Context, config WatchConfig) error {
 				log.Info("ignoring file event", "path", event.Name, "op", event.Op)
 				continue
 			}
-			if shouldIgnoreEvent(config.Root, ignore, event.Name) {
+			if isIgnored(config.Root, ignore, event.Name) {
 				log.Info("ignoring ignored file event", "path", event.Name, "op", event.Op)
 				continue
 			}
