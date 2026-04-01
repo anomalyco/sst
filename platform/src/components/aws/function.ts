@@ -2342,7 +2342,7 @@ export class Function extends Component implements Link.Linkable {
           return new Image(
             `${name}Image`,
             {
-              tags: [$interpolate`${bootstrapData.assetEcrUrl}:latest`],
+              tags: [$interpolate`${bootstrapData.assetEcrUrl}:${name}`],
               context: {
                 location: path.join(
                   $cli.paths.work,
@@ -2632,7 +2632,7 @@ export class Function extends Component implements Link.Linkable {
                 ? {
                   packageType: "Image",
                   imageUri: imageAsset!.ref.apply(
-                    (ref) => ref?.replace(":latest", ""),
+                    (ref) => ref?.replace(`:${args.name}`, ""),
                   ),
                   imageConfig: {
                     commands: [
