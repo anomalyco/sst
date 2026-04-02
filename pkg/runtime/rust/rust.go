@@ -81,6 +81,10 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 	var properties Properties
 	json.Unmarshal(input.Properties, &properties)
 
+	if err := r.ValidateHandler(input); err != nil {
+		return nil, err
+	}
+
 	// split handler into path and function name
 	parts := strings.Split(input.Handler, ".")
 	handler := strings.Join(parts[:len(parts)-1], ".")
