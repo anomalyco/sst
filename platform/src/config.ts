@@ -278,6 +278,11 @@ export interface App {
    *
    * You can configure it with `paths` and `ignore`.
    *
+   * :::caution
+   * Passing an array directly is supported for backward compatibility
+   * and will be deprecated in the next major version.
+   * :::
+   *
    * @example
    * ```ts
    * {
@@ -320,7 +325,8 @@ export interface AppWatch {
    * Directories to recursively watch.
    *
    * The paths are relative to the project root. If omitted, SST watches the
-   * project root.
+   * project root. Glob patterns are not supported here; use explicit
+   * directories.
    */
   paths?: string[];
   /**

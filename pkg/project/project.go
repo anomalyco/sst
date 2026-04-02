@@ -43,20 +43,21 @@ type App struct {
 }
 
 type Watch struct {
-	Paths  []string `json:"paths"`
-	Ignore []string `json:"ignore"`
+	Paths       []string `json:"paths"`
+	Ignore      []string `json:"ignore"`
+	legacyArray bool
+}
+
+func (w Watch) UsesLegacyArray() bool {
+	return w.legacyArray
 }
 
 func (w *Watch) UnmarshalJSON(data []byte) error {
 	var paths []string
 	if err := json.Unmarshal(data, &paths); err == nil {
-		for _, path := range paths {
-			if strings.ContainsAny(path, "*?[") {
-				return util.NewReadableError(nil, fmt.Sprintf("legacy watch arrays do not support globs: %q; use explicit directories or watch.paths", path))
-			}
-		}
 		w.Paths = paths
 		w.Ignore = nil
+		w.legacyArray = true
 		return nil
 	}
 
@@ -70,8 +71,15 @@ func (w *Watch) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
+	for _, path := range decoded.Paths {
+		if strings.ContainsAny(path, "*?[") {
+			return util.NewReadableError(nil, fmt.Sprintf("Watch path globs are only supported in the legacy array form: %q\nUse explicit directories or ignore patterns instead: https://sst.dev/docs/reference/config/#watch", path))
+		}
+	}
+
 	w.Paths = decoded.Paths
 	w.Ignore = decoded.Ignore
+	w.legacyArray = false
 	return nil
 }
 

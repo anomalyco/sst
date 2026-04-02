@@ -2,6 +2,7 @@ package watcher
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -33,6 +34,32 @@ func TestResolveWatchResolvesExternalIncludeRoots(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{filepath.Join(root, "packages", "api"), external}, roots)
+}
+
+func TestResolveWatchExpandsLegacyArrayGlobs(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "packages", "api"), 0755))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "packages", "web"), 0755))
+
+	var watch project.Watch
+	require.NoError(t, json.Unmarshal([]byte(`["packages/*"]`), &watch))
+
+	roots, _, err := resolveWatch(root, watch)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{filepath.Join(root, "packages", "api"), filepath.Join(root, "packages", "web")}, roots)
+}
+
+func TestResolveWatchExpandsLegacyArrayFileGlobsToParentDirs(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "src"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "src", "index.ts"), []byte("export {}\n"), 0644))
+
+	var watch project.Watch
+	require.NoError(t, json.Unmarshal([]byte(`["src/*"]`), &watch))
+
+	roots, _, err := resolveWatch(root, watch)
+	require.NoError(t, err)
+	assert.Equal(t, []string{filepath.Join(root, "src")}, roots)
 }
 
 func TestResolveWatchMatchesIgnorePaths(t *testing.T) {

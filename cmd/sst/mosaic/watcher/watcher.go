@@ -30,8 +30,16 @@ type fileChange struct {
 
 func resolveWatch(root string, watch project.Watch) ([]string, []string, error) {
 	root = filepath.Clean(root)
+	paths := watch.Paths
+	if watch.UsesLegacyArray() {
+		var err error
+		paths, err = expandLegacyPaths(root, paths)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
 
-	roots, err := resolveRoots(root, watch.Paths)
+	roots, err := resolveRoots(root, paths)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -42,6 +50,61 @@ func resolveWatch(root string, watch project.Watch) ([]string, []string, error) 
 	}
 
 	return roots, ignore, nil
+}
+
+func expandLegacyPaths(root string, paths []string) ([]string, error) {
+	expanded := make([]string, 0, len(paths))
+	seen := map[string]bool{}
+	for _, path := range paths {
+		matches := []string{path}
+		if strings.ContainsAny(path, "*?[") {
+			resolved, err := filepath.Glob(filepath.Join(root, filepath.FromSlash(path)))
+			if err != nil {
+				return nil, err
+			}
+			matches = nil
+			for _, match := range resolved {
+				watchPath, err := legacyWatchPath(root, match)
+				if err != nil {
+					return nil, err
+				}
+				matches = append(matches, watchPath)
+			}
+		}
+
+		for _, match := range matches {
+			match = filepath.ToSlash(filepath.Clean(match))
+			if seen[match] {
+				continue
+			}
+			seen[match] = true
+			expanded = append(expanded, match)
+		}
+	}
+
+	return expanded, nil
+}
+
+func legacyWatchPath(root string, path string) (string, error) {
+	resolved := path
+	if !filepath.IsAbs(resolved) {
+		resolved = filepath.Join(root, filepath.FromSlash(path))
+	}
+
+	info, err := os.Stat(resolved)
+	if err == nil && !info.IsDir() {
+		resolved = filepath.Dir(resolved)
+	}
+	if err != nil && !os.IsNotExist(err) {
+		return "", err
+	}
+
+	rel, err := filepath.Rel(root, resolved)
+	if err != nil {
+		return "", err
+	}
+
+	return filepath.ToSlash(rel), nil
 }
 
 func resolveRoots(root string, paths []string) ([]string, error) {
