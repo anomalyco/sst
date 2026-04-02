@@ -3,6 +3,7 @@ package node
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -242,20 +243,33 @@ func (r *Runtime) Match(runtime string) bool {
 	return strings.HasPrefix(runtime, "node")
 }
 
-func (r *Runtime) getFile(input *runtime.BuildInput) (string, bool) {
-	dir := filepath.Dir(input.Handler)
-	fileSplit := strings.Split(filepath.Base(input.Handler), ".")
+func findHandlerFile(rootDir string, handler string) (string, bool) {
+	dir := filepath.Dir(handler)
+	fileSplit := strings.Split(filepath.Base(handler), ".")
 	base := strings.Join(fileSplit[:len(fileSplit)-1], ".")
 	for _, ext := range NODE_EXTENSIONS {
-		file := filepath.Join(dir, base+ext)
-		if !filepath.IsAbs(file) {
-			file = filepath.Join(path.ResolveRootDir(input.CfgPath), file)
-		}
+		file := filepath.Join(rootDir, dir, base+ext)
 		if _, err := os.Stat(file); err == nil {
 			return file, true
 		}
 	}
 	return "", false
+}
+
+func (r *Runtime) getFile(input *runtime.BuildInput) (string, bool) {
+	return findHandlerFile(path.ResolveRootDir(input.CfgPath), input.Handler)
+}
+
+func (r *Runtime) ValidateHandler(input *runtime.BuildInput) error {
+	rootDir := path.ResolveRootDir(input.CfgPath)
+	if input.Bundle != "" {
+		rootDir = input.Bundle
+	}
+	_, ok := findHandlerFile(rootDir, input.Handler)
+	if !ok {
+		return fmt.Errorf("Handler not found: %v", input.Handler)
+	}
+	return nil
 }
 
 func (r *Runtime) ShouldRebuild(functionID string, file string) bool {

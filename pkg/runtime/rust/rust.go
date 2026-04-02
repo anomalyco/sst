@@ -194,6 +194,26 @@ func (r *Runtime) Run(ctx context.Context, input *runtime.RunInput) (runtime.Wor
 	}, nil
 }
 
+func (r *Runtime) ValidateHandler(input *runtime.BuildInput) error {
+	parts := strings.Split(input.Handler, ".")
+	handler := strings.Join(parts[:len(parts)-1], ".")
+
+	if handler != "" {
+		if info, err := os.Stat(handler); err != nil || !info.IsDir() {
+			return fmt.Errorf("Handler not found: %v", input.Handler)
+		}
+	}
+
+	_, err := fs.FindUp(handler, "cargo.toml")
+	if err != nil {
+		_, err = fs.FindUp(handler, "Cargo.toml")
+		if err != nil {
+			return fmt.Errorf("Handler not found: could not find Cargo.toml for handler %v", input.Handler)
+		}
+	}
+	return nil
+}
+
 func (r *Runtime) ShouldRebuild(functionID string, file string) bool {
 	// copied from go
 	if !strings.HasSuffix(file, ".rs") {

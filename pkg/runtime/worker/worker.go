@@ -179,16 +179,32 @@ func (w *Runtime) Match(runtime string) bool {
 	return runtime == "worker"
 }
 
-func (w *Runtime) getFile(input *runtime.BuildInput) (string, bool) {
-	dir := filepath.Dir(input.Handler)
-	base := strings.Split(filepath.Base(input.Handler), ".")[0]
+func findHandlerFile(rootDir string, handler string) (string, bool) {
+	dir := filepath.Dir(handler)
+	base := strings.Split(filepath.Base(handler), ".")[0]
 	for _, ext := range node.NODE_EXTENSIONS {
-		file := filepath.Join(path.ResolveRootDir(input.CfgPath), dir, base+ext)
+		file := filepath.Join(rootDir, dir, base+ext)
 		if _, err := os.Stat(file); err == nil {
 			return file, true
 		}
 	}
 	return "", false
+}
+
+func (w *Runtime) getFile(input *runtime.BuildInput) (string, bool) {
+	return findHandlerFile(path.ResolveRootDir(input.CfgPath), input.Handler)
+}
+
+func (r *Runtime) ValidateHandler(input *runtime.BuildInput) error {
+	rootDir := path.ResolveRootDir(input.CfgPath)
+	if input.Bundle != "" {
+		rootDir = input.Bundle
+	}
+	_, ok := findHandlerFile(rootDir, input.Handler)
+	if !ok {
+		return fmt.Errorf("Handler not found: %v", input.Handler)
+	}
+	return nil
 }
 
 func (r *Runtime) ShouldRebuild(functionID string, file string) bool {

@@ -175,6 +175,18 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 
 }
 
+func (r *PythonRuntime) ValidateHandler(input *runtime.BuildInput) error {
+	rootDir := path.ResolveRootDir(input.CfgPath)
+	if input.Bundle != "" {
+		rootDir = input.Bundle
+	}
+	_, err := findHandlerFile(rootDir, input.Handler)
+	if err != nil {
+		return fmt.Errorf("Handler not found: %v", input.Handler)
+	}
+	return nil
+}
+
 func (r *PythonRuntime) ShouldRebuild(functionID string, file string) bool {
 	// Assume that the build is always stale. We could do a better job here but bc of how the build
 	// process actually works its not a slowdown as the real slow part is starting the python interpreter
@@ -382,23 +394,23 @@ func (r *PythonRuntime) CreateBuildAsset(ctx context.Context, input *runtime.Bui
 	}
 }
 
-func (r *PythonRuntime) getFile(input *runtime.BuildInput) (string, error) {
-	slog.Info("looking for python handler file", "handler", input.Handler)
+func findHandlerFile(rootDir string, handler string) (string, error) {
+	dir := filepath.Dir(handler)
+	base := strings.TrimSuffix(filepath.Base(handler), filepath.Ext(handler))
 
-	dir := filepath.Dir(input.Handler)
-	base := strings.TrimSuffix(filepath.Base(input.Handler), filepath.Ext(input.Handler))
-	rootDir := path.ResolveRootDir(input.CfgPath)
-
-	// Look for .py file
 	pythonFile := filepath.Join(rootDir, dir, base+".py")
 	if _, err := os.Stat(pythonFile); err == nil {
 		return pythonFile, nil
 	}
 
-	// No Python file found for the handler
 	return "", fmt.Errorf("could not find Python file '%s.py' in directory '%s'",
 		base,
 		filepath.Join(rootDir, dir))
+}
+
+func (r *PythonRuntime) getFile(input *runtime.BuildInput) (string, error) {
+	slog.Info("looking for python handler file", "handler", input.Handler)
+	return findHandlerFile(path.ResolveRootDir(input.CfgPath), input.Handler)
 }
 
 func copyFile(src, dst string) error {
