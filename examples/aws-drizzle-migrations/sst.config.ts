@@ -38,14 +38,12 @@
  *
  * ```ts title="sst.config.ts"
  * if (!$dev){
- *   new aws.lambda.Invocation("DatabaseMigratorInvocation", {
- *     input: Date.now().toString(),
- *     functionName: migrator.name,
+ *   new sst.aws.Script("DatabaseMigratorScript", {
+ *     onCreate: migrator.arn,
+ *     onUpdate: migrator.arn,
  *   });
  * }
  * ```
- *
- * We use the current time to make sure the function runs on every deploy.
  */
 export default $config({
   app(input) {
@@ -79,9 +77,9 @@ export default $config({
     });
 
     if (!$dev) {
-      new aws.lambda.Invocation("DatabaseMigratorInvocation", {
-        input: Date.now().toString(),
-        functionName: migrator.name,
+      new sst.aws.Script("DatabaseMigratorScript", {
+        onCreate: migrator.arn,
+        onUpdate: migrator.arn,
       });
     }
 
