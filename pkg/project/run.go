@@ -40,10 +40,6 @@ func (p *Project) Run(ctx context.Context, input *StackInput) error {
 		return ErrProtectedStage
 	}
 
-	if p.app.Protect && input.Command == "deploy" && input.Dev {
-		return ErrProtectedDevStage
-	}
-
 	bus.Publish(&StackCommandEvent{
 		App:     p.app.Name,
 		Stage:   p.app.Stage,
