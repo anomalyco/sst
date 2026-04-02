@@ -1,0 +1,48 @@
+name: Publish Python SDK to PyPI
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (e.g. 0.2.0)"
+        required: true
+        type: string
+
+jobs:
+  publish:
+    name: Build and publish to PyPI
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # Required for trusted publishing
+    environment:
+      name: pypi
+      url: https://pypi.org/project/sst-sdk/
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Verify version matches
+        working-directory: sdk/python
+        run: |
+          TOML_VERSION=$(python3 -c "
+          import tomllib
+          with open('pyproject.toml', 'rb') as f:
+              print(tomllib.load(f)['project']['version'])
+          ")
+          if [ "$TOML_VERSION" != "${{ inputs.version }}" ]; then
+            echo "Version mismatch: pyproject.toml has $TOML_VERSION but workflow input is ${{ inputs.version }}"
+            exit 1
+          fi
+
+      - name: Build package
+        working-directory: sdk/python
+        run: uv build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: sdk/python/dist/
