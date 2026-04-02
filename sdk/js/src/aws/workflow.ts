@@ -1,5 +1,5 @@
 import * as durable from "@aws/durable-execution-sdk-js";
-import { AwsOptions, serviceFetch } from "./client.js";
+import { aws } from "./client.js";
 
 interface LambdaError {
   ErrorMessage?: string;
@@ -159,7 +159,7 @@ export namespace workflow {
      * Configure the options for the [aws4fetch](https://github.com/mhart/aws4fetch)
      * [`AWSClient`](https://github.com/mhart/aws4fetch?tab=readme-ov-file#new-awsclientoptions) used internally by the SDK.
      */
-    aws?: AwsOptions;
+    aws?: aws.Options;
   }
 
   export interface StartInput<TPayload = unknown> {
@@ -281,7 +281,7 @@ export namespace workflow {
     const query = new URLSearchParams({
       Qualifier: "$LATEST",
     });
-    const response = await serviceFetch(
+    const response = await aws.fetch(
       "lambda",
       `/2015-03-31/functions/${encodeURIComponent(
         resource.name,
@@ -308,7 +308,7 @@ export namespace workflow {
     input: SucceedInput<TPayload> = {},
     options?: Options,
   ): Promise<Response> {
-    const response = await serviceFetch(
+    const response = await aws.fetch(
       "lambda",
       `/2025-12-01/durable-execution-callbacks/${encodeURIComponent(
         token,
@@ -333,7 +333,7 @@ export namespace workflow {
     input: FailInput,
     options?: Options,
   ): Promise<Response> {
-    const response = await serviceFetch(
+    const response = await aws.fetch(
       "lambda",
       `/2025-12-01/durable-execution-callbacks/${encodeURIComponent(
         token,
@@ -356,7 +356,7 @@ export namespace workflow {
     token: string,
     options?: Options,
   ): Promise<Response> {
-    const response = await serviceFetch(
+    const response = await aws.fetch(
       "lambda",
       `/2025-12-01/durable-execution-callbacks/${encodeURIComponent(
         token,

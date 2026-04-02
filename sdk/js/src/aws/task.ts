@@ -1,4 +1,4 @@
-import { AwsOptions, serviceFetch } from "./client.js";
+import { aws } from "./client.js";
 /**
  * The `task` client SDK is available through the following.
  *
@@ -62,7 +62,7 @@ export namespace task {
      * Configure the options for the [aws4fetch](https://github.com/mhart/aws4fetch)
      * [`AWSClient`](https://github.com/mhart/aws4fetch?tab=readme-ov-file#new-awsclientoptions) used internally by the SDK.
      */
-    aws?: AwsOptions;
+    aws?: aws.Options;
   }
 
   export interface RunOptions extends Options {
@@ -152,7 +152,7 @@ export namespace task {
     task: string,
     options?: Options
   ): Promise<DescribeResponse> {
-    const res = await serviceFetch("ecs", "/", {
+    const res = await aws.fetch("ecs", "/", {
       method: "POST",
       headers: {
         "X-Amz-Target": "AmazonEC2ContainerServiceV20141113.DescribeTasks",
@@ -223,7 +223,7 @@ export namespace task {
     environment?: Record<string, string>,
     options?: RunOptions
   ): Promise<RunResponse> {
-    const res = await serviceFetch("ecs", "/", {
+    const res = await aws.fetch("ecs", "/", {
       method: "POST",
       headers: {
         "X-Amz-Target": "AmazonEC2ContainerServiceV20141113.RunTask",
@@ -316,7 +316,7 @@ export namespace task {
     task: string,
     options?: Options
   ): Promise<StopResponse> {
-    const res = await serviceFetch("ecs", "/", {
+    const res = await aws.fetch("ecs", "/", {
       method: "POST",
       headers: {
         "X-Amz-Target": "AmazonEC2ContainerServiceV20141113.StopTask",
