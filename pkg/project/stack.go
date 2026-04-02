@@ -155,6 +155,7 @@ var ErrStackRunFailed = fmt.Errorf("stack run had errors")
 var ErrStageNotFound = fmt.Errorf("stage not found")
 var ErrPassphraseInvalid = fmt.Errorf("passphrase invalid")
 var ErrProtectedStage = fmt.Errorf("cannot remove protected stage")
+var ErrProtectedDevStage = fmt.Errorf("cannot run sst dev on protected stage")
 var ErrPolicyViolation = fmt.Errorf("policy violations detected")
 var ErrPolicyConfigError = fmt.Errorf("policy configuration error")
 
