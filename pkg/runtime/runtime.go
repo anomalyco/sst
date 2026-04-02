@@ -103,7 +103,7 @@ func (c *Collection) Build(ctx context.Context, input *BuildInput) (*BuildOutput
 		out = input.Bundle
 		runtime, ok := c.Runtime(input.Runtime)
 		if !ok {
-			return nil, fmt.Errorf("Runtime not found: %v", input.Runtime)
+			return nil, fmt.Errorf("runtime not found: %v", input.Runtime)
 		}
 		if err := runtime.ValidateHandler(input); err != nil {
 			return nil, err

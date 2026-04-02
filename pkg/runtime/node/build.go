@@ -41,7 +41,7 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 
 	file, ok := r.getFile(input)
 	if !ok {
-		return nil, fmt.Errorf("Handler not found: %v", input.Handler)
+		return nil, fmt.Errorf("handler not found: %v", input.Handler)
 	}
 
 	isESM := true

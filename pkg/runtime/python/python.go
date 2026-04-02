@@ -182,7 +182,7 @@ func (r *PythonRuntime) ValidateHandler(input *runtime.BuildInput) error {
 	}
 	_, err := findHandlerFile(rootDir, input.Handler)
 	if err != nil {
-		return fmt.Errorf("Handler not found: %v", input.Handler)
+		return fmt.Errorf("handler not found: %v", input.Handler)
 	}
 	return nil
 }

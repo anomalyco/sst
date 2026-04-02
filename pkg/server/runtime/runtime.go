@@ -28,7 +28,7 @@ func (r *Runtime) AddTarget(input *runtime.BuildInput, output *bool) error {
 	input.CfgPath = r.project.PathConfig()
 	rt, ok := r.project.Runtime.Runtime(input.Runtime)
 	if !ok {
-		return fmt.Errorf("Runtime not found: %v", input.Runtime)
+		return fmt.Errorf("runtime not found: %v", input.Runtime)
 	}
 	if err := rt.ValidateHandler(input); err != nil {
 		return err

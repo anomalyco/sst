@@ -267,7 +267,7 @@ func (r *Runtime) ValidateHandler(input *runtime.BuildInput) error {
 	}
 	_, ok := findHandlerFile(rootDir, input.Handler)
 	if !ok {
-		return fmt.Errorf("Handler not found: %v", input.Handler)
+		return fmt.Errorf("handler not found: %v", input.Handler)
 	}
 	return nil
 }

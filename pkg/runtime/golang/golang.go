@@ -134,13 +134,13 @@ func (r *Runtime) Run(ctx context.Context, input *runtime.RunInput) (runtime.Wor
 func (r *Runtime) ValidateHandler(input *runtime.BuildInput) error {
 	if input.Handler != "" {
 		if info, err := os.Stat(input.Handler); err != nil || !info.IsDir() {
-			return fmt.Errorf("Handler not found: %v", input.Handler)
+			return fmt.Errorf("handler not found: %v", input.Handler)
 		}
 	}
 
 	_, err := fs.FindUp(input.Handler, "go.mod")
 	if err != nil {
-		return fmt.Errorf("Handler not found: could not find go.mod for handler %v", input.Handler)
+		return fmt.Errorf("handler not found: could not find go.mod for handler %v", input.Handler)
 	}
 	return nil
 }

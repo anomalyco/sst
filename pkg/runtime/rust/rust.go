@@ -204,7 +204,7 @@ func (r *Runtime) ValidateHandler(input *runtime.BuildInput) error {
 
 	if handler != "" {
 		if info, err := os.Stat(handler); err != nil || !info.IsDir() {
-			return fmt.Errorf("Handler not found: %v", input.Handler)
+			return fmt.Errorf("handler not found: %v", input.Handler)
 		}
 	}
 
@@ -212,7 +212,7 @@ func (r *Runtime) ValidateHandler(input *runtime.BuildInput) error {
 	if err != nil {
 		_, err = fs.FindUp(handler, "Cargo.toml")
 		if err != nil {
-			return fmt.Errorf("Handler not found: could not find Cargo.toml for handler %v", input.Handler)
+			return fmt.Errorf("handler not found: could not find Cargo.toml for handler %v", input.Handler)
 		}
 	}
 	return nil
