@@ -53,7 +53,27 @@ export async function client(): Promise<AwsClient> {
   throw new Error("No AWS credentials found");
 }
 
+type AwsFetchOptions = Exclude<Parameters<AwsClient["fetch"]>[1], null | undefined>;
+
 export type AwsOptions = Exclude<
   Parameters<AwsClient["fetch"]>[1],
   null | undefined
 >["aws"];
+
+export function serviceUrl(service: string, region?: string, options?: AwsOptions) {
+  if (options?.region) region = options.region;
+  return `https://${service}.${region}.amazonaws.com`;
+}
+
+export async function serviceFetch(
+  service: string,
+  path: string,
+  init: Omit<AwsFetchOptions, "aws">,
+  options?: { aws?: AwsOptions },
+) {
+  const c = await client();
+  return c.fetch(`${serviceUrl(service, c.region, options?.aws)}${path}`, {
+    ...init,
+    aws: options?.aws,
+  });
+}

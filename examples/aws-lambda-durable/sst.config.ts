@@ -20,16 +20,22 @@ export default $config({
       url: true,
     });
 
-    new sst.aws.Function("Resolver", {
+    const resolver = new sst.aws.Function("Resolver", {
       handler: "src/resolver.handler",
       url: true,
       link: [durableFunction],
     });
 
-    new sst.aws.Function("Invoker", {
+    const invoker = new sst.aws.Function("Invoker", {
       handler: "src/invoker.handler",
       url: true,
-      link: [durableFunction],
+      link: [durableFunction, resolver],
     });
+
+    return {
+      durable: durableFunction.url,
+      invoker: invoker.url,
+      resolver: resolver.url,
+    };
   },
 });

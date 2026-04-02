@@ -1,15 +1,36 @@
-import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
+import type { APIGatewayProxyEventV2 } from "aws-lambda";
 import { Resource } from "sst";
-const client = new LambdaClient();
+import { workflow } from "sst/aws/workflow";
 
-export const handler = async () => {
-  const command = new InvokeCommand({
-    FunctionName: Resource.Durable.name,
-    Qualifier: "$LATEST",
-    InvocationType: "Event",
+export const handler = async (event: APIGatewayProxyEventV2) => {
+  const action = event.queryStringParameters?.action;
+  const message = event.queryStringParameters?.message ?? "Hello from the invoker";
+  const name =
+    event.queryStringParameters?.name ?? `durable-example-${Date.now()}`;
+
+  const response = await workflow.start(Resource.Durable, {
+    name,
+    payload: {
+      ...(action === "succeed" || action === "fail" || action === "heartbeat"
+        ? { action }
+        : {}),
+      message,
+      resolverUrl: Resource.Resolver.url,
+    },
   });
 
-  await client.send(command);
-
-  return { message: "Durable function invoked successfully!" };
+  return {
+    statusCode: 200,
+    body: JSON.stringify(
+      {
+        durableExecutionArn: response.arn,
+        executedVersion: response.version,
+        name,
+        resolverUrl: Resource.Resolver.url,
+        statusCode: response.statusCode,
+      },
+      null,
+      2,
+    ),
+  };
 };

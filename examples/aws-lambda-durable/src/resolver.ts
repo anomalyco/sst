@@ -1,15 +1,8 @@
 import { APIGatewayProxyEventV2 } from "aws-lambda";
-import {
-  LambdaClient,
-  SendDurableExecutionCallbackSuccessCommand,
-  SendDurableExecutionCallbackFailureCommand,
-  SendDurableExecutionCallbackHeartbeatCommand,
-} from "@aws-sdk/client-lambda";
-
-const client = new LambdaClient();
+import { workflow } from "sst/aws/workflow";
 
 export const handler = async (event: APIGatewayProxyEventV2) => {
-  const { callbackId, action } = event.queryStringParameters || {};
+  const { action, callbackId, message } = event.queryStringParameters || {};
 
   if (!callbackId) {
     return {
@@ -20,29 +13,32 @@ export const handler = async (event: APIGatewayProxyEventV2) => {
     };
   }
 
-  let command = new SendDurableExecutionCallbackSuccessCommand({
-    CallbackId: callbackId!,
-    Result: JSON.stringify({ message: "Callback success!" }),
-  });
+  if (action === "heartbeat") {
+    await workflow.heartbeat(callbackId);
+    return {
+      statusCode: 200,
+      body: JSON.stringify({ message: "Callback heartbeat sent successfully!" }),
+    };
+  }
 
-  if (action === "failure") {
-    command = new SendDurableExecutionCallbackFailureCommand({
-      CallbackId: callbackId!,
-      Error: {
-        ErrorData: JSON.stringify({ message: "Callback failure!" }),
-        ErrorType: "CallbackError",
-        ErrorMessage: "An error occurred during the callback execution.",
+  if (action === "fail" || action === "failure") {
+    await workflow.fail(callbackId, {
+      error: {
+        data: {
+          message: message ?? "Callback failure!",
+        },
+        message: message ?? "An error occurred during the callback execution.",
+        type: "CallbackError",
+      },
+    });
+  } else {
+    await workflow.succeed(callbackId, {
+      payload: {
+        message: message ?? "Callback success!",
+        resolvedAt: new Date().toISOString(),
       },
     });
   }
-
-  if (action === "heartbeat") {
-    command = new SendDurableExecutionCallbackHeartbeatCommand({
-      CallbackId: callbackId!,
-    });
-  }
-
-  await client.send(command);
 
   return {
     statusCode: 200,
