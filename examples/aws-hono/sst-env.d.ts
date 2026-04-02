@@ -11,6 +11,11 @@ declare module "sst" {
       "type": "sst.aws.Function"
       "url": string
     }
+    "Hono2": {
+      "name": string
+      "type": "sst.aws.Function"
+      "url": string
+    }
     "MyBucket": {
       "name": string
       "type": "sst.aws.Bucket"

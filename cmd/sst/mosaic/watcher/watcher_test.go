@@ -100,7 +100,7 @@ func TestStartDiscoversFilesInNewDirectories(t *testing.T) {
 		errCh <- Start(ctx, WatchConfig{Root: root, Watch: project.Watch{}})
 	}()
 
-	waitForWatcherReady(t, root, events)
+	waitForWatcherReady(t, filepath.Join(root, "watcher-ready.txt"), events)
 
 	path := filepath.Join(root, "src", "newpkg", "handler.go")
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0755))
@@ -124,7 +124,7 @@ func TestStartWatchesNewDirectories(t *testing.T) {
 		errCh <- Start(ctx, WatchConfig{Root: root, Watch: project.Watch{}})
 	}()
 
-	waitForWatcherReady(t, root, events)
+	waitForWatcherReady(t, filepath.Join(root, "watcher-ready.txt"), events)
 
 	dir := filepath.Join(root, "src", "newpkg")
 	require.NoError(t, os.MkdirAll(dir, 0755))
@@ -157,7 +157,7 @@ func TestStartPicksUpImmediateEditsAfterNewFileDiscovery(t *testing.T) {
 		errCh <- Start(ctx, WatchConfig{Root: root, Watch: project.Watch{}})
 	}()
 
-	waitForWatcherReady(t, root, events)
+	waitForWatcherReady(t, filepath.Join(root, "watcher-ready.txt"), events)
 
 	dir := filepath.Join(root, "src", "newpkg")
 	require.NoError(t, os.MkdirAll(dir, 0755))
@@ -173,6 +173,42 @@ func TestStartPicksUpImmediateEditsAfterNewFileDiscovery(t *testing.T) {
 	require.NoError(t, <-errCh)
 }
 
+func TestStartOnlyWatchesConfiguredPaths(t *testing.T) {
+	root := t.TempDir()
+	watchedDir := filepath.Join(root, "packages", "api")
+	require.NoError(t, os.MkdirAll(watchedDir, 0755))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	events := bus.SubscribeAll()
+	defer bus.Unsubscribe(events)
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- Start(ctx, WatchConfig{
+			Root: root,
+			Watch: project.Watch{
+				Paths: []string{"packages/api"},
+			},
+		})
+	}()
+
+	waitForWatcherReady(t, filepath.Join(watchedDir, "watcher-ready.txt"), events)
+
+	unwatched := filepath.Join(root, "docs", "guide.md")
+	require.NoError(t, os.MkdirAll(filepath.Dir(unwatched), 0755))
+	require.NoError(t, os.WriteFile(unwatched, []byte("# docs\n"), 0644))
+	assert.False(t, waitForFileChangedEvent(events, unwatched, 750*time.Millisecond), "did not expect file change for %s", unwatched)
+
+	watched := filepath.Join(watchedDir, "handler.go")
+	require.NoError(t, os.WriteFile(watched, []byte("package api\n"), 0644))
+	require.True(t, waitForFileChangedEvent(events, watched, 5*time.Second), "expected file change for %s", watched)
+
+	cancel()
+	require.NoError(t, <-errCh)
+}
+
 func mustInfo(t *testing.T, path string) os.FileInfo {
 	t.Helper()
 	require.NoError(t, os.MkdirAll(path, 0755))
@@ -181,10 +217,10 @@ func mustInfo(t *testing.T, path string) os.FileInfo {
 	return info
 }
 
-func waitForWatcherReady(t *testing.T, root string, events <-chan interface{}) {
+func waitForWatcherReady(t *testing.T, probe string, events <-chan interface{}) {
 	t.Helper()
 
-	probe := filepath.Join(root, "watcher-ready.txt")
+	require.NoError(t, os.MkdirAll(filepath.Dir(probe), 0755))
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		require.NoError(t, os.WriteFile(probe, []byte(time.Now().String()), 0644))

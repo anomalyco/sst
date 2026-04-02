@@ -53,8 +53,7 @@ func resolveRoots(root string, paths []string) ([]string, error) {
 	var roots []string
 
 	for _, path := range paths {
-		resolved := filepath.Clean(filepath.Join(root, path))
-
+		resolved := filepath.Clean(filepath.Join(root, filepath.FromSlash(path)))
 		if seen[resolved] {
 			continue
 		}
@@ -133,6 +132,36 @@ func matchesIgnore(pattern string, path string) bool {
 	return false
 }
 
+func isWatchedPath(roots []string, path string) bool {
+	for _, root := range roots {
+		if isWithinPath(root, path) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func shouldWatchDir(projectRoot string, roots []string, path string) bool {
+	if filepath.Clean(path) == filepath.Clean(projectRoot) {
+		return true
+	}
+	if isWatchedPath(roots, path) {
+		return true
+	}
+	if !isWithinPath(projectRoot, path) {
+		return false
+	}
+
+	for _, root := range roots {
+		if isWithinPath(path, root) {
+			return true
+		}
+	}
+
+	return false
+}
+
 func normalizePath(path string) string {
 	path = filepath.ToSlash(filepath.Clean(path))
 	if path == "./" {
@@ -188,12 +217,15 @@ func Start(ctx context.Context, config WatchConfig) error {
 				if shouldSkipDir(config.Root, ignore, path, info) {
 					return filepath.SkipDir
 				}
+				if !shouldWatchDir(config.Root, roots, path) {
+					return filepath.SkipDir
+				}
 
 				log.Info("watching", "path", path)
 				return watcher.Add(path)
 			}
 
-			if publish && !isIgnored(config.Root, ignore, path) {
+			if publish && isWatchedPath(roots, path) && !isIgnored(config.Root, ignore, path) {
 				log.Info("discovered new file in directory", "path", path)
 				publishChange(path, true)
 			}
@@ -202,7 +234,15 @@ func Start(ctx context.Context, config WatchConfig) error {
 		})
 	}
 
+	err = watchTree(config.Root, false)
+	if err != nil {
+		return err
+	}
+
 	for _, match := range roots {
+		if isWithinPath(config.Root, match) {
+			continue
+		}
 		err = watchTree(match, false)
 		if err != nil {
 			return err
@@ -227,7 +267,7 @@ func Start(ctx context.Context, config WatchConfig) error {
 					return err
 				}
 				if err == nil && info.IsDir() {
-					if shouldSkipDir(config.Root, ignore, event.Name, info) {
+					if shouldSkipDir(config.Root, ignore, event.Name, info) || !shouldWatchDir(config.Root, roots, event.Name) {
 						log.Info("ignoring created directory", "path", event.Name)
 						continue
 					}
@@ -239,6 +279,10 @@ func Start(ctx context.Context, config WatchConfig) error {
 					continue
 				}
 			}
+			if !isWatchedPath(roots, event.Name) {
+				log.Info("ignoring unwatched file event", "path", event.Name, "op", event.Op)
+				continue
+			}
 			if isIgnored(config.Root, ignore, event.Name) {
 				log.Info("ignoring ignored file event", "path", event.Name, "op", event.Op)
 				continue
@@ -249,4 +293,14 @@ func Start(ctx context.Context, config WatchConfig) error {
 			return nil
 		}
 	}
+}
+
+func isWithinPath(root string, path string) bool {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return false
+	}
+
+	rel = normalizePath(rel)
+	return rel == "." || (!strings.HasPrefix(rel, "../") && rel != "..")
 }

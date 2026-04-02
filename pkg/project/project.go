@@ -50,6 +50,11 @@ type Watch struct {
 func (w *Watch) UnmarshalJSON(data []byte) error {
 	var paths []string
 	if err := json.Unmarshal(data, &paths); err == nil {
+		for _, path := range paths {
+			if strings.ContainsAny(path, "*?[") {
+				return util.NewReadableError(nil, fmt.Sprintf("legacy watch arrays do not support globs: %q; use explicit directories or watch.paths", path))
+			}
+		}
 		w.Paths = paths
 		w.Ignore = nil
 		return nil
