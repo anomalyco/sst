@@ -67,6 +67,18 @@ export interface D1DatabaseBinding {
   };
 }
 
+export interface HyperdriveBinding {
+  type: "hyperdriveBindings";
+  properties: {
+    id: Input<string>;
+  };
+}
+
+export interface VersionMetadataBinding {
+  type: "versionMetadataBindings";
+  properties: Record<string, never>;
+}
+
 export type Binding =
   | AiBinding
   | KvBinding
@@ -75,7 +87,9 @@ export type Binding =
   | PlainTextBinding
   | QueueBinding
   | R2BucketBinding
-  | D1DatabaseBinding;
+  | D1DatabaseBinding
+  | HyperdriveBinding
+  | VersionMetadataBinding;
 
 export function binding<T extends Binding["type"]>(input: Binding & {}) {
   return {

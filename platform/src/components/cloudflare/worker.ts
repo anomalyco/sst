@@ -404,6 +404,8 @@ export class Worker extends Component implements Link.Linkable {
                     kvNamespaceBindings: "kv_namespace",
                     d1DatabaseBindings: "d1",
                     r2BucketBindings: "r2_bucket",
+                    hyperdriveBindings: "hyperdrive",
+                    versionMetadataBindings: "version_metadata",
                   }[b.binding],
                   name,
                   ...b.properties,
