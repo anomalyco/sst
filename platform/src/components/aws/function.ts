@@ -1489,30 +1489,7 @@ export interface FunctionArgs {
     eventInvokeConfig?: Transform<lambda.FunctionEventInvokeConfigArgs>;
   };
 
-  /**
-   * Configure the function as a [Durable Function](https://docs.aws.amazon.com/lambda/latest/dg/durable-functions.html).
-   *
-   * @example
-   * Enable with defaults.
-   * ```js
-   * {
-   *   durable: true
-   * }
-   * ```
-   *
-   * Customize the execution timeout and retention period.
-   * ```js
-   * {
-   *   durable: {
-   *     timeout: "10 minutes",
-   *     retention: "2 weeks"
-   *   }
-   * }
-   * ```
-   *
-   * Check out the [AWS Lambda durable](/docs/examples/#aws-lambda-durable) for more
-   * details.
-   */
+  /** @internal */
   durable?:
     | boolean
     | Prettify<{
@@ -1744,7 +1721,10 @@ export class Function extends Component implements Link.Linkable {
     args: FunctionArgs,
     opts?: ComponentResourceOptions,
   ) {
-    super(__pulumiType, name, args, opts);
+    const type =
+      (new.target as typeof Function & { __pulumiType?: string })
+        .__pulumiType ?? __pulumiType;
+    super(type, name, args, opts);
     this.constructorName = name;
     this.durable = Boolean(args.durable);
 
@@ -3062,7 +3042,10 @@ export class Function extends Component implements Link.Linkable {
   }
 
   /** @internal */
-  public getSSTLink() {
+  public getSSTLink(): Link.Definition<{
+    name: Output<string>;
+    url?: Output<string | undefined>;
+  }> {
     return {
       properties: {
         name: this.name,

@@ -944,8 +944,10 @@ function renderType(
     }
 
     // types in different doc
-    const fileName = (type.reflection as TypeDoc.DeclarationReflection)
-      ?.sources?.[0].fileName;
+    const fileName =
+      (type.reflection as TypeDoc.DeclarationReflection)?.sources?.[0].fileName ||
+      // Some local helper types only carry a ReflectionSymbolId target.
+      ((type as any)._target?.fileName as string | undefined);
     if (fileName?.startsWith("platform/src/components/")) {
       const docHash = type.name.endsWith("Args")
         ? `#${type.name.toLowerCase()}`
@@ -2210,6 +2212,7 @@ async function buildComponents() {
       "../platform/src/components/aws/task.ts",
       "../platform/src/components/aws/vpc.ts",
       "../platform/src/components/aws/vpc-v1.ts",
+      "../platform/src/components/aws/workflow.ts",
       "../platform/src/components/cloudflare/ai.ts",
       "../platform/src/components/cloudflare/bucket.ts",
       "../platform/src/components/cloudflare/cron.ts",
