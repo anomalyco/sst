@@ -643,14 +643,14 @@ async function generateComponentDoc(
         const lines = [
           ...renderLinks(component),
           ...renderCloudflareBindings(component),
-          ...(["realtime", "task"].includes(sdk?.name!)
+          ...(["realtime", "task", "workflow"].includes(sdk?.name!)
             ? renderAbout(useModuleComment(sdk!))
             : []),
           ...(sdk
             ? renderFunctions(
                 sdk,
                 useModuleFunctions(sdk),
-                ["realtime", "task"].includes(sdk.name)
+                ["realtime", "task", "workflow"].includes(sdk.name)
                   ? { prefix: sdk.name }
                   : undefined
               )
@@ -748,6 +748,7 @@ function renderType(
     if (type.type === "literal") return renderLiteralType(type);
     if (type.type === "templateLiteral") return renderTemplateLiteralType(type);
     if (type.type === "union") return renderUnionType(type);
+    if (type.type === "indexedAccess") return renderIndexedAccessType(type);
     if (type.type === "array") return renderArrayType(type);
     if (type.type === "tuple") return renderTupleType(type);
     if (type.type === "reference" && type.package === "typescript") {
@@ -782,17 +783,29 @@ function renderType(
     ) {
       return renderBunShellType(type);
     }
+    if (type.type === "reference") {
+      return renderReferenceType(type);
+    }
     if (type.type === "reflection" && type.declaration.signatures) {
       return renderCallbackType(type);
     }
     if (type.type === "reflection" && type.declaration.children?.length) {
       return renderObjectType(type);
     }
+    if (type.type === "unknown") {
+      return renderUnknownType(type as TypeDoc.SomeType & { name?: string });
+    }
 
     // @ts-expect-error
     delete type._project;
     console.log(type);
     throw new Error(`Unsupported type "${type.type}"`);
+  }
+  function renderUnknownType(type: TypeDoc.SomeType & { name?: string }) {
+    return `<code class="type">${(type.name ?? "unknown")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")}</code>`;
   }
   function renderIntrisicType(type: TypeDoc.IntrinsicType) {
     return `<code class="primitive">${type.name}</code>`;
@@ -806,6 +819,9 @@ function renderType(
     // }
     if (type.value === true || type.value === false) {
       return `<code class="primitive">${type.value}</code>`;
+    }
+    if (typeof type.value !== "string") {
+      return `<code class="primitive">${String(type.value)}</code>`;
     }
     // String value
     // ie.
@@ -848,6 +864,9 @@ function renderType(
     const tail = type.tail[0][1].replace("{", "\\{").replace("}", "\\}");
     return `<code class="symbol">&ldquo;</code><code class="primitive">${head}$\\{${type.tail[0][0].name}\\}${tail}</code><code class="symbol">&rdquo;</code>`;
   }
+  function renderIndexedAccessType(type: TypeDoc.IndexedAccessType) {
+    return `${renderSomeType(type.objectType)}<code class="symbol">[</code>${renderSomeType(type.indexType)}<code class="symbol">]</code>`;
+  }
   function renderUnionType(type: TypeDoc.UnionType) {
     return type.types
       .map((t) => renderSomeType(t))
@@ -870,6 +889,18 @@ function renderType(
       `<code class="symbol">&lt;</code>`,
       type.typeArguments?.map((t) => renderSomeType(t)).join(", "),
       `<code class="symbol">&gt;</code>`,
+    ].join("");
+  }
+  function renderReferenceType(type: TypeDoc.ReferenceType) {
+    return [
+      `<code class="type">${type.name}</code>`,
+      ...(type.typeArguments?.length
+        ? [
+            `<code class="symbol">&lt;</code>`,
+            type.typeArguments.map((t) => renderSomeType(t)).join(", "),
+            `<code class="symbol">&gt;</code>`,
+          ]
+        : []),
     ].join("");
   }
   function renderSstComponentType(type: TypeDoc.ReferenceType) {
@@ -979,7 +1010,20 @@ function renderType(
       return `[<code class="type">${
         type.name
       }</code>](#${type.name.toLowerCase()})`;
-    } else if (type.name === "T") {
+    }
+    const fileName =
+      (type.reflection as TypeDoc.DeclarationReflection)?.sources?.[0].fileName ||
+      ((type as any)._target?.fileName as string | undefined);
+    if (
+      fileName?.startsWith("sdk/js/src/") ||
+      fileName?.includes("/sdk/js/src/")
+    ) {
+      return renderReferenceType(type);
+    }
+    if (type.refersToTypeParameter || (module.children ?? []).find((c) => c.name === type.name)) {
+      return renderReferenceType(type);
+    }
+    if (type.name === "T") {
       return `<code class="primitive">string</code>`;
     }
 
@@ -1699,22 +1743,33 @@ function renderInterfacesAtH3Level(module: TypeDoc.DeclarationReflection) {
       `</Segment>`,
       // nested props (ie. `.domain`, `.transform`)
       ...useNestedTypes(int.type!, int.name).flatMap(
-        ({ depth, prefix, subType }) => [
-          `<NestedTitle id="${useLinkHashes(module).get(subType)}" Tag="${
-            depth === 0 ? "h4" : "h5"
-          }" parent="${prefix}.">${renderName(subType)}</NestedTitle>`,
-          `<Segment>`,
-          `<Section type="parameters">`,
-          `<InlineSection>`,
-          `**Type** ${renderType(module, subType)}`,
-          `</InlineSection>`,
-          `</Section>`,
-          ...renderDefaultTag(module, subType),
-          ...renderDescription(subType),
-          ``,
-          ...renderExamples(subType),
-          `</Segment>`,
-        ]
+        ({ depth, prefix, subType }) => {
+          return subType.kind === TypeDoc.ReflectionKind.Method
+            ? renderMethod(module, subType, {
+                methodTitle: `<NestedTitle id="${useLinkHashes(module).get(
+                  subType
+                )}" Tag="${depth === 0 ? "h4" : "h5"}" parent="${prefix}.">${renderName(
+                  subType
+                )}</NestedTitle>`,
+                parametersTitle: `**Parameters**`,
+              })
+            : [
+                `<NestedTitle id="${useLinkHashes(module).get(subType)}" Tag="${
+                  depth === 0 ? "h4" : "h5"
+                }" parent="${prefix}.">${renderName(subType)}</NestedTitle>`,
+                `<Segment>`,
+                `<Section type="parameters">`,
+                `<InlineSection>`,
+                `**Type** ${renderType(module, subType)}`,
+                `</InlineSection>`,
+                `</Section>`,
+                ...renderDefaultTag(module, subType),
+                ...renderDescription(subType),
+                ``,
+                ...renderExamples(subType),
+                `</Segment>`,
+              ];
+        }
       )
     );
   }
@@ -2291,6 +2346,7 @@ async function buildSdk() {
     entryPoints: [
       "../sdk/js/src/aws/realtime.ts",
       "../sdk/js/src/aws/task.ts",
+      "../sdk/js/src/aws/workflow.ts",
       "../sdk/js/src/vector/index.ts",
     ],
     tsconfig: "../sdk/js/tsconfig.json",
