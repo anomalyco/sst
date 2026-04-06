@@ -87,7 +87,10 @@ const sidebar = [
           "docs/component/aws/bus",
           "docs/component/aws/vpc",
           "docs/component/aws/task",
-          "docs/component/aws/cron-v2",
+          {
+            label: "Cron",
+            slug: "docs/component/aws/cron-v2",
+          },
           "docs/component/aws/auth",
           "docs/component/aws/nuxt",
           "docs/component/aws/dsql",
@@ -226,9 +229,7 @@ const sidebar = [
           {
             label: "Internal",
             collapsed: true,
-            items: [
-              "docs/component/cloudflare/queue-worker-subscriber",
-            ],
+            items: ["docs/component/cloudflare/queue-worker-subscriber"],
           },
         ],
       },

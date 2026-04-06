@@ -52,17 +52,6 @@ jobs:
       - name: Setup QEMU
         uses: docker/setup-qemu-action@v3
 
-      - name: Setup SSH for AUR
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y pacman-package-manager
-          mkdir -p ~/.ssh
-          echo "${{ secrets.AUR_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          git config --global user.email "sst@sst.dev"
-          git config --global user.name "sst"
-          ssh-keyscan -H aur.archlinux.org >> ~/.ssh/known_hosts || true
-
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -80,7 +69,7 @@ jobs:
         env:
           DOCKER_PUSH: true
 
-      - name: Release
+      - name: Release CLI
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
@@ -99,11 +88,11 @@ jobs:
         id: crates-auth
         uses: rust-lang/crates-io-auth-action@v1
 
-      # - name: Release Rust SDK
-      #   run: |
-      #     VERSION=$(jq -r .version dist/metadata.json)
-      #     cd sdk/rust
-      #     sed -i "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
-      #     cargo publish --allow-dirty
-      #   env:
-      #     CARGO_REGISTRY_TOKEN: ${{ steps.crates-auth.outputs.token }}
+      - name: Release Rust SDK
+        run: |
+          VERSION=$(jq -r .version dist/metadata.json)
+          cd sdk/rust
+          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
+          cargo publish --allow-dirty
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.crates-auth.outputs.token }}

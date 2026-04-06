@@ -156,6 +156,9 @@ func CmdMosaic(c *cli.Cli) error {
 	if err != nil {
 		return err
 	}
+	if p.App().Protect {
+		return project.ErrProtectedDevStage
+	}
 	policyPath := c.String("policy")
 	if policyPath != "" {
 		if _, err := p.ResolvePolicyPackPath(policyPath); err != nil {

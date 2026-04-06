@@ -3,13 +3,10 @@ import {
   LambdaClient,
   SendDurableExecutionCallbackSuccessCommand,
   SendDurableExecutionCallbackFailureCommand,
-  SendDurableExecutionCallbackHeartbeat$,
   SendDurableExecutionCallbackHeartbeatCommand,
 } from "@aws-sdk/client-lambda";
 
-type Event = {};
-
-const lambdaClient = new LambdaClient();
+const client = new LambdaClient();
 
 export const handler = async (event: APIGatewayProxyEventV2) => {
   const { callbackId, action } = event.queryStringParameters || {};
@@ -17,7 +14,9 @@ export const handler = async (event: APIGatewayProxyEventV2) => {
   if (!callbackId) {
     return {
       statusCode: 400,
-      body: JSON.stringify({ message: "Missing callbackId in query parameters" }),
+      body: JSON.stringify({
+        message: "Missing callbackId in query parameters",
+      }),
     };
   }
 
@@ -37,13 +36,13 @@ export const handler = async (event: APIGatewayProxyEventV2) => {
     });
   }
 
-  if(action === "heartbeat") {
+  if (action === "heartbeat") {
     command = new SendDurableExecutionCallbackHeartbeatCommand({
       CallbackId: callbackId!,
     });
   }
 
-  await lambdaClient.send(command);
+  await client.send(command);
 
   return {
     statusCode: 200,

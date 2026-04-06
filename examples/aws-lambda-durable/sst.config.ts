@@ -1,7 +1,7 @@
 /// <reference path="./.sst/platform/config.d.ts" />
 
 /**
- * ## Lambda Durable Function
+ * ## AWS Lambda Durable
  *
  * Creates an [Durable Function](https://docs.aws.amazon.com/lambda/latest/dg/durable-functions.html)
  */
@@ -17,7 +17,7 @@ export default $config({
     const durableFunction = new sst.aws.Function("Durable", {
       handler: "src/index.handler",
       durable: true,
-      url: true
+      url: true,
     });
 
     new sst.aws.Function("Resolver", {

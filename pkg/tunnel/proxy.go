@@ -29,7 +29,7 @@ func StartProxy(ctx context.Context, username string, host string, key []byte) e
 	defer sshClient.Close()
 	server, err := socks5.New(&socks5.Config{
 		Dial: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			fmt.Println(ui.TEXT_INFO_BOLD.Render(("| "), ui.TEXT_NORMAL.Render("Tunneling", network, addr)))
+			fmt.Println(ui.GetColor(addr).Bold(true).Render("| ") + ui.TEXT_NORMAL.Render("Tunneling "+network+" "+addr))
 			return sshClient.Dial(network, addr)
 		},
 	})

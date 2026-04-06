@@ -33,14 +33,6 @@ import (
 )
 
 func (p *Project) Run(ctx context.Context, input *StackInput) error {
-	// if flag.SST_EXPERIMENTAL {
-	// 	slog.Info("using next run system")
-	// }
-	// return p.RunOld(ctx, input)
-	return p.RunNext(ctx, input)
-}
-
-func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	log := slog.Default().With("service", "project.run")
 	log.Info("running stack command", "cmd", input.Command)
 

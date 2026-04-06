@@ -110,7 +110,7 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 	if properties.Plugins != "" {
 		plugins = append(plugins, plugin(properties.Plugins))
 	}
-	external := append(forceExternal, properties.Install...)
+	external := append(forceExternal, resolveInstallPackages(properties.Install)...)
 	external = append(external, properties.ESBuild.External...)
 	slog.Debug("esbuild options",
 		"target", properties.ESBuild.Target,
@@ -165,6 +165,7 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 			".js": ".mjs",
 		}
 		options.Outfile = ""
+		options.EntryNames = "bundle"
 	}
 
 	if !input.Dev {
@@ -240,7 +241,7 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		var metafile js.Metafile
 		json.Unmarshal([]byte(result.Metafile), &metafile)
 
-		installPackages := properties.Install
+		installPackages := resolveInstallPackages(properties.Install)
 		for _, pkg := range forceExternal {
 			if slices.Contains(properties.ESBuild.External, pkg) {
 				continue
@@ -256,7 +257,7 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 
 		if len(installPackages) > 0 {
 			log.Info("installing", "packages", installPackages)
-			src, err := fs.FindUp(filepath.Dir(target), "package.json")
+			src, err := fs.FindUp(filepath.Dir(file), "package.json")
 			if err != nil {
 				return nil, err
 			}
@@ -272,10 +273,7 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 			}
 			dependencies := map[string]string{}
 			for _, pkg := range installPackages {
-				dependencies[pkg] = "*"
-				if parsed.Dependencies[pkg] != "" {
-					dependencies[pkg] = parsed.Dependencies[pkg]
-				}
+				dependencies[pkg] = resolveInstallVersion(pkg, properties.Install, parsed)
 			}
 			outPkg := filepath.Join(input.Out(), "package.json")
 			outFile, err := os.Create(outPkg)
@@ -320,4 +318,22 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		Errors:     errors,
 		Sourcemaps: sourcemaps,
 	}, nil
+}
+
+func resolveInstallPackages(install map[string]string) []string {
+	result := make([]string, 0, len(install))
+	for pkg := range install {
+		result = append(result, pkg)
+	}
+	return result
+}
+
+func resolveInstallVersion(pkg string, install map[string]string, packageJSON js.PackageJson) string {
+	if version, ok := install[pkg]; ok && version != "" && version != "*" {
+		return version
+	}
+	if version := packageJSON.Dependencies[pkg]; version != "" {
+		return version
+	}
+	return "*"
 }

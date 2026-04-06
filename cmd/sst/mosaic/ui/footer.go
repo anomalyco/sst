@@ -248,6 +248,7 @@ var TEXT_NORMAL_BOLD = TEXT_NORMAL.Copy().Bold(true)
 
 var TEXT_WARNING = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
 var TEXT_WARNING_BOLD = TEXT_WARNING.Copy().Bold(true)
+var TEXT_WARNING_DIM = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 
 var TEXT_DANGER = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 var TEXT_DANGER_BOLD = TEXT_DANGER.Copy().Bold(true)

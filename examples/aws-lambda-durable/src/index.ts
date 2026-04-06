@@ -1,6 +1,9 @@
-import { withDurableExecution, DurableContext } from "@aws/durable-execution-sdk-js";
+import {
+  withDurableExecution,
+  DurableContext,
+} from "@aws/durable-execution-sdk-js";
 
-export const handler = withDurableExecution(async (event: any, context: DurableContext) => {
+export const handler = withDurableExecution(async (event, context) => {
   const step1 = await context.step("step1", async ({ logger }) => {
     logger.info("Executing step 1");
     return "Hello";
@@ -17,11 +20,4 @@ export const handler = withDurableExecution(async (event: any, context: DurableC
       },
     },
   );
-
-  const step2 = await context.step("step2", async ({ logger }) => {
-    logger.info("Executing step 2");
-    return `${step1} World!`;
-  });
-
-  return { step1, step2, callbackResult };
 });
