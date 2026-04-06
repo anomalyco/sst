@@ -8,7 +8,7 @@ import rehypeAutolinkHeadings from "rehype-autolink-headings";
 
 const sidebar = [
   { label: "Intro", slug: "docs" },
-  { label: "Workflow", slug: "docs/workflow" },
+  { label: "Basics", slug: "docs/basics" },
   { label: "Enterprise", slug: "docs/enterprise" },
   {
     label: "Get Started",
@@ -297,6 +297,8 @@ export default defineConfig({
     "/install": "https://raw.githubusercontent.com/sst/sst/dev/install",
     "/discord": "https://discord.gg/sst",
     "/guide": "https://guide.sst.dev",
+    "/docs/workflow": "/docs/basics",
+    "/docs/workflow/": "/docs/basics/",
     "/docs/start/aws/container": "/docs/start/aws/express",
   },
   integrations: [
