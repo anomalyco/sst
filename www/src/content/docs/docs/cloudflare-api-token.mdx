@@ -1,0 +1,58 @@
+---
+title: Cloudflare API Token
+description: Set up the Cloudflare token SST uses for deployments.
+---
+
+SST needs a Cloudflare API token and account ID before it can deploy to Cloudflare.
+
+Use a Cloudflare [account token](https://developers.cloudflare.com/fundamentals/api/get-started/account-owned-tokens/). It works better for automation because it is not tied to one user.
+
+Before you run `sst dev` or `sst deploy`, set:
+
+```bash
+export CLOUDFLARE_API_TOKEN=aaaaaaaa_aaaaaaaaaaaa_aaaaaaaa
+export CLOUDFLARE_DEFAULT_ACCOUNT_ID=aaaaaaaa_aaaaaaaaaaaa_aaaaaaaa
+```
+
+---
+
+## 1. Create the token
+
+In the Cloudflare dashboard, go to **Manage Account** > **API Tokens** and create an **Account token**.
+
+Start with the **Edit Cloudflare Workers** template. Then add these permissions.
+
+- **Account - D1 - Edit**
+- **Zone - DNS - Edit**
+
+If your app uses other Cloudflare products, add the permissions those features need.
+
+If you use Hyperdrive, also add:
+
+- **Account - Hyperdrive - Edit**
+
+---
+
+## 2. Scope the token
+
+Give the token access to the account you want SST to manage.
+
+If you are using Cloudflare DNS with SST, include the zones SST should update.
+
+---
+
+## 3. Set the account ID
+
+Set `CLOUDFLARE_DEFAULT_ACCOUNT_ID` to the Cloudflare account ID SST should use.
+
+If you leave it unset, SST falls back to the first account Cloudflare returns for that token.
+
+---
+
+## 4. Add the credentials to your environment
+
+Set these variables in your shell, `.env`, CI, or SST Console environment before you deploy.
+
+:::note
+Do not store these with `sst secret` for the initial Cloudflare deploy. SST reads them before it can create resources.
+:::
