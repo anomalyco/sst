@@ -27,6 +27,7 @@
     "release": "./scripts/release.ts"
   },
   "devDependencies": {
+    "@aws/durable-execution-sdk-js-testing": "^1.1.1",
     "@tsconfig/node20": "20.1.4",
     "@types/aws-lambda": "^8.10.155",
     "@types/node": "22.10.0",

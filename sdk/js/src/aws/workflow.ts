@@ -69,7 +69,9 @@ function normalizeError(error: workflow.ErrorInput): LambdaError {
     return {
       ErrorMessage: message,
       ErrorType: name,
-      ErrorData: Object.keys(rest).length ? serializeErrorData(rest) : undefined,
+      ErrorData: Object.keys(rest).length
+        ? serializeErrorData(rest)
+        : undefined,
       StackTrace: normalizeStack(stack),
     };
   }
@@ -83,14 +85,7 @@ function normalizeError(error: workflow.ErrorInput): LambdaError {
 
   if (typeof error === "object") {
     const value = error as Record<string, unknown>;
-    const {
-      data,
-      message,
-      name,
-      stack,
-      type,
-      ...rest
-    } = value;
+    const { data, message, name, stack, type, ...rest } = value;
 
     const hasKnownFields =
       message !== undefined ||
@@ -100,8 +95,7 @@ function normalizeError(error: workflow.ErrorInput): LambdaError {
       stack !== undefined;
 
     return {
-      ErrorMessage:
-        typeof message === "string" ? message : "Callback failed",
+      ErrorMessage: typeof message === "string" ? message : "Callback failed",
       ErrorType:
         typeof type === "string"
           ? type
@@ -126,30 +120,147 @@ function normalizeError(error: workflow.ErrorInput): LambdaError {
   };
 }
 
+const rollbackStateSymbol = Symbol("sst.workflow.rollback.state");
+
+interface RollbackEntry<
+  TLogger extends durable.DurableLogger = durable.DurableLogger,
+> {
+  name: string;
+  execute(
+    error: unknown,
+    context: durable.DurableContext<TLogger>,
+  ): Promise<void>;
+}
+
+interface RollbackState<
+  TLogger extends durable.DurableLogger = durable.DurableLogger,
+> {
+  undoStack: RollbackEntry<TLogger>[];
+}
+
+type WrappedDurableContext<
+  TLogger extends durable.DurableLogger = durable.DurableLogger,
+> = durable.DurableContext<TLogger> & {
+  [rollbackStateSymbol]?: RollbackState<TLogger>;
+};
+
 /**
  * The `workflow` SDK is available through the following.
+ *
+ * SST also adds a few helpers on top of the base AWS durable execution SDK,
+ * including `ctx.stepWithRollback()`, `ctx.rollbackAll()`, and `ctx.waitUntil()`.
  *
  * @example
  * ```ts title="src/workflow.ts"
  * import { workflow } from "sst/aws/workflow";
  * ```
+ *
+ * @example
+ * Use `stepWithRollback()` and `rollbackAll()` to register compensating actions.
+ *
+ * ```ts title="src/workflow.ts"
+ * import { workflow } from "sst/aws/workflow";
+ *
+ * export const handler = workflow.handler(async (_event, ctx) => {
+ *   try {
+ *     const order = await ctx.stepWithRollback("create-order", {
+ *       run: async () => ({ orderId: "order_123" }),
+ *       undo: async (_error, result) => {
+ *         await fetch(`https://example.com/orders/${result.orderId}`, {
+ *           method: "DELETE",
+ *         });
+ *       },
+ *     });
+ *
+ *     return order;
+ *   } catch (error) {
+ *     await ctx.rollbackAll(error);
+ *     throw error;
+ *   }
+ * });
+ * ```
+ *
+ * @example
+ * Use `waitUntil()` when you already know the exact time the workflow should resume.
+ *
+ * ```ts title="src/workflow.ts"
+ * import { workflow } from "sst/aws/workflow";
+ *
+ * export const handler = workflow.handler(
+ *   async (_event, ctx) => {
+ *     const resumeAt = new Date();
+ *     resumeAt.setMinutes(resumeAt.getMinutes() + 10);
+ *
+ *     await ctx.waitUntil("wait-for-follow-up", resumeAt);
+ *
+ *     return ctx.step("send-follow-up", async () => {
+ *       return { delivered: true };
+ *     });
+ *   },
+ * );
+ * ```
  */
 export namespace workflow {
-  export type Context<
+  interface StepWithRollbackHandler<
+    TOutput = any,
     TLogger extends durable.DurableLogger = durable.DurableLogger,
-  > = durable.DurableContext<TLogger>;
+  > {
+    /**
+     * The durable step to execute.
+     */
+    run: durable.StepFunc<TOutput, TLogger>;
+    /**
+     * Called during rollback with the original error, the step result, and step context.
+     */
+    undo: (
+      error: unknown,
+      value: TOutput,
+      context: Parameters<durable.StepFunc<void, TLogger>>[0],
+    ) => Promise<void>;
+  }
+
+  interface StepWithRollbackConfig<TOutput = any>
+    extends StepConfig<TOutput> {
+    /**
+     * The config used for the rollback step. Defaults to inheriting the run step's retry strategy
+     * and semantics.
+     */
+    undo?: "inherit" | durable.StepConfig<void>;
+  }
+
+  export interface Context<
+    TLogger extends durable.DurableLogger = durable.DurableLogger,
+  > extends durable.DurableContext<TLogger> {
+    /**
+     * Execute a durable step and register a compensating rollback step if it succeeds.
+     */
+    stepWithRollback<TOutput>(
+      name: string,
+      handler: StepWithRollbackHandler<TOutput, TLogger>,
+      config?: StepWithRollbackConfig<TOutput>,
+    ): durable.DurablePromise<TOutput>;
+    /**
+     * Wait until the provided time. Delays are rounded up to the nearest second.
+     */
+    waitUntil(name: string, until: Date): durable.DurablePromise<void>;
+    /**
+     * Execute all registered rollback steps in reverse order.
+     */
+    rollbackAll(error: unknown): Promise<void>;
+  }
+
   export type Handler<
     TEvent = any,
     TResult = any,
     TLogger extends durable.DurableLogger = durable.DurableLogger,
-  > = durable.DurableExecutionHandler<TEvent, TResult, TLogger>;
+  > = (event: TEvent, context: Context<TLogger>) => Promise<TResult>;
   export type Config = durable.DurableExecutionConfig;
   export type Duration = durable.Duration;
   export type StepConfig<TOutput = any> = durable.StepConfig<TOutput>;
 
   export interface Resource {
     /**
-     * The name of the function.
+     * The name of the workflow function.
      */
     name: string;
   }
@@ -162,7 +273,7 @@ export namespace workflow {
     aws?: aws.Options;
   }
 
-  export interface StartInput<TPayload = unknown> {
+  interface StartInput<TPayload = unknown> {
     /**
      * The unique name for this workflow execution.
      */
@@ -173,14 +284,14 @@ export namespace workflow {
     payload?: TPayload;
   }
 
-  export interface SucceedInput<TPayload = unknown> {
+  interface SucceedInput<TPayload = unknown> {
     /**
      * The payload to resolve the callback with.
      */
     payload?: TPayload;
   }
 
-  export interface StartInvocationResponse {
+  interface StartInvocationResponse {
     /**
      * The HTTP status code from Lambda.
      */
@@ -207,7 +318,7 @@ export namespace workflow {
     DurableExecutionArn?: string;
   }
 
-  export interface ErrorDetails {
+  interface ErrorDetails {
     /**
      * Human-readable error message.
      */
@@ -227,7 +338,7 @@ export namespace workflow {
     [key: string]: unknown;
   }
 
-  export type ErrorInput =
+  type ErrorInput =
     | Error
     | string
     | ErrorDetails
@@ -238,7 +349,7 @@ export namespace workflow {
     | null
     | undefined;
 
-  export interface FailInput {
+  interface FailInput {
     /**
      * The error to reject the callback with. Supports an `Error`, a string,
      * or an object with camelCase fields like `message`, `type`, `data`, and `stack`.
@@ -246,7 +357,7 @@ export namespace workflow {
     error: ErrorInput;
   }
 
-  export interface StartResponse {
+  interface StartResponse {
     /**
      * The ARN of the durable execution.
      */
@@ -265,14 +376,158 @@ export namespace workflow {
     response: StartInvocationResponse;
   }
 
+  function resolveRunConfig<TOutput>(
+    config?: StepWithRollbackConfig<TOutput>,
+  ): StepConfig<TOutput> | undefined {
+    if (!config) return undefined;
+
+    const runConfig: StepConfig<TOutput> = {};
+    if (config.retryStrategy) runConfig.retryStrategy = config.retryStrategy;
+    if (config.semantics) runConfig.semantics = config.semantics;
+    if (config.serdes) runConfig.serdes = config.serdes;
+
+    return Object.keys(runConfig).length ? runConfig : undefined;
+  }
+
+  function resolveUndoConfig<TOutput>(
+    config?: StepWithRollbackConfig<TOutput>,
+  ): durable.StepConfig<void> | undefined {
+    if (!config) return undefined;
+    if (config.undo && config.undo !== "inherit") return config.undo;
+
+    const undoConfig: durable.StepConfig<void> = {};
+    if (config.retryStrategy) undoConfig.retryStrategy = config.retryStrategy;
+    if (config.semantics) undoConfig.semantics = config.semantics;
+
+    return Object.keys(undoConfig).length ? undoConfig : undefined;
+  }
+
+  function resolveWaitUntilDuration(until: Date): Duration {
+    const timestamp = until.getTime();
+    if (!Number.isFinite(timestamp)) {
+      throw new TypeError("waitUntil requires a valid Date");
+    }
+
+    return {
+      seconds: Math.max(0, Math.ceil((timestamp - Date.now()) / 1000)),
+    };
+  }
+
+  function withRollback<
+    TLogger extends durable.DurableLogger = durable.DurableLogger,
+  >(context: durable.DurableContext<TLogger>): Context<TLogger> {
+    const wrapped = context as WrappedDurableContext<TLogger>;
+    if (wrapped[rollbackStateSymbol]) return wrapped as Context<TLogger>;
+
+    const rollbackState: RollbackState<TLogger> = { undoStack: [] };
+
+    wrapped[rollbackStateSymbol] = rollbackState;
+
+    Object.defineProperty(wrapped, "stepWithRollback", {
+      configurable: true,
+      enumerable: false,
+      writable: true,
+      value: function <TOutput>(
+        name: string,
+        handler: StepWithRollbackHandler<TOutput, TLogger>,
+        config?: StepWithRollbackConfig<TOutput>,
+      ): durable.DurablePromise<TOutput> {
+        const runConfig = resolveRunConfig(config);
+        const undoConfig = resolveUndoConfig(config);
+
+        return new durable.DurablePromise(async () => {
+          const result = await context.step(name, handler.run, runConfig);
+
+          rollbackState.undoStack.push({
+            name,
+            execute: async (
+              error: unknown,
+              rollbackContext: durable.DurableContext<TLogger>,
+            ) => {
+              await rollbackContext.step(
+                `Undo '${name}'`,
+                (stepContext) => handler.undo(error, result, stepContext),
+                undoConfig,
+              );
+            },
+          });
+
+          return result;
+        });
+      },
+    });
+
+    Object.defineProperty(wrapped, "waitUntil", {
+      configurable: true,
+      enumerable: false,
+      writable: true,
+      value: (name: string, until: Date): durable.DurablePromise<void> =>
+        context.wait(name, resolveWaitUntilDuration(until)),
+    });
+
+    Object.defineProperty(wrapped, "rollbackAll", {
+      configurable: true,
+      enumerable: false,
+      writable: true,
+      value: async (error: unknown) => {
+        while (rollbackState.undoStack.length > 0) {
+          const rollbackStep = rollbackState.undoStack.pop();
+          if (!rollbackStep) continue;
+
+          try {
+            await rollbackStep.execute(error, context);
+          } catch (undoError) {
+            throw new RollbackError(rollbackStep.name, error, undoError);
+          }
+        }
+      },
+    });
+
+    return wrapped as Context<TLogger>;
+  }
+
+  /**
+   * Create a durable workflow handler.
+   *
+   * @example
+   * ```ts title="src/workflow.ts"
+   * import { workflow } from "sst/aws/workflow";
+   *
+   * export const handler = workflow.handler(
+   *   async (_event, ctx) => {
+   *     const user = await ctx.step("load-user", async () => {
+   *       return { id: "user_123", email: "alice@example.com" };
+   *     });
+   *
+   *     await ctx.wait("pause-before-email", "1 minute");
+   *
+   *     return ctx.step("send-email", async () => {
+   *       return { sent: true, userId: user.id };
+   *     });
+   *   },
+   * );
+   * ```
+   */
   export function handler<
     TEvent = any,
     TResult = any,
     TLogger extends durable.DurableLogger = durable.DurableLogger,
   >(input: Handler<TEvent, TResult, TLogger>, config?: Config) {
-    return durable.withDurableExecution(input, config);
+    return durable.withDurableExecution(
+      (event: TEvent, context: durable.DurableContext<TLogger>) =>
+        input(event, withRollback(context)),
+      config,
+    );
   }
 
+  /**
+   * Start a new workflow execution.
+   *
+   * This is the equivalent to calling
+   * [`Invoke`](https://docs.aws.amazon.com/lambda/latest/api/API_Invoke.html)
+   * for a durable Lambda function, using the durable invocation flow described in
+   * [Invoking durable Lambda functions](https://docs.aws.amazon.com/lambda/latest/dg/durable-invoking.html).
+   */
   export async function start<TPayload = unknown>(
     resource: Resource,
     input: StartInput<TPayload>,
@@ -294,7 +549,9 @@ export namespace workflow {
           "X-Amz-Invocation-Type": "Event",
         },
         body:
-          input.payload === undefined ? undefined : JSON.stringify(input.payload),
+          input.payload === undefined
+            ? undefined
+            : JSON.stringify(input.payload),
       },
       options,
     );
@@ -303,6 +560,12 @@ export namespace workflow {
     return parseStartResponse(response);
   }
 
+  /**
+   * Send a successful result for a pending workflow callback.
+   *
+   * This is the equivalent to calling
+   * [`SendDurableExecutionCallbackSuccess`](https://docs.aws.amazon.com/lambda/latest/api/API_SendDurableExecutionCallbackSuccess.html).
+   */
   export async function succeed<TPayload = unknown>(
     token: string,
     input: SucceedInput<TPayload> = {},
@@ -319,7 +582,9 @@ export namespace workflow {
           "Content-Type": "application/json",
         },
         body:
-          input.payload === undefined ? undefined : JSON.stringify(input.payload),
+          input.payload === undefined
+            ? undefined
+            : JSON.stringify(input.payload),
       },
       options,
     );
@@ -328,6 +593,12 @@ export namespace workflow {
     return response;
   }
 
+  /**
+   * Send a failure result for a pending workflow callback.
+   *
+   * This is the equivalent to calling
+   * [`SendDurableExecutionCallbackFailure`](https://docs.aws.amazon.com/lambda/latest/api/API_SendDurableExecutionCallbackFailure.html).
+   */
   export async function fail(
     token: string,
     input: FailInput,
@@ -352,6 +623,15 @@ export namespace workflow {
     return response;
   }
 
+  /**
+   * Send a heartbeat for a pending workflow callback.
+   *
+   * This is useful when the external system handling the callback is still doing
+   * work and needs to prevent the callback from timing out.
+   *
+   * This is the equivalent to calling
+   * [`SendDurableExecutionCallbackHeartbeat`](https://docs.aws.amazon.com/lambda/latest/api/API_SendDurableExecutionCallbackHeartbeat.html).
+   */
   export async function heartbeat(
     token: string,
     options?: Options,
@@ -392,6 +672,21 @@ export namespace workflow {
   export class HeartbeatError extends Error {
     constructor(public readonly response: Response) {
       super("Failed to heartbeat workflow callback");
+    }
+  }
+
+  export class RollbackError extends Error {
+    constructor(
+      public readonly stepName: string,
+      public readonly originalError: unknown,
+      public readonly undoError: unknown,
+    ) {
+      super(
+        `Failed to rollback workflow step '${stepName}': ${
+          undoError instanceof Error ? undoError.message : String(undoError)
+        }`,
+      );
+      this.name = "RollbackError";
     }
   }
 }
