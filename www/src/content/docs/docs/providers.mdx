@@ -110,11 +110,14 @@ So if you want to update it, you'll need to change it manually and run `sst inst
 
 ### Credentials
 
-Most providers will read your credentials from the environment. For example, for Cloudflare you might set your token like so.
+Most providers read credentials from the environment. Cloudflare is a little different: SST usually needs both the API token and the default account ID.
 
 ```bash
 export CLOUDFLARE_API_TOKEN=aaaaaaaa_aaaaaaaaaaaa_aaaaaaaa
+export CLOUDFLARE_DEFAULT_ACCOUNT_ID=aaaaaaaa_aaaaaaaaaaaa_aaaaaaaa
 ```
+
+Follow the [Cloudflare API token guide](/docs/cloudflare-api-token/) for the recommended setup.
 
 However, some providers also allow you to pass in the credentials through the config.
 

@@ -199,14 +199,16 @@ If your domains are hosted on [Cloudflare](https://developers.cloudflare.com/dns
    sst add cloudflare
    ```
 
-2. Set the **`CLOUDFLARE_API_TOKEN`** in your environment.
+2. Set the Cloudflare token and account ID in your environment.
 
    ```bash
    export CLOUDFLARE_API_TOKEN=aaaaaaaa_aaaaaaaaaaaa_aaaaaaaa
    export CLOUDFLARE_DEFAULT_ACCOUNT_ID=aaaaaaaa_aaaaaaaaaaaa_aaaaaaaa
    ```
 
-   To get your API tokens, head to the [API Tokens section](https://dash.cloudflare.com/profile/api-tokens) of your Cloudflare dashboard and create one with the **Edit zone DNS** policy.
+   Follow the [Cloudflare API token guide](/docs/cloudflare-api-token/) to create it.
+
+   For custom domains, the token also needs **Zone - DNS - Edit** for the zones SST should update.
 
    The Cloudflare providers need these credentials to deploy your app in the first place, which means they can't be set using the `sst secret` CLI.
 

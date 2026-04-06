@@ -62,6 +62,7 @@ const sidebar = [
     items: [
       { label: "AWS Accounts", slug: "docs/aws-accounts" },
       { label: "IAM Credentials", slug: "docs/iam-credentials" },
+      { label: "Cloudflare API Token", slug: "docs/cloudflare-api-token" },
       { label: "Migrate From v2", slug: "docs/migrate-from-v2" },
       { label: "Migrate From v3", slug: "docs/migrate-from-v3" },
       { label: "Custom Domains", slug: "docs/custom-domains" },
