@@ -28,6 +28,7 @@ export default $config({
       handler: "resolver/main.handler",
       runtime: "python3.13",
       url: true,
+      link: [workflow],
     });
 
     const invoker = new sst.aws.Function("Invoker", {

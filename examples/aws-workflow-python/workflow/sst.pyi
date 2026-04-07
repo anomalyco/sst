@@ -7,18 +7,16 @@ class Resource:
     class App:
         name: str
         stage: str
-
+    class Invoker:
+        name: str
+        type: str
+        url: str
+    class Resolver:
+        name: str
+        type: str
+        url: str
     class Workflow:
         name: str
         qualifier: str
         type: str
 
-    class Invoker:
-        name: str
-        type: str
-        url: str
-
-    class Resolver:
-        name: str
-        type: str
-        url: str

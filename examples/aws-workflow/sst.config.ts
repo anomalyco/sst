@@ -25,6 +25,7 @@ export default $config({
     const resolver = new sst.aws.Function("Resolver", {
       handler: "src/resolver.handler",
       url: true,
+      link: [workflow],
     });
 
     const invoker = new sst.aws.Function("Invoker", {
