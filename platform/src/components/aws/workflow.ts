@@ -44,19 +44,24 @@ export interface WorkflowArgs
    */
   retention?: Input<DurationDays>;
   /**
-   * Configure timeout limits for the workflow.
+   * Configure timeout limits for the workflow execution and each underlying Lambda invocation.
    */
   timeout?: Input<{
     /**
-     * Maximum execution time for the workflow across all durable invocations.
+     * Maximum execution time for the entire workflow execution, from when it starts until it completes.
      *
-     * @default `"15 minutes"`
+     * This includes time spent across retries, replays, waits, and all durable invocations.
+     *
+     * @default `"1 hour"`
      */
-    global?: Input<Duration>;
+    execution?: Input<Duration>;
     /**
      * Maximum execution time for each underlying Lambda invocation.
      *
-     * @default `"20 seconds"`
+     * This is not a per-step timeout. A single invocation can run multiple steps before the
+     * workflow yields, waits, or replays.
+     *
+     * @default `"1 minute"`
      */
     invocation?: Input<DurationMinutes>;
   }>;
@@ -129,6 +134,7 @@ export interface WorkflowArgs
  *
  * It is a thin wrapper around the [`Function`](/docs/component/aws/function) component
  * with durable execution enabled.
+ * It includes an [SDK](/docs/components/aws/workflow/#sdk) that wraps the AWS SDK with a simpler interface, adds helper methods like rollback support, and integrates easily with other SST components.
  *
  * @example
  *
@@ -163,7 +169,7 @@ export interface WorkflowArgs
  *   handler: "src/workflow.handler",
  *   retention: "30 days",
  *   timeout: {
- *     global: "1 hour",
+ *     execution: "2 hours",
  *     invocation: "30 seconds",
  *   },
  * });
@@ -191,6 +197,68 @@ export interface WorkflowArgs
  * });
  * ```
  *
+ * #### Trigger with a cron job
+ *
+ * ```ts {5-8} title="sst.config.ts"
+ * const workflow = new sst.aws.Workflow("MyWorkflow", {
+ *   handler: "src/workflow.handler",
+ * });
+ *
+ * new sst.aws.CronV2("MyCron", {
+ *   schedule: "rate(1 minute)",
+ *   function: workflow,
+ * });
+ * ```
+ *
+ * ```ts title="src/workflow.ts"
+ * import { workflow } from "sst/aws/workflow";
+ *
+ * export const handler = workflow.handler(async (_event, ctx) => {
+ *   await ctx.step("start", async ({ logger }) => {
+ *     logger.info({ message: "Workflow invoked by cron" });
+ *   });
+ * });
+ * ```
+ *
+ * #### Subscribe to a bus
+ *
+ * ```ts {6-9} title="sst.config.ts"
+ * const workflow = new sst.aws.Workflow("MyWorkflow", {
+ *   handler: "src/workflow.handler",
+ * });
+ *
+ * const bus = new sst.aws.Bus("MyBus");
+ *
+ * bus.subscribe("MySubscriber", workflow, {
+ *   pattern: {
+ *     detailType: ["app.workflow.requested"],
+ *   },
+ * });
+ * ```
+ *
+ * ```ts title="src/workflow.ts"
+ * import { workflow } from "sst/aws/workflow";
+ *
+ * interface Event {
+ *   "detail-type": string;
+ *   detail: {
+ *     properties: {
+ *       message: string;
+ *       requestId: string;
+ *     };
+ *   };
+ * }
+ *
+ * export const handler = workflow.handler<Event>(async (event, ctx) => {
+ *   await ctx.step("start", async ({ logger }) => {
+ *     logger.info({
+ *       message: "Workflow invoked by bus",
+ *       requestId: event.detail.properties.requestId,
+ *     });
+ *   });
+ * });
+ * ```
+ *
  * ---
  *
  * ### Limitations
@@ -200,13 +268,8 @@ export interface WorkflowArgs
  * ID generation inside durable operations like `ctx.step()`.
  *
  * :::caution
- * SST publishes versions for workflows, so each execution stays pinned to the code version it
- * started on. If you deploy a new version while an execution is running, it continues on its
- * original version.
+ * Workflow handlers have versioning enabled. Deploying an update won't update existing running workflows.
  * :::
- *
- * Steps are at-least-once. A step can still run more than once before it is checkpointed, so
- * external side effects should be idempotent.
  *
  * Before using workflows in production, review the
  * [AWS best practices for durable functions](https://docs.aws.amazon.com/lambda/latest/dg/durable-best-practices.html).
@@ -216,10 +279,12 @@ export interface WorkflowArgs
  * ### Cost
  *
  * A workflow has no idle monthly cost. You pay the standard Lambda request and compute charges
- * for each invocation, including sub-invocations caused by waits, retries, and replays.
+ * for each invocation.
  *
+ * :::tip
  * When a workflow is suspended in a `wait`, on-demand functions do not incur Lambda duration
  * charges until execution resumes.
+ * :::
  *
  * Lambda durable functions usage is billed separately.
  *
@@ -257,7 +322,7 @@ export class Workflow extends Component {
         versioning: true, // deployments should not override running workflows
         timeout: timeouts.invocation,
         durable: {
-          timeout: timeouts.global,
+          timeout: timeouts.execution,
           retention: args.retention,
         },
         transform: args.transform?.function,
@@ -272,20 +337,15 @@ export class Workflow extends Component {
     });
 
     function normalizeTimeouts() {
-      if (args.timeout === undefined) {
-        return {
-          invocation: undefined,
-          global: undefined,
-        };
-      }
-
       const timeouts = output(args.timeout);
 
       return {
         invocation: timeouts.apply(
-          (timeout) => timeout?.invocation ?? "20 seconds",
+          (timeout) => timeout?.invocation ?? "1 minute",
         ),
-        global: timeouts.apply((timeout) => timeout?.global ?? "15 minutes"),
+        execution: timeouts.apply(
+          (timeout) => timeout?.execution ?? "1 hour",
+        ),
       };
     }
 
