@@ -6,9 +6,9 @@ export const handler = async (event: APIGatewayProxyEventV2) => {
   const action = event.queryStringParameters?.action;
   const message = event.queryStringParameters?.message ?? "Hello from the invoker";
   const name =
-    event.queryStringParameters?.name ?? `durable-example-${Date.now()}`;
+    event.queryStringParameters?.name ?? `workflow-example-${Date.now()}`;
 
-  const response = await workflow.start(Resource.Durable, {
+  const response = await workflow.start(Resource.Workflow, {
     name,
     payload: {
       ...(action === "succeed" || action === "fail" || action === "heartbeat"
@@ -23,7 +23,7 @@ export const handler = async (event: APIGatewayProxyEventV2) => {
     statusCode: 200,
     body: JSON.stringify(
       {
-        durableExecutionArn: response.arn,
+        workflowExecutionArn: response.arn,
         executedVersion: response.version,
         name,
         resolverUrl: Resource.Resolver.url,

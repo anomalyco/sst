@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "aws-lambda-durable",
+      "name": "aws-workflow",
       "devDependencies": {
         "@types/aws-lambda": "8.10.145",
         "sst": "file:../../sdk/js",

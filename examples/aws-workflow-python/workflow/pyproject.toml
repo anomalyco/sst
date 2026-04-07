@@ -1,5 +1,5 @@
 [project]
-name = "durable"
+name = "workflow"
 version = "0.1.0"
 description = "A SST app"
 dependencies = [

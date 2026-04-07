@@ -46,7 +46,7 @@ import { Permission, permission } from "./permission.js";
 import { Vpc } from "./vpc.js";
 import { Image } from "@pulumi/docker-build";
 import { rpc } from "../rpc/rpc.js";
-import { parseRoleArn } from "./helpers/arn.js";
+import { parseRoleArn, splitQualifiedFunctionArn } from "./helpers/arn.js";
 import { RandomBytes } from "@pulumi/random";
 import { lazy } from "../../util/lazy.js";
 import { Efs } from "./efs.js";
@@ -1309,6 +1309,8 @@ export interface FunctionArgs {
   /**
    * Enable versioning for the function.
    *
+   * Durable functions enable this by default.
+   *
    * @default `false`
    * @example
    * ```js
@@ -1466,6 +1468,26 @@ export interface FunctionArgs {
     postbuild(dir: string): Promise<void>;
   };
   /**
+   * Configure the lambda function as a [AWS durable function](https://docs.aws.amazon.com/lambda/latest/dg/durable-functions.html).
+   *
+   * :::caution
+   * This property is meant to be used internally by [Workflow](/docs/components/aws/workflow/).
+   * Prefer the component if you want to use the [SDK](/docs/components/aws/workflow/#sdk) or if you are not very familiar with durable functions limitations.
+   * :::
+   */
+  durable?:
+    | boolean
+    | {
+        /**
+         * Maximum execution time for the durable function
+         */
+        timeout?: Input<Duration>;
+        /**
+         * Number of days to retain the function's execution state.
+         */
+        retention?: Input<DurationDays>;
+      };
+  /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
    */
@@ -1488,20 +1510,6 @@ export interface FunctionArgs {
      */
     eventInvokeConfig?: Transform<lambda.FunctionEventInvokeConfigArgs>;
   };
-
-  /** @internal */
-  durable?:
-    | boolean
-    | Prettify<{
-        /**
-         * Maximum execution time for the durable function
-         */
-        timeout?: Input<Duration>;
-        /**
-         * Number of days to retain the function's execution state.
-         */
-        retention?: Input<DurationDays>;
-      }>;
   /**
    * @internal
    */
@@ -1721,10 +1729,7 @@ export class Function extends Component implements Link.Linkable {
     args: FunctionArgs,
     opts?: ComponentResourceOptions,
   ) {
-    const type =
-      (new.target as typeof Function & { __pulumiType?: string })
-        .__pulumiType ?? __pulumiType;
-    super(type, name, args, opts);
+    super(__pulumiType, name, args, opts);
     this.constructorName = name;
     this.durable = Boolean(args.durable);
 
@@ -2524,7 +2529,9 @@ export class Function extends Component implements Link.Linkable {
             }
 
             return new s3.BucketObjectv2(
-              dev ? `DevBridgeCode${logicalName(regionName)}` : `${name}Code`,
+              dev
+                ? `DevBridgeCode${logicalName(regionName)}${logicalName(path.basename(bundle))}`
+                : `${name}Code`,
               {
                 key: dev
                   ? `assets/dev-bridge-code-${hashValue}.zip`
@@ -2613,7 +2620,9 @@ export class Function extends Component implements Link.Linkable {
               },
               layers: args.layers,
               tags: args.tags,
-              publish: output(args.versioning).apply((v) => v ?? false),
+              publish: output(args.versioning).apply(
+                (v) => v ?? Boolean(args.durable),
+              ),
               reservedConcurrentExecutions: concurrency?.reserved,
               durableConfig: durable && {
                 executionTimeout: durable.timeout,
@@ -2695,10 +2704,10 @@ export class Function extends Component implements Link.Linkable {
         );
 
         /**
-         * Durable Functions needs a qualified ARN to work. The AWS API rejects `$LATEST`
-         * as a qualifier due to a server-side regex that doesn't allow `$`.
+         * Lambda Function URLs only accept alias names in the explicit `qualifier`
+         * field. Durable functions with URLs therefore need an alias target here,
+         * even when the underlying function is still on `$LATEST`.
          * See https://github.com/hashicorp/terraform-provider-aws/issues/31459
-         * To work around this, we create an alias and use it as the qualifier.
          */
         const qualifier = durable
           ? new lambda.Alias(`${name}Durable`, {
@@ -2965,6 +2974,51 @@ export class Function extends Component implements Link.Linkable {
     return this.function.arn;
   }
 
+  /** @internal */
+  private get useQualifiedTarget() {
+    return this.function.publish.apply(
+      (publish) => (publish ?? false) || this.durable,
+    );
+  }
+
+  /** @internal */
+  public get targetArn() {
+    return this.useQualifiedTarget.apply((useQualifiedTarget) =>
+      useQualifiedTarget ? this.function.qualifiedArn : this.arn,
+    );
+  }
+
+  /** @internal */
+  public get qualifier() {
+    return this.targetArn.apply(
+      (arn) => splitQualifiedFunctionArn(arn).qualifier,
+    );
+  }
+
+  /** @internal */
+  public get targetInvokeArn() {
+    return this.useQualifiedTarget.apply((useQualifiedTarget) =>
+      useQualifiedTarget
+        ? this.function.qualifiedInvokeArn
+        : this.function.invokeArn,
+    );
+  }
+
+  /** @internal */
+  public get targetResponseStreamingInvokeArn() {
+    return this.useQualifiedTarget.apply((useQualifiedTarget) =>
+      useQualifiedTarget
+        ? all([
+            this.arn,
+            this.function.qualifiedArn,
+            this.function.responseStreamingInvokeArn,
+          ]).apply(([arn, qualifiedArn, responseStreamingInvokeArn]) =>
+            responseStreamingInvokeArn.replace(arn, qualifiedArn),
+          )
+        : this.function.responseStreamingInvokeArn,
+    );
+  }
+
   /**
    * Add environment variables lazily to the function after the function is created.
    *
@@ -3042,14 +3096,16 @@ export class Function extends Component implements Link.Linkable {
   }
 
   /** @internal */
-  public getSSTLink(): Link.Definition<{
-    name: Output<string>;
-    url?: Output<string | undefined>;
-  }> {
+  public getSSTLink() {
     return {
       properties: {
         name: this.name,
         url: this.urlEndpoint,
+        ...(this.durable
+          ? {
+              qualifier: this.qualifier,
+            }
+          : {}),
       },
       include: [
         permission({

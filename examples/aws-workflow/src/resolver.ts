@@ -21,7 +21,7 @@ export const handler = async (event: APIGatewayProxyEventV2) => {
     };
   }
 
-  if (action === "fail" || action === "failure") {
+  if (action === "fail") {
     await workflow.fail(callbackId, {
       error: {
         data: {
@@ -31,7 +31,9 @@ export const handler = async (event: APIGatewayProxyEventV2) => {
         type: "CallbackError",
       },
     });
-  } else {
+  }
+
+  if (action === "succeed") {
     await workflow.succeed(callbackId, {
       payload: {
         message: message ?? "Callback success!",

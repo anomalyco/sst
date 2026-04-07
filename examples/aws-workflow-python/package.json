@@ -1,5 +1,5 @@
 {
-  "name": "aws-lambda-durable",
+  "name": "aws-workflow-python",
   "version": "1.0.0",
   "description": "",
   "type": "module",

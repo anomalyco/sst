@@ -1,7 +1,6 @@
 import { ComponentResourceOptions, Input, output } from "@pulumi/pulumi";
-import { cloudwatch, iam, lambda } from "@pulumi/aws";
 import { Duration, DurationDays, DurationMinutes } from "../duration.js";
-import { Component, Transform } from "../component.js";
+import { Component } from "../component.js";
 import { RETENTION } from "./logging.js";
 import { Function, FunctionArgs } from "./function.js";
 
@@ -118,17 +117,9 @@ export interface WorkflowArgs
    */
   transform?: {
     /**
-     * Transform the Lambda Function resource.
+     * Transform the underlying SST Function component resources.
      */
-    function?: Transform<lambda.FunctionArgs>;
-    /**
-     * Transform the IAM Role resource.
-     */
-    role?: Transform<iam.RoleArgs>;
-    /**
-     * Transform the CloudWatch LogGroup resource.
-     */
-    logGroup?: Transform<cloudwatch.LogGroupArgs>;
+    function?: FunctionArgs["transform"];
   };
 }
 
@@ -204,17 +195,18 @@ export interface WorkflowArgs
  *
  * ### Limitations
  *
- * Durable workflows are replayed from the top on resume and retry. Keep the control flow
+ * Durable workflows replay from the top on resume and retry. Keep the control flow
  * deterministic, and move side effects like API calls, database writes, timestamps, and random
  * ID generation inside durable operations like `ctx.step()`.
  *
- * Steps have at-least-once execution semantics. Completed steps replay from checkpoints, but a
- * step can still run more than once before it is checkpointed, so external side effects should be
- * idempotent.
+ * :::caution
+ * SST publishes versions for workflows, so each execution stays pinned to the code version it
+ * started on. If you deploy a new version while an execution is running, it continues on its
+ * original version.
+ * :::
  *
- * SST publishes versions for workflows so each execution stays pinned to the code version it
- * started on. If you redeploy a workflow while an execution is running or paused, that existing
- * execution will continue on its original version.
+ * Steps are at-least-once. A step can still run more than once before it is checkpointed, so
+ * external side effects should be idempotent.
  *
  * Before using workflows in production, review the
  * [AWS best practices for durable functions](https://docs.aws.amazon.com/lambda/latest/dg/durable-best-practices.html).
@@ -223,25 +215,24 @@ export interface WorkflowArgs
  *
  * ### Cost
  *
- * A workflow has no monthly cost when idle. You pay the standard Lambda request and compute
- * charges for each invocation, including any sub-invocations caused by waits, retries, and
- * replays.
+ * A workflow has no idle monthly cost. You pay the standard Lambda request and compute charges
+ * for each invocation, including sub-invocations caused by waits, retries, and replays.
  *
  * When a workflow is suspended in a `wait`, on-demand functions do not incur Lambda duration
  * charges until execution resumes.
  *
- * You are also billed for Lambda durable functions usage.
+ * Lambda durable functions usage is billed separately.
  *
  * - Durable operations like starting an execution, completing a step, and creating a wait are
  *   billed at $8.00 per 1 million operations.
  * - Data written by durable operations is billed at $0.25 per GB.
  * - Retained execution state is billed at $0.15 per GB-month.
  *
- * For example, a workflow execution with two `step()` calls and one `wait()` uses four durable
- * operations total: one start, two steps, and one wait. That's about **$0.000032 per execution**
- * for durable operations, before Lambda compute, requests, written data, and retention.
+ * For example, a workflow with two `step()` calls and one `wait()` uses four durable operations:
+ * one start, two steps, and one wait. That's about **$0.000032 per execution** for durable
+ * operations, before Lambda compute, requests, written data, and retention.
  *
- * The above are rough estimates for _us-east-1_. Check out the
+ * These are rough _us-east-1_ estimates. Check out the
  * [AWS Lambda pricing](https://aws.amazon.com/lambda/pricing/#Lambda_Durable_Functions_Pricing)
  * for more details.
  */
@@ -255,33 +246,21 @@ export class Workflow extends Component {
   ) {
     super(__pulumiType, name, args, opts);
 
-    const {
-      timeout: workflowTimeout,
-      retention,
-      logging: workflowLogging,
-      transform: workflowTransform,
-      ...functionArgs
-    } = args;
     const timeouts = normalizeTimeouts();
     const logging = normalizeLogging();
 
     this.fn = new Function(
       `${name}Handler`,
       {
-        ...functionArgs,
-        // Durable executions must stay pinned to the deployed code version.
-        versioning: true,
+        ...args,
+        logging,
+        versioning: true, // deployments should not override running workflows
         timeout: timeouts.invocation,
         durable: {
           timeout: timeouts.global,
-          retention,
+          retention: args.retention,
         },
-        logging,
-        transform: workflowTransform && {
-          function: workflowTransform.function,
-          role: workflowTransform.role,
-          logGroup: workflowTransform.logGroup,
-        },
+        transform: args.transform?.function,
       },
       { parent: this },
     );
@@ -293,14 +272,14 @@ export class Workflow extends Component {
     });
 
     function normalizeTimeouts() {
-      if (workflowTimeout === undefined) {
+      if (args.timeout === undefined) {
         return {
           invocation: undefined,
           global: undefined,
         };
       }
 
-      const timeouts = output(workflowTimeout);
+      const timeouts = output(args.timeout);
 
       return {
         invocation: timeouts.apply(
@@ -311,9 +290,9 @@ export class Workflow extends Component {
     }
 
     function normalizeLogging() {
-      if (workflowLogging === undefined) return undefined;
+      if (args.logging === undefined) return undefined;
 
-      return output(workflowLogging).apply((logging) => {
+      return output(args.logging).apply((logging) => {
         if (logging === false) return false;
         return {
           ...logging,

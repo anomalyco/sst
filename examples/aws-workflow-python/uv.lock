@@ -5,9 +5,9 @@ requires-python = "==3.13.*"
 [manifest]
 members = [
     "app",
-    "durable",
     "invoker",
     "resolver",
+    "workflow",
 ]
 
 [[package]]
@@ -130,23 +130,6 @@ wheels = [
 ]
 
 [[package]]
-name = "durable"
-version = "0.1.0"
-source = { editable = "durable" }
-dependencies = [
-    { name = "aws-durable-execution-sdk-python" },
-    { name = "boto3" },
-    { name = "sst" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "aws-durable-execution-sdk-python", specifier = ">=1.3.0,<2.0.0" },
-    { name = "boto3", specifier = ">=1.42.59,<2.0.0" },
-    { name = "sst", git = "https://github.com/sst/sst.git?subdirectory=sdk%2Fpython&branch=dev" },
-]
-
-[[package]]
 name = "invoker"
 version = "0.1.0"
 source = { editable = "invoker" }
@@ -242,4 +225,21 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/c7/24/5f1b3bdffd70275f6661c76461e25f024d5a38a46f04aaca912426a2b1d3/urllib3-2.6.3.tar.gz", hash = "sha256:1b62b6884944a57dbe321509ab94fd4d3b307075e0c2eae991ac71ee15ad38ed", size = 435556, upload-time = "2026-01-07T16:24:43.925Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/39/08/aaaad47bc4e9dc8c725e68f9d04865dbcb2052843ff09c97b08904852d84/urllib3-2.6.3-py3-none-any.whl", hash = "sha256:bf272323e553dfb2e87d9bfd225ca7b0f467b919d7bbd355436d3fd37cb0acd4", size = 131584, upload-time = "2026-01-07T16:24:42.685Z" },
+]
+
+[[package]]
+name = "workflow"
+version = "0.1.0"
+source = { editable = "workflow" }
+dependencies = [
+    { name = "aws-durable-execution-sdk-python" },
+    { name = "boto3" },
+    { name = "sst" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aws-durable-execution-sdk-python", specifier = ">=1.3.0,<2.0.0" },
+    { name = "boto3", specifier = ">=1.42.59,<2.0.0" },
+    { name = "sst", git = "https://github.com/sst/sst.git?subdirectory=sdk%2Fpython&branch=dev" },
 ]

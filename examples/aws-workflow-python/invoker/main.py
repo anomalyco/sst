@@ -3,15 +3,15 @@ import json
 from typing import Dict, Any
 from sst import Resource
 
-client = boto3.client('lambda')
+client = boto3.client("lambda")
 
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, str]:
     client.invoke(
-        FunctionName=Resource.Durable.name,
-        Qualifier="$LATEST",
+        FunctionName=Resource.Workflow.name,
+        Qualifier=Resource.Workflow.qualifier,
         InvocationType="Event",  # Asynchronous invocation
-        Payload=json.dumps(event)
+        Payload=json.dumps(event),
     )
-    
-    return {"message": "Durable function invoked successfully!"}
+
+    return {"message": "Workflow invoked successfully!"}
