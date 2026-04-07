@@ -45,6 +45,12 @@ const linkHashes = new Map<
   TypeDoc.DeclarationReflection,
   Map<TypeDoc.DeclarationReflection, string>
 >();
+const externalTypeDocLinks = new Map<string, string>([
+  [
+    "@aws/durable-execution-sdk-js:DurableContext",
+    "[the AWS Durable Execution SDK docs](https://docs.aws.amazon.com/durable-functions/sdk-reference/)",
+  ],
+]);
 function useLinkHashes(module: TypeDoc.DeclarationReflection) {
   const v =
     linkHashes.get(module) ?? new Map<TypeDoc.DeclarationReflection, string>();
@@ -1643,6 +1649,7 @@ function renderInterfacesAtH2Level(
     if (int.comment?.summary) {
       lines.push(``, renderTdComment(int.comment?.summary!));
     }
+    lines.push(...renderInterfaceInheritedApiSummary(int));
 
     // props
     for (const prop of useInterfaceProps(int)) {
@@ -1738,6 +1745,7 @@ function renderInterfacesAtH3Level(module: TypeDoc.DeclarationReflection) {
       `<InlineSection>`,
       `**Type** ${renderType(module, int)}`,
       `</InlineSection>`,
+      ...renderInterfaceInheritedApiInline(i),
       ...renderNestedTypeList(module, int),
       `</Section>`,
       `</Segment>`,
@@ -1908,6 +1916,38 @@ function renderSignature(signature: TypeDoc.SignatureReflection) {
     .join(", ");
   return `${signature.name}(${parameters})`;
 }
+function renderInterfaceInheritedApiInline(int: TypeDoc.DeclarationReflection) {
+  const links = renderExternalExtendedTypeLinks(int);
+  if (!links.length) return [];
+
+  return [
+    `<InlineSection>`,
+    `Only showing custom SDK methods here. For the full API, see ${links.join(", ")}.`,
+    `</InlineSection>`,
+  ];
+}
+function renderInterfaceInheritedApiSummary(int: TypeDoc.DeclarationReflection) {
+  const links = renderExternalExtendedTypeLinks(int);
+  if (!links.length) return [];
+
+  return [
+    ``,
+    `Only showing custom SDK methods here. For the full API, see ${links.join(", ")}.`,
+  ];
+}
+function renderExternalExtendedTypeLinks(int: TypeDoc.DeclarationReflection) {
+  return (int.extendedTypes ?? [])
+    .filter(
+      (type): type is TypeDoc.ReferenceType =>
+        type.type === "reference" && Boolean(type.package)
+    )
+    .map((type) => {
+      const link = externalTypeDocLinks.get(`${type.package}:${type.name}`);
+      if (!link) return undefined;
+      return link;
+    })
+    .filter((type): type is string => Boolean(type));
+}
 function renderJsonParseReviverType() {
   return `[<code class="type">JSON.parse reviver</code>](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/JSON/parse#reviver)`;
 }
@@ -2022,6 +2062,7 @@ function useInterfaceProps(i: TypeDoc.DeclarationReflection) {
   if (!i.children?.length) throw new Error(`Interface ${i.name} has no props`);
 
   return i.children
+    .filter((c) => !c.flags.isExternal)
     .filter((c) => !c.comment?.modifierTags.has("@internal"))
     .filter((c) => !c.comment?.blockTags.find((t) => t.tag === "@deprecated"));
 }
@@ -2049,7 +2090,9 @@ function useNestedTypes(
   }
   if (type.type === "reflection" && type.declaration.children?.length) {
     return type.declaration
-      .children!.filter((c) => !c.comment?.modifierTags.has("@internal"))
+      .children!
+      .filter((c) => !c.flags.isExternal)
+      .filter((c) => !c.comment?.modifierTags.has("@internal"))
       .filter((c) => !c.comment?.blockTags.find((t) => t.tag === "@deprecated"))
       .flatMap((subType) => [
         { prefix, subType, depth },

@@ -1,45 +1,38 @@
+from typing import Any, Dict
+from urllib.parse import urlencode
+
 from aws_durable_execution_sdk_python import (
     DurableContext,
+    StepContext,
     durable_execution,
     durable_step,
-    StepContext
 )
-from aws_durable_execution_sdk_python.config import (
-    WaitForCallbackConfig,
-    Duration
-)
-from typing import Dict, Any
-import logging
-logging.basicConfig(level=logging.INFO)
-
-@durable_step
-def step1(step_context: StepContext) -> str:
-    """First step of the durable execution."""
-    step_context.logger.info("Executing step 1")
-    return "Hello"
+from aws_durable_execution_sdk_python.config import Duration, WaitForCallbackConfig
 
 
 @durable_step
-def step2(step_context: StepContext, step1_result: str) -> str:
-    step_context.logger.info("Executing step 2")
-    return f"{step1_result} World!"
+def start(step_context: StepContext) -> None:
+    step_context.logger.info({"message": "Workflow started"})
 
 
 @durable_execution
 def handler(event: Dict[str, Any], context: DurableContext) -> Dict[str, Any]:
-    step1_result = context.step(step1())
-    
+    context.step(start())
+
+    def log_callback_url(token: str, step_context: StepContext) -> None:
+        callback_url = f"{event['resolverUrl']}?{urlencode({'token': token})}"
+        step_context.logger.info(
+            {
+                "message": "Open this URL to resume the workflow",
+                "token": token,
+                "callbackUrl": callback_url,
+            }
+        )
+
     callback_result = context.wait_for_callback(
-        lambda callback_token, context: context.logger.info({"callback_token": callback_token}),
+        log_callback_url,
         name="callback",
-        config=WaitForCallbackConfig(timeout=Duration.from_minutes(5))
+        config=WaitForCallbackConfig(timeout=Duration.from_minutes(5)),
     )
-    
-    step2_result = context.step(step2(step1_result))
-    
-    context.logger.info({"step1_result": step1_result, "step2_result": step2_result, "callback_result": callback_result})
-    return {
-        "step1": step1_result,
-        "step2": step2_result,
-        "callbackResult": callback_result
-    }
+
+    return {"callbackResult": callback_result}

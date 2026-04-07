@@ -7,7 +7,6 @@
   "scripts": {
     "dev": "go run ../../cmd/sst dev",
     "deploy": "go run ../../cmd/sst deploy",
-    "check:workflow": "bun run ./check-workflow.ts",
     "remove": "go run ../../cmd/sst remove",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
