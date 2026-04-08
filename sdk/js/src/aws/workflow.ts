@@ -31,6 +31,10 @@ import { aws } from "./client.js";
  *       },
  *     });
  *
+ *     await ctx.step("charge-card", async () => {
+ *       throw new Error("Card declined");
+ *     });
+ *
  *     return order;
  *   } catch (error) {
  *     await ctx.rollbackAll(error);
@@ -65,6 +69,7 @@ export namespace workflow {
   > extends durable.DurableContext<TLogger> {
     /**
      * Execute a durable step and register a compensating rollback step if it succeeds.
+     * If `run` throws, nothing is added to the rollback stack for that step.
      */
     stepWithRollback<TOutput>(
       name: string,

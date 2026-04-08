@@ -324,6 +324,39 @@ describe("workflow rollback runner", () => {
     }
   });
 
+  it("does not register rollback when run fails", async () => {
+    const calls: string[] = [];
+
+    const handler = workflow.handler(async (_event, ctx) => {
+      try {
+        await ctx.stepWithRollback(
+          "step-a",
+          {
+            run: async () => {
+              calls.push("run:step-a");
+              throw new Error("boom");
+            },
+            undo: async () => {
+              calls.push("undo:step-a");
+            },
+          },
+          {
+            retryStrategy: () => ({ shouldRetry: false }),
+          },
+        );
+      } catch (error) {
+        await ctx.rollbackAll(error);
+        throw error;
+      }
+    });
+
+    const runner = new LocalDurableTestRunner({ handlerFunction: handler });
+    const execution = await runner.run();
+
+    expect(execution.getStatus()).toBe(ExecutionStatus.FAILED);
+    expect(calls).toEqual(["run:step-a"]);
+  });
+
   it("rebuilds rollback stack after wait replay", async () => {
     const calls: string[] = [];
 
