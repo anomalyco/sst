@@ -4,22 +4,18 @@ interface Event {
   resolverUrl: string;
 }
 
-export const handler = workflow.handler<Event>(async (event, context) => {
-  await context.step("start", async ({ logger }) => {
-    logger.info({ message: "Workflow started" });
+export const handler = workflow.handler<Event>(async (event, ctx) => {
+  await ctx.step("start", async ({ logger }) => {
+    logger.info("Workflow started.");
   });
 
-  const callbackResult = await context.waitForCallback(
+  const result = await ctx.waitForCallback(
     "callback",
     async (token, { logger }) => {
       const resolverUrl = new URL(event.resolverUrl);
       resolverUrl.searchParams.set("token", token);
 
-      logger.info({
-        message: "Open this URL to resume the workflow",
-        token,
-        callbackUrl: resolverUrl.toString(),
-      });
+      logger.info(resolverUrl.toString());
     },
     {
       timeout: {
@@ -28,7 +24,7 @@ export const handler = workflow.handler<Event>(async (event, context) => {
     },
   );
 
-  return {
-    callbackResult,
-  };
+  await ctx.step("finish", async ({ logger }) => {
+    logger.info(result);
+  });
 });

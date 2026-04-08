@@ -1309,7 +1309,9 @@ export interface FunctionArgs {
   /**
    * Enable versioning for the function.
    *
+   * :::note
    * Durable functions enable this by default.
+   * :::
    *
    * @default `false`
    * @example
@@ -3113,6 +3115,10 @@ export class Function extends Component implements Link.Linkable {
             "lambda:InvokeFunction",
             ...(this.durable
               ? [
+                  "lambda:ListDurableExecutionsByFunction",
+                  "lambda:GetDurableExecution",
+                  "lambda:GetDurableExecutionHistory",
+                  "lambda:StopDurableExecution",
                   "lambda:SendDurableExecutionCallbackSuccess",
                   "lambda:SendDurableExecutionCallbackFailure",
                   "lambda:SendDurableExecutionCallbackHeartbeat",

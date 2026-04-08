@@ -75,3 +75,9 @@ export namespace aws {
     });
   }
 }
+
+export async function client(): Promise<AwsClient> {
+  return aws.client();
+}
+
+export type AwsOptions = aws.Options;

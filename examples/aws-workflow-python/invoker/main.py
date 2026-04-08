@@ -7,19 +7,12 @@ from sst import Resource
 client = boto3.client("lambda")
 
 
-def handler(_event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
+def handler(_event: Dict[str, Any], _context: Any) -> str:
     client.invoke(
         FunctionName=Resource.Workflow.name,
         Qualifier=Resource.Workflow.qualifier,
-        InvocationType="Event",  # Asynchronous invocation
+        InvocationType="Event",
         Payload=json.dumps({"resolverUrl": Resource.Resolver.url}),
     )
 
-    return {
-        "statusCode": 200,
-        "body": json.dumps(
-            {
-                "message": "Workflow started. Check the workflow logs for the callback URL."
-            }
-        ),
-    }
+    return "Workflow started. Check the logs for the callback URL."

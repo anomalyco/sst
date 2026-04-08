@@ -5,22 +5,14 @@ export const handler = async (event: APIGatewayProxyEventV2) => {
   const token = event.queryStringParameters?.token;
 
   if (!token) {
-    return {
-      statusCode: 400,
-      body: JSON.stringify({
-        message: "Missing token in query parameters",
-      }),
-    };
+    return "Missing token in query parameters";
   }
 
   await workflow.succeed(token, {
     payload: {
-      message: "Callback received",
+      message: "Sent from the resolver."
     },
   });
 
-  return {
-    statusCode: 200,
-    body: JSON.stringify({ message: "Workflow callback sent." }),
-  };
+  return "Workflow callback sent. Check the logs to see the workflow succeed." ;
 };

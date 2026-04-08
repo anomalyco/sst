@@ -6,21 +6,15 @@ from typing import Any, Dict
 lambda_client = boto3.client("lambda")
 
 
-def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
+def handler(event: Dict[str, Any], _context: Any) -> str:
     query_params = event.get("queryStringParameters") or {}
     token = query_params.get("token")
 
     if not token:
-        return {
-            "statusCode": 400,
-            "body": json.dumps({"message": "Missing token in query parameters"}),
-        }
+        return "Missing token in query parameters"
 
     lambda_client.send_durable_execution_callback_success(
-        CallbackId=token, Result=json.dumps({"message": "Callback received"})
+        CallbackId=token, Result=json.dumps({"message": "Sent from the resolver."})
     )
 
-    return {
-        "statusCode": 200,
-        "body": json.dumps({"message": "Workflow callback sent."}),
-    }
+    return "Workflow callback sent. Check the logs to see the workflow succeed."
