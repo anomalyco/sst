@@ -1482,10 +1482,12 @@ export interface FunctionArgs {
     | {
         /**
          * Maximum execution time for the durable function
+         * @default `15 minutes`
          */
         timeout?: Input<Duration>;
         /**
          * Number of days to retain the function's execution state.
+         * @default `14 days`
          */
         retention?: Input<DurationDays>;
       };

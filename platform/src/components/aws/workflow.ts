@@ -52,7 +52,7 @@ export interface WorkflowArgs
      *
      * This includes time spent across retries, replays, waits, and all durable invocations.
      *
-     * @default `"1 hour"`
+     * @default `"14 days"`
      */
     execution?: Input<Duration>;
     /**
@@ -61,7 +61,7 @@ export interface WorkflowArgs
      * This is not a per-step timeout. A single invocation can run multiple steps before the
      * workflow yields, waits, or replays.
      *
-     * @default `"1 minute"`
+     * @default `"5 minutes"`
      */
     invocation?: Input<DurationMinutes>;
   }>;
@@ -345,10 +345,10 @@ export class Workflow extends Component {
 
       return {
         invocation: timeouts.apply(
-          (timeout) => timeout?.invocation ?? "1 minute",
+          (timeout) => timeout?.invocation ?? "5 minutes",
         ),
         execution: timeouts.apply(
-          (timeout) => timeout?.execution ?? "1 hour",
+          (timeout) => timeout?.execution ?? "14 days",
         ),
       };
     }
