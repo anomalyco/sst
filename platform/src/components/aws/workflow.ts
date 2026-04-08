@@ -132,9 +132,9 @@ export interface WorkflowArgs
  * The `Workflow` component lets you add serverless workflows to your app using
  * [AWS Lambda Durable Functions](https://docs.aws.amazon.com/lambda/latest/dg/durable-functions.html).
  *
- * It is a thin wrapper around the [`Function`](/docs/component/aws/function) component
+ * It's a thin wrapper around the [`Function`](/docs/component/aws/function) component
  * with durable execution enabled.
- * It includes an [SDK](/docs/components/aws/workflow/#sdk) that wraps the AWS SDK with a simpler interface, adds helper methods like rollback support, and integrates easily with other SST components.
+ * It includes an [SDK](/docs/components/aws/workflow/#sdk) that wraps the AWS SDK with a simpler interface, adds helper methods, and makes it easier to integrate with other SST components.
  *
  * @example
  *
