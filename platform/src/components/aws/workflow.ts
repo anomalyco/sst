@@ -149,7 +149,7 @@ export interface WorkflowArgs
  * ```ts title="src/workflow.ts"
  * import { workflow } from "sst/aws/workflow";
  *
- * export const handler = workflow.handler(async (_event, ctx) => {
+ * export const handler = workflow.handler(async (event, ctx) => {
  *   const user = await ctx.step("load-user", async () => {
  *     return { id: "user_123", email: "alice@example.com" };
  *   });
@@ -190,7 +190,7 @@ export interface WorkflowArgs
  * import { Resource } from "sst";
  * import { workflow } from "sst/aws/workflow";
  *
- * export const handler = workflow.handler(async (_event, ctx) => {
+ * export const handler = workflow.handler(async (event, ctx) => {
  *   return ctx.step("get-bucket-name", async () => {
  *     return Resource.MyBucket.name;
  *   });
@@ -213,7 +213,7 @@ export interface WorkflowArgs
  * ```ts title="src/workflow.ts"
  * import { workflow } from "sst/aws/workflow";
  *
- * export const handler = workflow.handler(async (_event, ctx) => {
+ * export const handler = workflow.handler(async (event, ctx) => {
  *   await ctx.step("start", async ({ logger }) => {
  *     logger.info({ message: "Workflow invoked by cron" });
  *   });
@@ -286,8 +286,7 @@ export interface WorkflowArgs
  * for each invocation.
  *
  * :::tip
- * When a workflow is suspended in a `wait`, on-demand functions do not incur Lambda duration
- * charges until execution resumes.
+ * When a workflow is suspended in a `wait`, functions don't incur costs until execution resumes.
  * :::
  *
  * Lambda durable functions usage is billed separately.
