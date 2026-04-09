@@ -74,7 +74,7 @@ const sidebar = [
       { label: "Policy Packs", slug: "docs/policy-packs" },
       { label: "PlanetScale", slug: "docs/planetscale" },
       { label: "Upgrade AWS Databases", slug: "docs/upgrade-aws-databases" },
-      { label: "Cloudflare API Token", slug: "docs/cloudflare-api-token/" },
+      { label: "Cloudflare API Token", slug: "docs/cloudflare-api-token" },
     ],
   },
   {
