@@ -13,7 +13,6 @@ import type { Loader } from "esbuild";
 import type { EsbuildOptions } from "../esbuild.js";
 import { Component, Transform, transform } from "../component";
 import { WorkerUrl } from "./providers/worker-url.js";
-import { WorkerPlacement } from "./providers/worker-placement.js";
 import { Link } from "../link.js";
 import type { Input } from "../input.js";
 import { ZoneLookup } from "./providers/zone-lookup.js";
@@ -206,12 +205,7 @@ export interface WorkerArgs {
    * }
    * ```
    */
-  placement?: Input<{
-    mode?: Input<string>;
-    region?: Input<string>;
-    host?: Input<string>;
-    hostname?: Input<string>;
-  }>;
+  placement?: cf.WorkersScriptArgs["placement"];
   /**
    * [Transform](/docs/components/#transform) how this component creates its underlying
    * resources.
@@ -292,7 +286,6 @@ export interface WorkerArgs {
 export class Worker extends Component implements Link.Linkable {
   private script: cf.WorkersScript;
   private workerUrl: WorkerUrl;
-  private workerPlacement?: WorkerPlacement;
   private workerDomain?: cf.WorkerDomain;
 
   constructor(name: string, args: WorkerArgs, opts?: ComponentResourceOptions) {
@@ -322,12 +315,10 @@ export class Worker extends Component implements Link.Linkable {
     const build = buildHandler();
     const script = createScript();
     const workerUrl = createWorkersUrl();
-    const workerPlacement = createWorkerPlacement();
     const workerDomain = createWorkersDomain();
 
     this.script = script;
     this.workerUrl = workerUrl;
-    this.workerPlacement = workerPlacement;
     this.workerDomain = workerDomain;
 
     all([dev, buildInput, script.scriptName]).apply(
@@ -496,6 +487,7 @@ export class Worker extends Component implements Link.Linkable {
             scriptName: physicalName(64, `${name}Script`).toLowerCase(),
             mainModule: "placeholder",
             accountId: DEFAULT_ACCOUNT_ID,
+            placement: args.placement,
             contentFile: contentFilePath,
             contentSha256: contentFilePath.apply(async (p) =>
               crypto
@@ -524,6 +516,7 @@ export class Worker extends Component implements Link.Linkable {
                   };
                 })
               : undefined,
+
             bindings: all([args.environment, iamCredentials, bindings]).apply(
               ([environment, iamCredentials, bindings]) => [
                 ...bindings,
@@ -569,25 +562,6 @@ export class Worker extends Component implements Link.Linkable {
           accountId: DEFAULT_ACCOUNT_ID,
           scriptName: script.scriptName,
           enabled: urlEnabled,
-        },
-        { parent },
-      );
-    }
-
-    // workaround: pulumi cloudflare provider marks placement as read-only,
-    // so we use the CF API directly until upstream support lands
-    function createWorkerPlacement() {
-      if (!args.placement) return;
-
-      return new WorkerPlacement(
-        `${name}Placement`,
-        {
-          accountId: DEFAULT_ACCOUNT_ID,
-          scriptName: script.scriptName,
-          // Reapply placement after each script update. Asset-backed SSR workers
-          // can rewrite script settings and reset placement back to the default.
-          etag: script.etag,
-          ...args.placement,
         },
         { parent },
       );
