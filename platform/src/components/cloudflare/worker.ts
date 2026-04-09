@@ -205,7 +205,12 @@ export interface WorkerArgs {
    * }
    * ```
    */
-  placement?: Input<cf.WorkersScriptArgs["placement"]>;
+  placement?: Input<{
+    mode?: Input<string>;
+    region?: Input<string>;
+    host?: Input<string>;
+    hostname?: Input<string>;
+  }>;
   /**
    * [Transform](/docs/components/#transform) how this component creates its underlying
    * resources.
