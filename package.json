@@ -6,9 +6,10 @@
     "sdk/js"
   ],
   "scripts": {
-    "setup": "bun install && go mod tidy && bun run build:platform",
+    "setup": "bun install && go mod tidy && bun run build:platform && bun run build:sdk",
     "build:platform": "bun run --filter @sst/platform build",
     "build:cli": "go build ./cmd/sst",
+    "build:sdk": "bun run --cwd ./sdk/js build",
     "test:cli": "go test ./...",
     "typecheck": "bun run typecheck:platform && bun run typecheck:sdk",
     "typecheck:platform": "tsc --noEmit -p platform/tsconfig.json",

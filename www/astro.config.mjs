@@ -8,7 +8,7 @@ import rehypeAutolinkHeadings from "rehype-autolink-headings";
 
 const sidebar = [
   { label: "Intro", slug: "docs" },
-  { label: "Workflow", slug: "docs/workflow" },
+  { label: "Basics", slug: "docs/basics" },
   { label: "Enterprise", slug: "docs/enterprise" },
   {
     label: "Get Started",
@@ -100,8 +100,8 @@ const sidebar = [
           "docs/component/aws/react",
           "docs/component/aws/mysql",
           "docs/component/aws/remix",
-          "docs/component/aws/nextjs",
           "docs/component/aws/queue",
+          "docs/component/aws/nextjs",
           "docs/component/aws/vector",
           "docs/component/aws/aurora",
           "docs/component/aws/router",
@@ -110,6 +110,7 @@ const sidebar = [
           "docs/component/aws/cluster",
           "docs/component/aws/service",
           "docs/component/aws/dynamo",
+          "docs/component/aws/workflow",
           "docs/component/aws/realtime",
           "docs/component/aws/sns-topic",
           "docs/component/aws/function",
@@ -296,6 +297,8 @@ export default defineConfig({
     "/install": "https://raw.githubusercontent.com/sst/sst/dev/install",
     "/discord": "https://discord.gg/sst",
     "/guide": "https://guide.sst.dev",
+    "/docs/workflow": "/docs/basics",
+    "/docs/workflow/": "/docs/basics/",
     "/docs/start/aws/container": "/docs/start/aws/express",
   },
   integrations: [
