@@ -205,7 +205,7 @@ export interface WorkerArgs {
    * }
    * ```
    */
-  placement?: cf.WorkersScriptArgs["placement"];
+  placement?: Input<cf.WorkersScriptArgs["placement"]>;
   /**
    * [Transform](/docs/components/#transform) how this component creates its underlying
    * resources.
