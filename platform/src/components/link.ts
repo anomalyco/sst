@@ -10,6 +10,10 @@ import { VisibleError } from "./error.js";
 import { Linkable } from "./linkable.js";
 
 export namespace Link {
+  function normalizeType(type: string) {
+    return type.replaceAll(":", ".");
+  }
+
   export interface Definition<
     Properties extends Record<string, any> = Record<string, any>,
   > {
@@ -35,7 +39,7 @@ export namespace Link {
         target: target,
         include,
         properties: {
-          type: type.replaceAll(":", "."),
+          type: normalizeType(type),
           ...properties,
         },
       });
@@ -115,7 +119,7 @@ export namespace Link {
           name: urn.split("::").at(-1)!,
           properties: {
             ...link.properties,
-            type: urn.split("::").at(-2),
+            type: normalizeType(urn.split("::").at(-2)!),
           },
         }));
       });
@@ -144,7 +148,7 @@ export namespace Link {
           const name = urn.split("::").at(-1)!;
           const data = {
             ...properties,
-            type: urn.split("::").at(-2),
+            type: normalizeType(urn.split("::").at(-2)!),
           };
           return [name, data];
         }),

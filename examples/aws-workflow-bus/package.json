@@ -1,0 +1,18 @@
+{
+  "name": "aws-workflow-bus",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "dev": "go run ../../cmd/sst dev",
+    "deploy": "go run ../../cmd/sst deploy",
+    "remove": "go run ../../cmd/sst remove"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "sst": "file:../../sdk/js"
+  }
+}

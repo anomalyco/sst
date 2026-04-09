@@ -27,6 +27,7 @@
     "release": "./scripts/release.ts"
   },
   "devDependencies": {
+    "@aws/durable-execution-sdk-js-testing": "^1.1.1",
     "@tsconfig/node20": "20.1.4",
     "@types/aws-lambda": "^8.10.155",
     "@types/node": "22.10.0",
@@ -45,6 +46,7 @@
   },
   "optionalDependencies": {},
   "dependencies": {
+    "@aws/durable-execution-sdk-js": "1.0.2",
     "aws4fetch": "1.0.18",
     "jose": "5.2.3",
     "openid-client": "5.6.4"

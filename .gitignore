@@ -1,5 +1,7 @@
 .sst
 dist
+/sst
+s	
 node_modules
 Pulumi.*.yaml
 Pulumi.yaml

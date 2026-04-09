@@ -45,6 +45,12 @@ const linkHashes = new Map<
   TypeDoc.DeclarationReflection,
   Map<TypeDoc.DeclarationReflection, string>
 >();
+const externalTypeDocLinks = new Map<string, string>([
+  [
+    "@aws/durable-execution-sdk-js:DurableContext",
+    "[the AWS Durable Execution SDK docs](https://docs.aws.amazon.com/durable-functions/sdk-reference/)",
+  ],
+]);
 function useLinkHashes(module: TypeDoc.DeclarationReflection) {
   const v =
     linkHashes.get(module) ?? new Map<TypeDoc.DeclarationReflection, string>();
@@ -643,14 +649,14 @@ async function generateComponentDoc(
         const lines = [
           ...renderLinks(component),
           ...renderCloudflareBindings(component),
-          ...(["realtime", "task"].includes(sdk?.name!)
+          ...(["realtime", "task", "workflow"].includes(sdk?.name!)
             ? renderAbout(useModuleComment(sdk!))
             : []),
           ...(sdk
             ? renderFunctions(
                 sdk,
                 useModuleFunctions(sdk),
-                ["realtime", "task"].includes(sdk.name)
+                ["realtime", "task", "workflow"].includes(sdk.name)
                   ? { prefix: sdk.name }
                   : undefined
               )
@@ -748,6 +754,7 @@ function renderType(
     if (type.type === "literal") return renderLiteralType(type);
     if (type.type === "templateLiteral") return renderTemplateLiteralType(type);
     if (type.type === "union") return renderUnionType(type);
+    if (type.type === "indexedAccess") return renderIndexedAccessType(type);
     if (type.type === "array") return renderArrayType(type);
     if (type.type === "tuple") return renderTupleType(type);
     if (type.type === "reference" && type.package === "typescript") {
@@ -782,17 +789,29 @@ function renderType(
     ) {
       return renderBunShellType(type);
     }
+    if (type.type === "reference") {
+      return renderReferenceType(type);
+    }
     if (type.type === "reflection" && type.declaration.signatures) {
       return renderCallbackType(type);
     }
     if (type.type === "reflection" && type.declaration.children?.length) {
       return renderObjectType(type);
     }
+    if (type.type === "unknown") {
+      return renderUnknownType(type as TypeDoc.SomeType & { name?: string });
+    }
 
     // @ts-expect-error
     delete type._project;
     console.log(type);
     throw new Error(`Unsupported type "${type.type}"`);
+  }
+  function renderUnknownType(type: TypeDoc.SomeType & { name?: string }) {
+    return `<code class="type">${(type.name ?? "unknown")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")}</code>`;
   }
   function renderIntrisicType(type: TypeDoc.IntrinsicType) {
     return `<code class="primitive">${type.name}</code>`;
@@ -806,6 +825,9 @@ function renderType(
     // }
     if (type.value === true || type.value === false) {
       return `<code class="primitive">${type.value}</code>`;
+    }
+    if (typeof type.value !== "string") {
+      return `<code class="primitive">${String(type.value)}</code>`;
     }
     // String value
     // ie.
@@ -848,6 +870,9 @@ function renderType(
     const tail = type.tail[0][1].replace("{", "\\{").replace("}", "\\}");
     return `<code class="symbol">&ldquo;</code><code class="primitive">${head}$\\{${type.tail[0][0].name}\\}${tail}</code><code class="symbol">&rdquo;</code>`;
   }
+  function renderIndexedAccessType(type: TypeDoc.IndexedAccessType) {
+    return `${renderSomeType(type.objectType)}<code class="symbol">[</code>${renderSomeType(type.indexType)}<code class="symbol">]</code>`;
+  }
   function renderUnionType(type: TypeDoc.UnionType) {
     return type.types
       .map((t) => renderSomeType(t))
@@ -870,6 +895,18 @@ function renderType(
       `<code class="symbol">&lt;</code>`,
       type.typeArguments?.map((t) => renderSomeType(t)).join(", "),
       `<code class="symbol">&gt;</code>`,
+    ].join("");
+  }
+  function renderReferenceType(type: TypeDoc.ReferenceType) {
+    return [
+      `<code class="type">${type.name}</code>`,
+      ...(type.typeArguments?.length
+        ? [
+            `<code class="symbol">&lt;</code>`,
+            type.typeArguments.map((t) => renderSomeType(t)).join(", "),
+            `<code class="symbol">&gt;</code>`,
+          ]
+        : []),
     ].join("");
   }
   function renderSstComponentType(type: TypeDoc.ReferenceType) {
@@ -944,8 +981,10 @@ function renderType(
     }
 
     // types in different doc
-    const fileName = (type.reflection as TypeDoc.DeclarationReflection)
-      ?.sources?.[0].fileName;
+    const fileName =
+      (type.reflection as TypeDoc.DeclarationReflection)?.sources?.[0].fileName ||
+      // Some local helper types only carry a ReflectionSymbolId target.
+      ((type as any)._target?.fileName as string | undefined);
     if (fileName?.startsWith("platform/src/components/")) {
       const docHash = type.name.endsWith("Args")
         ? `#${type.name.toLowerCase()}`
@@ -977,7 +1016,20 @@ function renderType(
       return `[<code class="type">${
         type.name
       }</code>](#${type.name.toLowerCase()})`;
-    } else if (type.name === "T") {
+    }
+    const fileName =
+      (type.reflection as TypeDoc.DeclarationReflection)?.sources?.[0].fileName ||
+      ((type as any)._target?.fileName as string | undefined);
+    if (
+      fileName?.startsWith("sdk/js/src/") ||
+      fileName?.includes("/sdk/js/src/")
+    ) {
+      return renderReferenceType(type);
+    }
+    if (type.refersToTypeParameter || (module.children ?? []).find((c) => c.name === type.name)) {
+      return renderReferenceType(type);
+    }
+    if (type.name === "T") {
       return `<code class="primitive">string</code>`;
     }
 
@@ -1597,6 +1649,7 @@ function renderInterfacesAtH2Level(
     if (int.comment?.summary) {
       lines.push(``, renderTdComment(int.comment?.summary!));
     }
+    lines.push(...renderInterfaceInheritedApiSummary(int));
 
     // props
     for (const prop of useInterfaceProps(int)) {
@@ -1692,27 +1745,39 @@ function renderInterfacesAtH3Level(module: TypeDoc.DeclarationReflection) {
       `<InlineSection>`,
       `**Type** ${renderType(module, int)}`,
       `</InlineSection>`,
+      ...renderInterfaceInheritedApiInline(i),
       ...renderNestedTypeList(module, int),
       `</Section>`,
       `</Segment>`,
       // nested props (ie. `.domain`, `.transform`)
       ...useNestedTypes(int.type!, int.name).flatMap(
-        ({ depth, prefix, subType }) => [
-          `<NestedTitle id="${useLinkHashes(module).get(subType)}" Tag="${
-            depth === 0 ? "h4" : "h5"
-          }" parent="${prefix}.">${renderName(subType)}</NestedTitle>`,
-          `<Segment>`,
-          `<Section type="parameters">`,
-          `<InlineSection>`,
-          `**Type** ${renderType(module, subType)}`,
-          `</InlineSection>`,
-          `</Section>`,
-          ...renderDefaultTag(module, subType),
-          ...renderDescription(subType),
-          ``,
-          ...renderExamples(subType),
-          `</Segment>`,
-        ]
+        ({ depth, prefix, subType }) => {
+          return subType.kind === TypeDoc.ReflectionKind.Method
+            ? renderMethod(module, subType, {
+                methodTitle: `<NestedTitle id="${useLinkHashes(module).get(
+                  subType
+                )}" Tag="${depth === 0 ? "h4" : "h5"}" parent="${prefix}.">${renderName(
+                  subType
+                )}</NestedTitle>`,
+                parametersTitle: `**Parameters**`,
+              })
+            : [
+                `<NestedTitle id="${useLinkHashes(module).get(subType)}" Tag="${
+                  depth === 0 ? "h4" : "h5"
+                }" parent="${prefix}.">${renderName(subType)}</NestedTitle>`,
+                `<Segment>`,
+                `<Section type="parameters">`,
+                `<InlineSection>`,
+                `**Type** ${renderType(module, subType)}`,
+                `</InlineSection>`,
+                `</Section>`,
+                ...renderDefaultTag(module, subType),
+                ...renderDescription(subType),
+                ``,
+                ...renderExamples(subType),
+                `</Segment>`,
+              ];
+        }
       )
     );
   }
@@ -1851,6 +1916,38 @@ function renderSignature(signature: TypeDoc.SignatureReflection) {
     .join(", ");
   return `${signature.name}(${parameters})`;
 }
+function renderInterfaceInheritedApiInline(int: TypeDoc.DeclarationReflection) {
+  const links = renderExternalExtendedTypeLinks(int);
+  if (!links.length) return [];
+
+  return [
+    `<InlineSection>`,
+    `Only showing custom SDK methods here. For the full API, see ${links.join(", ")}.`,
+    `</InlineSection>`,
+  ];
+}
+function renderInterfaceInheritedApiSummary(int: TypeDoc.DeclarationReflection) {
+  const links = renderExternalExtendedTypeLinks(int);
+  if (!links.length) return [];
+
+  return [
+    ``,
+    `Only showing custom SDK methods here. For the full API, see ${links.join(", ")}.`,
+  ];
+}
+function renderExternalExtendedTypeLinks(int: TypeDoc.DeclarationReflection) {
+  return (int.extendedTypes ?? [])
+    .filter(
+      (type): type is TypeDoc.ReferenceType =>
+        type.type === "reference" && Boolean(type.package)
+    )
+    .map((type) => {
+      const link = externalTypeDocLinks.get(`${type.package}:${type.name}`);
+      if (!link) return undefined;
+      return link;
+    })
+    .filter((type): type is string => Boolean(type));
+}
 function renderJsonParseReviverType() {
   return `[<code class="type">JSON.parse reviver</code>](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/JSON/parse#reviver)`;
 }
@@ -1965,6 +2062,7 @@ function useInterfaceProps(i: TypeDoc.DeclarationReflection) {
   if (!i.children?.length) throw new Error(`Interface ${i.name} has no props`);
 
   return i.children
+    .filter((c) => !c.flags.isExternal)
     .filter((c) => !c.comment?.modifierTags.has("@internal"))
     .filter((c) => !c.comment?.blockTags.find((t) => t.tag === "@deprecated"));
 }
@@ -1992,7 +2090,9 @@ function useNestedTypes(
   }
   if (type.type === "reflection" && type.declaration.children?.length) {
     return type.declaration
-      .children!.filter((c) => !c.comment?.modifierTags.has("@internal"))
+      .children!
+      .filter((c) => !c.flags.isExternal)
+      .filter((c) => !c.comment?.modifierTags.has("@internal"))
       .filter((c) => !c.comment?.blockTags.find((t) => t.tag === "@deprecated"))
       .flatMap((subType) => [
         { prefix, subType, depth },
@@ -2210,6 +2310,7 @@ async function buildComponents() {
       "../platform/src/components/aws/task.ts",
       "../platform/src/components/aws/vpc.ts",
       "../platform/src/components/aws/vpc-v1.ts",
+      "../platform/src/components/aws/workflow.ts",
       "../platform/src/components/cloudflare/ai.ts",
       "../platform/src/components/cloudflare/bucket.ts",
       "../platform/src/components/cloudflare/cron.ts",
@@ -2288,6 +2389,7 @@ async function buildSdk() {
     entryPoints: [
       "../sdk/js/src/aws/realtime.ts",
       "../sdk/js/src/aws/task.ts",
+      "../sdk/js/src/aws/workflow.ts",
       "../sdk/js/src/vector/index.ts",
     ],
     tsconfig: "../sdk/js/tsconfig.json",
