@@ -2,11 +2,13 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/pulumi/pulumi/sdk/v3/go/common/apitype"
 	"github.com/sst/sst/v3/cmd/sst/cli"
 	"github.com/sst/sst/v3/cmd/sst/mosaic/ui"
 	"github.com/sst/sst/v3/internal/util"
@@ -349,8 +351,21 @@ var CmdState = &cli.Command{
 					"sst state repair --stage production",
 					"```",
 					"",
+					"If the current state cannot be read, you can opt into restoring the latest valid",
+					"snapshot with `--dangerously-revert`. This is unsafe and can orphan or recreate",
+					"resources on future deploys.",
+					"",
 					"By default, it runs on your personal stage.",
 				}, "\n"),
+			},
+			Flags: []cli.Flag{
+				{
+					Name: "dangerously-revert",
+					Type: "bool",
+					Description: cli.Description{
+						Short: "Dangerously restore latest valid snapshot if current state cannot be read",
+					},
+				},
 			},
 			Run: func(c *cli.Cli) error {
 				p, err := c.InitProject()
@@ -374,18 +389,41 @@ var CmdState = &cli.Command{
 				}
 				defer workdir.Cleanup()
 
-				_, err = workdir.Pull()
-				if err != nil {
-					return util.NewReadableError(err, "Could not pull state")
+				_, pullErr := workdir.Pull()
+				if pullErr != nil && !errors.Is(pullErr, provider.ErrStateNotFound) {
+					return util.NewReadableError(pullErr, "Could not pull state")
 				}
 
-				checkpoint, err := workdir.Export()
-				if err != nil {
-					return util.NewReadableError(err, "Could not export state")
+				recoveredSnapshotID := ""
+				var checkpoint *apitype.CheckpointV3
+				if pullErr == nil {
+					checkpoint, err = workdir.Export()
+				}
+				if pullErr != nil || err != nil {
+					if !c.Bool("dangerously-revert") {
+						return repairSnapshotFlagRequired(pullErr, err)
+					}
+					snapshot, snapshotID, recoverErr := provider.LatestValidSnapshot(p.Backend(), p.App().Name, p.App().Stage)
+					if recoverErr != nil {
+						return util.NewReadableError(recoverErr, "Could not recover state")
+					}
+					err = workdir.ImportRaw(snapshot)
+					if err != nil {
+						return util.NewReadableError(err, "Could not restore snapshot")
+					}
+					recoveredSnapshotID = snapshotID
+					checkpoint, err = workdir.Export()
+					if err != nil {
+						return util.NewReadableError(err, "Could not export state")
+					}
+				}
+
+				if checkpoint == nil {
+					return util.NewReadableError(nil, "Could not export state")
 				}
 
 				muts := state.Repair(checkpoint)
-				err = confirmMutations(muts)
+				err = confirmRepairMutations(recoveredSnapshotID, muts)
 				if err != nil {
 					return err
 				}
@@ -445,6 +483,27 @@ func confirmMutations(muts []state.Mutation) error {
 		return util.NewReadableError(nil, "Abandoning changes")
 	}
 	return nil
+}
+
+func confirmRepairMutations(snapshotID string, muts []state.Mutation) error {
+	if snapshotID != "" {
+		fmt.Printf("Recovering state from snapshot: %s\n", snapshotID)
+	}
+	if len(muts) == 0 {
+		if snapshotID == "" {
+			return util.NewReadableError(nil, "No changes made")
+		}
+		return nil
+	}
+	return confirmMutations(muts)
+}
+
+func repairSnapshotFlagRequired(pullErr error, exportErr error) error {
+	cause := exportErr
+	if cause == nil {
+		cause = pullErr
+	}
+	return util.NewReadableError(cause, "State is missing or corrupted. Re-run `sst state repair --dangerously-revert` to restore the latest valid snapshot. This can orphan or recreate resources.")
 }
 
 func indent(key string) string {

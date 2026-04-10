@@ -546,6 +546,43 @@ func (a *AwsHome) pathForData(key, app, stage string) string {
 	return path.Join(key, app, fmt.Sprintf("%v.json", stage))
 }
 
+func (a *AwsHome) listData(key, app, stage string) ([]string, error) {
+	bootstrap, err := a.provider.Bootstrap(a.provider.config.Region)
+	if err != nil {
+		return nil, err
+	}
+	s3Client := s3.NewFromConfig(a.provider.config)
+	prefix := path.Join(key, app)
+	if stage != "" {
+		prefix = path.Join(prefix, stage)
+	}
+	prefix += "/"
+	result := []string{}
+	base := path.Join(key, app) + "/"
+	var continuationToken *string
+	for {
+		data, err := s3Client.ListObjectsV2(context.TODO(), &s3.ListObjectsV2Input{
+			Bucket:            aws.String(bootstrap.State),
+			Prefix:            aws.String(prefix),
+			ContinuationToken: continuationToken,
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, obj := range data.Contents {
+			name := strings.TrimPrefix(*obj.Key, base)
+			if strings.HasSuffix(name, ".json") {
+				result = append(result, strings.TrimSuffix(name, ".json"))
+			}
+		}
+		if data.IsTruncated == nil || !*data.IsTruncated {
+			break
+		}
+		continuationToken = data.NextContinuationToken
+	}
+	return result, nil
+}
+
 func (a *AwsHome) pathForPassphrase(app string, stage string) string {
 	return "/" + strings.Join([]string{"sst", "passphrase", app, stage}, "/")
 }
@@ -705,30 +742,16 @@ func (a *AwsHome) setPassphrase(app, stage, passphrase string) error {
 }
 
 func (a *AwsHome) listStages(app string) ([]string, error) {
-	bootstrap, err := a.provider.Bootstrap(a.provider.config.Region)
-	if err != nil {
-		return nil, err
-	}
-	s3Client := s3.NewFromConfig(a.provider.config)
-
-	data, err := s3Client.ListObjects(context.TODO(), &s3.ListObjectsInput{
-		Bucket: aws.String(bootstrap.State),
-		Prefix: aws.String(path.Join("app", app)),
-	})
-
+	data, err := a.listData("app", app, "")
 	if err != nil {
 		return nil, err
 	}
 
 	stages := []string{}
 
-	for _, obj := range data.Contents {
-		filename := path.Base(*obj.Key)
-		if strings.HasSuffix(filename, ".json") {
-			stageName := strings.TrimSuffix(filename, ".json")
-			if hasResources(a, app, stageName) {
-				stages = append(stages, stageName)
-			}
+	for _, stageName := range data {
+		if hasResources(a, app, stageName) {
+			stages = append(stages, stageName)
 		}
 	}
 

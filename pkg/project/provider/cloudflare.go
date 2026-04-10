@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -81,16 +82,35 @@ type CloudflareHome struct {
 	sync.Mutex
 	provider  *CloudflareProvider
 	bootstrap *bootstrap
+	request   func(*cloudflare.API, context.Context, string, string, interface{}) ([]byte, error)
 }
 
 func NewCloudflareHome(provider *CloudflareProvider) *CloudflareHome {
 	return &CloudflareHome{
 		provider: provider,
+		request:  makeRequestContext,
 	}
 }
 
 type bootstrap struct {
 	State string `json:"state"`
+}
+
+type r2Object struct {
+	Key string `json:"key"`
+}
+
+type r2ResponseInfo struct {
+	Cursor      string `json:"cursor"`
+	IsTruncated bool   `json:"is_truncated"`
+}
+
+type r2Response struct {
+	Success    bool           `json:"success"`
+	Errors     []string       `json:"errors"`
+	Messages   []string       `json:"messages"`
+	Result     []r2Object     `json:"result"`
+	ResultInfo r2ResponseInfo `json:"result_info"`
 }
 
 func (c *CloudflareHome) cleanup(key, app, stage string) error {
@@ -133,11 +153,23 @@ func (c *CloudflareHome) Bootstrap() error {
 //go:linkname makeRequestContext github.com/cloudflare/cloudflare-go.(*API).makeRequestContext
 func makeRequestContext(*cloudflare.API, context.Context, string, string, interface{}) ([]byte, error)
 
+func (c *CloudflareHome) requestContext(method, path string, body interface{}) ([]byte, error) {
+	request := c.request
+	if request == nil {
+		request = makeRequestContext
+	}
+	return request(c.provider.api, context.Background(), method, path, body)
+}
+
 func (c *CloudflareHome) putData(kind, app, stage string, data io.Reader) error {
 	c.Lock()
 	defer c.Unlock()
 	path := filepath.Join(kind, app, stage)
-	_, err := makeRequestContext(c.provider.api, context.Background(), http.MethodPut, "/accounts/"+c.provider.identifier.Identifier+"/r2/buckets/"+c.bootstrap.State+"/objects/"+path, data)
+	body, err := io.ReadAll(data)
+	if err != nil {
+		return err
+	}
+	_, err = c.requestContext(http.MethodPut, "/accounts/"+c.provider.identifier.Identifier+"/r2/buckets/"+c.bootstrap.State+"/objects/"+path, body)
 	if err != nil {
 		return err
 	}
@@ -148,7 +180,7 @@ func (c *CloudflareHome) getData(kind, app, stage string) (io.Reader, error) {
 	c.Lock()
 	defer c.Unlock()
 	path := filepath.Join(kind, app, stage)
-	data, err := makeRequestContext(c.provider.api, context.Background(), http.MethodGet, "/accounts/"+c.provider.identifier.Identifier+"/r2/buckets/"+c.bootstrap.State+"/objects/"+path, nil)
+	data, err := c.requestContext(http.MethodGet, "/accounts/"+c.provider.identifier.Identifier+"/r2/buckets/"+c.bootstrap.State+"/objects/"+path, nil)
 	if err != nil {
 		if err.Error() == "The specified key does not exist. (10007)" {
 			return nil, nil
@@ -158,11 +190,47 @@ func (c *CloudflareHome) getData(kind, app, stage string) (io.Reader, error) {
 	return bytes.NewReader(data), nil
 }
 
+func (c *CloudflareHome) listData(kind, app, stage string) ([]string, error) {
+	c.Lock()
+	defer c.Unlock()
+	prefix := filepath.Join(kind, app)
+	if stage != "" {
+		prefix = filepath.Join(prefix, stage)
+	}
+	prefix += "/"
+	base := filepath.Join(kind, app) + "/"
+	pathPrefix := "/accounts/" + c.provider.identifier.Identifier + "/r2/buckets/" + c.bootstrap.State + "/objects?prefix=" + url.QueryEscape(prefix)
+	result := []string{}
+	cursor := ""
+	for {
+		requestPath := pathPrefix
+		if cursor != "" {
+			requestPath += "&cursor=" + url.QueryEscape(cursor)
+		}
+		data, err := c.requestContext(http.MethodGet, requestPath, nil)
+		if err != nil {
+			return nil, err
+		}
+		var response r2Response
+		if err := json.Unmarshal(data, &response); err != nil {
+			return nil, err
+		}
+		for _, obj := range response.Result {
+			result = append(result, strings.TrimPrefix(obj.Key, base))
+		}
+		if !response.ResultInfo.IsTruncated || response.ResultInfo.Cursor == "" {
+			break
+		}
+		cursor = response.ResultInfo.Cursor
+	}
+	return result, nil
+}
+
 func (c *CloudflareHome) removeData(kind, app, stage string) error {
 	c.Lock()
 	defer c.Unlock()
 	path := filepath.Join(kind, app, stage)
-	_, err := makeRequestContext(c.provider.api, context.Background(), http.MethodDelete, "/accounts/"+c.provider.identifier.Identifier+"/r2/buckets/"+c.bootstrap.State+"/objects/"+path, nil)
+	_, err := c.requestContext(http.MethodDelete, "/accounts/"+c.provider.identifier.Identifier+"/r2/buckets/"+c.bootstrap.State+"/objects/"+path, nil)
 	if err != nil {
 		return err
 	}
@@ -190,36 +258,14 @@ func (c *CloudflareHome) getPassphrase(app, stage string) (string, error) {
 }
 
 func (c *CloudflareHome) listStages(app string) ([]string, error) {
-	type r2Object struct {
-		Key string `json:"key"`
-	}
-
-	type r2Response struct {
-		Success  bool       `json:"success"`
-		Errors   []string   `json:"errors"`
-		Messages []string   `json:"messages"`
-		Result   []r2Object `json:"result"`
-	}
-
-	path := "/accounts/" + c.provider.identifier.Identifier + "/r2/buckets/" + c.bootstrap.State + "/objects?prefix=" + filepath.Join("app", app)
-
-	data, err := makeRequestContext(c.provider.api, context.Background(), http.MethodGet, path, nil)
-
-	if err != nil {
-		return nil, err
-	}
-
-	var response r2Response
-	err = json.Unmarshal(data, &response)
+	entries, err := c.listData("app", app, "")
 	if err != nil {
 		return nil, err
 	}
 
 	stages := []string{}
 
-	for _, obj := range response.Result {
-		segments := strings.Split(obj.Key, "/")
-		stageName := segments[len(segments)-1]
+	for _, stageName := range entries {
 		if hasResources(c, app, stageName) {
 			stages = append(stages, stageName)
 		}
