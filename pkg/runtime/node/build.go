@@ -15,6 +15,7 @@ import (
 	"github.com/sst/sst/v3/pkg/js"
 	"github.com/sst/sst/v3/pkg/process"
 	"github.com/sst/sst/v3/pkg/runtime"
+	"gopkg.in/yaml.v3"
 )
 
 var forceExternal = []string{
@@ -273,7 +274,11 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 			}
 			dependencies := map[string]string{}
 			for _, pkg := range installPackages {
-				dependencies[pkg] = resolveInstallVersion(pkg, properties.Install, parsed)
+				version, err := resolveInstallVersion(pkg, properties.Install, filepath.Dir(src), parsed)
+				if err != nil {
+					return nil, err
+				}
+				dependencies[pkg] = version
 			}
 			outPkg := filepath.Join(input.Out(), "package.json")
 			outFile, err := os.Create(outPkg)
@@ -320,6 +325,11 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 	}, nil
 }
 
+type pnpmWorkspace struct {
+	Catalog  map[string]string            `yaml:"catalog"`
+	Catalogs map[string]map[string]string `yaml:"catalogs"`
+}
+
 func resolveInstallPackages(install map[string]string) []string {
 	result := make([]string, 0, len(install))
 	for pkg := range install {
@@ -328,12 +338,55 @@ func resolveInstallPackages(install map[string]string) []string {
 	return result
 }
 
-func resolveInstallVersion(pkg string, install map[string]string, packageJSON js.PackageJson) string {
-	if version, ok := install[pkg]; ok && version != "" && version != "*" {
-		return version
+func resolveInstallVersion(pkg string, install map[string]string, dir string, packageJSON js.PackageJson) (string, error) {
+	version := install[pkg]
+	if version == "" || version == "*" {
+		version = packageJSON.Dependencies[pkg]
 	}
-	if version := packageJSON.Dependencies[pkg]; version != "" {
-		return version
+	if version == "" {
+		return "*", nil
 	}
-	return "*"
+	if strings.HasPrefix(version, "catalog:") {
+		var err error
+		version, err = resolveCatalogVersion(dir, pkg, version)
+		if err != nil {
+			return "", err
+		}
+	}
+	for _, prefix := range []string{"catalog:", "workspace:", "file:", "link:", "portal:", "patch:"} {
+		if strings.HasPrefix(version, prefix) {
+			return "", fmt.Errorf("could not determine an npm-compatible version for %q in nodejs.install: found %q using %q; pin the version explicitly", pkg, version, prefix)
+		}
+	}
+	return version, nil
+}
+
+func resolveCatalogVersion(dir string, pkg string, version string) (string, error) {
+	workspacePath, err := fs.FindUp(dir, "pnpm-workspace.yaml")
+	if err != nil {
+		return "", fmt.Errorf("could not determine an npm-compatible version for %q in nodejs.install: found %q but pnpm-workspace.yaml was not found; pin the version explicitly", pkg, version)
+	}
+	data, err := os.ReadFile(workspacePath)
+	if err != nil {
+		return "", err
+	}
+	var workspace pnpmWorkspace
+	if err := yaml.Unmarshal(data, &workspace); err != nil {
+		return "", err
+	}
+	catalogName := strings.TrimPrefix(version, "catalog:")
+	var catalog map[string]string
+	if catalogName == "" || catalogName == "default" {
+		catalog = workspace.Catalog
+		if catalog == nil {
+			catalog = workspace.Catalogs["default"]
+		}
+	} else {
+		catalog = workspace.Catalogs[catalogName]
+	}
+	resolved := catalog[pkg]
+	if resolved == "" {
+		return "", fmt.Errorf("could not determine an npm-compatible version for %q in nodejs.install: found %q but no matching catalog entry exists in pnpm-workspace.yaml; pin the version explicitly", pkg, version)
+	}
+	return resolved, nil
 }
