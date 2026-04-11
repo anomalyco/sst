@@ -33,7 +33,6 @@ import { logicalName, physicalName } from "../naming.js";
 import { RETENTION } from "./logging.js";
 import {
   cloudwatch,
-  codedeploy,
   ecr,
   getCallerIdentityOutput,
   getPartitionOutput,
