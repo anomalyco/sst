@@ -82,6 +82,8 @@ func Register(ctx context.Context, p *project.Project, r *rpc.Server) error {
 	r.RegisterName("Resource.Aws.OriginAccessControl", &OriginAccessControl{awsResource})
 	r.RegisterName("Resource.Aws.RdsRoleLookup", &RdsRoleLookup{awsResource})
 	r.RegisterName("Resource.Aws.VectorTable", &VectorTable{awsResource})
+	r.RegisterName("Resource.Aws.CodeDeployLambdaDeployment", &CodeDeployLambdaDeployment{awsResource})
+	r.RegisterName("Resource.Aws.CodeDeployDeploymentWaiter", &CodeDeployDeploymentWaiter{awsResource})
 
 	// Cloudflare Resources
 	r.RegisterName("Resource.Cloudflare.DnsRecord", &CloudflareDnsRecord{cloudflareResource})

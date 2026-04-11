@@ -14,7 +14,7 @@ import {
 } from "../component";
 import { Link } from "../link";
 import type { Input } from "../input";
-import { FunctionArgs, FunctionArn } from "./function.js";
+import { Function, FunctionArgs, FunctionArn } from "./function.js";
 import { hashStringToPrettyString, physicalName, logicalName } from "../naming";
 import { VisibleError } from "../error";
 import { RETENTION } from "./logging";
@@ -382,7 +382,7 @@ export interface ApiGatewayV1AuthorizerArgs {
    * }
    * ```
    */
-  tokenFunction?: Input<string | FunctionArgs>;
+  tokenFunction?: Input<string | Function | FunctionArgs>;
   /**
    * The Lambda request authorizer function. Takes the handler path or the function args.
    * @example
@@ -392,7 +392,7 @@ export interface ApiGatewayV1AuthorizerArgs {
    * }
    * ```
    */
-  requestFunction?: Input<string | FunctionArgs>;
+  requestFunction?: Input<string | Function | FunctionArgs>;
   /**
    * A list of user pools used as the authorizer.
    * @example
@@ -966,7 +966,7 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
    */
   public route(
     route: string,
-    handler: Input<string | FunctionArgs | FunctionArn>,
+    handler: Input<string | Function | FunctionArgs | FunctionArn>,
     args: ApiGatewayV1RouteArgs = {},
   ) {
     const { method, path } = this.parseRoute(route);

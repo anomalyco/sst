@@ -33,6 +33,7 @@ import { logicalName, physicalName } from "../naming.js";
 import { RETENTION } from "./logging.js";
 import {
   cloudwatch,
+  codedeploy,
   ecr,
   getCallerIdentityOutput,
   getPartitionOutput,
@@ -59,6 +60,7 @@ import {
 } from "./router.js";
 import { KvRoutesUpdate } from "./providers/kv-routes-update.js";
 import { KvKeys } from "./providers/kv-keys.js";
+import { FunctionRollout, FunctionRolloutArgs } from "./function-rollout.js";
 
 /**
  * Helper type to define function ARN type
@@ -253,6 +255,43 @@ interface FunctionUrlCorsArgs {
    */
   maxAge?: Input<Duration>;
 }
+
+export type FunctionRolloutConfig = Prettify<
+  Omit<FunctionRolloutArgs, "function" | "alias" | "transform"> & {
+    /**
+     * The name of the Lambda alias used for traffic shifting.
+     * @default `"live"`
+     */
+    alias?: Input<string>;
+    /**
+     * Configure a function URL that always points to the latest published version.
+     * Use this to test new versions before traffic shifts to them.
+     *
+     * When rollout is enabled, `url` points to the stable endpoint your users
+     * hit. Set `latestUrl` to create a separate URL for pre-deployment testing.
+     *
+     * @example
+     *
+     * ```ts title="sst.config.ts"
+     * new sst.aws.Function("Api", {
+     *   handler: "src/api.handler",
+     *   url: true,
+     *   rollout: {
+     *     type: "all-at-once",
+     *     latestUrl: true,
+     *   },
+     * });
+     * ```
+     */
+    latestUrl?: FunctionArgs["url"];
+  }
+>;
+
+export type FunctionRolloutDeferred = Prettify<
+  {
+    type?: never;
+  } & Pick<FunctionRolloutConfig, "alias" | "latestUrl">
+>;
 
 export interface FunctionArgs {
   /**
@@ -1323,6 +1362,92 @@ export interface FunctionArgs {
    */
   versioning?: Input<boolean>;
   /**
+   * Enable CodeDeploy-managed traffic shifting for safe deployments.
+   *
+   * Configure how traffic shifts to new versions of this function on deploy.
+   * Supports `all-at-once`, `canary`, and `linear` strategies. Optionally run
+   * a before-traffic hook to validate the new version, set CloudWatch alarms
+   * to trigger automatic rollbacks, or use gradual traffic shifting to limit
+   * blast radius.
+   *
+   * :::caution
+   * If you connect this function to event sources like queues, topics, buckets,
+   * or API Gateway routes, pass the function directly or use `fn.targetArn`.
+   * Using `fn.arn` bypasses rollout and invokes the latest version before it
+   * has been validated.
+   * :::
+   *
+   * :::note
+   * Enabling rollout automatically enables versioning.
+   * :::
+   *
+   * :::note
+   * When running in dev mode, the deployed function code is a stub that doesn't
+   * change between deploys, so rollout is never triggered.
+   * :::
+   *
+   * @example
+   * Canary deployment that shifts 10% of traffic for 5 minutes before going to 100%.
+   *
+   * ```js
+   * {
+   *   rollout: {
+   *     type: "canary",
+   *     percentage: 10,
+   *     duration: "5 minutes",
+   *   }
+   * }
+   * ```
+   *
+   * Linear deployment with alarms and lifecycle functions.
+   *
+   * ```js
+   * {
+   *   rollout: {
+   *     type: "linear",
+   *     percentage: 10,
+   *     duration: "1 minute",
+   *     alarms: [errorAlarm.name, latencyAlarm.name],
+   *     beforeTraffic: "src/hooks.beforeTraffic",
+   *     afterTraffic: "src/hooks.afterTraffic",
+   *   }
+   * }
+   * ```
+   *
+   * If you need to pass additional properties to the before-traffic or after-traffic
+   * function, use `addRollout()` to configure the deployment after construction.
+   * Pass `rollout: true` or set options like `latestUrl` and `alias` that need
+   * to be created upfront.
+   *
+   * ```ts title="sst.config.ts"
+   * const fn = new sst.aws.Function("Function", {
+   *   handler: "src/api.handler",
+   *   url: true,
+   *   rollout: true,
+   * });
+   *
+   * const beforeTraffic = new sst.aws.Function("BeforeTraffic", {
+   *   handler: "src/before-traffic.handler",
+   *   link: [fn],
+   *   environment: {
+   *     DEPLOYMENT_ID: fn.nodes.rolloutDeployment!.deploymentId,
+   *   },
+   *   permissions: [
+   *     {
+   *       actions: ["codedeploy:PutLifecycleEventHookExecutionStatus"],
+   *       resources: ["*"],
+   *     },
+   *   ],
+   * });
+   *
+   * fn.addRollout({
+   *   type: "all-at-once",
+   *   beforeTraffic,
+   * });
+   * ```
+   */
+  rollout?: FunctionRolloutConfig | boolean | FunctionRolloutDeferred;
+  /**
    * A list of Lambda layer ARNs to add to the function.
    *
    * :::note
@@ -1513,6 +1638,17 @@ export interface FunctionArgs {
      * when the `retries` property is set.
      */
     eventInvokeConfig?: Transform<lambda.FunctionEventInvokeConfigArgs>;
+    /**
+     * Transform the rollout resources. Only applies when `rollout` is configured.
+     */
+    rollout?: Prettify<
+      FunctionRolloutArgs["transform"] & {
+        /**
+         * Transform the stable Lambda Alias resource used for traffic shifting.
+         */
+        alias?: Transform<lambda.AliasArgs>;
+      }
+    >;
   };
   /**
    * @internal
@@ -1706,12 +1842,21 @@ export interface FunctionArgs {
  */
 export class Function extends Component implements Link.Linkable {
   private constructorName: string;
+  private constructorOpts: ComponentResourceOptions | undefined;
   private durable: boolean;
+  private hasRollout: boolean;
   private function: Output<lambda.Function>;
   private role: iam.Role;
   private logGroup: Output<cloudwatch.LogGroup | undefined>;
+  private latestUrlEndpoint: Output<string | undefined>;
+  private aliasUrlEndpoint?: Output<string | undefined>;
   private urlEndpoint: Output<string | undefined>;
   private eventInvokeConfig?: lambda.FunctionEventInvokeConfig;
+  private targetAlias?: lambda.Alias;
+  private latestAlias: Output<lambda.Alias | undefined>;
+  private functionRolloutInstance?: Output<FunctionRollout | undefined>;
+  private rolloutTransform?: NonNullable<FunctionArgs["transform"]>["rollout"];
+  private dev: Output<boolean>;
 
   private static readonly encryptionKey = lazy(
     () =>
@@ -1735,10 +1880,14 @@ export class Function extends Component implements Link.Linkable {
   ) {
     super(__pulumiType, name, args, opts);
     this.constructorName = name;
+    this.constructorOpts = opts;
     this.durable = Boolean(args.durable);
+    this.hasRollout = Boolean(args.rollout);
+    this.rolloutTransform = args.transform?.rollout;
 
     const parent = this;
     const dev = normalizeDev();
+    this.dev = dev;
     const isContainer = all([args.python, dev]).apply(
       ([python, dev]) => !dev && !!python?.container,
     );
@@ -1760,7 +1909,11 @@ export class Function extends Component implements Link.Linkable {
     const streaming = normalizeStreaming();
     const logging = normalizeLogging();
     const volume = normalizeVolume();
-    const url = normalizeUrl();
+    const url = normalizeUrl(args.url);
+    const rolloutLatestUrl = normalizeUrl(
+      typeof args.rollout === "object" && args.rollout.latestUrl,
+    );
+    const rollout = normalizeRollout(args.rollout);
     const copyFiles = normalizeCopyFiles();
     const durable = normalizeDurable();
     const policies = output(args.policies ?? []);
@@ -1776,16 +1929,21 @@ export class Function extends Component implements Link.Linkable {
     const logGroup = createLogGroup();
     const zipAsset = createZipAsset();
     const fn = createFunction();
-    const urlEndpoint = createUrl();
+    this.function = fn;
+    this.role = role;
+
+    const latestAlias = createLatestAlias();
+    this.latestAlias = latestAlias;
+
+    createRollout();
+    const latestUrlEndpoint = createLatestUrl();
     createProvisioned();
     const eventInvokeConfig = createEventInvokeConfig();
 
     const links = linkData.apply((input) => input.map((item) => item.name));
 
-    this.function = fn;
-    this.role = role;
     this.logGroup = logGroup;
-    this.urlEndpoint = urlEndpoint;
+    this.latestUrlEndpoint = latestUrlEndpoint;
     this.eventInvokeConfig = eventInvokeConfig;
 
     const buildInput = output({
@@ -1810,6 +1968,15 @@ export class Function extends Component implements Link.Linkable {
       if (!input.dev) return;
       await rpc.call("Runtime.AddTarget", input);
     });
+
+    const urlEndpoint = this.hasRollout
+      ? output(this.aliasUrlEndpoint ?? undefined)
+      : this.latestUrlEndpoint;
+    this.urlEndpoint = urlEndpoint;
+
+    if (rollout?.type !== undefined) {
+      parent.addRollout(rollout);
+    }
 
     this.registerOutputs({
       _live: unsecret(
@@ -1962,8 +2129,8 @@ export class Function extends Component implements Link.Linkable {
       }));
     }
 
-    function normalizeUrl() {
-      return output(args.url).apply((url) => {
+    function normalizeUrl(urlInput: FunctionArgs["url"]) {
+      return output(urlInput).apply((url) => {
         if (url === false || url === undefined) return;
         if (url === true) {
           url = {};
@@ -1997,6 +2164,7 @@ export class Function extends Component implements Link.Linkable {
         };
       });
     }
+    type NormalizedUrl = ReturnType<typeof normalizeUrl>;
 
     function normalizeCopyFiles() {
       return output(args.copyFiles ?? []).apply((copyFiles) =>
@@ -2059,13 +2227,18 @@ export class Function extends Component implements Link.Linkable {
       if (!args.durable) return;
       const config = args.durable === true ? {} : args.durable;
       return {
-        timeout: output(config.timeout).apply((v) =>
-          toSeconds(v ?? "14 days"),
-        ),
+        timeout: output(config.timeout).apply((v) => toSeconds(v ?? "14 days")),
         retention: output(config.retention).apply((v) =>
           toDays(v ?? "30 days"),
         ),
       };
+    }
+
+    function normalizeRollout(
+      rollout: FunctionArgs["rollout"],
+    ): FunctionRolloutConfig | FunctionRolloutDeferred | undefined {
+      if (typeof rollout === "boolean") return rollout ? {} : undefined;
+      return rollout;
     }
 
     function buildLinkData() {
@@ -2534,7 +2707,9 @@ export class Function extends Component implements Link.Linkable {
 
             return new s3.BucketObjectv2(
               dev
-                ? `DevBridgeCode${logicalName(regionName)}${logicalName(path.basename(bundle))}`
+                ? `DevBridgeCode${logicalName(regionName)}${logicalName(
+                    path.basename(bundle),
+                  )}`
                 : `${name}Code`,
               {
                 key: dev
@@ -2625,7 +2800,7 @@ export class Function extends Component implements Link.Linkable {
               layers: args.layers,
               tags: args.tags,
               publish: output(args.versioning).apply(
-                (v) => v ?? Boolean(args.durable),
+                (v) => v || Boolean(args.durable) || Boolean(args.rollout),
               ),
               reservedConcurrentExecutions: concurrency?.reserved,
               durableConfig: durable && {
@@ -2695,189 +2870,222 @@ export class Function extends Component implements Link.Linkable {
       );
     }
 
-    function createUrl() {
-      return url.apply((url) => {
-        if (url === undefined) return output(undefined);
+    function createUrl(opts: {
+      suffix?: string;
+      qualifier: Input<string | undefined> | undefined;
+      url: NormalizedUrl;
+    }) {
+      const suffix = opts.suffix ?? "";
 
-        const authorization = output(url.authorization ?? "none");
-        const isOac = output(url.route?.routerProtection).apply(
-          (p) => p?.mode === "oac" || p?.mode === "oac-with-edge-signing",
-        );
-        const isIam = all([isOac, authorization]).apply(
-          ([oac, authorization]) => oac || authorization === "iam",
-        );
+      const urlEndpoint = all([opts.url, opts.qualifier]).apply(
+        ([url, qualifier]) => {
+          if (url === undefined) return undefined;
 
-        /**
-         * Lambda Function URLs only accept alias names in the explicit `qualifier`
-         * field. Durable functions with URLs therefore need an alias target here,
-         * even when the underlying function is still on `$LATEST`.
-         * See https://github.com/hashicorp/terraform-provider-aws/issues/31459
-         */
-        const qualifier = durable
-          ? new lambda.Alias(`${name}Durable`, {
-              functionName: fn.arn,
-              functionVersion: fn.version,
-            }).name
-          : undefined;
+          const authorization = output(url.authorization ?? "none");
+          const isOac = output(url.route?.routerProtection).apply(
+            (p) => p?.mode === "oac" || p?.mode === "oac-with-edge-signing",
+          );
+          const isIam = all([isOac, authorization]).apply(
+            ([oac, authorization]) => oac || authorization === "iam",
+          );
 
-        const fnUrl = new lambda.FunctionUrl(
-          `${name}Url`,
-          {
-            functionName: durable ? fn.arn : fn.name,
-            qualifier,
-            authorizationType: isIam.apply((isIam) =>
-              isIam ? "AWS_IAM" : "NONE",
-            ),
-            invokeMode: streaming.apply((streaming) =>
-              streaming ? "RESPONSE_STREAM" : "BUFFERED",
-            ),
-            cors: url.cors,
-          },
-          { parent },
-        );
+          const fnUrl = new lambda.FunctionUrl(
+            `${name}${suffix}Url`,
+            {
+              functionName: fn.name,
+              qualifier,
+              authorizationType: isIam.apply((isIam) =>
+                isIam ? "AWS_IAM" : "NONE",
+              ),
+              invokeMode: streaming.apply((streaming) =>
+                streaming ? "RESPONSE_STREAM" : "BUFFERED",
+              ),
+              cors: url.cors,
+            },
+            { parent },
+          );
 
-        if (!url.route) {
-          authorization.apply((authorization) => {
-            if (authorization !== "none") return;
+          if (!url.route) {
+            authorization.apply((authorization) => {
+              if (authorization !== "none") return;
 
-            new lambda.Permission(
-              `${name}PublicFunctionUrlAccess`,
-              {
-                action: "lambda:InvokeFunctionUrl",
-                function: fn.name,
-                principal: "*",
-                functionUrlAuthType: "NONE",
-              },
-              { parent },
-            );
-            new lambda.Permission(
-              `${name}InvokeFunction`,
-              {
-                action: "lambda:InvokeFunction",
-                function: fn.name,
-                principal: "*",
-                invokedViaFunctionUrl: true,
-              },
-              { parent },
-            );
-          });
-          return fnUrl.functionUrl;
-        }
-
-        // Create permissions based on Router protection mode
-        all([isOac, authorization, url.route.routerDistributionArn]).apply(
-          ([oac, authorization, distributionArn]) => {
-            if (oac && distributionArn) {
               new lambda.Permission(
-                `${name}CloudFrontFunctionUrlAccess`,
+                `${name}${suffix}PublicFunctionUrlAccess`,
                 {
                   action: "lambda:InvokeFunctionUrl",
                   function: fn.name,
-                  principal: "cloudfront.amazonaws.com",
-                  sourceArn: distributionArn,
-                },
-                { parent },
-              );
-              new lambda.Permission(
-                `${name}CloudFrontInvokeFunction`,
-                {
-                  action: "lambda:InvokeFunction",
-                  function: fn.name,
-                  principal: "cloudfront.amazonaws.com",
-                  sourceArn: distributionArn,
-                  invokedViaFunctionUrl: true,
-                },
-                { parent },
-              );
-            } else if (authorization === "none") {
-              new lambda.Permission(
-                `${name}PublicFunctionUrlAccess`,
-                {
-                  action: "lambda:InvokeFunctionUrl",
-                  function: fn.name,
+                  qualifier,
                   principal: "*",
                   functionUrlAuthType: "NONE",
                 },
                 { parent },
               );
               new lambda.Permission(
-                `${name}PublicInvokeFunction`,
+                `${name}${suffix}InvokeFunction`,
                 {
                   action: "lambda:InvokeFunction",
                   function: fn.name,
+                  qualifier,
                   principal: "*",
                   invokedViaFunctionUrl: true,
                 },
                 { parent },
               );
-            }
-          },
-        );
+            });
+            return fnUrl.functionUrl;
+          }
 
-        // add router route
-        const routeNamespace = crypto
-          .createHash("md5")
-          .update(`${$app.name}-${$app.stage}-${name}`)
-          .digest("hex")
-          .substring(0, 4);
-        new KvKeys(
-          `${name}RouteKey`,
-          {
-            store: url.route.routerKvStoreArn,
-            namespace: routeNamespace,
-            entries: all([fnUrl.functionUrl, isOac, url.route]).apply(
-              ([fnUrlValue, oac, route]) => {
-                const timeouts = [
-                  "connectionTimeout" as const,
-                  "readTimeout" as const,
-                  "keepAliveTimeout" as const,
-                ].flatMap((k) => {
-                  const value = route[k];
-                  return value ? [[k, toSeconds(value)]] : [];
-                });
-                return {
-                  metadata: JSON.stringify({
-                    host: new URL(fnUrlValue).host,
-                    rewrite: route.rewrite,
-                    origin: {
-                      ...(oac
-                        ? {
-                            originAccessControlConfig: {
-                              enabled: true,
-                              signingBehavior: "always",
-                              signingProtocol: "sigv4",
-                              originType: "lambda",
-                            },
-                          }
-                        : {}),
-                      connectionAttempts: route.connectionAttempts,
-                      ...(timeouts.length
-                        ? { timeouts: Object.fromEntries(timeouts) }
-                        : {}),
-                    },
-                  }),
-                };
-              },
-            ),
-            purge: false,
-          },
-          { parent },
-        );
-        new KvRoutesUpdate(
-          `${name}RoutesUpdate`,
-          {
-            store: url.route.routerKvStoreArn,
-            namespace: url.route.routerKvNamespace,
-            key: "routes",
-            entry: url.route.apply((route) =>
-              ["url", routeNamespace, route.hostPattern, route.pathPrefix].join(
-                ",",
+          // Create permissions based on Router protection mode
+          all([isOac, authorization, url.route.routerDistributionArn]).apply(
+            ([oac, authorization, distributionArn]) => {
+              if (oac && distributionArn) {
+                new lambda.Permission(
+                  `${name}${suffix}CloudFrontFunctionUrlAccess`,
+                  {
+                    action: "lambda:InvokeFunctionUrl",
+                    function: fn.name,
+                    qualifier,
+                    principal: "cloudfront.amazonaws.com",
+                    sourceArn: distributionArn,
+                  },
+                  { parent },
+                );
+                new lambda.Permission(
+                  `${name}${suffix}CloudFrontInvokeFunction`,
+                  {
+                    action: "lambda:InvokeFunction",
+                    function: fn.name,
+                    qualifier,
+                    principal: "cloudfront.amazonaws.com",
+                    sourceArn: distributionArn,
+                    invokedViaFunctionUrl: true,
+                  },
+                  { parent },
+                );
+              } else if (authorization === "none") {
+                new lambda.Permission(
+                  `${name}${suffix}PublicFunctionUrlAccess`,
+                  {
+                    action: "lambda:InvokeFunctionUrl",
+                    function: fn.name,
+                    qualifier,
+                    principal: "*",
+                    functionUrlAuthType: "NONE",
+                  },
+                  { parent },
+                );
+                new lambda.Permission(
+                  `${name}${suffix}PublicInvokeFunction`,
+                  {
+                    action: "lambda:InvokeFunction",
+                    function: fn.name,
+                    qualifier,
+                    principal: "*",
+                    invokedViaFunctionUrl: true,
+                  },
+                  { parent },
+                );
+              }
+            },
+          );
+
+          // add router route
+          const routeNamespace = crypto
+            .createHash("md5")
+            .update(`${$app.name}-${$app.stage}-${name}${suffix}`)
+            .digest("hex")
+            .substring(0, 4);
+          new KvKeys(
+            `${name}${suffix}RouteKey`,
+            {
+              store: url.route.routerKvStoreArn,
+              namespace: routeNamespace,
+              entries: all([fnUrl.functionUrl, isOac, url.route]).apply(
+                ([fnUrlValue, oac, route]) => {
+                  const timeouts = [
+                    "connectionTimeout" as const,
+                    "readTimeout" as const,
+                    "keepAliveTimeout" as const,
+                  ].flatMap((k) => {
+                    const value = route[k];
+                    return value ? [[k, toSeconds(value)]] : [];
+                  });
+                  return {
+                    metadata: JSON.stringify({
+                      host: new URL(fnUrlValue).host,
+                      rewrite: route.rewrite,
+                      origin: {
+                        ...(oac
+                          ? {
+                              originAccessControlConfig: {
+                                enabled: true,
+                                signingBehavior: "always",
+                                signingProtocol: "sigv4",
+                                originType: "lambda",
+                              },
+                            }
+                          : {}),
+                        connectionAttempts: route.connectionAttempts,
+                        ...(timeouts.length
+                          ? { timeouts: Object.fromEntries(timeouts) }
+                          : {}),
+                      },
+                    }),
+                  };
+                },
               ),
-            ),
+              purge: false,
+            },
+            { parent },
+          );
+          new KvRoutesUpdate(
+            `${name}${suffix}RoutesUpdate`,
+            {
+              store: url.route.routerKvStoreArn,
+              namespace: url.route.routerKvNamespace,
+              key: "routes",
+              entry: [
+                "url",
+                routeNamespace,
+                url.route.hostPattern,
+                url.route.pathPrefix,
+              ].join(","),
+            },
+            { parent },
+          );
+          return url.route.routerUrl;
+        },
+      );
+
+      return output(urlEndpoint);
+    }
+
+    function createLatestUrl() {
+      if (parent.hasRollout) {
+        return createUrl({
+          url: rolloutLatestUrl,
+          qualifier: parent.latestQualifier,
+        });
+      }
+
+      return createUrl({
+        url,
+        qualifier: parent.latestQualifier,
+      });
+    }
+
+    function createLatestAlias() {
+      return parent.useQualifiedTarget.apply((useQualifiedTarget) => {
+        if (!useQualifiedTarget) return;
+
+        return new lambda.Alias(
+          `${name}LatestAlias`,
+          {
+            functionName: fn.name,
+            functionVersion: fn.version,
           },
           { parent },
         );
-        return url.route.routerUrl;
       });
     }
 
@@ -2905,6 +3113,46 @@ export class Function extends Component implements Link.Linkable {
           );
         },
       );
+    }
+
+    function createRollout() {
+      if (!rollout) return;
+
+      all([fn.publish, dev]).apply(([publish, dev]) => {
+        if (dev) return;
+        if (!publish)
+          throw new VisibleError(
+            `Rollout requires versioning. Set "versioning: true" on the "${name}" function.`,
+          );
+      });
+
+      const aliasName = output(rollout.alias ?? "live");
+      const aliasTransform = args.transform?.rollout?.alias;
+
+      const targetAlias = new lambda.Alias(
+        ...transform(
+          aliasTransform,
+          `${name}RolloutAlias`,
+          {
+            functionName: fn.arn,
+            functionVersion: fn.version,
+            name: aliasName,
+          },
+          {
+            parent,
+            // Pulumi creates the alias once; CodeDeploy manages the version
+            // and routing config during traffic shifting and rollbacks.
+            ignoreChanges: ["functionVersion", "routingConfig"],
+          },
+        ),
+      );
+      parent.targetAlias = targetAlias;
+
+      parent.aliasUrlEndpoint = createUrl({
+        suffix: "LiveAlias",
+        qualifier: targetAlias.name,
+        url,
+      });
     }
 
     function createEventInvokeConfig() {
@@ -2947,6 +3195,23 @@ export class Function extends Component implements Link.Linkable {
        * The Function Event Invoke Config resource if retries are configured.
        */
       eventInvokeConfig: this.eventInvokeConfig,
+      /**
+       * The Lambda Alias used for rollout traffic shifting. Available when
+       * `versioning`, `rollout`, or `durable` is enabled.
+       */
+      targetAlias: this.targetAlias || this.latestAlias,
+      /**
+       * The Lambda Alias pointing to the latest published version. Available
+       * when `versioning`, `rollout`, or `durable` is enabled.
+       */
+      latestAlias: this.latestAlias,
+      /**
+       * The rollout deployment. Use `.deploymentId` to get the CodeDeploy
+       * deployment ID. Available when `rollout` is configured.
+       */
+      rolloutDeployment: this.functionRolloutInstance?.apply(
+        (i) => i?.nodes.deployment,
+      ),
     };
   }
 
@@ -2958,6 +3223,28 @@ export class Function extends Component implements Link.Linkable {
       if (!url) {
         throw new VisibleError(
           `Function URL is not enabled. Enable it with "url: true".`,
+        );
+      }
+      return url;
+    });
+  }
+
+  /**
+   * The function URL that points to the latest deployed code. Useful for
+   * testing new versions before traffic shifts to them.
+   *
+   * Only available when `rollout.latestUrl` is set.
+   */
+  public get latestUrl() {
+    if (!this.hasRollout) {
+      throw new VisibleError(
+        `"latestUrl" is only available when rollout is configured. Use "url" instead.`,
+      );
+    }
+    return this.latestUrlEndpoint.apply((url) => {
+      if (!url) {
+        throw new VisibleError(
+          `Latest function URL is not enabled. Set "latestUrl" in the rollout config.`,
         );
       }
       return url;
@@ -2978,49 +3265,81 @@ export class Function extends Component implements Link.Linkable {
     return this.function.arn;
   }
 
-  /** @internal */
   private get useQualifiedTarget() {
     return this.function.publish.apply(
-      (publish) => (publish ?? false) || this.durable,
+      (publish = false) => publish || this.durable || this.hasRollout,
     );
   }
 
-  /** @internal */
-  public get targetArn() {
-    return this.useQualifiedTarget.apply((useQualifiedTarget) =>
-      useQualifiedTarget ? this.function.qualifiedArn : this.arn,
+  private getTargetArn(args: {
+    arn: Input<string>;
+    useQualifiedTarget: Input<boolean>;
+    alias: Input<lambda.Alias | undefined>;
+    qualifiedArn: Input<string>;
+  }) {
+    return all([args.useQualifiedTarget, args.alias]).apply(
+      ([useQualifiedTarget, alias]) => {
+        if (!useQualifiedTarget) return output(args.arn);
+        if (alias) return alias.arn;
+        return output(args.qualifiedArn);
+      },
     );
+  }
+
+  public get targetArn() {
+    return this.getTargetArn({
+      useQualifiedTarget: this.useQualifiedTarget,
+      arn: this.arn,
+      alias: this.targetAlias,
+      qualifiedArn: this.function.qualifiedArn,
+    });
+  }
+
+  public get latestTargetArn() {
+    return this.getTargetArn({
+      useQualifiedTarget: this.useQualifiedTarget,
+      arn: this.arn,
+      alias: this.latestAlias,
+      qualifiedArn: this.function.qualifiedArn,
+    });
   }
 
   /** @internal */
   public get qualifier() {
-    return this.targetArn.apply(
+    return output(this.targetArn).apply(
+      (arn) => splitQualifiedFunctionArn(arn).qualifier,
+    );
+  }
+
+  public get latestQualifier() {
+    return output(this.latestTargetArn).apply(
       (arn) => splitQualifiedFunctionArn(arn).qualifier,
     );
   }
 
   /** @internal */
   public get targetInvokeArn() {
-    return this.useQualifiedTarget.apply((useQualifiedTarget) =>
-      useQualifiedTarget
-        ? this.function.qualifiedInvokeArn
-        : this.function.invokeArn,
-    );
+    return this.useQualifiedTarget.apply((useQualifiedTarget) => {
+      if (!useQualifiedTarget) return this.function.invokeArn;
+      if (this.targetAlias) return this.targetAlias.invokeArn;
+      return this.function.qualifiedInvokeArn;
+    });
   }
 
   /** @internal */
   public get targetResponseStreamingInvokeArn() {
-    return this.useQualifiedTarget.apply((useQualifiedTarget) =>
-      useQualifiedTarget
-        ? all([
-            this.arn,
-            this.function.qualifiedArn,
-            this.function.responseStreamingInvokeArn,
-          ]).apply(([arn, qualifiedArn, responseStreamingInvokeArn]) =>
-            responseStreamingInvokeArn.replace(arn, qualifiedArn),
-          )
-        : this.function.responseStreamingInvokeArn,
-    );
+    return this.useQualifiedTarget.apply((useQualifiedTarget) => {
+      if (!useQualifiedTarget) return this.function.responseStreamingInvokeArn;
+
+      return all([
+        this.arn,
+        this.function.qualifiedArn,
+        this.targetAlias?.arn,
+        this.function.responseStreamingInvokeArn,
+      ]).apply(([arn, qualifiedArn, aliasArn, responseStreamingInvokeArn]) =>
+        responseStreamingInvokeArn.replace(arn, aliasArn ?? qualifiedArn),
+      );
+    });
   }
 
   /**
@@ -3057,46 +3376,74 @@ export class Function extends Component implements Link.Linkable {
     );
   }
 
-  /** @internal */
-  static fromDefinition(
-    name: string,
-    definition: Input<string | FunctionArgs>,
-    override: Pick<FunctionArgs, "description" | "permissions">,
-    argsTransform?: Transform<FunctionArgs>,
+  /**
+   * Configure CodeDeploy-managed traffic shifting for this function.
+   *
+   * If you need to pass additional properties to the before-traffic or after-traffic
+   * function, use `addRollout()` to configure the deployment after construction.
+   *
+   * @example
+   *
+   * ```ts title="sst.config.ts"
+   * const fn = new sst.aws.Function("Function", {
+   *   handler: "src/api.handler",
+   *   url: true,
+   *   rollout: true,
+   * });
+   *
+   * const beforeTraffic = new sst.aws.Function("BeforeTraffic", {
+   *   handler: "src/before-traffic.handler",
+   *   link: [fn],
+   *   environment: {
+   *     DEPLOYMENT_ID: fn.nodes.rolloutDeployment!.deploymentId,
+   *   },
+   *   permissions: [
+   *     {
+   *       actions: ["codedeploy:PutLifecycleEventHookExecutionStatus"],
+   *       resources: ["*"],
+   *     },
+   *   ],
+   * });
+   *
+   * fn.addRollout({
+   *   type: "all-at-once",
+   *   beforeTraffic,
+   * });
+   * ```
+   */
+  public addRollout(
+    rollout: Prettify<Omit<FunctionRolloutConfig, "alias" | "latestUrl">>,
     opts?: ComponentResourceOptions,
   ) {
-    return output(definition).apply((definition) => {
-      if (typeof definition === "string") {
-        return new Function(
-          ...transform(
-            argsTransform,
-            name,
-            { handler: definition, ...override },
-            opts || {},
-          ),
-        );
-      } else if (definition.handler) {
-        return new Function(
-          ...transform(
-            argsTransform,
-            name,
-            {
-              ...definition,
-              ...override,
-              permissions: all([
-                definition.permissions,
-                override?.permissions,
-              ]).apply(([permissions, overridePermissions]) => [
-                ...(permissions ?? []),
-                ...(overridePermissions ?? []),
-              ]),
-            },
-            opts || {},
-          ),
-        );
-      }
-      throw new Error(`Invalid function definition for the "${name}" Function`);
+    if (!this.hasRollout) {
+      throw new VisibleError(
+        `Cannot call "addRollout" on the "${this.constructorName}" function without passing "rollout" to the constructor first.`,
+      );
+    }
+    if (this.functionRolloutInstance) {
+      throw new VisibleError(
+        `Rollout has already been configured for the "${this.constructorName}" function.`,
+      );
+    }
+
+    const parent = this;
+    const name = this.constructorName;
+
+    parent.functionRolloutInstance = parent.dev.apply((dev) => {
+      if (dev) return;
+
+      return new FunctionRollout(
+        `${name}Rollout`,
+        {
+          function: parent,
+          alias: parent.targetAlias!,
+          ...rollout,
+          transform: parent.rolloutTransform,
+        },
+        { provider: parent.constructorOpts?.provider, ...opts },
+      );
     });
+    return parent.functionRolloutInstance;
   }
 
   /** @internal */
@@ -3105,9 +3452,11 @@ export class Function extends Component implements Link.Linkable {
       properties: {
         name: this.name,
         url: this.urlEndpoint,
-        ...(this.durable
+        qualifier: this.qualifier,
+        ...(this.hasRollout
           ? {
-              qualifier: this.qualifier,
+              latestUrl: this.latestUrlEndpoint,
+              latestQualifier: this.latestQualifier,
             }
           : {}),
       },
@@ -3127,7 +3476,11 @@ export class Function extends Component implements Link.Linkable {
                 ]
               : []),
           ],
-          resources: [this.durable ? interpolate`${this.arn}:*` : this.arn],
+          resources: this.durable
+            ? [interpolate`${this.arn}:*`]
+            : this.targetAlias
+              ? [this.arn, interpolate`${this.arn}:*`]
+              : [this.arn],
         }),
       ],
     };

@@ -8,7 +8,7 @@ import {
 } from "../component";
 import { Link } from "../link";
 import type { Input } from "../input";
-import { FunctionArgs, FunctionArn } from "./function.js";
+import { Function, FunctionArgs, FunctionArn } from "./function.js";
 import { hashStringToPrettyString, physicalName, logicalName } from "../naming";
 import { VisibleError } from "../error";
 import { DnsValidatedCertificate } from "./dns-validated-certificate";
@@ -452,7 +452,7 @@ export interface ApiGatewayV2AuthorizerArgs {
      * }
      * ```
      */
-    function: Input<string | FunctionArgs | FunctionArn>;
+    function: Input<string | Function | FunctionArgs | FunctionArn>;
     /**
      * The JWT payload version.
      * @default `"2.0"`
@@ -1111,7 +1111,7 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
    */
   public route(
     rawRoute: string,
-    handler: Input<string | FunctionArgs | FunctionArn>,
+    handler: Input<string | Function | FunctionArgs | FunctionArn>,
     args: ApiGatewayV2RouteArgs = {},
   ) {
     const route = this.parseRoute(rawRoute);

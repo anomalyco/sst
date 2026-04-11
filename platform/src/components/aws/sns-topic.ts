@@ -2,7 +2,7 @@ import { ComponentResourceOptions, Output, all, output } from "@pulumi/pulumi";
 import { Component, outputId, Transform, transform } from "../component";
 import { Link } from "../link";
 import type { Input } from "../input";
-import { FunctionArgs, FunctionArn } from "./function.js";
+import { Function, FunctionArgs, FunctionArn } from "./function.js";
 import { hashStringToPrettyString, logicalName } from "../naming";
 import { parseTopicArn } from "./helpers/arn";
 import { SnsTopicLambdaSubscriber } from "./sns-topic-lambda-subscriber";
@@ -275,7 +275,7 @@ export class SnsTopic extends Component implements Link.Linkable {
    */
   public subscribe(
     name: string,
-    subscriber: Input<string | FunctionArgs | FunctionArn>,
+    subscriber: Input<string | Function | FunctionArgs | FunctionArn>,
     args?: SnsTopicSubscriberArgs,
   ): Output<SnsTopicLambdaSubscriber>;
   /**
@@ -284,7 +284,7 @@ export class SnsTopic extends Component implements Link.Linkable {
    * back with the new `name` argument.
    */
   public subscribe(
-    subscriber: Input<string | FunctionArgs | FunctionArn>,
+    subscriber: Input<string | Function | FunctionArgs | FunctionArn>,
     args?: SnsTopicSubscriberArgs,
   ): Output<SnsTopicLambdaSubscriber>;
 
@@ -353,7 +353,7 @@ export class SnsTopic extends Component implements Link.Linkable {
   public static subscribe(
     name: string,
     topicArn: Input<string>,
-    subscriber: Input<string | FunctionArgs | FunctionArn>,
+    subscriber: Input<string | Function | FunctionArgs | FunctionArn>,
     args?: SnsTopicSubscriberArgs,
   ): Output<SnsTopicLambdaSubscriber>;
   /**
@@ -363,7 +363,7 @@ export class SnsTopic extends Component implements Link.Linkable {
    */
   public static subscribe(
     topicArn: Input<string>,
-    subscriber: Input<string | FunctionArgs | FunctionArn>,
+    subscriber: Input<string | Function | FunctionArgs | FunctionArn>,
     args?: SnsTopicSubscriberArgs,
   ): Output<SnsTopicLambdaSubscriber>;
 
@@ -399,7 +399,7 @@ export class SnsTopic extends Component implements Link.Linkable {
     subscriberName: string,
     name: string,
     topicArn: string | Output<string>,
-    subscriber: Input<string | FunctionArgs | FunctionArn>,
+    subscriber: Input<string | Function | FunctionArgs | FunctionArn>,
     args: SnsTopicSubscriberArgs = {},
     opts: $util.ComponentResourceOptions = {},
   ) {
@@ -420,31 +420,40 @@ export class SnsTopic extends Component implements Link.Linkable {
   private static _subscribeFunctionV1(
     name: string,
     topicArn: string | Output<string>,
-    subscriber: Input<string | FunctionArgs | FunctionArn>,
+    subscriber: Input<string | Function | FunctionArgs | FunctionArn>,
     args: SnsTopicSubscriberArgs = {},
     opts: $util.ComponentResourceOptions = {},
   ) {
     return all([subscriber, args]).apply(([subscriber, args]) => {
-      const suffix = logicalName(
-        hashStringToPrettyString(
-          [
-            typeof topicArn === "string" ? topicArn : outputId,
-            JSON.stringify(args.filter ?? {}),
-            typeof subscriber === "string" ? subscriber : subscriber.handler,
-          ].join(""),
-          6,
-        ),
-      );
+      const subscriberIdentity =
+        typeof subscriber === "string"
+          ? subscriber
+          : subscriber instanceof Function
+            ? subscriber.arn
+            : subscriber.handler;
 
-      return new SnsTopicLambdaSubscriber(
-        `${name}Subscriber${suffix}`,
-        {
-          topic: { arn: topicArn },
-          subscriber,
-          ...args,
-        },
-        opts,
-      );
+      return output(subscriberIdentity).apply((identity) => {
+        const suffix = logicalName(
+          hashStringToPrettyString(
+            [
+              typeof topicArn === "string" ? topicArn : outputId,
+              JSON.stringify(args.filter ?? {}),
+              identity,
+            ].join(""),
+            6,
+          ),
+        );
+
+        return new SnsTopicLambdaSubscriber(
+          `${name}Subscriber${suffix}`,
+          {
+            topic: { arn: topicArn },
+            subscriber,
+            ...args,
+          },
+          opts,
+        );
+      });
     });
   }
 

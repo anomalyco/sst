@@ -8,7 +8,7 @@ import {
 import { Component, outputId, Transform, transform } from "../component";
 import { Link } from "../link";
 import type { Input } from "../input";
-import { FunctionArgs, FunctionArn } from "./function.js";
+import { Function, FunctionArgs, FunctionArn } from "./function.js";
 import { hashStringToPrettyString, logicalName } from "../naming";
 import { parseDynamoStreamArn } from "./helpers/arn";
 import { DynamoLambdaSubscriber } from "./dynamo-lambda-subscriber";
@@ -670,7 +670,7 @@ export class Dynamo extends Component implements Link.Linkable {
    */
   public subscribe(
     name: string,
-    subscriber: Input<string | FunctionArgs | FunctionArn>,
+    subscriber: Input<string | Function | FunctionArgs | FunctionArn>,
     args?: DynamoSubscriberArgs,
   ): Output<DynamoLambdaSubscriber>;
   /**
@@ -679,7 +679,7 @@ export class Dynamo extends Component implements Link.Linkable {
    * back with the new `name` argument.
    */
   public subscribe(
-    subscriber: Input<string | FunctionArgs | FunctionArn>,
+    subscriber: Input<string | Function | FunctionArgs | FunctionArn>,
     args?: DynamoSubscriberArgs,
   ): Output<DynamoLambdaSubscriber>;
 
@@ -767,7 +767,7 @@ export class Dynamo extends Component implements Link.Linkable {
   public static subscribe(
     name: string,
     streamArn: Input<string>,
-    subscriber: Input<string | FunctionArgs | FunctionArn>,
+    subscriber: Input<string | Function | FunctionArgs | FunctionArn>,
     args?: DynamoSubscriberArgs,
   ): Output<DynamoLambdaSubscriber>;
   /**
@@ -777,7 +777,7 @@ export class Dynamo extends Component implements Link.Linkable {
    */
   public static subscribe(
     streamArn: Input<string>,
-    subscriber: Input<string | FunctionArgs | FunctionArn>,
+    subscriber: Input<string | Function | FunctionArgs | FunctionArn>,
     args?: DynamoSubscriberArgs,
   ): Output<DynamoLambdaSubscriber>;
 
@@ -813,7 +813,7 @@ export class Dynamo extends Component implements Link.Linkable {
     subscriberName: string,
     name: string,
     streamArn: string | Output<string>,
-    subscriber: Input<string | FunctionArgs | FunctionArn>,
+    subscriber: Input<string | Function | FunctionArgs | FunctionArn>,
     args: DynamoSubscriberArgs = {},
     opts: ComponentResourceOptions = {},
   ) {
@@ -834,32 +834,41 @@ export class Dynamo extends Component implements Link.Linkable {
   private static _subscribeV1(
     name: string,
     streamArn: string | Output<string>,
-    subscriber: Input<string | FunctionArgs | FunctionArn>,
+    subscriber: Input<string | Function | FunctionArgs | FunctionArn>,
     args: DynamoSubscriberArgs = {},
     opts: ComponentResourceOptions = {},
   ) {
     return all([name, subscriber, args]).apply(([name, subscriber, args]) => {
-      const suffix = logicalName(
-        hashStringToPrettyString(
-          [
-            typeof streamArn === "string" ? streamArn : outputId,
-            JSON.stringify(args.filters ?? {}),
-            typeof subscriber === "string" ? subscriber : subscriber.handler,
-          ].join(""),
-          6,
-        ),
-      );
+      const subscriberIdentity =
+        typeof subscriber === "string"
+          ? subscriber
+          : subscriber instanceof Function
+            ? subscriber.arn
+            : subscriber.handler;
 
-      return new DynamoLambdaSubscriber(
-        `${name}Subscriber${suffix}`,
-        {
-          dynamo: { streamArn },
-          subscriber,
-          disableParent: true,
-          ...args,
-        },
-        opts,
-      );
+      return output(subscriberIdentity).apply((identity) => {
+        const suffix = logicalName(
+          hashStringToPrettyString(
+            [
+              typeof streamArn === "string" ? streamArn : outputId,
+              JSON.stringify(args.filters ?? {}),
+              identity,
+            ].join(""),
+            6,
+          ),
+        );
+
+        return new DynamoLambdaSubscriber(
+          `${name}Subscriber${suffix}`,
+          {
+            dynamo: { streamArn },
+            subscriber,
+            disableParent: true,
+            ...args,
+          },
+          opts,
+        );
+      });
     });
   }
 
