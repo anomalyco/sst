@@ -1848,10 +1848,10 @@ export class Function extends Component implements Link.Linkable {
   private role: iam.Role;
   private logGroup: Output<cloudwatch.LogGroup | undefined>;
   private latestUrlEndpoint: Output<string | undefined>;
-  private aliasUrlEndpoint?: Output<string | undefined>;
+  private aliasUrlEndpoint: Output<string | undefined>;
   private urlEndpoint: Output<string | undefined>;
   private eventInvokeConfig?: lambda.FunctionEventInvokeConfig;
-  private targetAlias?: lambda.Alias;
+  private targetAlias: Output<lambda.Alias | undefined>;
   private latestAlias: Output<lambda.Alias | undefined>;
   private functionRolloutInstance?: Output<FunctionRollout | undefined>;
   private rolloutTransform?: NonNullable<FunctionArgs["transform"]>["rollout"];
@@ -1934,7 +1934,10 @@ export class Function extends Component implements Link.Linkable {
     const latestAlias = createLatestAlias();
     this.latestAlias = latestAlias;
 
-    createRollout();
+    const rolloutResult = createRollout();
+    this.targetAlias = output(rolloutResult?.targetAlias ?? this.latestAlias);
+    this.aliasUrlEndpoint = output(rolloutResult?.aliasUrlEndpoint);
+
     const latestUrlEndpoint = createLatestUrl();
     createProvisioned();
     const eventInvokeConfig = createEventInvokeConfig();
@@ -3145,13 +3148,14 @@ export class Function extends Component implements Link.Linkable {
           },
         ),
       );
-      parent.targetAlias = targetAlias;
 
-      parent.aliasUrlEndpoint = createUrl({
+      const aliasUrlEndpoint = createUrl({
         suffix: "LiveAlias",
         qualifier: targetAlias.name,
         url,
       });
+
+      return { targetAlias, aliasUrlEndpoint };
     }
 
     function createEventInvokeConfig() {
@@ -3198,7 +3202,7 @@ export class Function extends Component implements Link.Linkable {
        * The Lambda Alias used for rollout traffic shifting. Available when
        * `versioning`, `rollout`, or `durable` is enabled.
        */
-      targetAlias: this.targetAlias || this.latestAlias,
+      targetAlias: this.targetAlias,
       /**
        * The Lambda Alias pointing to the latest published version. Available
        * when `versioning`, `rollout`, or `durable` is enabled.
@@ -3265,22 +3269,21 @@ export class Function extends Component implements Link.Linkable {
   }
 
   private get useQualifiedTarget() {
-    return this.function.publish.apply(
-      (publish = false) => publish || this.durable || this.hasRollout,
-    );
+    return this.function.publish.apply((publish) => Boolean(publish));
   }
 
   private getTargetArn(args: {
     arn: Input<string>;
     useQualifiedTarget: Input<boolean>;
     alias: Input<lambda.Alias | undefined>;
-    qualifiedArn: Input<string>;
   }) {
     return all([args.useQualifiedTarget, args.alias]).apply(
       ([useQualifiedTarget, alias]) => {
         if (!useQualifiedTarget) return output(args.arn);
         if (alias) return alias.arn;
-        return output(args.qualifiedArn);
+        throw new Error(
+          "Internal error: expected a Lambda alias to exist because versioning is enabled. This is a bug in SST — please report it at https://github.com/sst/sst/issues",
+        );
       },
     );
   }
@@ -3290,7 +3293,6 @@ export class Function extends Component implements Link.Linkable {
       useQualifiedTarget: this.useQualifiedTarget,
       arn: this.arn,
       alias: this.targetAlias,
-      qualifiedArn: this.function.qualifiedArn,
     });
   }
 
@@ -3299,7 +3301,6 @@ export class Function extends Component implements Link.Linkable {
       useQualifiedTarget: this.useQualifiedTarget,
       arn: this.arn,
       alias: this.latestAlias,
-      qualifiedArn: this.function.qualifiedArn,
     });
   }
 
@@ -3318,11 +3319,15 @@ export class Function extends Component implements Link.Linkable {
 
   /** @internal */
   public get targetInvokeArn() {
-    return this.useQualifiedTarget.apply((useQualifiedTarget) => {
-      if (!useQualifiedTarget) return this.function.invokeArn;
-      if (this.targetAlias) return this.targetAlias.invokeArn;
-      return this.function.qualifiedInvokeArn;
-    });
+    return all([this.useQualifiedTarget, this.targetAlias]).apply(
+      ([useQualifiedTarget, targetAlias]) => {
+        if (!useQualifiedTarget) return this.function.invokeArn;
+        if (targetAlias) return targetAlias.invokeArn;
+        throw new Error(
+          "Internal error: expected a Lambda alias to exist because versioning is enabled. This is a bug in SST — please report it at https://github.com/sst/sst/issues",
+        );
+      },
+    );
   }
 
   /** @internal */
@@ -3332,12 +3337,16 @@ export class Function extends Component implements Link.Linkable {
 
       return all([
         this.arn,
-        this.function.qualifiedArn,
-        this.targetAlias?.arn,
+        this.targetAlias.apply((a) => a?.arn),
         this.function.responseStreamingInvokeArn,
-      ]).apply(([arn, qualifiedArn, aliasArn, responseStreamingInvokeArn]) =>
-        responseStreamingInvokeArn.replace(arn, aliasArn ?? qualifiedArn),
-      );
+      ]).apply(([arn, aliasArn, responseStreamingInvokeArn]) => {
+        if (!aliasArn) {
+          throw new Error(
+            "Internal error: expected a Lambda alias to exist because versioning is enabled. This is a bug in SST — please report it at https://github.com/sst/sst/issues",
+          );
+        }
+        return responseStreamingInvokeArn.replace(arn, aliasArn);
+      });
     });
   }
 
@@ -3428,14 +3437,22 @@ export class Function extends Component implements Link.Linkable {
     const parent = this;
     const name = this.constructorName;
 
-    parent.functionRolloutInstance = parent.dev.apply((dev) => {
+    parent.functionRolloutInstance = all([
+      parent.dev,
+      parent.targetAlias,
+    ]).apply(([dev, targetAlias]) => {
       if (dev) return;
+      if (!targetAlias) {
+        throw new Error(
+          "Internal error: expected a Lambda alias to exist because versioning is enabled. This is a bug in SST — please report it at https://github.com/sst/sst/issues",
+        );
+      }
 
       return new FunctionRollout(
         `${name}Rollout`,
         {
           function: parent,
-          alias: parent.targetAlias!,
+          alias: targetAlias,
           ...rollout,
           transform: parent.rolloutTransform,
         },
@@ -3475,11 +3492,15 @@ export class Function extends Component implements Link.Linkable {
                 ]
               : []),
           ],
-          resources: this.durable
-            ? [interpolate`${this.arn}:*`]
-            : this.targetAlias
-              ? [this.arn, interpolate`${this.arn}:*`]
-              : [this.arn],
+          resources: all([this.useQualifiedTarget]).apply(
+            ([useQualifiedTarget]) => {
+              return this.durable
+                ? [interpolate`${this.arn}:*`]
+                : useQualifiedTarget
+                  ? [this.arn, interpolate`${this.arn}:*`]
+                  : [this.arn];
+            },
+          ),
         }),
       ],
     };

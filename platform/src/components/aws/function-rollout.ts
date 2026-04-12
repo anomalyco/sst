@@ -28,7 +28,7 @@ type CodeDeployEvent = keyof typeof CODEDEPLOY_EVENT_MAP;
 
 export interface FunctionRolloutArgs {
   function: Function;
-  alias: lambda.Alias;
+  alias: Input<lambda.Alias>;
   /**
    * The rollout type when the function is updated.
    *
@@ -466,7 +466,7 @@ export class FunctionRollout extends Component {
           applicationName: codedeployApp.name,
           deploymentGroupName: deploymentGroup.deploymentGroupName,
           functionName: args.function.name,
-          aliasName: args.alias.name,
+          aliasName: output(args.alias).apply((a) => a.name),
           targetVersion: args.function.nodes.function.version,
           onConflict,
           beforeTrafficFnArn: beforeTrafficFnArn?.arn,
