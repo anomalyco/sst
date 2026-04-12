@@ -1392,6 +1392,14 @@ export interface FunctionArgs {
    * change between deploys, so rollout is never triggered.
    * :::
    *
+   * :::note
+   * If you enable rollout on an existing function that already has `versioning`
+   * or `durable` enabled, the first deploy establishes the baseline — no
+   * CodeDeploy deployment is triggered and any `beforeTraffic` or `afterTraffic`
+   * hooks will not run. Subsequent code changes will go through CodeDeploy
+   * traffic shifting as expected.
+   * :::
+   *
    * @example
    * Canary deployment that shifts 10% of traffic for 5 minutes before going to 100%.
    *
