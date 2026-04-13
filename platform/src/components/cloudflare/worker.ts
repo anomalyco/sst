@@ -186,6 +186,7 @@ export interface WorkerArgs {
       | "none"
     >;
     notFoundHandling?: Input<"404-page" | "single-page-application" | "none">;
+    runWorkerFirst?: Array<string>;
   }>;
   /**
    * Configure [placement](https://developers.cloudflare.com/workers/configuration/placement/)
@@ -540,6 +541,7 @@ export class Worker extends Component implements Link.Linkable {
                       redirects,
                       htmlHandling: assets.htmlHandling,
                       notFoundHandling: assets.notFoundHandling,
+                      runWorkerFirst: assets.runWorkerFirst,
                     },
                   };
                 })
