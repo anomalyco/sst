@@ -1,0 +1,32 @@
+---
+title: Cloudflare
+description: Learn how to use SST with Cloudflare
+---
+
+[Cloudflare](https://cloudflare.com) lets you deploy apps with Workers and connect services like D1, R2, and DNS.
+
+---
+
+## Credentials
+
+You can create an account token in the Cloudflare dashboard under [Manage Account > API Tokens](https://dash.cloudflare.com/profile/api-tokens).
+
+Start with the **Edit Cloudflare Workers** template and add these permissions:
+
+- *Account - D1 - Edit*
+- *Zone - DNS - Edit*
+
+:::tip
+If your app uses other Cloudflare products, add the permissions those features need.
+:::
+
+Give the token access to the account your application will be deploying to. If you are using Cloudflare DNS with SST, include the zones that SST should update.
+
+Set `CLOUDFLARE_DEFAULT_ACCOUNT_ID` to the Cloudflare account ID that SST should use. If you leave it unset, SST falls back to the first account that Cloudflare returns for that token.
+
+Then set these variables in your shell, `.env`, or CI environment before you deploy:
+
+```bash
+export CLOUDFLARE_API_TOKEN=aaaaaaaa_aaaaaaaaaaaa_aaaaaaaa
+export CLOUDFLARE_DEFAULT_ACCOUNT_ID=aaaaaaaa_aaaaaaaaaaaa_aaaaaaaa
+```
