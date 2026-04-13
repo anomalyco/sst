@@ -78,6 +78,7 @@ export interface StaticSiteArgs
     | "none"
   >;
   notFoundHandling?: Input<"404-page" | "single-page-application" | "none">;
+  runWorkerFirst?: Array<string>;
 }
 
 /**
