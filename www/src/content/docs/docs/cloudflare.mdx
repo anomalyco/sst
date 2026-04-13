@@ -1,0 +1,149 @@
+---
+title: Cloudflare
+description: Learn how to use SST with Cloudflare
+---
+
+[Cloudflare](https://cloudflare.com) lets you deploy apps with Workers and connect services like D1, R2, and DNS. This guide covers how to set it up with SST.
+
+---
+
+## Install
+
+Add the Cloudflare provider to your SST app. Learn more about [providers](/docs/providers).
+
+```bash
+sst add cloudflare
+```
+
+This adds the provider to your `sst.config.ts`.
+
+```ts title="sst.config.ts" {3}
+{
+  providers: {
+    cloudflare: "5.37.1",
+  },
+}
+```
+
+If Cloudflare should store your app state, set [`home`](/docs/reference/config/#home) to `"cloudflare"`. This is useful in setups where you plan to use Cloudflare as you main cloud provider.
+
+---
+
+## Credentials
+
+You can create an account token in the Cloudflare dashboard under [Manage Account > API Tokens](https://dash.cloudflare.com/profile/api-tokens).
+
+Start with the **Edit Cloudflare Workers** template and add these permissions:
+
+- *Account - D1 - Edit*
+- *Zone - DNS - Edit*
+
+:::tip
+If your app uses other Cloudflare products, add the permissions those features need.
+:::
+
+Give the token access to the account your application will be deploying to. If you are using Cloudflare DNS with SST, include the zones that SST should update.
+
+Set `CLOUDFLARE_DEFAULT_ACCOUNT_ID` to the Cloudflare account ID that SST should use. If you leave it unset, SST falls back to the first account that Cloudflare returns for that token.
+
+Then set these variables in your shell, `.env`, or CI environment before you deploy:
+
+```bash
+export CLOUDFLARE_API_TOKEN=aaaaaaaa_aaaaaaaaaaaa_aaaaaaaa
+export CLOUDFLARE_DEFAULT_ACCOUNT_ID=aaaaaaaa_aaaaaaaaaaaa_aaaaaaaa
+```
+
+---
+
+## Components
+
+SST includes Cloudflare components for Workers, storage, queues, cron jobs, AI bindings, and more.
+
+### Worker
+
+Create a Cloudflare Worker and enable a URL so it can handle HTTP requests.
+
+```ts title="sst.config.ts"
+const worker = new sst.cloudflare.Worker("MyWorker", {
+  handler: "index.ts",
+  url: true,
+});
+
+return {
+  url: worker.url,
+};
+```
+
+Use the [`Worker`](/docs/component/cloudflare/worker/) component to build APIs and edge handlers on Cloudflare.
+
+
+### Storage
+
+Create Cloudflare storage resources and link them to your Worker. For example, here's a D1 database.
+
+```ts title="sst.config.ts"
+const db = new sst.cloudflare.D1("MyDatabase");
+
+new sst.cloudflare.Worker("MyWorker", {
+  handler: "index.ts",
+  link: [db],
+  url: true,
+});
+```
+
+Then access it in your handler through `Resource`.
+
+```ts title="index.ts"
+import { Resource } from "sst";
+
+export default {
+  async fetch() {
+    const row = await Resource.MyDatabase.prepare(
+      "SELECT id FROM todo ORDER BY id DESC LIMIT 1",
+    ).first();
+
+    return Response.json(row);
+  },
+};
+```
+
+The same pattern works with [`Bucket`](/docs/component/cloudflare/bucket/) for R2 and [`Kv`](/docs/component/cloudflare/kv/) for KV namespaces.
+
+
+### Queue
+
+Use [`Queue`](/docs/component/cloudflare/queue/) for async work.
+
+```ts title="sst.config.ts"
+const queue = new sst.cloudflare.Queue("MyQueue");
+
+queue.subscribe("consumer.ts");
+
+const producer = new sst.cloudflare.Worker("Producer", {
+  handler: "producer.ts",
+  link: [queue],
+  url: true,
+});
+```
+
+For scheduled work, use [`Cron`](/docs/component/cloudflare/cron/) to run a worker on a cron expression.
+
+### More components
+
+Browse the component docs for [`Worker`](/docs/component/cloudflare/worker/), [`Bucket`](/docs/component/cloudflare/bucket/), [`D1`](/docs/component/cloudflare/d1/), [`Kv`](/docs/component/cloudflare/kv/), [`Queue`](/docs/component/cloudflare/queue/), [`Cron`](/docs/component/cloudflare/cron/), and [`Ai`](/docs/component/cloudflare/ai/).
+
+If you are using Cloudflare DNS with SST, use [`sst.cloudflare.dns`](/docs/component/cloudflare/dns/) with [custom domains](/docs/custom-domains/).
+
+---
+
+## Examples
+
+Check out the full examples:
+
+- [Cloudflare Workers with SST](/docs/start/cloudflare/worker/)
+- [Hono on Cloudflare with SST](/docs/start/cloudflare/hono/)
+- [tRPC on Cloudflare with SST](/docs/start/cloudflare/trpc/)
+- [Cloudflare D1](https://github.com/sst/sst/tree/dev/examples/cloudflare-d1)
+- [Cloudflare KV](https://github.com/sst/sst/tree/dev/examples/cloudflare-kv)
+- [Cloudflare Queue](https://github.com/sst/sst/tree/dev/examples/cloudflare-queue)
+- [Cloudflare Cron](https://github.com/sst/sst/tree/dev/examples/cloudflare-cron)

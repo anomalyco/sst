@@ -60,6 +60,9 @@ const sidebar = [
     label: "How to",
     collapsed: true,
     items: [
+      { label: "Cloudflare", slug: "docs/cloudflare" },
+      { label: "PlanetScale", slug: "docs/planetscale" },
+      { label: "Policy Packs", slug: "docs/policy-packs" },
       { label: "AWS Accounts", slug: "docs/aws-accounts" },
       { label: "IAM Credentials", slug: "docs/iam-credentials" },
       { label: "Migrate From v2", slug: "docs/migrate-from-v2" },
@@ -71,8 +74,6 @@ const sidebar = [
       { label: "Share Across Stages", slug: "docs/share-across-stages" },
       { label: "Reference Resources", slug: "docs/reference-resources" },
       { label: "Environment Variables", slug: "docs/environment-variables" },
-      { label: "Policy Packs", slug: "docs/policy-packs" },
-      { label: "PlanetScale", slug: "docs/planetscale" },
       { label: "Upgrade AWS Databases", slug: "docs/upgrade-aws-databases" },
     ],
   },
