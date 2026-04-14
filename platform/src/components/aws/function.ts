@@ -1878,6 +1878,10 @@ export class Function extends Component implements Link.Linkable {
     }
 
     function normalizeEnvironment() {
+      const appsync = dev.apply((dev) =>
+        dev ? Function.appsync() : undefined,
+      );
+
       return all([
         args.environment,
         dev,
@@ -1885,8 +1889,9 @@ export class Function extends Component implements Link.Linkable {
         Function.encryptionKey().base64,
         args.link,
         args.streaming,
-      ]).apply(async ([environment, dev, bootstrap, key, link, streaming]) => {
-        const result = environment ?? {};
+        appsync,
+      ]).apply(([environment, dev, bootstrap, key, link, streaming, appsync]) => {
+        const result = { ...(environment ?? {}) };
         result.SST_RESOURCE_App = JSON.stringify({
           name: $app.name,
           stage: $app.stage,
@@ -1901,7 +1906,6 @@ export class Function extends Component implements Link.Linkable {
         result.SST_KEY = key;
         result.SST_KEY_FILE = "resource.enc";
         if (dev) {
-          const appsync = await Function.appsync();
           result.SST_REGION = process.env.SST_AWS_REGION!;
           result.SST_APPSYNC_HTTP = appsync.http;
           result.SST_APPSYNC_REALTIME = appsync.realtime;
