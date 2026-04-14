@@ -139,7 +139,6 @@ export interface StaticSiteArgs
  *
  * ```js
  * new sst.cloudflare.x.StaticSite("MyWeb", {
- *   errorPage: "404.html",
  *   build: {
  *     command: "npm run build",
  *     output: "public"
