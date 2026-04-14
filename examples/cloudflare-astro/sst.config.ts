@@ -11,16 +11,11 @@ export default $config({
   async run() {
     const bucket = new sst.cloudflare.Bucket("MyBucket");
 
-    const site = new sst.cloudflare.Astro("MyWeb", {
+    new sst.cloudflare.Astro("MyWeb", {
       link: [bucket],
       environment: {
         MESSAGE: "Hello from Astro on Cloudflare",
       },
-      dev: "bun dev"
     });
-
-    return {
-      url: site.url,
-    };
   },
 });
