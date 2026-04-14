@@ -242,7 +242,7 @@ export interface App {
    * ```
    *
    */
-  home: "aws" | "cloudflare" | "local";
+  home: "aws" | "cloudflare" | "gcp" | "local";
 
   /**
    * If set to `true`, the `sst remove` CLI will not run and will error out.

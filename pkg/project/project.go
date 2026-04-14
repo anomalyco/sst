@@ -311,6 +311,8 @@ func (proj *Project) LoadHome() error {
 			match = &provider.CloudflareProvider{}
 		case "aws":
 			match = provider.NewAwsProvider()
+		case "gcp":
+			match = &provider.GCPProvider{}
 		}
 		if match == nil {
 			continue
@@ -338,6 +340,8 @@ func (proj *Project) LoadHome() error {
 		home = provider.NewAwsHome(loadedProviders["aws"].(*provider.AwsProvider))
 	case "cloudflare":
 		home = provider.NewCloudflareHome(loadedProviders["cloudflare"].(*provider.CloudflareProvider))
+	case "gcp":
+		home = provider.NewGCPHome(loadedProviders["gcp"].(*provider.GCPProvider))
 	default:
 		return fmt.Errorf("Home provider %s is invalid", proj.app.Home)
 	}

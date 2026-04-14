@@ -190,7 +190,7 @@ func CmdInit(cli *cli.Cli) error {
 		p = promptui.Select{
 			Label:        "‏‏‎ ‎Where do you want to deploy your app? You can change this later",
 			HideSelected: true,
-			Items:        []string{"aws", "cloudflare"},
+			Items:        []string{"aws", "cloudflare", "gcp"},
 			HideHelp:     true,
 		}
 		_, home, err = p.Run()
