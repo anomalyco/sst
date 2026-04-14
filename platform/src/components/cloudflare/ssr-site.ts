@@ -115,10 +115,10 @@ export abstract class SsrSite extends Component implements Link.Linkable {
   }
 
   /**
-   * The URL of the Remix app.
+   * The URL of the site.
    *
    * If the `domain` is set, this is the URL with the custom domain.
-   * Otherwise, it's the auto-generated CloudFront URL.
+   * Otherwise, it's the auto-generated Worker URL.
    */
   public get url() {
     return this.server.url;
