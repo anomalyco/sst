@@ -51,6 +51,7 @@ func TestGenerate(t *testing.T) {
 		assert.Contains(t, out, "\"MyBucket\":")
 		assert.Contains(t, out, "\"name\": string")
 		assert.Contains(t, out, "\"arn\": string")
+		assert.NotContains(t, out, "/// <reference path=\"sst-env.d.ts\" />")
 	})
 
 	t.Run("number and boolean types", func(t *testing.T) {
@@ -150,7 +151,7 @@ func TestGenerate(t *testing.T) {
 		assert.Contains(t, out, "\"type\": \"aws.s3.Bucket\"")
 	})
 
-	t.Run("nested package.json", func(t *testing.T) {
+	t.Run("nested package file is a reference shim", func(t *testing.T) {
 		dir := t.TempDir()
 		// root package.json
 		pkg, _ := json.Marshal(map[string]interface{}{"dependencies": map[string]string{}})
@@ -160,11 +161,96 @@ func TestGenerate(t *testing.T) {
 		os.MkdirAll(sub, 0755)
 		os.WriteFile(filepath.Join(sub, "package.json"), pkg, 0644)
 
-		err := typescript.Generate(dir, common.Links{})
+		links := common.Links{
+			"MyBucket": {
+				Properties: map[string]interface{}{
+					"name": "my-bucket",
+				},
+			},
+		}
+
+		err := typescript.Generate(dir, links)
 		require.NoError(t, err)
 
 		assert.FileExists(t, filepath.Join(dir, "sst-env.d.ts"))
 		assert.FileExists(t, filepath.Join(sub, "sst-env.d.ts"))
+
+		rootContent, err := os.ReadFile(filepath.Join(dir, "sst-env.d.ts"))
+		require.NoError(t, err)
+		leafContent, err := os.ReadFile(filepath.Join(sub, "sst-env.d.ts"))
+		require.NoError(t, err)
+
+		assert.Contains(t, string(rootContent), "\"MyBucket\":")
+		assert.Contains(t, string(leafContent), "/// <reference path=\"../../sst-env.d.ts\" />")
+		assert.NotContains(t, string(leafContent), "\"MyBucket\":")
+	})
+
+	t.Run("rerun updates root but not leaf shim", func(t *testing.T) {
+		dir := t.TempDir()
+		pkg, _ := json.Marshal(map[string]interface{}{"dependencies": map[string]string{}})
+		os.WriteFile(filepath.Join(dir, "package.json"), pkg, 0644)
+
+		sub := filepath.Join(dir, "packages", "web")
+		os.MkdirAll(sub, 0755)
+		os.WriteFile(filepath.Join(sub, "package.json"), pkg, 0644)
+
+		links1 := common.Links{
+			"Bucket": {
+				Properties: map[string]interface{}{
+					"name": "my-bucket",
+				},
+			},
+		}
+		err := typescript.Generate(dir, links1)
+		require.NoError(t, err)
+
+		root1, err := os.ReadFile(filepath.Join(dir, "sst-env.d.ts"))
+		require.NoError(t, err)
+		leaf1, err := os.ReadFile(filepath.Join(sub, "sst-env.d.ts"))
+		require.NoError(t, err)
+
+		links2 := common.Links{
+			"Bucket": {
+				Properties: map[string]interface{}{
+					"name": "my-bucket",
+				},
+			},
+			"Table": {
+				Properties: map[string]interface{}{
+					"name": "my-table",
+				},
+			},
+		}
+		err = typescript.Generate(dir, links2)
+		require.NoError(t, err)
+
+		root2, err := os.ReadFile(filepath.Join(dir, "sst-env.d.ts"))
+		require.NoError(t, err)
+		leaf2, err := os.ReadFile(filepath.Join(sub, "sst-env.d.ts"))
+		require.NoError(t, err)
+
+		assert.NotEqual(t, string(root1), string(root2))
+		assert.Equal(t, string(leaf1), string(leaf2))
+	})
+
+	t.Run("repairs broken leaf shim", func(t *testing.T) {
+		dir := t.TempDir()
+		pkg, _ := json.Marshal(map[string]interface{}{"dependencies": map[string]string{}})
+		os.WriteFile(filepath.Join(dir, "package.json"), pkg, 0644)
+
+		sub := filepath.Join(dir, "packages", "web")
+		os.MkdirAll(sub, 0755)
+		os.WriteFile(filepath.Join(sub, "package.json"), pkg, 0644)
+		os.WriteFile(filepath.Join(sub, "sst-env.d.ts"), []byte("broken"), 0644)
+
+		err := typescript.Generate(dir, common.Links{})
+		require.NoError(t, err)
+
+		leafContent, err := os.ReadFile(filepath.Join(sub, "sst-env.d.ts"))
+		require.NoError(t, err)
+
+		assert.Contains(t, string(leafContent), "/// <reference path=\"../../sst-env.d.ts\" />")
+		assert.NotContains(t, string(leafContent), "broken")
 	})
 }
 
