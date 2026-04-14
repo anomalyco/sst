@@ -85,6 +85,121 @@ func TestResolveInstallVersion(t *testing.T) {
 			wantErr: "no matching catalog entry exists",
 		},
 		{
+			name:    "catalog spec resolves from bun top level catalog",
+			pkg:     "sharp",
+			install: map[string]string{"sharp": "*"},
+			setup: func(t *testing.T) (string, js.PackageJson) {
+				dir := t.TempDir()
+				pkgDir := filepath.Join(dir, "packages", "functions")
+				mustMkdirAll(t, pkgDir)
+				mustWriteFile(t, filepath.Join(dir, "package.json"), `{
+	"catalog": {
+		"sharp": "0.32.6"
+	}
+}`)
+				return pkgDir, js.PackageJson{Dependencies: map[string]string{"sharp": "catalog:"}}
+			},
+			want: "0.32.6",
+		},
+		{
+			name:    "explicit catalog spec resolves from bun top level catalogs",
+			pkg:     "sharp",
+			install: map[string]string{"sharp": "catalog:shared"},
+			setup: func(t *testing.T) (string, js.PackageJson) {
+				dir := t.TempDir()
+				pkgDir := filepath.Join(dir, "packages", "functions")
+				mustMkdirAll(t, pkgDir)
+				mustWriteFile(t, filepath.Join(dir, "package.json"), `{
+	"catalogs": {
+		"shared": {
+			"sharp": "0.32.6"
+		}
+	}
+}`)
+				return pkgDir, js.PackageJson{}
+			},
+			want: "0.32.6",
+		},
+		{
+			name:    "catalog spec resolves from bun workspaces catalog",
+			pkg:     "sharp",
+			install: map[string]string{"sharp": "*"},
+			setup: func(t *testing.T) (string, js.PackageJson) {
+				dir := t.TempDir()
+				pkgDir := filepath.Join(dir, "packages", "functions")
+				mustMkdirAll(t, pkgDir)
+				mustWriteFile(t, filepath.Join(dir, "package.json"), `{
+	"workspaces": {
+		"packages": ["packages/*"],
+		"catalog": {
+			"sharp": "0.32.6"
+		}
+	}
+}`)
+				return pkgDir, js.PackageJson{Dependencies: map[string]string{"sharp": "catalog:"}}
+			},
+			want: "0.32.6",
+		},
+		{
+			name:    "explicit catalog spec resolves from bun workspaces catalogs",
+			pkg:     "sharp",
+			install: map[string]string{"sharp": "catalog:shared"},
+			setup: func(t *testing.T) (string, js.PackageJson) {
+				dir := t.TempDir()
+				pkgDir := filepath.Join(dir, "packages", "functions")
+				mustMkdirAll(t, pkgDir)
+				mustWriteFile(t, filepath.Join(dir, "package.json"), `{
+	"workspaces": {
+		"packages": ["packages/*"],
+		"catalogs": {
+			"shared": {
+				"sharp": "0.32.6"
+			}
+		}
+	}
+}`)
+				return pkgDir, js.PackageJson{}
+			},
+			want: "0.32.6",
+		},
+		{
+			name:    "catalog spec resolves from bun top level catalog with workspaces array",
+			pkg:     "sharp",
+			install: map[string]string{"sharp": "*"},
+			setup: func(t *testing.T) (string, js.PackageJson) {
+				dir := t.TempDir()
+				pkgDir := filepath.Join(dir, "packages", "functions")
+				mustMkdirAll(t, pkgDir)
+				mustWriteFile(t, filepath.Join(dir, "package.json"), `{
+	"workspaces": ["packages/*"],
+	"catalog": {
+		"sharp": "0.32.6"
+	}
+}`)
+				return pkgDir, js.PackageJson{Dependencies: map[string]string{"sharp": "catalog:"}}
+			},
+			want: "0.32.6",
+		},
+		{
+			name:    "missing bun catalog entry returns error",
+			pkg:     "sharp",
+			install: map[string]string{"sharp": "*"},
+			setup: func(t *testing.T) (string, js.PackageJson) {
+				dir := t.TempDir()
+				pkgDir := filepath.Join(dir, "packages", "functions")
+				mustMkdirAll(t, pkgDir)
+				mustWriteFile(t, filepath.Join(dir, "package.json"), `{
+	"catalogs": {
+		"shared": {
+			"other": "1.0.0"
+		}
+	}
+}`)
+				return pkgDir, js.PackageJson{Dependencies: map[string]string{"sharp": "catalog:shared"}}
+			},
+			wantErr: "no matching catalog entry exists in",
+		},
+		{
 			name:    "workspace spec returns error",
 			pkg:     "sharp",
 			install: map[string]string{"sharp": "*"},
