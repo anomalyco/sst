@@ -624,6 +624,23 @@ export interface ApiGatewayV1RouteArgs {
    */
   streaming?: Input<boolean>;
   /**
+   * The name of the route. By default, SST generates a unique suffix from a hash of the
+   * method and path, producing opaque resource names like `MyApiRouteAbc123Handler`.
+   * Setting `name` replaces the hashed suffix so the function becomes `<name>Handler`,
+   * giving you a stable, meaningful identifier in Pulumi state, the CloudWatch log
+   * group, and the `sst dev` TUI.
+   *
+   * Must be unique across all routes on the same API.
+   *
+   * @example
+   * ```js
+   * {
+   *   name: "GetUser"
+   * }
+   * ```
+   */
+  name?: string;
+  /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
    */
@@ -974,7 +991,7 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
 
     const transformed = transform(
       this.constructorArgs.transform?.route?.args,
-      this.buildRouteId(method, path),
+      this.buildRouteId(method, path, args.name),
       args,
       { provider: this.constructorOpts.provider },
     );
@@ -1039,7 +1056,7 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
 
     const transformed = transform(
       this.constructorArgs.transform?.route?.args,
-      this.buildRouteId(method, path),
+      this.buildRouteId(method, path, args.name),
       args,
       { provider: this.constructorOpts.provider },
     );
@@ -1097,10 +1114,12 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
     return { method, path };
   }
 
-  private buildRouteId(method: string, path: string) {
-    const suffix = logicalName(
-      hashStringToPrettyString([outputId, method, path].join(""), 6),
-    );
+  private buildRouteId(method: string, path: string, name?: string) {
+    const suffix = name
+      ? logicalName(name)
+      : logicalName(
+          hashStringToPrettyString([outputId, method, path].join(""), 6),
+        );
     return `${this.constructorName}Route${suffix}`;
   }
 
