@@ -90,6 +90,20 @@ func TestFindDown(t *testing.T) {
 		assert.Equal(t, []string{filepath.Join(normal, "package.json")}, results)
 	})
 
+	t.Run("skips ignored directories", func(t *testing.T) {
+		dir := t.TempDir()
+		ignored := filepath.Join(dir, "packages", "docs")
+		included := filepath.Join(dir, "packages", "web")
+		os.MkdirAll(ignored, 0755)
+		os.MkdirAll(included, 0755)
+		os.WriteFile(filepath.Join(ignored, "package.json"), []byte("{}"), 0644)
+		includedFile := filepath.Join(included, "package.json")
+		os.WriteFile(includedFile, []byte("{}"), 0644)
+
+		results := fs.FindDownWithIgnore(dir, "package.json", []string{"packages/docs"})
+		assert.Equal(t, []string{includedFile}, results)
+	})
+
 	t.Run("does not skip dirs with .git directory", func(t *testing.T) {
 		dir := t.TempDir()
 

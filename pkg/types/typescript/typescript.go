@@ -23,7 +23,7 @@ var mapping = map[string]string{
 	"versionMetadataBindings":  "WorkerVersionMetadata",
 }
 
-func Generate(root string, links common.Links) error {
+func Generate(root string, links common.Links, ignore []string) error {
 	cloudflareBindings := map[string]string{}
 	for name, link := range links {
 		for _, include := range link.Include {
@@ -50,7 +50,7 @@ func Generate(root string, links common.Links) error {
 		"export {}",
 	}, "\n"))
 
-	packageJsons := fs.FindDown(root, "package.json")
+	packageJsons := fs.FindDownWithIgnore(root, "package.json", ignore)
 	rootEnv := filepath.Join(root, "sst-env.d.ts")
 	for _, packageJson := range packageJsons {
 		packageJsonFile, err := os.Open(packageJson)
