@@ -1891,7 +1891,7 @@ export class Function extends Component implements Link.Linkable {
         args.streaming,
         appsync,
       ]).apply(([environment, dev, bootstrap, key, link, streaming, appsync]) => {
-        const result = { ...(environment ?? {}) };
+        const result = environment ?? {};
         result.SST_RESOURCE_App = JSON.stringify({
           name: $app.name,
           stage: $app.stage,
