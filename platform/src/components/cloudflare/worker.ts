@@ -328,21 +328,11 @@ export class Worker extends Component implements Link.Linkable {
 
     const dev = normalizeDev();
     const urlEnabled = normalizeUrl();
-    const workerTransform =
-      typeof args.transform?.worker === "function"
-        ? undefined
-        : args.transform?.worker;
     const compatibility = normalizeCompatibility();
-    const compatibilityInput = output(compatibility);
 
     const bindings = buildBindings();
     const iamCredentials = createAwsCredentials();
-    const buildInput = all([
-      name,
-      args.handler,
-      args.build,
-      compatibilityInput,
-    ]).apply(
+    const buildInput = all([name, args.handler, args.build, compatibility]).apply(
       async ([name, handler, build, compatibility]) => {
         return {
           functionID: name,
@@ -385,7 +375,7 @@ export class Worker extends Component implements Link.Linkable {
         name,
         args.handler,
         args.build,
-        compatibilityInput,
+        compatibility,
         dev,
       ]).apply(
         ([name, handler, build, compatibility, dev]) => {
@@ -419,7 +409,11 @@ export class Worker extends Component implements Link.Linkable {
 
     function normalizeCompatibility() {
       const compatibility = output(args.compatibility);
-      return {
+      const workerTransform =
+        typeof args.transform?.worker === "function"
+          ? undefined
+          : args.transform?.worker;
+      return output({
         date: all([
           compatibility.apply((value) => value?.date),
           workerTransform?.compatibilityDate,
@@ -434,7 +428,7 @@ export class Worker extends Component implements Link.Linkable {
           ([argValue, transformValue]) =>
             transformValue ?? argValue ?? DEFAULT_COMPATIBILITY_FLAGS,
         ),
-      };
+      });
     }
 
     function buildBindings() {
@@ -570,8 +564,8 @@ export class Worker extends Component implements Link.Linkable {
                 .update(await fs.readFile(p, "utf-8"))
                 .digest("hex"),
             ),
-            compatibilityDate: compatibility.date,
-            compatibilityFlags: compatibility.flags,
+            compatibilityDate: compatibility.apply((value) => value.date),
+            compatibilityFlags: compatibility.apply((value) => value.flags),
             assets: args.assets
               ? output(args.assets).apply(async (assets) => {
                   const directory = path.join(
