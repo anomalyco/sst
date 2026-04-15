@@ -248,7 +248,7 @@ func (w *Runtime) getUnenv(ctx context.Context, cfgPath string, compatibility co
 	cmd := process.CommandContext(
 		ctx,
 		"node",
-		filepath.Join(path.ResolvePlatformDir(cfgPath), "src/runtime/cloudflare-unenv.mjs"),
+		filepath.Join(path.ResolvePlatformDir(cfgPath), "src/runtime/worker/unenv.mjs"),
 		string(payload),
 	)
 	cmd.Dir = path.ResolvePlatformDir(cfgPath)

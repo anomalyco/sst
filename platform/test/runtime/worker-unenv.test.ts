@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getCloudflareUnenvConfig } from "../src/runtime/cloudflare-unenv";
+import { getCloudflareUnenvConfig } from "../../src/runtime/worker/unenv";
 
 describe("getCloudflareUnenvConfig", () => {
   it("keeps http shimmed before native compat", () => {
