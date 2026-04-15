@@ -333,6 +333,7 @@ export class Worker extends Component implements Link.Linkable {
         ? undefined
         : args.transform?.worker;
     const compatibility = normalizeCompatibility();
+    const compatibilityInput = output(compatibility);
 
     const bindings = buildBindings();
     const iamCredentials = createAwsCredentials();
@@ -340,11 +341,9 @@ export class Worker extends Component implements Link.Linkable {
       name,
       args.handler,
       args.build,
-      compatibility.date,
-      compatibility.flags,
-      dev,
+      compatibilityInput,
     ]).apply(
-      async ([name, handler, build, compatibilityDate, compatibilityFlags]) => {
+      async ([name, handler, build, compatibility]) => {
         return {
           functionID: name,
           links: {},
@@ -353,10 +352,7 @@ export class Worker extends Component implements Link.Linkable {
           properties: {
             accountID: DEFAULT_ACCOUNT_ID,
             build,
-            compatibility: {
-              date: compatibilityDate,
-              flags: compatibilityFlags,
-            },
+            compatibility,
           },
         };
       },
@@ -389,20 +385,10 @@ export class Worker extends Component implements Link.Linkable {
         name,
         args.handler,
         args.build,
-        compatibility.date,
-        compatibility.flags,
+        compatibilityInput,
         dev,
       ]).apply(
-        (
-          [
-            name,
-            handler,
-            build,
-            compatibilityDate,
-            compatibilityFlags,
-            dev,
-          ],
-        ) => {
+        ([name, handler, build, compatibility, dev]) => {
           if (!dev) return undefined;
           return {
             functionID: name,
@@ -413,10 +399,7 @@ export class Worker extends Component implements Link.Linkable {
               accountID: DEFAULT_ACCOUNT_ID,
               scriptName: script.scriptName,
               build,
-              compatibility: {
-                date: compatibilityDate,
-                flags: compatibilityFlags,
-              },
+              compatibility,
             },
           };
         },
@@ -442,14 +425,14 @@ export class Worker extends Component implements Link.Linkable {
           workerTransform?.compatibilityDate,
         ]).apply(
           ([argValue, transformValue]) =>
-            argValue ?? transformValue ?? DEFAULT_COMPATIBILITY_DATE,
+            transformValue ?? argValue ?? DEFAULT_COMPATIBILITY_DATE,
         ),
         flags: all([
           compatibility.apply((value) => value?.flags),
           workerTransform?.compatibilityFlags,
         ]).apply(
           ([argValue, transformValue]) =>
-            argValue ?? transformValue ?? DEFAULT_COMPATIBILITY_FLAGS,
+            transformValue ?? argValue ?? DEFAULT_COMPATIBILITY_FLAGS,
         ),
       };
     }
