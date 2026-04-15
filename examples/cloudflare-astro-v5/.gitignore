@@ -22,4 +22,3 @@ pnpm-debug.log*
 
 # cloudflare
 .wrangler
-wrangler.jsonc

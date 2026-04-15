@@ -5,12 +5,18 @@ export interface Resource {
   };
 }
 
-const raw: Record<string, any> = {
-  // @ts-expect-error
-  ...globalThis.$SST_LINKS,
+const state = globalThis as typeof globalThis & {
+  __SST_RESOURCE_RAW__?: Record<string, any>;
+  __SST_RESOURCE_ENVIRONMENT__?: Record<string, string | undefined>;
 };
 
-const environment: Record<string, string | undefined> = {};
+const raw: Record<string, any> = (state.__SST_RESOURCE_RAW__ ??= {
+  // @ts-expect-error
+  ...globalThis.$SST_LINKS,
+});
+
+const environment: Record<string, string | undefined> =
+  (state.__SST_RESOURCE_ENVIRONMENT__ ??= {});
 
 export function loadResourceEnvironment(input?: Record<string, any>) {
   for (const [key, value] of Object.entries(input ?? {})) {

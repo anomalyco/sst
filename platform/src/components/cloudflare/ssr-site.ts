@@ -7,6 +7,7 @@ import { VisibleError } from "../error.js";
 import { BaseSsrSiteArgs, buildApp } from "../base/base-ssr-site.js";
 import { Worker, WorkerArgs } from "./worker.js";
 import { Link } from "../link.js";
+import { URL_UNAVAILABLE } from "../aws/linkable.js";
 
 export type Plan = {
   server: string;
@@ -28,7 +29,8 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
 }
 
 export abstract class SsrSite extends Component implements Link.Linkable {
-  private server: Worker;
+  private server?: Worker;
+  private devUrl?: Output<string>;
 
   protected abstract buildPlan(
     outputPath: Output<string>,
@@ -46,28 +48,53 @@ export abstract class SsrSite extends Component implements Link.Linkable {
     const self = this;
 
     const sitePath = normalizeSitePath();
-    const outputPath = $dev ? sitePath : buildApp(self, name, args, sitePath);
+    const dev = normalizeDev();
+
+    if (dev.enabled) {
+      this.devUrl = dev.url;
+      this.registerOutputs({
+        _dev: dev.outputs,
+        _metadata: {
+          mode: "placeholder",
+          path: sitePath,
+        },
+      });
+      return;
+    }
+
+    const outputPath = buildApp(self, name, args, sitePath);
     const plan = validatePlan(this.buildPlan(outputPath, name, args));
     const worker = createWorker();
 
     this.server = worker;
 
     this.registerOutputs({
-      _hint: $dev ? undefined : this.url,
-      _dev: {
-        environment: args.environment,
-        command: "npm run dev",
-        directory: sitePath,
-        autostart: true,
-        links: output(args.link || [])
-          .apply(Link.build)
-          .apply((links) => links.map((link) => link.name)),
-      },
+      _hint: this.url,
       _metadata: {
-        mode: $dev ? "placeholder" : "deployed",
+        mode: "deployed",
         path: sitePath,
       },
     });
+
+    function normalizeDev() {
+      const enabled = $dev && args.dev !== false;
+      const devArgs = args.dev || {};
+
+      return {
+        enabled,
+        url: output(devArgs.url ?? URL_UNAVAILABLE),
+        outputs: {
+          title: devArgs.title,
+          environment: args.environment,
+          command: output(devArgs.command ?? "npm run dev"),
+          autostart: output(devArgs.autostart ?? true),
+          directory: output(devArgs.directory ?? sitePath),
+          links: output(args.link || [])
+            .apply(Link.build)
+            .apply((links) => links.map((link) => link.name)),
+        },
+      };
+    }
 
     function normalizeSitePath() {
       return output(args.path).apply((sitePath) => {
@@ -121,7 +148,8 @@ export abstract class SsrSite extends Component implements Link.Linkable {
    * Otherwise, it's the auto-generated Worker URL.
    */
   public get url() {
-    return this.server.url;
+    if (this.server) return this.server.url;
+    return this.devUrl!;
   }
 
   /**

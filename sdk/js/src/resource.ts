@@ -1,1 +1,1 @@
-export * from "./resource-node.js";
+export * from "./resource/index.js";

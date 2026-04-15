@@ -26,7 +26,7 @@ import { WorkerAssets } from "./providers/worker-assets";
 import { globSync } from "glob";
 import { VisibleError } from "../error";
 import { getContentType } from "../base/base-site";
-import { physicalName } from "../naming";
+import { prefixName } from "../naming";
 import { existsAsync } from "../../util/fs";
 
 export interface WorkerArgs {
@@ -495,7 +495,8 @@ export class Worker extends Component implements Link.Linkable {
           args.transform?.worker as Transform<cf.WorkersScriptArgs>,
           `${name}Script`,
           {
-            scriptName: physicalName(64, `${name}Script`).toLowerCase(),
+            // workers.dev URLs fail above 54 chars when previews are enabled
+            scriptName: prefixName(54, `${name}Script`).toLowerCase(),
             mainModule: "placeholder",
             accountId: DEFAULT_ACCOUNT_ID,
             contentFile: contentFilePath,
@@ -559,7 +560,7 @@ export class Worker extends Component implements Link.Linkable {
               ],
             ),
           },
-          { parent, ignoreChanges: ["scriptName"] },
+          { parent, replaceOnChanges: ["scriptName"] },
         ),
       );
     }

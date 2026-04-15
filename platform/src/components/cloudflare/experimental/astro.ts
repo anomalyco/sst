@@ -11,6 +11,20 @@ export interface AstroArgs extends SsrSiteArgs {
    *
    * :::note
    * In `sst dev` your Astro site is run in dev mode; it's not deployed.
+   *
+   * Add this to your `astro.config.mjs` so linked Cloudflare resources are
+   * available in dev mode.
+   *
+   * ```js title="astro.config.mjs"
+   * import { defineConfig } from "astro/config";
+   * import cloudflare from "@astrojs/cloudflare";
+   *
+   * export default defineConfig({
+   *   adapter: cloudflare({
+   *     configPath: process.env.SST_WRANGLER_PATH,
+   *   }),
+   * });
+   * ```
    * :::
    *
    * Instead of deploying your Astro site, this starts it in dev mode. It's run
@@ -41,7 +55,7 @@ export interface AstroArgs extends SsrSiteArgs {
    * [Link resources](/docs/linking/) to your Astro site. This will:
    *
    * 1. Grant the permissions needed to access the resources.
-   * 2. Allow you to access it in your site using [`Astro.locals.runtime`](https://docs.astro.build/en/guides/integrations-guide/cloudflare/#environment-variables-and-secrets).
+   * 2. Allow you to access them in your site using `sst/resource`.
    *
    * @example
    *
@@ -53,12 +67,18 @@ export interface AstroArgs extends SsrSiteArgs {
    * }
    * ```
    *
-   * You can access the linked resources as bindings in your Astro site.
+   * Access linked resources in your site with
+   * [`sst/resource`](/docs/reference/sdk/#sstresource). This works in both
+   * `sst dev` and after deploy.
    *
-   * ```js
-   * const { env } = Astro.locals.runtime;
-   * const files = await env.MyBucket.list();
+   * ```astro
+   * ---
+   * import { Resource } from "sst/resource";
+   *
+   * const files = await Resource.MyBucket.list();
+   * ---
    * ```
+   *
    */
   link?: SsrSiteArgs["link"];
   /**
@@ -66,6 +86,19 @@ export interface AstroArgs extends SsrSiteArgs {
    *
    * 1. In `astro build`, they are loaded into [`Astro.locals.runtime`](https://docs.astro.build/en/guides/integrations-guide/cloudflare/#environment-variables-and-secrets).
    * 2. Locally while running `astro dev` through `sst dev`.
+   *
+   * Add this to your `astro.config.mjs` to make them available in dev mode.
+   *
+   * ```js title="astro.config.mjs"
+   * import { defineConfig } from "astro/config";
+   * import cloudflare from "@astrojs/cloudflare";
+   *
+   * export default defineConfig({
+   *   adapter: cloudflare({
+   *     configPath: process.env.SST_WRANGLER_PATH,
+   *   }),
+   * });
+   * ```
    *
    * :::tip
    * You can also `link` resources to your Astro site and access them in a type-safe way with the [SDK](/docs/reference/sdk/). We recommend linking since it's more secure.
@@ -125,6 +158,10 @@ export interface AstroArgs extends SsrSiteArgs {
 /**
  * The `Astro` component lets you deploy an [Astro](https://astro.build) site to Cloudflare.
  *
+ * :::caution
+ * Features like `sst dev` support and `sst/resource` bindings require Astro v6 or newer.
+ * :::
+ *
  * @example
  *
  * #### Minimal example
@@ -168,15 +205,30 @@ export interface AstroArgs extends SsrSiteArgs {
  * });
  * ```
  *
- * You can access the linked resources as bindings in your Astro site.
+ * Add this to your `astro.config.mjs` to make linked resources and bindings
+ * available in `sst dev`.
+ *
+ * ```js title="astro.config.mjs"
+ * import { defineConfig } from "astro/config";
+ * import cloudflare from "@astrojs/cloudflare";
+ *
+ * export default defineConfig({
+ *   adapter: cloudflare({
+ *     configPath: process.env.SST_WRANGLER_PATH,
+ *   }),
+ * });
+ * ```
+ *
+ * Use `sst/resource` for linked resources.
  *
  * ```astro title="src/pages/index.astro"
  * ---
- * const { env } = Astro.locals.runtime;
+ * import { Resource } from "sst/resource";
  *
- * const files = await env.MyBucket.list();
+ * const files = await Resource.MyBucket.list();
  * ---
  * ```
+ *
  */
 export class Astro extends SsrSite {
   constructor(
@@ -190,34 +242,69 @@ export class Astro extends SsrSite {
   protected buildPlan(outputPath: Output<string>): Output<Plan> {
     return outputPath.apply(async (outputPath) => {
       const distPath = path.join(outputPath, "dist");
-      if (!(await existsAsync(path.join(distPath, "_worker.js", "index.js")))) {
-        throw new VisibleError(
-          `SSR server bundle "_worker.js" not found in the build output at:\n` +
-            `  "${path.resolve(distPath)}".\n\n` +
-            `If your Astro project is entirely pre-rendered, use the \`sst.cloudflare.StaticSite\` component instead of \`sst.cloudflare.Astro\`.`,
-        );
+      const legacyServer = path.join(distPath, "_worker.js", "index.js");
+      if (await existsAsync(legacyServer)) {
+        // Astro v5 writes both the Worker bundle and assets into `dist/`.
+        const ignorePath = path.join(distPath, ".assetsignore");
+        const ignorePatterns = (await existsAsync(ignorePath))
+          ? (await fs.readFile(ignorePath, "utf-8")).split("\n")
+          : [];
+        let dirty = false;
+        ["_worker.js", "_routes.json"].forEach((pattern) => {
+          if (ignorePatterns.includes(pattern)) return;
+          ignorePatterns.push(pattern);
+          dirty = true;
+        });
+
+        if (dirty) {
+          await fs.appendFile(ignorePath, "\n_worker.js\n_routes.json");
+        }
+
+        return {
+          server: "./dist/_worker.js/index.js",
+          assets: "./dist",
+        };
       }
 
-      // Ensure `.assetsignore` file exists and contains `_worker.js` and `_routes.json`
-      const ignorePath = path.join(outputPath, "dist", ".assetsignore");
-      const ignorePatterns = (await existsAsync(ignorePath))
-        ? (await fs.readFile(ignorePath, "utf-8")).split("\n")
-        : [];
-      let dirty = false;
-      ["_worker.js", "_routes.json"].forEach((pattern) => {
-        if (ignorePatterns.includes(pattern)) return;
-        ignorePatterns.push(pattern);
-        dirty = true;
-      });
+      const wranglerPath = path.join(distPath, "server", "wrangler.json");
+      if (await existsAsync(wranglerPath)) {
+        type WranglerConfig = {
+          main?: string;
+          assets?: {
+            directory?: string;
+          };
+        };
 
-      if (dirty) {
-        await fs.appendFile(ignorePath, "\n_worker.js\n_routes.json");
+        const serverPath = path.dirname(wranglerPath);
+        const wrangler = JSON.parse(
+          await fs.readFile(wranglerPath, "utf-8"),
+        ) as WranglerConfig;
+        const main = wrangler.main ?? "entry.mjs";
+        const serverEntry = path.resolve(serverPath, main);
+        const assetsDirectory = wrangler.assets?.directory;
+        const assetsPath = assetsDirectory
+          ? path.resolve(serverPath, assetsDirectory)
+          : path.join(distPath, "client");
+
+        if (await existsAsync(serverEntry)) {
+          return {
+            server: toRelativePath(serverEntry),
+            assets: toRelativePath(assetsPath),
+          };
+        }
       }
 
-      return {
-        server: "./dist/_worker.js/index.js",
-        assets: "./dist",
-      };
+      throw new VisibleError(
+        `SSR server bundle not found in the build output at:\n` +
+          `  "${path.resolve(distPath)}".\n\n` +
+          `Expected either Astro v5 output in \`dist/_worker.js/index.js\` or Astro v6+ output in \`dist/server/wrangler.json\`.\n` +
+          `If your Astro project is entirely pre-rendered, use the \`sst.cloudflare.StaticSite\` component instead of \`sst.cloudflare.Astro\`.`,
+      );
+
+      function toRelativePath(filePath: string) {
+        const relative = path.relative(outputPath, filePath);
+        return relative.startsWith(".") ? relative : `./${relative}`;
+      }
     });
   }
 

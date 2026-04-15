@@ -3,7 +3,7 @@
 export default $config({
   app(input) {
     return {
-      name: "cloudflare-astro",
+      name: "cloudflare-astro-v5",
       removal: input?.stage === "production" ? "retain" : "remove",
       home: "cloudflare",
     };
@@ -14,6 +14,9 @@ export default $config({
 
     new sst.cloudflare.Astro("MyWeb", {
       link: [bucket, kv],
+      environment: {
+        MESSAGE: "Hello from Astro on Cloudflare",
+      },
     });
   },
 });
