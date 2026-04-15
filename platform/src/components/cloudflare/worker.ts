@@ -104,7 +104,7 @@ export interface WorkerArgs {
    * }
    * ```
    */
-  routes?: Input<Input<string>[]>;
+  routes?: Input<string>[];
   /**
    * Configure how your function is bundled.
    *
