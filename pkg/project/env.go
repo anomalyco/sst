@@ -52,8 +52,8 @@ func (p *Project) EnvFor(ctx context.Context, complete *CompleteEvent, name stri
 	for key, value := range dev.Environment {
 		env[key] = value
 	}
-	if wranglerPath, err := p.cloudflarePlatformProxyConfig(complete, dev); err != nil {
-		log.Error("failed to write cloudflare platform proxy config", "err", err)
+	if wranglerPath, err := p.generateWranglerFile(complete, dev); err != nil {
+		log.Error("failed to write cloudflare wrangler file", "err", err)
 	} else if wranglerPath != "" {
 		env["SST_WRANGLER_PATH"] = wranglerPath
 	}
@@ -66,7 +66,8 @@ func (p *Project) EnvFor(ctx context.Context, complete *CompleteEvent, name stri
 	return env, nil
 }
 
-func (p *Project) cloudflarePlatformProxyConfig(complete *CompleteEvent, dev Dev) (string, error) {
+// Generate hidden wrangler config for bindings to work during `sst dev`
+func (p *Project) generateWranglerFile(complete *CompleteEvent, dev Dev) (string, error) {
 	prov, ok := p.Provider("cloudflare")
 	if !ok {
 		return "", nil
@@ -158,7 +159,7 @@ func (p *Project) cloudflarePlatformProxyConfig(complete *CompleteEvent, dev Dev
 	}
 
 	config := map[string]interface{}{
-		"name":               sanitizeCloudflareName("sst-dev-" + dev.Name),
+		"name":               sanitizeWranglerName("sst-dev-" + dev.Name),
 		"compatibility_date": "2025-05-05",
 	}
 
@@ -224,11 +225,11 @@ func stringValue(input interface{}) string {
 	return ""
 }
 
-var cloudflareNameRegex = regexp.MustCompile(`[^a-z0-9-]+`)
+var wranglerNameRegex = regexp.MustCompile(`[^a-z0-9-]+`)
 
-func sanitizeCloudflareName(input string) string {
+func sanitizeWranglerName(input string) string {
 	value := strings.ToLower(input)
-	value = cloudflareNameRegex.ReplaceAllString(value, "-")
+	value = wranglerNameRegex.ReplaceAllString(value, "-")
 	value = strings.Trim(value, "-")
 	if value == "" {
 		return "sst-dev"
