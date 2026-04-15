@@ -6,6 +6,7 @@ import { Component, transform, type Transform } from "../component.js";
 import { VisibleError } from "../error.js";
 import { BaseSsrSiteArgs, buildApp } from "../base/base-ssr-site.js";
 import { Worker, WorkerArgs } from "./worker.js";
+import { normalizeWorkerCompatibility } from "./helpers/compatibility.js";
 import { Link } from "../link.js";
 import { URL_UNAVAILABLE } from "../aws/linkable.js";
 
@@ -86,6 +87,11 @@ export abstract class SsrSite extends Component implements Link.Linkable {
         outputs: {
           title: devArgs.title,
           environment: args.environment,
+          cloudflare: enabled
+            ? {
+                compatibility: resolveCompatibility(),
+              }
+            : undefined,
           command: output(devArgs.command ?? "npm run dev"),
           autostart: output(devArgs.autostart ?? true),
           directory: output(devArgs.directory ?? sitePath),
@@ -94,6 +100,26 @@ export abstract class SsrSite extends Component implements Link.Linkable {
             .apply((links) => links.map((link) => link.name)),
         },
       };
+    }
+
+    function resolveCompatibility() {
+      const [, workerArgs] = transform(
+        args.transform?.server,
+        `${name}Worker`,
+        {
+          environment: args.environment,
+          link: args.link,
+          url: true,
+          dev: false,
+          domain: args.domain,
+          handler: output(""),
+          assets: {
+            directory: output(""),
+          },
+        },
+        { parent: self },
+      );
+      return normalizeWorkerCompatibility(workerArgs);
     }
 
     function normalizeSitePath() {
@@ -121,14 +147,14 @@ export abstract class SsrSite extends Component implements Link.Linkable {
           args.transform?.server,
           `${name}Worker`,
           {
-            handler: all([outputPath, plan.server]).apply(
-              ([outputPath, server]) => path.join(outputPath, server),
-            ),
             environment: args.environment,
             link: args.link,
             url: true,
             dev: false,
             domain: args.domain,
+            handler: all([outputPath, plan.server]).apply(
+              ([outputPath, server]) => path.join(outputPath, server),
+            ),
             assets: {
               directory: all([outputPath, plan.assets]).apply(
                 ([outputPath, assets]) => path.join(outputPath, assets),

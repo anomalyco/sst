@@ -159,8 +159,15 @@ func (p *Project) generateWranglerFile(complete *CompleteEvent, dev Dev) (string
 	}
 
 	config := map[string]interface{}{
-		"name":               sanitizeWranglerName("sst-dev-" + dev.Name),
-		"compatibility_date": "2025-05-05",
+		"name": sanitizeWranglerName("sst-dev-" + dev.Name),
+	}
+	if dev.Cloudflare != nil && dev.Cloudflare.Compatibility != nil {
+		if dev.Cloudflare.Compatibility.Date != nil {
+			config["compatibility_date"] = *dev.Cloudflare.Compatibility.Date
+		}
+		if dev.Cloudflare.Compatibility.Flags != nil {
+			config["compatibility_flags"] = dev.Cloudflare.Compatibility.Flags
+		}
 	}
 
 	providerEnv, err := prov.Env()

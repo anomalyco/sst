@@ -28,9 +28,7 @@ import { VisibleError } from "../error";
 import { getContentType } from "../base/base-site";
 import { prefixName } from "../naming";
 import { existsAsync } from "../../util/fs";
-
-const DEFAULT_COMPATIBILITY_DATE = "2025-05-05";
-const DEFAULT_COMPATIBILITY_FLAGS = ["nodejs_compat"];
+import { normalizeWorkerCompatibility } from "./helpers/compatibility.js";
 
 export interface WorkerArgs {
   /**
@@ -328,7 +326,7 @@ export class Worker extends Component implements Link.Linkable {
 
     const dev = normalizeDev();
     const urlEnabled = normalizeUrl();
-    const compatibility = normalizeCompatibility();
+    const compatibility = normalizeWorkerCompatibility(args);
 
     const bindings = buildBindings();
     const iamCredentials = createAwsCredentials();
@@ -405,30 +403,6 @@ export class Worker extends Component implements Link.Linkable {
 
     function normalizeUrl() {
       return output(args.url).apply((v) => v ?? false);
-    }
-
-    function normalizeCompatibility() {
-      const compatibility = output(args.compatibility);
-      const workerTransform =
-        typeof args.transform?.worker === "function"
-          ? undefined
-          : args.transform?.worker;
-      return output({
-        date: all([
-          compatibility.apply((value) => value?.date),
-          workerTransform?.compatibilityDate,
-        ]).apply(
-          ([argValue, transformValue]) =>
-            transformValue ?? argValue ?? DEFAULT_COMPATIBILITY_DATE,
-        ),
-        flags: all([
-          compatibility.apply((value) => value?.flags),
-          workerTransform?.compatibilityFlags,
-        ]).apply(
-          ([argValue, transformValue]) =>
-            transformValue ?? argValue ?? DEFAULT_COMPATIBILITY_FLAGS,
-        ),
-      });
     }
 
     function buildBindings() {
