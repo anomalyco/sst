@@ -1885,7 +1885,8 @@ export class Function extends Component implements Link.Linkable {
         Function.encryptionKey().base64,
         args.link,
         args.streaming,
-      ]).apply(async ([environment, dev, bootstrap, key, link, streaming]) => {
+        dev.apply((dev) => dev ? Function.appsync() : undefined),
+      ]).apply(([environment, dev, bootstrap, key, link, streaming, appsync]) => {
         const result = environment ?? {};
         result.SST_RESOURCE_App = JSON.stringify({
           name: $app.name,
@@ -1901,7 +1902,6 @@ export class Function extends Component implements Link.Linkable {
         result.SST_KEY = key;
         result.SST_KEY_FILE = "resource.enc";
         if (dev) {
-          const appsync = await Function.appsync();
           result.SST_REGION = process.env.SST_AWS_REGION!;
           result.SST_APPSYNC_HTTP = appsync.http;
           result.SST_APPSYNC_REALTIME = appsync.realtime;
