@@ -3,7 +3,6 @@ import path from "path";
 import crypto from "crypto";
 import {
   ComponentResourceOptions,
-  Output,
   output,
   all,
   jsonStringify,
@@ -333,7 +332,7 @@ export class Worker extends Component implements Link.Linkable {
   private workerUrl: WorkerUrl;
   private workerPlacement?: WorkerPlacement;
   private workerDomain?: cf.WorkerDomain;
-  private workerRoutes?: Output<cf.WorkersRoute[]>;
+  private workerRoutes?: cf.WorkersRoute[];
 
   constructor(name: string, args: WorkerArgs, opts?: ComponentResourceOptions) {
     super(__pulumiType, name, args, opts);
@@ -669,34 +668,35 @@ export class Worker extends Component implements Link.Linkable {
           `Cannot set both "domain" and "routes" on the "${name}" Worker. Use "domain" for a dedicated hostname, or "routes" for pattern-based routing.`,
         );
 
-      return output(args.routes).apply((patterns) =>
-        patterns.map((pattern, i) => {
-          const hostname = pattern.split("/")[0];
-          if (!hostname || hostname.includes("*"))
+      return args.routes.map((pattern, i) => {
+        const hostname = output(pattern).apply((p) => {
+          const h = p.split("/")[0];
+          if (!h || h.includes("*"))
             throw new VisibleError(
-              `Route pattern "${pattern}" on the "${name}" Worker must start with a concrete hostname (e.g. "example.com/*"). Wildcard hostnames are not supported.`,
+              `Route pattern "${p}" on the "${name}" Worker must start with a concrete hostname (e.g. "example.com/*"). Wildcard hostnames are not supported.`,
             );
+          return h;
+        });
 
-          const zone = new ZoneLookup(
-            `${name}Route${i}ZoneLookup`,
-            {
-              accountId: DEFAULT_ACCOUNT_ID,
-              domain: hostname,
-            },
-            { parent },
-          );
+        const zone = new ZoneLookup(
+          `${name}Route${i}ZoneLookup`,
+          {
+            accountId: DEFAULT_ACCOUNT_ID,
+            domain: hostname,
+          },
+          { parent },
+        );
 
-          return new cf.WorkersRoute(
-            `${name}Route${i}`,
-            {
-              zoneId: zone.id,
-              pattern,
-              script: script.scriptName,
-            },
-            { parent },
-          );
-        }),
-      );
+        return new cf.WorkersRoute(
+          `${name}Route${i}`,
+          {
+            zoneId: zone.id,
+            pattern,
+            script: script.scriptName,
+          },
+          { parent },
+        );
+      });
     }
   }
 
