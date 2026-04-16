@@ -593,7 +593,7 @@ export class Worker extends Component implements Link.Linkable {
               ],
             ),
           },
-          { parent, replaceOnChanges: ["scriptName"] },
+          { parent, ignoreChanges: ["scriptName"] },
         ),
       );
     }
