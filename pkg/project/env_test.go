@@ -24,6 +24,9 @@ func (t testProvider) Env() (map[string]string, error) {
 func TestGenerateWranglerFileDefaultsCompatibilityFlags(t *testing.T) {
 	project := &Project{
 		root: t.TempDir(),
+		app: &App{
+			Stage: "test",
+		},
 		loadedProviders: map[string]provider.Provider{
 			"cloudflare": testProvider{},
 		},
@@ -53,6 +56,9 @@ func TestGenerateWranglerFileDefaultsCompatibilityFlags(t *testing.T) {
 func TestGenerateWranglerFileUsesDevCompatibility(t *testing.T) {
 	project := &Project{
 		root: t.TempDir(),
+		app: &App{
+			Stage: "test",
+		},
 		loadedProviders: map[string]provider.Provider{
 			"cloudflare": testProvider{},
 		},
@@ -84,6 +90,9 @@ func TestGenerateWranglerFileUsesDevCompatibility(t *testing.T) {
 func TestGenerateWranglerFileOmitsCompatibilityWhenMissing(t *testing.T) {
 	project := &Project{
 		root: t.TempDir(),
+		app: &App{
+			Stage: "test",
+		},
 		loadedProviders: map[string]provider.Provider{
 			"cloudflare": testProvider{},
 		},

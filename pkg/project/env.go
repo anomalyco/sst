@@ -207,7 +207,7 @@ func (p *Project) generateWranglerFile(complete *CompleteEvent, dev Dev) (string
 		config["version_metadata"] = versionMetadata
 	}
 
-	wranglerDir := filepath.Join(p.PathWorkingDir(), "wrangler")
+	wranglerDir := filepath.Join(p.PathWorkingDir(), "wrangler", p.App().Stage)
 	os.MkdirAll(wranglerDir, 0o755)
 	configPath := filepath.Join(wranglerDir, dev.Name+".jsonc")
 
