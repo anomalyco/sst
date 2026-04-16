@@ -47,7 +47,7 @@ export type Prettify<T> = {
 } & {};
 
 import process from "node:process";
-import { Resource } from "../resource.js";
+import { Resource } from "../resource/index.js";
 
 export const aws = awsHandle;
 

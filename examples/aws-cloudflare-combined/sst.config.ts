@@ -19,8 +19,11 @@ export default $config({
       handler: "src/index.handler",
     });
 
+    // Add a Cloudflare Bucket and link it to the worker
+    const cfBucket = new sst.cloudflare.Bucket("CfBucket");
     const worker = new sst.cloudflare.Worker("MyWorker", {
       handler: "./worker.ts",
+      link: [cfBucket],
       url: true,
     });
 

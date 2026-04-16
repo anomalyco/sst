@@ -1,0 +1,32 @@
+---
+import Layout from "../layouts/Layout.astro";
+import { Resource } from "sst/resource";
+
+const objects = await Resource.MyBucket.list();
+---
+
+<Layout title="Astro 6 on Cloudflare">
+  <h1>Astro 6 on Cloudflare</h1>
+  <p class="muted">
+    This page is server rendered using <code>Resource.MyBucket</code> from
+    <code>sst/resource</code> — works in both <code>sst dev</code> and
+    <code>sst deploy</code>.
+  </p>
+
+  <p>
+    <a href="/prerendered">Open the prerendered page</a>
+  </p>
+
+  <section class="card">
+    <h2>Bucket objects</h2>
+    {
+      objects.objects.length > 0 ? (
+        <ul>
+          {objects.objects.map((object) => <li>{object.key}</li>)}
+        </ul>
+      ) : (
+        <p class="muted">No objects yet.</p>
+      )
+    }
+  </section>
+</Layout>

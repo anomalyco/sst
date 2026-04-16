@@ -2312,6 +2312,7 @@ async function buildComponents() {
       "../platform/src/components/aws/vpc-v1.ts",
       "../platform/src/components/aws/workflow.ts",
       "../platform/src/components/cloudflare/ai.ts",
+      "../platform/src/components/cloudflare/astro.ts",
       "../platform/src/components/cloudflare/bucket.ts",
       "../platform/src/components/cloudflare/cron.ts",
       "../platform/src/components/cloudflare/d1.ts",

@@ -1,0 +1,65 @@
+---
+interface Props {
+  title: string;
+}
+
+const { title } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{title}</title>
+  </head>
+  <body>
+    <main>
+      <slot />
+    </main>
+  </body>
+</html>
+
+<style>
+  :global(html),
+  :global(body) {
+    margin: 0;
+    min-height: 100%;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+      "Segoe UI", sans-serif;
+    background: #0b1020;
+    color: #e5e7eb;
+  }
+
+  main {
+    max-width: 48rem;
+    margin: 0 auto;
+    padding: 4rem 1.5rem;
+  }
+
+  :global(a) {
+    color: #7dd3fc;
+  }
+
+  :global(code) {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+      "Liberation Mono", "Courier New", monospace;
+  }
+
+  :global(.card) {
+    margin-top: 2rem;
+    padding: 1.25rem;
+    border: 1px solid #1f2937;
+    border-radius: 1rem;
+    background: rgba(15, 23, 42, 0.85);
+  }
+
+  :global(.muted) {
+    color: #9ca3af;
+  }
+  
+  :global(ul) {
+    padding-left: 1.25rem;
+  }
+</style>

@@ -1456,6 +1456,7 @@ const usEast2 = await connectToCluster(Resource.MultiRegion.peer.endpoint);
 ```
 ```ts title="sst.config.ts"
 const cluster = new sst.aws.Dsql("MultiRegion", {
+  backup: true,
   regions: {
     witness: "us-west-2",
     peer: "us-east-2",
@@ -1469,8 +1470,11 @@ const fn = new sst.aws.Function("MyFunction", {
 });
 
 return {
+  url: fn.url,
+  arn: cluster.arn,
   endpoint: cluster.endpoint,
   region: cluster.region,
+  peerArn: cluster.peer.arn,
   peerEndpoint: cluster.peer.endpoint,
   peerRegion: cluster.peer.region,
 };
@@ -2610,63 +2614,6 @@ return {
 ```
 
 View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-lambda-ai-stream).
-
-
----
-## Lambda Durable Function using Python Runtime
-
-Creates an [Durable Function](https://docs.aws.amazon.com/lambda/latest/dg/durable-functions.html) using the Python runtime.
-```ts title="sst.config.ts"
-const durableFunction = new sst.aws.Function("Durable", {
-  handler: "durable/main.handler",
-  runtime: "python3.13",
-  durable: true,
-  url: true
-});
-
-new sst.aws.Function("Resolver", {
-  handler: "resolver/main.handler",
-  runtime: "python3.13",
-  url: true,
-  link: [durableFunction],
-});
-
-new sst.aws.Function("Invoker", {
-  handler: "invoker/main.handler",
-  runtime: "python3.13",
-  url: true,
-  link: [durableFunction],
-});
-```
-
-View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-lambda-durable-python).
-
-
----
-## Lambda Durable Function
-
-Creates an [Durable Function](https://docs.aws.amazon.com/lambda/latest/dg/durable-functions.html)
-```ts title="sst.config.ts"
-const durableFunction = new sst.aws.Function("Durable", {
-  handler: "src/index.handler",
-  durable: true,
-  url: true
-});
-
-new sst.aws.Function("Resolver", {
-  handler: "src/resolver.handler",
-  url: true,
-  link: [durableFunction],
-});
-
-new sst.aws.Function("Invoker", {
-  handler: "src/invoker.handler",
-  url: true,
-  link: [durableFunction],
-});
-```
-
-View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-lambda-durable).
 
 
 ---
@@ -4020,29 +3967,29 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-open-se
 
 
 ---
-## AWS PlanetScale Drizzle
+## AWS PlanetScale Drizzle MySQL
 
 In this example, we use PlanetScale with a branch-per-stage pattern. Every stage gets its own
 database branch — so each PR can have an isolated database.
 
 ```ts title="sst.config.ts"
-const db = planetscale.getDatabaseOutput({
-  name: "mydb",
+const db = planetscale.getDatabaseVitessOutput({
+  id: "mydb",
   organization: "myorg",
 });
 
 const branch =
   $app.stage === "production"
-    ? planetscale.getBranchOutput({
-        name: "production",
+    ? planetscale.getVitessBranchOutput({
+        id: db.defaultBranch,
         organization: db.organization,
         database: db.name,
       })
-    : new planetscale.Branch("DatabaseBranch", {
+    : new planetscale.VitessBranch("DatabaseBranch", {
         database: db.name,
         organization: db.organization,
         name: $app.stage,
-        parentBranch: "production",
+        parentBranch: db.defaultBranch,
       });
 ```
 
@@ -4078,26 +4025,26 @@ export const db = drizzle({
 });
 ```
 ```ts title="sst.config.ts"
-const db = planetscale.getDatabaseOutput({
-  name: "mydb",
-  organization: "myorg",
+const db = planetscale.getDatabaseVitessOutput({
+  id: "example",
+  organization: "vimtor",
 });
 
 const branch =
   $app.stage === "production"
-    ? planetscale.getBranchOutput({
-        name: "production",
+    ? planetscale.getVitessBranchOutput({
+        id: db.defaultBranch,
         organization: db.organization,
         database: db.name,
       })
-    : new planetscale.Branch("DatabaseBranch", {
+    : new planetscale.VitessBranch("DatabaseBranch", {
         database: db.name,
         organization: db.organization,
         name: $app.stage,
-        parentBranch: "production",
+        parentBranch: db.defaultBranch,
       });
 
-const password = new planetscale.Password("DatabasePassword", {
+const password = new planetscale.VitessBranchPassword("DatabasePassword", {
   database: db.name,
   organization: db.organization,
   branch: branch.name,
@@ -4109,7 +4056,7 @@ const database = new sst.Linkable("Database", {
   properties: {
     host: password.accessHostUrl,
     username: password.username,
-    password: password.plaintext,
+    password: password.plainText,
     database: db.name,
     port: 3306,
   },
@@ -4126,7 +4073,123 @@ return {
 };
 ```
 
-View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-planetscale-drizzle).
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-planetscale-drizzle-mysql).
+
+
+---
+## AWS PlanetScale Drizzle Postgres
+
+In this example, we use PlanetScale Postgres with a branch-per-stage pattern. Every stage
+gets its own database branch — so each PR can have an isolated database.
+
+```ts title="sst.config.ts"
+const db = planetscale.getDatabasePostgresOutput({
+  id: "mydb",
+  organization: "myorg",
+});
+
+const branch =
+  $app.stage === "production"
+    ? planetscale.getPostgresBranchOutput({
+        id: db.defaultBranch,
+        organization: db.organization,
+        database: db.name,
+      })
+    : new planetscale.PostgresBranch("DatabaseBranch", {
+        database: db.name,
+        organization: db.organization,
+        name: $app.stage,
+        parentBranch: db.defaultBranch,
+      });
+```
+
+We then create a role and wrap it in a `Linkable` to link it to a function.
+
+```ts title="sst.config.ts" {3}
+new sst.aws.Function("Api", {
+  handler: "src/api.handler",
+  link: [database],
+  url: true,
+});
+```
+
+You can push your Drizzle schema changes to PlanetScale with:
+
+```bash
+bun run db:push
+```
+
+In the function we use [Drizzle ORM](https://orm.drizzle.team) with the
+[`Resource`](/docs/reference/sdk/#resource) helper.
+
+```ts title="src/drizzle.ts"
+import { drizzle } from "drizzle-orm/postgres-js";
+import { Resource } from "sst";
+import postgres from "postgres";
+
+const client = postgres({
+  host: Resource.Database.host,
+  username: Resource.Database.username,
+  password: Resource.Database.password,
+  database: Resource.Database.database,
+});
+
+export const db = drizzle(client);
+```
+```ts title="sst.config.ts"
+const db = planetscale.getDatabasePostgresOutput({
+  id: "mydb",
+  organization: "myorg",
+});
+
+const branch =
+  $app.stage === "production"
+    ? planetscale.getPostgresBranchOutput({
+        id: db.defaultBranch,
+        organization: db.organization,
+        database: db.name,
+      })
+    : new planetscale.PostgresBranch("DatabaseBranch", {
+        database: db.name,
+        organization: db.organization,
+        name: $app.stage,
+        parentBranch: db.defaultBranch,
+      });
+
+const role = new planetscale.PostgresBranchRole("DatabaseRole", {
+  database: db.name,
+  organization: db.organization,
+  branch: branch.name,
+  name: `${$app.name}-${$app.stage}`,
+  inheritedRoles: [
+    "pg_read_all_data",
+    "pg_write_all_data",
+    "postgres", // Only needed for pushing schema changes
+  ],
+});
+
+const database = new sst.Linkable("Database", {
+  properties: {
+    host: role.accessHostUrl,
+    username: role.username,
+    password: role.password,
+    database: role.databaseName,
+    port: 6432, // Use 5432 for direct connection instead of PgBouncer
+  },
+});
+
+const api = new sst.aws.Function("Api", {
+  handler: "src/api.handler",
+  link: [database],
+  url: true,
+});
+
+return {
+  url: api.url,
+};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-planetscale-drizzle-postgres).
 
 
 ---
@@ -6163,6 +6226,151 @@ new sst.aws.StaticSite("Web", {
 ```
 
 View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-vite).
+
+
+---
+## AWS Workflow Bus
+
+Creates an [AWS Lambda durable workflow](https://docs.aws.amazon.com/lambda/latest/dg/durable-functions.html)
+and triggers it with a [`Bus`](/docs/component/aws/bus).
+```ts title="sst.config.ts"
+const workflow = new sst.aws.Workflow("MyWorkflow", {
+  handler: "src/workflow.handler",
+});
+
+const bus = new sst.aws.Bus("Bus");
+
+bus.subscribe("Workflow", workflow, {
+  pattern: {
+    detailType: ["app.workflow.requested"],
+  },
+});
+
+const publisher = new sst.aws.Function("Publisher", {
+  handler: "src/publisher.handler",
+  url: true,
+  link: [bus],
+});
+
+return {
+  bus: bus.name,
+  publisher: publisher.url,
+  workflow: workflow.name,
+};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-workflow-bus).
+
+
+---
+## AWS Workflow Cron
+
+Creates an [AWS Lambda durable workflow](https://docs.aws.amazon.com/lambda/latest/dg/durable-functions.html)
+and triggers it on a schedule using [`CronV2`](/docs/component/aws/cron-v2).
+
+Since `CronV2` accepts a `Workflow`, the setup is just:
+
+```ts title="sst.config.ts"
+const workflow = new sst.aws.Workflow("MyWorkflow", {
+  handler: "src/workflow.handler",
+});
+
+new sst.aws.CronV2("MyCron", {
+  schedule: "rate(1 minute)",
+  function: workflow,
+});
+```
+```ts title="sst.config.ts"
+const workflow = new sst.aws.Workflow("MyWorkflow", {
+  handler: "src/workflow.handler",
+});
+
+const cron = new sst.aws.CronV2("MyCron", {
+  schedule: "rate(1 minute)",
+  function: workflow,
+});
+
+return {
+  schedule: cron.nodes.schedule.name,
+  workflow: workflow.name,
+};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-workflow-cron).
+
+
+---
+## AWS Workflow Python
+
+Uses the [`Workflow`](/docs/component/aws/workflow) component to create an
+[AWS Lambda durable workflow](https://docs.aws.amazon.com/lambda/latest/dg/durable-functions.html)
+using the Python runtime.
+
+Hit the `Invoker` URL to start the workflow. The workflow logs a callback URL
+with a `token` query parameter. Open that URL to resume the waiting step.
+```ts title="sst.config.ts"
+const workflow = new sst.aws.Workflow("Workflow", {
+  handler: "workflow/main.handler",
+  runtime: "python3.13",
+});
+
+const resolver = new sst.aws.Function("Resolver", {
+  handler: "resolver/main.handler",
+  runtime: "python3.13",
+  url: true,
+  link: [workflow],
+});
+
+const invoker = new sst.aws.Function("Invoker", {
+  handler: "invoker/main.handler",
+  runtime: "python3.13",
+  url: true,
+  link: [workflow, resolver],
+});
+
+return {
+  workflow: workflow.name,
+  invoker: invoker.url,
+  resolver: resolver.url,
+};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-workflow-python).
+
+
+---
+## AWS Workflow
+
+Uses the [`Workflow`](/docs/component/aws/workflow) component to create an
+[AWS Lambda durable workflow](https://docs.aws.amazon.com/lambda/latest/dg/durable-functions.html).
+
+Hit the `Invoker` URL to start the workflow. The workflow logs a callback URL
+with a `token` query parameter. Open that URL to resume the waiting step.
+```ts title="sst.config.ts"
+const workflow = new sst.aws.Workflow("Workflow", {
+  handler: "src/workflow.handler",
+});
+
+const resolver = new sst.aws.Function("Resolver", {
+  handler: "src/resolver.handler",
+  url: true,
+  link: [workflow],
+});
+
+const invoker = new sst.aws.Function("Invoker", {
+  handler: "src/invoker.handler",
+  url: true,
+  link: [workflow, resolver],
+});
+
+return {
+  workflow: workflow.name,
+  invoker: invoker.url,
+  resolver: resolver.url,
+};
+```
+
+View the [full example](https://github.com/sst/sst/tree/dev/examples/aws-workflow).
 
 
 ---
