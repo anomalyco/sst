@@ -1,5 +1,5 @@
 import { aws } from "./client.js";
-import { Resource } from "../resource.js";
+import { Resource } from "../resource/index.js";
 import { event } from "../event/index.js";
 import { EventBridgeEvent, EventBridgeHandler, Context } from "aws-lambda";
 

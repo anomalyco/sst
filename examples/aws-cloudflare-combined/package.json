@@ -6,7 +6,7 @@
     "@aws-sdk/s3-request-presigner": "^3.701.0",
     "@cloudflare/workers-types": "^4.20240403.0",
     "hono": "^4.6.12",
-    "sst": "^4"
+    "sst": "../../sdk/js"
   },
   "devDependencies": {
     "@types/aws-lambda": "8.10.146"

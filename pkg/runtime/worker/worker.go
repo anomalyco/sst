@@ -105,7 +105,7 @@ func (w *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		Stdin: &esbuild.StdinOptions{
 			Contents: fmt.Sprintf(`
       import handler from "%s"
-      import { fromCloudflareEnv, wrapCloudflareHandler } from "sst"
+      import { fromCloudflareEnv, wrapCloudflareHandler } from "sst/resource/cloudflare"
       export * from "%s"
       export default wrapCloudflareHandler(handler)
       `, abs, abs),

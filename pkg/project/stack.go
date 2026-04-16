@@ -56,8 +56,18 @@ type Dev struct {
 	Aws         *struct {
 		Role string `json:"role"`
 	} `json:"aws"`
+	Cloudflare *DevCloudflare `json:"cloudflare"`
 }
 type Devs map[string]Dev
+
+type DevCloudflare struct {
+	Compatibility *DevCloudflareCompatibility `json:"compatibility"`
+}
+
+type DevCloudflareCompatibility struct {
+	Date  *string  `json:"date"`
+	Flags []string `json:"flags"`
+}
 
 type Task struct {
 	Name      string  `json:"-"`

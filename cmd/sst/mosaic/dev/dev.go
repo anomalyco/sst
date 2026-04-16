@@ -83,12 +83,21 @@ func Start(ctx context.Context, p *project.Project, server *server.Server) error
 	server.Mux.HandleFunc("/api/env", func(w http.ResponseWriter, r *http.Request) {
 		directory := r.URL.Query().Get("directory")
 		name := r.URL.Query().Get("name")
+		resolved := complete
+		latest, err := p.GetCompleted(ctx)
+		if err == nil {
+			resolved = latest
+		}
+		if resolved == nil {
+			http.Error(w, "dev state not ready", http.StatusServiceUnavailable)
+			return
+		}
 		cwd, _ := os.Getwd()
-		for _, d := range complete.Devs {
+		for _, d := range resolved.Devs {
 			full := filepath.Join(cwd, d.Directory)
 			log.Info("matching dev", "full", full, "directory", directory)
 			if (directory != "" && full == directory) || (name != "" && d.Name == name) {
-				env, err := p.EnvFor(ctx, complete, d.Name)
+				env, err := p.EnvFor(ctx, resolved, d.Name)
 				if err != nil {
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 					return
