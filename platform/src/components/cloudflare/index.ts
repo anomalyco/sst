@@ -9,6 +9,7 @@ export * from "./auth";
 export * from "./queue";
 export * from "./cron";
 export * from "./ai";
+export * from "./tan-stack-start";
 export { binding } from "./binding.js";
 
 /**
