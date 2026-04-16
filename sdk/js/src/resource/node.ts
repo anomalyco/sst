@@ -1,15 +1,15 @@
 import crypto from "crypto";
 import { readFileSync } from "fs";
+import { env } from "process";
 
 import {
-  fromCloudflareEnv,
   loadResourceData,
   loadResourceEnvironment,
   Resource,
-  wrapCloudflareHandler,
 } from "./shared.js";
 
 const environment: Record<string, string | undefined> = {
+  ...env,
   ...globalThis.process?.env,
 };
 
@@ -40,4 +40,4 @@ if ((globalThis as any).SST_KEY_FILE_DATA) {
   loadResourceData((globalThis as any).SST_KEY_FILE_DATA);
 }
 
-export { Resource, fromCloudflareEnv, wrapCloudflareHandler };
+export { Resource };

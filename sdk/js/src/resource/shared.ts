@@ -34,7 +34,7 @@ export function loadResourceData(input?: Record<string, any>) {
   Object.assign(raw, input ?? {});
 }
 
-export function fromCloudflareEnv(input: any) {
+export function loadFromCloudflareEnv(input: any) {
   for (let [key, value] of Object.entries(input)) {
     if (typeof value === "string") {
       environment[key] = value;
@@ -47,30 +47,6 @@ export function fromCloudflareEnv(input: any) {
       raw[key.replace("SST_RESOURCE_", "")] = value;
     }
   }
-}
-
-export function wrapCloudflareHandler(handler: any) {
-  if (typeof handler === "function" && handler.hasOwnProperty("prototype")) {
-    return class extends handler {
-      constructor(ctx: any, env: any) {
-        fromCloudflareEnv(env);
-        super(ctx, env);
-      }
-    };
-  }
-
-  function wrap(fn: any) {
-    return function (req: any, env: any, ...rest: any[]) {
-      fromCloudflareEnv(env);
-      return fn(req, env, ...rest);
-    };
-  }
-
-  const result = {} as any;
-  for (const [key, value] of Object.entries(handler)) {
-    result[key] = wrap(value);
-  }
-  return result;
 }
 
 export const Resource = new Proxy(raw, {
