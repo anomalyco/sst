@@ -11,20 +11,6 @@ export interface AstroArgs extends SsrSiteArgs {
    *
    * :::note
    * In `sst dev` your Astro site is run in dev mode; it's not deployed.
-   *
-   * Add this to your `astro.config.mjs` so linked Cloudflare resources are
-   * available in dev mode.
-   *
-   * ```js title="astro.config.mjs"
-   * import { defineConfig } from "astro/config";
-   * import cloudflare from "@astrojs/cloudflare";
-   *
-   * export default defineConfig({
-   *   adapter: cloudflare({
-   *     configPath: process.env.SST_WRANGLER_PATH,
-   *   }),
-   * });
-   * ```
    * :::
    *
    * Instead of deploying your Astro site, this starts it in dev mode. It's run

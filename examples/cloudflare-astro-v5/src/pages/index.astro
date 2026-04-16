@@ -1,6 +1,6 @@
 ---
 import Layout from "../layouts/Layout.astro";
-import { Resource } from "sst";
+import { Resource } from "sst/resource";
 
 const objects = await Resource.MyBucket.list();
 ---
