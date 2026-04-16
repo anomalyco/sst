@@ -19,12 +19,12 @@ type CompatibilityArgs = {
   };
 };
 
-export function normalizeWorkerCompatibility(args: CompatibilityArgs) {
-  const compatibility = output(args.compatibility);
+export function normalizeCompatibility(args?: CompatibilityArgs) {
+  const compatibility = output(args?.compatibility);
   const workerTransform =
-    typeof args.transform?.worker === "function"
+    typeof args?.transform?.worker === "function"
       ? undefined
-      : args.transform?.worker;
+      : args?.transform?.worker;
   return output({
     date: all([
       compatibility.apply((value) => value?.date),

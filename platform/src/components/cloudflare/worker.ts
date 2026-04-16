@@ -28,7 +28,7 @@ import { VisibleError } from "../error";
 import { getContentType } from "../base/base-site";
 import { prefixName } from "../naming";
 import { existsAsync } from "../../util/fs";
-import { normalizeWorkerCompatibility } from "./helpers/compatibility.js";
+import { normalizeCompatibility } from "./helpers/compatibility.js";
 
 export interface WorkerArgs {
   /**
@@ -326,7 +326,7 @@ export class Worker extends Component implements Link.Linkable {
 
     const dev = normalizeDev();
     const urlEnabled = normalizeUrl();
-    const compatibility = normalizeWorkerCompatibility(args);
+    const compatibility = normalizeCompatibility(args);
 
     const bindings = buildBindings();
     const iamCredentials = createAwsCredentials();

@@ -6,7 +6,7 @@ import { Component, transform, type Transform } from "../component.js";
 import { VisibleError } from "../error.js";
 import { BaseSsrSiteArgs, buildApp } from "../base/base-ssr-site.js";
 import { Worker, WorkerArgs } from "./worker.js";
-import { normalizeWorkerCompatibility } from "./helpers/compatibility.js";
+import { normalizeCompatibility } from "./helpers/compatibility.js";
 import { Link } from "../link.js";
 import { URL_UNAVAILABLE } from "../aws/linkable.js";
 
@@ -119,7 +119,7 @@ export abstract class SsrSite extends Component implements Link.Linkable {
         },
         { parent: self },
       );
-      return normalizeWorkerCompatibility(workerArgs);
+      return normalizeCompatibility(workerArgs);
     }
 
     function normalizeSitePath() {
