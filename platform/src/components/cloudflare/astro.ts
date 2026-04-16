@@ -68,23 +68,7 @@ export interface AstroArgs extends SsrSiteArgs {
    */
   link?: SsrSiteArgs["link"];
   /**
-   * Set [environment variables](https://docs.astro.build/en/guides/environment-variables/) in your Astro site. These are made available:
-   *
-   * 1. In `astro build`, they are loaded into [`Astro.locals.runtime`](https://docs.astro.build/en/guides/integrations-guide/cloudflare/#environment-variables-and-secrets).
-   * 2. Locally while running `astro dev` through `sst dev`.
-   *
-   * Add this to your `astro.config.mjs` to make them available in dev mode.
-   *
-   * ```js title="astro.config.mjs"
-   * import { defineConfig } from "astro/config";
-   * import cloudflare from "@astrojs/cloudflare";
-   *
-   * export default defineConfig({
-   *   adapter: cloudflare({
-   *     configPath: process.env.SST_WRANGLER_PATH,
-   *   }),
-   * });
-   * ```
+   * Set [environment variables](https://docs.astro.build/en/guides/environment-variables/) in your Astro site.
    *
    * :::tip
    * You can also `link` resources to your Astro site and access them in a type-safe way with the [SDK](/docs/reference/sdk/). We recommend linking since it's more secure.
@@ -101,14 +85,6 @@ export interface AstroArgs extends SsrSiteArgs {
    *     PUBLIC_STRIPE_PUBLISHABLE_KEY: "pk_test_123"
    *   }
    * }
-   * ```
-   *
-   * You can access the environment variables in your Astro site as follows:
-   *
-   * ```js
-   * const { env } = Astro.locals.runtime;
-   * const apiUrl = env.API_URL;
-   * const stripeKey = env.PUBLIC_STRIPE_PUBLISHABLE_KEY;
    * ```
    */
   environment?: SsrSiteArgs["environment"];
