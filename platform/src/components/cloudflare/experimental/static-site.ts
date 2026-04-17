@@ -335,7 +335,9 @@ export class StaticSite extends Component implements Link.Linkable {
             ),
             environment: environment.apply((e) => ({
               ...e,
-              INDEX_PAGE: indexPage,
+              ...(args.indexPage || args.errorPage
+                ? { INDEX_PAGE: indexPage }
+                : {}),
               ...(args.errorPage ? { ERROR_PAGE: output(args.errorPage) } : {}),
             })),
             url: true,
