@@ -203,13 +203,48 @@ export interface WorkerArgs {
      * The directory containing the assets.
      */
     directory: Input<string>;
+    /**
+     * Determines how HTML content is served. Controls canonical URL patterns and
+     * trailing slash behavior for HTML pages.
+     *
+     * - `"auto-trailing-slash"`: Individual files served without slash, folder indexes with slash
+     * - `"force-trailing-slash"`: All HTML pages served with trailing slash
+     * - `"drop-trailing-slash"`: All HTML pages served without trailing slash
+     * - `"none"`: No automatic HTML handling, paths must match assets exactly
+     *
+     * @default `"auto-trailing-slash"`
+     *
+     * @see [Cloudflare HTML Handling](https://developers.cloudflare.com/workers/static-assets/routing/advanced/html-handling/)
+     */
     htmlHandling?: Input<
       | "auto-trailing-slash"
       | "force-trailing-slash"
       | "drop-trailing-slash"
       | "none"
     >;
+    /**
+     * Determines the response when a request does not match a static asset.
+     *
+     * - `"404-page"`: Serves nearest `404.html` with `404` status
+     * - `"single-page-application"`: Serves `/index.html` with `200` status for SPAs
+     * - `"none"`: Returns `404 Not Found` with empty body
+     *
+     * @see [Cloudflare SPA Routing](https://developers.cloudflare.com/workers/static-assets/routing/single-page-application/)
+     * @see [Cloudflare Custom 404 Pages](https://developers.cloudflare.com/workers/static-assets/routing/static-site-generation/#custom-404-pages)
+     */
     notFoundHandling?: Input<"404-page" | "single-page-application" | "none">;
+    /**
+     * Controls whether the Worker script runs before static assets are served.
+     *
+     * - `true`: Always invoke Worker before serving assets
+     * - `false` or omitted: Serve matching assets directly, invoke Worker only on misses
+     * - `string[]`: Run Worker first only for matching route patterns (supports glob `*` and negative `!` rules)
+     *
+     * Useful for request logging, authentication checks, or API routes that need to run
+     * before static asset serving.
+     *
+     * @see [Cloudflare Worker Script Routing](https://developers.cloudflare.com/workers/static-assets/routing/worker-script/)
+     */
     runWorkerFirst?: Input<boolean | Input<string>[]>;
   }>;
   /**
