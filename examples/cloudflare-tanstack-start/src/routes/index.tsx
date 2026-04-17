@@ -1,4 +1,5 @@
-import { createFileRoute, createServerFn } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
+import { createServerFn } from '@tanstack/react-start'
 import { Resource } from 'sst/resource'
 
 // Server function that uses the linked KV namespace

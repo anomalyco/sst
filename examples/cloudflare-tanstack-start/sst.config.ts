@@ -11,12 +11,8 @@ export default $config({
   async run() {
     const kv = new sst.cloudflare.Kv("MyKv");
 
-    const site = new sst.cloudflare.TanStackStart("MyWeb", {
+    new sst.cloudflare.TanStackStart("MyWeb", {
       link: [kv],
     });
-
-    return {
-      url: site.url,
-    };
   },
 });

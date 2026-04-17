@@ -184,6 +184,9 @@ export interface TanStackStartArgs extends SsrSiteArgs {
  *     cloudflare({
  *       viteEnvironment: { name: 'ssr' },
  *       configPath: process.env.SST_WRANGLER_PATH,
+ *       config: {
+ *         main: '@tanstack/react-start/server-entry',
+ *       },
  *     }),
  *     tanstackStart(),
  *   ],
