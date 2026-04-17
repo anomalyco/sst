@@ -1473,8 +1473,8 @@ export interface FunctionArgs {
    * Configure the lambda function as a [AWS durable function](https://docs.aws.amazon.com/lambda/latest/dg/durable-functions.html).
    *
    * :::caution
-   * This property is meant to be used internally by [Workflow](/docs/components/aws/workflow/).
-   * Prefer the component if you want to use the [SDK](/docs/components/aws/workflow/#sdk) or if you are not very familiar with durable functions limitations.
+    * This property is meant to be used internally by [Workflow](/docs/component/aws/workflow).
+    * Prefer the component if you want to use the [SDK](/docs/component/aws/workflow#sdk) or if you are not very familiar with durable functions limitations.
    * :::
    */
   durable?:
