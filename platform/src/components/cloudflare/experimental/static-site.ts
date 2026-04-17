@@ -298,10 +298,7 @@ export class StaticSite extends Component implements Link.Linkable {
       );
     }
 
-    function normalizeHtmlHandling():
-      | "auto-trailing-slash"
-      | "force-trailing-slash"
-      | "drop-trailing-slash" {
+    function normalizeHtmlHandling() {
       return args.trailingSlash === "force"
         ? "force-trailing-slash"
         : args.trailingSlash === "drop"
@@ -309,10 +306,7 @@ export class StaticSite extends Component implements Link.Linkable {
           : "auto-trailing-slash";
     }
 
-    function normalizeNotFound():
-      | "404-page"
-      | "single-page-application"
-      | "none" {
+    function normalizeNotFound() {
       return args.notFound === "404" ? "404-page" : "single-page-application";
     }
   }
