@@ -210,7 +210,7 @@ export interface WorkerArgs {
       | "none"
     >;
     notFoundHandling?: Input<"404-page" | "single-page-application" | "none">;
-    runWorkerFirst?: Array<string>;
+    runWorkerFirst?: Input<boolean | Input<string>[]>;
   }>;
   /**
    * Configure [placement](https://developers.cloudflare.com/workers/configuration/placement/)
