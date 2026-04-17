@@ -81,12 +81,91 @@ export interface StaticSiteArgs
      */
     server?: Transform<WorkerArgs>;
   };
+  /**
+   * Configure how HTML files are served. This controls trailing slash behavior
+   * and determines the pattern for canonical URLs.
+   *
+   * :::tip
+   * The default `auto-trailing-slash` gives you the desired behavior automatically:
+   * - Individual files (e.g. `foo.html`) are served without a trailing slash
+   * - Folder index files (e.g. `foo/index.html`) are served with a trailing slash
+   * :::
+   *
+   * @default `"auto-trailing-slash"`
+   *
+   * @example
+   *
+   * #### Force trailing slashes
+   *
+   * Force trailing slashes on all HTML pages.
+   *
+   * ```js
+   * {
+   *   htmlHandling: "force-trailing-slash"
+   * }
+   * ```
+   *
+   * #### Drop trailing slashes
+   *
+   * Drop trailing slashes from all HTML pages.
+   *
+   * ```js
+   * {
+   *   htmlHandling: "drop-trailing-slash"
+   * }
+   * ```
+   *
+   * #### Disable HTML handling
+   *
+   * Disable the built-in HTML handling entirely.
+   *
+   * ```js
+   * {
+   *   htmlHandling: "none"
+   * }
+   * ```
+   */
   htmlHandling?: Input<
     | "auto-trailing-slash"
     | "force-trailing-slash"
     | "drop-trailing-slash"
     | "none"
   >;
+  /**
+   * Configure the response when a request does not match a static asset.
+   *
+   * - `"404-page"`: Serve the nearest `404.html` file with a `404` status
+   * - `"single-page-application"`: Serve `index.html` with a `200` status for SPAs
+   * - `"none"`: Return a `404` without a body
+   *
+   * @example
+   *
+   * #### Deploy a Single Page Application
+   *
+   * For SPAs like React, Vue, or Svelte apps, use `single-page-application` to
+   * serve `index.html` for all navigation requests that don't match an asset.
+   *
+   * ```js
+   * new sst.cloudflare.x.StaticSite("MyWeb", {
+   *   build: {
+   *     command: "npm run build",
+   *     output: "dist"
+   *   },
+   *   notFoundHandling: "single-page-application"
+   * });
+   * ```
+   *
+   * #### Use a custom 404 page
+   *
+   * For static sites with a custom 404 page, use `404-page` to serve `404.html`
+   * when a file is not found.
+   *
+   * ```js
+   * new sst.cloudflare.x.StaticSite("MyWeb", {
+   *   notFoundHandling: "404-page"
+   * });
+   * ```
+   */
   notFoundHandling?: Input<"404-page" | "single-page-application" | "none">;
 }
 
