@@ -70,20 +70,6 @@ export interface StaticSiteArgs extends Omit<BaseStaticSiteArgs, "vite"> {
    * ```
    */
   domain?: Input<string>;
-  /** @deprecated */
-  indexPage?: string;
-  /** @deprecated */
-  errorPage?: Input<string>;
-  /**
-   * [Transform](/docs/components#transform) how this component creates its underlying
-   * resources.
-   */
-  transform?: {
-    /**
-     * Transform the Worker component used for serving the static site.
-     */
-    server?: Transform<WorkerArgs>;
-  };
   /**
    * Configure trailing slash behavior for HTML pages.
    *
@@ -113,6 +99,20 @@ export interface StaticSiteArgs extends Omit<BaseStaticSiteArgs, "vite"> {
    * @default `"spa"`
    */
   notFound?: Input<"spa" | "404">;
+  /** @deprecated */
+  indexPage?: string;
+  /** @deprecated */
+  errorPage?: Input<string>;
+  /**
+   * [Transform](/docs/components#transform) how this component creates its underlying
+   * resources.
+   */
+  transform?: {
+    /**
+     * Transform the Worker component used for serving the static site.
+     */
+    server?: Transform<WorkerArgs>;
+  };
 }
 
 /**
@@ -150,7 +150,7 @@ export interface StaticSiteArgs extends Omit<BaseStaticSiteArgs, "vite"> {
  *     command: "npm run build",
  *     output: "dist"
  *   },
- *  notFound: "spa"
+ *   notFound: "spa"
  * });
  * ```
  *
