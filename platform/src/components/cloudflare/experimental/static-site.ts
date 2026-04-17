@@ -1,9 +1,9 @@
 import path from "path";
 import { ComponentResourceOptions } from "@pulumi/pulumi";
-import { Component } from "../../component.js";
+import { Component, transform, type Transform } from "../../component.js";
 import { Link } from "../../link.js";
 import { Input } from "../../input.js";
-import { Worker } from "../worker.js";
+import { Worker, WorkerArgs } from "../worker.js";
 import {
   BaseStaticSiteArgs,
   buildApp,
@@ -71,6 +71,16 @@ export interface StaticSiteArgs
    * ```
    */
   domain?: Input<string>;
+  /**
+   * [Transform](/docs/components#transform) how this component creates its underlying
+   * resources.
+   */
+  transform?: {
+    /**
+     * Transform the Worker component used for serving the static site.
+     */
+    server?: Transform<WorkerArgs>;
+  };
   htmlHandling?: Input<
     | "auto-trailing-slash"
     | "force-trailing-slash"
@@ -231,28 +241,31 @@ export class StaticSite extends Component implements Link.Linkable {
 
     function createRouter() {
       return new Worker(
-        `${name}Router`,
-        {
-          handler: path.join(
-            $cli.paths.platform,
-            "functions",
-            "cf-static-site-router-worker-experimental",
-          ),
-          environment: environment.apply((e) => ({
-            ...e,
-          })),
-          url: true,
-          dev: false,
-          domain: args.domain,
-          assets: {
-            directory: outputPath,
-            htmlHandling: args.htmlHandling
-              ? args.htmlHandling
-              : "auto-trailing-slash",
-            notFoundHandling: args.notFoundHandling,
+        ...transform(
+          args.transform?.server,
+          `${name}Router`,
+          {
+            handler: path.join(
+              $cli.paths.platform,
+              "functions",
+              "cf-static-site-router-worker-experimental",
+            ),
+            environment: environment.apply((e) => ({
+              ...e,
+            })),
+            url: true,
+            dev: false,
+            domain: args.domain,
+            assets: {
+              directory: outputPath,
+              htmlHandling: args.htmlHandling
+                ? args.htmlHandling
+                : "auto-trailing-slash",
+              notFoundHandling: args.notFoundHandling,
+            },
           },
-        },
-        { parent: self },
+          { parent: self },
+        ),
       );
     }
   }
