@@ -86,51 +86,25 @@ export interface StaticSiteArgs
     server?: Transform<WorkerArgs>;
   };
   /**
-   * Configure how HTML files are served. This controls trailing slash behavior
-   * and determines the pattern for canonical URLs.
+   * Configure trailing slash behavior for HTML pages.
    *
-   * :::tip
-   * The default `auto-trailing-slash` gives you the desired behavior automatically:
-   * - Individual files (e.g. `foo.html`) are served without a trailing slash
-   * - Folder index files (e.g. `foo/index.html`) are served with a trailing slash
-   * :::
+   * - `"auto"`: Individual files served without slash, folder indexes with slash
+   * - `"force"`: All HTML pages served with trailing slash
+   * - `"drop"`: All HTML pages served without trailing slash
    *
-   * @default `"auto-trailing-slash"`
+   * @default `"auto"`
    *
    * @example
    *
-   * #### Force trailing slashes on all HTML pages.
+   * #### Force trailing slashes
    *
    * ```js
    * {
-   *   htmlHandling: "force-trailing-slash"
-   * }
-   * ```
-   *
-   * #### Drop trailing slashes
-   *
-   * ```js
-   * {
-   *   htmlHandling: "drop-trailing-slash"
-   * }
-   * ```
-   *
-   * #### Disable HTML handling
-   *
-   * Disable the built-in HTML handling entirely.
-   *
-   * ```js
-   * {
-   *   htmlHandling: "none"
+   *   trailingSlash: "force"
    * }
    * ```
    */
-  htmlHandling?: Input<
-    | "auto-trailing-slash"
-    | "force-trailing-slash"
-    | "drop-trailing-slash"
-    | "none"
-  >;
+  trailingSlash?: Input<"auto" | "force" | "drop">;
   /**
    * Configure the response when a request does not match a static asset.
    *
@@ -319,6 +293,13 @@ export class StaticSite extends Component implements Link.Linkable {
     });
 
     function createRouter() {
+      const htmlHandling = output(args.trailingSlash).apply((ts) =>
+        ts === "force"
+          ? "force-trailing-slash"
+          : ts === "drop"
+            ? "drop-trailing-slash"
+            : "auto-trailing-slash",
+      );
       return new Worker(
         ...transform(
           args.transform?.server,
@@ -334,16 +315,14 @@ export class StaticSite extends Component implements Link.Linkable {
               ...(args.indexPage || args.errorPage
                 ? { INDEX_PAGE: indexPage }
                 : {}),
-              ...(args.errorPage ? { ERROR_PAGE: output(args.errorPage) } : {}),
+              ...(args.errorPage ? { ERROR_PAGE: args.errorPage } : {}),
             })),
             url: true,
             dev: false,
             domain: args.domain,
             assets: {
               directory: outputPath,
-              htmlHandling: args.htmlHandling
-                ? args.htmlHandling
-                : "auto-trailing-slash",
+              htmlHandling,
               notFoundHandling: args.notFoundHandling,
             },
           },
