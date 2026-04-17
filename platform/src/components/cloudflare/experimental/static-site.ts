@@ -10,8 +10,7 @@ import {
   prepare,
 } from "../../base/base-static-site.js";
 
-export interface StaticSiteArgs
-  extends Omit<BaseStaticSiteArgs, "vite"> {
+export interface StaticSiteArgs extends Omit<BaseStaticSiteArgs, "vite"> {
   /**
    * Path to the directory where your static site is located. By default this assumes your static site is in the root of your SST app.
    *
@@ -108,39 +107,12 @@ export interface StaticSiteArgs
   /**
    * Configure the response when a request does not match a static asset.
    *
-   * - `"404-page"`: Serve the nearest `404.html` file with a `404` status
-   * - `"single-page-application"`: Serve `index.html` with a `200` status for SPAs
-   * - `"none"`: Return a `404` without a body
+   * - `"spa"`: Let the client-side router handle 404s by serving `index.html` for unmatched routes
+   * - `"404"`: Serve the nearest `404.html` file with a `404` status
    *
-   * @example
-   *
-   * #### Deploy a Single Page Application
-   *
-   * For SPAs like React, Vue, or Svelte apps, use `single-page-application` to
-   * serve `index.html` for all navigation requests that don't match an asset.
-   *
-   * ```js
-   * new sst.cloudflare.x.StaticSite("MyWeb", {
-   *   build: {
-   *     command: "npm run build",
-   *     output: "dist"
-   *   },
-   *   notFoundHandling: "single-page-application"
-   * });
-   * ```
-   *
-   * #### Use a custom 404 page
-   *
-   * For static sites with a custom 404 page, use `404-page` to serve `404.html`
-   * when a file is not found.
-   *
-   * ```js
-   * new sst.cloudflare.x.StaticSite("MyWeb", {
-   *   notFoundHandling: "404-page"
-   * });
-   * ```
+   * @default `"spa"`
    */
-  notFoundHandling?: Input<"404-page" | "single-page-application" | "none">;
+  notFound?: Input<"spa" | "404">;
 }
 
 /**
@@ -178,7 +150,7 @@ export interface StaticSiteArgs
  *     command: "npm run build",
  *     output: "dist"
  *   },
- *  notFoundHandling: "single-page-application"
+ *  notFound: "spa"
  * });
  * ```
  *
@@ -270,6 +242,7 @@ export class StaticSite extends Component implements Link.Linkable {
     const self = this;
     const { sitePath, environment, indexPage } = prepare(args);
     const htmlHandling = normalizeHtmlHandling();
+    const notFound = normalizeNotFound();
     const outputPath = $dev
       ? path.join($cli.paths.platform, "functions", "empty-site")
       : buildApp(self, name, args.build, sitePath, environment);
@@ -292,14 +265,6 @@ export class StaticSite extends Component implements Link.Linkable {
         url: this.url,
       },
     });
-
-    function normalizeHtmlHandling() {
-      return args.trailingSlash === "force"
-        ? "force-trailing-slash"
-        : args.trailingSlash === "drop"
-          ? "drop-trailing-slash"
-          : "auto-trailing-slash";
-    }
 
     function createRouter() {
       return new Worker(
@@ -324,13 +289,31 @@ export class StaticSite extends Component implements Link.Linkable {
             domain: args.domain,
             assets: {
               directory: outputPath,
-              htmlHandling: htmlHandling,
-              notFoundHandling: args.notFoundHandling,
+              htmlHandling,
+              notFoundHandling: notFound,
             },
           },
           { parent: self },
         ),
       );
+    }
+
+    function normalizeHtmlHandling():
+      | "auto-trailing-slash"
+      | "force-trailing-slash"
+      | "drop-trailing-slash" {
+      return args.trailingSlash === "force"
+        ? "force-trailing-slash"
+        : args.trailingSlash === "drop"
+          ? "drop-trailing-slash"
+          : "auto-trailing-slash";
+    }
+
+    function normalizeNotFound():
+      | "404-page"
+      | "single-page-application"
+      | "none" {
+      return args.notFound === "404" ? "404-page" : "single-page-application";
     }
   }
 

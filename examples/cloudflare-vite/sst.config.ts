@@ -1,9 +1,9 @@
 /// <reference path="./.sst/platform/config.d.ts" />
 
 /**
- * ## React SPA with Vite
+ * ## Cloudflare SPA with Vite
  *
- * Deploy a React single-page app (SPA) with Vite to Cloudflare.
+ * Deploy a single-page app (SPA) with Vite to Cloudflare.
  */
 export default $config({
   app(input) {
@@ -19,7 +19,7 @@ export default $config({
         command: "pnpm run build",
         output: "dist",
       },
-      notFoundHandling: "single-page-application",
+      notFound: "spa",
     });
   },
 });
