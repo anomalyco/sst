@@ -1728,6 +1728,11 @@ export class Function extends Component implements Link.Linkable {
     rpc.call("Provider.Aws.Appsync", {}),
   );
 
+  /** @internal */
+  public static reset() {
+    Function.devBridgeCode().clear();
+  }
+
   constructor(
     name: string,
     args: FunctionArgs,
