@@ -99,9 +99,7 @@ export interface StaticSiteArgs
    *
    * @example
    *
-   * #### Force trailing slashes
-   *
-   * Force trailing slashes on all HTML pages.
+   * #### Force trailing slashes on all HTML pages.
    *
    * ```js
    * {
@@ -110,8 +108,6 @@ export interface StaticSiteArgs
    * ```
    *
    * #### Drop trailing slashes
-   *
-   * Drop trailing slashes from all HTML pages.
    *
    * ```js
    * {
