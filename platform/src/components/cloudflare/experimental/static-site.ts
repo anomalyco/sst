@@ -1,5 +1,5 @@
 import path from "path";
-import { ComponentResourceOptions } from "@pulumi/pulumi";
+import { ComponentResourceOptions, output } from "@pulumi/pulumi";
 import { Component, transform, type Transform } from "../../component.js";
 import { Link } from "../../link.js";
 import { Input } from "../../input.js";
@@ -11,7 +11,7 @@ import {
 } from "../../base/base-static-site.js";
 
 export interface StaticSiteArgs
-  extends Omit<BaseStaticSiteArgs, "indexPage" | "errorPage" | "vite"> {
+  extends Omit<BaseStaticSiteArgs, "vite"> {
   /**
    * Path to the directory where your static site is located. By default this assumes your static site is in the root of your SST app.
    *
@@ -71,6 +71,10 @@ export interface StaticSiteArgs
    * ```
    */
   domain?: Input<string>;
+  /** @deprecated */
+  indexPage?: string;
+  /** @deprecated */
+  errorPage?: Input<string>;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
@@ -294,7 +298,7 @@ export class StaticSite extends Component implements Link.Linkable {
     super(__pulumiType, name, args, opts);
 
     const self = this;
-    const { sitePath, environment } = prepare(args);
+    const { sitePath, environment, indexPage } = prepare(args);
     const outputPath = $dev
       ? path.join($cli.paths.platform, "functions", "empty-site")
       : buildApp(self, name, args.build, sitePath, environment);
@@ -331,6 +335,8 @@ export class StaticSite extends Component implements Link.Linkable {
             ),
             environment: environment.apply((e) => ({
               ...e,
+              INDEX_PAGE: indexPage,
+              ...(args.errorPage ? { ERROR_PAGE: output(args.errorPage) } : {}),
             })),
             url: true,
             dev: false,
