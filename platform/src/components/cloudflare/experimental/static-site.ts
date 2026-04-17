@@ -104,7 +104,7 @@ export interface StaticSiteArgs
    * }
    * ```
    */
-  trailingSlash?: Input<"auto" | "force" | "drop">;
+  trailingSlash?: "auto" | "force" | "drop";
   /**
    * Configure the response when a request does not match a static asset.
    *
@@ -269,6 +269,7 @@ export class StaticSite extends Component implements Link.Linkable {
 
     const self = this;
     const { sitePath, environment, indexPage } = prepare(args);
+    const htmlHandling = normalizeHtmlHandling();
     const outputPath = $dev
       ? path.join($cli.paths.platform, "functions", "empty-site")
       : buildApp(self, name, args.build, sitePath, environment);
@@ -292,14 +293,15 @@ export class StaticSite extends Component implements Link.Linkable {
       },
     });
 
+    function normalizeHtmlHandling() {
+      return args.trailingSlash === "force"
+        ? "force-trailing-slash"
+        : args.trailingSlash === "drop"
+          ? "drop-trailing-slash"
+          : "auto-trailing-slash";
+    }
+
     function createRouter() {
-      const htmlHandling = output(args.trailingSlash).apply((ts) =>
-        ts === "force"
-          ? "force-trailing-slash"
-          : ts === "drop"
-            ? "drop-trailing-slash"
-            : "auto-trailing-slash",
-      );
       return new Worker(
         ...transform(
           args.transform?.server,
@@ -322,7 +324,7 @@ export class StaticSite extends Component implements Link.Linkable {
             domain: args.domain,
             assets: {
               directory: outputPath,
-              htmlHandling,
+              htmlHandling: htmlHandling,
               notFoundHandling: args.notFoundHandling,
             },
           },
