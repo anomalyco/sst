@@ -7,6 +7,7 @@ import {
 } from "@pulumi/pulumi";
 
 import { VisibleError } from "../components/error";
+import { Function } from "../components/aws/function";
 
 export async function run(program: automation.PulumiFn) {
   process.chdir($cli.paths.root);
@@ -15,6 +16,7 @@ export async function run(program: automation.PulumiFn) {
   addTransformationToAddTags();
   addTransformationToCheckBucketsHaveMultiplePolicies();
 
+  Function.reset();
   Link.reset();
   const outputs = (await program()) || {};
   outputs._protect = $app.protect;
