@@ -282,21 +282,7 @@ export class StaticSiteV2 extends Component implements Link.Linkable {
 
     this.registerOutputs({
       _hint: this.url,
-      _dev: {
-        title: args.dev && typeof args.dev === "object" ? args.dev.title : undefined,
-        environment,
-        command: args.dev && typeof args.dev === "object" && args.dev.command
-          ? args.dev.command
-          : "npm run dev",
-        directory: args.dev && typeof args.dev === "object" && args.dev.directory
-          ? args.dev.directory
-          : sitePath,
-        autostart: args.dev === false
-          ? false
-          : (args.dev && typeof args.dev === "object" && args.dev.autostart !== undefined
-            ? args.dev.autostart
-            : true),
-      },
+      _dev: dev.outputs,
       _metadata: {
         mode: "deployed",
         path: sitePath,
