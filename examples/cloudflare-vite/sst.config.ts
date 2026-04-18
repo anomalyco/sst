@@ -16,10 +16,6 @@ export default $config({
   async run() {
     new sst.cloudflare.StaticSiteV2("Vite", {
       notFound: "single-page-application",
-      dev: {
-        title: "Example",
-        command: "bun dev"
-      },
       build: {
         command: "pnpm run build",
         output: "dist",
