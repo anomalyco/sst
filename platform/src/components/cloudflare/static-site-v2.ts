@@ -94,12 +94,12 @@ export interface StaticSiteV2Args extends Omit<BaseStaticSiteArgs, "vite"> {
   /**
    * Configure the response when a request does not match a static asset.
    *
-   * - `"spa"`: Let the client-side router handle 404s by serving `index.html` for unmatched routes
+   * - `"single-page-application"`: Serve `index.html` for unmatched routes (SPA mode)
    * - `"404"`: Serve the nearest `404.html` file with a `404` status
    *
-   * @default `"spa"`
+   * @default `"single-page-application"`
    */
-  notFound?: Input<"spa" | "404">;
+  notFound?: Input<"single-page-application" | "404">;
   /** @deprecated */
   indexPage?: string;
   /** @deprecated */
@@ -151,7 +151,7 @@ export interface StaticSiteV2Args extends Omit<BaseStaticSiteArgs, "vite"> {
  *     command: "npm run build",
  *     output: "dist"
  *   },
- *   notFound: "spa"
+ *   notFound: "single-page-application"
  * });
  * ```
  *
