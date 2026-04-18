@@ -14,7 +14,7 @@ export default $config({
     };
   },
   async run() {
-    new sst.cloudflare.StaticSiteV2("Vite", {
+    new sst.cloudflare.x.StaticSite("Vite2", {
       build: {
         command: "pnpm run build",
         output: "dist",

@@ -336,6 +336,6 @@ export class StaticSiteV2 extends Component implements Link.Linkable {
   }
 }
 
-const __pulumiType = "sst:cloudflare:StaticSiteV2";
+const __pulumiType = "sst:cloudflare:StaticSite";
 // @ts-expect-error
 StaticSiteV2.__pulumiType = __pulumiType;
