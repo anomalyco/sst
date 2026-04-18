@@ -8,13 +8,13 @@
 export default $config({
   app(input) {
     return {
-      name: "cf-vite",
+      name: "cloudflare-vite",
       home: "cloudflare",
       removal: input?.stage === "production" ? "retain" : "remove",
     };
   },
   async run() {
-    new sst.cloudflare.x.StaticSite("Vite", {
+    new sst.cloudflare.StaticSiteV2("Vite", {
       build: {
         command: "pnpm run build",
         output: "dist",
