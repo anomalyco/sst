@@ -182,10 +182,6 @@ export interface StaticSiteV2Args extends Omit<BaseStaticSiteArgs, "vite"> {
  *
  * Set `environment` variables for the build process of your static site. These will be used locally and on deploy.
  *
- * :::tip
- * For Vite, the types for the environment variables are also generated. This can be configured through the `vite` prop.
- * :::
- *
  * For some static site generators like Vite, [environment variables](https://vitejs.dev/guide/env-and-mode) prefixed with `VITE_` can be accessed in the browser.
  *
  * ```ts {5-7}
