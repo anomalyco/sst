@@ -3,6 +3,7 @@ import { ComponentResourceOptions, output } from "@pulumi/pulumi";
 import { Component, transform, type Transform } from "../component.js";
 import { Link } from "../link.js";
 import { Input } from "../input.js";
+import { URL_UNAVAILABLE } from "../aws/linkable.js";
 import { Worker, WorkerArgs } from "./worker.js";
 import {
   BaseStaticSiteArgs,
@@ -204,7 +205,8 @@ export interface StaticSiteV2Args extends Omit<BaseStaticSiteArgs, "vite"> {
  * ```
  */
 export class StaticSiteV2 extends Component implements Link.Linkable {
-  private server: Worker;
+  private server?: Worker;
+  private devUrl = output(URL_UNAVAILABLE);
 
   constructor(
     name: string,
@@ -215,17 +217,34 @@ export class StaticSiteV2 extends Component implements Link.Linkable {
 
     const self = this;
     const { sitePath, environment, indexPage } = prepare(args);
+    if ($dev) {
+      this.registerOutputs({
+        _hint: undefined,
+        _dev: {
+          environment,
+          command: "npm run dev",
+          directory: sitePath,
+          autostart: true,
+        },
+        _metadata: {
+          mode: "placeholder",
+          path: sitePath,
+          environment,
+          url: this.url,
+        },
+      });
+      return;
+    }
+
     const htmlHandling = normalizeHtmlHandling();
     const notFound = normalizeNotFound();
-    const outputPath = $dev
-      ? path.join($cli.paths.platform, "functions", "empty-site")
-      : buildApp(self, name, args.build, sitePath, environment);
+    const outputPath = buildApp(self, name, args.build, sitePath, environment);
     const worker = createRouter();
 
     this.server = worker;
 
     this.registerOutputs({
-      _hint: $dev ? undefined : this.url,
+      _hint: this.url,
       _dev: {
         environment,
         command: "npm run dev",
@@ -233,7 +252,7 @@ export class StaticSiteV2 extends Component implements Link.Linkable {
         autostart: true,
       },
       _metadata: {
-        mode: $dev ? "placeholder" : "deployed",
+        mode: "deployed",
         path: sitePath,
         environment,
         url: this.url,
@@ -292,7 +311,7 @@ export class StaticSiteV2 extends Component implements Link.Linkable {
    * Otherwise, it's the auto-generated worker URL.
    */
   public get url() {
-    return this.server.url;
+    return this.server?.url ?? this.devUrl;
   }
 
   /**
