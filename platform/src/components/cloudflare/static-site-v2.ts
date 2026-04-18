@@ -15,13 +15,13 @@ export interface StaticSiteV2Args extends Omit<BaseStaticSiteArgs, "vite"> {
   /**
    * Path to the directory where your static site is located. By default this assumes your static site is in the root of your SST app.
    *
-   * This directory will be uploaded to KV. The path is relative to your `sst.config.ts`.
+   * This directory will be uploaded as static assets. The path is relative to your `sst.config.ts`.
    *
    * :::note
-   * If the `build` options are specified, `build.output` will be uploaded to KV instead.
+   * If the `build` options are specified, `build.output` will be uploaded as static assets instead.
    * :::
    *
-   * If you are using a static site generator, like Vite, you'll need to configure the `build` options. When these are set, the `build.output` directory will be uploaded to KV instead.
+   * If you are using a static site generator, like Vite, you'll need to configure the `build` options. When these are set, the `build.output` directory will be uploaded as static assets instead.
    *
    * @default `"."`
    *
@@ -39,7 +39,7 @@ export interface StaticSiteV2Args extends Omit<BaseStaticSiteArgs, "vite"> {
   /**
    * Configure if your static site needs to be built. This is useful if you are using a static site generator.
    *
-   * The `build.output` directory will be uploaded to KV instead.
+   * The `build.output` directory will be uploaded as static assets.
    *
    * @example
    * For a Vite project using npm this might look like this.
@@ -117,9 +117,9 @@ export interface StaticSiteV2Args extends Omit<BaseStaticSiteArgs, "vite"> {
 }
 
 /**
- * The `StaticSiteV2` component lets you deploy a static website to Cloudflare. It uses [Cloudflare KV storage](https://developers.cloudflare.com/kv/) to store your files and [Cloudflare Workers](https://developers.cloudflare.com/workers/) to serve them.
+ * The `StaticSiteV2` component lets you deploy a static website to Cloudflare. It uses [Cloudflare Workers](https://developers.cloudflare.com/workers/) with [static assets](https://developers.cloudflare.com/workers/static-assets/) to serve your files.
  *
- * It can also `build` your site by running your static site generator, like [Vite](https://vitejs.dev) and uploading the build output to Cloudflare KV.
+ * It can also `build` your site by running your static site generator, like [Vite](https://vitejs.dev) and uploading the build output as static assets.
  *
  * @example
  *
