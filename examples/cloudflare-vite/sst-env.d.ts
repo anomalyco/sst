@@ -7,7 +7,7 @@
 declare module "sst" {
   export interface Resource {
     "Vite2": {
-      "type": "sst.cloudflare.StaticSiteV2"
+      "type": "sst.cloudflare.StaticSite"
       "url": string
     }
   }

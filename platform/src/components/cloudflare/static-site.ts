@@ -118,7 +118,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
  * The `StaticSite` component has been deprecated. Use [`StaticSiteV2`](/docs/component/cloudflare/static-site-v2) instead.
  *
  * :::caution
- * This component has been deprecated. Use [`StaticSiteV2`](/docs/component/cloudflare/static-site-v2) instead.
+ * This component has been deprecated.
  * :::
  *
  * The `StaticSite` component lets you deploy a static website to Cloudflare. It uses [Cloudflare KV storage](https://developers.cloudflare.com/kv/) to store your files and [Cloudflare Workers](https://developers.cloudflare.com/workers/) to serve them.
