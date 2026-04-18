@@ -10,8 +10,34 @@ import {
   buildApp,
   prepare,
 } from "../base/base-static-site.js";
+import type { BaseSiteDev } from "../base/base-site.js";
+import type { Prettify } from "../component.js";
 
 export interface StaticSiteV2Args extends Omit<BaseStaticSiteArgs, "vite"> {
+  /**
+   * Configure how this component works in `sst dev`.
+   *
+   * :::note
+   * In `sst dev` your static site is run in dev mode; it's not deployed.
+   * :::
+   *
+   * Instead of deploying your static site, this starts it in dev mode. It's run
+   * as a separate process in the `sst dev` multiplexer. Read more about
+   * [`sst dev`](/docs/reference/cli/#dev).
+   *
+   * To disable dev mode, pass in `false`.
+   *
+   * @example
+   * Use a custom dev command.
+   * ```js
+   * {
+   *   dev: {
+   *     command: "yarn dev"
+   *   }
+   * }
+   * ```
+   */
+  dev?: false | Prettify<BaseSiteDev>;
   /**
    * Path to the directory where your static site is located. By default this assumes your static site is in the root of your SST app.
    *
@@ -213,15 +239,13 @@ export class StaticSiteV2 extends Component implements Link.Linkable {
 
     const self = this;
     const { sitePath, environment, indexPage } = prepare(args);
-    if ($dev) {
+    const dev = normalizeDev();
+
+    if (dev.enabled) {
+      this.devUrl = dev.url;
       this.registerOutputs({
         _hint: undefined,
-        _dev: {
-          environment,
-          command: "npm run dev",
-          directory: sitePath,
-          autostart: true,
-        },
+        _dev: dev.outputs,
         _metadata: {
           mode: "placeholder",
           path: sitePath,
@@ -230,6 +254,23 @@ export class StaticSiteV2 extends Component implements Link.Linkable {
         },
       });
       return;
+    }
+
+    function normalizeDev() {
+      const enabled = $dev && args.dev !== false;
+      const devArgs = args.dev || {};
+
+      return {
+        enabled,
+        url: output(devArgs.url ?? URL_UNAVAILABLE),
+        outputs: {
+          title: devArgs.title,
+          environment,
+          command: output(devArgs.command ?? "npm run dev"),
+          autostart: output(devArgs.autostart ?? true),
+          directory: output(devArgs.directory ?? sitePath),
+        },
+      };
     }
 
     const htmlHandling = normalizeHtmlHandling();
@@ -242,10 +283,19 @@ export class StaticSiteV2 extends Component implements Link.Linkable {
     this.registerOutputs({
       _hint: this.url,
       _dev: {
+        title: args.dev && typeof args.dev === "object" ? args.dev.title : undefined,
         environment,
-        command: "npm run dev",
-        directory: sitePath,
-        autostart: true,
+        command: args.dev && typeof args.dev === "object" && args.dev.command
+          ? args.dev.command
+          : "npm run dev",
+        directory: args.dev && typeof args.dev === "object" && args.dev.directory
+          ? args.dev.directory
+          : sitePath,
+        autostart: args.dev === false
+          ? false
+          : (args.dev && typeof args.dev === "object" && args.dev.autostart !== undefined
+            ? args.dev.autostart
+            : true),
       },
       _metadata: {
         mode: "deployed",
