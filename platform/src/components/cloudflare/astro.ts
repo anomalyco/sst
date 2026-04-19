@@ -4,6 +4,7 @@ import { ComponentResourceOptions, Output } from "@pulumi/pulumi";
 import { VisibleError } from "../error.js";
 import { Plan, SsrSite, SsrSiteArgs } from "./ssr-site.js";
 import { existsAsync } from "../../util/fs.js";
+import { validateViteConfig } from "./helpers/validation.js";
 
 export interface AstroArgs extends SsrSiteArgs {
   /**
@@ -198,6 +199,14 @@ export class Astro extends SsrSite {
     opts: ComponentResourceOptions = {},
   ) {
     super(__pulumiType, name, args, opts);
+  }
+
+  protected validateSitePath(sitePath: string): void {
+    validateViteConfig({
+      sitePath,
+      configName: "astro.config",
+      componentName: "Astro",
+    });
   }
 
   protected buildPlan(outputPath: Output<string>): Output<Plan> {

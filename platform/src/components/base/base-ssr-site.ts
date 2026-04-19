@@ -1,6 +1,6 @@
 import path from "path";
 import fs from "fs";
-import { Output, Resource, all, output } from "@pulumi/pulumi";
+import { Resource, all, output } from "@pulumi/pulumi";
 import { Prettify } from "../component";
 import { Input } from "../input";
 import { Link } from "../link.js";
@@ -13,15 +13,15 @@ export interface BaseSsrSiteArgs {
   buildCommand?: Input<string>;
   environment?: Input<Record<string, Input<string>>>;
   link?: Input<any[]>;
-  path?: Input<string>;
+  path?: string;
 }
 
 export function buildApp(
   parent: Resource,
   name: string,
   args: BaseSsrSiteArgs,
-  sitePath: Output<string>,
-  buildCommand?: Output<string>,
+  sitePath: Input<string>,
+  buildCommand?: Input<string>,
   buildEnvironment?: Input<Record<string, Input<string>>>,
 ) {
   return all([

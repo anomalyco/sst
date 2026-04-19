@@ -9,7 +9,7 @@ import { Worker, WorkerArgs } from "./worker.js";
 import { normalizeCompatibility } from "./helpers/compatibility.js";
 import {
   createWranglerConfig,
-  writeWranglerConfigFile,
+  writeWranglerConfig,
 } from "./helpers/wrangler.js";
 import { Link } from "../link.js";
 import { URL_UNAVAILABLE } from "../aws/linkable.js";
@@ -37,11 +37,9 @@ export abstract class SsrSite extends Component implements Link.Linkable {
   private server?: Worker;
   private devUrl?: Output<string>;
 
-  protected abstract buildPlan(
-    outputPath: Output<string>,
-    name: string,
-    args: SsrSiteArgs,
-  ): Output<Plan>;
+  protected validateSitePath(_sitePath: string): void {}
+
+  protected abstract buildPlan(outputPath: Output<string>): Output<Plan>;
 
   protected cloudflareConfig(
     _name: string,
@@ -60,6 +58,7 @@ export abstract class SsrSite extends Component implements Link.Linkable {
     const self = this;
 
     const sitePath = normalizeSitePath();
+    this.validateSitePath(sitePath);
     const compatibility = resolveCompatibility();
     const frameworkConfig = resolveFrameworkConfig();
     const wranglerConfig = resolveWranglerConfig();
@@ -85,7 +84,7 @@ export abstract class SsrSite extends Component implements Link.Linkable {
       undefined,
       resolveBuildEnvironment(),
     );
-    const plan = validatePlan(this.buildPlan(outputPath, name, args));
+    const plan = this.buildPlan(outputPath);
     const worker = createWorker();
 
     this.server = worker;
@@ -115,7 +114,7 @@ export abstract class SsrSite extends Component implements Link.Linkable {
             : undefined,
           command: output(devArgs.command ?? "npm run dev"),
           autostart: output(devArgs.autostart ?? true),
-          directory: output(devArgs.directory ?? sitePath),
+          directory: devArgs.directory ?? sitePath,
           links: output(args.link || [])
             .apply(Link.build)
             .apply((links) => links.map((link) => link.name)),
@@ -157,7 +156,7 @@ export abstract class SsrSite extends Component implements Link.Linkable {
 
     function resolveDevWranglerPath() {
       return wranglerConfig.apply((config) => {
-        return writeWranglerConfigFile({
+        return writeWranglerConfig({
           workDir: $cli.paths.work,
           stage: $app.stage,
           name,
@@ -187,7 +186,7 @@ export abstract class SsrSite extends Component implements Link.Linkable {
 
     function resolveBuildWranglerPath() {
       return wranglerConfig.apply((config) => {
-        return writeWranglerConfigFile({
+        return writeWranglerConfig({
           workDir: $cli.paths.work,
           stage: $app.stage,
           name,
@@ -212,22 +211,17 @@ export abstract class SsrSite extends Component implements Link.Linkable {
     }
 
     function normalizeSitePath() {
-      return output(args.path).apply((sitePath) => {
-        if (!sitePath) return ".";
+      const sitePath = args.path ?? ".";
 
-        if (!fs.existsSync(sitePath)) {
-          throw new VisibleError(
-            `Site directory not found at "${path.resolve(
-              sitePath,
-            )}". Please check the path setting in your configuration.`,
-          );
-        }
-        return sitePath;
-      });
-    }
+      if (!fs.existsSync(sitePath)) {
+        throw new VisibleError(
+          `Site directory not found at "${path.resolve(
+            sitePath,
+          )}". Please check the path setting in your configuration.`,
+        );
+      }
 
-    function validatePlan(plan: Output<Plan>) {
-      return plan;
+      return sitePath;
     }
 
     function createWorker() {

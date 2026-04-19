@@ -4,6 +4,7 @@ import { ComponentResourceOptions, Output } from "@pulumi/pulumi";
 import { VisibleError } from "../error.js";
 import { Plan, SsrSite, SsrSiteArgs } from "./ssr-site.js";
 import { existsAsync } from "../../util/fs.js";
+import { validateViteConfig } from "./helpers/validation.js";
 
 export interface TanStackStartArgs extends SsrSiteArgs {
   /**
@@ -204,6 +205,14 @@ export class TanStackStart extends SsrSite {
     opts: ComponentResourceOptions = {},
   ) {
     super(__pulumiType, name, args, opts);
+  }
+
+  protected validateSitePath(sitePath: string): void {
+    validateViteConfig({
+      sitePath,
+      configName: "vite.config",
+      componentName: "TanStackStart",
+    });
   }
 
   protected buildPlan(outputPath: Output<string>): Output<Plan> {
