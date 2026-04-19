@@ -179,17 +179,16 @@ export abstract class SsrSite extends Component implements Link.Linkable {
     }
 
     function resolveBuildWranglerPath() {
-      return writeWranglerConfig("build");
+      return writeWranglerConfig();
     }
 
-    function writeWranglerConfig(scope?: "build") {
+    function writeWranglerConfig() {
       return wranglerConfig.apply((config) => {
         return writeWranglerConfigFile({
           workDir: $cli.paths.work,
           stage: $app.stage,
           name,
           config,
-          scope,
         });
       });
     }
