@@ -3,6 +3,28 @@ import path from "path";
 import { VisibleError } from "../../error.js";
 
 /**
+ * Validates that no wrangler configuration file exists in the site directory.
+ * SST manages wrangler configuration automatically and user-provided files can cause conflicts.
+ */
+export function validateNoWranglerFile(sitePath: string, componentName: string): void {
+  const wranglerFiles = ["wrangler.toml", "wrangler.json", "wrangler.jsonc"];
+
+  for (const file of wranglerFiles) {
+    const filePath = path.join(sitePath, file);
+    if (fs.existsSync(filePath)) {
+      throw new VisibleError(
+        [
+          `Found ${file} in "${path.resolve(sitePath)}" for ${componentName}.`,
+          "",
+          "Remove it to avoid interfering with SST managed wrangler configurations:",
+          `https://sst.dev/docs/cloudflare/#cloudflare-vite-plugin`,
+        ].join("\n"),
+      );
+    }
+  }
+}
+
+/**
  * Validates that the framework config file contains the required SST_WRANGLER_PATH configuration.
  * This ensures linked resources work correctly in Cloudflare SSR sites.
  */

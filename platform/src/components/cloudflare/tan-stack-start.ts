@@ -4,7 +4,10 @@ import { ComponentResourceOptions, Output } from "@pulumi/pulumi";
 import { VisibleError } from "../error.js";
 import { Plan, SsrSite, SsrSiteArgs } from "./ssr-site.js";
 import { existsAsync } from "../../util/fs.js";
-import { validateFrameworkConfig } from "./helpers/validation.js";
+import {
+  validateFrameworkConfig,
+  validateNoWranglerFile,
+} from "./helpers/validation.js";
 
 export interface TanStackStartArgs extends SsrSiteArgs {
   /**
@@ -213,6 +216,7 @@ export class TanStackStart extends SsrSite {
       configName: "vite.config",
       componentName: "TanStackStart",
     });
+    validateNoWranglerFile(sitePath, "TanStackStart");
   }
 
   protected buildPlan(outputPath: Output<string>): Output<Plan> {
