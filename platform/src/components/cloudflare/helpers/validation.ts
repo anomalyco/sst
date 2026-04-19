@@ -39,13 +39,13 @@ export function validateFrameworkConfig(input: {
   if (!hasWranglerPath) {
     throw new VisibleError(
       [
-        `Missing required configuration in "${path.resolve(configPath)}".`,
+        `Missing required configuration for ${componentName}.`,
         "",
         `The Cloudflare adapter must be configured with:`,
         `  configPath: process.env.SST_WRANGLER_PATH,`,
         "",
-        `This is required for linked resources to work correctly.`,
-        `Refer to the SST documentation for ${componentName} component setup.`,
+        `This is required for linked resources to work correctly:`,
+        `https://sst.dev/docs/cloudflare/#cloudflare-vite-plugin`,
       ].join("\n")
     );
   }
