@@ -171,8 +171,7 @@ export interface TanStackStartArgs extends SsrSiteArgs {
  * });
  * ```
  *
- * Add this to your `vite.config.ts` to make SST's generated Wrangler config
- * available in `sst dev` and `sst deploy`.
+ * Add this to your `vite.config.ts` for SST to work correctly.
  *
  * ```ts title="vite.config.ts"
  * import { defineConfig } from 'vite'

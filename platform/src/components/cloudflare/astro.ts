@@ -167,8 +167,7 @@ export interface AstroArgs extends SsrSiteArgs {
  * });
  * ```
  *
- * Add this to your `astro.config.mjs` to make SST's generated Wrangler config
- * available in `sst dev` and `sst deploy`.
+ * Add this to your `astro.config.mjs` for SST to work correctly.
  *
  * ```js title="astro.config.mjs"
  * import { defineConfig } from "astro/config";
