@@ -6499,12 +6499,12 @@ View the [full example](https://github.com/sst/sst/tree/dev/examples/cloudflare-
 
 Deploy a single-page app (SPA) with Vite to Cloudflare.
 ```ts title="sst.config.ts"
-new sst.cloudflare.x.StaticSite("Vite2", {
+new sst.cloudflare.StaticSiteV2("Vite", {
+  notFound: "single-page-application",
   build: {
     command: "pnpm run build",
     output: "dist",
   },
-  notFound: "spa",
 });
 ```
 

@@ -228,6 +228,7 @@ const sidebar = [
           "docs/component/cloudflare/d1",
           "docs/component/cloudflare/kv",
           "docs/component/cloudflare/queue",
+          "docs/component/cloudflare/tan-stack-start",
           "docs/component/cloudflare/worker",
           { label: "StaticSite", slug: "docs/component/cloudflare/static-site-v2" },
           {
