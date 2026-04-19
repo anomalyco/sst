@@ -7,6 +7,10 @@ import { VisibleError } from "../error.js";
 import { BaseSsrSiteArgs, buildApp } from "../base/base-ssr-site.js";
 import { Worker, WorkerArgs } from "./worker.js";
 import { normalizeCompatibility } from "./helpers/compatibility.js";
+import {
+  createWranglerConfig,
+  writeWranglerConfig as writeWranglerConfigFile,
+} from "./helpers/wrangler.js";
 import { Link } from "../link.js";
 import { URL_UNAVAILABLE } from "../aws/linkable.js";
 
@@ -39,6 +43,13 @@ export abstract class SsrSite extends Component implements Link.Linkable {
     args: SsrSiteArgs,
   ): Output<Plan>;
 
+  protected cloudflareConfig(
+    _name: string,
+    _args: SsrSiteArgs,
+  ): Input<Record<string, Input<any>> | undefined> {
+    return undefined;
+  }
+
   constructor(
     type: string,
     name: string,
@@ -49,6 +60,9 @@ export abstract class SsrSite extends Component implements Link.Linkable {
     const self = this;
 
     const sitePath = normalizeSitePath();
+    const compatibility = resolveCompatibility();
+    const frameworkConfig = resolveFrameworkConfig();
+    const wranglerConfig = resolveWranglerConfig();
     const dev = normalizeDev();
 
     if (dev.enabled) {
@@ -63,7 +77,14 @@ export abstract class SsrSite extends Component implements Link.Linkable {
       return;
     }
 
-    const outputPath = buildApp(self, name, args, sitePath);
+    const outputPath = buildApp(
+      self,
+      name,
+      args,
+      sitePath,
+      undefined,
+      resolveBuildEnvironment(),
+    );
     const plan = validatePlan(this.buildPlan(outputPath, name, args));
     const worker = createWorker();
 
@@ -89,7 +110,7 @@ export abstract class SsrSite extends Component implements Link.Linkable {
           environment: args.environment,
           cloudflare: enabled
             ? {
-                compatibility: resolveCompatibility(),
+                path: resolveDevWranglerPath(),
               }
             : undefined,
           command: output(devArgs.command ?? "npm run dev"),
@@ -100,6 +121,12 @@ export abstract class SsrSite extends Component implements Link.Linkable {
             .apply((links) => links.map((link) => link.name)),
         },
       };
+    }
+
+    function resolveFrameworkConfig() {
+      return output(self.cloudflareConfig(name, args)).apply(
+        (config) => config ?? {},
+      );
     }
 
     function resolveCompatibility() {
@@ -120,6 +147,66 @@ export abstract class SsrSite extends Component implements Link.Linkable {
         { parent: self },
       );
       return normalizeCompatibility(workerArgs);
+    }
+
+    function resolveBuildEnvironment() {
+      return resolveBuildWranglerPath().apply((wranglerPath) => ({
+        SST_WRANGLER_PATH: wranglerPath,
+      }));
+    }
+
+    function resolveDevWranglerPath() {
+      return writeWranglerConfig();
+    }
+
+    function resolveWranglerConfig() {
+      return all([
+        output(args.environment ?? {}),
+        resolveLinkBindings(),
+        compatibility,
+        frameworkConfig,
+      ]).apply(([environment, links, compatibility, frameworkConfig]) => {
+        return createWranglerConfig({
+          appStage: $app.stage,
+          name,
+          frameworkConfig,
+          compatibility,
+          environment,
+          links,
+          accountID: process.env.CLOUDFLARE_DEFAULT_ACCOUNT_ID,
+        });
+      });
+    }
+
+    function resolveBuildWranglerPath() {
+      return writeWranglerConfig("build");
+    }
+
+    function writeWranglerConfig(scope?: "build") {
+      return wranglerConfig.apply((config) => {
+        return writeWranglerConfigFile({
+          workDir: $cli.paths.work,
+          stage: $app.stage,
+          name,
+          config,
+          scope,
+        });
+      });
+    }
+
+    function resolveLinkBindings() {
+      return output(args.link ?? []).apply((links) => {
+        const linkBindings = links.filter(Link.isLinkable).map((link) =>
+          output({
+            urn: link.urn,
+            link: link.getSSTLink(),
+          }).apply(({ urn, link }) => ({
+            name: urn.split("::").at(-1)!,
+            include: link.include ?? [],
+          })),
+        );
+        return linkBindings.length > 0 ? all(linkBindings) : [];
+      });
     }
 
     function normalizeSitePath() {

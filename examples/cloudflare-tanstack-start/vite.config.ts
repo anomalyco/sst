@@ -14,9 +14,6 @@ const config = defineConfig({
     cloudflare({
       viteEnvironment: { name: 'ssr' },
       configPath: process.env.SST_WRANGLER_PATH,
-      config: {
-        main: '@tanstack/react-start/server-entry',
-      },
     }),
     tailwindcss(),
     tanstackStart(),

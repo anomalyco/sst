@@ -85,7 +85,7 @@ func Start(ctx context.Context, p *project.Project, server *server.Server) error
 		name := r.URL.Query().Get("name")
 		resolved := complete
 		latest, err := p.GetCompleted(ctx)
-		if err == nil {
+		if err == nil && (resolved == nil || resolved.Old) {
 			resolved = latest
 		}
 		if resolved == nil {

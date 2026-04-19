@@ -171,8 +171,8 @@ export interface TanStackStartArgs extends SsrSiteArgs {
  * });
  * ```
  *
- * Add this to your `vite.config.ts` to make linked resources and bindings
- * available in `sst dev`.
+ * Add this to your `vite.config.ts` to make SST's generated Wrangler config
+ * available in `sst dev` and `sst deploy`.
  *
  * ```ts title="vite.config.ts"
  * import { defineConfig } from 'vite'
@@ -184,9 +184,6 @@ export interface TanStackStartArgs extends SsrSiteArgs {
  *     cloudflare({
  *       viteEnvironment: { name: 'ssr' },
  *       configPath: process.env.SST_WRANGLER_PATH,
- *       config: {
- *         main: '@tanstack/react-start/server-entry',
- *       },
  *     }),
  *     tanstackStart(),
  *   ],
@@ -232,7 +229,12 @@ export class TanStackStart extends SsrSite {
       );
 
       async function resolveDistPlan() {
-        const wranglerPath = path.join(outputPath, "dist", "server", "wrangler.json");
+        const wranglerPath = path.join(
+          outputPath,
+          "dist",
+          "server",
+          "wrangler.json",
+        );
         if (await existsAsync(wranglerPath)) {
           const wrangler = JSON.parse(await fs.readFile(wranglerPath, "utf-8")) as {
             main?: string;
@@ -272,7 +274,12 @@ export class TanStackStart extends SsrSite {
         }
 
         for (const serverFile of ["index.js", "index.mjs"]) {
-          const serverPath = path.join(outputPath, "dist", "server", serverFile);
+          const serverPath = path.join(
+            outputPath,
+            "dist",
+            "server",
+            serverFile,
+          );
           const assetsPath = path.join(outputPath, "dist", "client");
           if (
             (await existsAsync(serverPath)) &&
@@ -287,13 +294,20 @@ export class TanStackStart extends SsrSite {
       }
 
       async function resolveLegacyPlan() {
-        const serverPath = path.join(outputPath, ".output", "server", "index.mjs");
+        const serverPath = path.join(
+          outputPath,
+          ".output",
+          "server",
+          "index.mjs",
+        );
         const assetsPath = path.join(outputPath, ".output", "public");
 
         if (!(await existsAsync(serverPath))) return;
         if (!(await existsAsync(assetsPath))) {
           throw new VisibleError(
-            `TanStack Start assets directory not found at:\n  "${path.resolve(assetsPath)}".`,
+            `TanStack Start assets directory not found at:\n  "${path.resolve(
+              assetsPath,
+            )}".`,
           );
         }
 
@@ -308,6 +322,12 @@ export class TanStackStart extends SsrSite {
         return `./${relativePath.split(path.sep).join("/")}`;
       }
     });
+  }
+
+  protected cloudflareConfig() {
+    return {
+      main: "@tanstack/react-start/server-entry",
+    };
   }
 
   /**

@@ -61,12 +61,7 @@ type Dev struct {
 type Devs map[string]Dev
 
 type DevCloudflare struct {
-	Compatibility *DevCloudflareCompatibility `json:"compatibility"`
-}
-
-type DevCloudflareCompatibility struct {
-	Date  *string  `json:"date"`
-	Flags []string `json:"flags"`
+	Path string `json:"path"`
 }
 
 type Task struct {
