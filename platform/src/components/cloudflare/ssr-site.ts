@@ -9,7 +9,7 @@ import { Worker, WorkerArgs } from "./worker.js";
 import { normalizeCompatibility } from "./helpers/compatibility.js";
 import {
   createWranglerConfig,
-  writeWranglerConfig as writeWranglerConfigFile,
+  writeWranglerConfigFile,
 } from "./helpers/wrangler.js";
 import { Link } from "../link.js";
 import { URL_UNAVAILABLE } from "../aws/linkable.js";
@@ -156,7 +156,14 @@ export abstract class SsrSite extends Component implements Link.Linkable {
     }
 
     function resolveDevWranglerPath() {
-      return writeWranglerConfig();
+      return wranglerConfig.apply((config) => {
+        return writeWranglerConfigFile({
+          workDir: $cli.paths.work,
+          stage: $app.stage,
+          name,
+          config,
+        });
+      });
     }
 
     function resolveWranglerConfig() {
@@ -179,10 +186,6 @@ export abstract class SsrSite extends Component implements Link.Linkable {
     }
 
     function resolveBuildWranglerPath() {
-      return writeWranglerConfig();
-    }
-
-    function writeWranglerConfig() {
       return wranglerConfig.apply((config) => {
         return writeWranglerConfigFile({
           workDir: $cli.paths.work,
