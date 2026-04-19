@@ -136,6 +136,37 @@ If you are using Cloudflare DNS with SST, use [`sst.cloudflare.dns`](/docs/compo
 
 ---
 
+## Cloudflare Vite plugin
+
+Cloudflare SSR components like [Astro](/docs/component/cloudflare/astro/) or [TanStack Start](/docs/component/cloudflare/tanstack-start/) need the Cloudflare Vite plugin to work correctly.
+
+:::caution
+Do not include any Wrangler configuration files (`wrangler.toml`, `wrangler.json`) in your project. SST manages these for you and will generate them as needed.
+:::
+
+You need to configure the Vite plugin to use the SST-managed Wrangler config.
+
+```ts title="vite.config.ts"
+import { defineConfig } from "vite";
+import { cloudflare } from "@cloudflare/vite-plugin";
+
+export default defineConfig({
+  plugins: [
+    cloudflare({
+      configPath: process.env.SST_WRANGLER_CONFIG,
+    }),
+  ],
+});
+```
+
+This environment variable is set by SST and ensures the plugin uses the generated Wrangler configuration.
+
+:::tip
+There is an [open PR](https://github.com/cloudflare/workers-sdk/pull/13587) on the Cloudflare Workers SDK that will add automatic detection of the SST-managed Wrangler config. Once merged, you won't need to explicitly set `configPath`.
+:::
+
+---
+
 ## Examples
 
 Check out the full examples:
