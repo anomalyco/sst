@@ -69,6 +69,9 @@ func (w *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 	if err != nil {
 		return nil, err
 	}
+	// Windows paths must not be embedded raw in JS string literals: backslashes
+	// are escape sequences (\p, \f, etc.). Forward slashes work for imports.
+	importPath := filepath.ToSlash(abs)
 	target := filepath.Join(input.Out(), input.Handler)
 
 	slog.Info("loader info", "loader", build.Loader)
@@ -108,7 +111,7 @@ func (w *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
       import { fromCloudflareEnv, wrapCloudflareHandler } from "sst/resource/cloudflare"
       export * from "%s"
       export default wrapCloudflareHandler(handler)
-      `, abs, abs),
+      `, importPath, importPath),
 			ResolveDir: filepath.Dir(abs),
 			Loader:     esbuild.LoaderTS,
 		},

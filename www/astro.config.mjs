@@ -229,10 +229,18 @@ const sidebar = [
           "docs/component/cloudflare/kv",
           "docs/component/cloudflare/queue",
           "docs/component/cloudflare/worker",
+          { label: "StaticSite", slug: "docs/component/cloudflare/static-site-v2" },
           {
             label: "Internal",
             collapsed: true,
             items: ["docs/component/cloudflare/queue-worker-subscriber"],
+          },
+          {
+            label: "Deprecated",
+            collapsed: true,
+            items: [
+              { label: "StaticSite", slug: "docs/component/cloudflare/static-site" },
+            ],
           },
         ],
       },

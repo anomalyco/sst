@@ -2320,6 +2320,8 @@ async function buildComponents() {
       "../platform/src/components/cloudflare/queue.ts",
       "../platform/src/components/cloudflare/queue-worker-subscriber.ts",
       "../platform/src/components/cloudflare/worker.ts",
+      "../platform/src/components/cloudflare/static-site.ts",
+      "../platform/src/components/cloudflare/static-site-v2.ts",
       // internal
       "../platform/src/components/aws/alb.ts",
       "../platform/src/components/aws/cdn.ts",

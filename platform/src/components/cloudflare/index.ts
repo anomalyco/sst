@@ -3,6 +3,7 @@ export * from "./kv";
 export * from "./d1";
 export * from "./dns";
 export * from "./static-site";
+export * from "./static-site-v2";
 export * from "./worker";
 export * from "./account-id";
 export * from "./auth";

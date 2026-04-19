@@ -22,8 +22,6 @@ import { Permission } from "../aws/permission.js";
 import { binding } from "./binding.js";
 import { DEFAULT_ACCOUNT_ID } from "./account-id.js";
 import { rpc } from "../rpc/rpc.js";
-import { WorkerAssets } from "./providers/worker-assets";
-import { globSync } from "glob";
 import { VisibleError } from "../error";
 import { getContentType } from "../base/base-site";
 import { prefixName } from "../naming";
@@ -184,27 +182,17 @@ export interface WorkerArgs {
    * ```
    */
   environment?: Input<Record<string, Input<string>>>;
-  /**
-   * Upload [static assets](https://developers.cloudflare.com/workers/static-assets/) as
-   * part of the worker.
-   *
-   * You can directly fetch and serve assets within your Worker code via the [assets
-   * binding](https://developers.cloudflare.com/workers/static-assets/binding/#binding).
-   *
-   * @example
-   * ```js
-   * {
-   *   assets: {
-   *     directory: "./dist"
-   *   }
-   * }
-   * ```
-   */
+  /** @internal */
   assets?: Input<{
-    /**
-     * The directory containing the assets.
-     */
     directory: Input<string>;
+    htmlHandling?: Input<
+      | "auto-trailing-slash"
+      | "force-trailing-slash"
+      | "drop-trailing-slash"
+      | "none"
+    >;
+    notFoundHandling?: Input<"404-page" | "single-page-application" | "none">;
+    runWorkerFirst?: Input<boolean | Input<string>[]>;
   }>;
   /**
    * Configure [placement](https://developers.cloudflare.com/workers/configuration/placement/)
@@ -543,23 +531,38 @@ export class Worker extends Component implements Link.Linkable {
             compatibilityFlags: compatibility.apply((value) => value.flags),
             assets: args.assets
               ? output(args.assets).apply(async (assets) => {
-                  const directory = path.join(
-                    $cli.paths.root,
-                    assets.directory,
-                  );
+                  const directory = path.isAbsolute(assets.directory)
+                    ? assets.directory
+                    : path.join($cli.paths.root, assets.directory);
+
                   let headers;
+                  let redirects;
                   try {
                     headers = await fs.readFile(
                       path.join(directory, "_headers"),
                       "utf-8",
                     );
                   } catch (e) {}
+
+                  try {
+                    redirects = await fs.readFile(
+                      path.join(directory, "_redirects"),
+                      "utf-8",
+                    );
+                  } catch (e) {}
                   return {
                     directory,
-                    config: { headers },
+                    config: {
+                      headers,
+                      redirects,
+                      htmlHandling: assets.htmlHandling,
+                      notFoundHandling: assets.notFoundHandling,
+                      runWorkerFirst: assets.runWorkerFirst,
+                    },
                   };
                 })
               : undefined,
+
             bindings: all([args.environment, iamCredentials, bindings]).apply(
               ([environment, iamCredentials, bindings]) => [
                 ...bindings,
