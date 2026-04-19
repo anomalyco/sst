@@ -37,14 +37,11 @@ export abstract class SsrSite extends Component implements Link.Linkable {
   private server?: Worker;
   private devUrl?: Output<string>;
 
-  protected validateSitePath(_sitePath: string): void {}
+  protected validate(_sitePath: string): void {}
 
   protected abstract buildPlan(outputPath: Output<string>): Output<Plan>;
 
-  protected cloudflareConfig(
-    _name: string,
-    _args: SsrSiteArgs,
-  ): Input<Record<string, Input<any>> | undefined> {
+  protected buildWrangler(): Input<Record<string, Input<any>> | undefined> {
     return undefined;
   }
 
@@ -58,11 +55,11 @@ export abstract class SsrSite extends Component implements Link.Linkable {
     const self = this;
 
     const sitePath = normalizeSitePath();
-    this.validateSitePath(sitePath);
     const compatibility = resolveCompatibility();
     const frameworkConfig = resolveFrameworkConfig();
     const wranglerConfig = resolveWranglerConfig();
     const dev = normalizeDev();
+    this.validate(sitePath);
 
     if (dev.enabled) {
       this.devUrl = dev.url;
@@ -123,9 +120,7 @@ export abstract class SsrSite extends Component implements Link.Linkable {
     }
 
     function resolveFrameworkConfig() {
-      return output(self.cloudflareConfig(name, args)).apply(
-        (config) => config ?? {},
-      );
+      return output(self.buildWrangler()).apply((config) => config ?? {});
     }
 
     function resolveCompatibility() {

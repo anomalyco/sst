@@ -4,7 +4,7 @@ import { ComponentResourceOptions, Output } from "@pulumi/pulumi";
 import { VisibleError } from "../error.js";
 import { Plan, SsrSite, SsrSiteArgs } from "./ssr-site.js";
 import { existsAsync } from "../../util/fs.js";
-import { validateViteConfig } from "./helpers/validation.js";
+import { validateFrameworkConfig } from "./helpers/validation.js";
 
 export interface TanStackStartArgs extends SsrSiteArgs {
   /**
@@ -207,8 +207,8 @@ export class TanStackStart extends SsrSite {
     super(__pulumiType, name, args, opts);
   }
 
-  protected validateSitePath(sitePath: string): void {
-    validateViteConfig({
+  protected validate(sitePath: string): void {
+    validateFrameworkConfig({
       sitePath,
       configName: "vite.config",
       componentName: "TanStackStart",
@@ -332,7 +332,7 @@ export class TanStackStart extends SsrSite {
     });
   }
 
-  protected cloudflareConfig() {
+  protected buildWrangler() {
     return {
       main: "@tanstack/react-start/server-entry",
     };

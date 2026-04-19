@@ -6,15 +6,15 @@ import { VisibleError } from "../../error.js";
  * Validates that the framework config file contains the required SST_WRANGLER_PATH configuration.
  * This ensures linked resources work correctly in Cloudflare SSR sites.
  */
-export function validateViteConfig(input: {
-  sitePath: string | undefined;
+export function validateFrameworkConfig(input: {
+  sitePath: string;
   configName: string;
   componentName: string;
 }): void {
   const { sitePath, configName, componentName } = input;
 
   const extensions = [".ts", ".js", ".mjs"];
-  const configDir = sitePath || ".";
+  const configDir = sitePath;
 
   // Find the config file
   let configPath: string | undefined;
