@@ -1726,8 +1726,8 @@ export class Function extends Component implements Link.Linkable {
   private eventInvokeConfig?: lambda.FunctionEventInvokeConfig;
   private alias: Output<lambda.Alias | undefined>;
   private isVersioningEnabled: Output<boolean>;
-  public targetArn: Output<string>;
-  public qualifier: Output<string | undefined>;
+  #targetArn: Output<string>;
+  #qualifier: Output<string | undefined>;
 
   private static readonly encryptionKey = lazy(
     () =>
@@ -1815,8 +1815,8 @@ export class Function extends Component implements Link.Linkable {
     this.urlEndpoint = urlEndpoint;
     this.eventInvokeConfig = eventInvokeConfig;
     this.alias = alias;
-    this.targetArn = targetArn;
-    this.qualifier = qualifier;
+    this.#targetArn = targetArn;
+    this.#qualifier = qualifier;
     this.isVersioningEnabled = isVersioningEnabled;
 
     const buildInput = output({
@@ -3040,6 +3040,25 @@ export class Function extends Component implements Link.Linkable {
    */
   public get arn() {
     return this.function.arn;
+  }
+
+  /**
+   * The ARN to use when wiring this function to an event source.
+   *
+   * When versioning is enabled, this points to the Lambda alias that routes
+   * to the currently published version. Otherwise it falls back to the
+   * function ARN.
+   *
+   * Prefer this over `arn` when passing the function to an event source, so
+   * invocations go through the alias instead of `$LATEST`.
+   */
+  public get targetArn() {
+    return this.#targetArn;
+  }
+
+  /** @internal */
+  public get qualifier() {
+    return this.#qualifier;
   }
 
   /** @internal */
