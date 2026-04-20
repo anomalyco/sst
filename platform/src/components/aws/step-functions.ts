@@ -291,6 +291,7 @@ export class StepFunctions extends Component implements Link.Linkable {
                   {
                     actions: [
                       "states:StartExecution",
+                      "states:StopExecution",
                       "states:DescribeExecution",
                       "states:RedriveExecution",
                     ],

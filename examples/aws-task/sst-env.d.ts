@@ -6,24 +6,6 @@
 
 declare module "sst" {
   export interface Resource {
-    "MyApp": {
-      "name": string
-      "type": "sst.aws.Function"
-      "url": string
-    }
-    "MyBucket": {
-      "name": string
-      "type": "sst.aws.Bucket"
-    }
-    "MyTask": {
-      "assignPublicIp": boolean
-      "cluster": string
-      "containers": any
-      "securityGroups": any
-      "subnets": any
-      "taskDefinition": string
-      "type": "sst.aws.Task"
-    }
     "MyVpc": {
       "type": "sst.aws.Vpc"
     }
