@@ -5,7 +5,6 @@ import { Input } from "../input.js";
 import { FunctionArgs } from "./function.js";
 import { KinesisStreamLambdaSubscriberArgs } from "./kinesis-stream.js";
 import { FunctionBuilder, functionBuilder } from "./helpers/function-builder";
-import { parseFunctionArn } from "./helpers/arn";
 
 export interface Args extends KinesisStreamLambdaSubscriberArgs {
   /**
@@ -82,9 +81,7 @@ export class KinesisStreamLambdaSubscriber extends Component {
           `${name}EventSourceMapping`,
           {
             eventSourceArn: stream.arn,
-            functionName: fn.arn.apply(
-              (arn) => parseFunctionArn(arn).functionName,
-            ),
+            functionName: fn.targetArn,
             startingPosition: "LATEST",
             filterCriteria: args.filters && {
               filters: output(args.filters).apply((filters) =>

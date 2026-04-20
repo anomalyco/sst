@@ -22,7 +22,7 @@ import { VisibleError } from "../error";
 import { RouterUrlRoute } from "./router-url-route";
 import { RouterBucketRoute } from "./router-bucket-route";
 import { DurationSeconds, toSeconds } from "../duration";
-import { FunctionArn } from "./function";
+import { FunctionArn } from "./function.js";
 import { parseLambdaEdgeArn } from "./helpers/arn";
 import { Size, toMBs } from "../size";
 import { RETENTION } from "./logging";
@@ -2226,7 +2226,10 @@ async function handler(event) {
   }
   if (route.type === "url") setUrlOrigin(route.metadata.host, route.metadata.origin);
   if (route.type === "bucket") setS3Origin(route.metadata.domain, route.metadata.origin);
-  if (route.type === "site") await routeSite(route.routeNs, route.metadata);
+  if (route.type === "site") {
+    const response = await routeSite(route.routeNs, route.metadata);
+    return response || event.request;
+  }
   return event.request;
 }`,
             },
@@ -2310,7 +2313,7 @@ async function handler(event) {
               `${name}EdgeFunction`,
               {
                 name: physicalName(64, `${name}EdgeFn`),
-                runtime: "nodejs22.x",
+                runtime: "nodejs24.x",
                 handler: "index.handler",
                 role: edgeRole.arn,
                 code: new asset.FileArchive(
@@ -2718,6 +2721,11 @@ const __pulumiType = "sst:aws:Router";
 // @ts-expect-error
 Router.__pulumiType = __pulumiType;
 
+// CloudFront Functions have a 10KB limit on the forwarded request size.
+// We reserve 512 bytes for origin-request overhead CloudFront can still add after
+// this viewer-request function runs, so borderline requests fail with a clear 431.
+const CLOUDFRONT_FUNCTION_SAFE_HEADER_LIMIT = 10240 - 512;
+
 export const CF_BLOCK_CLOUDFRONT_URL_INJECTION = `
 if (event.request.headers.host.value.includes('cloudfront.net')) {
   return {
@@ -2772,23 +2780,32 @@ async function routeSite(kvNamespace, metadata) {
     }
   }
 
-  // Route to S3 custom 404 (no servers)
-  if (metadata.custom404) {
+  // Route to S3 custom 404 (SPA fallback, no servers)
+  if (metadata.custom404 && !metadata.errorResponseCode) {
     event.request.uri = metadata.s3.dir + (metadata.base ? metadata.base : "") + metadata.custom404;
+    setS3Origin(metadata.s3.domain);
+    return;
+  }
+
+  // Route unmatched to S3 (triggers customErrorResponses)
+  if (metadata.s3 && !metadata.servers) {
+    event.request.uri = metadata.s3.dir + event.request.uri;
     setS3Origin(metadata.s3.domain);
     return;
   }
 
   // Route to image optimizer
   if (metadata.image && baselessUri.startsWith(metadata.image.route)) {
+    setForwardedHost();
     setNextjsCacheKey();
+    if (isRequestHeaderTooLarge()) return buildOversizedHeadersResponse();
     setUrlOrigin(metadata.image.host, metadata.image.originAccessControlConfig ? { originAccessControlConfig: metadata.image.originAccessControlConfig } : undefined);
     return;
   }
 
   // Route to servers
   if (metadata.servers){
-    event.request.headers["x-forwarded-host"] = event.request.headers.host;
+    setForwardedHost();
     // In SvelteKit, form action requests contain "/" in request query string
     // ie. POST request with query string "?/action"
     // CloudFront does not allow query string with "/". It needs to be encoded.
@@ -2800,6 +2817,7 @@ async function routeSite(kvNamespace, metadata) {
     }
     setNextjsGeoHeaders();
     setNextjsCacheKey();
+    if (isRequestHeaderTooLarge()) return buildOversizedHeadersResponse();
     setUrlOrigin(findNearestServer(metadata.servers), metadata.origin);
   }
 
@@ -2847,6 +2865,58 @@ async function routeSite(kvNamespace, metadata) {
     return "";
   }
 
+  function isRequestHeaderTooLarge() {
+    return getRequestHeaderSize() > ${CLOUDFRONT_FUNCTION_SAFE_HEADER_LIMIT};
+  }
+
+  function buildOversizedHeadersResponse() {
+    return {
+      statusCode: 431,
+      statusDescription: "Request Header Fields Too Large",
+      headers: {
+        "cache-control": { value: "no-store" },
+        "content-type": { value: "text/plain; charset=utf-8" },
+      },
+      body: {
+        encoding: "text",
+        data: "Request headers are too large. Reduce cookie size and try again.",
+      },
+    };
+  }
+
+  function getRequestHeaderSize() {
+    var size = 0;
+
+    for (var key in event.request.headers) {
+      var header = event.request.headers[key];
+      if (header.multiValue) {
+        for (var i=0; i<header.multiValue.length; i++) {
+          size += key.length + header.multiValue[i].value.length + 4;
+        }
+      } else if (header.value) {
+        size += key.length + header.value.length + 4;
+      }
+    }
+
+    var cookies = [];
+    for (var key in event.request.cookies) {
+      var cookie = event.request.cookies[key];
+      if (cookie.multiValue) {
+        for (var i=0; i<cookie.multiValue.length; i++) {
+          cookies.push(key + "=" + cookie.multiValue[i].value);
+        }
+      } else {
+        cookies.push(key + "=" + cookie.value);
+      }
+    }
+
+    if (cookies.length) {
+      size += 10 + cookies.join("; ").length;
+    }
+
+    return size;
+  }
+
   function findNearestServer(servers) {
     if (servers.length === 1) return servers[0][0];
 
@@ -2875,8 +2945,13 @@ async function routeSite(kvNamespace, metadata) {
   }
 }
 
-function setUrlOrigin(urlHost, override) {
+function setForwardedHost() {
+  // Lambda URLs expect the original viewer host in x-forwarded-host.
   event.request.headers["x-forwarded-host"] = event.request.headers.host;
+}
+
+function setUrlOrigin(urlHost, override) {
+  setForwardedHost();
   const origin = {
     domainName: urlHost,
     customOriginConfig: {
@@ -2931,6 +3006,7 @@ function setS3Origin(s3Domain, override) {
 export type KV_SITE_METADATA = {
   base?: string; // Should be undefiend if no base path, should never be "/"
   custom404?: string;
+  errorResponseCode?: number;
   s3: {
     domain: string;
     dir: string; // Should be "" if no dir
@@ -3042,6 +3118,98 @@ export type RouterRouteArgs = {
    * ```
    */
   path?: Input<string>;
+  /**
+   * Rewrite the request path.
+   *
+   * @example
+   *
+   * If the route path is `/api/*` and a request comes in for `/api/users/profile`,
+   * the request path the destination sees is `/api/users/profile`.
+   *
+   * If you want to serve the route from the root, you can rewrite the request
+   * path to `/users/profile`.
+   *
+   * ```js
+   * router: {
+   *   instance: router,
+   *   path: "/api",
+   *   rewrite: {
+   *     regex: "^/api/(.*)$",
+   *     to: "/$1"
+   *   }
+   * }
+   * ```
+   */
+  rewrite?: Input<{
+    /**
+     * The regex to match the request path.
+     */
+    regex: Input<string>;
+    /**
+     * The replacement for the matched path.
+     */
+    to: Input<string>;
+  }>;
+  /**
+   * The number of seconds that CloudFront waits for a response after routing a
+   * request to the destination. Must be between 1 and 60 seconds.
+   *
+   * When compared to the `connectionTimeout`, this is the total time for the
+   * request.
+   *
+   * @default `"20 seconds"`
+   * @example
+   * ```js
+   * router: {
+   *   instance: router,
+   *   readTimeout: "60 seconds"
+   * }
+   * ```
+   */
+  readTimeout?: Input<DurationSeconds>;
+  /**
+   * The number of seconds that CloudFront should try to maintain the connection
+   * to the destination after receiving the last packet of the response. Must be
+   * between 1 and 60 seconds.
+   *
+   * @default `"5 seconds"`
+   * @example
+   * ```js
+   * router: {
+   *   instance: router,
+   *   keepAliveTimeout: "10 seconds"
+   * }
+   * ```
+   */
+  keepAliveTimeout?: Input<DurationSeconds>;
+  /**
+   * The number of seconds that CloudFront waits before timing out and closing the
+   * connection to the origin. Must be between 1 and 10 seconds.
+   *
+   * @default `"10 seconds"`
+   * @example
+   * ```js
+   * router: {
+   *   instance: router,
+   *   connectionTimeout: "3 seconds"
+   * }
+   * ```
+   */
+  connectionTimeout?: Input<DurationSeconds>;
+  /**
+   * The number of times that CloudFront attempts to connect to the origin. Must be
+   * between 1 and 3.
+   *
+   * @default `3`
+   * @example
+   * ```js
+   * router: {
+   *   instance: router,
+   *   connectionAttempts: 1
+   * }
+   * ```
+   */
+  connectionAttempts?: Input<number>;
 };
 
 export type RouterRouteArgsDeprecated = {
@@ -3086,6 +3254,11 @@ export function normalizeRouteArgs(
         routerKvStoreArn: v.instance._kvStoreArn!,
         routerProtection: v.instance._protection,
         routerDistributionArn: v.instance._distributionArn,
+        rewrite: v.rewrite,
+        readTimeout: v.readTimeout,
+        keepAliveTimeout: v.keepAliveTimeout,
+        connectionTimeout: v.connectionTimeout,
+        connectionAttempts: v.connectionAttempts,
       };
     });
   });

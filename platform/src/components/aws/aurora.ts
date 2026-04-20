@@ -29,6 +29,10 @@ export interface AuroraArgs {
   /**
    * The Aurora engine to use.
    *
+   * :::danger
+   * Changing the engine will cause the database to be destroyed and recreated.
+   * :::
+   *
    * @example
    * ```js
    * {
@@ -54,6 +58,11 @@ export interface AuroraArgs {
    * - Aurora PostgresSQL 14.12 and higher
    * - Aurora PostgresSQL 13.15 and higher
    * - Aurora MySQL 3.08.0 and higher
+   *
+   * :::caution
+   * Changing the version will cause the database to restart on the next `sst deploy`,
+   * causing downtime. Learn more about [upgrading databases](/docs/upgrade-aws-databases/).
+   * :::
    *
    * @default `"17"` for Postgres, `"3.08.0"` for MySQL
    * @example
@@ -106,6 +115,10 @@ export interface AuroraArgs {
    * underscores.
    *
    * By default, it takes the name of the app, and replaces the hyphens with underscores.
+   *
+   * :::danger
+   * Changing the database name will cause the database to be destroyed and recreated.
+   * :::
    *
    * @default Based on the name of the current app
    * @example
@@ -926,6 +939,9 @@ Listening on "${dev.host}:${dev.port}"...`,
           {
             parent: self,
             ignoreChanges: args.version ? [] : ["family"],
+            // Necessary for the subnet to be deleted after the instance.
+            // This is either a Pulumi bug or an undocumented feature.
+            deleteBeforeReplace: false,
           },
         ),
       );
@@ -946,7 +962,13 @@ Listening on "${dev.host}:${dev.port}"...`,
             }),
             parameters: [],
           },
-          { parent: self, ignoreChanges: args.version ? [] : ["family"] },
+          {
+            parent: self,
+            ignoreChanges: args.version ? [] : ["family"],
+            // Necessary for the subnet to be deleted after the instance.
+            // This is either a Pulumi bug or an undocumented feature.
+            deleteBeforeReplace: false,
+          },
         ),
       );
     }
@@ -982,6 +1004,8 @@ Listening on "${dev.host}:${dev.port}"...`,
                 ? toSeconds(scaling.pauseAfter)
                 : undefined,
             })),
+            applyImmediately: true,
+            allowMajorVersionUpgrade: true,
             skipFinalSnapshot: true,
             storageEncrypted: true,
             enableHttpEndpoint: dataApi,
@@ -1008,6 +1032,7 @@ Listening on "${dev.host}:${dev.port}"...`,
         engineVersion: cluster.engineVersion,
         dbSubnetGroupName: cluster.dbSubnetGroupName,
         dbParameterGroupName: instanceParameterGroup.name,
+        autoMinorVersionUpgrade: false,
       };
 
       // Create primary instance

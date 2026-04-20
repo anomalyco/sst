@@ -19,7 +19,6 @@ import (
 	"github.com/sst/sst/v3/pkg/server/aws"
 	"github.com/sst/sst/v3/pkg/server/resource"
 	"github.com/sst/sst/v3/pkg/server/runtime"
-	"github.com/sst/sst/v3/pkg/server/scrap"
 )
 
 type Server struct {
@@ -59,7 +58,6 @@ func (s *Server) Start(ctx context.Context, p *project.Project) error {
 
 	resource.Register(ctx, p, s.Rpc)
 	aws.Register(ctx, p, s.Rpc)
-	scrap.Register(ctx, p, s.Rpc)
 	runtime.Register(ctx, p, s.Rpc)
 
 	server := &http.Server{

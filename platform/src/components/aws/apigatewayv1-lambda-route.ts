@@ -7,14 +7,13 @@ import {
   output,
 } from "@pulumi/pulumi";
 import { Component, Transform, transform } from "../component";
-import { FunctionArgs } from "./function";
+import { FunctionArgs } from "./function.js";
 import { apigateway, lambda } from "@pulumi/aws";
 import {
   ApiGatewayV1BaseRouteArgs,
   createMethod,
 } from "./apigatewayv1-base-route";
 import { FunctionBuilder, functionBuilder } from "./helpers/function-builder";
-import { splitQualifiedFunctionArn } from "./helpers/arn";
 
 export interface Args extends ApiGatewayV1BaseRouteArgs {
   /**
@@ -48,6 +47,14 @@ export class ApiGatewayV1LambdaRoute extends Component {
 
     const self = this;
     const api = output(args.api);
+    const fnStreaming = output(args.handler).apply((handler) =>
+      handler && typeof handler === "object" && "streaming" in handler
+        ? handler.streaming
+        : undefined,
+    );
+    const streaming = all([output(args.streaming), fnStreaming]).apply(
+      ([routeStreaming, fnStreaming]) => routeStreaming ?? fnStreaming ?? false,
+    );
 
     const method = createMethod(name, args, self);
     const fn = createFunction();
@@ -67,7 +74,7 @@ export class ApiGatewayV1LambdaRoute extends Component {
         args.handler,
         {
           description: interpolate`${api.name} route ${method} ${path}`,
-          streaming: args.streaming,
+          streaming,
         },
         args.handlerTransform,
         { parent: self },
@@ -79,8 +86,8 @@ export class ApiGatewayV1LambdaRoute extends Component {
         `${name}Permissions`,
         {
           action: "lambda:InvokeFunction",
-          function: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).unqualifiedArn),
-          qualifier: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).qualifier!),
+          function: fn.arn,
+          qualifier: fn.qualifier.apply((qualifier) => qualifier!),
           principal: "apigateway.amazonaws.com",
           sourceArn: interpolate`${api.executionArn}/*`,
         },
@@ -89,7 +96,6 @@ export class ApiGatewayV1LambdaRoute extends Component {
     }
 
     function createIntegration() {
-      const streaming = output(args.streaming ?? false);
       return new apigateway.Integration(
         ...transform(
           args.transform?.integration,
@@ -101,7 +107,7 @@ export class ApiGatewayV1LambdaRoute extends Component {
             integrationHttpMethod: "POST",
             type: "AWS_PROXY",
             uri: all([streaming, fn]).apply(([s, fn]) =>
-              s ? fn.responseStreamingInvokeArn : fn.invokeArn,
+              s ? fn.targetResponseStreamingInvokeArn : fn.targetInvokeArn,
             ),
             responseTransferMode: streaming.apply((s) =>
               s ? "STREAM" : "BUFFERED",

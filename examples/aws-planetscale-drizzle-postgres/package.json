@@ -1,0 +1,16 @@
+{
+  "name": "aws-planetscale-drizzle-postgres",
+  "version": "0.0.0",
+  "scripts": {
+    "db": "sst shell drizzle-kit",
+    "db:push": "sst shell drizzle-kit push",
+    "db:studio": "sst shell drizzle-kit studio"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.0.2",
+    "drizzle-kit": "^0.31.10",
+    "drizzle-orm": "^0.45.1",
+    "postgres": "^3.4.5",
+    "sst": "^4"
+  }
+}

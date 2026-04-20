@@ -5,7 +5,7 @@ import {
   output,
 } from "@pulumi/pulumi";
 import { Component, transform } from "../component";
-import { Function } from "./function";
+import { Function } from "./function.js";
 import { VisibleError } from "../error";
 import { AppSyncDataSourceArgs } from "./app-sync";
 import { parseDynamoArn } from "./helpers/arn";
@@ -131,7 +131,7 @@ export class AppSyncDataSource extends Component {
                 policy: iam.getPolicyDocumentOutput({
                   statements: [
                     ...(lambda
-                      ? [{ actions: ["lambda:*"], resources: [lambda.arn] }]
+                      ? [{ actions: ["lambda:*"], resources: [lambda.targetArn] }]
                       : []),
                     ...(args.dynamodb
                       ? [
@@ -185,7 +185,7 @@ export class AppSyncDataSource extends Component {
             type,
             name: args.name,
             serviceRoleArn: serviceRole?.arn,
-            lambdaConfig: lambda ? { functionArn: lambda.arn } : undefined,
+            lambdaConfig: lambda ? { functionArn: lambda.targetArn } : undefined,
             dynamodbConfig: args.dynamodb
               ? {
                   tableName: output(args.dynamodb).apply(

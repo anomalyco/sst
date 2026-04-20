@@ -8,54 +8,47 @@ import (
 	"github.com/sst/sst/v3/pkg/process"
 )
 
-type vterm struct {
-	Resize func(int, int)
-	Start  func(cmd *exec.Cmd) error
+type PaneConfig struct {
+	Key             string
+	Args            []string
+	Icon            string
+	Title           string
+	Cwd             string
+	Killable        bool
+	Autostart       bool
+	Env             []string
+	Filterable      bool
+	FilterTitle     string
+	FilterSubtitle  string
+	ListOptions     func() []FilterOption
+	OnFilterChanged func(string)
 }
 
 type pane struct {
-	icon     string
-	key      string
-	args     []string
-	title    string
-	dir      string
-	killable bool
-	env      []string
-	vt       *tcellterm.VT
-	dead     bool
-	cmd      *exec.Cmd
+	PaneConfig
+	filterAvailable bool
+	vt              *tcellterm.VT
+	dead            bool
+	cmd             *exec.Cmd
+	filter          string
 }
 
 type EventProcess struct {
 	tcell.EventTime
-	Key       string
-	Args      []string
-	Icon      string
-	Title     string
-	Cwd       string
-	Killable  bool
-	Autostart bool
-	Env       []string
+	PaneConfig
 }
 
-func (s *Multiplexer) AddProcess(key string, args []string, icon string, title string, cwd string, killable bool, autostart bool, env ...string) {
+func (s *Multiplexer) AddProcess(cfg PaneConfig) {
 	s.screen.PostEventWait(&EventProcess{
-		Key:       key,
-		Args:      args,
-		Icon:      icon,
-		Title:     title,
-		Cwd:       cwd,
-		Killable:  killable,
-		Autostart: autostart,
-		Env:       env,
+		PaneConfig: cfg,
 	})
 }
 
 func (p *pane) start() error {
-	p.cmd = process.Command(p.args[0], p.args[1:]...)
-	p.cmd.Env = p.env
-	if p.dir != "" {
-		p.cmd.Dir = p.dir
+	p.cmd = process.Command(p.Args[0], p.Args[1:]...)
+	p.cmd.Env = p.Env
+	if p.Cwd != "" {
+		p.cmd.Dir = p.Cwd
 	}
 	p.vt.Clear()
 	err := p.vt.Start(p.cmd)

@@ -99,10 +99,9 @@ func (a *LocalHome) listStages(app string) ([]string, error) {
 
 	var stages []string
 	for _, entry := range entries {
-		if !entry.IsDir() {
-			filename := entry.Name()
-			if strings.HasSuffix(filename, ".json") {
-				stageName := strings.TrimSuffix(filename, ".json")
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".json") {
+			stageName := strings.TrimSuffix(entry.Name(), ".json")
+			if hasResources(a, app, stageName) {
 				stages = append(stages, stageName)
 			}
 		}

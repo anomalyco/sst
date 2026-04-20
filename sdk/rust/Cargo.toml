@@ -16,3 +16,8 @@ base64 = "0.21.5"
 serde = "1.0.217"
 serde_json = "1.0"
 thiserror = "1.0"
+
+[dev-dependencies]
+serde = { version = "1.0.217", features = ["derive"] }
+tempfile = "3.8"
+serial_test = "3.0"

@@ -87,7 +87,7 @@ func (r *PythonRuntime) Build(ctx context.Context, input *runtime.BuildInput) (*
 	/// So we need to:
 	///
 	/// 1. Build all packages (future tree shaking would be nice)
-	/// 2. Ensure local packages are built for lambdaric acccess (remove src/ nesting)
+	/// 2. Ensure local packages are built for lambdaric access (remove src/ nesting)
 	///			To future readers: we need to do this because of the way python packages are resolved
 	///			if you have a package called "mypackage" and it contains a sub-package called "src/mypackage"
 	///			then within the package you can resolve code via "import mypackage" but not "import mypackage.src.mypackage"
@@ -178,7 +178,7 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 func (r *PythonRuntime) ShouldRebuild(functionID string, file string) bool {
 	// Assume that the build is always stale. We could do a better job here but bc of how the build
 	// process actually works its not a slowdown as the real slow part is starting the python interpreter
-	// This is neglible for now and will get faster when we can move to uv's native build system.
+	// This is negligible for now and will get faster when we can move to uv's native build system.
 	// We could also pre-warm the runtime - custom watcher paths would be useful here.
 	return true
 }
@@ -188,7 +188,7 @@ func (r *PythonRuntime) CreateBuildAsset(ctx context.Context, input *runtime.Bui
 	slog.Info("input properties", "json", string(input.Properties))
 
 	type Properties struct {
-		Architecture string `json:"architecture"`
+		Architecture string          `json:"architecture"`
 		Container    json.RawMessage `json:"container"`
 	}
 	var props Properties

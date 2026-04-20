@@ -8,7 +8,7 @@ import rehypeAutolinkHeadings from "rehype-autolink-headings";
 
 const sidebar = [
   { label: "Intro", slug: "docs" },
-  { label: "Workflow", slug: "docs/workflow" },
+  { label: "Basics", slug: "docs/basics" },
   { label: "Enterprise", slug: "docs/enterprise" },
   {
     label: "Get Started",
@@ -60,6 +60,9 @@ const sidebar = [
     label: "How to",
     collapsed: true,
     items: [
+      { label: "Cloudflare", slug: "docs/cloudflare" },
+      { label: "PlanetScale", slug: "docs/planetscale" },
+      { label: "Policy Packs", slug: "docs/policy-packs" },
       { label: "AWS Accounts", slug: "docs/aws-accounts" },
       { label: "IAM Credentials", slug: "docs/iam-credentials" },
       { label: "Migrate From v2", slug: "docs/migrate-from-v2" },
@@ -71,7 +74,7 @@ const sidebar = [
       { label: "Share Across Stages", slug: "docs/share-across-stages" },
       { label: "Reference Resources", slug: "docs/reference-resources" },
       { label: "Environment Variables", slug: "docs/environment-variables" },
-      { label: "Policy Packs", slug: "docs/policy-packs" },
+      { label: "Upgrade AWS Databases", slug: "docs/upgrade-aws-databases" },
     ],
   },
   {
@@ -85,17 +88,21 @@ const sidebar = [
           "docs/component/aws/bus",
           "docs/component/aws/vpc",
           "docs/component/aws/task",
-          "docs/component/aws/cron",
+          {
+            label: "Cron",
+            slug: "docs/component/aws/cron-v2",
+          },
           "docs/component/aws/auth",
           "docs/component/aws/nuxt",
+          "docs/component/aws/dsql",
           "docs/component/aws/astro",
           "docs/component/aws/redis",
           "docs/component/aws/email",
           "docs/component/aws/react",
           "docs/component/aws/mysql",
           "docs/component/aws/remix",
-          "docs/component/aws/nextjs",
           "docs/component/aws/queue",
+          "docs/component/aws/nextjs",
           "docs/component/aws/vector",
           "docs/component/aws/aurora",
           "docs/component/aws/router",
@@ -104,6 +111,7 @@ const sidebar = [
           "docs/component/aws/cluster",
           "docs/component/aws/service",
           "docs/component/aws/dynamo",
+          "docs/component/aws/workflow",
           "docs/component/aws/realtime",
           "docs/component/aws/sns-topic",
           "docs/component/aws/image",
@@ -126,6 +134,7 @@ const sidebar = [
             label: "Internal",
             collapsed: true,
             items: [
+              "docs/component/aws/alb",
               "docs/component/aws/cdn",
               "docs/component/aws/app-sync-resolver",
               "docs/component/aws/app-sync-function",
@@ -198,6 +207,7 @@ const sidebar = [
             label: "Deprecated",
             collapsed: true,
             items: [
+              { label: "Cron", slug: "docs/component/aws/cron" },
               { label: "OpenControl", slug: "docs/component/aws/opencontrol" },
               { label: "Vpc.v1", slug: "docs/component/aws/vpc-v1" },
               { label: "Redis.v1", slug: "docs/component/aws/redis-v1" },
@@ -212,10 +222,28 @@ const sidebar = [
         label: "Cloudflare",
         collapsed: true,
         items: [
-          "docs/component/cloudflare/kv",
+          "docs/component/cloudflare/ai",
           "docs/component/cloudflare/d1",
+          "docs/component/cloudflare/kv",
+          "docs/component/cloudflare/cron",
+          "docs/component/cloudflare/queue",
+          "docs/component/cloudflare/astro",
           "docs/component/cloudflare/worker",
           "docs/component/cloudflare/bucket",
+          { label: "StaticSite", slug: "docs/component/cloudflare/static-site-v2" },
+          "docs/component/cloudflare/tan-stack-start",
+          {
+            label: "Internal",
+            collapsed: true,
+            items: ["docs/component/cloudflare/queue-worker-subscriber"],
+          },
+          {
+            label: "Deprecated",
+            collapsed: true,
+            items: [
+              { label: "StaticSite", slug: "docs/component/cloudflare/static-site" },
+            ],
+          },
         ],
       },
       {
@@ -281,6 +309,8 @@ export default defineConfig({
     "/install": "https://raw.githubusercontent.com/sst/sst/dev/install",
     "/discord": "https://discord.gg/sst",
     "/guide": "https://guide.sst.dev",
+    "/docs/workflow": "/docs/basics",
+    "/docs/workflow/": "/docs/basics/",
     "/docs/start/aws/container": "/docs/start/aws/express",
   },
   integrations: [
@@ -294,7 +324,7 @@ export default defineConfig({
         dark: "./src/assets/logo-dark.svg",
         replacesTitle: true,
       },
-      lastUpdated: true,
+      lastUpdated: !process.env.CI,
       favicon: "/favicon.svg",
       pagination: false,
       markdown: {

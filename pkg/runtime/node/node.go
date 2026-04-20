@@ -113,7 +113,7 @@ func (w *Worker) Logs() io.ReadCloser {
 
 type NodeProperties struct {
 	Loader       map[string]string `json:"loader"`
-	Install      []string          `json:"install"`
+	Install      map[string]string `json:"install"`
 	Banner       string            `json:"banner"`
 	ESBuild      ESBuildOptions    `json:"esbuild"`
 	Minify       bool              `json:"minify"`
@@ -214,6 +214,7 @@ func (r *Runtime) Run(ctx context.Context, input *runtime.RunInput) (runtime.Wor
 	cmd := process.Command(
 		"node",
 		"--enable-source-maps",
+		"--no-warnings",
 		filepath.Join(
 			path.ResolvePlatformDir(input.CfgPath),
 			"/dist/nodejs-runtime/index.js",

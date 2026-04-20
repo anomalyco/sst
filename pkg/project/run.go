@@ -33,14 +33,6 @@ import (
 )
 
 func (p *Project) Run(ctx context.Context, input *StackInput) error {
-	// if flag.SST_EXPERIMENTAL {
-	// 	slog.Info("using next run system")
-	// }
-	// return p.RunOld(ctx, input)
-	return p.RunNext(ctx, input)
-}
-
-func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	log := slog.Default().With("service", "project.run")
 	log.Info("running stack command", "cmd", input.Command)
 
@@ -266,7 +258,7 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 		"PULUMI_IGNORE_AMBIENT_PLUGINS=true",
 		// "PULUMI_DISABLE_AUTOMATIC_PLUGIN_ACQUISITION=true",
 		"NODE_OPTIONS="+func() string {
-			nodeOptions := "--enable-source-maps --no-deprecation"
+			nodeOptions := "--enable-source-maps --no-deprecation --no-warnings"
 			if existing := os.Getenv("NODE_OPTIONS"); existing != "" {
 				nodeOptions = existing + " " + nodeOptions
 			}
@@ -421,7 +413,7 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	}
 	exited := make(chan struct{})
 	go func() {
-		cmd.Wait()
+		err := cmd.Wait()
 		log.Info("pulumi exited", "err", err)
 		close(exited)
 	}()
@@ -520,7 +512,7 @@ loop:
 		}
 
 		if event.DiagnosticEvent != nil && event.DiagnosticEvent.Severity == "error" {
-			if strings.HasPrefix(event.DiagnosticEvent.Message, "update failed") || strings.Contains(event.DiagnosticEvent.Message, "failed to register new resource") {
+			if strings.HasPrefix(event.DiagnosticEvent.Message, "update failed") || strings.HasPrefix(event.DiagnosticEvent.Message, "update cancelled") || strings.Contains(event.DiagnosticEvent.Message, "failed to register new resource") {
 				continue
 			}
 
@@ -603,6 +595,31 @@ loop:
 				if json.Unmarshal([]byte(line), &ev) == nil && ev.SummaryEvent != nil {
 					finished = true
 					break
+				}
+			}
+		}
+	}
+
+	// if pulumi exited without completing and no resource errors were captured,
+	// check stderr for the actual error (e.g. snapshot integrity failures)
+	if !finished && len(errors) == 0 {
+		if data, err := os.ReadFile(pulumiStderr.Name()); err == nil {
+			stderr := strings.TrimSpace(string(data))
+			if stderr != "" {
+				if strings.Contains(stderr, "snapshot integrity") {
+					errors = append(errors, Error{
+						Message: "Your app state is corrupted.",
+						Help: []string{
+							"Run `sst state repair` to fix state integrity issues",
+							"Learn more: https://sst.dev/docs/reference/cli/#state-repair",
+						},
+					})
+				} else {
+					msg := strings.SplitN(stderr, "\n", 2)[0]
+					msg = strings.TrimPrefix(msg, "error: ")
+					errors = append(errors, Error{
+						Message: msg,
+					})
 				}
 			}
 		}

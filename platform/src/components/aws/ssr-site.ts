@@ -898,8 +898,8 @@ async function handler(event) {
     metadata = JSON.parse(v);
   } catch (e) {}
 
-  await routeSite(kvNamespace, metadata);
-  return event.request;
+  const response = await routeSite(kvNamespace, metadata);
+  return response || event.request;
 }`,
           },
           { parent: self },
@@ -1062,6 +1062,7 @@ async function handler(event) {
                 function: server.nodes.function.name,
                 principal: "cloudfront.amazonaws.com",
                 sourceArn: distributionArn,
+                invokedViaFunctionUrl: true,
               },
               { provider, parent: self },
             );
@@ -1102,6 +1103,7 @@ async function handler(event) {
                 function: imgOptimizer.nodes.function.name,
                 principal: "cloudfront.amazonaws.com",
                 sourceArn: distributionArn,
+                invokedViaFunctionUrl: true,
               },
               { parent: self },
             );
@@ -1317,7 +1319,7 @@ async function handler(event) {
             `${name}EdgeFunction`,
             {
               name: physicalName(64, `${name}EdgeFn`),
-              runtime: "nodejs22.x",
+              runtime: "nodejs24.x",
               handler: "index.handler",
               role: edgeRole.arn,
               code: new pulumiAsset.FileArchive(
@@ -1437,10 +1439,23 @@ async function handler(event) {
                 nodejs: {
                   ...planServer.nodejs,
                   format: "esm" as const,
-                  install: output(args.server?.install).apply((install) => [
-                    ...(install ?? []),
-                    ...(planServer.nodejs?.install ?? []),
-                  ]),
+                  install: output({
+                    install: args.server?.install,
+                    planInstall: planServer.nodejs?.install,
+                  }).apply(({ install, planInstall }) => {
+                    const result: Record<string, string> = {};
+                    for (const pkg of install ?? []) {
+                      result[pkg] = "*";
+                    }
+                    if (Array.isArray(planInstall)) {
+                      for (const pkg of planInstall) {
+                        result[pkg] = "*";
+                      }
+                    } else if (planInstall) {
+                      Object.assign(result, planInstall);
+                    }
+                    return result;
+                  }),
                   loader: args.server?.loader ?? planServer.nodejs?.loader,
                 },
                 environment: output(args.environment).apply((environment) => ({

@@ -1,10 +1,9 @@
 import { ComponentResourceOptions, Input, output } from "@pulumi/pulumi";
 import { Component, transform } from "../component";
-import { FunctionArgs } from "./function";
+import { FunctionArgs } from "./function.js";
 import { DynamoSubscriberArgs } from "./dynamo";
 import { lambda } from "@pulumi/aws";
 import { FunctionBuilder, functionBuilder } from "./helpers/function-builder";
-import { parseFunctionArn } from "./helpers/arn";
 
 export interface Args extends DynamoSubscriberArgs {
   /**
@@ -84,9 +83,7 @@ export class DynamoLambdaSubscriber extends Component {
           `${name}EventSourceMapping`,
           {
             eventSourceArn: dynamo.streamArn,
-            functionName: fn.arn.apply(
-              (arn) => parseFunctionArn(arn).functionName,
-            ),
+            functionName: fn.targetArn,
             filterCriteria: args.filters
               ? output(args.filters).apply((filters) => ({
                   filters: filters.map((filter) => ({

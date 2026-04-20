@@ -582,9 +582,9 @@ export interface NextjsArgs extends SsrSiteArgs {
  * ```
  */
 export class Nextjs extends SsrSite {
-  private revalidationQueue?: Output<Queue | undefined>;
-  private revalidationTable?: Output<dynamodb.Table | undefined>;
-  private revalidationFunction?: Output<Function | undefined>;
+  private declare revalidationQueue?: Output<Queue | undefined>;
+  private declare revalidationTable?: Output<dynamodb.Table | undefined>;
+  private declare revalidationFunction?: Output<Function | undefined>;
 
   constructor(
     name: string,
