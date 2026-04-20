@@ -74,6 +74,15 @@ export interface HyperdriveBinding {
   };
 }
 
+export interface DurableObjectNamespaceBinding {
+  type: "durableObjectNamespaceBindings";
+  properties: {
+    className: Input<string>;
+    scriptName?: Input<string>;
+    environment?: Input<string>;
+  };
+}
+
 export interface VersionMetadataBinding {
   type: "versionMetadataBindings";
   properties: Record<string, never>;
@@ -89,6 +98,7 @@ export type Binding =
   | R2BucketBinding
   | D1DatabaseBinding
   | HyperdriveBinding
+  | DurableObjectNamespaceBinding
   | VersionMetadataBinding;
 
 export function binding<T extends Binding["type"]>(input: Binding & {}) {

@@ -10,6 +10,7 @@ export * from "./auth";
 export * from "./queue";
 export * from "./cron";
 export * from "./ai";
+export * from "./durable-object";
 export * from "./astro";
 export * from "./react-router";
 export * from "./tan-stack-start";

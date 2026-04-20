@@ -420,11 +420,12 @@ export class Worker extends Component implements Link.Linkable {
                     aiBindings: "ai",
                     plainTextBindings: "plain_text",
                     secretTextBindings: "secret_text",
-                    queueBindings: "queue",
-                    serviceBindings: "service",
-                    kvNamespaceBindings: "kv_namespace",
-                    d1DatabaseBindings: "d1",
-                    r2BucketBindings: "r2_bucket",
+                     queueBindings: "queue",
+                     serviceBindings: "service",
+                     durableObjectNamespaceBindings: "durable_object_namespace",
+                     kvNamespaceBindings: "kv_namespace",
+                     d1DatabaseBindings: "d1",
+                     r2BucketBindings: "r2_bucket",
                     hyperdriveBindings: "hyperdrive",
                     versionMetadataBindings: "version_metadata",
                   }[b.binding],
@@ -440,6 +441,49 @@ export class Worker extends Component implements Link.Linkable {
         }
         return result;
       });
+    }
+
+    function buildDurableObjectMigrations() {
+      return Link.getInclude<{
+        className: Input<string>;
+        migrationTag: Input<string>;
+        storage: Input<"sqlite" | "kv">;
+      }>("cloudflare.durableObject", args.link)
+        .apply((durableObjects) =>
+          all(
+            durableObjects.map((item) =>
+              all([item.className, item.migrationTag, item.storage]).apply(
+                ([className, migrationTag, storage]) => ({
+                  className,
+                  migrationTag,
+                  storage,
+                }),
+              ),
+            ),
+          ),
+        )
+        .apply((durableObjects) => {
+          if (durableObjects.length === 0) return {};
+
+          const tags = [...new Set(durableObjects.map((item) => item.migrationTag))];
+          if (tags.length > 1) {
+            throw new VisibleError(
+              "All linked Durable Objects on a Cloudflare Worker must use the same migrationTag.",
+            );
+          }
+
+          const tag = tags[0]!;
+
+          return {
+            newTag: tag,
+            newClasses: durableObjects
+              .filter((item) => item.storage === "kv")
+              .map((item) => item.className),
+            newSqliteClasses: durableObjects
+              .filter((item) => item.storage === "sqlite")
+              .map((item) => item.className),
+          };
+        });
     }
 
     function createAwsCredentials() {
@@ -595,6 +639,7 @@ export class Worker extends Component implements Link.Linkable {
                 })),
               ],
             ),
+            migrations: buildDurableObjectMigrations(),
           },
           { parent, ignoreChanges: ["scriptName"] },
         ),
