@@ -2334,11 +2334,15 @@ export class Function extends Component implements Link.Linkable {
       return all([isContainer, dev, architecture]).apply(
         ([isContainer, dev, architecture]) => {
           if (!isContainer || dev) return;
-          return new Image(name, {
-            context: `.sst/artifacts/${name}-src`,
-            tags: ['latest'],
-            platforms: [architecture === "arm64" ? "linux/arm64" : "linux/amd64"],
-          });
+          return new Image(
+            name,
+            {
+              context: `.sst/artifacts/${name}-src`,
+              tags: ['latest'],
+              platforms: [architecture === "arm64" ? "linux/arm64" : "linux/amd64"],
+            },
+            { parent },
+          );
         },
       );
     }

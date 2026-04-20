@@ -1087,18 +1087,22 @@ export function createTaskDefinition(
       image: (() => {
         if (typeof container.image === "string") return output(container.image);
 
-        const image = new Image(`${name}${container.name}`, {
-          context: container.image.context,
-          dockerfile: container.image.dockerfile,
-          args: container.image.args,
-          secrets: linkEnvs,
-          target: container.image.target,
-          platforms: [container.image.platform],
-          tags: [container.name, ...(container.image.tags ?? [])],
-          transform: {
-            image: args.transform?.image,
+        const image = new Image(
+          `${name}${container.name}`,
+          {
+            context: container.image.context,
+            dockerfile: container.image.dockerfile,
+            args: container.image.args,
+            secrets: linkEnvs,
+            target: container.image.target,
+            platforms: [container.image.platform],
+            tags: [container.name, ...(container.image.tags ?? [])],
+            transform: {
+              image: args.transform?.image,
+            },
           },
-        });
+          { parent },
+        );
 
         return image.uri;
       })(),

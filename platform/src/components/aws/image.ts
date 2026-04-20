@@ -1,5 +1,5 @@
 import fs from "fs";
-import { all, Input, interpolate, Output, secret } from "@pulumi/pulumi";
+import { all, ComponentResourceOptions, Input, interpolate, Output, secret } from "@pulumi/pulumi";
 import { Component, Transform, transform } from "../component.js";
 import { Link } from "../link.js";
 import { getRegionOutput } from "@pulumi/aws";
@@ -186,7 +186,7 @@ const limiter = new Semaphore(
 export class Image extends Component implements Link.Linkable {
   private _uri: Output<string>;
 
-  constructor(name: string, args: ImageArgs, opts?: any) {
+  constructor(name: string, args: ImageArgs, opts?: ComponentResourceOptions) {
     const componentName = `${name}Image`
     super(__pulumiType, componentName, args, opts);
 
@@ -246,7 +246,7 @@ export class Image extends Component implements Link.Linkable {
                     {
                       registryId: bootstrapData.assetEcrRegistryId,
                     },
-                    { parent },
+                    opts,
                   )
                   .apply((authToken) => ({
                     address: authToken.proxyEndpoint,
@@ -282,7 +282,7 @@ export class Image extends Component implements Link.Linkable {
                 ? { builder: { name: process.env.BUILDX_BUILDER } }
                 : {}),
             },
-            { parent },
+            opts,
           ),
         );
         this._uri = interpolate`${bootstrapData.assetEcrUrl}@${image.digest}`
