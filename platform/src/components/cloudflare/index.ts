@@ -10,6 +10,7 @@ export * from "./auth";
 export * from "./queue";
 export * from "./cron";
 export * from "./ai";
+export * from "./ai-search";
 export * from "./astro";
 export * from "./tan-stack-start";
 export { binding } from "./binding.js";

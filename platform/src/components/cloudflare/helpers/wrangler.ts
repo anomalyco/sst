@@ -44,6 +44,8 @@ export function createWranglerConfig(input: {
   const hyperdrives: Record<string, any>[] = [];
   const services: Record<string, any>[] = [];
   const queueProducers: Record<string, any>[] = [];
+  const aiSearch: Record<string, any>[] = [];
+  const aiSearchNamespaces: Record<string, any>[] = [];
   let ai: Record<string, any> | undefined;
   let versionMetadata: Record<string, any> | undefined;
 
@@ -111,6 +113,20 @@ export function createWranglerConfig(input: {
           binding: link.name,
         };
         break;
+      case "aiSearchBindings":
+        aiSearch.push({
+          binding: link.name,
+          instance_name: stringValue(properties.instanceName),
+          remote: true,
+        });
+        break;
+      case "aiSearchNamespaceBindings":
+        aiSearchNamespaces.push({
+          binding: link.name,
+          namespace: stringValue(properties.namespace),
+          remote: true,
+        });
+        break;
     }
   }
 
@@ -142,6 +158,12 @@ export function createWranglerConfig(input: {
   }
   if (versionMetadata) {
     config.version_metadata = versionMetadata;
+  }
+  if (aiSearch.length > 0) {
+    config.ai_search = aiSearch;
+  }
+  if (aiSearchNamespaces.length > 0) {
+    config.ai_search_namespaces = aiSearchNamespaces;
   }
 
   return config;

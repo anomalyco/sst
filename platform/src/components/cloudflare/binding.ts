@@ -79,6 +79,20 @@ export interface VersionMetadataBinding {
   properties: Record<string, never>;
 }
 
+export interface AiSearchBinding {
+  type: "aiSearchBindings";
+  properties: {
+    instanceName: Input<string>;
+  };
+}
+
+export interface AiSearchNamespaceBinding {
+  type: "aiSearchNamespaceBindings";
+  properties: {
+    namespace: Input<string>;
+  };
+}
+
 export type Binding =
   | AiBinding
   | KvBinding
@@ -89,7 +103,9 @@ export type Binding =
   | R2BucketBinding
   | D1DatabaseBinding
   | HyperdriveBinding
-  | VersionMetadataBinding;
+  | VersionMetadataBinding
+  | AiSearchBinding
+  | AiSearchNamespaceBinding;
 
 export function binding<T extends Binding["type"]>(input: Binding & {}) {
   return {
