@@ -229,8 +229,8 @@ const sidebar = [
           "docs/component/cloudflare/astro",
           "docs/component/cloudflare/worker",
           "docs/component/cloudflare/bucket",
-          { label: "StaticSite", slug: "docs/component/cloudflare/static-site-v2" },
           "docs/component/cloudflare/react-router",
+          { label: "StaticSite", slug: "docs/component/cloudflare/static-site-v2" },
           "docs/component/cloudflare/tan-stack-start",
           {
             label: "Internal",
