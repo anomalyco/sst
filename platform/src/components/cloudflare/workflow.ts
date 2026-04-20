@@ -29,6 +29,12 @@ export interface WorkflowArgs {
    * [`WorkflowEntrypoint`](https://developers.cloudflare.com/workflows/build/workers-api/#workflowentrypoint)
    * class. You must specify the name of the class so SST can bind to it.
    *
+   * :::caution
+   * The class must be exported as a **named export**, not a default export.
+   * Cloudflare resolves workflow classes by name at the top of the bundled
+   * script, and `export default` is not re-exported by name.
+   * :::
+   *
    * @example
    *
    * Given this handler file:
