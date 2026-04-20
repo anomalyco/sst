@@ -336,6 +336,11 @@ export class Component extends ComponentResource {
               { lower: true },
             ],
             "cloudflare:index/queue:Queue": ["queueName", 64, { lower: true }],
+            "cloudflare:index/workflow:Workflow": [
+              "workflowName",
+              64,
+              { lower: true },
+            ],
             "cloudflare:index/workersKvNamespace:WorkersKvNamespace": [
               "title",
               64,
