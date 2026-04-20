@@ -318,21 +318,24 @@ export class Worker extends Component implements Link.Linkable {
 
     const bindings = buildBindings();
     const iamCredentials = createAwsCredentials();
-    const buildInput = all([name, args.handler, args.build, compatibility]).apply(
-      async ([name, handler, build, compatibility]) => {
-        return {
-          functionID: name,
-          links: {},
-          handler,
-          runtime: "worker",
-          properties: {
-            accountID: DEFAULT_ACCOUNT_ID,
-            build,
-            compatibility,
-          },
-        };
-      },
-    );
+    const buildInput = all([
+      name,
+      args.handler,
+      args.build,
+      compatibility,
+    ]).apply(async ([name, handler, build, compatibility]) => {
+      return {
+        functionID: name,
+        links: {},
+        handler,
+        runtime: "worker",
+        properties: {
+          accountID: DEFAULT_ACCOUNT_ID,
+          build,
+          compatibility,
+        },
+      };
+    });
     const build = buildHandler();
     const script = createScript();
     const workerUrl = createWorkersUrl();
@@ -357,13 +360,7 @@ export class Worker extends Component implements Link.Linkable {
       },
     );
     this.registerOutputs({
-      _live: all([
-        name,
-        args.handler,
-        args.build,
-        compatibility,
-        dev,
-      ]).apply(
+      _live: all([name, args.handler, args.build, compatibility, dev]).apply(
         ([name, handler, build, compatibility, dev]) => {
           if (!dev) return undefined;
           return {
@@ -426,6 +423,7 @@ export class Worker extends Component implements Link.Linkable {
                     d1DatabaseBindings: "d1",
                     r2BucketBindings: "r2_bucket",
                     hyperdriveBindings: "hyperdrive",
+                    workflowBindings: "workflow",
                     versionMetadataBindings: "version_metadata",
                   }[b.binding],
                   name,
@@ -665,6 +663,13 @@ export class Worker extends Component implements Link.Linkable {
     return this.workerDomain
       ? interpolate`https://${this.workerDomain.hostname}`
       : this.workerUrl.url.apply((url) => (url ? `https://${url}` : url));
+  }
+
+  /**
+   * The generated script name of the Worker.
+   */
+  public get scriptName() {
+    return this.script.scriptName;
   }
 
   /**
