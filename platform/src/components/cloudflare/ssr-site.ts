@@ -41,7 +41,9 @@ export abstract class SsrSite extends Component implements Link.Linkable {
 
   protected abstract buildPlan(outputPath: Output<string>): Output<Plan>;
 
-  protected buildWrangler(): Input<Record<string, Input<any>> | undefined> {
+  protected buildWrangler(
+    _sitePath: string,
+  ): Input<Record<string, Input<any>> | undefined> {
     return undefined;
   }
 
@@ -120,7 +122,7 @@ export abstract class SsrSite extends Component implements Link.Linkable {
     }
 
     function resolveFrameworkConfig() {
-      return output(self.buildWrangler()).apply((config) => config ?? {});
+      return output(self.buildWrangler(sitePath)).apply((config) => config ?? {});
     }
 
     function resolveCompatibility() {
