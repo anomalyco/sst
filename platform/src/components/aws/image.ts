@@ -186,7 +186,6 @@ export class Image extends Component implements Link.Linkable {
     const componentName = `${name}Image`
     super(__pulumiType, componentName, args, opts);
 
-    const parent = this;
     const region = getRegionOutput({}, opts).name;
     const bootstrapData = region.apply((region) => bootstrap.forRegion(region));
     // Empty uri should fail deployment if not set
