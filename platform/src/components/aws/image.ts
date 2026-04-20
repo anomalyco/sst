@@ -95,7 +95,7 @@ export interface ImageArgs {
    */
   target?: Input<string>;
   /**
-   * Specify compression type and level.
+   * Specify compression type.
    */
   compression?: {
     /**
@@ -107,10 +107,6 @@ export interface ImageArgs {
      * @default `"zstd"`
      */
     type: Input<CompressionType>
-    /**
-     * Compression level. Different limits for each compression algorithm.
-     */
-    level: Input<number>
   }
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
@@ -269,11 +265,6 @@ export class Image extends Component implements Link.Linkable {
                     ociMediaTypes: true,
                     mode: "max" as const,
                     compression: normalizeCompressionType(),
-                    // Normalise compression level
-                    ...(args.compression?.level
-                      ? { compressionLevel: args.compression.level }
-                      : {}
-                    )
                   },
                 },
               ],
