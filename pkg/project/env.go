@@ -50,6 +50,7 @@ func (p *Project) EnvFor(ctx context.Context, complete *CompleteEvent, name stri
 	}
 	if dev.Cloudflare != nil && dev.Cloudflare.Path != "" {
 		env["SST_WRANGLER_PATH"] = dev.Cloudflare.Path
+		env["CLOUDFLARE_VITE_WRANGLER_CONFIG_PATH"] = dev.Cloudflare.Path
 	}
 	// Pass Cloudflare credentials to the child process for remote bindings
 	for _, key := range []string{"CLOUDFLARE_API_TOKEN", "CLOUDFLARE_API_KEY", "CLOUDFLARE_EMAIL", "CLOUDFLARE_DEFAULT_ACCOUNT_ID"} {

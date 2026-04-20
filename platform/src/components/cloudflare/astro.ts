@@ -173,19 +173,6 @@ export interface AstroArgs extends SsrSiteArgs {
  * });
  * ```
  *
- * Add this to your `astro.config.mjs` for SST to work correctly.
- *
- * ```js title="astro.config.mjs"
- * import { defineConfig } from "astro/config";
- * import cloudflare from "@astrojs/cloudflare";
- *
- * export default defineConfig({
- *   adapter: cloudflare({
- *     configPath: process.env.SST_WRANGLER_PATH,
- *   }),
- * });
- * ```
- *
  * Use `sst/resource` for linked resources.
  *
  * ```astro title="src/pages/index.astro"
@@ -217,6 +204,8 @@ export class Astro extends SsrSite {
         sitePath,
         configName: "astro.config",
         componentName: "Astro",
+        packageName: "@astrojs/cloudflare",
+        minVersion: "13.1.11",
       });
     }
     validateNoWranglerFile(sitePath, "Astro");

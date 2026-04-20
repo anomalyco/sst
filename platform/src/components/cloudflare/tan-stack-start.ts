@@ -175,24 +175,6 @@ export interface TanStackStartArgs extends SsrSiteArgs {
  * });
  * ```
  *
- * Add this to your `vite.config.ts` for SST to work correctly.
- *
- * ```ts title="vite.config.ts"
- * import { defineConfig } from 'vite'
- * import { tanstackStart } from '@tanstack/react-start/plugin/vite'
- * import { cloudflare } from '@cloudflare/vite-plugin'
- *
- * export default defineConfig({
- *   plugins: [
- *     cloudflare({
- *       viteEnvironment: { name: 'ssr' },
- *       configPath: process.env.SST_WRANGLER_PATH,
- *     }),
- *     tanstackStart(),
- *   ],
- * })
- * ```
- *
  * Use `sst/resource` for linked resources.
  *
  * ```ts title="src/routes/api.ts"
@@ -215,6 +197,8 @@ export class TanStackStart extends SsrSite {
       sitePath,
       configName: "vite.config",
       componentName: "TanStackStart",
+      packageName: "@cloudflare/vite-plugin",
+      minVersion: "1.33.0",
     });
     validateNoWranglerFile(sitePath, "TanStackStart");
   }

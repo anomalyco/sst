@@ -174,24 +174,6 @@ export interface ReactRouterArgs extends SsrSiteArgs {
  * });
  * ```
  *
- * Add this to your `vite.config.ts` for SST to work correctly.
- *
- * ```ts title="vite.config.ts"
- * import { reactRouter } from "@react-router/dev/vite";
- * import { cloudflare } from "@cloudflare/vite-plugin";
- * import { defineConfig } from "vite";
- *
- * export default defineConfig({
- *   plugins: [
- *     cloudflare({
- *       viteEnvironment: { name: "ssr" },
- *       configPath: process.env.SST_WRANGLER_PATH,
- *     }),
- *     reactRouter(),
- *   ],
- * });
- * ```
- *
  * Use `sst/resource` for linked resources.
  *
  * ```ts title="app/routes/home.tsx"
@@ -217,6 +199,8 @@ export class ReactRouter extends SsrSite {
       sitePath,
       configName: "vite.config",
       componentName: "ReactRouter",
+      packageName: "@cloudflare/vite-plugin",
+      minVersion: "1.33.0",
     });
     validateNoWranglerFile(sitePath, "ReactRouter");
   }
