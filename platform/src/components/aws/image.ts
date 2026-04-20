@@ -186,15 +186,13 @@ export class Image extends Component implements Link.Linkable {
     const componentName = `${name}Image`
     super(__pulumiType, componentName, args, opts);
 
-    const region = getRegionOutput({}, opts).name;
+    const region = getRegionOutput({}, opts).region
     const bootstrapData = region.apply((region) => bootstrap.forRegion(region));
-    // Empty uri should fail deployment if not set
-    this._uri = interpolate``
 
-    all([args, bootstrapData]).apply(
+    const wrappedUri = all([args, bootstrapData]).apply(
       async ([args, bootstrapData]) => {
-        // Wait for the all args values to be resolved before acquiring the semaphore
         await limiter.acquire(componentName);
+        // Wait for the all args values to be resolved before acquiring the semaphore
 
         const contextPath = path.join($cli.paths.root, args.context ?? ".");
         const dockerfile = args.dockerfile ?? "Dockerfile";
@@ -275,14 +273,14 @@ export class Image extends Component implements Link.Linkable {
             opts,
           ),
         );
-        this._uri = interpolate`${bootstrapData.assetEcrUrl}@${image.digest}`
 
-        image.urn.apply(() => {
-          limiter.release();
-        });
-        return image;
+        const  uri = interpolate`${bootstrapData.assetEcrUrl}@${image.digest}`
+        uri.apply(() => limiter.release());
+        return uri
       },
     );
+
+    this._uri = wrappedUri.apply(uri => uri)
   }
 
   /**
