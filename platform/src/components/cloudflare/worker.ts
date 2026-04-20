@@ -427,6 +427,7 @@ export class Worker extends Component implements Link.Linkable {
                     r2BucketBindings: "r2_bucket",
                     hyperdriveBindings: "hyperdrive",
                     versionMetadataBindings: "version_metadata",
+                    workflowBindings: "workflow",
                   }[b.binding],
                   name,
                   ...b.properties,

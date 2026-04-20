@@ -12,6 +12,7 @@ export * from "./cron";
 export * from "./ai";
 export * from "./astro";
 export * from "./tan-stack-start";
+export * from "./workflow";
 export { binding } from "./binding.js";
 
 /**

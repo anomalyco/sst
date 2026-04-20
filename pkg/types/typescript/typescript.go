@@ -21,6 +21,7 @@ var mapping = map[string]string{
 	"serviceBindings":          "Service",
 	"hyperdriveBindings":       "Hyperdrive",
 	"versionMetadataBindings":  "WorkerVersionMetadata",
+	"workflowBindings":         "Workflow",
 }
 
 func Generate(root string, links common.Links) error {
