@@ -4,7 +4,7 @@ import {
   interpolate,
   output,
 } from "@pulumi/pulumi";
-import { Component, Transform, transform } from "../component";
+import { Component, Prettify, Transform, transform } from "../component";
 import { cloudwatch, iam, sfn } from "@pulumi/aws";
 import { Link } from "../link";
 import { permission } from "./permission";
@@ -30,6 +30,77 @@ import { RETENTION } from "./logging";
 import { physicalName } from "../naming";
 import { functionBuilder } from "./helpers/function-builder";
 import { Function } from "./function.js";
+
+export type PermissionArgs = {
+  /**
+   * Configures whether the permission is allowed or denied.
+   * @default `"allow"`
+   * @example
+   * ```ts
+   * {
+   *   effect: "deny"
+   * }
+   * ```
+   */
+  effect?: "allow" | "deny";
+  /**
+   * The [IAM actions](https://docs.aws.amazon.com/service-authorization/latest/reference/reference_policies_actions-resources-contextkeys.html#actions_table) that can be performed.
+   * @example
+   * ```js
+   * {
+   *   actions: ["s3:*"]
+   * }
+   * ```
+   */
+  actions: string[];
+  /**
+   * The resourcess specified using the [IAM ARN format](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_identifiers.html).
+   * @example
+   * ```js
+   * {
+   *   resources: ["arn:aws:s3:::my-bucket/*"]
+   * }
+   * ```
+   */
+  resources: Input<Input<string>[]>;
+  /**
+   * Configure specific conditions for when the policy is in effect.
+   *
+   * @example
+   * ```js
+   * {
+   *   conditions: [
+   *     {
+   *       test: "StringEquals",
+   *       variable: "s3:x-amz-server-side-encryption",
+   *       values: ["AES256"]
+   *     },
+   *     {
+   *       test: "IpAddress",
+   *       variable: "aws:SourceIp",
+   *       values: ["10.0.0.0/16"]
+   *     }
+   *   ]
+   * }
+   * ```
+   */
+  conditions?: Input<
+    Input<{
+      /**
+       * Name of the [IAM condition operator](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_condition_operators.html) to evaluate.
+       */
+      test: Input<string>;
+      /**
+       * Name of a [Context Variable](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements.html#AvailableKeys) to apply the condition to. Context variables may either be standard AWS variables starting with `aws:` or service-specific variables prefixed with the service name.
+       */
+      variable: Input<string>;
+      /**
+       * The values to evaluate the condition against. If multiple values are provided, the condition matches if at least one of them applies. That is, AWS evaluates multiple values as though using an "OR" boolean operation.
+       */
+      values: Input<Input<string>[]>;
+    }>[]
+  >;
+};
 
 export interface StepFunctionsArgs {
   /**
@@ -129,6 +200,24 @@ export interface StepFunctionsArgs {
         level?: Input<"all" | "error" | "fatal">;
       }
   >;
+  /**
+   * Permissions and the resources that the function needs to access. These permissions are
+   * used to create the function's IAM role.
+   *
+   * @example
+   * Allow the step function return scheduled activities to all resources.
+   * ```js
+   * {
+   *   permissions: [
+   *     {
+   *       actions: ["state:GetActivityTask"],
+   *       resources: ["*"]
+   *     }
+   *   ]
+   * }
+   * ```
+   */
+  permissions?: Prettify<PermissionArgs>[];
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying resources.
    */
@@ -269,6 +358,7 @@ export class StepFunctions extends Component implements Link.Linkable {
               name: "inline",
               policy: iam.getPolicyDocumentOutput({
                 statements: [
+                  ...(args.permissions ?? []),
                   {
                     actions: ["events:*"],
                     resources: ["*"],
@@ -291,7 +381,9 @@ export class StepFunctions extends Component implements Link.Linkable {
                   {
                     actions: [
                       "states:StartExecution",
+                      "states:StopExecution",
                       "states:DescribeExecution",
+                      "states:RedriveExecution",
                     ],
                     resources: ["*"],
                   },
