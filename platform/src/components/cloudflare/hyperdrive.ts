@@ -4,25 +4,69 @@ import { Component, Transform, transform } from "../component";
 import { Link } from "../link";
 import { binding } from "./binding";
 import { DEFAULT_ACCOUNT_ID } from "./account-id";
+import { DurationHours, toSeconds } from "../duration";
 
 export interface HyperdriveArgs {
   /**
-   * Configure caching behavior for SQL queries sent through Hyperdrive.
+   * Configure caching for SQL queries sent through Hyperdrive.
+   *
+   * :::tip
+   * Caching is enabled by default. Pass `false` to disable it.
+   * :::
+   *
+   * @example
+   * Disable caching.
+   * ```js
+   * {
+   *   caching: false
+   * }
+   * ```
+   *
+   * Customize cache durations.
+   * ```js
+   * {
+   *   caching: {
+   *     maxAge: "30 minutes",
+   *     staleWhileRevalidate: "30 seconds"
+   *   }
+   * }
+   * ```
    */
-  caching?: Input<{
-    /**
-     * Set to true to disable caching of SQL responses. Default is false.
-     */
-    disabled?: Input<boolean>;
-    /**
-     * Specify the maximum duration (in seconds) items should persist in the cache. Defaults to 60 seconds if not specified.
-     */
-    maxAge?: Input<number>;
-    /**
-     * Specify the number of seconds the cache may serve a stale response. Defaults to 15 seconds if not specified.
-     */
-    staleWhileRevalidate?: Input<number>;
-  }>;
+  caching?: Input<
+    | false
+    | {
+        /**
+         * The maximum duration items should persist in the cache. Can be up to 1 hour.
+         *
+         * @default `"60 seconds"`
+         *
+         * @example
+         * ```js
+         * {
+         *   caching: {
+         *     maxAge: "30 minutes"
+         *   }
+         * }
+         * ```
+         */
+        maxAge?: Input<DurationHours>;
+        /**
+         * The duration the cache may serve a stale response while it's being revalidated.
+         *
+         * @default `"15 seconds"`
+         *
+         * @example
+         * ```js
+         * {
+         *   caching: {
+         *     staleWhileRevalidate: "30 seconds"
+         *   }
+         * }
+         * ```
+         */
+        staleWhileRevalidate?: Input<DurationHours>;
+      }
+  >;
   /**
    * Configure mTLS authentication when connecting to the origin database.
    */
@@ -41,6 +85,10 @@ export interface HyperdriveArgs {
     sslmode?: Input<string>;
   }>;
   /**
+   * The (soft) maximum number of connections the Hyperdrive is allowed to make to the origin database.
+   */
+  connectionLimit?: Input<number>;
+  /**
    * The connection details for the origin database Hyperdrive connects to.
    */
   origin: Input<{
@@ -52,10 +100,6 @@ export interface HyperdriveArgs {
      * Defines the Client Secret of the Access Token to use when connecting to the origin database. The API never returns this write-only value.
      */
     accessClientSecret?: Input<string>;
-    /**
-     * The (soft) maximum number of connections the Hyperdrive is allowed to make to the origin database.
-     */
-    connectionLimit?: Input<number>;
     /**
      * Set the name of your origin database.
      */
@@ -105,13 +149,13 @@ export interface HyperdriveArgs {
  * #### PostgreSQL example
  *
  * ```ts title="sst.config.ts"
- * const hyperdrive = new sst.cloudflare.Hyperdrive('PostgresDatabase', {
+ * const hyperdrive = new sst.cloudflare.Hyperdrive("PostgresDatabase", {
  *   origin: {
- *     database: 'app',
- *     host: 'db.example.com',
- *     password: 'secret',
- *     scheme: 'postgres',
- *     user: 'postgres',
+ *     database: "app",
+ *     host: "db.example.com",
+ *     password: "secret",
+ *     scheme: "postgres",
+ *     user: "postgres",
  *   },
  * })
  * ```
@@ -122,13 +166,13 @@ export interface HyperdriveArgs {
  * #### MySQL example
  *
  * ```ts title="sst.config.ts"
- * const hyperdrive = new sst.cloudflare.Hyperdrive('MySQLDatabase', {
+ * const hyperdrive = new sst.cloudflare.Hyperdrive("MySQLDatabase", {
  *   origin: {
- *     database: 'app',
- *     host: 'db.example.com',
- *     password: 'secret',
- *     scheme: 'mysql',
- *     user: 'root',
+ *     database: "app",
+ *     host: "db.example.com",
+ *     password: "secret",
+ *     scheme: "mysql",
+ *     user: "root",
  *   },
  * })
  * ```
@@ -138,8 +182,8 @@ export interface HyperdriveArgs {
  * You can link Hyperdrive to a worker.
  *
  * ```ts {3} title="sst.config.ts"
- * new sst.cloudflare.Worker('MyWorker', {
- *   handler: './index.ts',
+ * new sst.cloudflare.Worker("MyWorker", {
+ *   handler: "./index.ts",
  *   link: [hyperdrive],
  *   url: true,
  * })
@@ -147,7 +191,7 @@ export interface HyperdriveArgs {
  *
  * Once linked, you can use the SDK to access the Hyperdrive binding in your worker.
  *
- * ```ts title="index.ts" {3}
+ * ```ts title="index.ts" {4}
  * import postgres from "postgres"
  * import { Resource } from "sst/resource"
  *
@@ -156,7 +200,7 @@ export interface HyperdriveArgs {
  *
  * It also works with MySQL:
  *
- * ```ts title="index.ts" {3}
+ * ```ts title="index.ts" {4}
  * import mysql from "mysql2/promise"
  * import { Resource } from "sst/resource"
  *
@@ -176,6 +220,7 @@ export class Hyperdrive extends Component implements Link.Linkable {
     const parent = this;
 
     const origin = output(args.origin);
+    const caching = normalizeCaching();
 
     this.hyperdrive = new cloudflare.HyperdriveConfig(
       ...transform(
@@ -183,15 +228,28 @@ export class Hyperdrive extends Component implements Link.Linkable {
         `${name}Hyperdrive`,
         {
           accountId: DEFAULT_ACCOUNT_ID,
-          caching: args.caching,
+          caching,
           mtls: args.mtls,
           name: "",
-          origin: origin.apply(({ connectionLimit, ...rest }) => rest),
-          originConnectionLimit: origin.connectionLimit as Input<number>,
+          origin,
+          originConnectionLimit: args.connectionLimit,
         },
         { parent },
       ),
     );
+
+    function normalizeCaching() {
+      if (args.caching === undefined) return undefined;
+      return output(args.caching).apply((c) => {
+        if (c === false) return { disabled: true };
+        return {
+          maxAge: c.maxAge ? toSeconds(c.maxAge) : undefined,
+          staleWhileRevalidate: c.staleWhileRevalidate
+            ? toSeconds(c.staleWhileRevalidate)
+            : undefined,
+        };
+      });
+    }
   }
 
   /**
@@ -200,8 +258,8 @@ export class Hyperdrive extends Component implements Link.Linkable {
    *
    * @example
    * ```ts title="index.ts" {3}
-   * import postgres from 'postgres'
-   * import { Resource } from 'sst'
+   * import postgres from "postgres"
+   * import { Resource } from "sst"
    *
    * const sql = postgres(Resource.PostgresDatabase.connectionString)
    * ```
@@ -209,8 +267,8 @@ export class Hyperdrive extends Component implements Link.Linkable {
    * For MySQL:
    *
    * ```ts title="index.ts" {3}
-   * import mysql from 'mysql2/promise'
-   * import { Resource } from 'sst'
+   * import mysql from "mysql2/promise"
+   * import { Resource } from "sst"
    *
    * const db = await mysql.createConnection(Resource.MySQLDatabase.connectionString)
    * ```
