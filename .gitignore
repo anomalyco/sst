@@ -21,3 +21,7 @@ examples/**/bun.lock
 examples/**/bun.lockb
 examples/**/pnpm-lock.yaml
 examples/**/package-lock.json
+examples/**/uv.lock
+examples/**/deno.lock
+examples/**/Cargo.lock
+examples/**/.env.*
