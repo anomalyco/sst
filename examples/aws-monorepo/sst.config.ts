@@ -6,6 +6,9 @@ export default $config({
       name: "aws-monorepo",
       removal: input?.stage === "production" ? "retain" : "remove",
       home: "aws",
+      providers: {
+        cloudflare: "6.13.0",
+      },
     };
   },
   async run() {
@@ -14,6 +17,7 @@ export default $config({
     return {
       api: infra.api.url,
       astro: infra.astro.url,
+      worker: infra.worker.url,
     };
   },
 });

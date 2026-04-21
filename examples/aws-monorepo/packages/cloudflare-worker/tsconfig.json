@@ -3,5 +3,5 @@
   "compilerOptions": {
     "module": "NodeNext",
     "moduleResolution": "Bundler"
-  },
+  }
 }

@@ -2,6 +2,7 @@
 /* tslint:disable */
 /* eslint-disable */
 /* deno-fmt-ignore-file */
+/* biome-ignore-all lint: auto-generated */
 
 declare module "sst" {
   export interface Resource {
@@ -28,7 +29,12 @@ declare module "sst" {
     }
   }
 }
-/// <reference path="sst-env.d.ts" />
+declare module "sst" {
+  export interface Resource {
+    "CfBucket": import("@cloudflare/workers-types").R2Bucket
+    "MyWorker": import("@cloudflare/workers-types").Service
+  }
+}
 
 import "sst"
 export {}

@@ -252,6 +252,77 @@ func TestGenerate(t *testing.T) {
 		assert.Contains(t, string(leafContent), "/// <reference path=\"../../sst-env.d.ts\" />")
 		assert.NotContains(t, string(leafContent), "broken")
 	})
+
+	t.Run("cloudflare bindings fall back to raw shape when workers-types missing", func(t *testing.T) {
+		dir := setupProject(t, map[string]string{})
+
+		links := common.Links{
+			"MyKV": {
+				Properties: map[string]interface{}{
+					"name": "my-kv",
+				},
+				Include: []common.LinkInclude{
+					{Type: "cloudflare.binding", Other: map[string]interface{}{"binding": "kvNamespaceBindings"}},
+				},
+			},
+		}
+
+		err := typescript.Generate(dir, links)
+		require.NoError(t, err)
+
+		content, err := os.ReadFile(filepath.Join(dir, "sst-env.d.ts"))
+		require.NoError(t, err)
+
+		out := string(content)
+		assert.Contains(t, out, "\"MyKV\":")
+		assert.Contains(t, out, "\"name\": string")
+		assert.NotContains(t, out, `import("@cloudflare/workers-types")`)
+	})
+
+	t.Run("cloudflare leaf gets reference shim like aws", func(t *testing.T) {
+		dir := t.TempDir()
+		pkg, _ := json.Marshal(map[string]interface{}{"dependencies": map[string]string{}})
+		os.WriteFile(filepath.Join(dir, "package.json"), pkg, 0644)
+
+		sub := filepath.Join(dir, "packages", "web")
+		os.MkdirAll(sub, 0755)
+		cfPkg, _ := json.Marshal(map[string]interface{}{"dependencies": map[string]string{"@cloudflare/workers-types": "^4.0.0"}})
+		os.WriteFile(filepath.Join(sub, "package.json"), cfPkg, 0644)
+
+		links := common.Links{
+			"MyBucket": {
+				Properties: map[string]interface{}{
+					"name": "my-bucket",
+				},
+			},
+			"MyKV": {
+				Properties: map[string]interface{}{
+					"name": "my-kv",
+				},
+				Include: []common.LinkInclude{
+					{Type: "cloudflare.binding", Other: map[string]interface{}{"binding": "kvNamespaceBindings"}},
+				},
+			},
+		}
+
+		err := typescript.Generate(dir, links)
+		require.NoError(t, err)
+
+		rootContent, err := os.ReadFile(filepath.Join(dir, "sst-env.d.ts"))
+		require.NoError(t, err)
+		leafContent, err := os.ReadFile(filepath.Join(sub, "sst-env.d.ts"))
+		require.NoError(t, err)
+
+		// Root has everything including Cloudflare augmentations
+		assert.Contains(t, string(rootContent), "\"MyBucket\":")
+		assert.Contains(t, string(rootContent), "\"MyKV\":")
+		assert.Contains(t, string(rootContent), `import("@cloudflare/workers-types").KVNamespace`)
+
+		// Leaf is just a reference shim
+		assert.Contains(t, string(leafContent), "/// <reference path=\"../../sst-env.d.ts\" />")
+		assert.NotContains(t, string(leafContent), "\"MyBucket\":")
+		assert.NotContains(t, string(leafContent), "\"MyKV\":")
+	})
 }
 
 func indexOf(s, substr string) int {

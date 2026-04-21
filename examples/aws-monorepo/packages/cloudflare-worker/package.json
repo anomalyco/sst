@@ -1,0 +1,13 @@
+{
+  "name": "@aws-monorepo/cloudflare-worker",
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "sst dev",
+    "deploy": "sst deploy"
+  },
+  "devDependencies": {
+    "sst": "^4",
+    "@cloudflare/workers-types": "^4.20240403.0"
+  }
+}

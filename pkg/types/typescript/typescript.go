@@ -1,7 +1,6 @@
 package typescript
 
 import (
-	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -68,6 +67,7 @@ func Generate(root string, links common.Links) error {
 
 	packageJsons := fs.FindDown(root, "package.json")
 	rootEnv := filepath.Join(root, "sst-env.d.ts")
+
 	foundCloudflareTypes := false
 	for _, packageJson := range packageJsons {
 		packageJsonData, err := os.ReadFile(packageJson)
@@ -75,18 +75,28 @@ func Generate(root string, links common.Links) error {
 			continue
 		}
 		var data js.PackageJson
-		err = json.Unmarshal(packageJsonData, &data)
-		if err != nil {
+		if err := json.Unmarshal(packageJsonData, &data); err != nil {
 			continue
 		}
+		if hasCloudflareTypes(data) {
+			foundCloudflareTypes = true
+			break
+		}
+	}
 
+	var rootContent string
+	if foundCloudflareTypes {
+		rootContent = renderRootFile(nonCloudflareProperties, cloudflareBindings)
+	} else {
+		rootContent = renderRootFile(properties, nil)
+	}
+
+	for _, packageJson := range packageJsons {
 		envPath := filepath.Join(filepath.Dir(packageJson), "sst-env.d.ts")
 
 		content := ""
-		if hasCloudflareTypes(data) {
-			content = renderCloudflareFile(nonCloudflareProperties, cloudflareBindings)
-		} else if rootEnv == envPath {
-			content = renderRootFile(properties)
+		if rootEnv == envPath {
+			content = rootContent
 		} else {
 			rel, err := filepath.Rel(filepath.Dir(envPath), rootEnv)
 			if err != nil {
@@ -95,7 +105,7 @@ func Generate(root string, links common.Links) error {
 			content = renderReferenceFile(filepath.ToSlash(rel))
 		}
 
-		if err := writeIfChanged(envPath, []byte(content)); err != nil {
+		if err := os.WriteFile(envPath, []byte(content), 0644); err != nil {
 			continue
 		}
 	}
@@ -113,29 +123,7 @@ func hasCloudflareTypes(pkg js.PackageJson) bool {
 	return pkg.Dependencies["@cloudflare/workers-types"] != "" || pkg.DevDependencies["@cloudflare/workers-types"] != ""
 }
 
-func renderRootFile(properties map[string]interface{}) string {
-	var builder strings.Builder
-	builder.WriteString(header)
-	builder.WriteString("declare module \"sst\" {\n")
-	builder.WriteString("  export interface Resource ")
-	builder.WriteString(infer(properties, "  "))
-	builder.WriteString("\n")
-	builder.WriteString("}\n")
-	builder.WriteString(footer)
-	return builder.String()
-}
-
-func renderReferenceFile(rel string) string {
-	var builder strings.Builder
-	builder.WriteString(header)
-	builder.WriteString("/// <reference path=\"")
-	builder.WriteString(rel)
-	builder.WriteString("\" />\n")
-	builder.WriteString(footer)
-	return builder.String()
-}
-
-func renderCloudflareFile(properties map[string]interface{}, cloudflareBindings map[string]string) string {
+func renderRootFile(properties map[string]interface{}, cloudflareBindings map[string]string) string {
 	var builder strings.Builder
 	builder.WriteString(header)
 	builder.WriteString("declare module \"sst\" {\n")
@@ -160,15 +148,14 @@ func renderCloudflareFile(properties map[string]interface{}, cloudflareBindings 
 	return builder.String()
 }
 
-func writeIfChanged(path string, next []byte) error {
-	current, err := os.ReadFile(path)
-	if err == nil && bytes.Equal(current, next) {
-		return nil
-	}
-	if err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	return os.WriteFile(path, next, 0644)
+func renderReferenceFile(rel string) string {
+	var builder strings.Builder
+	builder.WriteString(header)
+	builder.WriteString("/// <reference path=\"")
+	builder.WriteString(rel)
+	builder.WriteString("\" />\n")
+	builder.WriteString(footer)
+	return builder.String()
 }
 
 type literal struct {
