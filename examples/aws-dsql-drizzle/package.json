@@ -13,6 +13,6 @@
     "@types/pg": "^8.11.10",
     "drizzle-kit": "^0.26.2",
     "drizzle-orm": "^0.35.1",
-    "sst": "^4"
+    "sst": "file:../../sdk/js"
   }
 }

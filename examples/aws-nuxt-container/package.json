@@ -12,7 +12,7 @@
   "dependencies": {
     "ioredis": "^5.4.1",
     "nuxt": "^3.13.0",
-    "sst": "^4",
+    "sst": "file:../../sdk/js",
     "vue": "latest",
     "vue-router": "latest"
   },

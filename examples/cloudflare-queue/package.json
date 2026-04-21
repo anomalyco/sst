@@ -2,7 +2,7 @@
   "name": "cloudflare-queue",
   "version": "0.0.0",
   "dependencies": {
-    "sst": "^4"
+    "sst": "file:../../sdk/js"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240405.0"
