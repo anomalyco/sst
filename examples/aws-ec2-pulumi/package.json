@@ -13,7 +13,7 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "sst": "^4"
+    "sst": "file:../../sdk/js"
   },
   "dependencies": {
   }

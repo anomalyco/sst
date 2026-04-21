@@ -14,7 +14,7 @@ import (
 func TestGenerate(t *testing.T) {
 	t.Run("no pyproject.toml returns nil", func(t *testing.T) {
 		dir := t.TempDir()
-		err := python.Generate(dir, common.Links{})
+		err := python.Generate(dir, common.Links{}, nil)
 		require.NoError(t, err)
 	})
 
@@ -31,7 +31,7 @@ func TestGenerate(t *testing.T) {
 			},
 		}
 
-		err := python.Generate(dir, links)
+		err := python.Generate(dir, links, nil)
 		require.NoError(t, err)
 
 		content, err := os.ReadFile(filepath.Join(dir, "sst.pyi"))
@@ -60,7 +60,7 @@ func TestGenerate(t *testing.T) {
 			},
 		}
 
-		err := python.Generate(dir, links)
+		err := python.Generate(dir, links, nil)
 		require.NoError(t, err)
 
 		content, err := os.ReadFile(filepath.Join(dir, "sst.pyi"))
@@ -79,10 +79,27 @@ func TestGenerate(t *testing.T) {
 		os.MkdirAll(sub, 0755)
 		os.WriteFile(filepath.Join(sub, "pyproject.toml"), []byte("[project]"), 0644)
 
-		err := python.Generate(dir, common.Links{})
+		err := python.Generate(dir, common.Links{}, nil)
 		require.NoError(t, err)
 
 		assert.FileExists(t, filepath.Join(sub, "sst.pyi"))
+	})
+
+	t.Run("ignores configured directories", func(t *testing.T) {
+		dir := t.TempDir()
+		ignored := filepath.Join(dir, "services", "legacy")
+		included := filepath.Join(dir, "services", "api")
+		os.MkdirAll(ignored, 0755)
+		os.MkdirAll(included, 0755)
+		os.WriteFile(filepath.Join(ignored, "pyproject.toml"), []byte("[project]"), 0644)
+		os.WriteFile(filepath.Join(included, "pyproject.toml"), []byte("[project]"), 0644)
+
+		err := python.Generate(dir, common.Links{}, []string{"services/legacy"})
+		require.NoError(t, err)
+
+		assert.FileExists(t, filepath.Join(included, "sst.pyi"))
+		_, err = os.Stat(filepath.Join(ignored, "sst.pyi"))
+		assert.True(t, os.IsNotExist(err))
 	})
 }
 

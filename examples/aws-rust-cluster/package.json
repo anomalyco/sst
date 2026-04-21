@@ -10,10 +10,10 @@
   "license": "ISC",
   "devDependencies": {
     "@types/aws-lambda": "8.10.145",
-    "sst": "^4",
+    "sst": "file:../../sdk/js",
     "sst-linux-x64": "^4"
   },
   "dependencies": {
-    "sst": "^4"
+    "sst": "file:../../sdk/js"
   }
 }

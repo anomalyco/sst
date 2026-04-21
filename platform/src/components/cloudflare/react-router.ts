@@ -202,6 +202,8 @@ export interface ReactRouterArgs extends SsrSiteArgs {
  *   return { files };
  * }
  * ```
+ *
+ * [Check out the full example](/docs/examples/#cloudflare-react-router).
  */
 export class ReactRouter extends SsrSite {
   constructor(

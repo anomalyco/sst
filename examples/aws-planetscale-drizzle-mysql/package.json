@@ -10,6 +10,6 @@
     "@planetscale/database": "^1.19.0",
     "drizzle-kit": "^0.31.10",
     "drizzle-orm": "^0.45.1",
-    "sst": "^4"
+    "sst": "file:../../sdk/js"
   }
 }

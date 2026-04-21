@@ -4,7 +4,7 @@
   "dependencies": {
     "@trpc/client": "^11.11.0",
     "@trpc/server": "^11.11.0",
-    "sst": "^4",
+    "sst": "file:../../sdk/js",
     "zod": "^4.3.6"
   },
   "devDependencies": {

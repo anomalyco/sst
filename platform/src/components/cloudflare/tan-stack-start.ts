@@ -200,6 +200,8 @@ export interface TanStackStartArgs extends SsrSiteArgs {
  *
  * const files = await Resource.MyBucket.list();
  * ```
+ *
+ * [Check out the full example](/docs/examples/#cloudflare-tanstack-start).
  */
 export class TanStackStart extends SsrSite {
   constructor(

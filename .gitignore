@@ -15,5 +15,13 @@ tmp
 .termai
 .opencode
 
-examples/*/sst-env.d.ts
+examples/**/sst-env.d.ts
 www/src/content/docs/docs/examples.mdx
+examples/**/bun.lock
+examples/**/bun.lockb
+examples/**/pnpm-lock.yaml
+examples/**/package-lock.json
+examples/**/uv.lock
+examples/**/deno.lock
+examples/**/Cargo.lock
+examples/**/.env.*

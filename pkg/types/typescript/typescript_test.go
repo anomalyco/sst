@@ -24,7 +24,7 @@ func setupProject(t *testing.T, deps map[string]string) string {
 func TestGenerate(t *testing.T) {
 	t.Run("no package.json returns nil", func(t *testing.T) {
 		dir := t.TempDir()
-		err := typescript.Generate(dir, common.Links{})
+		err := typescript.Generate(dir, common.Links{}, nil)
 		require.NoError(t, err)
 	})
 
@@ -40,7 +40,7 @@ func TestGenerate(t *testing.T) {
 			},
 		}
 
-		err := typescript.Generate(dir, links)
+		err := typescript.Generate(dir, links, nil)
 		require.NoError(t, err)
 
 		content, err := os.ReadFile(filepath.Join(dir, "sst-env.d.ts"))
@@ -66,7 +66,7 @@ func TestGenerate(t *testing.T) {
 			},
 		}
 
-		err := typescript.Generate(dir, links)
+		err := typescript.Generate(dir, links, nil)
 		require.NoError(t, err)
 
 		content, err := os.ReadFile(filepath.Join(dir, "sst-env.d.ts"))
@@ -91,7 +91,7 @@ func TestGenerate(t *testing.T) {
 			},
 		}
 
-		err := typescript.Generate(dir, links)
+		err := typescript.Generate(dir, links, nil)
 		require.NoError(t, err)
 
 		content, err := os.ReadFile(filepath.Join(dir, "sst-env.d.ts"))
@@ -114,7 +114,7 @@ func TestGenerate(t *testing.T) {
 			},
 		}
 
-		err := typescript.Generate(dir, links)
+		err := typescript.Generate(dir, links, nil)
 		require.NoError(t, err)
 
 		content, err := os.ReadFile(filepath.Join(dir, "sst-env.d.ts"))
@@ -140,7 +140,7 @@ func TestGenerate(t *testing.T) {
 			},
 		}
 
-		err := typescript.Generate(dir, links)
+		err := typescript.Generate(dir, links, nil)
 		require.NoError(t, err)
 
 		content, err := os.ReadFile(filepath.Join(dir, "sst-env.d.ts"))
@@ -160,11 +160,32 @@ func TestGenerate(t *testing.T) {
 		os.MkdirAll(sub, 0755)
 		os.WriteFile(filepath.Join(sub, "package.json"), pkg, 0644)
 
-		err := typescript.Generate(dir, common.Links{})
+		err := typescript.Generate(dir, common.Links{}, nil)
 		require.NoError(t, err)
 
 		assert.FileExists(t, filepath.Join(dir, "sst-env.d.ts"))
 		assert.FileExists(t, filepath.Join(sub, "sst-env.d.ts"))
+	})
+
+	t.Run("ignores configured directories", func(t *testing.T) {
+		dir := t.TempDir()
+		pkg, _ := json.Marshal(map[string]interface{}{"dependencies": map[string]string{}})
+		os.WriteFile(filepath.Join(dir, "package.json"), pkg, 0644)
+
+		ignored := filepath.Join(dir, "packages", "docs")
+		included := filepath.Join(dir, "packages", "web")
+		os.MkdirAll(ignored, 0755)
+		os.MkdirAll(included, 0755)
+		os.WriteFile(filepath.Join(ignored, "package.json"), pkg, 0644)
+		os.WriteFile(filepath.Join(included, "package.json"), pkg, 0644)
+
+		err := typescript.Generate(dir, common.Links{}, []string{"packages/docs"})
+		require.NoError(t, err)
+
+		assert.FileExists(t, filepath.Join(dir, "sst-env.d.ts"))
+		assert.FileExists(t, filepath.Join(included, "sst-env.d.ts"))
+		_, err = os.Stat(filepath.Join(ignored, "sst-env.d.ts"))
+		assert.True(t, os.IsNotExist(err))
 	})
 }
 

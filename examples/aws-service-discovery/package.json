@@ -11,7 +11,7 @@
   "license": "ISC",
   "dependencies": {
     "express": "^4.21.1",
-    "sst": "^4"
+    "sst": "file:../../sdk/js"
   },
   "devDependencies": {
     "@types/aws-lambda": "8.10.145"

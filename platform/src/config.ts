@@ -286,6 +286,40 @@ export interface App {
    * The paths are relative to the project root.
    */
   watch?: string[];
+
+  /**
+   * Configure type generation options.
+   *
+   * @example
+   * ```ts
+   * {
+   *   types: {
+   *     ignore: ["packages/docs", "services/legacy-python"]
+   *   }
+   * }
+   * ```
+   */
+  types?: {
+    /**
+     * Directories to ignore when generating `sst-env.d.ts` and `sst.pyi` files.
+     *
+     * By default, type files are generated for all JavaScript and Python projects
+     * (except node_modules and hidden directories).
+     *
+     * This will skip generating type files inside the listed directories.
+     * The paths are relative to the project root.
+     *
+     * @example
+     * ```ts
+     * {
+     *   types: {
+     *     ignore: ["packages/docs", "services/legacy-python"]
+     *   }
+     * }
+     * ```
+     */
+    ignore?: string[];
+  };
 }
 
 export interface AppInput {
