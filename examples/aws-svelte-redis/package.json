@@ -22,7 +22,7 @@
   "type": "module",
   "dependencies": {
     "ioredis": "^5.4.1",
-    "sst": "^4",
+    "sst": "file:../../sdk/js",
     "svelte-kit-sst": "2.43.5"
   }
 }

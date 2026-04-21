@@ -11,6 +11,6 @@
   "description": "",
   "dependencies": {
     "postgres": "^3.4.5",
-    "sst": "^4"
+    "sst": "file:../../sdk/js"
   }
 }

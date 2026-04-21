@@ -10,6 +10,6 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "sst": "^4"
+    "sst": "file:../../sdk/js"
   }
 }

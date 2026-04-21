@@ -12,7 +12,7 @@
     ]
   },
   "dependencies": {
-    "sst": "^4"
+    "sst": "file:../../../../sdk/js"
   },
   "devDependencies": {
     "vitest": "^2"
