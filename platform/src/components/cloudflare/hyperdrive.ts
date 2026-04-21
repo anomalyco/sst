@@ -1,12 +1,86 @@
-import { ComponentResourceOptions } from "@pulumi/pulumi";
+import { ComponentResourceOptions, Input, output } from "@pulumi/pulumi";
 import * as cloudflare from "@pulumi/cloudflare";
 import { Component, Transform, transform } from "../component";
 import { Link } from "../link";
 import { binding } from "./binding";
 import { DEFAULT_ACCOUNT_ID } from "./account-id";
 
-export interface HyperdriveArgs
-  extends Omit<cloudflare.HyperdriveConfigArgs, "accountId" | "name"> {
+export interface HyperdriveArgs {
+  /**
+   * Configure caching behavior for SQL queries sent through Hyperdrive.
+   */
+  caching?: Input<{
+    /**
+     * Set to true to disable caching of SQL responses. Default is false.
+     */
+    disabled?: Input<boolean>;
+    /**
+     * Specify the maximum duration (in seconds) items should persist in the cache. Defaults to 60 seconds if not specified.
+     */
+    maxAge?: Input<number>;
+    /**
+     * Specify the number of seconds the cache may serve a stale response. Defaults to 15 seconds if not specified.
+     */
+    staleWhileRevalidate?: Input<number>;
+  }>;
+  /**
+   * Configure mTLS authentication when connecting to the origin database.
+   */
+  mtls?: Input<{
+    /**
+     * Define CA certificate ID obtained after uploading CA cert.
+     */
+    caCertificateId?: Input<string>;
+    /**
+     * Define mTLS certificate ID obtained after uploading client cert.
+     */
+    mtlsCertificateId?: Input<string>;
+    /**
+     * Set SSL mode to 'require', 'verify-ca', or 'verify-full' to verify the CA.
+     */
+    sslmode?: Input<string>;
+  }>;
+  /**
+   * The connection details for the origin database Hyperdrive connects to.
+   */
+  origin: Input<{
+    /**
+     * Defines the Client ID of the Access token to use when connecting to the origin database.
+     */
+    accessClientId?: Input<string>;
+    /**
+     * Defines the Client Secret of the Access Token to use when connecting to the origin database. The API never returns this write-only value.
+     */
+    accessClientSecret?: Input<string>;
+    /**
+     * The (soft) maximum number of connections the Hyperdrive is allowed to make to the origin database.
+     */
+    connectionLimit?: Input<number>;
+    /**
+     * Set the name of your origin database.
+     */
+    database: Input<string>;
+    /**
+     * Defines the host (hostname or IP) of your origin database.
+     */
+    host: Input<string>;
+    /**
+     * Set the password needed to access your origin database. The API never returns this write-only value.
+     */
+    password: Input<string>;
+    /**
+     * Defines the port of your origin database. Defaults to 5432 for PostgreSQL or 3306 for MySQL if not specified.
+     */
+    port?: Input<number>;
+    /**
+     * Specifies the URL scheme used to connect to your origin database.
+     */
+    scheme: Input<"postgres" | "mysql">;
+    /**
+     * Set the user of your origin database.
+     */
+    user: Input<string>;
+  }>;
   /**
    * [Transform](/docs/components/#transform) how this component creates its underlying
    * resources.
@@ -24,7 +98,7 @@ export interface HyperdriveArgs
  * your app.
  *
  * Hyperdrive can connect Workers to PostgreSQL and MySQL databases.
- * Set `origin.scheme` to `"postgres"`, `"postgresql"`, or `"mysql"`.
+ * Set `origin.scheme` to `"postgres"` or `"mysql"`.
  *
  * @example
  *
@@ -41,6 +115,9 @@ export interface HyperdriveArgs
  *   },
  * })
  * ```
+ *
+ * [Check out the PlanetScale](/docs/examples/#cloudflare-hyperdrive-planetscale)
+ * or the [AWS RDS Postgres](/docs/examples/#cloudflare-hyperdrive-with-aws-postgres) examples for a complete guide.
  *
  * #### MySQL example
  *
@@ -98,6 +175,8 @@ export class Hyperdrive extends Component implements Link.Linkable {
 
     const parent = this;
 
+    const origin = output(args.origin);
+
     this.hyperdrive = new cloudflare.HyperdriveConfig(
       ...transform(
         args.transform?.hyperdrive,
@@ -107,8 +186,8 @@ export class Hyperdrive extends Component implements Link.Linkable {
           caching: args.caching,
           mtls: args.mtls,
           name: "",
-          origin: args.origin,
-          originConnectionLimit: args.originConnectionLimit,
+          origin: origin.apply(({ connectionLimit, ...rest }) => rest),
+          originConnectionLimit: origin.connectionLimit as Input<number>,
         },
         { parent },
       ),
