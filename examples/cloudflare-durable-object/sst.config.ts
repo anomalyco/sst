@@ -22,6 +22,12 @@ export default $config({
     });
 
     const api = new sst.cloudflare.Worker("Api", {
+      durableObjectMigrations: [
+        {
+          tag: "v1",
+          newSqliteClasses: ["CounterTest"],
+        },
+      ],
       handler: "worker.ts",
       link: [counter],
       url: true,

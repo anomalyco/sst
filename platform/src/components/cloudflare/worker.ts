@@ -27,6 +27,45 @@ import { getContentType } from "../base/base-site";
 import { prefixName } from "../naming";
 import { existsAsync } from "../../util/fs";
 import { normalizeCompatibility } from "./helpers/compatibility.js";
+import { cfFetch } from "./helpers/fetch.js";
+
+export interface WorkerDurableObjectMigration {
+  /**
+   * A unique identifier for this migration.
+   */
+  tag: Input<string>;
+  /**
+   * New Durable Object classes backed by KV.
+   */
+  newClasses?: Input<Input<string>[]>;
+  /**
+   * New Durable Object classes backed by SQLite.
+   */
+  newSqliteClasses?: Input<Input<string>[]>;
+  /**
+   * Durable Object classes to delete.
+   */
+  deletedClasses?: Input<Input<string>[]>;
+  /**
+   * Durable Object classes to rename.
+   */
+  renamedClasses?: Input<
+    Input<{
+      from: Input<string>;
+      to: Input<string>;
+    }>[]
+  >;
+  /**
+   * Durable Object classes to transfer from another script.
+   */
+  transferredClasses?: Input<
+    Input<{
+      from: Input<string>;
+      fromScript: Input<string>;
+      to: Input<string>;
+    }>[]
+  >;
+}
 
 export interface WorkerArgs {
   /**
@@ -182,6 +221,23 @@ export interface WorkerArgs {
    * ```
    */
   environment?: Input<Record<string, Input<string>>>;
+  /**
+   * Durable Object migrations for this worker.
+   *
+   * This follows Wrangler's migration model. Keep the full migration history
+   * here and SST will upload the latest step.
+   *
+   * @example
+   * ```js
+   * {
+   *   durableObjectMigrations: [{
+   *     tag: "v1",
+   *     newSqliteClasses: ["Counter"]
+   *   }]
+   * }
+   * ```
+   */
+  durableObjectMigrations?: Input<Input<WorkerDurableObjectMigration>[]>;
   /** @internal */
   assets?: Input<{
     directory: Input<string>;
@@ -443,47 +499,137 @@ export class Worker extends Component implements Link.Linkable {
       });
     }
 
-    function buildDurableObjectMigrations() {
-      return Link.getInclude<{
-        className: Input<string>;
-        migrationTag: Input<string>;
-        storage: Input<"sqlite" | "kv">;
-      }>("cloudflare.durableObject", args.link)
-        .apply((durableObjects) =>
+    function buildDurableObjectMigrations(scriptName: string) {
+      return all([
+        Link.getInclude<{ className: Input<string> }>(
+          "cloudflare.durableObject",
+          args.link,
+        ).apply((durableObjects) => all(durableObjects.map((item) => item.className))),
+        output(args.durableObjectMigrations ?? []).apply((migrations) =>
           all(
-            durableObjects.map((item) =>
-              all([item.className, item.migrationTag, item.storage]).apply(
-                ([className, migrationTag, storage]) => ({
-                  className,
-                  migrationTag,
-                  storage,
+            migrations.map((migration) =>
+              all([
+                migration.tag,
+                output(migration.newClasses ?? []),
+                output(migration.newSqliteClasses ?? []),
+                output(migration.deletedClasses ?? []),
+                output(migration.renamedClasses ?? []),
+                output(migration.transferredClasses ?? []),
+              ]).apply(
+                ([
+                  tag,
+                  newClasses,
+                  newSqliteClasses,
+                  deletedClasses,
+                  renamedClasses,
+                  transferredClasses,
+                ]) => ({
+                  tag,
+                  newClasses,
+                  newSqliteClasses,
+                  deletedClasses,
+                  renamedClasses,
+                  transferredClasses,
                 }),
               ),
             ),
           ),
-        )
-        .apply((durableObjects) => {
-          if (durableObjects.length === 0) return {};
+        ),
+      ]).apply(async ([durableObjects, migrations]) => {
+        if (durableObjects.length > 0 && migrations.length === 0) {
+          throw new VisibleError(
+            [
+              "Linked Durable Objects require worker migrations.",
+              'Add `durableObjectMigrations: [{ tag: "v1", newSqliteClasses: ["YourClass"] }]` to the worker.',
+            ].join("\n"),
+          );
+        }
 
-          const tags = [...new Set(durableObjects.map((item) => item.migrationTag))];
-          if (tags.length > 1) {
-            throw new VisibleError(
-              "All linked Durable Objects on a Cloudflare Worker must use the same migrationTag.",
-            );
+        const defined = new Set<string>();
+        for (const migration of migrations) {
+          for (const className of migration.newClasses) {
+            defined.add(className);
+          }
+          for (const className of migration.newSqliteClasses) {
+            defined.add(className);
+          }
+          for (const renamed of migration.renamedClasses) {
+            defined.delete(renamed.from);
+            defined.add(renamed.to);
+          }
+          for (const transferred of migration.transferredClasses) {
+            defined.add(transferred.to);
+          }
+          for (const className of migration.deletedClasses) {
+            defined.delete(className);
+          }
+        }
+
+        const missing = durableObjects.filter((className) => !defined.has(className));
+        if (missing.length > 0) {
+          throw new VisibleError(
+            `Linked Durable Objects are missing from durableObjectMigrations: ${missing.join(", ")}`,
+          );
+        }
+
+        const latest = migrations.at(-1);
+        if (!latest) {
+          return {
+            migrationTag: undefined,
+            migrations: {},
+          };
+        }
+
+        let currentTag: string | undefined;
+        try {
+          const published = await cfFetch<{
+            script: {
+              migration_tag?: string;
+            };
+          }>(
+            `/accounts/${DEFAULT_ACCOUNT_ID}/workers/services/${scriptName}/environments/production`,
+          );
+          currentTag = published.result.script.migration_tag;
+        } catch (error: any) {
+          const code = error?.errors?.[0]?.code;
+          if (code !== 10090 && code !== 10092) {
+            throw error;
+          }
+        }
+
+        if (currentTag) {
+          const foundIndex = migrations.findIndex(
+            (migration) => migration.tag === currentTag,
+          );
+
+          if (foundIndex === migrations.length - 1) {
+            return {
+              migrationTag: currentTag,
+              migrations: {},
+            };
           }
 
-          const tag = tags[0]!;
+          const pending =
+            foundIndex === -1 ? migrations : migrations.slice(foundIndex + 1);
 
           return {
-            newTag: tag,
-            newClasses: durableObjects
-              .filter((item) => item.storage === "kv")
-              .map((item) => item.className),
-            newSqliteClasses: durableObjects
-              .filter((item) => item.storage === "sqlite")
-              .map((item) => item.className),
+            migrationTag: currentTag,
+            migrations: {
+              oldTag: currentTag,
+              newTag: latest.tag,
+              steps: pending.map(({ tag: _tag, ...step }) => step),
+            },
           };
-        });
+        }
+
+        return {
+          migrationTag: "",
+          migrations: {
+            newTag: latest.tag,
+            steps: migrations.map(({ tag: _tag, ...step }) => step),
+          },
+        };
+      });
     }
 
     function createAwsCredentials() {
@@ -552,95 +698,105 @@ export class Worker extends Component implements Link.Linkable {
     }
 
     function createScript() {
+      const scriptName = prefixName(54, `${name}Script`).toLowerCase();
+      const durableObjectMigrationState = buildDurableObjectMigrations(scriptName);
       const contentFilePath = build.apply((build) =>
         path.join(build.out, build.handler),
       );
+      const scriptArgs: cf.WorkersScriptArgs = {
+        // workers.dev URLs fail above 54 chars when previews are enabled
+        scriptName,
+        mainModule: "placeholder",
+        accountId: DEFAULT_ACCOUNT_ID,
+        contentFile: contentFilePath,
+        contentSha256: contentFilePath.apply(async (p) =>
+          crypto
+            .createHash("sha256")
+            .update(await fs.readFile(p, "utf-8"))
+            .digest("hex"),
+        ),
+        compatibilityDate: compatibility.apply((value) => value.date),
+        compatibilityFlags: compatibility.apply((value) => value.flags),
+        assets: args.assets
+          ? output(args.assets).apply(async (assets) => {
+              const directory = path.isAbsolute(assets.directory)
+                ? assets.directory
+                : path.join($cli.paths.root, assets.directory);
+
+              let headers;
+              let redirects;
+              try {
+                headers = await fs.readFile(
+                  path.join(directory, "_headers"),
+                  "utf-8",
+                );
+              } catch (e) {}
+
+              try {
+                redirects = await fs.readFile(
+                  path.join(directory, "_redirects"),
+                  "utf-8",
+                );
+              } catch (e) {}
+              return {
+                directory,
+                config: {
+                  headers,
+                  redirects,
+                  htmlHandling: assets.htmlHandling,
+                  notFoundHandling: assets.notFoundHandling,
+                  runWorkerFirst: assets.runWorkerFirst,
+                },
+              };
+            })
+          : undefined,
+
+        bindings: all([args.environment, iamCredentials, bindings]).apply(
+          ([environment, iamCredentials, bindings]) => [
+            ...bindings,
+            ...(iamCredentials
+              ? [
+                  {
+                    type: "plain_text",
+                    name: "AWS_ACCESS_KEY_ID",
+                    text: iamCredentials.id,
+                  },
+                  {
+                    type: "secret_text",
+                    name: "AWS_SECRET_ACCESS_KEY",
+                    text: iamCredentials.secret,
+                  },
+                ]
+              : []),
+            ...(args.assets
+              ? [
+                  {
+                    type: "assets",
+                    name: "ASSETS",
+                  },
+                ]
+              : []),
+            ...Object.entries(environment ?? {}).map(([key, value]) => ({
+              type: "plain_text",
+              name: key,
+              text: value,
+            })),
+          ],
+        ),
+        migrations: durableObjectMigrationState.apply((state) => state.migrations),
+      };
+
+      Object.assign(scriptArgs, {
+        migrationTag: durableObjectMigrationState.apply(
+          (state) => state.migrationTag,
+        ),
+      });
+
       return new cf.WorkersScript(
         ...transform(
           args.transform?.worker as Transform<cf.WorkersScriptArgs>,
           `${name}Script`,
-          {
-            // workers.dev URLs fail above 54 chars when previews are enabled
-            scriptName: prefixName(54, `${name}Script`).toLowerCase(),
-            mainModule: "placeholder",
-            accountId: DEFAULT_ACCOUNT_ID,
-            contentFile: contentFilePath,
-            contentSha256: contentFilePath.apply(async (p) =>
-              crypto
-                .createHash("sha256")
-                .update(await fs.readFile(p, "utf-8"))
-                .digest("hex"),
-            ),
-            compatibilityDate: compatibility.apply((value) => value.date),
-            compatibilityFlags: compatibility.apply((value) => value.flags),
-            assets: args.assets
-              ? output(args.assets).apply(async (assets) => {
-                  const directory = path.isAbsolute(assets.directory)
-                    ? assets.directory
-                    : path.join($cli.paths.root, assets.directory);
-
-                  let headers;
-                  let redirects;
-                  try {
-                    headers = await fs.readFile(
-                      path.join(directory, "_headers"),
-                      "utf-8",
-                    );
-                  } catch (e) {}
-
-                  try {
-                    redirects = await fs.readFile(
-                      path.join(directory, "_redirects"),
-                      "utf-8",
-                    );
-                  } catch (e) {}
-                  return {
-                    directory,
-                    config: {
-                      headers,
-                      redirects,
-                      htmlHandling: assets.htmlHandling,
-                      notFoundHandling: assets.notFoundHandling,
-                      runWorkerFirst: assets.runWorkerFirst,
-                    },
-                  };
-                })
-              : undefined,
-
-            bindings: all([args.environment, iamCredentials, bindings]).apply(
-              ([environment, iamCredentials, bindings]) => [
-                ...bindings,
-                ...(iamCredentials
-                  ? [
-                      {
-                        type: "plain_text",
-                        name: "AWS_ACCESS_KEY_ID",
-                        text: iamCredentials.id,
-                      },
-                      {
-                        type: "secret_text",
-                        name: "AWS_SECRET_ACCESS_KEY",
-                        text: iamCredentials.secret,
-                      },
-                    ]
-                  : []),
-                ...(args.assets
-                  ? [
-                      {
-                        type: "assets",
-                        name: "ASSETS",
-                      },
-                    ]
-                  : []),
-                ...Object.entries(environment ?? {}).map(([key, value]) => ({
-                  type: "plain_text",
-                  name: key,
-                  text: value,
-                })),
-              ],
-            ),
-            migrations: buildDurableObjectMigrations(),
-          },
+          scriptArgs,
           { parent, ignoreChanges: ["scriptName"] },
         ),
       );
@@ -653,6 +809,7 @@ export class Worker extends Component implements Link.Linkable {
           accountId: DEFAULT_ACCOUNT_ID,
           scriptName: script.scriptName,
           enabled: urlEnabled,
+          etag: script.etag,
         },
         { parent },
       );
