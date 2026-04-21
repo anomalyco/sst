@@ -56,15 +56,6 @@ func Generate(root string, links common.Links) error {
 		}
 	}
 
-	properties := map[string]interface{}{}
-	nonCloudflareProperties := map[string]interface{}{}
-	for name, link := range links {
-		properties[name] = link.Properties
-		if cloudflareBindings[name] == "" {
-			nonCloudflareProperties[name] = link.Properties
-		}
-	}
-
 	packageJsons := fs.FindDown(root, "package.json")
 	rootEnv := filepath.Join(root, "sst-env.d.ts")
 
@@ -78,18 +69,21 @@ func Generate(root string, links common.Links) error {
 		if err := json.Unmarshal(packageJsonData, &data); err != nil {
 			continue
 		}
-		if hasCloudflareTypes(data) {
+		if data.Dependencies["@cloudflare/workers-types"] != "" || data.DevDependencies["@cloudflare/workers-types"] != "" {
 			foundCloudflareTypes = true
 			break
 		}
 	}
 
-	var rootContent string
-	if foundCloudflareTypes {
-		rootContent = renderRootFile(nonCloudflareProperties, cloudflareBindings)
-	} else {
-		rootContent = renderRootFile(properties, nil)
+	resources := map[string]interface{}{}
+	for name, link := range links {
+		if cfType := cloudflareBindings[name]; cfType != "" && foundCloudflareTypes {
+			resources[name] = literal{value: `import("@cloudflare/workers-types").` + cfType}
+		} else {
+			resources[name] = link.Properties
+		}
 	}
+	rootContent := renderRootFile(resources)
 
 	for _, packageJson := range packageJsons {
 		envPath := filepath.Join(filepath.Dir(packageJson), "sst-env.d.ts")
@@ -119,31 +113,14 @@ func Generate(root string, links common.Links) error {
 	return nil
 }
 
-func hasCloudflareTypes(pkg js.PackageJson) bool {
-	return pkg.Dependencies["@cloudflare/workers-types"] != "" || pkg.DevDependencies["@cloudflare/workers-types"] != ""
-}
-
-func renderRootFile(properties map[string]interface{}, cloudflareBindings map[string]string) string {
+func renderRootFile(resources map[string]interface{}) string {
 	var builder strings.Builder
 	builder.WriteString(header)
 	builder.WriteString("declare module \"sst\" {\n")
 	builder.WriteString("  export interface Resource ")
-	builder.WriteString(infer(properties, "  "))
+	builder.WriteString(infer(resources, "  "))
 	builder.WriteString("\n")
 	builder.WriteString("}\n")
-
-	bindings := map[string]interface{}{}
-	for name, link := range cloudflareBindings {
-		bindings[name] = literal{value: `import("@cloudflare/workers-types").` + link}
-	}
-	if len(bindings) > 0 {
-		builder.WriteString("declare module \"sst\" {\n")
-		builder.WriteString("  export interface Resource ")
-		builder.WriteString(infer(bindings, "  "))
-		builder.WriteString("\n")
-		builder.WriteString("}\n")
-	}
-
 	builder.WriteString(footer)
 	return builder.String()
 }
