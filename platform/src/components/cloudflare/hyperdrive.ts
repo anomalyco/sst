@@ -77,7 +77,7 @@ export interface HyperdriveArgs
  * const sql = postgres(Resource.PostgresDatabase.connectionString)
  * ```
  *
- * For MySQL, use a MySQL client.
+ * It also works with MySQL:
  *
  * ```ts title="index.ts" {3}
  * import mysql from "mysql2/promise"
