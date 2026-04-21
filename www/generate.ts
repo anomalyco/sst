@@ -2316,6 +2316,7 @@ async function buildComponents() {
       "../platform/src/components/cloudflare/bucket.ts",
       "../platform/src/components/cloudflare/cron.ts",
       "../platform/src/components/cloudflare/d1.ts",
+      "../platform/src/components/cloudflare/hyperdrive.ts",
       "../platform/src/components/cloudflare/kv.ts",
       "../platform/src/components/cloudflare/queue.ts",
       "../platform/src/components/cloudflare/queue-worker-subscriber.ts",
