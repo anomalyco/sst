@@ -36,7 +36,9 @@ type App struct {
 	Version   string                 `json:"version"`
 	Protect   bool                   `json:"protect"`
 	Watch     []string               `json:"watch"`
-	TypeIgnore []string              `json:"typeIgnore"`
+	Types     struct {
+		Ignore []string `json:"ignore"`
+	} `json:"types"`
 	// Deprecated: Backend is now Home
 	Backend string `json:"backend"`
 	// Deprecated: RemovalPolicy is now Removal
