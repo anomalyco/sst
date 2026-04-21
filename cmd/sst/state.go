@@ -390,17 +390,6 @@ var CmdState = &cli.Command{
 					return err
 				}
 
-				// prompt for confirmation to continue
-				fmt.Print("Do you want to commit these changes? (y/n): ")
-				var response string
-				_, err = fmt.Scanln(&response)
-				if err != nil {
-					return fmt.Errorf("failed to read user input: %w", err)
-				}
-				if strings.ToLower(response) != "y" {
-					return util.NewReadableError(nil, "Cancelled repair")
-				}
-
 				err = workdir.Import(checkpoint)
 				if err != nil {
 					return util.NewReadableError(err, "Could not import state")
@@ -435,7 +424,7 @@ func confirmMutations(muts []state.Mutation) error {
 	}
 
 	// prompt for confirmation to continue
-	fmt.Print("Do you want to commit these changes? (y/n): ")
+	fmt.Print("Do you want to commit these changes? (Y/n): ")
 	var response string
 	_, err := fmt.Scanln(&response)
 	if err != nil {
