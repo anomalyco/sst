@@ -1,12 +1,12 @@
-import { ComponentResourceOptions } from '@pulumi/pulumi';
-import * as cloudflare from '@pulumi/cloudflare';
-import { Component, Transform, transform } from '../component';
-import { Link } from '../link';
-import { binding } from './binding';
-import { DEFAULT_ACCOUNT_ID } from './account-id';
+import { ComponentResourceOptions } from "@pulumi/pulumi";
+import * as cloudflare from "@pulumi/cloudflare";
+import { Component, Transform, transform } from "../component";
+import { Link } from "../link";
+import { binding } from "./binding";
+import { DEFAULT_ACCOUNT_ID } from "./account-id";
 
 export interface HyperdriveArgs
-  extends Omit<cloudflare.HyperdriveConfigArgs, 'accountId' | 'name'> {
+  extends Omit<cloudflare.HyperdriveConfigArgs, "accountId" | "name"> {
   /**
    * [Transform](/docs/components/#transform) how this component creates its underlying
    * resources.
@@ -70,21 +70,21 @@ export interface HyperdriveArgs
  *
  * Once linked, you can use the SDK to access the Hyperdrive binding in your worker.
  *
-    * ```ts title="index.ts" {3}
-    * import postgres from 'postgres'
-    * import { Resource } from 'sst'
-    *
-    * const sql = postgres(Resource.PostgresDatabase.connectionString)
-    * ```
+ * ```ts title="index.ts" {3}
+ * import postgres from "postgres"
+ * import { Resource } from "sst/resource"
+ *
+ * const sql = postgres(Resource.PostgresDatabase.connectionString)
+ * ```
  *
  * For MySQL, use a MySQL client.
  *
-    * ```ts title="index.ts" {3}
-    * import mysql from 'mysql2/promise'
-    * import { Resource } from 'sst'
-    *
-    * const db = await mysql.createConnection(Resource.MySQLDatabase.connectionString)
-    * ```
+ * ```ts title="index.ts" {3}
+ * import mysql from "mysql2/promise"
+ * import { Resource } from "sst/resource"
+ *
+ * const db = await mysql.createConnection(Resource.MySQLDatabase.connectionString)
+ * ```
  */
 export class Hyperdrive extends Component implements Link.Linkable {
   private hyperdrive: cloudflare.HyperdriveConfig;
@@ -106,7 +106,7 @@ export class Hyperdrive extends Component implements Link.Linkable {
           accountId: DEFAULT_ACCOUNT_ID,
           caching: args.caching,
           mtls: args.mtls,
-          name: '',
+          name: "",
           origin: args.origin,
           originConnectionLimit: args.originConnectionLimit,
         },
@@ -145,7 +145,7 @@ export class Hyperdrive extends Component implements Link.Linkable {
       },
       include: [
         binding({
-          type: 'hyperdriveBindings',
+          type: "hyperdriveBindings",
           properties: {
             id: this.id,
           },
@@ -160,7 +160,7 @@ export class Hyperdrive extends Component implements Link.Linkable {
   public get id() {
     // Pulumi returns "accountId/hyperdriveId" for imported resources.
     return this.hyperdrive.id.apply((id) =>
-      id.includes('/') ? id.split('/')[1] : id,
+      id.includes("/") ? id.split("/")[1] : id,
     );
   }
 
@@ -184,6 +184,6 @@ export class Hyperdrive extends Component implements Link.Linkable {
   }
 }
 
-const __pulumiType = 'sst:cloudflare:Hyperdrive';
+const __pulumiType = "sst:cloudflare:Hyperdrive";
 // @ts-expect-error
 Hyperdrive.__pulumiType = __pulumiType;
