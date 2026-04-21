@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
@@ -46,6 +47,15 @@ func (p *Project) EnvFor(ctx context.Context, complete *CompleteEvent, name stri
 	env["SST_RESOURCE_App"] = fmt.Sprintf(`{"name": "%s", "stage": "%s" }`, p.App().Name, p.App().Stage)
 	for key, value := range dev.Environment {
 		env[key] = value
+	}
+	if dev.Cloudflare != nil && dev.Cloudflare.Path != "" {
+		env["SST_WRANGLER_PATH"] = dev.Cloudflare.Path
+	}
+	// Pass Cloudflare credentials to the child process for remote bindings
+	for _, key := range []string{"CLOUDFLARE_API_TOKEN", "CLOUDFLARE_API_KEY", "CLOUDFLARE_EMAIL", "CLOUDFLARE_DEFAULT_ACCOUNT_ID"} {
+		if val := os.Getenv(key); val != "" {
+			env[key] = val
+		}
 	}
 	return env, nil
 }

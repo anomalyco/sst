@@ -68,6 +68,17 @@ describe("Function targets", () => {
   });
 });
 
+describe("Function reset", () => {
+  it("clears the dev bridge cache before a new program run", () => {
+    const cache = (Function as any).devBridgeCode();
+    cache.set("us-east-1:bridge", Promise.resolve({}));
+
+    Function.reset();
+
+    expect(cache.size).toBe(0);
+  });
+});
+
 describe("functionBuilder", () => {
   it("normalizes raw qualified function arns", async () => {
     const builder = functionBuilder(

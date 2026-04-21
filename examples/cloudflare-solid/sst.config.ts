@@ -9,7 +9,7 @@ export default $config({
     };
   },
   async run() {
-    const site = new sst.cloudflare.x.SolidStart("MyWeb", {
+    new sst.cloudflare.x.SolidStart("MyWeb", {
       environment: {
         MESSAGE: "Hello from SST on Cloudflare",
       },
@@ -21,9 +21,5 @@ export default $config({
         },
       },
     });
-
-    return {
-      url: site.url,
-    };
   },
 });

@@ -56,8 +56,13 @@ type Dev struct {
 	Aws         *struct {
 		Role string `json:"role"`
 	} `json:"aws"`
+	Cloudflare *DevCloudflare `json:"cloudflare"`
 }
 type Devs map[string]Dev
+
+type DevCloudflare struct {
+	Path string `json:"path"`
+}
 
 type Task struct {
 	Name      string  `json:"-"`

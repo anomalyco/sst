@@ -2,12 +2,17 @@ import path from "node:path";
 
 export interface Env {
   ASSETS: any;
-  INDEX_PAGE: string;
+  INDEX_PAGE?: string;
   ERROR_PAGE?: string;
 }
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    // If INDEX_PAGE is not set, use native Cloudflare asset handling
+    if (!env.INDEX_PAGE) {
+      return env.ASSETS.fetch(request);
+    }
+
     const url = new URL(request.url);
 
     // Requests to exact filename already handled by worker assets, below are handlings
@@ -34,15 +39,10 @@ export default {
 
     // Handle error page
     if (env.ERROR_PAGE) {
-      // TODO: rework this logic once setting
-      //  - htmlHandling: "none",
-      //  - notFoundHandling: "none",
       url.pathname = env.ERROR_PAGE.endsWith(".html")
         ? env.ERROR_PAGE.substring(0, env.ERROR_PAGE.length - 5)
         : env.ERROR_PAGE;
-      console.log(url.pathname);
       const res: Response = await env.ASSETS.fetch(new Request(url), request);
-      console.log(res.status);
       if (res.status === 200) {
         const t = await res.text();
         return new Response(t, {

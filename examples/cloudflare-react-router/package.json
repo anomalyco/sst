@@ -1,0 +1,33 @@
+{
+  "name": "cloudflare-react-router",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "react-router build",
+    "cf-typegen": "wrangler types",
+    "dev": "react-router dev",
+    "preview": "npm run build && vite preview",
+    "typecheck": "react-router typegen && tsc -b"
+  },
+  "dependencies": {
+    "isbot": "^5.1.31",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-router": "^7.10.0",
+    "sst": "file:../../sdk/js"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.13.5",
+    "@cloudflare/workers-types": "^4.20251012.0",
+    "@react-router/dev": "^7.10.0",
+    "@tailwindcss/vite": "^4.1.13",
+    "@types/node": "^22.19.17",
+    "@types/react": "^19.1.13",
+    "@types/react-dom": "^19.1.9",
+    "tailwindcss": "^4.1.13",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.7",
+    "vite-tsconfig-paths": "^5.1.4",
+    "wrangler": "^4.83.0"
+  }
+}

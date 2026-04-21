@@ -12,6 +12,16 @@
   "license": "MIT",
   "exports": {
     ".": "./dist/index.js",
+    "./resource": {
+      "types": "./dist/resource/index.d.ts",
+      "workerd": "./dist/resource/cloudflare.js",
+      "worker": "./dist/resource/cloudflare.js",
+      "default": "./dist/resource/node.js"
+    },
+    "./resource/cloudflare": {
+      "types": "./dist/resource/cloudflare.d.ts",
+      "default": "./dist/resource/cloudflare.js"
+    },
     "./auth": "./dist/auth/index.js",
     "./auth/adapter": "./dist/auth/adapter/index.js",
     "./event": "./dist/event/index.js",

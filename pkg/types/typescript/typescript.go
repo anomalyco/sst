@@ -9,9 +9,14 @@ import (
 	"strings"
 
 	"github.com/sst/sst/v3/internal/fs"
+	"github.com/sst/sst/v3/pkg/bus"
 	"github.com/sst/sst/v3/pkg/js"
 	"github.com/sst/sst/v3/pkg/project/common"
 )
+
+type WarningEvent struct {
+	Message string
+}
 
 var mapping = map[string]string{
 	"aiBindings":              "Ai",
@@ -63,6 +68,7 @@ func Generate(root string, links common.Links) error {
 
 	packageJsons := fs.FindDown(root, "package.json")
 	rootEnv := filepath.Join(root, "sst-env.d.ts")
+	foundCloudflareTypes := false
 	for _, packageJson := range packageJsons {
 		packageJsonData, err := os.ReadFile(packageJson)
 		if err != nil {
@@ -92,6 +98,12 @@ func Generate(root string, links common.Links) error {
 		if err := writeIfChanged(envPath, []byte(content)); err != nil {
 			continue
 		}
+	}
+
+	if len(cloudflareBindings) > 0 && !foundCloudflareTypes {
+		bus.Publish(&WarningEvent{
+			Message: "Cloudflare detected but `@cloudflare/workers-types` is not installed. Install it to get proper types for your bindings.",
+		})
 	}
 
 	return nil
