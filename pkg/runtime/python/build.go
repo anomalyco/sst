@@ -675,8 +675,8 @@ func copyWorkspacePackagesForContainer(input *runtime.BuildInput, projectInfo *p
 			return fmt.Errorf("failed to create directory for workspace package %s: %w", pkgPath, err)
 		}
 
-		// Unfiltered copy — workspace packages need pyproject.toml and metadata for uv pip install
-		if err := copyDirUnfiltered(fullPath, destPath); err != nil {
+		// Preserve pyproject.toml and metadata for uv pip install
+		if err := copyDir(fullPath, destPath, skipBuildArtifacts); err != nil {
 			return fmt.Errorf("failed to copy workspace package %s: %w", pkgPath, err)
 		}
 
@@ -724,7 +724,7 @@ func copySourceFilesSimple(input *runtime.BuildInput, projectInfo *projectInfo) 
 			candidate := parts[i]
 			candidatePath := filepath.Join(workspaceDir, candidate)
 			if info, err := os.Stat(candidatePath); err == nil && info.IsDir() {
-				if err := copyDir(candidatePath, filepath.Join(outputBase, candidate)); err != nil {
+				if err := copyDir(candidatePath, filepath.Join(outputBase, candidate), skipContent); err != nil {
 					return fmt.Errorf("failed to copy directory %s: %w", candidate, err)
 				}
 				copied = true
@@ -1109,7 +1109,7 @@ func copyDependencyPackages(srcDir, destDir string) error {
 		destPath := filepath.Join(destDir, name)
 
 		if entry.IsDir() {
-			if err := copyDir(srcPath, destPath); err != nil {
+			if err := copyDir(srcPath, destPath, skipContent); err != nil {
 				slog.Warn("failed to copy package", "package", name, "error", err)
 				continue
 			}
@@ -1185,7 +1185,7 @@ func copyDependencyPackages(srcDir, destDir string) error {
 				"packageName", packageName,
 				"source", packageDir)
 
-			if err := copyDir(packageDir, packageDestPath); err != nil {
+			if err := copyDir(packageDir, packageDestPath, skipContent); err != nil {
 				slog.Warn("failed to copy package from .pth", "package", packageName, "error", err)
 				continue
 			}
