@@ -8,6 +8,6 @@
     ]
   },
   "devDependencies": {
-    "sst": "^4"
+    "sst": "file:../../../../sdk/js"
   }
 }

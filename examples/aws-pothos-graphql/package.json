@@ -5,7 +5,7 @@
     "@urql/core": "^5.0.4",
     "graphql-yoga": "^5.3.1",
     "react": "^18.3.1",
-    "sst": "^4",
+    "sst": "file:../../sdk/js",
     "urql": "^4.1.0",
     "wonka": "^6.3.4"
   },

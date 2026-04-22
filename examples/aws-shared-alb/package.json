@@ -2,6 +2,6 @@
   "name": "aws-shared-alb",
   "version": "1.0.0",
   "dependencies": {
-    "sst": "^4"
+    "sst": "file:../../sdk/js"
   }
 }

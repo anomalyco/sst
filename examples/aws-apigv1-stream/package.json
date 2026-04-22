@@ -4,6 +4,6 @@
   "dependencies": {
     "@types/aws-lambda": "^8.10.161",
     "hono": "^4",
-    "sst": "^4"
+    "sst": "file:../../sdk/js"
   }
 }
