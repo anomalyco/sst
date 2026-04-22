@@ -13,5 +13,5 @@
     "lib": ["ES2022", "DOM"],
     "types": ["@types/node"]
   },
-  "exclude": ["scripts", "dist"]
+  "exclude": ["scripts", "dist", "test"]
 }

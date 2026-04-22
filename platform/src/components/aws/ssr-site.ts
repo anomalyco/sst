@@ -1439,10 +1439,23 @@ async function handler(event) {
                 nodejs: {
                   ...planServer.nodejs,
                   format: "esm" as const,
-                  install: output(args.server?.install).apply((install) => [
-                    ...(install ?? []),
-                    ...(planServer.nodejs?.install ?? []),
-                  ]),
+                  install: output({
+                    install: args.server?.install,
+                    planInstall: planServer.nodejs?.install,
+                  }).apply(({ install, planInstall }) => {
+                    const result: Record<string, string> = {};
+                    for (const pkg of install ?? []) {
+                      result[pkg] = "*";
+                    }
+                    if (Array.isArray(planInstall)) {
+                      for (const pkg of planInstall) {
+                        result[pkg] = "*";
+                      }
+                    } else if (planInstall) {
+                      Object.assign(result, planInstall);
+                    }
+                    return result;
+                  }),
                   loader: args.server?.loader ?? planServer.nodejs?.loader,
                 },
                 environment: output(args.environment).apply((environment) => ({

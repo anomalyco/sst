@@ -1,12 +1,12 @@
 import { all, ComponentResourceOptions, output, Output } from "@pulumi/pulumi";
 import { Component, Transform, transform } from "../component";
-import { FunctionArgs, FunctionArn } from "./function.js";
+import { Function, FunctionArgs, FunctionArn } from "./function.js";
 import { Input } from "../input.js";
 import { cloudwatch, iam, lambda } from "@pulumi/aws";
 import { functionBuilder, FunctionBuilder } from "./helpers/function-builder";
-import { splitQualifiedFunctionArn } from "./helpers/arn";
 import { Task } from "./task";
 import { VisibleError } from "../error";
+import { Workflow } from "./workflow.js";
 
 export interface CronArgs {
   /**
@@ -40,7 +40,7 @@ export interface CronArgs {
    * }
    * ```
    */
-  job?: Input<string | FunctionArgs | FunctionArn>;
+  job?: Input<string | Workflow | Function | FunctionArgs | FunctionArn>;
   /**
    * The function that'll be executed when the cron job runs.
    *
@@ -71,7 +71,7 @@ export interface CronArgs {
    * }
    * ```
    */
-  function?: Input<string | FunctionArgs | FunctionArn>;
+  function?: Input<string | Workflow | Function | FunctionArgs | FunctionArn>;
   /**
    * The task that'll be executed when the cron job runs.
    *
@@ -300,8 +300,8 @@ export class Cron extends Component {
         `${name}Permission`,
         {
           action: "lambda:InvokeFunction",
-          function: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).unqualifiedArn),
-          qualifier: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).qualifier!),
+          function: fn.arn,
+          qualifier: fn.qualifier.apply((qualifier) => qualifier!),
           principal: "events.amazonaws.com",
           sourceArn: rule.arn,
         },
@@ -352,7 +352,7 @@ export class Cron extends Component {
           `${name}Target`,
           fn
             ? {
-                arn: fn.arn,
+                arn: fn.targetArn,
                 rule: rule.name,
                 input: event.apply((event) => JSON.stringify(event)),
               }

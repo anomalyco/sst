@@ -23,7 +23,7 @@
     "vite": "^7.1.7"
   },
   "dependencies": {
-    "sst": "^4",
+    "sst": "file:../../sdk/js",
     "svelte-kit-sst": "latest"
   }
 }

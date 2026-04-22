@@ -10,7 +10,7 @@ import (
 func TestNodePropertiesUnmarshal(t *testing.T) {
 	payload := `{
 		"loader": {".png": "file"},
-		"install": ["sharp"],
+		"install": {"sharp": "0.33.5"},
 		"minify": true,
 		"splitting": false,
 		"esbuild": {
@@ -33,6 +33,9 @@ func TestNodePropertiesUnmarshal(t *testing.T) {
 
 	if got := props.ESBuild.ResolveTarget(esbuild.ESNext); got != esbuild.ES2022 {
 		t.Errorf("Target = %v, want ES2022", got)
+	}
+	if got := props.Install["sharp"]; got != "0.33.5" {
+		t.Errorf("Install = %v, want 0.33.5", got)
 	}
 	if got := props.ESBuild.ResolveSourcemap(esbuild.SourceMapNone); got != esbuild.SourceMapLinked {
 		t.Errorf("Sourcemap = %v, want SourceMapLinked", got)

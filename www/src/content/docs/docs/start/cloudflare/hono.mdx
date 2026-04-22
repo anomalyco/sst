@@ -9,7 +9,7 @@ We are going to build an API with Hono, add an R2 bucket for file uploads, and d
 You can [view the source](https://github.com/sst/sst/tree/dev/examples/cloudflare-hono) of this example in our repo.
 :::
 
-Before you get started, make sure to [Create your Cloudflare API token](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/).
+Before you get started, [create your Cloudflare API token](/docs/cloudflare/#credentials).
 
 ---
 
@@ -37,9 +37,9 @@ Select the defaults and pick **Cloudflare**. This'll create a `sst.config.ts` fi
 
 ---
 
-#### Set the Cloudflare API token
+#### Set the Cloudflare credentials
 
-You can save your Cloudflare API token in a `.env` file or just set it directly.
+Set the token and account ID in your shell or `.env` file.
 
 ```bash
 export CLOUDFLARE_API_TOKEN=aaaaaaaa_aaaaaaaaaaaa_aaaaaaaa
@@ -193,4 +193,3 @@ npx sst deploy --stage production
 ```
 
 You can use any stage name here but it's good to create a new stage for production.
-

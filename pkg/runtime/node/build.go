@@ -15,6 +15,7 @@ import (
 	"github.com/sst/sst/v3/pkg/js"
 	"github.com/sst/sst/v3/pkg/process"
 	"github.com/sst/sst/v3/pkg/runtime"
+	"gopkg.in/yaml.v3"
 )
 
 var forceExternal = []string{
@@ -110,7 +111,7 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 	if properties.Plugins != "" {
 		plugins = append(plugins, plugin(properties.Plugins))
 	}
-	external := append(forceExternal, properties.Install...)
+	external := append(forceExternal, resolveInstallPackages(properties.Install)...)
 	external = append(external, properties.ESBuild.External...)
 	slog.Debug("esbuild options",
 		"target", properties.ESBuild.Target,
@@ -165,6 +166,7 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 			".js": ".mjs",
 		}
 		options.Outfile = ""
+		options.EntryNames = "bundle"
 	}
 
 	if !input.Dev {
@@ -240,7 +242,7 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		var metafile js.Metafile
 		json.Unmarshal([]byte(result.Metafile), &metafile)
 
-		installPackages := properties.Install
+		installPackages := resolveInstallPackages(properties.Install)
 		for _, pkg := range forceExternal {
 			if slices.Contains(properties.ESBuild.External, pkg) {
 				continue
@@ -256,7 +258,7 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 
 		if len(installPackages) > 0 {
 			log.Info("installing", "packages", installPackages)
-			src, err := fs.FindUp(filepath.Dir(target), "package.json")
+			src, err := fs.FindUp(filepath.Dir(file), "package.json")
 			if err != nil {
 				return nil, err
 			}
@@ -272,10 +274,11 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 			}
 			dependencies := map[string]string{}
 			for _, pkg := range installPackages {
-				dependencies[pkg] = "*"
-				if parsed.Dependencies[pkg] != "" {
-					dependencies[pkg] = parsed.Dependencies[pkg]
+				version, err := resolveInstallVersion(pkg, properties.Install, filepath.Dir(src), parsed)
+				if err != nil {
+					return nil, err
 				}
+				dependencies[pkg] = version
 			}
 			outPkg := filepath.Join(input.Out(), "package.json")
 			outFile, err := os.Create(outPkg)
@@ -320,4 +323,176 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		Errors:     errors,
 		Sourcemaps: sourcemaps,
 	}, nil
+}
+
+type catalogSource struct {
+	Catalog  map[string]string            `json:"catalog" yaml:"catalog"`
+	Catalogs map[string]map[string]string `json:"catalogs" yaml:"catalogs"`
+}
+
+type bunPackageJSON struct {
+	Catalog    map[string]string            `json:"catalog"`
+	Catalogs   map[string]map[string]string `json:"catalogs"`
+	Workspaces json.RawMessage              `json:"workspaces"`
+}
+
+type bunWorkspaces struct {
+	Catalog  map[string]string            `json:"catalog"`
+	Catalogs map[string]map[string]string `json:"catalogs"`
+}
+
+func resolveInstallPackages(install map[string]string) []string {
+	result := make([]string, 0, len(install))
+	for pkg := range install {
+		result = append(result, pkg)
+	}
+	return result
+}
+
+func resolveInstallVersion(pkg string, install map[string]string, dir string, packageJSON js.PackageJson) (string, error) {
+	version := install[pkg]
+	if version == "" || version == "*" {
+		version = packageJSON.Dependencies[pkg]
+	}
+	if version == "" {
+		return "*", nil
+	}
+	if strings.HasPrefix(version, "catalog:") {
+		var err error
+		version, err = resolveCatalogVersion(dir, pkg, version)
+		if err != nil {
+			return "", err
+		}
+	}
+	for _, prefix := range []string{"catalog:", "workspace:", "file:", "link:", "portal:", "patch:"} {
+		if strings.HasPrefix(version, prefix) {
+			return "", fmt.Errorf("could not determine an npm-compatible version for %q in nodejs.install: found %q using %q; pin the version explicitly", pkg, version, prefix)
+		}
+	}
+	return version, nil
+}
+
+func resolveCatalogVersion(dir string, pkg string, version string) (string, error) {
+	workspacePath, err := fs.FindUp(dir, "pnpm-workspace.yaml")
+	if err == nil {
+		return resolvePnpmCatalogVersion(workspacePath, pkg, version)
+	}
+	resolved, found, err := resolveBunCatalogVersion(dir, pkg, version)
+	if err != nil {
+		return "", err
+	}
+	if found {
+		return resolved, nil
+	}
+	return "", fmt.Errorf("could not determine an npm-compatible version for %q in nodejs.install: found %q but pnpm-workspace.yaml was not found and no Bun catalog was found in an ancestor package.json; pin the version explicitly", pkg, version)
+}
+
+func resolvePnpmCatalogVersion(workspacePath string, pkg string, version string) (string, error) {
+	data, err := os.ReadFile(workspacePath)
+	if err != nil {
+		return "", err
+	}
+	var workspace catalogSource
+	if err := yaml.Unmarshal(data, &workspace); err != nil {
+		return "", err
+	}
+	resolved, ok := resolveCatalogEntry(pkg, version, workspace)
+	if !ok {
+		return "", fmt.Errorf("could not determine an npm-compatible version for %q in nodejs.install: found %q but no matching catalog entry exists in pnpm-workspace.yaml; pin the version explicitly", pkg, version)
+	}
+	return resolved, nil
+}
+
+func resolveBunCatalogVersion(dir string, pkg string, version string) (string, bool, error) {
+	currentDir := dir
+	for {
+		packagePath := filepath.Join(currentDir, "package.json")
+		data, err := os.ReadFile(packagePath)
+		if err == nil {
+			source, found, err := parseBunCatalogSource(data)
+			if err != nil {
+				return "", false, err
+			}
+			if found {
+				resolved, ok := resolveCatalogEntry(pkg, version, source)
+				if !ok {
+					return "", true, fmt.Errorf("could not determine an npm-compatible version for %q in nodejs.install: found %q but no matching catalog entry exists in %s; pin the version explicitly", pkg, version, packagePath)
+				}
+				return resolved, true, nil
+			}
+		} else if !os.IsNotExist(err) {
+			return "", false, err
+		}
+
+		if currentDir == filepath.Dir(currentDir) {
+			break
+		}
+		currentDir = filepath.Dir(currentDir)
+	}
+	return "", false, nil
+}
+
+func parseBunCatalogSource(data []byte) (catalogSource, bool, error) {
+	var manifest bunPackageJSON
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		return catalogSource{}, false, err
+	}
+	source := catalogSource{
+		Catalog:  manifest.Catalog,
+		Catalogs: manifest.Catalogs,
+	}
+	workspaceSource, found, err := parseBunWorkspacesCatalogSource(manifest.Workspaces)
+	if err != nil {
+		return catalogSource{}, false, err
+	}
+	if found {
+		if workspaceSource.Catalog != nil {
+			source.Catalog = workspaceSource.Catalog
+		}
+		if workspaceSource.Catalogs != nil {
+			if source.Catalogs == nil {
+				source.Catalogs = map[string]map[string]string{}
+			}
+			for name, catalog := range workspaceSource.Catalogs {
+				source.Catalogs[name] = catalog
+			}
+		}
+	}
+	if source.Catalog == nil && len(source.Catalogs) == 0 {
+		return catalogSource{}, false, nil
+	}
+	return source, true, nil
+}
+
+func parseBunWorkspacesCatalogSource(raw json.RawMessage) (catalogSource, bool, error) {
+	trimmed := strings.TrimSpace(string(raw))
+	if trimmed == "" || trimmed[0] != '{' {
+		return catalogSource{}, false, nil
+	}
+	var workspaces bunWorkspaces
+	if err := json.Unmarshal(raw, &workspaces); err != nil {
+		return catalogSource{}, false, err
+	}
+	if workspaces.Catalog == nil && len(workspaces.Catalogs) == 0 {
+		return catalogSource{}, false, nil
+	}
+	return catalogSource{
+		Catalog:  workspaces.Catalog,
+		Catalogs: workspaces.Catalogs,
+	}, true, nil
+}
+
+func resolveCatalogEntry(pkg string, version string, source catalogSource) (string, bool) {
+	catalogName := strings.TrimSpace(strings.TrimPrefix(version, "catalog:"))
+	var catalog map[string]string
+	if catalogName == "" || catalogName == "default" {
+		catalog = source.Catalog
+		if catalog == nil {
+			catalog = source.Catalogs["default"]
+		}
+	} else {
+		catalog = source.Catalogs[catalogName]
+	}
+	resolved := catalog[pkg]
+	return resolved, resolved != ""
 }

@@ -1,0 +1,14 @@
+---
+import Layout from "../layouts/Layout.astro";
+---
+
+<Layout title="Astro on Cloudflare">
+  <h1>Astro on Cloudflare</h1>
+  <p class="muted">
+    This page is server rendered and reads the linked R2 bucket through
+    <code>Astro.locals.runtime.env</code>.
+  </p>
+  <p>
+    <a href="/prerendered">Open the prerendered page</a>
+  </p>
+</Layout>

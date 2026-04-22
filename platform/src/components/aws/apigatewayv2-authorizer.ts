@@ -10,7 +10,6 @@ import { apigatewayv2, lambda } from "@pulumi/aws";
 import { VisibleError } from "../error";
 import { toSeconds } from "../duration";
 import { functionBuilder } from "./helpers/function-builder";
-import { splitQualifiedFunctionArn } from "./helpers/arn";
 
 export interface AuthorizerArgs extends ApiGatewayV2AuthorizerArgs {
   /**
@@ -115,7 +114,7 @@ export class ApiGatewayV2Authorizer extends Component {
                   identitySources: lamb.apply(
                     (lamb) => lamb.identitySources ?? [defaultIdentitySource],
                   ),
-                  authorizerUri: fn!.invokeArn,
+                  authorizerUri: fn!.targetInvokeArn,
                   ...(args.type === "http"
                     ? {
                         authorizerResultTtlInSeconds: lamb.apply((lamb) =>
@@ -155,8 +154,8 @@ export class ApiGatewayV2Authorizer extends Component {
         `${name}Permission`,
         {
           action: "lambda:InvokeFunction",
-          function: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).unqualifiedArn),
-          qualifier: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).qualifier!),
+          function: fn.arn,
+          qualifier: fn.qualifier.apply((qualifier) => qualifier!),
           principal: "apigateway.amazonaws.com",
           sourceArn: interpolate`${api.executionArn}/authorizers/${authorizer.id}`,
         },

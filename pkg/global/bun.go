@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"debug/elf"
 	"fmt"
 	"io"
 	"log/slog"
@@ -22,6 +23,9 @@ import (
 )
 
 func BunPath() string {
+	if flag.SST_BUN_PATH != "" {
+		return flag.SST_BUN_PATH
+	}
 	path := filepath.Join(BinPath(), "bun")
 	if runtime.GOOS == "windows" {
 		path += ".exe"
@@ -31,6 +35,9 @@ func BunPath() string {
 
 func NeedsBun() bool {
 	if flag.SST_NO_BUN {
+		return false
+	}
+	if flag.SST_BUN_PATH != "" {
 		return false
 	}
 	path := BunPath()
@@ -54,16 +61,9 @@ func InstallBun(ctx context.Context) error {
 	goos := runtime.GOOS
 	arch := runtime.GOARCH
 
-	// Check for MUSL on Linux
 	isMusl := false
 	if goos == "linux" {
-		if _, err := os.Stat("/lib/ld-musl-x86_64.so.1"); err == nil {
-			isMusl = true
-		} else {
-			cmd := exec.Command("ldd", "--version")
-			output, _ := cmd.CombinedOutput()
-			isMusl = strings.Contains(strings.ToLower(string(output)), "musl")
-		}
+		isMusl = linuxUsesMusl()
 	}
 
 	var filename string
@@ -162,4 +162,103 @@ func InstallBun(ctx context.Context) error {
 		return nil, nil
 	})
 	return err
+}
+
+func linuxUsesMusl() bool {
+	isMusl, ok := muslFromLdd()
+	if ok {
+		return isMusl
+	}
+
+	for _, path := range []string{"/bin/sh", "/usr/bin/env", "/bin/busybox"} {
+		isMusl, ok := muslFromELF(path)
+		if ok {
+			return isMusl
+		}
+	}
+
+	isMusl, ok = muslFromAlpineRelease()
+	if ok {
+		return isMusl
+	}
+
+	isMusl, ok = muslFromLoaderPath()
+	if ok {
+		return isMusl
+	}
+
+	return false
+}
+
+func muslFromLdd() (bool, bool) {
+	lddPath, err := exec.LookPath("ldd")
+	if err != nil {
+		return false, false
+	}
+
+	output, err := exec.Command(lddPath, "--version").CombinedOutput()
+	if err != nil && len(output) == 0 {
+		return false, false
+	}
+
+	return strings.Contains(strings.ToLower(string(output)), "musl"), true
+}
+
+func muslFromELF(path string) (bool, bool) {
+	interpreter, err := elfInterpreter(path)
+	if err != nil || interpreter == "" {
+		return false, false
+	}
+
+	return strings.Contains(strings.ToLower(interpreter), "musl"), true
+}
+
+func muslFromAlpineRelease() (bool, bool) {
+	_, err := os.Stat("/etc/alpine-release")
+	if err == nil {
+		return true, true
+	}
+
+	return false, false
+}
+
+func muslFromLoaderPath() (bool, bool) {
+	var path string
+	switch runtime.GOARCH {
+	case "amd64":
+		path = "/lib/ld-musl-x86_64.so.1"
+	case "arm64":
+		path = "/lib/ld-musl-aarch64.so.1"
+	default:
+		return false, false
+	}
+
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, true
+	}
+
+	return false, false
+}
+
+func elfInterpreter(path string) (string, error) {
+	file, err := elf.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	for _, prog := range file.Progs {
+		if prog.Type != elf.PT_INTERP {
+			continue
+		}
+
+		interpreter, err := io.ReadAll(prog.Open())
+		if err != nil {
+			return "", err
+		}
+		return strings.TrimRight(string(interpreter), "\x00"), nil
+	}
+
+	return "", fmt.Errorf("no ELF interpreter found for %s", path)
 }
