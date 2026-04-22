@@ -230,6 +230,7 @@ const sidebar = [
           "docs/component/cloudflare/worker",
           "docs/component/cloudflare/bucket",
           { label: "StaticSite", slug: "docs/component/cloudflare/static-site-v2" },
+          "docs/component/cloudflare/workflow",
           "docs/component/cloudflare/hyperdrive",
           "docs/component/cloudflare/react-router",
           "docs/component/cloudflare/tan-stack-start",

@@ -237,6 +237,27 @@ export class Workflow extends Component implements Link.Linkable {
   }
 
   /**
+   * The name of the Cloudflare Workflow.
+   */
+  public get workflowName() {
+    return this.workflow.workflowName;
+  }
+
+  /**
+   * The name of the workflow class.
+   */
+  public get className() {
+    return this.workflow.className;
+  }
+
+  /**
+   * The name of the Worker script that hosts the workflow class.
+   */
+  public get scriptName() {
+    return this.workflow.scriptName;
+  }
+
+  /**
    * The underlying [resources](/docs/components/#nodes) this component creates.
    */
   public get nodes() {
