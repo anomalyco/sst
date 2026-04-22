@@ -1,4 +1,4 @@
-import { AwsOptions, client } from "./client.js";
+import { aws } from "./client.js";
 /**
  * The `task` client SDK is available through the following.
  *
@@ -12,11 +12,6 @@ import { AwsOptions, client } from "./client.js";
  * run a task.
  */
 export namespace task {
-  function url(region?: string, options?: AwsOptions) {
-    if (options?.region) region = options.region;
-    return `https://ecs.${region}.amazonaws.com/`;
-  }
-
   /**
    * The link data for the task.
    *
@@ -67,7 +62,7 @@ export namespace task {
      * Configure the options for the [aws4fetch](https://github.com/mhart/aws4fetch)
      * [`AWSClient`](https://github.com/mhart/aws4fetch?tab=readme-ov-file#new-awsclientoptions) used internally by the SDK.
      */
-    aws?: AwsOptions;
+    aws?: aws.Options;
   }
 
   export interface RunOptions extends Options {
@@ -157,11 +152,8 @@ export namespace task {
     task: string,
     options?: Options
   ): Promise<DescribeResponse> {
-    const c = await client();
-    const u = url(c.region, options?.aws);
-    const res = await c.fetch(u, {
+    const res = await aws.fetch("ecs", "/", {
       method: "POST",
-      aws: options?.aws,
       headers: {
         "X-Amz-Target": "AmazonEC2ContainerServiceV20141113.DescribeTasks",
         "Content-Type": "application/x-amz-json-1.1",
@@ -170,7 +162,7 @@ export namespace task {
         cluster: resource.cluster,
         tasks: [task],
       }),
-    });
+    }, options);
     if (!res.ok) throw new DescribeError(res);
 
     const data = (await res.json()) as {
@@ -231,11 +223,8 @@ export namespace task {
     environment?: Record<string, string>,
     options?: RunOptions
   ): Promise<RunResponse> {
-    const c = await client();
-    const u = url(c.region, options?.aws);
-    const res = await c.fetch(u, {
+    const res = await aws.fetch("ecs", "/", {
       method: "POST",
-      aws: options?.aws,
       headers: {
         "X-Amz-Target": "AmazonEC2ContainerServiceV20141113.RunTask",
         "Content-Type": "application/x-amz-json-1.1",
@@ -273,7 +262,7 @@ export namespace task {
           })),
         },
       }),
-    });
+    }, options);
     if (!res.ok) throw new RunError(res);
 
     const data = (await res.json()) as {
@@ -327,11 +316,8 @@ export namespace task {
     task: string,
     options?: Options
   ): Promise<StopResponse> {
-    const c = await client();
-    const u = url(c.region, options?.aws);
-    const res = await c.fetch(u, {
+    const res = await aws.fetch("ecs", "/", {
       method: "POST",
-      aws: options?.aws,
       headers: {
         "X-Amz-Target": "AmazonEC2ContainerServiceV20141113.StopTask",
         "Content-Type": "application/x-amz-json-1.1",
@@ -340,7 +326,7 @@ export namespace task {
         cluster: resource.cluster,
         task,
       }),
-    });
+    }, options);
     if (!res.ok) throw new StopError(res);
 
     const data = (await res.json()) as {
@@ -361,20 +347,17 @@ export namespace task {
   export class DescribeError extends Error {
     constructor(public readonly response: Response) {
       super("Failed to describe task");
-      console.log(response);
     }
   }
 
   export class RunError extends Error {
     constructor(public readonly response: Response) {
       super("Failed to run task");
-      console.log(response);
     }
   }
   export class StopError extends Error {
     constructor(public readonly response: Response) {
       super("Failed to stop task");
-      console.log(response);
     }
   }
 }

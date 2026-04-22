@@ -14,6 +14,6 @@
   "license": "ISC",
   "dependencies": {
     "openai": "^4.44.0",
-    "sst": "^4"
+    "sst": "file:../../sdk/js"
   }
 }

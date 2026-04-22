@@ -11,7 +11,6 @@ import { FunctionArgs, FunctionArn } from "./function.js";
 import { ApiGatewayWebSocketRouteArgs } from "./apigateway-websocket";
 import { apigatewayv2, lambda } from "@pulumi/aws";
 import { FunctionBuilder, functionBuilder } from "./helpers/function-builder";
-import { splitQualifiedFunctionArn } from "./helpers/arn";
 
 export interface Args extends ApiGatewayWebSocketRouteArgs {
   /**
@@ -95,8 +94,8 @@ export class ApiGatewayWebSocketRoute extends Component {
         `${name}Permissions`,
         {
           action: "lambda:InvokeFunction",
-          function: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).unqualifiedArn),
-          qualifier: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).qualifier!),
+          function: fn.arn,
+          qualifier: fn.qualifier.apply((qualifier) => qualifier!),
           principal: "apigateway.amazonaws.com",
           sourceArn: interpolate`${api.executionArn}/*`,
         },
@@ -112,7 +111,7 @@ export class ApiGatewayWebSocketRoute extends Component {
           {
             apiId: api.id,
             integrationType: "AWS_PROXY",
-            integrationUri: fn.arn.apply((arn) => {
+            integrationUri: fn.targetArn.apply((arn) => {
               const [, partition, , region] = arn.split(":");
               return `arn:${partition}:apigateway:${region}:lambda:path/2015-03-31/functions/${arn}/invocations`;
             }),

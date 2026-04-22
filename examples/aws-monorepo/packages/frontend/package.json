@@ -8,6 +8,6 @@
   },
   "devDependencies": {
     "vite": "^5.2.8",
-    "sst": "^4"
+    "sst": "file:../../../../sdk/js"
   }
 }

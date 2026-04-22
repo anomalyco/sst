@@ -11,7 +11,7 @@
   "license": "ISC",
   "dependencies": {
     "hono": "^4.11.4",
-    "sst": "^4"
+    "sst": "../../sdk/js"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260114.0"

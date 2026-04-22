@@ -341,6 +341,11 @@ export class Component extends ComponentResource {
               64,
               { lower: true },
             ],
+            "cloudflare:index/hyperdriveConfig:HyperdriveConfig": [
+              "name",
+              64,
+              { lower: true },
+            ],
           };
 
           const rule = namingRules[args.type];

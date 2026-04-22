@@ -1,0 +1,19 @@
+{
+  "name": "cloudflare-astro-v5",
+  "type": "module",
+  "version": "0.0.1",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@astrojs/cloudflare": "^12.5.3",
+    "astro": "^5.8.1",
+    "sst": "file:../../sdk/js"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260414.1"
+  }
+}

@@ -9,7 +9,7 @@
     "@hono/node-server": "^1.13.2",
     "hono": "^4.6.5",
     "ioredis": "^5.4.1",
-    "sst": "^4"
+    "sst": "file:../../sdk/js"
   },
   "devDependencies": {
     "@types/aws-lambda": "8.10.145",

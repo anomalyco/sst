@@ -2,6 +2,6 @@
   "name": "aws-bucket-subscriber",
   "version": "0.0.0",
   "dependencies": {
-    "sst": "^4"
+    "sst": "file:../../sdk/js"
   }
 }

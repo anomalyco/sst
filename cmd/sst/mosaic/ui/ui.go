@@ -22,6 +22,7 @@ import (
 	"github.com/sst/sst/v3/cmd/sst/mosaic/ui/common"
 	"github.com/sst/sst/v3/pkg/flag"
 	"github.com/sst/sst/v3/pkg/project"
+	"github.com/sst/sst/v3/pkg/types/typescript"
 
 	"golang.org/x/crypto/ssh/terminal"
 )
@@ -222,7 +223,7 @@ func (u *UI) Event(unknown interface{}) {
 		}
 		duration := time.Since(u.workerTime[evt.WorkerID]).Round(time.Millisecond)
 		formattedDuration := fmt.Sprintf("%.9s", fmt.Sprintf("+%v", duration))
-		u.printEvent(GetColor(evt.WorkerID), formattedDuration, evt.Line)
+		u.printEvent(GetColor(evt.WorkerID), formattedDuration, u.formatFunctionLogLine(evt.Line))
 
 	case *aws.FunctionBuildEvent:
 		if !u.matchFilter(evt.FunctionID) {
@@ -262,6 +263,9 @@ func (u *UI) Event(unknown interface{}) {
 
 	case *project.PolicyAdvisoryEvent:
 		u.printEvent(TEXT_WARNING, "Warning", u.FormatURN(evt.URN)+" "+evt.Policy+": "+evt.Message)
+
+	case *typescript.WarningEvent:
+		u.printEvent(TEXT_WARNING, "Warning", evt.Message)
 
 	case *project.StackCommandEvent:
 		u.reset()

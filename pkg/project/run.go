@@ -634,7 +634,7 @@ loop:
 	complete.Finished = finished
 	complete.Errors = errors
 	complete.ImportDiffs = importDiffs
-	types.Generate(p.PathConfig(), complete.Links)
+	types.Generate(p.PathConfig(), complete.Links, p.App().Types.Ignore)
 	defer bus.Publish(complete)
 
 	if input.Command != "diff" {

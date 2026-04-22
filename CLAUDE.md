@@ -27,3 +27,4 @@
 3. `go run ../../cmd/sst deploy`
 4. Verify with `curl` or AWS CLI
 5. Don't clean up unless told to
+6. `sst dev --mode=basic` for dev mode
