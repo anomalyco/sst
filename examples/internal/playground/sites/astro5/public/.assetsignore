@@ -1,2 +1,0 @@
-_worker.js
-_routes.json

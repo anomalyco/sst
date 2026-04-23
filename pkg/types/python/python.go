@@ -11,8 +11,8 @@ import (
 	"github.com/sst/sst/v3/pkg/project/common"
 )
 
-func Generate(root string, links common.Links) error {
-	projects := fs.FindDown(root, "pyproject.toml")
+func Generate(root string, links common.Links, ignore []string) error {
+	projects := fs.FindDownWithIgnore(root, "pyproject.toml", ignore)
 	files := []io.Writer{}
 	for _, project := range projects {
 		path := filepath.Join(filepath.Dir(project), "sst.pyi")

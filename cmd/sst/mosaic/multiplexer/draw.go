@@ -33,7 +33,11 @@ func (s *Multiplexer) draw() {
 		if index == s.selected {
 			style = style.Bold(true)
 			if !s.focused {
-				style = style.Foreground(tcell.ColorOrange)
+				if item.dead {
+					style = style.Foreground(tcell.ColorOrange).Dim(true)
+				} else {
+					style = style.Foreground(tcell.ColorOrange)
+				}
 			}
 		}
 		label := item.Title

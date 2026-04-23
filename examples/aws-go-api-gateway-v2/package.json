@@ -10,7 +10,7 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
-    "sst": "^4"
+    "sst": "file:../../sdk/js"
   },
   "scripts": {
     "dev": "bun sst dev"

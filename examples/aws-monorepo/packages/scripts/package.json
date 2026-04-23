@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "dependencies": {
     "@aws-monorepo/core": "*",
-    "sst": "^4"
+    "sst": "file:../../../../sdk/js"
   },
   "scripts": {
     "shell": "sst shell tsx"

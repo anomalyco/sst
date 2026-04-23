@@ -196,6 +196,7 @@ export interface AstroArgs extends SsrSiteArgs {
  * ---
  * ```
  *
+ * [Check out the full example](/docs/examples/#cloudflare-astro).
  */
 export class Astro extends SsrSite {
   constructor(

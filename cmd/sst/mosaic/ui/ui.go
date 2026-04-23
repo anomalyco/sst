@@ -22,6 +22,7 @@ import (
 	"github.com/sst/sst/v3/cmd/sst/mosaic/ui/common"
 	"github.com/sst/sst/v3/pkg/flag"
 	"github.com/sst/sst/v3/pkg/project"
+	"github.com/sst/sst/v3/pkg/types/typescript"
 
 	"golang.org/x/crypto/ssh/terminal"
 )
@@ -262,6 +263,9 @@ func (u *UI) Event(unknown interface{}) {
 
 	case *project.PolicyAdvisoryEvent:
 		u.printEvent(TEXT_WARNING, "Warning", u.FormatURN(evt.URN)+" "+evt.Policy+": "+evt.Message)
+
+	case *typescript.WarningEvent:
+		u.printEvent(TEXT_WARNING, "Warning", evt.Message)
 
 	case *project.StackCommandEvent:
 		u.reset()

@@ -2440,7 +2440,9 @@ export class Function extends Component implements Link.Linkable {
             const zipPath = path.resolve(
               $cli.paths.work,
               "artifacts",
-              dev ? `dev-bridge-${regionName}` : name,
+              dev
+                ? `dev-bridge-${regionName}-${logicalName(path.basename(bundle))}`
+                : name,
               "code.zip",
             );
             await fs.promises.mkdir(path.dirname(zipPath), {

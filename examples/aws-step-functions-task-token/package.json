@@ -14,7 +14,7 @@
   "license": "ISC",
   "dependencies": {
     "@aws-sdk/client-sfn": "^3.812.0",
-    "sst": "^4"
+    "sst": "file:../../sdk/js"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.11"

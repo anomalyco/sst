@@ -174,8 +174,8 @@ Resource links are only available on the server-side of your frontend. If you wa
 
 When you run `sst dev` or `sst deploy`, it generates the types to access the linked resources. These are generated as:
 
-2. A `sst-env.d.ts` file in the project root with types for **all** the linked resources in the app.
-1. A `sst-env.d.ts` file in the same directory of the nearest `package.json` of the function or frontend that's _receiving_ the links. This references the root `sst-env.d.ts` file.
+1. A `sst-env.d.ts` file in the project root with types for **all** the linked resources in the app.
+2. A `sst-env.d.ts` file in the same directory of the nearest `package.json` of the function or frontend that's _receiving_ the links. This is usually just a small reference shim to the root `sst-env.d.ts` file.
 
 You can check the generated `sst-env.d.ts` types into source control. This will let your teammates see the types without having to run `sst dev` when they pull your changes.
 

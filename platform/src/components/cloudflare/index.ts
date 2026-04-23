@@ -11,7 +11,9 @@ export * from "./queue";
 export * from "./cron";
 export * from "./ai";
 export * from "./ai-search";
+export * from "./hyperdrive";
 export * from "./astro";
+export * from "./react-router";
 export * from "./tan-stack-start";
 export { binding } from "./binding.js";
 

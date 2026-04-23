@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "nuxt": "^3.15.5",
-    "sst": "latest",
+    "sst": "file:../../sdk/js",
     "vue": "latest",
     "vue-router": "latest"
   }
