@@ -84,13 +84,14 @@ if (!cmd || cmd === "components") {
     ) {
       await generateLinkableDoc(component);
     } else {
+      const componentProvider = component.name.split("/")[1];
       const sdkName = component.name.split("/")[2];
       const sdk = sdks.find(
         (s) =>
           // ie. vector
           s.name === sdkName ||
           // ie. aws/realtime
-          s.name === `aws/${sdkName}`
+          (componentProvider === "aws" && s.name === `aws/${sdkName}`)
       );
       const sdkNamespace = sdk && useModuleOrNamespace(sdk);
       // Handle SDK modules are namespaced (ie. aws/realtime)
