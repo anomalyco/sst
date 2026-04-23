@@ -30,9 +30,7 @@ export interface WorkflowArgs {
    * class. You must specify the name of the class so SST can bind to it.
    *
    * :::caution
-   * The class must be exported as a **named export**, not a default export.
-   * Cloudflare resolves workflow classes by name at the top of the bundled
-   * script, and `export default` is not re-exported by name.
+   * The class must be exported as a **named export**, not as `export default`.
    * :::
    *
    * @example
@@ -111,6 +109,10 @@ export interface WorkflowArgs {
  * The `Workflow` component lets you add [Cloudflare Workflows](https://developers.cloudflare.com/workflows/)
  * to your app.
  *
+ * :::caution
+ * Workflow `console.log` output doesn't stream in real time during `sst dev`.
+ * :::
+ *
  * A Workflow is a durable, multi-step function that runs on Cloudflare Workers. You
  * define it as a class that extends `WorkflowEntrypoint` and pass it to this component.
  * SST will deploy it as a Worker script, register it as a Workflow, and wire up the
@@ -183,7 +185,6 @@ export interface WorkflowArgs {
  * });
  * ```
  *
- * Inside your workflow class, linked resources are available via `this.env`.
  */
 export class Workflow extends Component implements Link.Linkable {
   private worker: Worker;
