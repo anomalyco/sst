@@ -15,9 +15,11 @@ export type WranglerLinkInclude = {
 export type WranglerLink = {
   name: string;
   include: WranglerLinkInclude[];
+  properties?: Record<string, unknown>;
 };
 
 export function createWranglerConfig(input: {
+  appName: string;
   appStage: string;
   name: string;
   frameworkConfig?: Record<string, any>;
@@ -37,7 +39,13 @@ export function createWranglerConfig(input: {
     config.account_id = input.accountID;
   }
 
-  const vars = { ...(input.environment ?? {}) };
+  const vars: Record<string, string> = {
+    ...(input.environment ?? {}),
+    SST_RESOURCE_App: JSON.stringify({
+      name: input.appName,
+      stage: input.appStage,
+    }),
+  };
   const kvNamespaces: Record<string, any>[] = [];
   const r2Buckets: Record<string, any>[] = [];
   const d1Databases: Record<string, any>[] = [];
@@ -51,7 +59,13 @@ export function createWranglerConfig(input: {
     const binding = link.include.find(
       (item) => item.type === "cloudflare.binding",
     );
-    if (!binding) continue;
+    // Links without a native Cloudflare binding (Secret, sst.aws.*, custom
+    // Linkable, etc.) are surfaced as JSON-stringified vars so they match
+    // the `secret_text` deploy path handled in `worker.ts buildBindings`.
+    if (!binding) {
+      vars[link.name] = JSON.stringify(link.properties ?? {});
+      continue;
+    }
 
     const properties = binding.properties ?? {};
     switch (binding.binding) {
