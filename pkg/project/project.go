@@ -35,7 +35,7 @@ type App struct {
 	Home      string                 `json:"home"`
 	Version   string                 `json:"version"`
 	Protect   bool                   `json:"protect"`
-	Watch     []string               `json:"watch"`
+	Watch     Watch                  `json:"watch"`
 	Types     struct {
 		Ignore []string `json:"ignore"`
 	} `json:"types"`
@@ -43,6 +43,47 @@ type App struct {
 	Backend string `json:"backend"`
 	// Deprecated: RemovalPolicy is now Removal
 	RemovalPolicy string `json:"removalPolicy"`
+}
+
+type Watch struct {
+	Paths       []string `json:"paths"`
+	Ignore      []string `json:"ignore"`
+	legacyArray bool
+}
+
+func (w Watch) UsesLegacyArray() bool {
+	return w.legacyArray
+}
+
+func (w *Watch) UnmarshalJSON(data []byte) error {
+	var paths []string
+	if err := json.Unmarshal(data, &paths); err == nil {
+		w.Paths = paths
+		w.Ignore = nil
+		w.legacyArray = true
+		return nil
+	}
+
+	type value struct {
+		Paths  []string `json:"paths"`
+		Ignore []string `json:"ignore"`
+	}
+
+	var decoded value
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+
+	for _, path := range decoded.Paths {
+		if strings.ContainsAny(path, "*?[") {
+			return util.NewReadableError(nil, fmt.Sprintf("Watch path globs are only supported in the legacy array form: %q\nUse explicit directories or ignore patterns instead: https://sst.dev/docs/reference/config/#watch", path))
+		}
+	}
+
+	w.Paths = decoded.Paths
+	w.Ignore = decoded.Ignore
+	w.legacyArray = false
+	return nil
 }
 
 type Project struct {

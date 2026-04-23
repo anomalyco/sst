@@ -54,6 +54,7 @@ export function createWranglerConfig(input: {
   const queueProducers: Record<string, any>[] = [];
   const aiSearch: Record<string, any>[] = [];
   const aiSearchNamespaces: Record<string, any>[] = [];
+  const workflows: Record<string, any>[] = [];
   let ai: Record<string, any> | undefined;
   let versionMetadata: Record<string, any> | undefined;
 
@@ -138,6 +139,12 @@ export function createWranglerConfig(input: {
         aiSearchNamespaces.push({
           binding: link.name,
           namespace: stringValue(properties.namespace),
+      case "workflowBindings":
+        workflows.push({
+          binding: link.name,
+          name: stringValue(properties.workflowName),
+          class_name: stringValue(properties.className),
+          script_name: stringValue(properties.scriptName),
           remote: true,
         });
         break;
@@ -178,6 +185,8 @@ export function createWranglerConfig(input: {
   }
   if (aiSearchNamespaces.length > 0) {
     config.ai_search_namespaces = aiSearchNamespaces;
+  if (workflows.length > 0) {
+    config.workflows = workflows;
   }
 
   return config;

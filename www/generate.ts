@@ -84,13 +84,14 @@ if (!cmd || cmd === "components") {
     ) {
       await generateLinkableDoc(component);
     } else {
+      const componentProvider = component.name.split("/")[1];
       const sdkName = component.name.split("/")[2];
       const sdk = sdks.find(
         (s) =>
           // ie. vector
           s.name === sdkName ||
           // ie. aws/realtime
-          s.name === `aws/${sdkName}`
+          (componentProvider === "aws" && s.name === `aws/${sdkName}`)
       );
       const sdkNamespace = sdk && useModuleOrNamespace(sdk);
       // Handle SDK modules are namespaced (ie. aws/realtime)
@@ -2322,6 +2323,7 @@ async function buildComponents() {
       "../platform/src/components/cloudflare/queue-worker-subscriber.ts",
       "../platform/src/components/cloudflare/react-router.ts",
       "../platform/src/components/cloudflare/worker.ts",
+      "../platform/src/components/cloudflare/workflow.ts",
       "../platform/src/components/cloudflare/static-site.ts",
       "../platform/src/components/cloudflare/static-site-v2.ts",
       "../platform/src/components/cloudflare/tan-stack-start.ts",

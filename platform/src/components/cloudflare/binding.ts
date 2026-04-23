@@ -90,6 +90,12 @@ export interface AiSearchNamespaceBinding {
   type: "aiSearchNamespaceBindings";
   properties: {
     namespace: Input<string>;
+export interface WorkflowBinding {
+  type: "workflowBindings";
+  properties: {
+    workflowName: Input<string>;
+    className: Input<string>;
+    scriptName: Input<string>;
   };
 }
 
@@ -106,6 +112,7 @@ export type Binding =
   | VersionMetadataBinding
   | AiSearchBinding
   | AiSearchNamespaceBinding;
+  | WorkflowBinding;
 
 export function binding<T extends Binding["type"]>(input: Binding & {}) {
   return {

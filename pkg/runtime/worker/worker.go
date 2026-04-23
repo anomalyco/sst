@@ -107,10 +107,10 @@ func (w *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		Platform: esbuild.PlatformNode,
 		Stdin: &esbuild.StdinOptions{
 			Contents: fmt.Sprintf(`
-      import handler from "%s"
+      import * as _sst_user_module from "%s"
       import { fromCloudflareEnv, wrapCloudflareHandler } from "sst/resource/cloudflare"
       export * from "%s"
-      export default wrapCloudflareHandler(handler)
+      export default wrapCloudflareHandler(_sst_user_module.default)
       `, importPath, importPath),
 			ResolveDir: filepath.Dir(abs),
 			Loader:     esbuild.LoaderTS,

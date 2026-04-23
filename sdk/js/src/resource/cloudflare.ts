@@ -9,6 +9,10 @@ export function fromCloudflareEnv(input: any) {
 }
 
 export function wrapCloudflareHandler(handler: any) {
+  if (handler == null) {
+    return undefined;
+  }
+
   if (typeof handler === "function" && handler.hasOwnProperty("prototype")) {
     return class extends handler {
       constructor(ctx: any, env: any) {

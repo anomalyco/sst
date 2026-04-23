@@ -346,6 +346,11 @@ export class Component extends ComponentResource {
               64,
               { lower: true },
             ],
+            "cloudflare:index/workflow:Workflow": [
+              "workflowName",
+              64,
+              { lower: true },
+            ],
           };
 
           const rule = namingRules[args.type];

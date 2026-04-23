@@ -429,6 +429,7 @@ export class Worker extends Component implements Link.Linkable {
                     versionMetadataBindings: "version_metadata",
                     aiSearchBindings: "ai_search",
                     aiSearchNamespaceBindings: "ai_search_namespace",
+                    workflowBindings: "workflow",
                   }[b.binding],
                   name,
                   ...b.properties,
