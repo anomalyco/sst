@@ -30,7 +30,7 @@ export interface WorkflowArgs {
    * class. You must specify the name of the class so SST can bind to it.
    *
    * :::caution
-   * The class must be exported as a **named export**, not as `export default`.
+   * The class must be exported as a named export, not as `export default`.
    * :::
    *
    * @example
@@ -115,8 +115,6 @@ export interface WorkflowArgs {
  *
  * A Workflow is a durable, multi-step function that runs on Cloudflare Workers. You
  * define it as a class that extends `WorkflowEntrypoint` and pass it to this component.
- * SST will deploy it as a Worker script, register it as a Workflow, and wire up the
- * binding so you can trigger it from any Worker you link it to.
  *
  * @example
  * #### Minimal example
