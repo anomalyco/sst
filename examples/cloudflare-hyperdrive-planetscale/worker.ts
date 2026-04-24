@@ -7,19 +7,13 @@ export default {
       connectionString: Resource.Database.connectionString,
     });
 
-    try {
-      await client.connect();
+    await client.connect();
 
-      const result = await client.query(`SELECT * FROM "user"`);
+    const result = await client.query(`SELECT NOW()`);
 
-      return Response.json({
-        success: true,
-        result: result.rows,
-      });
-    } catch (error: any) {
-      console.error("Database error:", error.message);
-
-      return new Response("Internal error occurred", { status: 500 });
-    }
+    return Response.json({
+      success: true,
+      result: result.rows,
+    });
   },
 };
