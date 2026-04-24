@@ -343,13 +343,12 @@ export interface ApiGatewayWebSocketRouteArgs {
     }
   >;
   /**
-   * The name of the route. By default, SST generates a unique suffix from a hash of the
-   * route name (except for the special `$connect`, `$disconnect`, and `$default` routes,
-   * which always use their literal name). Setting `name` replaces the hashed suffix so
-   * the function becomes `<name>Handler`, giving you a stable, meaningful identifier in
-   * Pulumi state, the CloudWatch log group, and the `sst dev` TUI.
+   * The name of the route.
    *
-   * Must be unique across all routes on the same API.
+   * By default, SST generates a unique suffix from the route path. Setting `name` gives
+   * you a stable, human-readable name like `MyApiRouteSendMessageHandler`.
+   *
+   * Must be unique across all routes.
    *
    * @example
    * ```js

@@ -624,13 +624,12 @@ export interface ApiGatewayV1RouteArgs {
    */
   streaming?: Input<boolean>;
   /**
-   * The name of the route. By default, SST generates a unique suffix from a hash of the
-   * method and path, producing opaque resource names like `MyApiRouteAbc123Handler`.
-   * Setting `name` replaces the hashed suffix so the function becomes `<name>Handler`,
-   * giving you a stable, meaningful identifier in Pulumi state, the CloudWatch log
-   * group, and the `sst dev` TUI.
+   * The name of the route.
    *
-   * Must be unique across all routes on the same API.
+   * By default, SST generates a unique suffix from the route path. Setting `name` gives
+   * you a stable, human-readable name like `MyApiRouteGetUserHandler`.
+   *
+   * Must be unique across all routes.
    *
    * @example
    * ```js
