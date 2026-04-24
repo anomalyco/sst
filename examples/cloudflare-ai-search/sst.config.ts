@@ -9,6 +9,8 @@ export default $config({
     };
   },
   async run() {
+    // Bind to the "default" namespace — every Cloudflare account has one
+    // automatically. Change this to target a different namespace.
     const search = new sst.cloudflare.AiSearch("Search", {
       namespace: "default",
     });
