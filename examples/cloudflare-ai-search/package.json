@@ -1,0 +1,17 @@
+{
+  "name": "cloudflare-ai-search",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@cloudflare/workers-types": "^4.20260424.1",
+    "sst": "file:../../sdk/js"
+  }
+}

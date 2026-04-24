@@ -139,6 +139,9 @@ export function createWranglerConfig(input: {
         aiSearchNamespaces.push({
           binding: link.name,
           namespace: stringValue(properties.namespace),
+          remote: true,
+        });
+        break;
       case "workflowBindings":
         workflows.push({
           binding: link.name,
@@ -185,6 +188,7 @@ export function createWranglerConfig(input: {
   }
   if (aiSearchNamespaces.length > 0) {
     config.ai_search_namespaces = aiSearchNamespaces;
+  }
   if (workflows.length > 0) {
     config.workflows = workflows;
   }

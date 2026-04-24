@@ -18,15 +18,17 @@ type WarningEvent struct {
 }
 
 var mapping = map[string]string{
-	"aiBindings":              "Ai",
-	"r2BucketBindings":        "R2Bucket",
-	"d1DatabaseBindings":      "D1Database",
-	"kvNamespaceBindings":     "KVNamespace",
-	"queueBindings":           "Queue",
-	"serviceBindings":         "Service",
-	"hyperdriveBindings":      "Hyperdrive",
-	"versionMetadataBindings": "WorkerVersionMetadata",
-	"workflowBindings":        "Workflow",
+	"aiBindings":                  "Ai",
+	"r2BucketBindings":            "R2Bucket",
+	"d1DatabaseBindings":          "D1Database",
+	"kvNamespaceBindings":         "KVNamespace",
+	"queueBindings":               "Queue",
+	"serviceBindings":             "Service",
+	"hyperdriveBindings":          "Hyperdrive",
+	"versionMetadataBindings":     "WorkerVersionMetadata",
+	"aiSearchBindings":            "AiSearchInstance",
+	"aiSearchNamespaceBindings":   "AiSearchNamespace",
+	"workflowBindings":            "Workflow",
 }
 
 var header = strings.Join([]string{
