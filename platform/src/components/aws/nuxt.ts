@@ -497,6 +497,12 @@ export class Nuxt extends SsrSite {
 
   protected buildPlan(outputPath: Output<string>): Output<Plan> {
     return outputPath.apply((outputPath) => {
+      const nitro = JSON.parse(
+        fs.readFileSync(
+          path.join(outputPath, ".output", "nitro.json"),
+          "utf-8",
+        ),
+      );
       const basepath = fs
         .readFileSync(path.join(outputPath, "nuxt.config.ts"), "utf-8")
         .match(/baseURL: ['"](.*)['"]/)?.[1];
@@ -507,6 +513,7 @@ export class Nuxt extends SsrSite {
           description: "Server handler for Nuxt",
           handler: "index.handler",
           bundle: path.join(outputPath, ".output", "server"),
+          streaming: nitro?.config?.awsLambda?.streaming === true,
         },
         assets: [
           {

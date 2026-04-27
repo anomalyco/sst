@@ -160,6 +160,7 @@ export class Component extends ComponentResource {
               "aws:rds/proxyTarget:ProxyTarget",
               "aws:route53/record:Record",
               "aws:s3/bucketCorsConfigurationV2:BucketCorsConfigurationV2",
+              "aws:s3/bucketCorsConfiguration:BucketCorsConfiguration",
               "aws:s3/bucketNotification:BucketNotification",
               "aws:s3/bucketObject:BucketObject",
               "aws:s3/bucketObjectv2:BucketObjectv2",
@@ -167,8 +168,12 @@ export class Component extends ComponentResource {
               "aws:s3/bucketPublicAccessBlock:BucketPublicAccessBlock",
               "aws:s3/bucketVersioningV2:BucketVersioningV2",
               "aws:s3/bucketLifecycleConfigurationV2:BucketLifecycleConfigurationV2",
+              "aws:s3/bucketLifecycleConfiguration:BucketLifecycleConfiguration",
               "aws:s3/bucketWebsiteConfigurationV2:BucketWebsiteConfigurationV2",
+              "aws:s3/bucketVersioning:BucketVersioning",
+              "aws:s3/bucketWebsiteConfiguration:BucketWebsiteConfiguration",
               "aws:secretsmanager/secretVersion:SecretVersion",
+              "aws:wafv2/webAclLoggingConfiguration:WebAclLoggingConfiguration",
               "aws:ses/domainIdentityVerification:DomainIdentityVerification",
               "aws:sesv2/configurationSetEventDestination:ConfigurationSetEventDestination",
               "aws:sesv2/emailIdentity:EmailIdentity",
@@ -179,8 +184,10 @@ export class Component extends ComponentResource {
               "cloudflare:index/dnsRecord:DnsRecord",
               "cloudflare:index/workersCronTrigger:WorkersCronTrigger",
               "cloudflare:index/workersCustomDomain:WorkersCustomDomain",
+              "cloudflare:index/queueConsumer:QueueConsumer",
               "docker-build:index:Image",
               "vercel:index/dnsRecord:DnsRecord",
+              "aws:dsql/clusterPeering:ClusterPeering"
             ].includes(args.type)
           )
             return;
@@ -213,7 +220,13 @@ export class Component extends ComponentResource {
             "aws:cloudfront/keyValueStore:KeyValueStore": ["name", 64],
             "aws:cognito/identityPool:IdentityPool": ["identityPoolName", 128],
             "aws:cognito/userPool:UserPool": ["name", 128],
+            "aws:cognito/userPoolDomain:UserPoolDomain": [
+              "domain",
+              63,
+              { lower: true },
+            ],
             "aws:dynamodb/table:Table": ["name", 255],
+            "aws:dsql/cluster:Cluster": ["tags", 255],
             "aws:ec2/keyPair:KeyPair": ["keyName", 255],
             "aws:ec2/eip:Eip": ["tags", 255],
             "aws:ec2/instance:Instance": ["tags", 255],
@@ -224,6 +237,7 @@ export class Component extends ComponentResource {
             "aws:ec2/defaultSecurityGroup:DefaultSecurityGroup": ["tags", 255],
             "aws:ec2/subnet:Subnet": ["tags", 255],
             "aws:ec2/vpc:Vpc": ["tags", 255],
+            "aws:ec2/vpcEndpoint:VpcEndpoint": ["tags", 255],
             "aws:ecs/cluster:Cluster": ["name", 255],
             "aws:elasticache/parameterGroup:ParameterGroup": [
               "name",
@@ -277,13 +291,14 @@ export class Component extends ComponentResource {
               { lower: true },
             ],
             "aws:rds/subnetGroup:SubnetGroup": ["name", 255, { lower: true }],
-            "aws:s3/bucketV2:BucketV2": ["bucket", 63, { lower: true }],
+            "aws:s3/bucket:Bucket": ["bucket", 63, { lower: true }],
             "aws:secretsmanager/secret:Secret": ["name", 512],
             "aws:sesv2/configurationSet:ConfigurationSet": [
               "configurationSetName",
               64,
               { lower: true },
             ],
+            "aws:scheduler/schedule:Schedule": ["name", 64],
             "aws:sfn/stateMachine:StateMachine": ["name", 80],
             "aws:sns/topic:Topic": [
               "name",
@@ -305,12 +320,16 @@ export class Component extends ComponentResource {
                   ),
               },
             ],
+            "aws:wafv2/webAcl:WebAcl": ["name", 64],
             "cloudflare:index/d1Database:D1Database": [
               "name",
               64,
               { lower: true },
             ],
             "cloudflare:index/r2Bucket:R2Bucket": ["name", 64, { lower: true }],
+            "aws:backup/vault:Vault": ["name", 50],
+            "aws:backup/plan:Plan": ["name", 50],
+            "aws:backup/selection:Selection": ["name", 50],
             "cloudflare:index/workersScript:WorkersScript": [
               "scriptName",
               64,
@@ -319,6 +338,16 @@ export class Component extends ComponentResource {
             "cloudflare:index/queue:Queue": ["queueName", 64, { lower: true }],
             "cloudflare:index/workersKvNamespace:WorkersKvNamespace": [
               "title",
+              64,
+              { lower: true },
+            ],
+            "cloudflare:index/hyperdriveConfig:HyperdriveConfig": [
+              "name",
+              64,
+              { lower: true },
+            ],
+            "cloudflare:index/workflow:Workflow": [
+              "workflowName",
               64,
               { lower: true },
             ],

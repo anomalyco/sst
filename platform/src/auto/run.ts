@@ -7,6 +7,7 @@ import {
 } from "@pulumi/pulumi";
 
 import { VisibleError } from "../components/error";
+import { Function } from "../components/aws/function";
 
 export async function run(program: automation.PulumiFn) {
   process.chdir($cli.paths.root);
@@ -15,6 +16,7 @@ export async function run(program: automation.PulumiFn) {
   addTransformationToAddTags();
   addTransformationToCheckBucketsHaveMultiplePolicies();
 
+  Function.reset();
   Link.reset();
   const outputs = (await program()) || {};
   outputs._protect = $app.protect;
@@ -28,11 +30,21 @@ function addTransformationToRetainResourcesOnDelete() {
       ($app.removal === "retain" &&
         [
           "aws:dynamodb/table:Table",
+          "aws:ec2/defaultSecurityGroup:DefaultSecurityGroup",
+          "aws:ec2/subnet:Subnet",
+          "aws:ec2/vpc:Vpc",
+          "aws:rds/cluster:Cluster",
+          "aws:rds/clusterParameterGroup:ClusterParameterGroup",
           "aws:rds/instance:Instance",
+          "aws:rds/parameterGroup:ParameterGroup",
+          "aws:rds/subnetGroup:SubnetGroup",
+          "aws:dsql/cluster:Cluster",
           "aws:s3/bucket:Bucket",
           "aws:s3/bucketV2:BucketV2",
           "planetscale:index/database:Database",
           "planetscale:index/branch:Branch",
+          "planetscale:index/vitessBranch:VitessBranch",
+          "planetscale:index/postgresBranch:PostgresBranch",
         ].includes(args.type))
     ) {
       args.opts.retainOnDelete = args.opts.retainOnDelete ?? true;

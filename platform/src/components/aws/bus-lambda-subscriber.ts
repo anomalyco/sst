@@ -6,7 +6,8 @@ import {
   output,
 } from "@pulumi/pulumi";
 import { Component, transform } from "../component";
-import { Function, FunctionArgs } from "./function";
+import { Function, FunctionArgs, FunctionArn } from "./function.js";
+import { Workflow } from "./workflow.js";
 import { BusBaseSubscriberArgs, createRule } from "./bus-base-subscriber";
 import { cloudwatch, lambda } from "@pulumi/aws";
 import { FunctionBuilder, functionBuilder } from "./helpers/function-builder";
@@ -15,7 +16,7 @@ export interface Args extends BusBaseSubscriberArgs {
   /**
    * The subscriber function.
    */
-  subscriber: Input<string | FunctionArgs>;
+  subscriber: Input<string | Workflow | Function | FunctionArgs | FunctionArn>;
 }
 
 /**
@@ -67,6 +68,7 @@ export class BusLambdaSubscriber extends Component {
         {
           action: "lambda:InvokeFunction",
           function: fn.arn,
+          qualifier: fn.qualifier.apply((qualifier) => qualifier!),
           principal: "events.amazonaws.com",
           sourceArn: rule.arn,
         },
@@ -80,7 +82,7 @@ export class BusLambdaSubscriber extends Component {
           args?.transform?.target,
           `${name}Target`,
           {
-            arn: fn.arn,
+            arn: fn.targetArn,
             rule: rule.name,
             eventBusName: bus.name,
           },

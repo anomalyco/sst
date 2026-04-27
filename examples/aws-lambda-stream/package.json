@@ -10,10 +10,9 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "lambda-stream": "^0.5.0",
-    "sst": "^3"
+    "sst": "file:../../sdk/js"
   },
   "devDependencies": {
-    "@types/aws-lambda": "8.10.145"
+    "@types/aws-lambda": "^8.10.161"
   }
 }

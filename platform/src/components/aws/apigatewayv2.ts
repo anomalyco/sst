@@ -8,7 +8,7 @@ import {
 } from "../component";
 import { Link } from "../link";
 import type { Input } from "../input";
-import { FunctionArgs, FunctionArn } from "./function";
+import { FunctionArgs, FunctionArn } from "./function.js";
 import { hashStringToPrettyString, physicalName, logicalName } from "../naming";
 import { VisibleError } from "../error";
 import { DnsValidatedCertificate } from "./dns-validated-certificate";
@@ -579,6 +579,22 @@ export interface ApiGatewayV2RouteArgs {
     }
   >;
   /**
+   * The name of the route.
+   *
+   * By default, SST generates a unique suffix from the route path. Setting `name` gives
+   * you a stable, human-readable name like `MyApiRouteGetUserHandler`.
+   *
+   * Must be unique across all routes.
+   *
+   * @example
+   * ```js
+   * {
+   *   name: "GetUser"
+   * }
+   * ```
+   */
+  name?: string;
+  /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
    */
@@ -1015,6 +1031,12 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
    * - An HTTP method and a path, `{METHOD} /{path}`.
    * - Or a `$default` route.
    *
+   * :::caution
+   * [API Gateway has strict rate limits](https://docs.aws.amazon.com/apigateway/latest/developerguide/limits.html) for creating and updating resources. Creating one Lambda function for every endpoint can significantly slow down your deployments.
+   *
+   * Use a single Lambda and handle routing in code if you don't need specific API Gateway features.
+   * :::
+   *
    * :::tip
    * The `$default` route is a default or catch-all route. It'll match if no other route matches.
    * :::
@@ -1111,7 +1133,7 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
     const route = this.parseRoute(rawRoute);
     const transformed = transform(
       this.constructorArgs.transform?.route?.args,
-      this.buildRouteId(route),
+      this.buildRouteId(route, args.name),
       args,
       { provider: this.constructorOpts.provider },
     );
@@ -1165,7 +1187,7 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
     const route = this.parseRoute(rawRoute);
     const transformed = transform(
       this.constructorArgs.transform?.route?.args,
-      this.buildRouteId(route),
+      this.buildRouteId(route, args.name),
       args,
       { provider: this.constructorOpts.provider },
     );
@@ -1259,7 +1281,7 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
     const route = this.parseRoute(rawRoute);
     const transformed = transform(
       this.constructorArgs.transform?.route?.args,
-      this.buildRouteId(route),
+      this.buildRouteId(route, args.name),
       args,
       { provider: this.constructorOpts.provider },
     );
@@ -1315,10 +1337,10 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
     return `${method} ${path}`;
   }
 
-  private buildRouteId(route: string) {
-    const suffix = logicalName(
-      hashStringToPrettyString([outputId, route].join(""), 6),
-    );
+  private buildRouteId(route: string, name?: string) {
+    const suffix = name
+      ? logicalName(name)
+      : logicalName(hashStringToPrettyString([outputId, route].join(""), 6));
     return `${this.constructorName}Route${suffix}`;
   }
 
@@ -1360,7 +1382,7 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
    * const authorizer = api.addAuthorizer({
    *   name: "myCognitoAuthorizer",
    *   jwt: {
-   *     issuer: $interpolate`https://cognito-idp.${aws.getRegionOutput().name}.amazonaws.com/${pool.id}`,
+   *     issuer: $interpolate`https://cognito-idp.${aws.getRegionOutput().region}.amazonaws.com/${pool.id}`,
    *     audiences: [poolClient.id]
    *   }
    * });

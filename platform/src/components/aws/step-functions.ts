@@ -29,7 +29,7 @@ import { Input } from "../input";
 import { RETENTION } from "./logging";
 import { physicalName } from "../naming";
 import { functionBuilder } from "./helpers/function-builder";
-import { Function } from "./function";
+import { Function } from "./function.js";
 
 export interface StepFunctionsArgs {
   /**
@@ -581,13 +581,13 @@ export class StepFunctions extends Component implements Link.Linkable {
       ...args,
       resource: "arn:aws:states:::lambda:invoke",
       arguments: {
-        FunctionName: fn.arn,
+        FunctionName: fn.targetArn,
         Payload: args.payload,
       },
       permissions: [
         {
           actions: ["lambda:InvokeFunction"],
-          resources: [fn.arn],
+          resources: [fn.targetArn],
         },
       ],
     });

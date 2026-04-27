@@ -1,0 +1,20 @@
+{
+  "name": "aws-workflow",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "dev": "go run ../../cmd/sst dev",
+    "deploy": "go run ../../cmd/sst deploy",
+    "remove": "go run ../../cmd/sst remove",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "sst": "file:../../sdk/js",
+    "@types/aws-lambda": "8.10.145"
+  }
+}

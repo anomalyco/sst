@@ -121,10 +121,7 @@ export interface AstroArgs extends SsrSiteArgs {
    */
   invalidation?: SsrSiteArgs["invalidation"];
   /**
-   * Set [environment variables](https://docs.astro.build/en/guides/environment-variables/) in your Astro site. These are made available:
-   *
-   * 1. In `astro build`, they are loaded into `import.meta.env`.
-   * 2. Locally while running `astro dev` through `sst dev`.
+   * Set [environment variables](https://docs.astro.build/en/guides/environment-variables/) in your Astro site.
    *
    * :::tip
    * You can also `link` resources to your Astro site and access them in a type-safe way with the [SDK](/docs/reference/sdk/). We recommend linking since it's more secure.

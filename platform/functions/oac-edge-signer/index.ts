@@ -46,13 +46,8 @@ export const handler: CloudFrontRequestHandler = async (event) => {
         value: hash,
       },
     ];
-
-    console.log(
-      `Added SHA256 header for ${request.method} request to ${request.uri}: ${hash}`,
-    );
   } catch (error) {
     console.error("Error computing SHA256 hash:", error);
-    // Continue without the header rather than failing the request
   }
 
   return request;

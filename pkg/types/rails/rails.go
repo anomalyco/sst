@@ -5,7 +5,10 @@ import (
 )
 
 // Generate is stubbed out — Rails support is not yet implemented.
-func Generate(root string, links common.Links) error {
+func Generate(root string, links common.Links, ignore []string) error {
+	_ = root
+	_ = links
+	_ = ignore
 	return nil
 	// projects := fs.FindDown(root, "config.ru")
 	// files := []io.Writer{}

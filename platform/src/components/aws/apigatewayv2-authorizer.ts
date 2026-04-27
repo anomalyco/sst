@@ -114,7 +114,7 @@ export class ApiGatewayV2Authorizer extends Component {
                   identitySources: lamb.apply(
                     (lamb) => lamb.identitySources ?? [defaultIdentitySource],
                   ),
-                  authorizerUri: fn!.invokeArn,
+                  authorizerUri: fn!.targetInvokeArn,
                   ...(args.type === "http"
                     ? {
                         authorizerResultTtlInSeconds: lamb.apply((lamb) =>
@@ -155,6 +155,7 @@ export class ApiGatewayV2Authorizer extends Component {
         {
           action: "lambda:InvokeFunction",
           function: fn.arn,
+          qualifier: fn.qualifier.apply((qualifier) => qualifier!),
           principal: "apigateway.amazonaws.com",
           sourceArn: interpolate`${api.executionArn}/authorizers/${authorizer.id}`,
         },

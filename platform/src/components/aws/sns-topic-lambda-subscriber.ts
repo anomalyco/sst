@@ -6,7 +6,7 @@ import {
   output,
 } from "@pulumi/pulumi";
 import { Component, transform } from "../component";
-import { Function, FunctionArgs } from "./function";
+import { Function, FunctionArgs } from "./function.js";
 import { SnsTopicSubscriberArgs } from "./sns-topic";
 import { lambda, sns } from "@pulumi/aws";
 import { FunctionBuilder, functionBuilder } from "./helpers/function-builder";
@@ -73,6 +73,7 @@ export class SnsTopicLambdaSubscriber extends Component {
         {
           action: "lambda:InvokeFunction",
           function: fn.arn,
+          qualifier: fn.qualifier.apply((qualifier) => qualifier!),
           principal: "sns.amazonaws.com",
           sourceArn: topic.arn,
         },
@@ -88,7 +89,7 @@ export class SnsTopicLambdaSubscriber extends Component {
           {
             topic: topic.arn,
             protocol: "lambda",
-            endpoint: fn.arn,
+            endpoint: fn.targetArn,
             filterPolicy: args.filter && jsonStringify(args.filter),
           },
           { parent: self, dependsOn: [permission] },

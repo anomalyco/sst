@@ -111,6 +111,7 @@ export class BucketNotification extends Component {
               {
                 action: "lambda:InvokeFunction",
                 function: fn.arn,
+                qualifier: fn.qualifier.apply((qualifier) => qualifier!),
                 principal: "s3.amazonaws.com",
                 sourceArn: bucket.arn,
               },
@@ -185,7 +186,7 @@ export class BucketNotification extends Component {
                 .filter((c) => c!.functionBuilder)
                 .map((c) => ({
                   id: c!.args.name,
-                  lambdaFunctionArn: c!.functionBuilder!.arn,
+                  lambdaFunctionArn: c!.functionBuilder!.targetArn,
                   events: c!.args.events,
                   filterPrefix: c!.args.filterPrefix,
                   filterSuffix: c!.args.filterSuffix,

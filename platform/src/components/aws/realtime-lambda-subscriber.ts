@@ -6,12 +6,11 @@ import {
   output,
 } from "@pulumi/pulumi";
 import { Component, transform } from "../component";
-import { Function, FunctionArgs } from "./function";
+import { Function, FunctionArgs } from "./function.js";
 import { RealtimeSubscriberArgs } from "./realtime";
 import { lambda } from "@pulumi/aws";
 import { iot } from "@pulumi/aws";
 import { FunctionBuilder, functionBuilder } from "./helpers/function-builder";
-import { parseFunctionArn } from "./helpers/arn";
 
 export interface Args extends RealtimeSubscriberArgs {
   /**
@@ -79,7 +78,7 @@ export class RealtimeLambdaSubscriber extends Component {
             sqlVersion: "2016-03-23",
             sql: interpolate`SELECT * FROM '${filter}'`,
             enabled: true,
-            lambdas: [{ functionArn: fn.arn }],
+            lambdas: [{ functionArn: fn.targetArn }],
           },
           { parent: self },
         ),
@@ -91,7 +90,8 @@ export class RealtimeLambdaSubscriber extends Component {
         `${name}Permission`,
         {
           action: "lambda:InvokeFunction",
-          function: fn.arn.apply((arn) => parseFunctionArn(arn).functionName),
+          function: fn.arn,
+          qualifier: fn.qualifier.apply((qualifier) => qualifier!),
           principal: "iot.amazonaws.com",
           sourceArn: rule.arn,
         },

@@ -12,7 +12,7 @@ export interface KvArgs {
    */
   transform?: {
     /**
-     * Transform the R2 KV namespace resource.
+     * Transform the KV namespace resource.
      */
     namespace?: Transform<cloudflare.WorkersKvNamespaceArgs>;
   };

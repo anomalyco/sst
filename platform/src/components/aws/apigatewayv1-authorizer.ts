@@ -114,6 +114,7 @@ export class ApiGatewayV1Authorizer extends Component {
         {
           action: "lambda:InvokeFunction",
           function: fn.arn,
+          qualifier: fn.qualifier.apply((qualifier) => qualifier!),
           principal: "apigateway.amazonaws.com",
           sourceArn: interpolate`${api.executionArn}/authorizers/${authorizer.id}`,
         },
@@ -131,7 +132,7 @@ export class ApiGatewayV1Authorizer extends Component {
             type,
             name: args.name,
             providerArns: args.userPools,
-            authorizerUri: fn?.invokeArn,
+            authorizerUri: fn?.targetInvokeArn,
             authorizerResultTtlInSeconds: args.ttl,
             identitySource: args.identitySource,
           },

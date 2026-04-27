@@ -11,6 +11,20 @@ export function parseFunctionArn(arn: string) {
   return { functionName };
 }
 
+export function splitQualifiedFunctionArn(arn: string) {
+  // Unqualified: arn:aws:lambda:region:account-id:function:function-name (7 parts)
+  // Qualified:   arn:aws:lambda:region:account-id:function:function-name:alias-or-version (8 parts)
+  const parts = arn.split(":");
+  if (parts.length <= 7) {
+    return { unqualifiedArn: arn, qualifier: undefined };
+  }
+  return {
+    unqualifiedArn: parts.slice(0, 7).join(":"),
+    qualifier: parts[7],
+  };
+}
+
+
 export function parseBucketArn(arn: string) {
   // arn:aws:s3:::bucket-name
   const bucketName = arn.split(":")[5];
@@ -136,4 +150,33 @@ export function parseOpenSearch(arn: string) {
       `The provided ARN "${arn}" is not a OpenSearch domain ARN.`,
     );
   return { tableName };
+}
+
+export function parseDsqlPublicEndpoint(arn: string) {
+  const parts = arn.split(":");
+  const region = parts[3];
+  const clusterId = parts[5]?.split("/")[1];
+  if (!arn.startsWith("arn:") || !clusterId)
+    throw new VisibleError(
+      `The provided ARN "${arn}" is not a DSQL cluster ARN.`,
+    );
+  return `${clusterId}.dsql.${region}.on.aws`;
+}
+
+export function parseDsqlPrivateEndpoint(
+  clusterArn: string,
+  dnsEntries: { dnsName?: string }[],
+) {
+  const clusterId = clusterArn.split(":")[5]?.split("/")[1];
+  if (!clusterArn.startsWith("arn:") || !clusterId)
+    throw new VisibleError(
+      `The provided ARN "${clusterArn}" is not a DSQL cluster ARN.`,
+    );
+  const wildcardEntry = dnsEntries.find((e) => e.dnsName?.startsWith("*."));
+  const privateDnsName = wildcardEntry?.dnsName ?? dnsEntries[0]?.dnsName;
+  if (!privateDnsName)
+    throw new VisibleError(
+      `The VPC endpoint has no DNS entries.`,
+    );
+  return privateDnsName.replace("*", clusterId);
 }

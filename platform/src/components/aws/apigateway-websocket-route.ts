@@ -7,7 +7,7 @@ import {
   output,
 } from "@pulumi/pulumi";
 import { Component, Transform, transform } from "../component";
-import { FunctionArgs, FunctionArn } from "./function";
+import { FunctionArgs, FunctionArn } from "./function.js";
 import { ApiGatewayWebSocketRouteArgs } from "./apigateway-websocket";
 import { apigatewayv2, lambda } from "@pulumi/aws";
 import { FunctionBuilder, functionBuilder } from "./helpers/function-builder";
@@ -95,6 +95,7 @@ export class ApiGatewayWebSocketRoute extends Component {
         {
           action: "lambda:InvokeFunction",
           function: fn.arn,
+          qualifier: fn.qualifier.apply((qualifier) => qualifier!),
           principal: "apigateway.amazonaws.com",
           sourceArn: interpolate`${api.executionArn}/*`,
         },
@@ -110,7 +111,7 @@ export class ApiGatewayWebSocketRoute extends Component {
           {
             apiId: api.id,
             integrationType: "AWS_PROXY",
-            integrationUri: fn.arn.apply((arn) => {
+            integrationUri: fn.targetArn.apply((arn) => {
               const [, partition, , region] = arn.split(":");
               return `arn:${partition}:apigateway:${region}:lambda:path/2015-03-31/functions/${arn}/invocations`;
             }),

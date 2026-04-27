@@ -19,7 +19,7 @@ app.get("/", async (c) => {
     Bucket: Resource.MyBucket.name,
   });
 
-  return c.text(await getSignedUrl(s3, command));
+  return c.text('ykse');
 });
 
 app.get("/latest", async (c) => {

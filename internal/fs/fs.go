@@ -36,8 +36,29 @@ func Exists(path string) bool {
 	return err == nil
 }
 
+func IsGitSubmodule(dir string) bool {
+	gitPath := filepath.Join(dir, ".git")
+	info, err := os.Stat(gitPath)
+	return err == nil && !info.IsDir()
+}
+
 func FindDown(dir, filename string) []string {
+	return FindDownWithIgnore(dir, filename, nil)
+}
+
+func FindDownWithIgnore(dir, filename string, ignore []string) []string {
 	var result []string
+	ignored := make([]string, 0, len(ignore))
+	for _, item := range ignore {
+		if item == "" {
+			continue
+		}
+		if filepath.IsAbs(item) {
+			ignored = append(ignored, filepath.Clean(item))
+			continue
+		}
+		ignored = append(ignored, filepath.Clean(filepath.Join(dir, item)))
+	}
 
 	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -48,6 +69,14 @@ func FindDown(dir, filename string) []string {
 			if name == "node_modules" || strings.HasPrefix(name, ".") {
 				return filepath.SkipDir
 			}
+			if path != dir && IsGitSubmodule(path) {
+				return filepath.SkipDir
+			}
+			for _, ignoredPath := range ignored {
+				if isWithin(ignoredPath, path) {
+					return filepath.SkipDir
+				}
+			}
 		}
 		if !info.IsDir() && info.Name() == filename {
 			result = append(result, path)
@@ -56,4 +85,15 @@ func FindDown(dir, filename string) []string {
 	})
 
 	return result
+}
+
+func isWithin(parent, path string) bool {
+	rel, err := filepath.Rel(parent, path)
+	if err != nil {
+		return false
+	}
+	if rel == "." {
+		return true
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }

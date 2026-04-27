@@ -132,9 +132,9 @@ export class Service extends Component implements Link.Linkable {
     this._url = !self.loadBalancer
       ? undefined
       : all([self.domain, self.loadBalancer?.dnsName]).apply(
-        ([domain, loadBalancer]) =>
-          domain ? `https://${domain}/` : `http://${loadBalancer}`,
-      );
+          ([domain, loadBalancer]) =>
+            domain ? `https://${domain}/` : `http://${loadBalancer}`,
+        );
 
     registerHint();
     registerReceiver();
@@ -162,7 +162,7 @@ export class Service extends Component implements Link.Linkable {
     }
 
     function normalizeRegion() {
-      return getRegionOutput(undefined, { parent: self }).name;
+      return getRegionOutput(undefined, { parent: self }).region;
     }
 
     function normalizeArchitecture() {
@@ -545,12 +545,13 @@ export class Service extends Component implements Link.Linkable {
           {
             assumeRolePolicy: !$dev
               ? iam.assumeRolePolicyForPrincipal({
-                Service: "ecs-tasks.amazonaws.com",
-              })
+                  Service: "ecs-tasks.amazonaws.com",
+                })
               : iam.assumeRolePolicyForPrincipal({
-                AWS: interpolate`arn:aws:iam::${getCallerIdentityOutput().accountId
+                  AWS: interpolate`arn:aws:iam::${
+                    getCallerIdentityOutput().accountId
                   }:root`,
-              }),
+                }),
             inlinePolicies: policy.apply(({ statements }) =>
               statements ? [{ name: "inline", policy: policy.json }] : [],
             ),

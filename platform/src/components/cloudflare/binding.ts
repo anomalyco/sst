@@ -18,6 +18,11 @@
 
 import { Input } from "../input";
 
+export interface AiBinding {
+  type: "aiBindings";
+  properties: Record<string, never>;
+}
+
 export interface KvBinding {
   type: "kvNamespaceBindings";
   properties: {
@@ -62,14 +67,39 @@ export interface D1DatabaseBinding {
   };
 }
 
+export interface HyperdriveBinding {
+  type: "hyperdriveBindings";
+  properties: {
+    id: Input<string>;
+  };
+}
+
+export interface VersionMetadataBinding {
+  type: "versionMetadataBindings";
+  properties: Record<string, never>;
+}
+
+export interface WorkflowBinding {
+  type: "workflowBindings";
+  properties: {
+    workflowName: Input<string>;
+    className: Input<string>;
+    scriptName: Input<string>;
+  };
+}
+
 export type Binding =
+  | AiBinding
   | KvBinding
   | SecretTextBinding
   | ServiceBinding
   | PlainTextBinding
   | QueueBinding
   | R2BucketBinding
-  | D1DatabaseBinding;
+  | D1DatabaseBinding
+  | HyperdriveBinding
+  | VersionMetadataBinding
+  | WorkflowBinding;
 
 export function binding<T extends Binding["type"]>(input: Binding & {}) {
   return {

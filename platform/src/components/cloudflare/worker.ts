@@ -22,12 +22,11 @@ import { Permission } from "../aws/permission.js";
 import { binding } from "./binding.js";
 import { DEFAULT_ACCOUNT_ID } from "./account-id.js";
 import { rpc } from "../rpc/rpc.js";
-import { WorkerAssets } from "./providers/worker-assets";
-import { globSync } from "glob";
 import { VisibleError } from "../error";
 import { getContentType } from "../base/base-site";
-import { physicalName } from "../naming";
+import { prefixName } from "../naming";
 import { existsAsync } from "../../util/fs";
+import { normalizeCompatibility } from "./helpers/compatibility.js";
 
 export interface WorkerArgs {
   /**
@@ -128,6 +127,29 @@ export interface WorkerArgs {
     minify?: Input<boolean>;
   }>;
   /**
+   * Configure Cloudflare compatibility for the Worker.
+   */
+  compatibility?: Input<{
+    /**
+     * The Cloudflare compatibility date for the Worker.
+     *
+     * SST uses this for both the uploaded Worker and for deciding which native
+     * Node.js modules should stay external during bundling.
+     *
+     * @default `"2025-05-05"`
+     */
+    date?: Input<string>;
+    /**
+     * The Cloudflare compatibility flags for the Worker.
+     *
+     * SST uses this for both the uploaded Worker and for deciding which native
+     * Node.js modules should stay external during bundling.
+     *
+     * @default `["nodejs_compat"]`
+     */
+    flags?: Input<Input<string>[]>;
+  }>;
+  /**
    * [Link resources](/docs/linking/) to your worker. This will:
    *
    * 1. Handle the credentials needed to access the resources.
@@ -160,27 +182,17 @@ export interface WorkerArgs {
    * ```
    */
   environment?: Input<Record<string, Input<string>>>;
-  /**
-   * Upload [static assets](https://developers.cloudflare.com/workers/static-assets/) as
-   * part of the worker.
-   *
-   * You can directly fetch and serve assets within your Worker code via the [assets
-   * binding](https://developers.cloudflare.com/workers/static-assets/binding/#binding).
-   *
-   * @example
-   * ```js
-   * {
-   *   assets: {
-   *     directory: "./dist"
-   *   }
-   * }
-   * ```
-   */
+  /** @internal */
   assets?: Input<{
-    /**
-     * The directory containing the assets.
-     */
     directory: Input<string>;
+    htmlHandling?: Input<
+      | "auto-trailing-slash"
+      | "force-trailing-slash"
+      | "drop-trailing-slash"
+      | "none"
+    >;
+    notFoundHandling?: Input<"404-page" | "single-page-application" | "none">;
+    runWorkerFirst?: Input<boolean | Input<string>[]>;
   }>;
   /**
    * Configure [placement](https://developers.cloudflare.com/workers/configuration/placement/)
@@ -302,11 +314,12 @@ export class Worker extends Component implements Link.Linkable {
 
     const dev = normalizeDev();
     const urlEnabled = normalizeUrl();
+    const compatibility = normalizeCompatibility(args);
 
     const bindings = buildBindings();
     const iamCredentials = createAwsCredentials();
-    const buildInput = all([name, args.handler, args.build, dev]).apply(
-      async ([name, handler, build]) => {
+    const buildInput = all([name, args.handler, args.build, compatibility]).apply(
+      async ([name, handler, build, compatibility]) => {
         return {
           functionID: name,
           links: {},
@@ -315,6 +328,7 @@ export class Worker extends Component implements Link.Linkable {
           properties: {
             accountID: DEFAULT_ACCOUNT_ID,
             build,
+            compatibility,
           },
         };
       },
@@ -343,8 +357,14 @@ export class Worker extends Component implements Link.Linkable {
       },
     );
     this.registerOutputs({
-      _live: all([name, args.handler, args.build, dev]).apply(
-        ([name, handler, build, dev]) => {
+      _live: all([
+        name,
+        args.handler,
+        args.build,
+        compatibility,
+        dev,
+      ]).apply(
+        ([name, handler, build, compatibility, dev]) => {
           if (!dev) return undefined;
           return {
             functionID: name,
@@ -355,6 +375,7 @@ export class Worker extends Component implements Link.Linkable {
               accountID: DEFAULT_ACCOUNT_ID,
               scriptName: script.scriptName,
               build,
+              compatibility,
             },
           };
         },
@@ -396,6 +417,7 @@ export class Worker extends Component implements Link.Linkable {
             b
               ? {
                   type: {
+                    aiBindings: "ai",
                     plainTextBindings: "plain_text",
                     secretTextBindings: "secret_text",
                     queueBindings: "queue",
@@ -403,6 +425,9 @@ export class Worker extends Component implements Link.Linkable {
                     kvNamespaceBindings: "kv_namespace",
                     d1DatabaseBindings: "d1",
                     r2BucketBindings: "r2_bucket",
+                    hyperdriveBindings: "hyperdrive",
+                    versionMetadataBindings: "version_metadata",
+                    workflowBindings: "workflow",
                   }[b.binding],
                   name,
                   ...b.properties,
@@ -492,7 +517,8 @@ export class Worker extends Component implements Link.Linkable {
           args.transform?.worker as Transform<cf.WorkersScriptArgs>,
           `${name}Script`,
           {
-            scriptName: physicalName(64, `${name}Script`).toLowerCase(),
+            // workers.dev URLs fail above 54 chars when previews are enabled
+            scriptName: prefixName(54, `${name}Script`).toLowerCase(),
             mainModule: "placeholder",
             accountId: DEFAULT_ACCOUNT_ID,
             contentFile: contentFilePath,
@@ -502,27 +528,42 @@ export class Worker extends Component implements Link.Linkable {
                 .update(await fs.readFile(p, "utf-8"))
                 .digest("hex"),
             ),
-            compatibilityDate: "2025-05-05",
-            compatibilityFlags: ["nodejs_compat"],
+            compatibilityDate: compatibility.apply((value) => value.date),
+            compatibilityFlags: compatibility.apply((value) => value.flags),
             assets: args.assets
               ? output(args.assets).apply(async (assets) => {
-                  const directory = path.join(
-                    $cli.paths.root,
-                    assets.directory,
-                  );
+                  const directory = path.isAbsolute(assets.directory)
+                    ? assets.directory
+                    : path.join($cli.paths.root, assets.directory);
+
                   let headers;
+                  let redirects;
                   try {
                     headers = await fs.readFile(
                       path.join(directory, "_headers"),
                       "utf-8",
                     );
                   } catch (e) {}
+
+                  try {
+                    redirects = await fs.readFile(
+                      path.join(directory, "_redirects"),
+                      "utf-8",
+                    );
+                  } catch (e) {}
                   return {
                     directory,
-                    config: { headers },
+                    config: {
+                      headers,
+                      redirects,
+                      htmlHandling: assets.htmlHandling,
+                      notFoundHandling: assets.notFoundHandling,
+                      runWorkerFirst: assets.runWorkerFirst,
+                    },
                   };
                 })
               : undefined,
+
             bindings: all([args.environment, iamCredentials, bindings]).apply(
               ([environment, iamCredentials, bindings]) => [
                 ...bindings,
@@ -583,6 +624,9 @@ export class Worker extends Component implements Link.Linkable {
         {
           accountId: DEFAULT_ACCOUNT_ID,
           scriptName: script.scriptName,
+          // Reapply placement after each script update. Asset-backed SSR workers
+          // can rewrite script settings and reset placement back to the default.
+          etag: script.etag,
           ...args.placement,
         },
         { parent },

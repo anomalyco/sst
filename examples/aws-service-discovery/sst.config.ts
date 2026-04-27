@@ -10,7 +10,7 @@
  * the service's cloud map hostname.
  *
  * ```ts title="lambda.ts"
- * const reponse = await fetch(`http://${Resource.MyService.service}`);
+ * const response = await fetch(`http://${Resource.MyService.service}`);
  * ```
  *
  * Here we are accessing it through a Lambda function that's linked to the service and is

@@ -9,10 +9,11 @@ export default $config({
     };
   },
   async run() {
+    const ai = new sst.cloudflare.Ai("Ai");
     const bucket = new sst.cloudflare.Bucket("MyBucket");
     const hono = new sst.cloudflare.Worker("Hono", {
       url: true,
-      link: [bucket],
+      link: [bucket, ai],
       handler: "index.ts",
     });
 

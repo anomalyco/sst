@@ -14,7 +14,7 @@ import {
 } from "../component";
 import { Link } from "../link";
 import type { Input } from "../input";
-import { FunctionArgs, FunctionArn } from "./function";
+import { FunctionArgs, FunctionArn } from "./function.js";
 import { hashStringToPrettyString, physicalName, logicalName } from "../naming";
 import { VisibleError } from "../error";
 import { RETENTION } from "./logging";
@@ -620,6 +620,26 @@ export interface ApiGatewayV1RouteArgs {
    */
   apiKey?: Input<boolean>;
   /**
+   * @deprecated Set `streaming: true` on the function definition passed to `api.route()` instead.
+   */
+  streaming?: Input<boolean>;
+  /**
+   * The name of the route.
+   *
+   * By default, SST generates a unique suffix from the route path. Setting `name` gives
+   * you a stable, human-readable name like `MyApiRouteGetUserHandler`.
+   *
+   * Must be unique across all routes.
+   *
+   * @example
+   * ```js
+   * {
+   *   name: "GetUser"
+   * }
+   * ```
+   */
+  name?: string;
+  /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
    */
@@ -782,7 +802,7 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
     this.endpointType = endpoint.types;
 
     function normalizeRegion() {
-      return getRegionOutput(undefined, { parent }).name;
+      return getRegionOutput(undefined, { parent }).region;
     }
 
     function normalizeEndpoint() {
@@ -866,10 +886,16 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
     };
   }
 
-  /**
-   * Add a route to the API Gateway REST API. The route is a combination of an HTTP method and a path, `{METHOD} /{path}`.
-   *
-   * A method could be one of `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS`, or `ANY`. Here `ANY` matches any HTTP method.
+   /**
+    * Add a route to the API Gateway REST API. The route is a combination of an HTTP method and a path, `{METHOD} /{path}`.
+    *
+    * :::caution
+    * [API Gateway has strict rate limits](https://docs.aws.amazon.com/apigateway/latest/developerguide/limits.html) for creating and updating resources. Creating one Lambda function for every endpoint can significantly slow down your deployments.
+    *
+    * Use a single Lambda and handle routing in code if you don't need specific API Gateway features.
+    * :::
+    *
+    * A method could be one of `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS`, or `ANY`. Here `ANY` matches any HTTP method.
    *
    * The path can be a combination of
    * - Literal segments, `/notes`, `/notes/new`, etc.
@@ -964,7 +990,7 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
 
     const transformed = transform(
       this.constructorArgs.transform?.route?.args,
-      this.buildRouteId(method, path),
+      this.buildRouteId(method, path, args.name),
       args,
       { provider: this.constructorOpts.provider },
     );
@@ -1029,7 +1055,7 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
 
     const transformed = transform(
       this.constructorArgs.transform?.route?.args,
-      this.buildRouteId(method, path),
+      this.buildRouteId(method, path, args.name),
       args,
       { provider: this.constructorOpts.provider },
     );
@@ -1087,10 +1113,12 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
     return { method, path };
   }
 
-  private buildRouteId(method: string, path: string) {
-    const suffix = logicalName(
-      hashStringToPrettyString([outputId, method, path].join(""), 6),
-    );
+  private buildRouteId(method: string, path: string, name?: string) {
+    const suffix = name
+      ? logicalName(name)
+      : logicalName(
+          hashStringToPrettyString([outputId, method, path].join(""), 6),
+        );
     return `${this.constructorName}Route${suffix}`;
   }
 

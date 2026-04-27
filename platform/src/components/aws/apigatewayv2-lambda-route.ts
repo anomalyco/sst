@@ -6,7 +6,7 @@ import {
   output,
 } from "@pulumi/pulumi";
 import { Component, Transform, transform } from "../component";
-import { FunctionArgs, FunctionArn } from "./function";
+import { FunctionArgs, FunctionArn } from "./function.js";
 import { apigatewayv2, lambda } from "@pulumi/aws";
 import {
   ApiGatewayV2BaseRouteArgs,
@@ -83,6 +83,7 @@ export class ApiGatewayV2LambdaRoute extends Component {
         {
           action: "lambda:InvokeFunction",
           function: fn.arn,
+          qualifier: fn.qualifier.apply((qualifier) => qualifier!),
           principal: "apigateway.amazonaws.com",
           sourceArn: interpolate`${api.executionArn}/*`,
         },
@@ -98,7 +99,7 @@ export class ApiGatewayV2LambdaRoute extends Component {
           {
             apiId: api.id,
             integrationType: "AWS_PROXY",
-            integrationUri: fn.arn,
+            integrationUri: fn.targetArn,
             payloadFormatVersion: "2.0",
           },
           { parent: self, dependsOn: [permission] },

@@ -174,8 +174,8 @@ Resource links are only available on the server-side of your frontend. If you wa
 
 When you run `sst dev` or `sst deploy`, it generates the types to access the linked resources. These are generated as:
 
-2. A `sst-env.d.ts` file in the project root with types for **all** the linked resources in the app.
-1. A `sst-env.d.ts` file in the same directory of the nearest `package.json` of the function or frontend that's _receiving_ the links. This references the root `sst-env.d.ts` file.
+1. A `sst-env.d.ts` file in the project root with types for **all** the linked resources in the app.
+2. A `sst-env.d.ts` file in the same directory of the nearest `package.json` of the function or frontend that's _receiving_ the links. This is usually just a small reference shim to the root `sst-env.d.ts` file.
 
 You can check the generated `sst-env.d.ts` types into source control. This will let your teammates see the types without having to run `sst dev` when they pull your changes.
 
@@ -278,3 +278,38 @@ You can also modify the links SST creates. For example, you might want to change
  This overrides the existing link and lets you create your own.
 
 Read more about [`sst.Linkable.wrap`](/docs/component/linkable/#static-wrap).
+
+---
+
+### Link integration with external providers
+
+If you want to pass links to compute not managed by SST, like a native ECS task definition or a Kubernetes pod, use `Linkable.env()`. It converts your linked resources into `SST_RESOURCE_*` environment variables so `Resource.MyResource` works at runtime.
+
+```ts title="sst.config.ts"
+const bucket = new sst.aws.Bucket("MyBucket");
+
+const environment = sst.Linkable.env([bucket]);
+```
+
+This returns an `Output<Record<string, string>>` that you can pass to any provider that accepts environment variables.
+
+```ts title="sst.config.ts"
+new kubernetes.apps.v1.Deployment("MyDeployment", {
+  spec: {
+    template: {
+      spec: {
+        containers: [{
+          name: "app",
+          image: "my-image",
+          env: sst.Linkable.env([bucket]).apply((env) =>
+            // Kubernetes requires environment variables to be an array of objects
+            Object.entries(env).map(([name, value]) => ({ name, value: String(value) })),
+          ),
+        }],
+      },
+    },
+  },
+});
+```
+
+Read more about [`sst.Linkable.env`](/docs/component/linkable/#static-env). [Check out an example](/docs/examples/#aws-linkable-env).

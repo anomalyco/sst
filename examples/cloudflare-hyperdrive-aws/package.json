@@ -1,0 +1,12 @@
+{
+  "name": "cloudflare-hyperdrive-aws",
+  "version": "0.0.0",
+  "type": "module",
+  "dependencies": {
+    "postgres": "^3.4.5",
+    "sst": "file:../../sdk/js"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250412.0"
+  }
+}

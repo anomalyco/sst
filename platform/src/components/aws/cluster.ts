@@ -36,6 +36,10 @@ type ClusterVpcArgs = {
    */
   containerSubnets?: Input<Input<string>[]>;
   /**
+   * A list of public subnet IDs in the VPC.
+   */
+  publicSubnets?: Input<Input<string>[]>;
+  /**
    * A list of subnet IDs in the VPC to place the load balancer in.
    */
   loadBalancerSubnets: Input<Input<string>[]>;
@@ -236,7 +240,7 @@ export class Cluster extends Component {
       const cluster = ecs.Cluster.get(`${name}Cluster`, ref.id, undefined, {
         parent: self,
       });
-      const clusterValidated = cluster.tags.apply((tags) => {
+      const clusterValidated = cluster.tagsAll.apply((tags) => {
         const refVersion = tags?.["sst:ref:version"]
           ? parseComponentVersion(tags["sst:ref:version"])
           : undefined;

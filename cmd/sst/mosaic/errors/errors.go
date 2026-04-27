@@ -34,6 +34,7 @@ var transformers = []ErrorTransformer{
 	exact(server.ErrServerNotFound, "Could not find an `sst dev` session to connect to. Since you are running a command outside of the multiplexer be sure to start `sst dev` first."),
 	exact(provider.ErrBucketMissing, "The state bucket is missing, it may have been accidentally deleted. Go to https://console.aws.amazon.com/systems-manager/parameters/%252Fsst%252Fbootstrap/description?tab=Table and check if the state bucket mentioned there exists. If it doesn't you can recreate it or delete the `/sst/bootstrap` key to force recreation."),
 	exact(project.ErrProtectedStage, "Cannot remove protected stage. To remove a protected stage edit your sst.config.ts and remove the `protect` property."),
+	exact(project.ErrProtectedDevStage, "Cannot run `sst dev` on a protected stage."),
 	exact(provider.ErrLockNotFound, "This app / stage is not locked"),
 	exact(aws.ErrAppsyncNotReady, "SST creates an appsync event api to power live lambda. After 10 seconds of waiting this cli could not connect to it."),
 	exact(js.ErrTopLevelImport, "Your sst.config.ts has top level imports - this is not allowed. Move imports inside the function they are used and do a dynamic import: `const mod = await import(\"./mod\")`"),
