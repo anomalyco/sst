@@ -1,5 +1,5 @@
 {
-  "name": "cloudflare-ai-search",
+  "name": "cloudflare-ai-search-namespace",
   "version": "0.0.0",
   "dependencies": {
     "sst": "file:../../sdk/js"
