@@ -414,6 +414,8 @@ export class Worker extends Component implements Link.Linkable {
     const workerUrl = createWorkersUrl();
     const workerPlacement = createWorkerPlacement();
     const workerDomain = createWorkersDomain();
+    createAliases();
+    createRedirects();
 
     this.script = script;
     this.workerUrl = workerUrl;
@@ -734,15 +736,11 @@ export class Worker extends Component implements Link.Linkable {
     function createWorkersDomain() {
       if (!domain) return;
 
-      const primaryDomain = createWorkersCustomDomain(
+      return createWorkersCustomDomain(
         `${name}Domain`,
         domain.name,
         `${name}ZoneLookup`,
       );
-      createAdditionalWorkerDomains();
-      createRedirects();
-
-      return primaryDomain;
     }
 
     function createWorkersCustomDomain(
@@ -772,7 +770,7 @@ export class Worker extends Component implements Link.Linkable {
       );
     }
 
-    function createAdditionalWorkerDomains() {
+    function createAliases() {
       if (!domain) return;
 
       const seen = new Set<string>();
