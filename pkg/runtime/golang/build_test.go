@@ -12,7 +12,8 @@ import (
 // testIntegrationEnv returns a minimal, hermetic env for `go list`.
 // GOTOOLCHAIN=local prevents network downloads of mismatched
 // toolchains, GOPROXY=off prevents module fetches, GOMODCACHE/GOCACHE
-// are redirected so the host caches stay untouched.
+// are redirected so the host caches stay untouched. GOWORK=off keeps
+// the test isolated from any go.work file the host may have.
 func testIntegrationEnv(t *testing.T) []string {
 	t.Helper()
 	return []string{
@@ -23,6 +24,8 @@ func testIntegrationEnv(t *testing.T) []string {
 		"GOPROXY=off",
 		"GOFLAGS=-mod=mod",
 		"GOTOOLCHAIN=local",
+		"GOWORK=off",
+		"GOSUMDB=off",
 	}
 }
 
@@ -47,10 +50,11 @@ func TestCaptureDeps_SimpleMain(t *testing.T) {
 	mustWriteFile(t, main, "package main\n\nfunc main() {}\n")
 
 	r := New()
-	files, err := r.captureDeps(context.Background(), dir, ".", testIntegrationEnv(t))
+	deps, err := r.captureDeps(context.Background(), dir, ".", testIntegrationEnv(t))
 	if err != nil {
 		t.Fatalf("captureDeps: %v", err)
 	}
+	files := deps.files
 
 	if _, ok := files[main]; !ok {
 		t.Errorf("expected main.go (%s) in captured files, got %v", main, keys(files))
@@ -77,10 +81,11 @@ func TestCaptureDeps_LocalDependency(t *testing.T) {
 		"package main\n\nimport \"example.test/shared\"\n\nfunc main() { _ = shared.Hello() }\n")
 
 	r := New()
-	files, err := r.captureDeps(context.Background(), dir, ".", testIntegrationEnv(t))
+	deps, err := r.captureDeps(context.Background(), dir, ".", testIntegrationEnv(t))
 	if err != nil {
 		t.Fatalf("captureDeps: %v", err)
 	}
+	files := deps.files
 
 	if _, ok := files[mainFile]; !ok {
 		t.Errorf("expected main.go (%s) in captured files, got %v", mainFile, keys(files))
@@ -99,10 +104,11 @@ func TestCaptureDeps_NoFilesOutsideModuleRoot(t *testing.T) {
 		"package main\n\nimport \"fmt\"\n\nfunc main() { fmt.Println(\"hi\") }\n")
 
 	r := New()
-	files, err := r.captureDeps(context.Background(), dir, ".", testIntegrationEnv(t))
+	deps, err := r.captureDeps(context.Background(), dir, ".", testIntegrationEnv(t))
 	if err != nil {
 		t.Fatalf("captureDeps: %v", err)
 	}
+	files := deps.files
 
 	for f := range files {
 		if !strings.HasPrefix(f, dir) {
@@ -121,10 +127,11 @@ func TestCaptureDeps_NoTestFilesIncluded(t *testing.T) {
 	mustWriteFile(t, testFile, "package main\n\nimport \"testing\"\n\nfunc TestX(t *testing.T) {}\n")
 
 	r := New()
-	files, err := r.captureDeps(context.Background(), dir, ".", testIntegrationEnv(t))
+	deps, err := r.captureDeps(context.Background(), dir, ".", testIntegrationEnv(t))
 	if err != nil {
 		t.Fatalf("captureDeps: %v", err)
 	}
+	files := deps.files
 
 	if _, ok := files[testFile]; ok {
 		t.Errorf("test file %s leaked into captured set", testFile)
@@ -164,10 +171,11 @@ func TestCaptureDeps_SubPackageHandler(t *testing.T) {
 	mustWriteFile(t, betaFile, "package main\n\nfunc main() {}\n")
 
 	r := New()
-	files, err := r.captureDeps(context.Background(), dir, "lambdas/alpha", testIntegrationEnv(t))
+	deps, err := r.captureDeps(context.Background(), dir, "lambdas/alpha", testIntegrationEnv(t))
 	if err != nil {
 		t.Fatalf("captureDeps: %v", err)
 	}
+	files := deps.files
 
 	if _, ok := files[alphaFile]; !ok {
 		t.Errorf("expected alpha main.go in captured files, got %v", keys(files))
