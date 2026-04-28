@@ -14,6 +14,7 @@ describe("resource environment", () => {
       [`SST_RESOURCE_${name}`]: JSON.stringify({ value: "linked" }),
     });
 
+    expect(resource.App).toEqual({ name: "app", stage: "dev" });
     expect((resource as any)[name]).toEqual({ value: "linked" });
     expect(`SST_RESOURCE_${name}` in resource).toBe(false);
   });

@@ -7,10 +7,6 @@ function loadCloudflareResources() {
   loadResourceEnvironment(env);
 }
 
-export function fromCloudflareEnv(input: any) {
-  loadResourceEnvironment(input);
-}
-
 export function wrapCloudflareHandler(handler: any) {
   if (handler == null) {
     return undefined;
