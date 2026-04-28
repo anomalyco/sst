@@ -182,6 +182,7 @@ export class Component extends ComponentResource {
               "aws:sqs/queuePolicy:QueuePolicy",
               "aws:ssm/parameter:Parameter",
               "cloudflare:index/dnsRecord:DnsRecord",
+              "cloudflare:index/pageRule:PageRule",
               "cloudflare:index/workersCronTrigger:WorkersCronTrigger",
               "cloudflare:index/workersCustomDomain:WorkersCustomDomain",
               "cloudflare:index/queueConsumer:QueueConsumer",
@@ -343,6 +344,11 @@ export class Component extends ComponentResource {
             ],
             "cloudflare:index/hyperdriveConfig:HyperdriveConfig": [
               "name",
+              64,
+              { lower: true },
+            ],
+            "cloudflare:index/workflow:Workflow": [
+              "workflowName",
               64,
               { lower: true },
             ],

@@ -273,19 +273,38 @@ export interface App {
 
   /**
    * Configure which directories should be watched for changes when running `sst dev`.
-   * By default, all directories are watched (except node_modules and hidden directories).
+   * By default, SST watches the project root recursively, except for hidden
+   * directories and `node_modules`.
+   *
+   * You can configure it with `paths` and `ignore`.
+   *
+   * :::caution
+   * Passing an array directly is supported for backward compatibility
+   * and will be deprecated in the next major version.
+   * :::
    *
    * @example
    * ```ts
    * {
-   *   watch: ["packages/www", "packages/api"]
+   *   watch: {
+   *     paths: ["packages/www", "packages/api"],
+   *     ignore: [".env", "packages/api/generated"]
+   *   }
    * }
    * ```
    *
-   * This will only watch the `packages/www` and `packages/api` directories.
-   * The paths are relative to the project root.
+   * @example
+   *
+   * Watch all dictories except `*.egg-info`.
+   * ```ts
+   * {
+   *   watch: {
+   *     ignore: ["*.egg-info"]
+   *   }
+   * }
+   * ```
    */
-  watch?: string[];
+  watch?: string[] | AppWatch;
 
   /**
    * Configure type generation options.
@@ -333,6 +352,26 @@ export interface AppInput {
    * If not passed in, it'll use the username of your local machine, or prompt you for it.
    */
   stage: string;
+}
+
+export interface AppWatch {
+  /**
+   * Directories to recursively watch.
+   *
+   * The paths are relative to the project root. If omitted, SST watches the
+   * project root. Glob patterns are not supported here; use explicit
+   * directories.
+   */
+  paths?: string[];
+  /**
+   * Files or directories to ignore within the watched paths.
+   *
+   * Entries without a slash match names anywhere in the watched tree, like
+   * `.env` or `*.egg-info`. Entries with a slash match that subtree relative
+   * to the project root and can also point outside it, like
+   * `../external-package/dist`.
+   */
+  ignore?: string[];
 }
 
 export interface RunnerInput {

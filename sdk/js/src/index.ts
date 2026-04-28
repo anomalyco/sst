@@ -1,5 +1,5 @@
 export * from "./realtime/index.js";
-export * from "./resource/index.js";
+export { Resource } from "./resource/index.js";
 export * from "./vector/index.js";
 
 import { format } from "util";

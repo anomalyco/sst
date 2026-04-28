@@ -557,7 +557,9 @@ export class Dynamo extends Component implements Link.Linkable {
                         }
                       : {
                           hashKey: index.hashKey,
-                          rangeKey: index.rangeKey,
+                          ...(index.rangeKey
+                            ? { rangeKey: index.rangeKey }
+                            : {}),
                         }),
                     ...(index.projection === "keys-only"
                       ? { projectionType: "KEYS_ONLY" }

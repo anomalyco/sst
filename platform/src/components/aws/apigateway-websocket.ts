@@ -343,6 +343,22 @@ export interface ApiGatewayWebSocketRouteArgs {
     }
   >;
   /**
+   * The name of the route.
+   *
+   * By default, SST generates a unique suffix from the route path. Setting `name` gives
+   * you a stable, human-readable name like `MyApiRouteSendMessageHandler`.
+   *
+   * Must be unique across all routes.
+   *
+   * @example
+   * ```js
+   * {
+   *   name: "SendMessage"
+   * }
+   * ```
+   */
+  name?: string;
+  /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
    */
@@ -756,9 +772,11 @@ export class ApiGatewayWebSocket extends Component implements Link.Linkable {
   ) {
     const prefix = this.constructorName;
     const suffix = logicalName(
-      ["$connect", "$disconnect", "$default"].includes(route)
-        ? route
-        : hashStringToPrettyString(`${outputId}${route}`, 6),
+      args.name
+        ? args.name
+        : ["$connect", "$disconnect", "$default"].includes(route)
+          ? route
+          : hashStringToPrettyString(`${outputId}${route}`, 6),
     );
 
     const transformed = transform(

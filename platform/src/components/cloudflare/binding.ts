@@ -79,6 +79,15 @@ export interface VersionMetadataBinding {
   properties: Record<string, never>;
 }
 
+export interface WorkflowBinding {
+  type: "workflowBindings";
+  properties: {
+    workflowName: Input<string>;
+    className: Input<string>;
+    scriptName: Input<string>;
+  };
+}
+
 export type Binding =
   | AiBinding
   | KvBinding
@@ -89,7 +98,8 @@ export type Binding =
   | R2BucketBinding
   | D1DatabaseBinding
   | HyperdriveBinding
-  | VersionMetadataBinding;
+  | VersionMetadataBinding
+  | WorkflowBinding;
 
 export function binding<T extends Binding["type"]>(input: Binding & {}) {
   return {

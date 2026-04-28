@@ -1,5 +1,5 @@
 import { Resource } from "../resource/index.js";
-import { aws } from "../aws/client.js";
+import { client } from "../aws/client.js";
 
 export interface PutEvent {
   /**
@@ -296,7 +296,7 @@ async function invokeFunction<T>(
   attempts = 0
 ): Promise<T> {
   try {
-    const c = await aws.client();
+    const c = await client();
     const endpoint = `https://lambda.${process.env.AWS_REGION}.amazonaws.com/2015-03-31`;
     const response = await c.fetch(
       `${endpoint}/functions/${functionName}/invocations`,

@@ -95,8 +95,30 @@ export interface StaticSiteV2Args extends Omit<BaseStaticSiteArgs, "vite"> {
    *   domain: "domain.com"
    * }
    * ```
+   *
+   * Redirect alternate domains to the main domain.
+   *
+   * ```js
+   * {
+   *   domain: {
+   *     name: "domain.com",
+   *     redirects: ["www.domain.com"]
+   *   }
+   * }
+   * ```
+   *
+   * Or keep visitors on alternate domains with aliases.
+   *
+   * ```js
+   * {
+   *   domain: {
+   *     name: "app1.domain.com",
+   *     aliases: ["app2.domain.com"]
+   *   }
+   * }
+   * ```
    */
-  domain?: Input<string>;
+  domain?: WorkerArgs["domain"];
   /**
    * Configure trailing slash behavior for HTML pages.
    *
@@ -201,6 +223,32 @@ export interface StaticSiteV2Args extends Omit<BaseStaticSiteArgs, "vite"> {
  * ```js {2}
  * new sst.cloudflare.StaticSiteV2("MyWeb", {
  *   domain: "my-app.com"
+ * });
+ * ```
+ *
+ * #### Redirect www to apex domain
+ *
+ * Redirect `www.my-app.com` to `my-app.com`.
+ *
+ * ```js {4}
+ * new sst.cloudflare.StaticSiteV2("MyWeb", {
+ *   domain: {
+ *     name: "my-app.com",
+ *     redirects: ["www.my-app.com"]
+ *   }
+ * });
+ * ```
+ *
+ * #### Add domain aliases
+ *
+ * Allow visitors to use alternate domains without redirecting.
+ *
+ * ```js {4}
+ * new sst.cloudflare.StaticSiteV2("MyWeb", {
+ *   domain: {
+ *     name: "app1.my-app.com",
+ *     aliases: ["app2.my-app.com"]
+ *   }
  * });
  * ```
  *

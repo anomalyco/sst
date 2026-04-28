@@ -6,6 +6,18 @@ import { binding } from "./binding";
 import { DEFAULT_ACCOUNT_ID } from "./account-id";
 import { DurationHours, toSeconds } from "../duration";
 
+export interface HyperdriveGetArgs {
+  /**
+   * The ID of the existing Hyperdrive config.
+   */
+  hyperdriveId: string;
+}
+
+interface HyperdriveRef {
+  ref: true;
+  hyperdrive: cloudflare.HyperdriveConfig;
+}
+
 export interface HyperdriveArgs {
   /**
    * Configure caching for SQL queries sent through Hyperdrive.
@@ -217,6 +229,12 @@ export class Hyperdrive extends Component implements Link.Linkable {
   ) {
     super(__pulumiType, name, args, opts);
 
+    if (args && "ref" in args) {
+      const ref = args as unknown as HyperdriveRef;
+      this.hyperdrive = ref.hyperdrive;
+      return;
+    }
+
     const parent = this;
 
     const origin = output(args.origin);
@@ -318,6 +336,51 @@ export class Hyperdrive extends Component implements Link.Linkable {
        */
       hyperdrive: this.hyperdrive,
     };
+  }
+
+  /**
+   * Reference an existing Hyperdrive config with the given ID. This is useful when you
+   * create a Hyperdrive config in one stage and want to share it in another.
+   *
+   * :::tip
+   * You can use the `static get` method to share Hyperdrive configs across stages.
+   * :::
+   *
+   * @param name The name of the component.
+   * @param args The arguments to get the Hyperdrive config.
+   * @param opts? Resource options.
+   *
+   * @example
+   * Imagine you create a Hyperdrive config in the `dev` stage. And in your personal stage
+   * `frank`, instead of creating a new one, you want to share the same one from `dev`.
+   *
+   * ```ts title="sst.config.ts"
+   * const hyperdrive = $app.stage === "frank"
+   *   ? sst.cloudflare.Hyperdrive.get("MyDatabase", {
+   *       hyperdriveId: "a1b2c3d4e5f6",
+   *     })
+   *   : new sst.cloudflare.Hyperdrive("MyDatabase", { ... });
+   * ```
+   */
+  public static get(
+    name: string,
+    args: HyperdriveGetArgs,
+    opts?: ComponentResourceOptions,
+  ) {
+    const hyperdrive = cloudflare.HyperdriveConfig.get(
+      `${name}Hyperdrive`,
+      `${DEFAULT_ACCOUNT_ID}/${args.hyperdriveId}`,
+      undefined,
+      opts,
+    );
+    return new Hyperdrive(
+      name,
+      {
+        ref: true,
+        hyperdrive,
+      } as unknown as HyperdriveArgs,
+      opts,
+    );
   }
 }
 

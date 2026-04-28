@@ -20,7 +20,7 @@ export type Plan = {
 };
 
 export interface SsrSiteArgs extends BaseSsrSiteArgs {
-  domain?: Input<string>;
+  domain?: WorkerArgs["domain"];
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
@@ -170,6 +170,7 @@ export abstract class SsrSite extends Component implements Link.Linkable {
         frameworkConfig,
       ]).apply(([environment, links, compatibility, frameworkConfig]) => {
         return createWranglerConfig({
+          appName: $app.name,
           appStage: $app.stage,
           name,
           frameworkConfig,
@@ -201,6 +202,7 @@ export abstract class SsrSite extends Component implements Link.Linkable {
           }).apply(({ urn, link }) => ({
             name: urn.split("::").at(-1)!,
             include: link.include ?? [],
+            properties: link.properties,
           })),
         );
         return linkBindings.length > 0 ? all(linkBindings) : [];

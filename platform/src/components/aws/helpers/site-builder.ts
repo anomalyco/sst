@@ -1,4 +1,4 @@
-import { all, output, CustomResourceOptions } from "@pulumi/pulumi";
+import { output, CustomResourceOptions } from "@pulumi/pulumi";
 import { Semaphore } from "../../../util/semaphore";
 import { local } from "@pulumi/command";
 
@@ -11,9 +11,9 @@ export function siteBuilder(
   args: local.CommandArgs,
   opts?: CustomResourceOptions,
 ) {
-  const ready = output(limiter.acquire(name));
-  // Wait for the all args values to be resolved before acquiring the semaphore
-  return all([args, ready]).apply(([args]) => {
+  // Wait for all arg values to be resolved before acquiring the semaphore.
+  return output(args).apply(async (args) => {
+    await limiter.acquire(name);
 
     let waitOn;
 
