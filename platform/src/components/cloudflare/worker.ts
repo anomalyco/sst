@@ -736,33 +736,21 @@ export class Worker extends Component implements Link.Linkable {
     function createWorkersDomain() {
       if (!domain) return;
 
-      return createWorkersCustomDomain(
-        `${name}Domain`,
-        domain.name,
-        `${name}ZoneLookup`,
-      );
-    }
-
-    function createWorkersCustomDomain(
-      resourceName: string,
-      hostname: Input<string>,
-      zoneResourceName = `${resourceName}ZoneLookup`,
-    ) {
       const zone = new ZoneLookup(
-        zoneResourceName,
+        `${name}ZoneLookup`,
         {
           accountId: DEFAULT_ACCOUNT_ID,
-          domain: hostname,
+          domain: domain.name,
         },
         { parent },
       );
 
       return new cf.WorkersCustomDomain(
-        resourceName,
+        `${name}Domain`,
         {
           accountId: DEFAULT_ACCOUNT_ID,
           service: script.scriptName,
-          hostname,
+          hostname: domain.name,
           zoneId: zone.id,
           environment: "production",
         },
@@ -779,7 +767,27 @@ export class Worker extends Component implements Link.Linkable {
           if (seen.has(hostname)) continue;
           seen.add(hostname);
         }
-        createWorkersCustomDomain(`${name}Alias${i}Domain`, hostname);
+
+        const zone = new ZoneLookup(
+          `${name}Alias${i}ZoneLookup`,
+          {
+            accountId: DEFAULT_ACCOUNT_ID,
+            domain: hostname,
+          },
+          { parent },
+        );
+
+        new cf.WorkersCustomDomain(
+          `${name}Alias${i}Domain`,
+          {
+            accountId: DEFAULT_ACCOUNT_ID,
+            service: script.scriptName,
+            hostname,
+            zoneId: zone.id,
+            environment: "production",
+          },
+          { parent },
+        );
       }
     }
 
