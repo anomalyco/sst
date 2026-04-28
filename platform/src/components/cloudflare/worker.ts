@@ -434,7 +434,7 @@ export class Worker extends Component implements Link.Linkable {
                 }
               : {
                   type: "secret_text",
-                  name: name,
+                  name: output(name).apply((name) => `SST_RESOURCE_${name}`),
                   text: jsonStringify(item.properties),
                 },
           );

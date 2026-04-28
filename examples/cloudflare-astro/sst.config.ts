@@ -16,9 +16,13 @@ export default $config({
   async run() {
     const bucket = new sst.cloudflare.Bucket("MyBucket");
     const kv = new sst.cloudflare.Kv("MyKv");
+    const secret = new sst.Secret("MySecret", "cloudflare-astro-secret");
 
     new sst.cloudflare.Astro("MyWeb", {
-      link: [bucket, kv],
+      link: [bucket, kv, secret],
+      environment: {
+        API_URL: "https://example.com/cloudflare-astro",
+      },
     });
   },
 });

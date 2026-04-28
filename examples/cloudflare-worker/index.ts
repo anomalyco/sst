@@ -1,4 +1,5 @@
-import { Resource } from "sst";
+import { env } from "cloudflare:workers";
+import { Resource } from "sst/resource";
 
 export default {
   async fetch(req: Request) {
@@ -13,21 +14,19 @@ export default {
     }
 
     if (req.method == "GET") {
-      const first = await Resource.MyBucket.list().then(
-        (res) =>
-          res.objects.toSorted(
-            (a, b) => a.uploaded.getTime() - b.uploaded.getTime(),
-          )[0],
-      );
-      if (!first) {
-        return new Response("No objects found");
-      }
-      const result = await Resource.MyBucket.get(first.key);
-      return new Response(result.body, {
-        headers: {
-          "content-type": result.httpMetadata.contentType,
+      const objects = await Resource.MyBucket.list();
+      return Response.json({
+        app: Resource.App,
+        environment: {
+          API_URL: (env as { API_URL?: string }).API_URL,
+        },
+        secret: Resource.MySecret.value,
+        bucket: {
+          objects: objects.objects.map((object) => object.key),
         },
       });
     }
+
+    return new Response("Method not allowed", { status: 405 });
   },
 };

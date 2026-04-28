@@ -64,7 +64,7 @@ export function createWranglerConfig(input: {
     // Linkable, etc.) are surfaced as JSON-stringified vars so they match
     // the `secret_text` deploy path handled in `worker.ts buildBindings`.
     if (!binding) {
-      vars[link.name] = JSON.stringify(link.properties ?? {});
+      vars[`SST_RESOURCE_${link.name}`] = JSON.stringify(link.properties ?? {});
       continue;
     }
 

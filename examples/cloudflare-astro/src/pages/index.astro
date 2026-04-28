@@ -1,8 +1,18 @@
 ---
 import Layout from "../layouts/Layout.astro";
+import { env } from "cloudflare:workers";
 import { Resource } from "sst/resource";
 
+export const prerender = false;
+
 const objects = await Resource.MyBucket.list();
+const verification = {
+  app: Resource.App,
+  environment: {
+    API_URL: (env as { API_URL?: string }).API_URL,
+  },
+  secret: Resource.MySecret.value,
+};
 ---
 
 <Layout title="Astro 6 on Cloudflare">
@@ -16,6 +26,11 @@ const objects = await Resource.MyBucket.list();
   <p>
     <a href="/prerendered">Open the prerendered page</a>
   </p>
+
+  <section class="card">
+    <h2>Runtime values</h2>
+    <pre>{JSON.stringify(verification, null, 2)}</pre>
+  </section>
 
   <section class="card">
     <h2>Bucket objects</h2>
