@@ -20,7 +20,7 @@ export type Plan = {
 };
 
 export interface SsrSiteArgs extends BaseSsrSiteArgs {
-  domain?: Input<string>;
+  domain?: WorkerArgs["domain"];
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
