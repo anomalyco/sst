@@ -437,44 +437,47 @@ export interface FunctionArgs {
    *
    * ##### Python
    *
-   * For Python, [uv](https://docs.astral.sh/uv/) is used to package the function.
+   * SST uses [uv](https://docs.astral.sh/uv/) to package the function.
    * You need to have it installed.
    *
    * :::note
    * You need uv installed for Python functions.
    * :::
    *
-   * The functions need to be in a [uv workspace](https://docs.astral.sh/uv/concepts/projects/workspaces/#workspace-sources).
+   * Your handler must live in a [uv workspace](https://docs.astral.sh/uv/concepts/projects/workspaces/)
+   * with a `pyproject.toml`. Match the Python version to your Lambda runtime.
    *
-   * ```js
-   * {
-   *   handler: "functions/src/functions/api.handler"
-   * }
-   * ```
-   *
-   * The project structure might look something like this. Where there is a
-   * `pyproject.toml` file in the root and the `functions/` directory is a uv
-   * workspace with its own `pyproject.toml`.
-   *
-   * ```txt
-   * ├── sst.config.ts
-   * ├── pyproject.toml
-   * └── functions
-   *     ├── pyproject.toml
-   *     └── src
-   *         └── functions
-   *             ├── __init__.py
-   *             └── api.py
-   * ```
-   *
-   * To make sure that the right runtime is used in `sst dev`, make sure to set the
-   * version of Python in your `pyproject.toml` to match the runtime you are using.
-   *
-   * ```toml title="functions/pyproject.toml"
+   * ```toml title="pyproject.toml"
+   * [project]
+   * name = "my-project"
    * requires-python = "==3.11.*"
    * ```
    *
-   * You can refer to [this example of deploying a Python function](/docs/examples/#aws-lambda-python).
+   * Run `uv sync` before starting dev mode:
+   *
+   * ```bash
+   * uv sync
+   * sst dev
+   * ```
+   *
+   * Use absolute imports within your package.
+   *
+   * ```python
+   * from mypackage.utils import helper
+   * ```
+   *
+   * Avoid relative imports — they can fail in Lambda. Make sure package directories have `__init__.py`.
+   *
+   * Access static files relative to `__file__`.
+   *
+   * ```python
+   * from pathlib import Path
+   * config = Path(__file__).parent / "config.json"
+   * ```
+   *
+   * For large dependencies like numpy or pandas, deploy as a container. See [`python.container`](#python-container).
+   *
+   * For common project layouts, check out the [Python examples](https://github.com/sst/sst/tree/dev/examples/python-layouts).
    *
    * ##### Golang
    *
