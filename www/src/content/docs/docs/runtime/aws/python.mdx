@@ -83,8 +83,15 @@ boto3>=1.34.0
 During `sst dev`, Python functions run locally with hot reloading:
 
 ```bash
+uv sync        # Install dependencies (run once, or after changing pyproject.toml)
 sst dev
 ```
+
+:::note
+`sst dev` runs your functions from source using `uv run`, so your virtual environment
+must be set up first. Run `uv sync` before starting dev mode and again whenever you
+add or change dependencies in `pyproject.toml`.
+:::
 
 Changes to your Python code are automatically detected and the function is rebuilt in seconds, not minutes.
 
@@ -230,8 +237,8 @@ When no custom configuration is found, SST applies sensible defaults:
 - **Virtual environments**: `.venv/`, `venv/`, `env/`
 - **IDE files**: `.vscode/`, `.idea/`, `*.swp`, `.DS_Store`
 - **Test artifacts**: `.pytest_cache/`, `.coverage`, `htmlcov/`
-- **Documentation**: `README.md`, `CHANGELOG.md`, `LICENSE`
-- **Development config**: `pyproject.toml`, `setup.py`, `tox.ini`, `Makefile`
+- **Documentation**: `README.md`, `CHANGELOG.md`
+- **Development config**: `tox.ini`, `Makefile`
 - **Development dependencies**: `requirements-dev.txt`, `.pre-commit-config.yaml`
 - **Node.js artifacts**: `node_modules/`, `package-lock.json` (for mixed projects)
 - **Temporary files**: `*.log`, `*.tmp`, `tmp/`, `temp/`
