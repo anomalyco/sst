@@ -761,13 +761,7 @@ export class Worker extends Component implements Link.Linkable {
     function createAliases() {
       if (!domain) return;
 
-      const seen = new Set<string>();
       for (const [i, hostname] of domain.aliases.entries()) {
-        if (typeof hostname === "string") {
-          if (seen.has(hostname)) continue;
-          seen.add(hostname);
-        }
-
         const zone = new ZoneLookup(
           `${name}Alias${i}ZoneLookup`,
           {
@@ -794,13 +788,7 @@ export class Worker extends Component implements Link.Linkable {
     function createRedirects() {
       if (!domain) return;
 
-      const seen = new Set<string>();
       for (const [i, hostname] of domain.redirects.entries()) {
-        if (typeof hostname === "string") {
-          if (seen.has(hostname)) continue;
-          seen.add(hostname);
-        }
-
         const resourceName = `${name}Redirect${i}`;
         const zone = new ZoneLookup(
           `${resourceName}ZoneLookup`,
