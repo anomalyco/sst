@@ -11,7 +11,6 @@ export default async function Home() {
     Key: crypto.randomUUID(),
     Bucket: Resource.MyBucket.name,
   });
-
   const url = await getSignedUrl(new S3Client({}), command);
 
   return (
