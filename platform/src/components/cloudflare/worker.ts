@@ -828,11 +828,8 @@ export class Worker extends Component implements Link.Linkable {
             actions: {
               forwardingUrl: {
                 statusCode: 301,
-                url: all([domain.name, hostname]).apply(
-                  ([domainName, hostname]) => {
-                    const wildcardCount = hostname.match(/\*/g)?.length ?? 0;
-                    return `https://${domainName}/$${wildcardCount + 1}`;
-                  },
+                url: output(domain.name).apply(
+                  (domainName) => `https://${domainName}/$1`,
                 ),
               },
             },
