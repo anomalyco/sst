@@ -39,5 +39,6 @@ export function wrapCloudflareHandler(handler: any) {
   return result;
 }
 
+// Keep an interface here so generated sst-env.d.ts can augment Resource.
 export interface Resource extends BaseResource {}
 export const Resource = createResource<Resource>(loadCloudflareResources);
