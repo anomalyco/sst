@@ -38,8 +38,9 @@ func findWorkspaceRoot(projectInfo *projectInfo) string {
 	pyprojectDir := filepath.Dir(projectInfo.PyprojectPath)
 	best := pyprojectDir
 
+	const maxDepth = 5
 	currentDir := filepath.Dir(pyprojectDir)
-	for currentDir != filepath.Dir(currentDir) && currentDir != "." {
+	for i := 0; i < maxDepth && currentDir != filepath.Dir(currentDir) && currentDir != "."; i++ {
 		parentPyproject := filepath.Join(currentDir, "pyproject.toml")
 		if _, err := os.Stat(parentPyproject); err == nil {
 			best = currentDir
@@ -790,21 +791,17 @@ func copySyncedDependencies(ctx context.Context, input *runtime.BuildInput, proj
 		globalDependencyInstallLocksMutex.Unlock()
 
 		// Acquire lock with timeout (5 minutes)
-		lockDeadline := time.Now().Add(5 * time.Minute)
-		gotLock := false
-		for time.Now().Before(lockDeadline) {
-			if cacheLock.TryLock() {
-				gotLock = true
-				break
-			}
-			select {
-			case <-ctx.Done():
-				return fmt.Errorf("context cancelled while waiting for dependency install lock")
-			case <-time.After(500 * time.Millisecond):
-				// Try again
-			}
-		}
-		if !gotLock {
+		lockAcquired := make(chan struct{})
+		go func() {
+			cacheLock.Lock()
+			close(lockAcquired)
+		}()
+		select {
+		case <-lockAcquired:
+			// got the lock
+		case <-ctx.Done():
+			return fmt.Errorf("context cancelled while waiting for dependency install lock")
+		case <-time.After(5 * time.Minute):
 			return fmt.Errorf("timed out waiting for dependency install lock after 5 minutes")
 		}
 		defer cacheLock.Unlock()
@@ -1029,9 +1026,6 @@ func cleanupInstalledDependencies(targetDir string) error {
 			ext := filepath.Ext(info.Name())
 			fileName := info.Name()
 			if ext == ".pyc" || ext == ".pyo" || ext == ".pyd" || fileName == ".DS_Store" {
-				os.Remove(path)
-			}
-			if ext == ".pyi" || fileName == "py.typed" {
 				os.Remove(path)
 			}
 		}
@@ -1588,13 +1582,11 @@ var defaultExcludePatterns = []string{
 
 	"README.md", "README.rst", "README.txt",
 	"CHANGELOG.md", "CHANGELOG.rst", "CHANGELOG.txt",
-	"LICENSE", "LICENSE.txt", "MANIFEST.in",
+	"MANIFEST.in",
 	"setup.cfg", "tox.ini", "Makefile",
-	"Dockerfile", "docker-compose.yml", "docker-compose.yaml",
 
 	"tests", "test",
 
-	"pyproject.toml", "setup.py",
 	"requirements-dev.txt", "requirements.dev.txt", "dev-requirements.txt",
 	".python-version", ".pre-commit-config.yaml",
 

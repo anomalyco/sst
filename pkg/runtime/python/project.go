@@ -180,9 +180,5 @@ func parsePyprojectToml(path string) (*pyprojectConfig, error) {
 		return nil, fmt.Errorf("TOML parsing error in %s: %w", path, err)
 	}
 
-	if config.Project.Name == "" && config.Tool.Poetry.Name == "" {
-		return nil, fmt.Errorf("pyproject.toml at %s must have a name in [project] or [tool.poetry]", path)
-	}
-
 	return &config, nil
 }

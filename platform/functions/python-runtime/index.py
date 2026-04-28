@@ -143,14 +143,19 @@ while True:
         continue
 
     response_url = f"{AWS_LAMBDA_RUNTIME_API}/runtime/invocation/{context.aws_request_id}/response"
+    last_error = None
     for attempt in range(3):
         try:
             req = Request(response_url, data=response_body.encode(), headers={"Content-Type": "application/json"}, method="POST")
             resp = urlopen(req)
+            last_error = None
             break
-        except URLError:
+        except URLError as e:
+            last_error = e
             if attempt < 2:
                 time.sleep(0.5)
+    if last_error is not None:
+        raise RuntimeError(f"Failed to POST invocation response after 3 attempts: {last_error}") from last_error
 
     sys.stdout.flush()
     sys.stderr.flush()

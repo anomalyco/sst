@@ -61,6 +61,10 @@ func (w *worker) Logs() io.ReadCloser {
 }
 
 type PythonRuntime struct {
+	// concurrency limits total parallel builds across all functions.
+	// This is separate from the per-cache-key mutex in build.go which deduplicates
+	// concurrent installs for the same dependency set. The two are complementary:
+	// the semaphore caps throughput, the mutex prevents redundant work.
 	concurrency *semaphore.Weighted
 }
 
