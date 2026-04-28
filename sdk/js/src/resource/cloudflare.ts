@@ -1,8 +1,15 @@
 import { env } from "cloudflare:workers";
 
-import { loadFromCloudflareEnv, Resource } from "./shared.js";
+import { createResource, loadFromCloudflareEnv } from "./shared.js";
+import type { Resource as ResourceShape } from "./shared.js";
 
-loadFromCloudflareEnv(env);
+let environmentLoaded = false;
+
+function loadCloudflareResources() {
+  if (environmentLoaded) return;
+  environmentLoaded = true;
+  loadFromCloudflareEnv(env);
+}
 
 export function fromCloudflareEnv(input: any) {
   loadFromCloudflareEnv(input);
@@ -36,4 +43,5 @@ export function wrapCloudflareHandler(handler: any) {
   return result;
 }
 
-export { Resource };
+export interface Resource extends ResourceShape {}
+export const Resource = createResource(loadCloudflareResources) as Resource;
