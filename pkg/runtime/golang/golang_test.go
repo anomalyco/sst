@@ -57,29 +57,135 @@ func TestGoarchFromArchitecture(t *testing.T) {
 	}
 }
 
-func TestShouldRebuild_NonGoFile(t *testing.T) {
+func TestShouldRebuild_UntrackedFiles(t *testing.T) {
 	t.Parallel()
 	r := New()
 	r.files["fn"] = map[string]struct{}{absPath("abs", "path", "handler.go"): {}}
+	r.gomodPaths["fn"] = absPath("abs", "path", "go.mod")
 
+	// Files that are not in the captured graph and are not the
+	// handler's go.mod/go.sum must not trigger a rebuild.
 	tests := []struct {
 		name string
 		file string
 	}{
-		{"txt", absPath("abs", "path", "handler.txt")},
-		{"md", absPath("abs", "path", "README.md")},
-		{"go.bak", absPath("abs", "path", "handler.go.bak")},
+		{"unrelated txt", absPath("abs", "path", "notes.txt")},
+		{"unrelated md", absPath("abs", "path", "README.md")},
+		{"editor backup", absPath("abs", "path", "handler.go.bak")},
 		{"no extension", absPath("abs", "path", "handler")},
-		// HasSuffix is case-sensitive; ".GO" must NOT match ".go".
+		// HasSuffix is case-sensitive — ".GO" is not ".go", but the
+		// graph lookup is exact, so it doesn't match anyway.
 		{"uppercase extension", absPath("abs", "path", "handler.GO")},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			if r.ShouldRebuild("fn", tt.file) {
-				t.Errorf("expected false for non-.go file %q", tt.file)
+				t.Errorf("expected false for untracked file %q", tt.file)
 			}
 		})
+	}
+}
+
+func TestShouldRebuild_EmbedAssetInGraph(t *testing.T) {
+	t.Parallel()
+	r := New()
+	dir := t.TempDir()
+	asset := filepath.Join(dir, "template.html")
+	r.files["fn"] = map[string]struct{}{asset: {}}
+
+	// //go:embed assets are captured by parseGoListOutput as part of
+	// the file set even though they are not .go sources. Editing them
+	// must trigger a rebuild because they compile into the binary.
+	if !r.ShouldRebuild("fn", asset) {
+		t.Errorf("expected true for tracked embed asset: %s", asset)
+	}
+}
+
+func TestShouldRebuild_GoModAndGoSum(t *testing.T) {
+	t.Parallel()
+	r := New()
+	dir := t.TempDir()
+	gomod := filepath.Join(dir, "go.mod")
+	gosum := filepath.Join(dir, "go.sum")
+	mustWriteFile(t, gomod, "module example.test\n\ngo 1.22\n")
+
+	r.files["fn"] = map[string]struct{}{filepath.Join(dir, "main.go"): {}}
+	r.gomodPaths["fn"] = gomod
+
+	// go.mod and go.sum changes shift the resolved dependency set, so
+	// they must trigger a rebuild even though they are not in the file
+	// graph (which only contains .go/cgo/embed sources).
+	if !r.ShouldRebuild("fn", gomod) {
+		t.Errorf("expected true for handler's go.mod: %s", gomod)
+	}
+	if !r.ShouldRebuild("fn", gosum) {
+		t.Errorf("expected true for handler's go.sum: %s", gosum)
+	}
+}
+
+func TestShouldRebuild_OtherHandlersGoModIgnored(t *testing.T) {
+	t.Parallel()
+	r := New()
+	dirA := t.TempDir()
+	dirB := t.TempDir()
+	r.files["a"] = map[string]struct{}{filepath.Join(dirA, "main.go"): {}}
+	r.gomodPaths["a"] = filepath.Join(dirA, "go.mod")
+	r.files["b"] = map[string]struct{}{filepath.Join(dirB, "main.go"): {}}
+	r.gomodPaths["b"] = filepath.Join(dirB, "go.mod")
+
+	// Editing handler B's go.mod must not rebuild handler A — they
+	// live in separate modules.
+	if r.ShouldRebuild("a", filepath.Join(dirB, "go.mod")) {
+		t.Errorf("expected false: handler A should ignore handler B's go.mod")
+	}
+}
+
+func TestShouldRebuild_NewFileInTrackedPackage(t *testing.T) {
+	t.Parallel()
+	r := New()
+	pkgDir := t.TempDir()
+	existing := filepath.Join(pkgDir, "existing.go")
+	added := filepath.Join(pkgDir, "added.go")
+
+	r.files["fn"] = map[string]struct{}{existing: {}}
+	r.pkgDirs["fn"] = map[string]struct{}{pkgDir: {}}
+
+	// Editing a brand-new .go file inside a tracked package directory
+	// must trigger a rebuild even though the file path itself is not
+	// in the captured set yet — the next Build re-captures the graph.
+	if !r.ShouldRebuild("fn", added) {
+		t.Errorf("expected true for new .go file in tracked package dir: %s", added)
+	}
+}
+
+func TestShouldRebuild_NewFileInUntrackedDir(t *testing.T) {
+	t.Parallel()
+	r := New()
+	tracked := t.TempDir()
+	other := t.TempDir()
+	r.files["fn"] = map[string]struct{}{filepath.Join(tracked, "main.go"): {}}
+	r.pkgDirs["fn"] = map[string]struct{}{tracked: {}}
+
+	// A .go file in a directory the handler doesn't transitively
+	// import must not trigger a rebuild.
+	if r.ShouldRebuild("fn", filepath.Join(other, "stranger.go")) {
+		t.Errorf("expected false for .go file in untracked directory")
+	}
+}
+
+func TestShouldRebuild_NonGoFileInTrackedDirIgnored(t *testing.T) {
+	t.Parallel()
+	r := New()
+	pkgDir := t.TempDir()
+	r.files["fn"] = map[string]struct{}{filepath.Join(pkgDir, "main.go"): {}}
+	r.pkgDirs["fn"] = map[string]struct{}{pkgDir: {}}
+
+	// The "new file in tracked dir" fallback only applies to .go
+	// files; an untracked non-go file inside a tracked package
+	// (editor swap, log, build artifact) must not trigger a rebuild.
+	if r.ShouldRebuild("fn", filepath.Join(pkgDir, "scratch.tmp")) {
+		t.Errorf("expected false for non-.go file in tracked dir")
 	}
 }
 
@@ -217,7 +323,7 @@ func TestParseGoListOutput_FiltersStdlibAndGOMODCACHE(t *testing.T) {
 		`{"Standard": false, "Goroot": false, "Dir": ` + jsonStr(siblingDir) + `, "GoFiles": ["replaced.go"]}`,
 	}, "\n")
 
-	files, err := parseGoListOutput(strings.NewReader(stream), gomodcache)
+	deps, err := parseGoListOutput(strings.NewReader(stream), gomodcache)
 	if err != nil {
 		t.Fatalf("parseGoListOutput: %v", err)
 	}
@@ -227,16 +333,30 @@ func TestParseGoListOutput_FiltersStdlibAndGOMODCACHE(t *testing.T) {
 		filepath.Join(siblingDir, "replaced.go"),
 	}
 	for _, want := range wantKept {
-		if _, ok := files[want]; !ok {
-			t.Errorf("expected %q in result, got %v", want, keys(files))
+		if _, ok := deps.files[want]; !ok {
+			t.Errorf("expected %q in files, got %v", want, keys(deps.files))
 		}
 	}
-	for f := range files {
+	wantDirs := []string{localDir, siblingDir}
+	for _, want := range wantDirs {
+		if _, ok := deps.pkgDirs[want]; !ok {
+			t.Errorf("expected %q in pkgDirs, got %v", want, keys(deps.pkgDirs))
+		}
+	}
+	for f := range deps.files {
 		if strings.HasPrefix(f, gomodcache) {
 			t.Errorf("module-cache file leaked into result: %s", f)
 		}
 		if strings.HasPrefix(f, stdlibDir) {
 			t.Errorf("stdlib file leaked into result: %s", f)
+		}
+	}
+	for d := range deps.pkgDirs {
+		if strings.HasPrefix(d, gomodcache) {
+			t.Errorf("module-cache dir leaked into pkgDirs: %s", d)
+		}
+		if strings.HasPrefix(d, stdlibDir) {
+			t.Errorf("stdlib dir leaked into pkgDirs: %s", d)
 		}
 	}
 }
