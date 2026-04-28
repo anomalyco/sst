@@ -66,6 +66,44 @@ export interface WorkerArgs {
    */
   domain?: Input<string>;
   /**
+   * Attach the Worker to one or more [route patterns](https://developers.cloudflare.com/workers/configuration/routing/routes/)
+   * instead of a dedicated custom domain.
+   *
+   * Unlike `domain`, which gives the Worker a full hostname, routes are
+   * pattern-based. This lets multiple Workers (or a Pages project) share a
+   * hostname and fall through to the origin for unmatched paths. Use routes
+   * when you want to put a Worker in front of only part of a site, e.g.
+   * `example.com/api/*`.
+   *
+   * Each pattern must start with a concrete hostname that belongs to a
+   * Cloudflare zone on the same account. Wildcard hostnames like `*.example.com`
+   * are not supported here.
+   *
+   * A proxied DNS record for the hostname must already exist in the zone —
+   * routes do not auto-manage DNS, unlike custom domains. You can create
+   * one in the Cloudflare dashboard or alongside the Worker with a
+   * `cloudflare.DnsRecord` resource.
+   *
+   * Cannot be used together with `domain`.
+   *
+   * @example
+   *
+   * ```js
+   * {
+   *   routes: ["example.com/api/*"]
+   * }
+   * ```
+   *
+   * Multiple patterns on the same Worker:
+   *
+   * ```js
+   * {
+   *   routes: ["example.com/api/*", "api.example.com/*"]
+   * }
+   * ```
+   */
+  routes?: Input<string>[];
+  /**
    * Configure how your function is bundled.
    *
    * SST bundles your worker code using [esbuild](https://esbuild.github.io/). This tree shakes your code to only include what's used.
@@ -306,6 +344,7 @@ export class Worker extends Component implements Link.Linkable {
   private workerUrl: WorkerUrl;
   private workerPlacement?: WorkerPlacement;
   private workerDomain?: cf.WorkerDomain;
+  private workerRoutes?: cf.WorkersRoute[];
 
   constructor(name: string, args: WorkerArgs, opts?: ComponentResourceOptions) {
     super(__pulumiType, name, args, opts);
@@ -338,11 +377,13 @@ export class Worker extends Component implements Link.Linkable {
     const workerUrl = createWorkersUrl();
     const workerPlacement = createWorkerPlacement();
     const workerDomain = createWorkersDomain();
+    const workerRoutes = createWorkersRoutes();
 
     this.script = script;
     this.workerUrl = workerUrl;
     this.workerPlacement = workerPlacement;
     this.workerDomain = workerDomain;
+    this.workerRoutes = workerRoutes;
 
     all([dev, buildInput, script.scriptName]).apply(
       async ([dev, buildInput, scriptName]) => {
@@ -657,6 +698,44 @@ export class Worker extends Component implements Link.Linkable {
         { parent },
       );
     }
+
+    function createWorkersRoutes() {
+      if (!args.routes) return;
+      if (args.domain)
+        throw new VisibleError(
+          `Cannot set both "domain" and "routes" on the "${name}" Worker. Use "domain" for a dedicated hostname, or "routes" for pattern-based routing.`,
+        );
+
+      return args.routes.map((pattern, i) => {
+        const hostname = output(pattern).apply((p) => {
+          const h = p.split("/")[0];
+          if (!h || h.includes("*"))
+            throw new VisibleError(
+              `Route pattern "${p}" on the "${name}" Worker must start with a concrete hostname (e.g. "example.com/*"). Wildcard hostnames are not supported.`,
+            );
+          return h;
+        });
+
+        const zone = new ZoneLookup(
+          `${name}Route${i}ZoneLookup`,
+          {
+            accountId: DEFAULT_ACCOUNT_ID,
+            domain: hostname,
+          },
+          { parent },
+        );
+
+        return new cf.WorkersRoute(
+          `${name}Route${i}`,
+          {
+            zoneId: zone.id,
+            pattern,
+            script: script.scriptName,
+          },
+          { parent },
+        );
+      });
+    }
   }
 
   /**
@@ -677,6 +756,10 @@ export class Worker extends Component implements Link.Linkable {
        * The Cloudflare Worker script.
        */
       worker: this.script,
+      /**
+       * The Cloudflare Worker routes, if `routes` was set.
+       */
+      routes: this.workerRoutes,
     };
   }
 
