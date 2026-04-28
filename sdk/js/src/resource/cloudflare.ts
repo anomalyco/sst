@@ -1,18 +1,18 @@
 import { env } from "cloudflare:workers";
 
-import { createResource, loadFromCloudflareEnv } from "./shared.js";
-import type { Resource as ResourceShape } from "./shared.js";
+import { createResource, loadResourceEnvironment } from "./shared.js";
+import type { Resource as BaseResource } from "./node.js";
 
 let environmentLoaded = false;
 
 function loadCloudflareResources() {
   if (environmentLoaded) return;
   environmentLoaded = true;
-  loadFromCloudflareEnv(env);
+  loadResourceEnvironment(env);
 }
 
 export function fromCloudflareEnv(input: any) {
-  loadFromCloudflareEnv(input);
+  loadResourceEnvironment(input);
 }
 
 export function wrapCloudflareHandler(handler: any) {
@@ -23,7 +23,7 @@ export function wrapCloudflareHandler(handler: any) {
   if (typeof handler === "function" && handler.hasOwnProperty("prototype")) {
     return class extends handler {
       constructor(ctx: any, env: any) {
-        loadFromCloudflareEnv(env);
+        loadResourceEnvironment(env);
         super(ctx, env);
       }
     };
@@ -31,7 +31,7 @@ export function wrapCloudflareHandler(handler: any) {
 
   function wrap(fn: any) {
     return function (req: any, env: any, ...rest: any[]) {
-      loadFromCloudflareEnv(env);
+      loadResourceEnvironment(env);
       return fn(req, env, ...rest);
     };
   }
@@ -43,5 +43,5 @@ export function wrapCloudflareHandler(handler: any) {
   return result;
 }
 
-export interface Resource extends ResourceShape {}
-export const Resource = createResource(loadCloudflareResources) as Resource;
+export interface Resource extends BaseResource {}
+export const Resource = createResource<Resource>(loadCloudflareResources);

@@ -14,6 +14,9 @@ export default $config({
       handler: "./index.ts",
       link: [bucket],
       url: true,
+      environment: {
+        API_URL: "hola"
+      }
     });
 
     return {

@@ -7,7 +7,7 @@ import {
   loadResourceData,
   loadResourceEnvironment,
 } from "./shared.js";
-import type { Resource as ResourceShape } from "./shared.js";
+import type { Resource as BaseResource } from "./shared.js";
 
 const state = globalThis as typeof globalThis & {
   SST_KEY_FILE_DATA?: Record<string, any>;
@@ -66,5 +66,5 @@ function loadNodeResources() {
   }
 }
 
-export interface Resource extends ResourceShape {}
-export const Resource = createResource(loadNodeResources) as Resource;
+export interface Resource extends BaseResource {}
+export const Resource = createResource<Resource>(loadNodeResources);

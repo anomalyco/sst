@@ -19,14 +19,17 @@ const environment: Record<string, string | undefined> =
   (state.__SST_RESOURCE_ENVIRONMENT__ ??= {});
 
 export function loadResourceEnvironment(input?: Record<string, any>) {
-  for (const [key, value] of Object.entries(input ?? {})) {
+  for (let [key, value] of Object.entries(input ?? {})) {
     if (typeof value === "string") {
       environment[key] = value;
-    }
-    if (!key.startsWith("SST_RESOURCE_") || !value) {
+      if (!key.startsWith("SST_RESOURCE_") || !value) {
+        continue;
+      }
+      raw[key.slice("SST_RESOURCE_".length)] = JSON.parse(value);
       continue;
     }
-    raw[key.slice("SST_RESOURCE_".length)] = JSON.parse(value as string);
+
+    raw[key] = value;
   }
 }
 
@@ -34,22 +37,7 @@ export function loadResourceData(input?: Record<string, any>) {
   Object.assign(raw, input ?? {});
 }
 
-export function loadFromCloudflareEnv(input: any) {
-  for (let [key, value] of Object.entries(input ?? {})) {
-    if (typeof value === "string") {
-      environment[key] = value;
-      try {
-        value = JSON.parse(value);
-      } catch {}
-    }
-    raw[key] = value;
-    if (key.startsWith("SST_RESOURCE_")) {
-      raw[key.replace("SST_RESOURCE_", "")] = value;
-    }
-  }
-}
-
-export function createResource(load: () => void) {
+export function createResource<T extends Resource>(load: () => void) {
   const loadData = () => load();
 
   return new Proxy(raw, {
@@ -75,7 +63,7 @@ export function createResource(load: () => void) {
       loadData();
       return Object.getOwnPropertyDescriptor(raw, prop);
     },
-  }) as Resource;
+  }) as T;
 }
 
 function missingResource(prop: string) {
