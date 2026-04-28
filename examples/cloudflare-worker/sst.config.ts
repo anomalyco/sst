@@ -10,14 +10,13 @@ export default $config({
   },
   async run() {
     const bucket = new sst.cloudflare.Bucket("MyBucket");
-    const secret = new sst.Secret("MySecret", "cloudflare-worker-secret");
     const worker = new sst.cloudflare.Worker("MyWorker", {
       handler: "./index.ts",
-      link: [bucket, secret],
+      link: [bucket],
       url: true,
       environment: {
-        API_URL: "https://example.com/cloudflare-worker",
-      },
+        API_URL: "hola"
+      }
     });
 
     return {
