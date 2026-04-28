@@ -3,11 +3,7 @@ import { env } from "cloudflare:workers";
 import { createResource, loadResourceEnvironment } from "./shared.js";
 import type { Resource as BaseResource } from "./node.js";
 
-let environmentLoaded = false;
-
 function loadCloudflareResources() {
-  if (environmentLoaded) return;
-  environmentLoaded = true;
   loadResourceEnvironment(env);
 }
 

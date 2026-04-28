@@ -38,7 +38,12 @@ export function loadResourceData(input?: Record<string, any>) {
 }
 
 export function createResource<T extends Resource>(load: () => void) {
-  const loadData = () => load();
+  let loaded = false;
+  const loadData = () => {
+    if (loaded) return;
+    load();
+    loaded = true;
+  };
 
   return new Proxy(raw, {
     get(_target, prop: string | symbol) {
@@ -49,7 +54,16 @@ export function createResource<T extends Resource>(load: () => void) {
       if (typeof prop !== "string") {
         return undefined;
       }
-      throw missingResource(prop);
+      if (!environment.SST_RESOURCE_App && !raw.App) {
+        throw new Error(
+          "It does not look like SST links are active. If this is in local development and you are not starting this process through the multiplexer, wrap your command with `sst dev -- <command>`",
+        );
+      }
+      let msg = `"${prop}" is not linked in your sst.config.ts`;
+      if (environment.AWS_LAMBDA_FUNCTION_NAME) {
+        msg += ` to ${environment.AWS_LAMBDA_FUNCTION_NAME}`;
+      }
+      throw new Error(msg);
     },
     has(_target, prop: string | symbol) {
       loadData();
@@ -64,17 +78,4 @@ export function createResource<T extends Resource>(load: () => void) {
       return Object.getOwnPropertyDescriptor(raw, prop);
     },
   }) as T;
-}
-
-function missingResource(prop: string) {
-  if (!environment.SST_RESOURCE_App && !raw.App) {
-    return new Error(
-      "It does not look like SST links are active. If this is in local development and you are not starting this process through the multiplexer, wrap your command with `sst dev -- <command>`",
-    );
-  }
-  let msg = `"${prop}" is not linked in your sst.config.ts`;
-  if (environment.AWS_LAMBDA_FUNCTION_NAME) {
-    msg += ` to ${environment.AWS_LAMBDA_FUNCTION_NAME}`;
-  }
-  return new Error(msg);
 }
