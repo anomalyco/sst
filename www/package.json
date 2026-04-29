@@ -5,11 +5,11 @@
   "scripts": {
     "dev": "astro dev",
     "start": "astro dev",
-    "build": "bun generate && bun generate-changelog && astro build",
+    "build": "bun generate && astro build",
     "preview": "astro preview",
     "astro": "astro",
     "generate": "bun generate-cli-json && bun generate-errors-json && tsx generate.ts",
-    "generate-changelog": "bun changelog.ts",
+    "generate-changelog": "tsx generate.ts changelog",
     "generate-components": "tsx generate.ts components",
     "generate-examples": "tsx generate.ts examples",
     "generate-cli": "bun generate-cli-json && tsx generate.ts cli",
