@@ -61,15 +61,15 @@ nfpms:
 #   license: Apache 2.0
 
 announce:
-  discord:
+  webhook:
     enabled: true
-    author: "GitHub"
-    icon_url: "https://github.com/fluidicon.png"
+    endpoint_url: "{{ .Env.DISCORD_WEBHOOK_URL }}"
+    content_type: "application/json"
     message_template: |
-      [**{{ .Tag }}**]({{ .ReleaseURL }})
-      {{ .ReleaseNotes }}
+      {"content":"[**{{ .Tag }}**]({{ .ReleaseURL }})\n{{ .ReleaseNotes }}"}
 
 changelog:
+  use: github
   sort: asc
   filters:
     exclude:
