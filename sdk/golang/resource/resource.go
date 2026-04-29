@@ -14,7 +14,7 @@ var resources map[string]any
 
 func init() {
 	loadFromDisk()
-	keys()
+	loadFromEnv()
 }
 
 func loadFromDisk() {
@@ -87,7 +87,7 @@ func get(input any, path ...string) (any, error) {
 	return get(next, path[1:]...)
 }
 
-func keys() {
+func loadFromEnv() {
 	for _, item := range os.Environ() {
 		pair := strings.SplitN(item, "=", 2)
 		key := pair[0]

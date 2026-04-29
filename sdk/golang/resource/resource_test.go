@@ -14,7 +14,7 @@ func TestKeys_LoadsSSTResourcesJSON(t *testing.T) {
 	os.Setenv("SST_RESOURCES_JSON", `{"MyBucket":{"name":"my-bucket"},"App":{"name":"app","stage":"dev"}}`)
 	defer os.Unsetenv("SST_RESOURCES_JSON")
 
-	keys()
+	loadFromEnv()
 
 	val, err := Get("MyBucket", "name")
 	if err != nil {
@@ -32,7 +32,7 @@ func TestKeys_MergesSSTResourcesJSONWithIndividualVars(t *testing.T) {
 	defer os.Unsetenv("SST_RESOURCE_MyTable")
 	defer os.Unsetenv("SST_RESOURCES_JSON")
 
-	keys()
+	loadFromEnv()
 
 	val1, err := Get("MyTable", "name")
 	if err != nil {
@@ -58,7 +58,7 @@ func TestKeys_SSTResourcesJSONOverridesIndividualVars(t *testing.T) {
 	defer os.Unsetenv("SST_RESOURCE_MyBucket")
 	defer os.Unsetenv("SST_RESOURCES_JSON")
 
-	keys()
+	loadFromEnv()
 
 	val, err := Get("MyBucket", "name")
 	if err != nil {
@@ -74,7 +74,7 @@ func TestKeys_InvalidSSTResourcesJSONIgnored(t *testing.T) {
 	os.Setenv("SST_RESOURCES_JSON", `not-json`)
 	defer os.Unsetenv("SST_RESOURCES_JSON")
 
-	keys()
+	loadFromEnv()
 
 	_, err := Get("MyBucket")
 	if err == nil {
