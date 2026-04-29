@@ -58,13 +58,6 @@ const INTERNAL_COMPONENTS = new Set([
   "docs/component/aws/permission",
 ]);
 
-export function isExcludedFromLlms(slug: string): boolean {
-  if (INTERNAL_COMPONENTS.has(slug)) return true;
-  // Exclude individual example pages from llms.txt (catalog link suffices)
-  if (slug.startsWith("docs/examples/")) return true;
-  return false;
-}
-
 export function isExcludedFromLlmsFull(slug: string): boolean {
   if (INTERNAL_COMPONENTS.has(slug)) return true;
   // Exclude monolithic examples page (individual pages cover the content)
