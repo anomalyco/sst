@@ -1,11 +1,13 @@
 import { getCollection } from "astro:content";
 import type { APIRoute } from "astro";
 import { cleanMarkdown } from "../util/markdown";
+import { isExcludedFromLlmsFull } from "../util/llms-filter";
 
 export const GET: APIRoute = async () => {
   const docs = await getCollection("docs");
   const filtered = docs
     .filter((doc) => doc.id.startsWith("docs/"))
+    .filter((doc) => !isExcludedFromLlmsFull(doc.id.replace(/\.mdx?$/, "")))
     .sort((a, b) => a.id.localeCompare(b.id));
 
   const pages = filtered.map((doc) => {
