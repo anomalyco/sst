@@ -94,7 +94,7 @@ jobs:
             | sed -E 's|^\[[a-f0-9]+\]\([^)]+\): ||' \
             | sed '/^## Changelog$/d' \
             | sed -E 's|^(.+)$|- \1|')
-          CONTENT=$(printf '[**%s**](%s)\n%s' "$TAG" "$RELEASE_URL" "$NOTES")
+          CONTENT=$(printf '🏷️ [**Release - %s**](%s)\n%s' "$TAG" "$RELEASE_URL" "$NOTES")
           PAYLOAD=$(jq -n --arg c "$CONTENT" '{content:$c, flags:4}')
           curl -fsS -X POST -H "Content-Type: application/json" \
             -d "$PAYLOAD" "$DISCORD_WEBHOOK_URL"
