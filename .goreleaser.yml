@@ -66,11 +66,11 @@ announce:
     endpoint_url: "{{ .Env.DISCORD_WEBHOOK_URL }}"
     content_type: "application/json"
     message_template: |
-      {"content":"[**{{ .Tag }}**]({{ .ReleaseURL }})\n{{ replace .ReleaseNotes "\n" "\\n" }}"}
+      {"content":"[**{{ .Tag }}**](<<{{ .ReleaseURL }}>>)\n{{ replace (reverseFilter .ReleaseNotes "^## Changelog") "\n" "\\n" }}","flags":4}
 
 changelog:
   use: git
-  format: "[{{ .SHA }}](https://github.com/anomalyco/sst/commit/{{ .SHA }}): {{ .Message }}"
+  abbrev: -1
   sort: asc
   filters:
     exclude:
