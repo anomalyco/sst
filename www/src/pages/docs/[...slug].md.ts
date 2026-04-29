@@ -3,9 +3,13 @@ import type { APIRoute } from "astro";
 import { cleanMarkdown } from "../../util/markdown";
 import changelog from "../../data/changelog.json";
 
+function formatTag(tag: string): string {
+  return tag.replace(/^v/, "");
+}
+
 function renderChangelog(): string {
   return (changelog as Array<{ tag: string; body: string }>)
-    .map((r) => `## ${r.tag}\n\n${r.body}`)
+    .map((r) => `## ${formatTag(r.tag)}\n\n${r.body}`)
     .join("\n\n");
 }
 

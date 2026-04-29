@@ -25,6 +25,10 @@ function isPatch(tag: string): boolean {
   return !!m && Number(m[1]) > 0;
 }
 
+function formatTag(tag: string): string {
+  return tag.replace(/^v/, "");
+}
+
 const rendered = await Promise.all(
   entries.map(async (entry) => {
     const html = entry.body
@@ -33,6 +37,8 @@ const rendered = await Promise.all(
     return {
       ...entry,
       html,
+      label: formatTag(entry.tag),
+      anchor: formatTag(entry.tag),
       formattedDate: dateFormatter.format(new Date(entry.publishedAt)),
       patch: isPatch(entry.tag),
     };
@@ -49,8 +55,8 @@ const releases = rendered.map((entry, index) => ({
   {releases.map((entry) => (
     <li class={`release${entry.patch ? " patch" : ""}`}>
       <div class="meta">
-        <h2 id={entry.tag}>
-          <a href={`#${entry.tag}`}>{entry.tag}</a>
+        <h2 id={entry.anchor}>
+          <a href={`#${entry.anchor}`}>{entry.label}</a>
         </h2>
         <time
           class={`date${entry.showDate ? "" : " hidden"}`}
@@ -97,10 +103,11 @@ const releases = rendered.map((entry, index) => ({
     margin: 0 !important;
     font-size: 1.15rem !important;
     line-height: 1.1 !important;
-    font-weight: 700;
+    font-family: var(--__sl-font-headings), var(--sl-font-system-mono) !important;
+    font-weight: 600;
   }
   .release.patch .meta h2 {
-    font-weight: 500;
+    font-weight: 600;
   }
   .meta h2 a {
     color: inherit;
