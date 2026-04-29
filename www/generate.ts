@@ -101,7 +101,10 @@ if (!cmd || cmd === "components") {
 }
 if (!cmd || cmd === "cli") await generateCliDoc();
 if (!cmd || cmd === "common-errors") await generateCommonErrorsDoc();
-if (!cmd || cmd === "examples") await generateExamplesDocs();
+if (!cmd || cmd === "examples") {
+  await generateExamplesDocs();
+  await generateIndividualExampleDocs();
+}
 restoreCode();
 
 function generateCliDoc() {
@@ -474,6 +477,134 @@ async function generateExamplesDocs() {
       ...lines.slice(start + 1, end).map((l) => l.substring(4)),
       "```",
     ];
+  }
+}
+
+async function generateIndividualExampleDocs() {
+  const HANDLER_EXTENSIONS: Record<string, string> = {
+    ".ts": "ts",
+    ".js": "js",
+    ".py": "python",
+    ".go": "go",
+    ".rs": "rs",
+  };
+
+  function resolveHandlerFiles(
+    runBody: string,
+    exampleDir: string
+  ): { relPath: string; content: string; lang: string }[] {
+    const strings = [...runBody.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+    const seen = new Set<string>();
+    const results: { relPath: string; content: string; lang: string }[] = [];
+
+    for (const str of strings) {
+      if (str.includes(" ") || str.includes(":") || str.includes("*")) continue;
+
+      const candidates: string[] = [];
+      const ext = path.extname(str);
+      if (ext in HANDLER_EXTENSIONS) {
+        candidates.push(str);
+      } else {
+        const lastDot = str.lastIndexOf(".");
+        if (lastDot > 0) {
+          const base = str.substring(0, lastDot);
+          for (const ext of Object.keys(HANDLER_EXTENSIONS)) {
+            candidates.push(base + ext);
+          }
+        }
+      }
+
+      for (const candidate of candidates) {
+        const normalized = candidate.replace(/^\.\//, "");
+        if (seen.has(normalized)) continue;
+        const fullPath = path.join(exampleDir, normalized);
+        try {
+          if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
+            seen.add(normalized);
+            const fileExt = path.extname(normalized);
+            results.push({
+              relPath: normalized,
+              content: fs.readFileSync(fullPath).toString().trimEnd(),
+              lang: HANDLER_EXTENSIONS[fileExt] || "ts",
+            });
+            break;
+          }
+        } catch {
+          // skip unresolvable paths
+        }
+      }
+    }
+
+    return results;
+  }
+  const modules = await buildExamples();
+  const outputDir = `src/content/docs/docs/examples`;
+  fs.mkdirSync(outputDir, { recursive: true });
+
+  for (const module of modules) {
+    const dirName = module.name.split("/")[0];
+    const comment = module.children![0].comment!;
+    const commentText = renderTdComment(comment.summary);
+
+    // Extract title from the ## heading in the comment
+    const titleMatch = commentText.match(/^##\s+(.+)/m);
+    if (!titleMatch) continue;
+    const title = titleMatch[1].trim();
+
+    // Description is everything after the ## heading
+    const description = commentText
+      .replace(/^##\s+.+\n*/m, "")
+      .trim();
+
+    const lines = fs
+      .readFileSync(path.join(`../examples`, module.sources![0].fileName))
+      .toString()
+      .replace(/\t/g, "  ")
+      .split("\n");
+    const start = lines.indexOf("  async run() {");
+    const end = lines.lastIndexOf("  },");
+    const codeBlock = [
+      '```ts title="sst.config.ts"',
+      ...lines.slice(start + 1, end).map((l) => l.substring(4)),
+      "```",
+    ];
+
+    // Detect handler files referenced in sst.config.ts
+    const exampleDir = path.join(`../examples`, dirName);
+    const runBody = lines.slice(start + 1, end).join("\n");
+    const handlerFiles = resolveHandlerFiles(runBody, exampleDir)
+      .filter(({ relPath }) => !description.includes(`title="${relPath}"`));
+
+    const outputFilePath = path.join(outputDir, `${dirName}.mdx`);
+    console.info(`Generating individual example page: ${dirName}...`);
+    fs.writeFileSync(
+      outputFilePath,
+      [
+        `---`,
+        `title: "${title}"`,
+        `description: "${description.split("\n\n")[0].replace(/\n/g, " ").replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/`/g, "").replace(/"/g, '\\"')}"`,
+        `---`,
+        ``,
+        `{/* DO NOT EDIT. AUTO-GENERATED FROM "examples/${dirName}" */}`,
+        ``,
+        `:::tip`,
+        `This page is best viewed through the site search or through the _AI_.`,
+        `:::`,
+        ``,
+        description,
+        ``,
+        ...codeBlock,
+        ...handlerFiles.flatMap(({ relPath, content, lang }) => [
+          ``,
+          `\`\`\`${lang} title="${relPath}"`,
+          content,
+          `\`\`\``,
+        ]),
+        ``,
+        `View the [full example](${config.github}/tree/dev/examples/${dirName}).`,
+        ``,
+      ].join("\n")
+    );
   }
 }
 

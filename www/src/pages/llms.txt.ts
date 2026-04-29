@@ -5,6 +5,7 @@ export const GET: APIRoute = async () => {
   const docs = await getCollection("docs");
   const filtered = docs
     .filter((doc) => doc.id.startsWith("docs/"))
+    .filter((doc) => !doc.id.startsWith("docs/examples/"))
     .sort((a, b) => a.id.localeCompare(b.id));
 
   const links = filtered

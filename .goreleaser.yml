@@ -52,22 +52,6 @@ nfpms:
       {{- if eq .Os "darwin" }}mac
       {{- else }}{{ .Os }}{{ end }}-{{ .Arch }}
 
-# scoop:
-#   bucket:
-#     owner: sst
-#     name: scoop-bucket
-#   homepage: "https://github.com/sst/ion"
-#   description: "sst cli"
-#   license: Apache 2.0
-
-announce:
-  webhook:
-    enabled: true
-    endpoint_url: "{{ .Env.DISCORD_WEBHOOK_URL }}"
-    content_type: "application/json"
-    message_template: |
-      {"content":"[**{{ .Tag }}**]({{ .ReleaseURL }})\n{{ replace .ReleaseNotes "\n" "\\n" }}"}
-
 changelog:
   use: git
   format: "[{{ .SHA }}](https://github.com/anomalyco/sst/commit/{{ .SHA }}): {{ .Message }}"
