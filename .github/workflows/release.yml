@@ -69,6 +69,9 @@ jobs:
         env:
           DOCKER_PUSH: true
 
+      - name: Run Go tests
+        run: go test -vet=all ./...
+
       - name: Release CLI
         uses: goreleaser/goreleaser-action@v6
         with:
