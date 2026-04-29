@@ -66,7 +66,7 @@ announce:
     endpoint_url: "{{ .Env.DISCORD_WEBHOOK_URL }}"
     content_type: "application/json"
     message_template: |
-      {"content":"[**{{ .Tag }}**](<<{{ .ReleaseURL }}>>)\n{{ replace (reverseFilter .ReleaseNotes "^## Changelog") "\n" "\\n" }}","flags":4}
+      {"content":"[**{{ .Tag }}**]({{ .ReleaseURL }})\n{{ replace (reverseFilter .ReleaseNotes "^## Changelog") "\n" "\\n" }}","flags":4}
 
 changelog:
   use: git
