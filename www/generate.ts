@@ -541,6 +541,9 @@ async function generateIndividualExampleDocs() {
   const outputDir = `src/content/docs/docs/examples`;
   fs.mkdirSync(outputDir, { recursive: true });
 
+  // Collect index entries while generating individual pages
+  const indexEntries: { title: string; slug: string }[] = [];
+
   for (const module of modules) {
     const dirName = module.name.split("/")[0];
     const comment = module.children![0].comment!;
@@ -555,6 +558,9 @@ async function generateIndividualExampleDocs() {
     const description = commentText
       .replace(/^##\s+.+\n*/m, "")
       .trim();
+
+    // Collect for index page
+    indexEntries.push({ title, slug: dirName });
 
     const lines = fs
       .readFileSync(path.join(`../examples`, module.sources![0].fileName))
@@ -603,9 +609,34 @@ async function generateIndividualExampleDocs() {
         ``,
         `View the [full example](${config.github}/tree/dev/examples/${dirName}).`,
         ``,
+        `For a list of all examples, see the [examples index](/docs/examples/catalog/).`,
+        ``,
       ].join("\n")
     );
   }
+
+  // Generate index page
+  console.info(`Generating examples index page...`);
+  const indexPath = path.join(outputDir, `catalog.mdx`);
+  fs.writeFileSync(
+    indexPath,
+    [
+      `---`,
+      `title: "Examples Index"`,
+      `description: "A list of all SST example apps with links to individual pages."`,
+      `---`,
+      ``,
+      `{/* DO NOT EDIT. AUTO-GENERATED FROM "examples/" */}`,
+      ``,
+      `For the full inline reference, see the [examples page](/docs/examples).`,
+      ``,
+      ...indexEntries.map(
+        ({ title, slug, description }) =>
+          `- [${title}](/docs/examples/${slug}/)`
+      ),
+      ``,
+    ].join("\n")
+  );
 }
 
 async function generateGlobalConfigDoc(
