@@ -10,8 +10,8 @@ builds:
     main: ./cmd/sst
 
 archives:
-  - format: tar.gz
-    # this name template makes the OS and Arch compatible with the results of uname.
+  - formats:
+      - tar.gz
     name_template: >-
       sst-
       {{- if eq .Os "darwin" }}mac-
@@ -21,14 +21,14 @@ archives:
       {{- else if eq .Arch "#86" }}i386
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
-    # use zip for windows archives
     format_overrides:
       - goos: windows
-        format: zip
+        formats:
+          - zip
 checksum:
   name_template: "checksums.txt"
 snapshot:
-  name_template: "0.0.0-{{ .Timestamp }}"
+  version_template: "0.0.0-{{ .Timestamp }}"
 aurs:
   - homepage: "https://github.com/sst/sst"
     description: "Deploy anything"
@@ -66,10 +66,11 @@ announce:
     endpoint_url: "{{ .Env.DISCORD_WEBHOOK_URL }}"
     content_type: "application/json"
     message_template: |
-      {"content":"[**{{ .Tag }}**]({{ .ReleaseURL }})\n{{ .ReleaseNotes }}"}
+      {"content":"[**{{ .Tag }}**]({{ .ReleaseURL }})\n{{ replace .ReleaseNotes "\n" "\\n" }}"}
 
 changelog:
-  use: github
+  use: git
+  format: "[{{ .SHA }}](https://github.com/anomalyco/sst/commit/{{ .SHA }}): {{ .Message }}"
   sort: asc
   filters:
     exclude:
