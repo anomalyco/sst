@@ -16,6 +16,13 @@ for key, value in environment.items():
     if key.startswith("SST_RESOURCE_") and value:
         raw[key[len("SST_RESOURCE_") :]] = json.loads(value)
 
+# Load consolidated resources JSON (used on Windows to avoid uppercasing)
+if "SST_RESOURCES_JSON" in os.environ:
+    try:
+        raw.update(json.loads(os.environ["SST_RESOURCES_JSON"]))
+    except json.JSONDecodeError:
+        pass
+
 # Check if SST_KEY_FILE and SST_KEY are in environment variables
 # and SST_KEY_FILE_DATA is not already set in globals()
 if (
@@ -90,7 +97,7 @@ class ResourceProxy:
         if hasattr(raw, prop):
             return getattr(raw, prop)
 
-        if "SST_RESOURCE_App" not in os.environ:
+        if "SST_RESOURCE_App" not in os.environ and "SST_RESOURCES_JSON" not in os.environ:
             raise Exception(
                 "It does not look like SST links are active. If this is in local development and you are not starting this process through the multiplexer, wrap your command with `sst dev -- <command>`"
             )

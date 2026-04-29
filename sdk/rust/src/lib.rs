@@ -61,6 +61,13 @@ impl Resource {
             }
         }
 
+        // Load consolidated resources JSON (used on Windows to avoid uppercasing)
+        if let Ok(consolidated) = env::var("SST_RESOURCES_JSON") {
+            if let Ok(parsed) = serde_json::from_str::<HashMap<String, Value>>(&consolidated) {
+                resources.extend(parsed);
+            }
+        }
+
         Ok(Self { resources })
     }
 
@@ -89,6 +96,7 @@ mod tests {
     fn clear_env_vars() {
         env::remove_var("SST_KEY");
         env::remove_var("SST_KEY_FILE");
+        env::remove_var("SST_RESOURCES_JSON");
         
         let sst_resource_vars: Vec<String> = env::vars()
             .filter(|(key, _)| key.starts_with("SST_RESOURCE_"))
@@ -245,5 +253,62 @@ mod tests {
         assert_eq!(inner.len(), 2);
         assert!(inner.contains_key("Resource1"));
         assert!(inner.contains_key("Resource2"));
+    }
+
+    #[test]
+    #[serial]
+    fn test_init_with_sst_resources_json() {
+        clear_env_vars();
+
+        env::set_var("SST_RESOURCES_JSON", r#"{"MyBucket":{"name":"my-bucket"},"App":{"name":"app","stage":"dev"}}"#);
+
+        let resource = Resource::init().unwrap();
+
+        assert_eq!(resource.resources.len(), 2);
+        assert!(resource.resources.contains_key("MyBucket"));
+        assert!(resource.resources.contains_key("App"));
+    }
+
+    #[test]
+    #[serial]
+    fn test_init_with_sst_resources_json_and_env_vars() {
+        clear_env_vars();
+
+        env::set_var("SST_RESOURCE_MyTable", r#"{"name":"my-table"}"#);
+        env::set_var("SST_RESOURCES_JSON", r#"{"MyBucket":{"name":"my-bucket"},"App":{"name":"app","stage":"dev"}}"#);
+
+        let resource = Resource::init().unwrap();
+
+        assert_eq!(resource.resources.len(), 3);
+        assert!(resource.resources.contains_key("MyTable"));
+        assert!(resource.resources.contains_key("MyBucket"));
+        assert!(resource.resources.contains_key("App"));
+    }
+
+    #[test]
+    #[serial]
+    fn test_sst_resources_json_overrides_env_vars() {
+        clear_env_vars();
+
+        env::set_var("SST_RESOURCE_MyBucket", r#"{"name":"from-env-var"}"#);
+        env::set_var("SST_RESOURCES_JSON", r#"{"MyBucket":{"name":"from-json"},"App":{"name":"app","stage":"dev"}}"#);
+
+        let resource = Resource::init().unwrap();
+
+        let bucket = resource.resources.get("MyBucket").unwrap();
+        assert_eq!(bucket["name"], "from-json");
+    }
+
+    #[test]
+    #[serial]
+    fn test_invalid_sst_resources_json_ignored() {
+        clear_env_vars();
+
+        env::set_var("SST_RESOURCES_JSON", "not-json");
+
+        let resource = Resource::init();
+        assert!(resource.is_ok());
+        let resource = resource.unwrap();
+        assert_eq!(resource.resources.len(), 0);
     }
 }
