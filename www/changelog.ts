@@ -103,6 +103,9 @@ function cleanBody(body: string | null): string {
       `${prefix}[#${num}](https://github.com/${REPO}/issues/${num})`,
   );
 
+  // Unwrap parentheses around inline PR/issue links: "([#1234](url))" → "[#1234](url)".
+  result = result.replace(/\(\[#(\d+)\]\(([^)]+)\)\)/g, "[#$1]($2)");
+
   return result;
 }
 

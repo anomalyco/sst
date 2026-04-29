@@ -144,6 +144,17 @@ const releases = rendered.map((entry, index) => ({
   .body :global(li + li) {
     margin-top: 0.125rem !important;
   }
+  .body :global(a[href*="/issues/"]) {
+    margin-left: 0.25rem;
+    font-size: 0.95em;
+    color: var(--color-text-dimmed);
+    text-decoration: none;
+    font-family: var(--sl-font-system-mono), ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  .body :global(a[href*="/issues/"]:hover) {
+    color: var(--sl-color-text-accent);
+  }
   .body .empty {
     color: var(--color-text-dimmed);
     margin: 0;
