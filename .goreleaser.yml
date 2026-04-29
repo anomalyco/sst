@@ -70,7 +70,7 @@ announce:
 
 changelog:
   use: git
-  abbrev: -1
+  format: "[{{ .SHA }}](https://github.com/anomalyco/sst/commit/{{ .SHA }}): {{ .Message }}"
   sort: asc
   filters:
     exclude:
