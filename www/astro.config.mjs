@@ -231,6 +231,7 @@ const sidebar = [
           "docs/component/cloudflare/worker",
           "docs/component/cloudflare/bucket",
           "docs/component/cloudflare/workflow",
+          "docs/component/cloudflare/rate-limit",
           { label: "StaticSite", slug: "docs/component/cloudflare/static-site-v2" },
           "docs/component/cloudflare/hyperdrive",
           "docs/component/cloudflare/react-router",

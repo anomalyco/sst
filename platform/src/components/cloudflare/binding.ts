@@ -88,6 +88,17 @@ export interface WorkflowBinding {
   };
 }
 
+export interface RateLimitBinding {
+  type: "rateLimitBindings";
+  properties: {
+    namespaceId: Input<string>;
+    simple: Input<{
+      limit: Input<number>;
+      period: Input<number>;
+    }>;
+  };
+}
+
 export type Binding =
   | AiBinding
   | KvBinding
@@ -99,7 +110,8 @@ export type Binding =
   | D1DatabaseBinding
   | HyperdriveBinding
   | VersionMetadataBinding
-  | WorkflowBinding;
+  | WorkflowBinding
+  | RateLimitBinding;
 
 export function binding<T extends Binding["type"]>(input: Binding & {}) {
   return {
