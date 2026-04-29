@@ -19,12 +19,6 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
   day: "numeric",
 });
 
-function isPatch(tag: string): boolean {
-  // True for vX.Y.Z where Z > 0 (e.g. v4.12.7); false for vX.Y.0 (minor).
-  const m = /^v\d+\.\d+\.(\d+)/.exec(tag);
-  return !!m && Number(m[1]) > 0;
-}
-
 function formatTag(tag: string): string {
   return tag.replace(/^v/, "");
 }
@@ -40,7 +34,6 @@ const rendered = await Promise.all(
       label: formatTag(entry.tag),
       anchor: formatTag(entry.tag),
       formattedDate: dateFormatter.format(new Date(entry.publishedAt)),
-      patch: isPatch(entry.tag),
     };
   }),
 );
@@ -53,7 +46,7 @@ const releases = rendered.map((entry, index) => ({
 
 <ul class="changelog">
   {releases.map((entry) => (
-    <li class={`release${entry.patch ? " patch" : ""}`}>
+    <li class="release">
       <div class="meta">
         <h2 id={entry.anchor}>
           <a href={`#${entry.anchor}`}>{entry.label}</a>
@@ -104,9 +97,6 @@ const releases = rendered.map((entry, index) => ({
     font-size: 1.15rem !important;
     line-height: 1.1 !important;
     font-family: var(--__sl-font-headings), var(--sl-font-system-mono) !important;
-    font-weight: 600;
-  }
-  .release.patch .meta h2 {
     font-weight: 600;
   }
   .meta h2 a {
