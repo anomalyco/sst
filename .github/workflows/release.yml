@@ -81,7 +81,21 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.SST_GITHUB_TOKEN }}
           AUR_KEY: ${{ secrets.AUR_KEY }}
+
+      - name: Announce on Discord
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/$TAG"
+          NOTES=$(gh release view "$TAG" --json body --jq .body \
+            | sed -E "s|\(#([0-9]+)\)|([#\1](https://github.com/${{ github.repository }}/pull/\1))|g" \
+            | sed '/^## Changelog$/d')
+          CONTENT=$(printf '[**%s**](%s)\n%s' "$TAG" "$RELEASE_URL" "$NOTES")
+          PAYLOAD=$(jq -n --arg c "$CONTENT" '{content:$c, flags:4}')
+          curl -fsS -X POST -H "Content-Type: application/json" \
+            -d "$PAYLOAD" "$DISCORD_WEBHOOK_URL"
 
       - name: Release JS SDK
         run: |
