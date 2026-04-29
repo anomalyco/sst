@@ -109,7 +109,7 @@ jobs:
           RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/$TAG"
           NOTES=$(gh release view "$TAG" --json body --jq .body \
             | sed -E "s|\(#([0-9]+)\)|([#\1](https://github.com/${{ github.repository }}/pull/\1))|g" \
-            | sed -E 's|^\[[a-f0-9]+\]\([^)]+\): ||' \
+            | sed -E 's|^\* \[[a-f0-9]+\]\([^)]+\): ||' \
             | sed '/^## Changelog$/d' \
             | sed -E 's|^(.+)$|- \1|')
           CONTENT=$(printf '🏷️ [**Release - %s**](%s)\n%s' "$TAG" "$RELEASE_URL" "$NOTES")
