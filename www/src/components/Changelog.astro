@@ -1,0 +1,142 @@
+---
+import { createMarkdownProcessor } from "@astrojs/markdown-remark";
+import data from "../data/changelog.json";
+
+type Entry = {
+  tag: string;
+  publishedAt: string;
+  url: string;
+  body: string;
+};
+
+const entries = data as Entry[];
+
+const processor = await createMarkdownProcessor();
+
+const dateFormatter = new Intl.DateTimeFormat("en-US", {
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+});
+
+function isPatch(tag: string): boolean {
+  // True for vX.Y.Z where Z > 0 (e.g. v4.12.7); false for vX.Y.0 (minor).
+  const m = /^v\d+\.\d+\.(\d+)/.exec(tag);
+  return !!m && Number(m[1]) > 0;
+}
+
+const rendered = await Promise.all(
+  entries.map(async (entry) => {
+    const html = entry.body
+      ? (await processor.render(entry.body)).code
+      : "";
+    return {
+      ...entry,
+      html,
+      formattedDate: dateFormatter.format(new Date(entry.publishedAt)),
+      patch: isPatch(entry.tag),
+    };
+  }),
+);
+---
+
+<ul class="changelog">
+  {rendered.map((entry) => (
+    <li class={`release${entry.patch ? " patch" : ""}`}>
+      <div class="meta">
+        <h2 id={entry.tag}>
+          <a href={`#${entry.tag}`}>{entry.tag}</a>
+        </h2>
+        <div class="meta-info">
+          <time datetime={entry.publishedAt}>{entry.formattedDate}</time>
+          <a href={entry.url} target="_blank" rel="noopener">GitHub</a>
+        </div>
+      </div>
+      <div class="body">
+        {entry.html
+          ? <Fragment set:html={entry.html} />
+          : <p class="empty"><em>No release notes.</em></p>
+        }
+      </div>
+    </li>
+  ))}
+</ul>
+
+<style>
+  .changelog {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .changelog > li.release {
+    margin: 0;
+    padding: 0;
+  }
+  .changelog > li.release + li.release {
+    margin-top: 0.25rem !important;
+  }
+  .changelog > li.release::before {
+    content: none;
+  }
+  .meta {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0 !important;
+    flex-wrap: wrap;
+  }
+  .meta h2 {
+    margin: 0 !important;
+    font-size: 1.15rem !important;
+    line-height: 1.1 !important;
+    font-weight: 700;
+  }
+  .release.patch .meta h2 {
+    font-weight: 500;
+  }
+  .body {
+    margin-top: 0.5rem !important;
+    margin-bottom: 0 !important;
+  }
+  .meta h2 a {
+    color: inherit;
+    text-decoration: none;
+  }
+  .meta h2 a:hover {
+    color: var(--sl-color-text-accent);
+  }
+  .meta-info {
+    display: flex;
+    gap: 1.125rem;
+    align-items: center;
+    color: var(--color-text-dimmed);
+    font-size: var(--sl-text-sm);
+  }
+  .meta-info a {
+    color: var(--color-text-dimmed);
+  }
+  .meta-info a:hover {
+    color: var(--sl-color-text-accent);
+    text-decoration: none;
+  }
+  .body :global(p:first-child) {
+    margin-top: 0;
+  }
+  .body :global(p:last-child),
+  .body :global(ul:last-child),
+  .body :global(ol:last-child) {
+    margin-bottom: 0;
+  }
+  .body :global(ul),
+  .body :global(ol) {
+    margin-top: 0;
+  }
+  .body :global(li + li) {
+    margin-top: 0.125rem !important;
+  }
+  .body .empty {
+    color: var(--color-text-dimmed);
+    margin: 0;
+  }
+</style>

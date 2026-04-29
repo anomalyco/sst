@@ -10,6 +10,7 @@ const sidebar = [
   { label: "Intro", slug: "docs" },
   { label: "Basics", slug: "docs/basics" },
   { label: "Enterprise", slug: "docs/enterprise" },
+  { label: "Changelog", slug: "docs/changelog" },
   {
     label: "Get Started",
     collapsed: true,

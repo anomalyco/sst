@@ -17,6 +17,7 @@ tmp
 
 examples/**/sst-env.d.ts
 www/src/content/docs/docs/examples.mdx
+www/src/data/changelog.json
 examples/**/bun.lock
 examples/**/bun.lockb
 examples/**/pnpm-lock.yaml
