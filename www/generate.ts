@@ -564,7 +564,7 @@ async function generateExamplesDocs() {
         return [
           ``,
           `---`,
-          renderTdComment(module.children![0].comment?.summary!),
+          renderExampleComment(module.children![0].comment?.summary!),
           ...renderRunFunction(module),
           ``,
           `View the [full example](${config.github}/tree/dev/examples/${
@@ -601,11 +601,9 @@ async function generateExamplesDocs() {
       .toString()
       .replace(/\t/g, "  ")
       .split("\n");
-    const start = lines.indexOf("  async run() {");
-    const end = lines.lastIndexOf("  },");
     return [
       '```ts title="sst.config.ts"',
-      ...lines.slice(start + 1, end).map((l) => l.substring(4)),
+      ...extractRunSnippet(lines),
       "```",
     ];
   }
@@ -675,7 +673,7 @@ async function generateIndividualExampleDocs() {
   for (const module of modules) {
     const dirName = module.name.split("/")[0];
     const comment = module.children![0].comment!;
-    const commentText = renderTdComment(comment.summary);
+    const commentText = renderExampleComment(comment.summary);
 
     // Extract title from the ## heading in the comment
     const titleMatch = commentText.match(/^##\s+(.+)/m);
@@ -696,7 +694,7 @@ async function generateIndividualExampleDocs() {
     const end = lines.lastIndexOf("  },");
     const codeBlock = [
       '```ts title="sst.config.ts"',
-      ...lines.slice(start + 1, end).map((l) => l.substring(4)),
+      ...extractRunSnippet(lines),
       "```",
     ];
 
@@ -737,6 +735,45 @@ async function generateIndividualExampleDocs() {
       ].join("\n")
     );
   }
+}
+
+function extractRunSnippet(lines: string[]) {
+  const start = lines.indexOf("  async run() {");
+  const end = lines.lastIndexOf("  },");
+  return stripTopLevelReturnObject(
+    lines.slice(start + 1, end).map((l) => l.substring(4))
+  );
+}
+
+function stripTopLevelReturnObject(lines: string[]) {
+  const start = lines.findIndex((line) => /^return\s*\{/.test(line));
+  if (start === -1) return trimTrailingBlankLines(lines);
+
+  const end = findReturnObjectEnd(lines, start);
+  if (end === -1) return trimTrailingBlankLines(lines);
+
+  const before = trimTrailingBlankLines(lines.slice(0, start));
+  return trimTrailingBlankLines([...before, ...lines.slice(end + 1)]);
+}
+
+function findReturnObjectEnd(lines: string[], start: number) {
+  let depth = 0;
+
+  for (let i = start; i < lines.length; i++) {
+    for (const char of lines[i]) {
+      if (char === "{") depth++;
+      if (char === "}") depth--;
+    }
+    if (depth === 0 && /}\s*;?\s*$/.test(lines[i])) return i;
+  }
+
+  return -1;
+}
+
+function trimTrailingBlankLines(lines: string[]) {
+  const result = [...lines];
+  while (result.length && result[result.length - 1].trim() === "") result.pop();
+  return result;
 }
 
 async function generateGlobalConfigDoc(
@@ -981,6 +1018,20 @@ function renderImports(outputFilePath: string) {
 
 function renderTdComment(parts: TypeDoc.CommentDisplayPart[]) {
   return parts.map((part) => part.text).join("");
+}
+
+function renderExampleComment(parts: TypeDoc.CommentDisplayPart[]) {
+  return stripSstConfigReturns(renderTdComment(parts));
+}
+
+function stripSstConfigReturns(markdown: string) {
+  return markdown.replace(
+    /```([^\n]*\btitle=(["'])sst\.config\.ts\2[^\n]*)\n([\s\S]*?)```/g,
+    (_, meta: string, _quote: string, code: string) => {
+      const stripped = stripTopLevelReturnObject(code.split("\n")).join("\n");
+      return `\`\`\`${meta}\n${stripped}\n\`\`\``;
+    }
+  );
 }
 
 function renderBodyEnd() {
