@@ -38,19 +38,26 @@ const rendered = await Promise.all(
     };
   }),
 );
+
+const releases = rendered.map((entry, index) => ({
+  ...entry,
+  showDate: entry.formattedDate !== rendered[index - 1]?.formattedDate,
+}));
 ---
 
 <ul class="changelog">
-  {rendered.map((entry) => (
+  {releases.map((entry) => (
     <li class={`release${entry.patch ? " patch" : ""}`}>
       <div class="meta">
         <h2 id={entry.tag}>
           <a href={`#${entry.tag}`}>{entry.tag}</a>
         </h2>
-        <div class="meta-info">
-          <time datetime={entry.publishedAt}>{entry.formattedDate}</time>
-          <a href={entry.url} target="_blank" rel="noopener">GitHub</a>
-        </div>
+        <time
+          class={`date${entry.showDate ? "" : " hidden"}`}
+          datetime={entry.publishedAt}
+        >
+          {entry.formattedDate}
+        </time>
       </div>
       <div class="body">
         {entry.html
@@ -95,10 +102,6 @@ const rendered = await Promise.all(
   .release.patch .meta h2 {
     font-weight: 500;
   }
-  .body {
-    margin-top: 0.5rem !important;
-    margin-bottom: 0 !important;
-  }
   .meta h2 a {
     color: inherit;
     text-decoration: none;
@@ -106,19 +109,18 @@ const rendered = await Promise.all(
   .meta h2 a:hover {
     color: var(--sl-color-text-accent);
   }
-  .meta-info {
-    display: flex;
-    gap: 1.125rem;
-    align-items: center;
+  .date {
     color: var(--color-text-dimmed);
     font-size: var(--sl-text-sm);
+    line-height: 1.1;
+    white-space: nowrap;
   }
-  .meta-info a {
-    color: var(--color-text-dimmed);
+  .date.hidden {
+    visibility: hidden;
   }
-  .meta-info a:hover {
-    color: var(--sl-color-text-accent);
-    text-decoration: none;
+  .body {
+    margin-top: 0.5rem !important;
+    margin-bottom: 0 !important;
   }
   .body :global(p:first-child) {
     margin-top: 0;

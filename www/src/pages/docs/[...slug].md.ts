@@ -1,6 +1,13 @@
 import { getCollection, getEntry } from "astro:content";
 import type { APIRoute } from "astro";
 import { cleanMarkdown } from "../../util/markdown";
+import changelog from "../../data/changelog.json";
+
+function renderChangelog(): string {
+  return (changelog as Array<{ tag: string; body: string }>)
+    .map((r) => `## ${r.tag}\n\n${r.body}`)
+    .join("\n\n");
+}
 
 export async function getStaticPaths() {
   const docs = await getCollection("docs");
@@ -20,7 +27,10 @@ export const GET: APIRoute = async ({ params }) => {
   const entry = await getEntry("docs", `docs/${slug}`);
   if (!entry?.body) return new Response("Not found", { status: 404 });
 
-  const cleaned = cleanMarkdown(entry.body);
+  let cleaned = cleanMarkdown(entry.body);
+  if (slug === "changelog") {
+    cleaned = cleaned.replace(/<Changelog\s*\/>/g, renderChangelog());
+  }
   const markdown = `# ${entry.data.title}
 
 ${entry.data.description || ""}

@@ -1,6 +1,13 @@
 import { getCollection } from "astro:content";
 import type { APIRoute } from "astro";
 import { cleanMarkdown } from "../util/markdown";
+import changelog from "../data/changelog.json";
+
+function renderChangelog(): string {
+  return (changelog as Array<{ tag: string; body: string }>)
+    .map((r) => `## ${r.tag}\n\n${r.body}`)
+    .join("\n\n");
+}
 
 export const GET: APIRoute = async () => {
   const docs = await getCollection("docs");
@@ -10,7 +17,10 @@ export const GET: APIRoute = async () => {
 
   const pages = filtered.map((doc) => {
     const slug = doc.id.replace(/\.mdx?$/, "");
-    const cleaned = cleanMarkdown(doc.body || "");
+    let cleaned = cleanMarkdown(doc.body || "");
+    if (slug === "docs/changelog") {
+      cleaned = cleaned.replace(/<Changelog\s*\/>/g, renderChangelog());
+    }
     return `## ${doc.data.title}
 
 ${doc.data.description || ""}
