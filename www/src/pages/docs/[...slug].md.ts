@@ -1,17 +1,6 @@
 import { getCollection, getEntry } from "astro:content";
 import type { APIRoute } from "astro";
 import { cleanMarkdown } from "../../util/markdown";
-import changelog from "../../data/changelog.json";
-
-function formatTag(tag: string): string {
-  return tag.replace(/^v/, "");
-}
-
-function renderChangelog(): string {
-  return (changelog as Array<{ tag: string; body: string }>)
-    .map((r) => `## ${formatTag(r.tag)}\n\n${r.body}`)
-    .join("\n\n");
-}
 
 export async function getStaticPaths() {
   const docs = await getCollection("docs");
@@ -59,10 +48,7 @@ Source: https://sst.dev/docs/${slug}
 
 ${catalog}`;
   } else {
-    let cleaned = cleanMarkdown(entry.body);
-    if (slug === "changelog") {
-      cleaned = cleaned.replace(/<Changelog\s*\/>/g, renderChangelog());
-    }
+    const cleaned = cleanMarkdown(entry.body);
     content = `# ${entry.data.title}
 
 ${entry.data.description || ""}
