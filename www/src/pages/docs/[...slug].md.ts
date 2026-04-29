@@ -18,7 +18,7 @@ export async function getStaticPaths() {
 async function buildExamplesCatalog(): Promise<string> {
   const docs = await getCollection("docs");
   const examples = docs
-    .filter((doc) => doc.id.startsWith("docs/examples/") && doc.id !== "docs/examples/catalog.mdx")
+    .filter((doc) => doc.id.startsWith("docs/examples/"))
     .sort((a, b) => a.id.localeCompare(b.id));
 
   const lines = examples.map((doc) => {
