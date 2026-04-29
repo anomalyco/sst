@@ -64,6 +64,15 @@ nfpms:
 #   description: "sst cli"
 #   license: Apache 2.0
 
+announce:
+  discord:
+    enabled: true
+    author: "GitHub"
+    icon_url: "https://github.com/fluidicon.png"
+    message_template: |
+      [**{{ .Tag }}**]({{ .ReleaseURL }})
+      {{ .ReleaseNotes }}
+
 changelog:
   sort: asc
   filters:
