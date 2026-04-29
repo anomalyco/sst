@@ -92,7 +92,8 @@ jobs:
           NOTES=$(gh release view "$TAG" --json body --jq .body \
             | sed -E "s|\(#([0-9]+)\)|([#\1](https://github.com/${{ github.repository }}/pull/\1))|g" \
             | sed -E 's|^\[[a-f0-9]+\]\([^)]+\): ||' \
-            | sed '/^## Changelog$/d')
+            | sed '/^## Changelog$/d' \
+            | sed -E 's|^(.+)$|- \1|')
           CONTENT=$(printf '[**%s**](%s)\n%s' "$TAG" "$RELEASE_URL" "$NOTES")
           PAYLOAD=$(jq -n --arg c "$CONTENT" '{content:$c, flags:4}')
           curl -fsS -X POST -H "Content-Type: application/json" \
