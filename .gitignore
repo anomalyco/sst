@@ -27,6 +27,7 @@ __pycache__
 uv.lock
 
 examples/**/sst-env.d.ts
+examples/**/sst.pyi
 www/src/content/docs/docs/examples.mdx
 www/src/data/changelog.json
 examples/**/bun.lock
