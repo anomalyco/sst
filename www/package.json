@@ -8,14 +8,12 @@
     "build": "bun generate && astro build",
     "preview": "astro preview",
     "astro": "astro",
-    "generate": "bun generate-cli-json && bun generate-errors-json && bun ./generate.ts",
+    "generate": "bun generate-cli-json && bun ./generate.ts",
     "generate-changelog": "bun ./generate.ts changelog",
     "generate-components": "bun ./generate.ts components",
     "generate-examples": "bun ./generate.ts examples",
     "generate-cli": "bun generate-cli-json && bun ./generate.ts cli",
-    "generate-cli-json": "go run ../cmd/sst introspect > cli-doc.json",
-    "generate-errors": "bun generate-errors-json && bun ./generate.ts common-errors",
-    "generate-errors-json": "go run ../cmd/sst common-errors > common-errors-doc.json"
+    "generate-cli-json": "go run ../cmd/sst introspect > cli-doc.json"
   },
   "dependencies": {
     "@astro-community/astro-embed-youtube": "^0.5.3",

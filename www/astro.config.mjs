@@ -287,7 +287,6 @@ const sidebar = [
     ],
   },
   { label: "Examples", slug: "docs/examples" },
-  { label: "Common Errors", slug: "docs/common-errors" },
 ];
 
 if (import.meta.env.DEV) {
@@ -315,6 +314,8 @@ export default defineConfig({
     "/docs/workflow": "/docs/basics",
     "/docs/workflow/": "/docs/basics/",
     "/docs/start/aws/container": "/docs/start/aws/express",
+    "/docs/common-errors": "/docs/component/aws/svelte-kit/#assets",
+    "/docs/common-errors/": "/docs/component/aws/svelte-kit/#assets",
   },
   integrations: [
     sitemap({

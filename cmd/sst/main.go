@@ -969,18 +969,6 @@ var root = &cli.Command{
 			},
 		},
 		{
-			Name:   "common-errors",
-			Hidden: true,
-			Run: func(cli *cli.Cli) error {
-				data, err := json.MarshalIndent(project.CommonErrors, "", "  ")
-				if err != nil {
-					return err
-				}
-				fmt.Println(string(data))
-				return nil
-			},
-		},
-		{
 			Name: "refresh",
 			Description: cli.Description{
 				Short: "Refresh the local app state",

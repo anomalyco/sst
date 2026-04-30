@@ -307,21 +307,6 @@ export interface ReactArgs extends SsrSiteArgs {
    */
   buildCommand?: SsrSiteArgs["buildCommand"];
   /**
-   * Configure how the React app assets are uploaded to S3.
-   *
-   * By default, this is set to the following. Read more about these options below.
-   * ```js
-   * {
-   *   assets: {
-   *     textEncoding: "utf-8",
-   *     versionedFilesCacheHeader: "public,max-age=31536000,immutable",
-   *     nonVersionedFilesCacheHeader: "public,max-age=0,s-maxage=86400,stale-while-revalidate=8640"
-   *   }
-   * }
-   * ```
-   */
-  assets?: SsrSiteArgs["assets"];
-  /**
    * Configure the React app to use an existing CloudFront cache policy. By default,
    * a new cache policy is created. Note that CloudFront has a limit of 20 cache
    * policies per account. This allows you to reuse an existing policy instead of

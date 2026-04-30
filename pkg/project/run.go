@@ -516,14 +516,6 @@ loop:
 				continue
 			}
 
-			// check if the error is a common error
-			help := []string{}
-			for _, commonError := range CommonErrors {
-				if strings.Contains(event.DiagnosticEvent.Message, commonError.Message) {
-					help = append(help, commonError.Short...)
-				}
-			}
-
 			exists := false
 			if event.DiagnosticEvent.URN != "" {
 				for _, item := range errors {
@@ -542,7 +534,6 @@ loop:
 				errors = append(errors, Error{
 					Message: strings.TrimSpace(event.DiagnosticEvent.Message),
 					URN:     event.DiagnosticEvent.URN,
-					Help:    help,
 				})
 				log.Info("telemetry tracking error")
 				telemetry.Track("cli.resource.error", map[string]interface{}{
