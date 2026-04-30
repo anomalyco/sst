@@ -10,6 +10,7 @@ const sidebar = [
   { label: "Intro", slug: "docs" },
   { label: "Basics", slug: "docs/basics" },
   { label: "Enterprise", slug: "docs/enterprise" },
+  { label: "Changelog", slug: "docs/changelog" },
   {
     label: "Get Started",
     collapsed: true,
@@ -362,6 +363,7 @@ export default defineConfig({
         Header: "./src/components/Header.astro",
         Footer: "./src/components/Footer.astro",
         PageTitle: "./src/components/PageTitle.astro",
+        PageSidebar: "./src/components/PageSidebar.astro",
         MobileMenuFooter: "./src/components/MobileMenuFooter.astro",
       },
       head: [

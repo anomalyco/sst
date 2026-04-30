@@ -8,12 +8,13 @@
     "build": "bun generate && astro build",
     "preview": "astro preview",
     "astro": "astro",
-    "generate": "bun generate-cli-json && bun generate-errors-json && tsx generate.ts",
-    "generate-components": "tsx generate.ts components",
-    "generate-examples": "tsx generate.ts examples",
-    "generate-cli": "bun generate-cli-json && tsx generate.ts cli",
+    "generate": "bun generate-cli-json && bun generate-errors-json && bun ./generate.ts",
+    "generate-changelog": "bun ./generate.ts changelog",
+    "generate-components": "bun ./generate.ts components",
+    "generate-examples": "bun ./generate.ts examples",
+    "generate-cli": "bun generate-cli-json && bun ./generate.ts cli",
     "generate-cli-json": "go run ../cmd/sst introspect > cli-doc.json",
-    "generate-errors": "bun generate-errors-json && tsx generate.ts common-errors",
+    "generate-errors": "bun generate-errors-json && bun ./generate.ts common-errors",
     "generate-errors-json": "go run ../cmd/sst common-errors > common-errors-doc.json"
   },
   "dependencies": {
@@ -35,7 +36,6 @@
   },
   "devDependencies": {
     "@types/node": "^20.10.5",
-    "tsx": "^4.7.0",
     "typedoc": "0.25.7",
     "typescript": "5.3.3"
   }

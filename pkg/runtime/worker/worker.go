@@ -255,6 +255,7 @@ func (w *Runtime) getUnenv(ctx context.Context, cfgPath string, compatibility co
 		string(payload),
 	)
 	cmd.Dir = path.ResolvePlatformDir(cfgPath)
+	cmd.Env = []string{}
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load cloudflare unenv config: %w\n%s", err, output)

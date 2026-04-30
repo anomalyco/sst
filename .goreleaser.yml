@@ -1,9 +1,5 @@
 version: 2
 project_name: sst
-before:
-  hooks:
-    - go mod tidy
-    - go test ./cmd/... ./pkg/...
 builds:
   - env:
       - CGO_ENABLED=0
@@ -14,8 +10,8 @@ builds:
     main: ./cmd/sst
 
 archives:
-  - format: tar.gz
-    # this name template makes the OS and Arch compatible with the results of uname.
+  - formats:
+      - tar.gz
     name_template: >-
       sst-
       {{- if eq .Os "darwin" }}mac-
@@ -25,14 +21,14 @@ archives:
       {{- else if eq .Arch "#86" }}i386
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
-    # use zip for windows archives
     format_overrides:
       - goos: windows
-        format: zip
+        formats:
+          - zip
 checksum:
   name_template: "checksums.txt"
 snapshot:
-  name_template: "0.0.0-{{ .Timestamp }}"
+  version_template: "0.0.0-{{ .Timestamp }}"
 aurs:
   - homepage: "https://github.com/sst/sst"
     description: "Deploy anything"
@@ -56,15 +52,9 @@ nfpms:
       {{- if eq .Os "darwin" }}mac
       {{- else }}{{ .Os }}{{ end }}-{{ .Arch }}
 
-# scoop:
-#   bucket:
-#     owner: sst
-#     name: scoop-bucket
-#   homepage: "https://github.com/sst/ion"
-#   description: "sst cli"
-#   license: Apache 2.0
-
 changelog:
+  use: git
+  format: "[{{ .SHA }}](https://github.com/anomalyco/sst/commit/{{ .SHA }}): {{ .Message }}"
   sort: asc
   filters:
     exclude:

@@ -69,6 +69,9 @@ jobs:
         env:
           DOCKER_PUSH: true
 
+      - name: Run Go tests
+        run: go test -vet=all ./...
+
       - name: Release CLI
         uses: goreleaser/goreleaser-action@v6
         with:
@@ -96,3 +99,20 @@ jobs:
           cargo publish --allow-dirty
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.crates-auth.outputs.token }}
+
+      - name: Announce on Discord
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/$TAG"
+          NOTES=$(gh release view "$TAG" --json body --jq .body \
+            | sed -E "s|\(#([0-9]+)\)|([#\1](https://github.com/${{ github.repository }}/pull/\1))|g" \
+            | sed -E 's|^\* \[[a-f0-9]+\]\([^)]+\): ||' \
+            | sed '/^## Changelog$/d' \
+            | sed -E 's|^(.+)$|- \1|')
+          CONTENT=$(printf '🏷️ [**Release - %s**](%s)\n%s' "$TAG" "$RELEASE_URL" "$NOTES")
+          PAYLOAD=$(jq -n --arg c "$CONTENT" '{content:$c, flags:4}')
+          curl -fsS -X POST -H "Content-Type: application/json" \
+            -d "$PAYLOAD" "$DISCORD_WEBHOOK_URL"
