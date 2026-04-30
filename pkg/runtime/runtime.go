@@ -20,6 +20,7 @@ type Runtime interface {
 	Build(ctx context.Context, input *BuildInput) (*BuildOutput, error)
 	Run(ctx context.Context, input *RunInput) (Worker, error)
 	ShouldRebuild(functionID string, path string) bool
+	ValidateHandler(input *BuildInput) error
 }
 
 type Worker interface {
@@ -100,6 +101,13 @@ func (c *Collection) Build(ctx context.Context, input *BuildInput) (*BuildOutput
 
 	if input.Bundle != "" {
 		out = input.Bundle
+		runtime, ok := c.Runtime(input.Runtime)
+		if !ok {
+			return nil, fmt.Errorf("runtime not found: %v", input.Runtime)
+		}
+		if err := runtime.ValidateHandler(input); err != nil {
+			return nil, err
+		}
 		result = &BuildOutput{
 			Handler: input.Handler,
 			Errors:  []string{},

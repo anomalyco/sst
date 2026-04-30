@@ -3,6 +3,7 @@ package golang
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -128,6 +129,20 @@ func (r *Runtime) Run(ctx context.Context, input *runtime.RunInput) (runtime.Wor
 		stderr,
 		cmd,
 	}, nil
+}
+
+func (r *Runtime) ValidateHandler(input *runtime.BuildInput) error {
+	if input.Handler != "" {
+		if info, err := os.Stat(input.Handler); err != nil || !info.IsDir() {
+			return fmt.Errorf("handler not found: %v", input.Handler)
+		}
+	}
+
+	_, err := fs.FindUp(input.Handler, "go.mod")
+	if err != nil {
+		return fmt.Errorf("handler not found: could not find go.mod for handler %v", input.Handler)
+	}
+	return nil
 }
 
 func (r *Runtime) ShouldRebuild(functionID string, file string) bool {

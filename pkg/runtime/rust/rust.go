@@ -81,6 +81,10 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 	var properties Properties
 	json.Unmarshal(input.Properties, &properties)
 
+	if err := r.ValidateHandler(input); err != nil {
+		return nil, err
+	}
+
 	// split handler into path and function name
 	parts := strings.Split(input.Handler, ".")
 	handler := strings.Join(parts[:len(parts)-1], ".")
@@ -192,6 +196,26 @@ func (r *Runtime) Run(ctx context.Context, input *runtime.RunInput) (runtime.Wor
 		stderr,
 		cmd,
 	}, nil
+}
+
+func (r *Runtime) ValidateHandler(input *runtime.BuildInput) error {
+	parts := strings.Split(input.Handler, ".")
+	handler := strings.Join(parts[:len(parts)-1], ".")
+
+	if handler != "" {
+		if info, err := os.Stat(handler); err != nil || !info.IsDir() {
+			return fmt.Errorf("handler not found: %v", input.Handler)
+		}
+	}
+
+	_, err := fs.FindUp(handler, "cargo.toml")
+	if err != nil {
+		_, err = fs.FindUp(handler, "Cargo.toml")
+		if err != nil {
+			return fmt.Errorf("handler not found: could not find Cargo.toml for handler %v", input.Handler)
+		}
+	}
+	return nil
 }
 
 func (r *Runtime) ShouldRebuild(functionID string, file string) bool {
