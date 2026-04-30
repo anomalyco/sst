@@ -69,6 +69,11 @@ jobs:
         env:
           DOCKER_PUSH: true
 
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
       - name: Run Go tests
         run: go test -vet=all ./...
 
