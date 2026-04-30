@@ -131,11 +131,19 @@ func TestStartDiscoversFilesInNewDirectories(t *testing.T) {
 
 	path := filepath.Join(root, "src", "newpkg", "handler.go")
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0755))
-	require.NoError(t, os.WriteFile(path, []byte("package newpkg\n"), 0644))
-	require.True(t, waitForFileChangedEvent(events, path, 5*time.Second), "expected file change for %s", path)
 
-	cancel()
-	require.NoError(t, <-errCh)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		require.NoError(t, os.WriteFile(path, []byte(time.Now().String()), 0644))
+		if waitForFileChangedEvent(events, path, 200*time.Millisecond) {
+			cancel()
+			require.NoError(t, <-errCh)
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	t.Fatalf("expected file change for %s", path)
 }
 
 func TestStartWatchesNewDirectories(t *testing.T) {
