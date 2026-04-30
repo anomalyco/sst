@@ -312,10 +312,8 @@ export default defineConfig({
     "/discord": "https://discord.gg/sst",
     "/guide": "https://guide.sst.dev",
     "/docs/workflow": "/docs/basics",
-    "/docs/workflow/": "/docs/basics/",
     "/docs/start/aws/container": "/docs/start/aws/express",
     "/docs/common-errors": "/docs/component/aws/svelte-kit/#assets",
-    "/docs/common-errors/": "/docs/component/aws/svelte-kit/#assets",
   },
   integrations: [
     sitemap({

@@ -2670,7 +2670,7 @@ async function handler(event) {
    *
    * @param name The name of the component.
    * @param distributionID The ID of the existing Router distribution.
-   * @param opts? Resource options.
+   * @param opts Resource options.
    *
    * This is useful when you create a Router in one stage and want to share it in
    * another. It avoids having to create a new Router in the other stage.

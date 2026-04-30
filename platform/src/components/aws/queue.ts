@@ -620,7 +620,7 @@ export class Queue extends Component implements Link.Linkable {
    *
    * @param name The name of the component.
    * @param queueUrl The URL of the existing SQS Queue.
-   * @param opts? Resource options.
+   * @param opts Resource options.
    *
    * @example
    * Imagine you create a queue in the `dev` stage. And in your personal stage `frank`,

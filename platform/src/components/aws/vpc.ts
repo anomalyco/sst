@@ -1590,7 +1590,7 @@ export class Vpc extends Component implements Link.Linkable {
    *
    * @param name The name of the component.
    * @param vpcId The ID of the existing VPC.
-   * @param opts? Resource options.
+   * @param opts Resource options.
    *
    * @example
    * Imagine you create a VPC in the `dev` stage. And in your personal stage `frank`,

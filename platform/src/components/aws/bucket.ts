@@ -1178,7 +1178,7 @@ export class Bucket extends Component implements Link.Linkable {
    *
    * @param name The name of the component.
    * @param bucketName The name of the existing S3 Bucket.
-   * @param opts? Resource options.
+   * @param opts Resource options.
    *
    * @example
    * Imagine you create a bucket in the `dev` stage. And in your personal stage `frank`,

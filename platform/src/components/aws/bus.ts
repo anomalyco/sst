@@ -577,7 +577,7 @@ export class Bus extends Component implements Link.Linkable {
    *
    * @param name The name of the component.
    * @param busName The name of the existing EventBus.
-   * @param opts? Resource options.
+   * @param opts Resource options.
    *
    * @example
    * Imagine you create a bus in the `dev` stage. And in your personal stage `frank`,

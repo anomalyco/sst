@@ -348,7 +348,7 @@ export class Hyperdrive extends Component implements Link.Linkable {
    *
    * @param name The name of the component.
    * @param args The arguments to get the Hyperdrive config.
-   * @param opts? Resource options.
+   * @param opts Resource options.
    *
    * @example
    * Imagine you create a Hyperdrive config in the `dev` stage. And in your personal stage
