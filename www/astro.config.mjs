@@ -9,8 +9,9 @@ import rehypeAutolinkHeadings from "rehype-autolink-headings";
 const sidebar = [
   { label: "Intro", slug: "docs" },
   { label: "Basics", slug: "docs/basics" },
-  { label: "Enterprise", slug: "docs/enterprise" },
+  { label: "Examples", slug: "docs/examples" },
   { label: "Changelog", slug: "docs/changelog" },
+  { label: "Enterprise", slug: "docs/enterprise" },
   {
     label: "Get Started",
     collapsed: true,
@@ -286,7 +287,6 @@ const sidebar = [
       "docs/component/experimental/dev-command",
     ],
   },
-  { label: "Examples", slug: "docs/examples" },
 ];
 
 if (import.meta.env.DEV) {
