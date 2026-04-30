@@ -453,11 +453,10 @@ export interface FunctionArgs {
    * requires-python = "==3.11.*"
    * ```
    *
-   * Run `uv sync` before starting dev mode:
+   * Install your packages before starting `sst dev`:
    *
    * ```bash
-   * uv sync
-   * sst dev
+   * uv sync --all-packages
    * ```
    *
    * Use absolute imports within your package.
