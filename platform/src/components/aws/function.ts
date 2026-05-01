@@ -1726,8 +1726,6 @@ export class Function extends Component implements Link.Linkable {
   private eventInvokeConfig?: lambda.FunctionEventInvokeConfig;
   private alias: Output<lambda.Alias | undefined>;
   private isVersioningEnabled: Output<boolean>;
-  #targetArn: Output<string>;
-  #qualifier: Output<string | undefined>;
 
   private static readonly encryptionKey = lazy(
     () =>
@@ -1799,11 +1797,6 @@ export class Function extends Component implements Link.Linkable {
     const fn = createFunction();
     const isVersioningEnabled = fn.publish.apply((publish) => Boolean(publish));
     const alias = createLatestAlias();
-    const targetArn = createTargetArn(alias);
-    const qualifier = output(targetArn).apply(
-      (arn) => splitQualifiedFunctionArn(arn).qualifier,
-    );
-    const urlEndpoint = createLatestUrl();
     createProvisioned();
     const eventInvokeConfig = createEventInvokeConfig();
 
@@ -1812,12 +1805,14 @@ export class Function extends Component implements Link.Linkable {
     this.function = fn;
     this.role = role;
     this.logGroup = logGroup;
-    this.urlEndpoint = urlEndpoint;
     this.eventInvokeConfig = eventInvokeConfig;
     this.alias = alias;
-    this.#targetArn = targetArn;
-    this.#qualifier = qualifier;
     this.isVersioningEnabled = isVersioningEnabled;
+
+    const urlEndpoint = this.qualifier.apply((qualifier) =>
+      createUrl(qualifier),
+    );
+    this.urlEndpoint = urlEndpoint;
 
     const buildInput = output({
       functionID: name,
@@ -2742,18 +2737,7 @@ export class Function extends Component implements Link.Linkable {
       });
     }
 
-    function createTargetArn(alias: Input<lambda.Alias | undefined>) {
-      return output(alias).apply((alias) => {
-        if (alias) return alias.arn;
-        return fn.arn;
-      });
-    }
-
-    type CreateUrlOpts = {
-      qualifier: string | undefined;
-      url: NormalizedUrl;
-    };
-    function createUrl({ url, qualifier }: CreateUrlOpts) {
+    function createUrl(qualifier: string | undefined) {
       return url.apply((url) => {
         if (url === undefined) return output(undefined);
 
@@ -2932,15 +2916,6 @@ export class Function extends Component implements Link.Linkable {
       });
     }
 
-    function createLatestUrl() {
-      return qualifier.apply((qualifier) =>
-        createUrl({
-          url,
-          qualifier,
-        }),
-      );
-    }
-
     function createProvisioned() {
       return all([args.concurrency, fn.publish]).apply(
         ([concurrency, publish]) => {
@@ -3053,12 +3028,17 @@ export class Function extends Component implements Link.Linkable {
    * invocations go through the alias instead of `$LATEST`.
    */
   public get targetArn() {
-    return this.#targetArn;
+    return this.alias.apply((alias) => {
+      if (alias) return alias.arn;
+      return this.function.arn;
+    });
   }
 
   /** @internal */
   public get qualifier() {
-    return this.#qualifier;
+    return this.targetArn.apply(
+      (arn) => splitQualifiedFunctionArn(arn).qualifier,
+    );
   }
 
   /** @internal */
