@@ -1779,7 +1779,7 @@ export class Function extends Component implements Link.Linkable {
     const streaming = normalizeStreaming();
     const logging = normalizeLogging();
     const volume = normalizeVolume();
-    const url = normalizeUrl(args.url);
+    const url = normalizeUrl();
     const copyFiles = normalizeCopyFiles();
     const durable = normalizeDurable();
     const policies = output(args.policies ?? []);
@@ -1988,8 +1988,8 @@ export class Function extends Component implements Link.Linkable {
       }));
     }
 
-    function normalizeUrl(url: FunctionArgs["url"]) {
-      return output(url).apply((url) => {
+    function normalizeUrl() {
+      return output(args.url).apply((url) => {
         if (url === false || url === undefined) return;
         if (url === true) {
           url = {};
@@ -2023,7 +2023,6 @@ export class Function extends Component implements Link.Linkable {
         };
       });
     }
-    type NormalizedUrl = ReturnType<typeof normalizeUrl>;
 
     function normalizeCopyFiles() {
       return output(args.copyFiles ?? []).apply((copyFiles) =>
