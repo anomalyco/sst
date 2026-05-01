@@ -1,8 +1,6 @@
 package provider
 
 import (
-	"bytes"
-	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -578,7 +576,7 @@ func (a *AwsHome) getData(key, app, stage string) (io.Reader, error) {
 		}
 		return nil, err
 	}
-	return decodeHomeReader(result.Body, result.ContentEncoding)
+	return gzipDecode(result.Body)
 }
 
 func (a *AwsHome) putData(key, app, stage string, data io.Reader) error {
@@ -588,15 +586,19 @@ func (a *AwsHome) putData(key, app, stage string, data io.Reader) error {
 	}
 	s3Client := s3.NewFromConfig(a.provider.config)
 
-	body, contentEncoding, err := prepareHomeUpload(data, a.compress)
-	if err != nil {
-		return err
+	var contentEncoding *string
+	if a.compress {
+		data, err = gzipEncode(data)
+		if err != nil {
+			return err
+		}
+		contentEncoding = aws.String("gzip")
 	}
 
 	_, err = s3Client.PutObject(context.TODO(), &s3.PutObjectInput{
 		Bucket:          aws.String(bootstrap.State),
 		Key:             aws.String(a.pathForData(key, app, stage)),
-		Body:            body,
+		Body:            data,
 		ContentType:     aws.String("application/json"),
 		ContentEncoding: contentEncoding,
 	})
@@ -605,64 +607,6 @@ func (a *AwsHome) putData(key, app, stage string, data io.Reader) error {
 	}
 
 	return nil
-}
-
-func prepareHomeUpload(data io.Reader, compressEnabled bool) (io.Reader, *string, error) {
-	var buffer bytes.Buffer
-	_, err := io.Copy(&buffer, data)
-	if err != nil {
-		return nil, nil, err
-	}
-	if !compressEnabled {
-		return bytes.NewReader(buffer.Bytes()), nil, nil
-	}
-
-	var compressed bytes.Buffer
-	writer := gzip.NewWriter(&compressed)
-	_, err = io.Copy(writer, bytes.NewReader(buffer.Bytes()))
-	if err != nil {
-		writer.Close()
-		return nil, nil, err
-	}
-	err = writer.Close()
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return bytes.NewReader(compressed.Bytes()), aws.String("gzip"), nil
-}
-
-func decodeHomeReader(body io.ReadCloser, contentEncoding *string) (io.Reader, error) {
-	if contentEncoding != nil && strings.EqualFold(*contentEncoding, "gzip") {
-		reader, err := gzip.NewReader(body)
-		if err != nil {
-			body.Close()
-			return nil, err
-		}
-		return &gzipReadCloser{
-			Reader: reader,
-			body:   body,
-		}, nil
-	}
-	return body, nil
-}
-
-type gzipReadCloser struct {
-	Reader *gzip.Reader
-	body   io.Closer
-}
-
-func (g *gzipReadCloser) Read(p []byte) (int, error) {
-	return g.Reader.Read(p)
-}
-
-func (g *gzipReadCloser) Close() error {
-	readerErr := g.Reader.Close()
-	bodyErr := g.body.Close()
-	if readerErr != nil {
-		return readerErr
-	}
-	return bodyErr
 }
 
 func (a *AwsHome) removeData(key, app, stage string) error {
