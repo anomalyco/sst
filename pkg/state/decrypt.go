@@ -11,11 +11,9 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/common/apitype"
 )
 
-func Decrypt(ctx context.Context, passphrase string, checkpoint *apitype.CheckpointV3) (*apitype.CheckpointV3, error) {
-	os.Setenv("PULUMI_CONFIG_PASSPHRASE", passphrase)
-	sp := &defaultSecretsProvider{
-		passphrase: passphrase,
-	}
+func Decrypt(ctx context.Context, pass string, checkpoint *apitype.CheckpointV3) (*apitype.CheckpointV3, error) {
+	os.Setenv("PULUMI_CONFIG_PASSPHRASE", pass)
+	sp := &defaultSecretsProvider{passphrase: pass}
 	snapshot, err := stack.DeserializeCheckpoint(ctx, sp, checkpoint)
 	if err != nil {
 		return nil, err
