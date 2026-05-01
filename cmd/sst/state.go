@@ -430,16 +430,9 @@ func confirmRepair(result state.RepairResult) error {
 		return util.NewReadableError(nil, "No changes needed")
 	}
 
-	if result.Reordered {
-		fmt.Println("Reordered resources to satisfy dependency order.")
-		fmt.Println()
-	}
-
-	if len(result.Pruned) > 0 {
-		fmt.Println("Modified:")
-		for _, p := range result.Pruned {
-			renderPruneResult(p)
-		}
+	fmt.Println("Modified:")
+	for _, p := range result.Pruned {
+		renderPruneResult(p)
 	}
 
 	return promptConfirm()
