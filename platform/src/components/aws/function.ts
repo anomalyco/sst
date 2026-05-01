@@ -2652,7 +2652,7 @@ export class Function extends Component implements Link.Linkable {
               layers: args.layers,
               tags: args.tags,
               publish: output(args.versioning).apply(
-                (v) => v || Boolean(args.durable),
+                (v) => v ?? Boolean(args.durable),
               ),
               reservedConcurrentExecutions: concurrency?.reserved,
               durableConfig: durable && {
