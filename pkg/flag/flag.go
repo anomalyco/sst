@@ -24,7 +24,6 @@ var SST_EXPERIMENTAL = isTrue("SST_EXPERIMENTAL") || isTrue("SST_EXPERIMENTAL_RU
 var SST_RUN_ID = os.Getenv("SST_RUN_ID")
 var SST_SKIP_APPSYNC = isTrue("SST_SKIP_APPSYNC")
 var SST_NO_BUN = isTrue("NO_BUN") || isTrue("SST_NO_BUN")
-var SST_STATE_COMPRESS = !isFalse("SST_STATE_COMPRESS")
 
 func isTrue(name string) bool {
 	val, ok := os.LookupEnv(name)
@@ -35,20 +34,6 @@ func isTrue(name string) bool {
 		return true
 	}
 	if val == "true" {
-		return true
-	}
-	return false
-}
-
-func isFalse(name string) bool {
-	val, ok := os.LookupEnv(name)
-	if !ok {
-		return false
-	}
-	if val == "0" {
-		return true
-	}
-	if val == "false" {
 		return true
 	}
 	return false

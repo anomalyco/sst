@@ -25,7 +25,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/aws/smithy-go"
 	"github.com/sst/sst/v3/internal/util"
-	"github.com/sst/sst/v3/pkg/flag"
 
 	ecrTypes "github.com/aws/aws-sdk-go-v2/service/ecr/types"
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
@@ -537,11 +536,13 @@ var steps = []bootstrapStep{
 
 type AwsHome struct {
 	provider *AwsProvider
+	compress bool
 }
 
-func NewAwsHome(provider *AwsProvider) *AwsHome {
+func NewAwsHome(provider *AwsProvider, compress bool) *AwsHome {
 	return &AwsHome{
 		provider: provider,
+		compress: compress,
 	}
 }
 
@@ -587,7 +588,7 @@ func (a *AwsHome) putData(key, app, stage string, data io.Reader) error {
 	}
 	s3Client := s3.NewFromConfig(a.provider.config)
 
-	body, contentEncoding, err := prepareHomeUpload(data, flag.SST_STATE_COMPRESS)
+	body, contentEncoding, err := prepareHomeUpload(data, a.compress)
 	if err != nil {
 		return err
 	}

@@ -47,7 +47,8 @@ type App struct {
 }
 
 type State struct {
-	Purge bool `json:"purge"`
+	Purge    bool `json:"purge"`
+	Compress bool `json:"compress"`
 }
 
 type Watch struct {
@@ -384,7 +385,8 @@ func (proj *Project) LoadHome() error {
 	case "local":
 		home = provider.NewLocalHome()
 	case "aws":
-		home = provider.NewAwsHome(loadedProviders["aws"].(*provider.AwsProvider))
+		compress := proj.app.State != nil && proj.app.State.Compress
+		home = provider.NewAwsHome(loadedProviders["aws"].(*provider.AwsProvider), compress)
 	case "cloudflare":
 		home = provider.NewCloudflareHome(loadedProviders["cloudflare"].(*provider.CloudflareProvider))
 	default:
