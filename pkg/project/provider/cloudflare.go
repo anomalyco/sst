@@ -81,11 +81,13 @@ type CloudflareHome struct {
 	sync.Mutex
 	provider  *CloudflareProvider
 	bootstrap *bootstrap
+	compress  bool
 }
 
-func NewCloudflareHome(provider *CloudflareProvider) *CloudflareHome {
+func NewCloudflareHome(provider *CloudflareProvider, compress bool) *CloudflareHome {
 	return &CloudflareHome{
 		provider: provider,
+		compress: compress,
 	}
 }
 
@@ -137,6 +139,13 @@ func (c *CloudflareHome) putData(kind, app, stage string, data io.Reader) error 
 	c.Lock()
 	defer c.Unlock()
 	path := filepath.Join(kind, app, stage)
+	if c.compress {
+		encoded, err := gzipEncode(data)
+		if err != nil {
+			return err
+		}
+		data = encoded
+	}
 	_, err := makeRequestContext(c.provider.api, context.Background(), http.MethodPut, "/accounts/"+c.provider.identifier.Identifier+"/r2/buckets/"+c.bootstrap.State+"/objects/"+path, data)
 	if err != nil {
 		return err
@@ -155,7 +164,7 @@ func (c *CloudflareHome) getData(kind, app, stage string) (io.Reader, error) {
 		}
 		return nil, err
 	}
-	return bytes.NewReader(data), nil
+	return gzipDecode(bytes.NewReader(data))
 }
 
 func (c *CloudflareHome) removeData(kind, app, stage string) error {

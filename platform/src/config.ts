@@ -347,6 +347,9 @@ export interface App {
      * If set to `true`, state files are gzip-compressed before being uploaded
      * to your home provider. This reduces transfer size for large state files.
      *
+     * Applies to the `aws` (S3) and `cloudflare` (R2) home providers. The
+     * `local` home provider ignores this setting.
+     *
      * Reads remain backward compatible regardless of this setting, so it can
      * be safely toggled on or off between deploys.
      *
