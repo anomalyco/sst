@@ -1,4 +1,4 @@
-import { Resource } from "../resource.js";
+import { Resource } from "../resource/index.js";
 import { client } from "../aws/client.js";
 
 export interface PutEvent {

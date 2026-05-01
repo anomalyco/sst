@@ -557,7 +557,9 @@ export class Dynamo extends Component implements Link.Linkable {
                         }
                       : {
                           hashKey: index.hashKey,
-                          rangeKey: index.rangeKey,
+                          ...(index.rangeKey
+                            ? { rangeKey: index.rangeKey }
+                            : {}),
                         }),
                     ...(index.projection === "keys-only"
                       ? { projectionType: "KEYS_ONLY" }
@@ -874,7 +876,7 @@ export class Dynamo extends Component implements Link.Linkable {
    *
    * @param name The name of the component.
    * @param tableName The name of the DynamoDB Table.
-   * @param opts? Resource options.
+   * @param opts Resource options.
    *
    * @example
    * Imagine you create a table in the `dev` stage. And in your personal stage `frank`,

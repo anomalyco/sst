@@ -50,6 +50,7 @@ export default $config({
 
     const task = new sst.aws.Task("MyTask", {
       cluster,
+      public: true,
       link: [bucket],
       image: {
         context: "image",

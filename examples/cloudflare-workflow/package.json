@@ -1,0 +1,9 @@
+{
+  "name": "cloudflare-workflow",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "@cloudflare/workers-types": "^4.20240403.0",
+    "sst": "file:../../sdk/js"
+  }
+}

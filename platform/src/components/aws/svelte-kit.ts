@@ -302,21 +302,6 @@ export interface SvelteKitArgs extends SsrSiteArgs {
    */
   buildCommand?: SsrSiteArgs["buildCommand"];
   /**
-   * Configure how the SvelteKit app assets are uploaded to S3.
-   *
-   * By default, this is set to the following. Read more about these options below.
-   * ```js
-   * {
-   *   assets: {
-   *     textEncoding: "utf-8",
-   *     versionedFilesCacheHeader: "public,max-age=31536000,immutable",
-   *     nonVersionedFilesCacheHeader: "public,max-age=0,s-maxage=86400,stale-while-revalidate=8640"
-   *   }
-   * }
-   * ```
-   */
-  assets?: SsrSiteArgs["assets"];
-  /**
    * Configure the SvelteKit app to use an existing CloudFront cache policy.
    *
    * :::note

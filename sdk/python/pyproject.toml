@@ -9,3 +9,8 @@ dependencies = ["cryptography>=43.0.3"]
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.2",
+]

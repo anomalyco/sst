@@ -5,6 +5,7 @@ import { DEFAULT_ACCOUNT_ID } from "../account-id.js";
 interface Inputs {
   accountId: string;
   scriptName: string;
+  etag?: string;
   mode?: string;
   region?: string;
   host?: string;
@@ -14,6 +15,7 @@ interface Inputs {
 export interface WorkerPlacementInputs {
   accountId?: Input<Inputs["accountId"]>;
   scriptName: Input<Inputs["scriptName"]>;
+  etag?: Input<Inputs["etag"]>;
   mode?: Input<Inputs["mode"]>;
   region?: Input<Inputs["region"]>;
   host?: Input<Inputs["host"]>;

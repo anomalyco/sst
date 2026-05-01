@@ -439,3 +439,11 @@ Astro helps you build faster websites with [“Islands Architecture”](https://
 ## Right Sidebar
 
 ## Overflow
+
+```ts
+new sst.cloudflare.StaticSite("Website", {
+  domain: "example.com",
+  notFound: "single-page-application",
+  trailingSlash: "auto",
+});
+```

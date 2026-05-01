@@ -22,6 +22,7 @@ import (
 	"github.com/sst/sst/v3/cmd/sst/mosaic/ui/common"
 	"github.com/sst/sst/v3/pkg/flag"
 	"github.com/sst/sst/v3/pkg/project"
+	"github.com/sst/sst/v3/pkg/types/typescript"
 
 	"golang.org/x/crypto/ssh/terminal"
 )
@@ -47,7 +48,6 @@ type UI struct {
 	dedupe     map[string]bool
 	timing     map[string]time.Time
 	parents    map[string]string
-	colors     map[string]lipgloss.Style
 	workerTime map[string]time.Time
 	complete   *project.CompleteEvent
 	footer     *footer
@@ -61,7 +61,12 @@ type UI struct {
 type Options struct {
 	Silent bool
 	Log    *os.File
-	Dev    bool
+	Filter string
+}
+
+type PaneFilterEvent struct {
+	PaneKey string `json:"paneKey"`
+	Value   string `json:"value"`
 }
 
 type Option func(*Options)
@@ -70,8 +75,17 @@ func WithSilent(u *Options) {
 	u.Silent = true
 }
 
-func WithDev(u *Options) {
-	u.Dev = true
+func (u *UI) SetFilter(filter string, paneKey string) {
+	icons := map[string]string{"function": "λ", "task": "⧉"}
+	icon := icons[paneKey]
+	u.options.Filter = filter
+	u.blank()
+	if filter != "" {
+		u.println(TEXT_HIGHLIGHT.Render(icon), "  ", TEXT_NORMAL_BOLD.Render("Filter"), "   ", TEXT_GRAY.Render(filter))
+	} else {
+		u.println(TEXT_DANGER.Render(icon), "  ", TEXT_NORMAL_BOLD.Render("Filter"), "   ", TEXT_DIM.Render("Removed"))
+	}
+	u.blank()
 }
 
 func WithLog(file *os.File) Option {
@@ -88,7 +102,6 @@ func New(ctx context.Context, options ...Option) *UI {
 	isTTY := terminal.IsTerminal(int(os.Stdout.Fd()))
 	slog.Info("initializing ui", "isTTY", isTTY)
 	result := &UI{
-		colors:     map[string]lipgloss.Style{},
 		workerTime: map[string]time.Time{},
 		hasBlank:   false,
 		options:    opts,
@@ -155,40 +168,67 @@ func (u *UI) Event(unknown interface{}) {
 		u.println(evt.Line)
 
 	case *aws.TaskProvisionEvent:
-		u.printEvent(u.getColor(""), fmt.Sprintf("%-11s", "Provision"), evt.Name)
+		if !u.matchFilter(evt.Name) {
+			return
+		}
+		u.printEvent(GetColor(""), fmt.Sprintf("%-11s", "Provision"), evt.Name)
 
 	case *aws.TaskStartEvent:
+		if !u.matchFilter(evt.TaskID) {
+			return
+		}
 		u.workerTime[evt.WorkerID] = time.Now()
-		u.printEvent(u.getColor(evt.WorkerID), fmt.Sprintf("%-11s", "Start"), evt.Command)
+		u.printEvent(GetColor(evt.WorkerID), fmt.Sprintf("%-11s", "Start"), evt.Command)
 
 	case *aws.TaskLogEvent:
+		if !u.matchFilter(evt.TaskID) {
+			return
+		}
 		duration := time.Since(u.workerTime[evt.WorkerID]).Round(time.Millisecond)
 		formattedDuration := fmt.Sprintf("%.9s", fmt.Sprintf("+%v", duration))
-		u.printEvent(u.getColor(evt.WorkerID), formattedDuration, evt.Line)
+		u.printEvent(GetColor(evt.WorkerID), formattedDuration, evt.Line)
 
 	case *aws.TaskCompleteEvent:
+		if !u.matchFilter(evt.TaskID) {
+			return
+		}
 		duration := time.Since(u.workerTime[evt.WorkerID]).Round(time.Millisecond)
 		formattedDuration := fmt.Sprintf("took %.9s", fmt.Sprintf("+%v", duration))
-		u.printEvent(u.getColor(evt.WorkerID), "Done", formattedDuration)
+		u.printEvent(GetColor(evt.WorkerID), "Done", formattedDuration)
 
 	case *aws.TaskMissingCommandEvent:
+		if !u.matchFilter(evt.Name) {
+			return
+		}
 		u.printEvent(TEXT_DANGER, fmt.Sprintf("%-11s", "Missing"), fmt.Sprintf("Dev command not configured for the \"%s\" task. Set `dev.command` to configure how the task works in `sst dev`.", evt.Name))
 
 	case *aws.FunctionInvokedEvent:
+		if !u.matchFilter(evt.FunctionID) {
+			return
+		}
 		u.workerTime[evt.WorkerID] = time.Now()
-		u.printEvent(u.getColor(evt.WorkerID), TEXT_NORMAL_BOLD.Render(fmt.Sprintf("%-11s", "Invoke")), u.functionName(evt.FunctionID))
+		u.printEvent(GetColor(evt.WorkerID), TEXT_NORMAL_BOLD.Render(fmt.Sprintf("%-11s", "Invoke")), u.functionName(evt.FunctionID))
 
 	case *aws.FunctionResponseEvent:
+		if !u.matchFilter(evt.FunctionID) {
+			return
+		}
 		duration := time.Since(u.workerTime[evt.WorkerID]).Round(time.Millisecond)
 		formattedDuration := fmt.Sprintf("took %.9s", fmt.Sprintf("+%v", duration))
-		u.printEvent(u.getColor(evt.WorkerID), "Done", formattedDuration)
+		u.printEvent(GetColor(evt.WorkerID), "Done", formattedDuration)
 
 	case *aws.FunctionLogEvent:
+		if !u.matchFilter(evt.FunctionID) {
+			return
+		}
 		duration := time.Since(u.workerTime[evt.WorkerID]).Round(time.Millisecond)
 		formattedDuration := fmt.Sprintf("%.9s", fmt.Sprintf("+%v", duration))
-		u.printEvent(u.getColor(evt.WorkerID), formattedDuration, evt.Line)
+		u.printEvent(GetColor(evt.WorkerID), formattedDuration, u.formatFunctionLogLine(evt.Line))
 
 	case *aws.FunctionBuildEvent:
+		if !u.matchFilter(evt.FunctionID) {
+			return
+		}
 		if len(evt.Errors) > 0 {
 			u.printEvent(TEXT_DANGER, "Build Error", u.functionName(evt.FunctionID))
 			for _, item := range evt.Errors {
@@ -199,13 +239,16 @@ func (u *UI) Event(unknown interface{}) {
 		u.printEvent(TEXT_SUCCESS, "Build", u.functionName(evt.FunctionID))
 
 	case *aws.FunctionErrorEvent:
-		u.printEvent(u.getColor(evt.WorkerID), TEXT_DANGER.Render(fmt.Sprintf("%-11s", "Error")), u.functionName(evt.FunctionID))
-		u.printEvent(u.getColor(evt.WorkerID), "", evt.ErrorMessage)
+		if !u.matchFilter(evt.FunctionID) {
+			return
+		}
+		u.printEvent(GetColor(evt.WorkerID), TEXT_DANGER.Render(fmt.Sprintf("%-11s", "Error")), u.functionName(evt.FunctionID))
+		u.printEvent(GetColor(evt.WorkerID), "", evt.ErrorMessage)
 		for _, item := range evt.Trace {
 			if strings.Contains(item, "Error:") {
 				continue
 			}
-			u.printEvent(u.getColor(evt.WorkerID), "", "↳ "+strings.TrimSpace(item))
+			u.printEvent(GetColor(evt.WorkerID), "", "↳ "+strings.TrimSpace(item))
 		}
 
 	case *project.ConcurrentUpdateEvent:
@@ -220,6 +263,9 @@ func (u *UI) Event(unknown interface{}) {
 
 	case *project.PolicyAdvisoryEvent:
 		u.printEvent(TEXT_WARNING, "Warning", u.FormatURN(evt.URN)+" "+evt.Policy+": "+evt.Message)
+
+	case *typescript.WarningEvent:
+		u.printEvent(TEXT_WARNING, "Warning", evt.Message)
 
 	case *project.StackCommandEvent:
 		u.reset()
@@ -383,16 +429,7 @@ func (u *UI) Event(unknown interface{}) {
 		if evt.Old {
 			break
 		}
-		if evt.UpdateID != "" && len(evt.Errors) == 0 {
-			u.blank()
-			u.println(
-				TEXT_INFO.Render("↗"),
-				"  ",
-				TEXT_NORMAL_BOLD.Render("Permalink"),
-				"   ",
-				TEXT_NORMAL.Render(`https://sst.dev/u/`+evt.UpdateID[len(evt.UpdateID)-8:]),
-			)
-		}
+
 		u.blank()
 		if len(evt.Errors) == 0 && evt.Finished {
 			u.print(TEXT_SUCCESS_BOLD.Render(IconCheck))
@@ -424,20 +461,20 @@ func (u *UI) Event(unknown interface{}) {
 				for k, v := range evt.Hints {
 					splits := strings.Split(k, "::")
 					u.println(
-						TEXT_DIM_BOLD.Render("   "),
-						TEXT_DIM_BOLD.Render(splits[len(splits)-1]+": "),
+						TEXT_GRAY_BOLD.Render("   "),
+						TEXT_GRAY_BOLD.Render(splits[len(splits)-1]+": "),
 						TEXT_NORMAL.Render(v),
 					)
 				}
 			}
 			if len(evt.Outputs) > 0 {
 				if len(evt.Hints) > 0 {
-					u.println(TEXT_DIM_BOLD.Render("   ---"))
+					u.println(TEXT_GRAY_BOLD.Render("   ---"))
 				}
 				for k, v := range evt.Outputs {
 					u.println(
-						TEXT_DIM_BOLD.Render("   "),
-						TEXT_DIM_BOLD.Render(k+": "),
+						TEXT_GRAY_BOLD.Render("   "),
+						TEXT_GRAY_BOLD.Render(k+": "),
 						TEXT_NORMAL.Render(fmt.Sprint(v)),
 					)
 				}
@@ -498,28 +535,29 @@ func (u *UI) Event(unknown interface{}) {
 				}
 			}
 
-			if evt.UpdateID != "" {
-				u.blank()
-				u.println(
-					TEXT_NORMAL_BOLD.Render("View more in the console:"),
-					" ",
-					TEXT_INFO.Render(`https://sst.dev/u/`+evt.UpdateID[len(evt.UpdateID)-8:]),
-				)
-			}
 		}
 		u.blank()
 	case *cloudflare.WorkerBuildEvent:
+		if !u.matchFilter(evt.WorkerID) {
+			return
+		}
 		if len(evt.Errors) > 0 {
 			u.printEvent(TEXT_DANGER, "Build Error", u.functionName(evt.WorkerID)+" "+strings.Join(evt.Errors, "\n"))
 			return
 		}
 		u.printEvent(TEXT_INFO, "Build", u.functionName(evt.WorkerID))
 	case *cloudflare.WorkerUpdatedEvent:
+		if !u.matchFilter(evt.WorkerID) {
+			return
+		}
 		u.printEvent(TEXT_INFO, "Reload", u.functionName(evt.WorkerID))
 	case *cloudflare.WorkerInvokedEvent:
+		if !u.matchFilter(evt.WorkerID) {
+			return
+		}
 		url, _ := url.Parse(evt.TailEvent.Event.Request.URL)
 		u.printEvent(
-			u.getColor(evt.WorkerID),
+			GetColor(evt.WorkerID),
 			TEXT_NORMAL_BOLD.Render(fmt.Sprintf("%-11s", "Invoke")),
 			u.functionName(evt.WorkerID)+" "+evt.TailEvent.Event.Request.Method+" "+url.Path,
 		)
@@ -539,28 +577,27 @@ func (u *UI) Event(unknown interface{}) {
 			}
 
 			for _, item := range strings.Split(strings.Join(line, " "), "\n") {
-				u.printEvent(u.getColor(evt.WorkerID), formattedDuration, item)
+				u.printEvent(GetColor(evt.WorkerID), formattedDuration, item)
 			}
 		}
-		u.printEvent(u.getColor(evt.WorkerID), "Done", evt.TailEvent.Outcome)
+		u.printEvent(GetColor(evt.WorkerID), "Done", evt.TailEvent.Outcome)
 	}
 
 }
 
-var COLORS = []lipgloss.Style{
+var Colors = []lipgloss.Style{
 	lipgloss.NewStyle().Foreground(lipgloss.Color("13")),
 	lipgloss.NewStyle().Foreground(lipgloss.Color("14")),
 	lipgloss.NewStyle().Foreground(lipgloss.Color("2")),
 	lipgloss.NewStyle().Foreground(lipgloss.Color("12")),
 }
 
-func (u *UI) getColor(input string) lipgloss.Style {
-	result, ok := u.colors[input]
-	if !ok {
-		result = COLORS[len(u.colors)%len(COLORS)]
-		u.colors[input] = result
+func GetColor(input string) lipgloss.Style {
+	hash := 0
+	for _, c := range input {
+		hash += int(c)
 	}
-	return result
+	return Colors[hash%len(Colors)]
 }
 
 func (u *UI) functionName(functionID string) string {
@@ -618,25 +655,19 @@ func (u *UI) header(version, app, stage string) {
 	}
 	u.println(
 		TEXT_HIGHLIGHT_BOLD.Render("SST "+version),
-		TEXT_DIM.Render(" ready!"),
+		TEXT_GRAY.Render(" ready!"),
 	)
 	u.blank()
 	u.println(
 		TEXT_HIGHLIGHT_BOLD.Render("➜  "),
 		TEXT_NORMAL_BOLD.Render(fmt.Sprintf("%-12s", "App:")),
-		TEXT_DIM.Render(app),
+		TEXT_GRAY.Render(app),
 	)
 	u.println(
 		TEXT_NORMAL_BOLD.Render(fmt.Sprintf("   %-12s", "Stage:")),
-		TEXT_DIM.Render(stage),
+		TEXT_GRAY.Render(stage),
 	)
 
-	if u.options.Dev {
-		u.println(
-			TEXT_NORMAL_BOLD.Render(fmt.Sprintf("   %-12s", "Console:")),
-			TEXT_DIM.Render("https://console.sst.dev/local/"+app+"/"+stage),
-		)
-	}
 	u.blank()
 	u.hasHeader = true
 }
@@ -678,4 +709,19 @@ func Success(msg string) {
 
 func Error(msg string) {
 	fmt.Fprintln(os.Stderr, strings.TrimSpace(TEXT_DANGER_BOLD.Render(IconX)+"  "+TEXT_NORMAL.Render(msg)))
+}
+
+func (u *UI) matchFilter(id string) bool {
+	if u.options.Filter == "" {
+		return true
+	}
+	filter := strings.ToLower(u.options.Filter)
+	if strings.Contains(strings.ToLower(id), filter) {
+		return true
+	}
+	name := u.functionName(id)
+	if strings.Contains(strings.ToLower(name), filter) {
+		return true
+	}
+	return false
 }

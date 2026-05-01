@@ -19,7 +19,6 @@ import { DnsValidatedCertificate } from "./dns-validated-certificate.js";
 import { useProvider } from "./helpers/provider.js";
 import { permission } from "./permission";
 import { functionBuilder } from "./helpers/function-builder";
-import { splitQualifiedFunctionArn } from "./helpers/arn";
 
 interface Triggers {
   /**
@@ -791,19 +790,19 @@ export class CognitoUserPool extends Component implements Link.Linkable {
                         { parent },
                       );
 
-                      new lambda.Permission(
-                        `${name}Permission${key}`,
-                        {
-                          action: "lambda:InvokeFunction",
-                          function: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).unqualifiedArn),
-                          qualifier: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).qualifier!),
-                          principal: "cognito-idp.amazonaws.com",
-                          sourceArn: userPool.arn,
-                        },
-                        { parent },
-                      );
-                      return fn.arn;
-                    }
+                        new lambda.Permission(
+                          `${name}Permission${key}`,
+                          {
+                            action: "lambda:InvokeFunction",
+                            function: fn.arn,
+                            qualifier: fn.qualifier.apply((qualifier) => qualifier!),
+                            principal: "cognito-idp.amazonaws.com",
+                            sourceArn: userPool.arn,
+                          },
+                          { parent },
+                        );
+                        return fn.targetArn;
+                      }
                   }),
               },
               { parent },
@@ -934,7 +933,7 @@ export class CognitoUserPool extends Component implements Link.Linkable {
    *
    * @param name Name of the client.
    * @param args Configure the client.
-   * @param opts? Resource options.
+   * @param opts Resource options.
    *
    * @example
    *
@@ -942,7 +941,11 @@ export class CognitoUserPool extends Component implements Link.Linkable {
    * userPool.addClient("Web");
    * ```
    */
-  public addClient(name: string, args?: CognitoUserPoolClientArgs) {
+  public addClient(
+    name: string,
+    args?: CognitoUserPoolClientArgs,
+    opts?: ComponentResourceOptions,
+  ) {
     // Note: Referencing an existing client will be implemented in the future:
     // sst.aws.UserPool.getClient("pool", { userPooldID, clientID });
 
@@ -952,7 +955,7 @@ export class CognitoUserPool extends Component implements Link.Linkable {
         userPool: this.id,
         ...args,
       },
-      { provider: this.constructorOpts.provider },
+      { provider: this.constructorOpts.provider, ...opts },
     );
   }
 

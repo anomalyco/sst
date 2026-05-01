@@ -33,14 +33,6 @@ import (
 )
 
 func (p *Project) Run(ctx context.Context, input *StackInput) error {
-	// if flag.SST_EXPERIMENTAL {
-	// 	slog.Info("using next run system")
-	// }
-	// return p.RunOld(ctx, input)
-	return p.RunNext(ctx, input)
-}
-
-func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	log := slog.Default().With("service", "project.run")
 	log.Info("running stack command", "cmd", input.Command)
 
@@ -78,7 +70,12 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	}
 	defer workdir.Cleanup()
 
-	passphrase, err := provider.Passphrase(p.home, p.app.Name, p.app.Stage)
+	var passphrase string
+	if input.Command == "deploy" || input.Dev {
+		passphrase, err = provider.GetOrCreatePassphrase(p.home, p.app.Name, p.app.Stage)
+	} else {
+		passphrase, err = provider.GetPassphrase(p.home, p.app.Name, p.app.Stage)
+	}
 	if err != nil {
 		return err
 	}
@@ -266,7 +263,7 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 		"PULUMI_IGNORE_AMBIENT_PLUGINS=true",
 		// "PULUMI_DISABLE_AUTOMATIC_PLUGIN_ACQUISITION=true",
 		"NODE_OPTIONS="+func() string {
-			nodeOptions := "--enable-source-maps --no-deprecation"
+			nodeOptions := "--enable-source-maps --no-deprecation --no-warnings"
 			if existing := os.Getenv("NODE_OPTIONS"); existing != "" {
 				nodeOptions = existing + " " + nodeOptions
 			}
@@ -421,7 +418,7 @@ func (p *Project) RunNext(ctx context.Context, input *StackInput) error {
 	}
 	exited := make(chan struct{})
 	go func() {
-		cmd.Wait()
+		err := cmd.Wait()
 		log.Info("pulumi exited", "err", err)
 		close(exited)
 	}()
@@ -520,16 +517,8 @@ loop:
 		}
 
 		if event.DiagnosticEvent != nil && event.DiagnosticEvent.Severity == "error" {
-			if strings.HasPrefix(event.DiagnosticEvent.Message, "update failed") || strings.Contains(event.DiagnosticEvent.Message, "failed to register new resource") {
+			if strings.HasPrefix(event.DiagnosticEvent.Message, "update failed") || strings.HasPrefix(event.DiagnosticEvent.Message, "update cancelled") || strings.Contains(event.DiagnosticEvent.Message, "failed to register new resource") {
 				continue
-			}
-
-			// check if the error is a common error
-			help := []string{}
-			for _, commonError := range CommonErrors {
-				if strings.Contains(event.DiagnosticEvent.Message, commonError.Message) {
-					help = append(help, commonError.Short...)
-				}
 			}
 
 			exists := false
@@ -550,7 +539,6 @@ loop:
 				errors = append(errors, Error{
 					Message: strings.TrimSpace(event.DiagnosticEvent.Message),
 					URN:     event.DiagnosticEvent.URN,
-					Help:    help,
 				})
 				log.Info("telemetry tracking error")
 				telemetry.Track("cli.resource.error", map[string]interface{}{
@@ -608,6 +596,31 @@ loop:
 		}
 	}
 
+	// if pulumi exited without completing and no resource errors were captured,
+	// check stderr for the actual error (e.g. snapshot integrity failures)
+	if !finished && len(errors) == 0 {
+		if data, err := os.ReadFile(pulumiStderr.Name()); err == nil {
+			stderr := strings.TrimSpace(string(data))
+			if stderr != "" {
+				if strings.Contains(stderr, "snapshot integrity") {
+					errors = append(errors, Error{
+						Message: "Your app state is corrupted.",
+						Help: []string{
+							"Run `sst state repair` to fix state integrity issues",
+							"Learn more: https://sst.dev/docs/reference/cli/#state-repair",
+						},
+					})
+				} else {
+					msg := strings.SplitN(stderr, "\n", 2)[0]
+					msg = strings.TrimPrefix(msg, "error: ")
+					errors = append(errors, Error{
+						Message: msg,
+					})
+				}
+			}
+		}
+	}
+
 	log.Info("parsing state")
 	complete, err := getCompletedEvent(context.Background(), passphrase, workdir)
 	if err != nil {
@@ -617,7 +630,7 @@ loop:
 	complete.Finished = finished
 	complete.Errors = errors
 	complete.ImportDiffs = importDiffs
-	types.Generate(p.PathConfig(), complete.Links)
+	types.Generate(p.PathConfig(), complete.Links, p.App().Types.Ignore)
 	defer bus.Publish(complete)
 
 	if input.Command != "diff" {
@@ -652,7 +665,15 @@ loop:
 	}
 
 	if input.Command == "remove" && len(complete.Resources) == 0 {
-		provider.Cleanup(p.home, p.app.Name, p.app.Stage)
+		if p.app.State != nil && p.app.State.Purge {
+			if err := provider.Purge(p.home, p.app.Name, p.app.Stage); err != nil {
+				return err
+			}
+		} else {
+			if err := provider.Cleanup(p.home, p.app.Name, p.app.Stage); err != nil {
+				return err
+			}
+		}
 	}
 
 	log.Info("done running stack command", "resources", len(complete.Resources))

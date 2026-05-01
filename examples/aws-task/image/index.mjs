@@ -1,6 +1,11 @@
 import { Resource } from "sst";
+import { createServer } from "http";
 
-for (let i = 0; i < 10; i++) {
-  console.log(`NEW: The bucket name is ${Resource.MyBucket.name}`);
-  await new Promise((resolve) => setTimeout(resolve, 1000));
-}
+const server = createServer((req, res) => {
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ bucket: Resource.MyBucket.name }));
+});
+
+server.listen(8080, () => {
+  console.log(`Listening on :8080, bucket=${Resource.MyBucket.name}`);
+});

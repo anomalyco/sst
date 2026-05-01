@@ -1,0 +1,48 @@
+---
+import Default from "@astrojs/starlight/components/PageSidebar.astro";
+import changelog from "../data/changelog.json";
+
+type Release = {
+  tag: string;
+};
+
+function isMinorOrMajor(tag: string): boolean {
+  return /^v\d+\.\d+\.0$/.test(tag);
+}
+
+function formatTag(tag: string): string {
+  return tag.replace(/^v/, "");
+}
+
+const slug = Astro.url.pathname.replace(/^\//, "").replace(/\/$/, "");
+const route = Astro.locals.starlightRoute;
+const isChangelog = slug === "docs/changelog";
+
+if (isChangelog && route.toc) {
+  route.toc = {
+    ...route.toc,
+    items: (changelog as Release[])
+      .filter((release) => isMinorOrMajor(release.tag))
+      .map((release) => ({
+        depth: 2,
+        slug: formatTag(release.tag),
+        text: formatTag(release.tag),
+        children: [],
+      })),
+  };
+}
+---
+
+<div class:list={{ "changelog-toc": isChangelog }}>
+  <Default {...Astro.props}><slot /></Default>
+</div>
+
+<style>
+  .changelog-toc :global(starlight-toc a[href^="#4"]),
+  .changelog-toc :global(starlight-toc a[href^="#4"] span),
+  .changelog-toc :global(mobile-starlight-toc a[href^="#4"]),
+  .changelog-toc :global(mobile-starlight-toc a[href^="#4"] span) {
+    font-family: var(--__sl-font-headings), var(--sl-font-system-mono) !important;
+    font-weight: 600 !important;
+  }
+</style>

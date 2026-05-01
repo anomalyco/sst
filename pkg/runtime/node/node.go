@@ -113,7 +113,7 @@ func (w *Worker) Logs() io.ReadCloser {
 
 type NodeProperties struct {
 	Loader       map[string]string `json:"loader"`
-	Install      []string          `json:"install"`
+	Install      map[string]string `json:"install"`
 	Banner       string            `json:"banner"`
 	ESBuild      ESBuildOptions    `json:"esbuild"`
 	Minify       bool              `json:"minify"`
@@ -210,10 +210,23 @@ var esSourcemapMap = map[string]esbuild.SourceMap{
 
 var NODE_EXTENSIONS = []string{".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"}
 
+var EDITOR_ENV = []string{
+	"VSCODE_INSPECTOR_OPTIONS",
+	"JB_IDE_HOST",
+	"JB_IDE_PORT",
+	"JB_INTERPRETER",
+	"JB_NODE_DEBUG_CONNECTION_GATEWAY_HOST",
+	"JB_NODE_DEBUG_CONNECTION_GATEWAY_PORT",
+	"JETBRAINS_NODE_BIND_HOST",
+	"JETBRAINS_NODE_DEBUGGER_ATTACH_TO_HELPERS",
+	"JETBRAINS_NODE_DEBUGGER_VERBOSE_LOGGING",
+}
+
 func (r *Runtime) Run(ctx context.Context, input *runtime.RunInput) (runtime.Worker, error) {
 	cmd := process.Command(
 		"node",
 		"--enable-source-maps",
+		"--no-warnings",
 		filepath.Join(
 			path.ResolvePlatformDir(input.CfgPath),
 			"/dist/nodejs-runtime/index.js",
@@ -223,7 +236,11 @@ func (r *Runtime) Run(ctx context.Context, input *runtime.RunInput) (runtime.Wor
 	)
 	cmd.Env = input.Env
 	cmd.Env = append(cmd.Env, "NODE_OPTIONS="+os.Getenv("NODE_OPTIONS"))
-	cmd.Env = append(cmd.Env, "VSCODE_INSPECTOR_OPTIONS="+os.Getenv("VSCODE_INSPECTOR_OPTIONS"))
+	for _, key := range EDITOR_ENV {
+		if value := os.Getenv(key); value != "" {
+			cmd.Env = append(cmd.Env, key+"="+value)
+		}
+	}
 	cmd.Env = append(cmd.Env, "AWS_LAMBDA_RUNTIME_API="+input.Server)
 	slog.Info("starting worker", "server", input.Server)
 	cmd.Dir = input.Build.Out

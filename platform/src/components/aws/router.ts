@@ -2313,7 +2313,7 @@ async function handler(event) {
               `${name}EdgeFunction`,
               {
                 name: physicalName(64, `${name}EdgeFn`),
-                runtime: "nodejs22.x",
+                runtime: "nodejs24.x",
                 handler: "index.handler",
                 role: edgeRole.arn,
                 code: new asset.FileArchive(
@@ -2670,7 +2670,7 @@ async function handler(event) {
    *
    * @param name The name of the component.
    * @param distributionID The ID of the existing Router distribution.
-   * @param opts? Resource options.
+   * @param opts Resource options.
    *
    * This is useful when you create a Router in one stage and want to share it in
    * another. It avoids having to create a new Router in the other stage.
@@ -3118,6 +3118,98 @@ export type RouterRouteArgs = {
    * ```
    */
   path?: Input<string>;
+  /**
+   * Rewrite the request path.
+   *
+   * @example
+   *
+   * If the route path is `/api/*` and a request comes in for `/api/users/profile`,
+   * the request path the destination sees is `/api/users/profile`.
+   *
+   * If you want to serve the route from the root, you can rewrite the request
+   * path to `/users/profile`.
+   *
+   * ```js
+   * router: {
+   *   instance: router,
+   *   path: "/api",
+   *   rewrite: {
+   *     regex: "^/api/(.*)$",
+   *     to: "/$1"
+   *   }
+   * }
+   * ```
+   */
+  rewrite?: Input<{
+    /**
+     * The regex to match the request path.
+     */
+    regex: Input<string>;
+    /**
+     * The replacement for the matched path.
+     */
+    to: Input<string>;
+  }>;
+  /**
+   * The number of seconds that CloudFront waits for a response after routing a
+   * request to the destination. Must be between 1 and 60 seconds.
+   *
+   * When compared to the `connectionTimeout`, this is the total time for the
+   * request.
+   *
+   * @default `"20 seconds"`
+   * @example
+   * ```js
+   * router: {
+   *   instance: router,
+   *   readTimeout: "60 seconds"
+   * }
+   * ```
+   */
+  readTimeout?: Input<DurationSeconds>;
+  /**
+   * The number of seconds that CloudFront should try to maintain the connection
+   * to the destination after receiving the last packet of the response. Must be
+   * between 1 and 60 seconds.
+   *
+   * @default `"5 seconds"`
+   * @example
+   * ```js
+   * router: {
+   *   instance: router,
+   *   keepAliveTimeout: "10 seconds"
+   * }
+   * ```
+   */
+  keepAliveTimeout?: Input<DurationSeconds>;
+  /**
+   * The number of seconds that CloudFront waits before timing out and closing the
+   * connection to the origin. Must be between 1 and 10 seconds.
+   *
+   * @default `"10 seconds"`
+   * @example
+   * ```js
+   * router: {
+   *   instance: router,
+   *   connectionTimeout: "3 seconds"
+   * }
+   * ```
+   */
+  connectionTimeout?: Input<DurationSeconds>;
+  /**
+   * The number of times that CloudFront attempts to connect to the origin. Must be
+   * between 1 and 3.
+   *
+   * @default `3`
+   * @example
+   * ```js
+   * router: {
+   *   instance: router,
+   *   connectionAttempts: 1
+   * }
+   * ```
+   */
+  connectionAttempts?: Input<number>;
 };
 
 export type RouterRouteArgsDeprecated = {
@@ -3162,6 +3254,11 @@ export function normalizeRouteArgs(
         routerKvStoreArn: v.instance._kvStoreArn!,
         routerProtection: v.instance._protection,
         routerDistributionArn: v.instance._distributionArn,
+        rewrite: v.rewrite,
+        readTimeout: v.readTimeout,
+        keepAliveTimeout: v.keepAliveTimeout,
+        connectionTimeout: v.connectionTimeout,
+        connectionAttempts: v.connectionAttempts,
       };
     });
   });

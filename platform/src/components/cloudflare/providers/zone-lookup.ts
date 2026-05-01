@@ -43,6 +43,7 @@ class Provider implements dynamic.ResourceProvider {
     try {
       const qs = new URLSearchParams({
         per_page: "50",
+        page: String(page),
         "account.id": inputs.accountId,
       }).toString();
       const ret = await cfFetch<{ name: string; id: string }[]>(

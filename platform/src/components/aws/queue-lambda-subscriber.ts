@@ -10,7 +10,6 @@ import { QueueSubscriberArgs } from "./queue";
 import { lambda } from "@pulumi/aws";
 import { toSeconds } from "../duration";
 import { FunctionBuilder, functionBuilder } from "./helpers/function-builder";
-import { parseFunctionArn } from "./helpers/arn";
 
 export interface Args extends QueueSubscriberArgs {
   /**
@@ -96,9 +95,7 @@ export class QueueLambdaSubscriber extends Component {
               batch?.window ? toSeconds(batch.window) : 0,
             ),
             eventSourceArn: queue.arn,
-            functionName: fn.arn.apply(
-              (arn) => parseFunctionArn(arn).functionName,
-            ),
+            functionName: fn.targetArn,
             filterCriteria: args.filters && {
               filters: output(args.filters).apply((filters) =>
                 filters.map((filter) => ({

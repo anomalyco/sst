@@ -605,6 +605,51 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
    * ```
    */
   vpc?: FunctionArgs["vpc"];
+  /**
+   * Configure how the assets are uploaded to S3.
+   *
+   * By default, this is set to the following. Read more about these options below.
+   * ```js
+   * {
+   *   assets: {
+   *     textEncoding: "utf-8",
+   *     versionedFilesCacheHeader: "public,max-age=31536000,immutable",
+   *     nonVersionedFilesCacheHeader: "public,max-age=0,s-maxage=86400,stale-while-revalidate=8640"
+   *   }
+   * }
+   * ```
+   *
+   * #### Limits
+   *
+   * CloudFront distributions have a **limit of 25 cache behaviors** per distribution.
+   * Each top-level file or directory in your app's public asset directory creates a cache
+   * behavior. If you have too many, you'll hit the `TooManyCacheBehaviors` error. This is
+   * most common with `SvelteKit`, `SolidStart`, `Nuxt`, and `Analog` apps.
+   *
+   * For example, in the case of SvelteKit, the static assets are in the `static/`
+   * directory. If you have a file and a directory in it, it'll create 2 cache behaviors.
+   *
+   * ```bash frame="none"
+   * static/
+   * ├── icons/       # Cache behavior for /icons/*
+   * └── logo.png     # Cache behavior for /logo.png
+   * ```
+   *
+   * So if you have many of these at the top-level, you'll hit the limit. You can request a
+   * limit increase through AWS Support.
+   *
+   * Alternatively, you can move some of these into subdirectories. For example, moving them
+   * to an `images/` directory, will only create 1 cache behavior.
+   *
+   * ```bash frame="none"
+   * static/
+   * └── images/      # Cache behavior for /images/*
+   *     ├── icons/
+   *     └── logo.png
+   * ```
+   *
+   * Learn more about these [CloudFront limits](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/cloudfront-limits.html#limits-web-distributions).
+   */
   assets?: Input<{
     /**
      * Character encoding for text based assets, like HTML, CSS, JS. This is
@@ -1319,7 +1364,7 @@ async function handler(event) {
             `${name}EdgeFunction`,
             {
               name: physicalName(64, `${name}EdgeFn`),
-              runtime: "nodejs22.x",
+              runtime: "nodejs24.x",
               handler: "index.handler",
               role: edgeRole.arn,
               code: new pulumiAsset.FileArchive(
@@ -1439,10 +1484,23 @@ async function handler(event) {
                 nodejs: {
                   ...planServer.nodejs,
                   format: "esm" as const,
-                  install: output(args.server?.install).apply((install) => [
-                    ...(install ?? []),
-                    ...(planServer.nodejs?.install ?? []),
-                  ]),
+                  install: output({
+                    install: args.server?.install,
+                    planInstall: planServer.nodejs?.install,
+                  }).apply(({ install, planInstall }) => {
+                    const result: Record<string, string> = {};
+                    for (const pkg of install ?? []) {
+                      result[pkg] = "*";
+                    }
+                    if (Array.isArray(planInstall)) {
+                      for (const pkg of planInstall) {
+                        result[pkg] = "*";
+                      }
+                    } else if (planInstall) {
+                      Object.assign(result, planInstall);
+                    }
+                    return result;
+                  }),
                   loader: args.server?.loader ?? planServer.nodejs?.loader,
                 },
                 environment: output(args.environment).apply((environment) => ({
@@ -1845,8 +1903,32 @@ async function handler(event) {
     }
 
     function createInvalidation() {
-      all([args.invalidation, outputPath, plan]).apply(
-        ([invalidationRaw, outputPath, plan]) => {
+      // Resolve server/image-optimizer code hashes so that server-only code
+      // changes also trigger a CloudFront invalidation. Without this, the
+      // version below is derived purely from static assets and an SSR deploy
+      // that only changes the Lambda bundle produces an identical hash,
+      // causing Pulumi to skip the DistributionInvalidation update.
+      const serverCodeHashes = servers.apply((list) =>
+        all(list.map(({ server }) => server.nodes.function.codeSha256)),
+      );
+      const imageOptimizerCodeHash = imageOptimizer.apply(
+        (opt) => opt?.nodes.function.codeSha256,
+      );
+
+      all([
+        args.invalidation,
+        outputPath,
+        plan,
+        serverCodeHashes,
+        imageOptimizerCodeHash,
+      ]).apply(
+        ([
+          invalidationRaw,
+          outputPath,
+          plan,
+          serverCodeHashes,
+          imageOptimizerCodeHash,
+        ]) => {
           // Normalize invalidation
           if (invalidationRaw === false) return;
           const invalidation = {
@@ -1883,6 +1965,12 @@ async function handler(event) {
             invalidationBuildId = plan.buildId;
           } else {
             const hash = crypto.createHash("md5");
+
+            // Fold in server bundle hashes so that changes to server-only
+            // code (e.g. loaders, handlers) invalidate the CloudFront cache
+            // even when no static assets changed.
+            serverCodeHashes.forEach((h) => hash.update(h));
+            if (imageOptimizerCodeHash) hash.update(imageOptimizerCodeHash);
 
             cachedS3Files.forEach((item) => {
               // The below options are needed to support following symlinks when building zip files:

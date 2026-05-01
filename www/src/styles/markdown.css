@@ -19,7 +19,7 @@
 }
 .sl-markdown-content :is(.starlight-aside, .expressive-code)
   + :is(.starlight-aside, .expressive-code) {
-  margin-top: calc(var(--paragraph-spacing) + 1.125rem);
+  margin-top: var(--paragraph-spacing);
 }
 /* Space around sections */
 .sl-markdown-content :not(h1, h2, h3, h4, h5, h6)

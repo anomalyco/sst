@@ -13,24 +13,31 @@ import (
 var resources map[string]any
 
 func init() {
+	loadFromDisk()
+	loadFromEnv()
+}
+
+func loadFromDisk() {
 	key, err := base64.StdEncoding.DecodeString(os.Getenv("SST_KEY"))
 	if err != nil {
-		panic(err)
+		resources = make(map[string]any)
+		return
 	}
 	encryptedData, err := os.ReadFile(os.Getenv("SST_KEY_FILE"))
 	if err != nil {
 		resources = make(map[string]any)
-		keys()
 		return
 	}
 	nonce := make([]byte, 12)
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		panic(err)
+		resources = make(map[string]any)
+		return
 	}
 	aesGCM, err := cipher.NewGCM(block)
 	if err != nil {
-		panic(err)
+		resources = make(map[string]any)
+		return
 	}
 
 	// Split the auth tag and ciphertext
@@ -44,15 +51,15 @@ func init() {
 	// Decrypt
 	decrypted, err := aesGCM.Open(nil, nonce, ciphertextWithTag, nil)
 	if err != nil {
-		panic(err)
+		resources = make(map[string]any)
+		return
 	}
 
 	// Parse JSON
 	if err := json.Unmarshal(decrypted, &resources); err != nil {
-		panic(err)
+		resources = make(map[string]any)
+		return
 	}
-
-	keys()
 }
 
 var ErrNotFound = errors.New("not found")
@@ -80,7 +87,7 @@ func get(input any, path ...string) (any, error) {
 	return get(next, path[1:]...)
 }
 
-func keys() {
+func loadFromEnv() {
 	for _, item := range os.Environ() {
 		pair := strings.SplitN(item, "=", 2)
 		key := pair[0]
@@ -92,6 +99,16 @@ func keys() {
 				panic(err)
 			}
 			resources[strings.TrimPrefix(key, "SST_RESOURCE_")] = result
+		}
+	}
+
+	// Load consolidated resources JSON (used on Windows to avoid uppercasing)
+	if consolidated := os.Getenv("SST_RESOURCES_JSON"); consolidated != "" {
+		var parsed map[string]interface{}
+		if err := json.Unmarshal([]byte(consolidated), &parsed); err == nil {
+			for k, v := range parsed {
+				resources[k] = v
+			}
 		}
 	}
 }

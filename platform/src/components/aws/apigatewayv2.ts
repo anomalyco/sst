@@ -579,6 +579,22 @@ export interface ApiGatewayV2RouteArgs {
     }
   >;
   /**
+   * The name of the route.
+   *
+   * By default, SST generates a unique suffix from the route path. Setting `name` gives
+   * you a stable, human-readable name like `MyApiRouteGetUserHandler`.
+   *
+   * Must be unique across all routes.
+   *
+   * @example
+   * ```js
+   * {
+   *   name: "GetUser"
+   * }
+   * ```
+   */
+  name?: string;
+  /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
    */
@@ -1117,7 +1133,7 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
     const route = this.parseRoute(rawRoute);
     const transformed = transform(
       this.constructorArgs.transform?.route?.args,
-      this.buildRouteId(route),
+      this.buildRouteId(route, args.name),
       args,
       { provider: this.constructorOpts.provider },
     );
@@ -1171,7 +1187,7 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
     const route = this.parseRoute(rawRoute);
     const transformed = transform(
       this.constructorArgs.transform?.route?.args,
-      this.buildRouteId(route),
+      this.buildRouteId(route, args.name),
       args,
       { provider: this.constructorOpts.provider },
     );
@@ -1265,7 +1281,7 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
     const route = this.parseRoute(rawRoute);
     const transformed = transform(
       this.constructorArgs.transform?.route?.args,
-      this.buildRouteId(route),
+      this.buildRouteId(route, args.name),
       args,
       { provider: this.constructorOpts.provider },
     );
@@ -1321,10 +1337,10 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
     return `${method} ${path}`;
   }
 
-  private buildRouteId(route: string) {
-    const suffix = logicalName(
-      hashStringToPrettyString([outputId, route].join(""), 6),
-    );
+  private buildRouteId(route: string, name?: string) {
+    const suffix = name
+      ? logicalName(name)
+      : logicalName(hashStringToPrettyString([outputId, route].join(""), 6));
     return `${this.constructorName}Route${suffix}`;
   }
 

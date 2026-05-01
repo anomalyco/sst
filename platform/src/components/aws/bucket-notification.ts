@@ -8,7 +8,6 @@ import { Component, transform } from "../component";
 import { BucketNotificationsArgs } from "./bucket";
 import { iam, lambda, s3, sns } from "@pulumi/aws";
 import { FunctionBuilder, functionBuilder } from "./helpers/function-builder";
-import { splitQualifiedFunctionArn } from "./helpers/arn";
 import { VisibleError } from "../error";
 import { SnsTopic } from "./sns-topic";
 import { Queue } from "./queue";
@@ -111,8 +110,8 @@ export class BucketNotification extends Component {
               `${name}Notification${n.name}Permission`,
               {
                 action: "lambda:InvokeFunction",
-                function: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).unqualifiedArn),
-                qualifier: fn.arn.apply((arn) => splitQualifiedFunctionArn(arn).qualifier!),
+                function: fn.arn,
+                qualifier: fn.qualifier.apply((qualifier) => qualifier!),
                 principal: "s3.amazonaws.com",
                 sourceArn: bucket.arn,
               },
@@ -187,7 +186,7 @@ export class BucketNotification extends Component {
                 .filter((c) => c!.functionBuilder)
                 .map((c) => ({
                   id: c!.args.name,
-                  lambdaFunctionArn: c!.functionBuilder!.arn,
+                  lambdaFunctionArn: c!.functionBuilder!.targetArn,
                   events: c!.args.events,
                   filterPrefix: c!.args.filterPrefix,
                   filterSuffix: c!.args.filterSuffix,

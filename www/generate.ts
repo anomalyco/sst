@@ -34,17 +34,17 @@ type CliCommand = {
   children: CliCommand[];
 };
 
-type CommonError = {
-  code: string;
-  message: string;
-  long: string[];
-};
-
 const cmd = process.argv[2];
 const linkHashes = new Map<
   TypeDoc.DeclarationReflection,
   Map<TypeDoc.DeclarationReflection, string>
 >();
+const externalTypeDocLinks = new Map<string, string>([
+  [
+    "@aws/durable-execution-sdk-js:DurableContext",
+    "[the AWS Durable Execution SDK docs](https://docs.aws.amazon.com/durable-functions/sdk-reference/)",
+  ],
+]);
 function useLinkHashes(module: TypeDoc.DeclarationReflection) {
   const v =
     linkHashes.get(module) ?? new Map<TypeDoc.DeclarationReflection, string>();
@@ -55,8 +55,10 @@ function useLinkHashes(module: TypeDoc.DeclarationReflection) {
 configureLogger();
 patchCode();
 if (!cmd || cmd === "components") {
-  const components = await buildComponents();
-  const sdks = await buildSdk();
+  const [components, sdks] = await Promise.all([
+    buildComponents(),
+    buildSdk(),
+  ]);
 
   for (const component of components) {
     const sourceFile = component.sources![0].fileName;
@@ -76,13 +78,14 @@ if (!cmd || cmd === "components") {
     ) {
       await generateLinkableDoc(component);
     } else {
+      const componentProvider = component.name.split("/")[1];
       const sdkName = component.name.split("/")[2];
       const sdk = sdks.find(
         (s) =>
           // ie. vector
           s.name === sdkName ||
           // ie. aws/realtime
-          s.name === `aws/${sdkName}`
+          (componentProvider === "aws" && s.name === `aws/${sdkName}`)
       );
       const sdkNamespace = sdk && useModuleOrNamespace(sdk);
       // Handle SDK modules are namespaced (ie. aws/realtime)
@@ -91,8 +94,11 @@ if (!cmd || cmd === "components") {
   }
 }
 if (!cmd || cmd === "cli") await generateCliDoc();
-if (!cmd || cmd === "common-errors") await generateCommonErrorsDoc();
-if (!cmd || cmd === "examples") await generateExamplesDocs();
+if (!cmd || cmd === "examples") {
+  await generateExamplesDocs();
+  await generateIndividualExampleDocs();
+}
+if (!cmd || cmd === "changelog") await generateChangelog();
 restoreCode();
 
 function generateCliDoc() {
@@ -313,96 +319,133 @@ function generateCliDoc() {
   }
 }
 
-function generateCommonErrorsDoc() {
-  const content = fs.readFileSync("common-errors-doc.json");
-  const json = JSON.parse(content.toString()) as CommonError[];
-  const outputFilePath = `src/content/docs/docs/common-errors.mdx`;
+async function generateChangelog() {
+  console.info(`Generating changelog...`);
 
-  fs.writeFileSync(
-    outputFilePath,
-    [
-      renderHeader(
-        "Common Errors",
-        "A list of CLI error messages and how to fix them."
-      ),
-      renderSourceMessage("cmd/sst/main.go"),
-      renderImports(outputFilePath),
-      renderBodyBegin(),
-      renderCommonErrorsAbout(),
-      renderCommonErrorsErrors(),
-      renderBodyEnd(),
-    ]
-      .flat()
-      .join("\n")
-  );
+  const REPO = "sst/sst";
+  const MIN_MAJOR = 4;
+  const PER_PAGE = 100;
+  const outputFilePath = `src/data/changelog.json`;
 
-  function renderCommonErrorsAbout() {
-    return [
-      "Below is a collection of common errors you might encounter when using SST.",
-      "",
-      ":::tip",
-      "The error messages in the CLI link to this doc.",
-      ":::",
-      "",
-      "The error messages and descriptions in this doc are auto-generated from the CLI.",
-      "",
-    ];
-  }
+  type GithubRelease = {
+    tag_name: string;
+    published_at: string;
+    created_at: string;
+    html_url: string;
+    body: string | null;
+    draft: boolean;
+    prerelease: boolean;
+  };
 
-  function renderCommonErrorsErrors() {
-    const lines: string[] = [];
+  type ChangelogEntry = {
+    tag: string;
+    publishedAt: string;
+    url: string;
+    body: string;
+  };
 
-    for (const error of json) {
-      console.debug(` - command ${error.code}`);
-      lines.push(
-        ``,
-        `---`,
-        ``,
-        `## ${error.code}`,
-        ``,
-        `> ${error.message}`,
-        ``,
-        ...error.long
+  const headers: Record<string, string> = {
+    Accept: "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+    "User-Agent": "sst-docs-changelog-generator",
+  };
+  const token = process.env.GITHUB_TOKEN;
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const releases: GithubRelease[] = [];
+  for (let page = 1; ; page++) {
+    const url = `https://api.github.com/repos/${REPO}/releases?per_page=${PER_PAGE}&page=${page}`;
+    const res = await fetch(url, { headers });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(
+        `GitHub API ${res.status} ${res.statusText} on ${url}: ${text}`
       );
     }
-    return lines;
+    const batch = (await res.json()) as GithubRelease[];
+    releases.push(...batch);
+    if (batch.length < PER_PAGE) break;
+
+    // Stop early once we've gone past the v4 cutoff to save calls.
+    const passedCutoff = batch.every((r) => {
+      const major = parseMajor(r.tag_name);
+      return major !== null && major < MIN_MAJOR;
+    });
+    if (passedCutoff) break;
   }
+  console.debug(` - fetched ${releases.length} total releases`);
 
-  function renderCliDescription(description: CliCommand["description"]) {
-    return description.long ?? description.short;
-  }
-
-  function renderCliArgName(prop: CliCommand["args"][number]) {
-    return `${prop.name}${prop.required ? "" : "?"}`;
-  }
-
-  function renderCliCommandUsage(command: CliCommand) {
-    const parts: string[] = [];
-
-    parts.push(command.name);
-    command.args.forEach((arg) =>
-      arg.required ? parts.push(`<${arg.name}>`) : parts.push(`[${arg.name}]`)
+  const filtered = releases
+    .filter((r) => !r.draft)
+    .filter((r) => {
+      const major = parseMajor(r.tag_name);
+      return major !== null && major >= MIN_MAJOR;
+    })
+    .sort(
+      (a, b) =>
+        new Date(b.published_at).getTime() -
+        new Date(a.published_at).getTime()
     );
-    return parts.join(" ");
+  console.debug(` - ${filtered.length} releases match v${MIN_MAJOR}+`);
+
+  const entries: ChangelogEntry[] = filtered.map((r) => ({
+    tag: r.tag_name,
+    publishedAt: r.published_at,
+    url: r.html_url,
+    body: cleanBody(r.body),
+  }));
+
+  fs.mkdirSync(path.dirname(outputFilePath), { recursive: true });
+  fs.writeFileSync(outputFilePath, JSON.stringify(entries, null, 2) + "\n");
+
+  function parseMajor(tag: string): number | null {
+    const m = /^v(\d+)\./.exec(tag);
+    return m ? Number(m[1]) : null;
   }
 
-  function renderCliFlagType(type: CliCommand["flags"][number]["type"]) {
-    if (type.startsWith("[") && type.endsWith("]")) {
-      return type
-        .substring(1, type.length - 1)
-        .split(",")
-        .map((t: string) =>
-          [
-            `<code class="symbol">&ldquo;</code>`,
-            `<code class="primitive">${t}</code>`,
-            `<code class="symbol">&rdquo;</code>`,
-          ].join("")
-        )
-        .join(`<code class="symbol"> | </code>`);
-    }
+  function cleanBody(body: string | null): string {
+    if (!body) return "";
+    let text = body.replace(/\r\n/g, "\n");
 
-    if (type === "bool") return `<code class="primitive">boolean</code>`;
-    return `<code class="primitive">${type}</code>`;
+    // Strip the trailing "## Changelog" section heading and any blank lines
+    // immediately preceding it, but keep the bullets that follow.
+    text = text.replace(/\n*^##\s+Changelog\s*$/im, "");
+
+    const lines = text.split("\n").map((line) => {
+      // Match a leading bullet, an optional [hash](url) or bare hash,
+      // an optional ":" or whitespace separator, then the subject.
+      // Handles all observed formats:
+      //   * abc1234 subject
+      //   * abc1234: subject
+      //   * [abc1234](https://...): subject
+      //   * [abc1234](https://...) subject
+      const m = line.match(
+        /^(\s*[-*]\s+)(?:\[[0-9a-f]{7,40}\](?:\([^)]+\))?|[0-9a-f]{7,40})[:\s]\s*(.*)$/i
+      );
+      if (m) return `${m[1]}${m[2]}`;
+      return line;
+    });
+
+    let result = lines.join("\n");
+
+    // Strip trailing "(@username)" author attributions from each line.
+    result = result.replace(/[ \t]*\(@[\w-]+\)[ \t]*$/gm, "");
+
+    result = result.trim();
+
+    // Linkify GitHub PR/issue references (#1234) so they remain clickable.
+    // Skip refs that are already inside a markdown link `[#1234]` or part of
+    // a URL path (`/issues/1234#anchor` etc).
+    result = result.replace(
+      /(^|[^\[\/\w])#(\d{2,})(?!\])/g,
+      (_, prefix, num) =>
+        `${prefix}[#${num}](https://github.com/${REPO}/issues/${num})`
+    );
+
+    // Unwrap parentheses around inline PR/issue links: "([#1234](url))" → "[#1234](url)".
+    result = result.replace(/\(\[#(\d+)\]\(([^)]+)\)\)/g, "[#$1]($2)");
+
+    return result;
   }
 }
 
@@ -421,7 +464,7 @@ async function generateExamplesDocs() {
         return [
           ``,
           `---`,
-          renderTdComment(module.children![0].comment?.summary!),
+          renderExampleComment(module.children![0].comment?.summary!),
           ...renderRunFunction(module),
           ``,
           `View the [full example](${config.github}/tree/dev/examples/${
@@ -458,14 +501,179 @@ async function generateExamplesDocs() {
       .toString()
       .replace(/\t/g, "  ")
       .split("\n");
-    const start = lines.indexOf("  async run() {");
-    const end = lines.lastIndexOf("  },");
     return [
       '```ts title="sst.config.ts"',
-      ...lines.slice(start + 1, end).map((l) => l.substring(4)),
+      ...extractRunSnippet(lines),
       "```",
     ];
   }
+}
+
+async function generateIndividualExampleDocs() {
+  const HANDLER_EXTENSIONS: Record<string, string> = {
+    ".ts": "ts",
+    ".js": "js",
+    ".py": "python",
+    ".go": "go",
+    ".rs": "rs",
+  };
+
+  function resolveHandlerFiles(
+    runBody: string,
+    exampleDir: string
+  ): { relPath: string; content: string; lang: string }[] {
+    const strings = [...runBody.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+    const seen = new Set<string>();
+    const results: { relPath: string; content: string; lang: string }[] = [];
+
+    for (const str of strings) {
+      if (str.includes(" ") || str.includes(":") || str.includes("*")) continue;
+
+      const candidates: string[] = [];
+      const ext = path.extname(str);
+      if (ext in HANDLER_EXTENSIONS) {
+        candidates.push(str);
+      } else {
+        const lastDot = str.lastIndexOf(".");
+        if (lastDot > 0) {
+          const base = str.substring(0, lastDot);
+          for (const ext of Object.keys(HANDLER_EXTENSIONS)) {
+            candidates.push(base + ext);
+          }
+        }
+      }
+
+      for (const candidate of candidates) {
+        const normalized = candidate.replace(/^\.\//, "");
+        if (seen.has(normalized)) continue;
+        const fullPath = path.join(exampleDir, normalized);
+        try {
+          if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
+            seen.add(normalized);
+            const fileExt = path.extname(normalized);
+            results.push({
+              relPath: normalized,
+              content: fs.readFileSync(fullPath).toString().trimEnd(),
+              lang: HANDLER_EXTENSIONS[fileExt] || "ts",
+            });
+            break;
+          }
+        } catch {
+          // skip unresolvable paths
+        }
+      }
+    }
+
+    return results;
+  }
+  const modules = await buildExamples();
+  const outputDir = `src/content/docs/docs/examples`;
+  fs.mkdirSync(outputDir, { recursive: true });
+
+  for (const module of modules) {
+    const dirName = module.name.split("/")[0];
+    const comment = module.children![0].comment!;
+    const commentText = renderExampleComment(comment.summary);
+
+    // Extract title from the ## heading in the comment
+    const titleMatch = commentText.match(/^##\s+(.+)/m);
+    if (!titleMatch) continue;
+    const title = titleMatch[1].trim();
+
+    // Description is everything after the ## heading
+    const description = commentText
+      .replace(/^##\s+.+\n*/m, "")
+      .trim();
+
+    const lines = fs
+      .readFileSync(path.join(`../examples`, module.sources![0].fileName))
+      .toString()
+      .replace(/\t/g, "  ")
+      .split("\n");
+    const start = lines.indexOf("  async run() {");
+    const end = lines.lastIndexOf("  },");
+    const codeBlock = [
+      '```ts title="sst.config.ts"',
+      ...extractRunSnippet(lines),
+      "```",
+    ];
+
+    // Detect handler files referenced in sst.config.ts
+    const exampleDir = path.join(`../examples`, dirName);
+    const runBody = lines.slice(start + 1, end).join("\n");
+    const handlerFiles = resolveHandlerFiles(runBody, exampleDir)
+      .filter(({ relPath }) => !description.includes(`title="${relPath}"`));
+
+    const outputFilePath = path.join(outputDir, `${dirName}.mdx`);
+    console.info(`Generating individual example page: ${dirName}...`);
+    fs.writeFileSync(
+      outputFilePath,
+      [
+        `---`,
+        `title: "${title}"`,
+        `description: "${description.split("\n\n")[0].replace(/\n/g, " ").replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/`/g, "").replace(/"/g, '\\"')}"`,
+        `---`,
+        ``,
+        `{/* DO NOT EDIT. AUTO-GENERATED FROM "examples/${dirName}" */}`,
+        ``,
+        `:::tip`,
+        `This page is best viewed through the site search or through the _AI_.`,
+        `:::`,
+        ``,
+        description,
+        ``,
+        ...codeBlock,
+        ...handlerFiles.flatMap(({ relPath, content, lang }) => [
+          ``,
+          `\`\`\`${lang} title="${relPath}"`,
+          content,
+          `\`\`\``,
+        ]),
+        ``,
+        `View the [full example](${config.github}/tree/dev/examples/${dirName}).`,
+        ``,
+      ].join("\n")
+    );
+  }
+}
+
+function extractRunSnippet(lines: string[]) {
+  const start = lines.indexOf("  async run() {");
+  const end = lines.lastIndexOf("  },");
+  return stripTopLevelReturnObject(
+    lines.slice(start + 1, end).map((l) => l.substring(4))
+  );
+}
+
+function stripTopLevelReturnObject(lines: string[]) {
+  const start = lines.findIndex((line) => /^return\s*\{/.test(line));
+  if (start === -1) return trimTrailingBlankLines(lines);
+
+  const end = findReturnObjectEnd(lines, start);
+  if (end === -1) return trimTrailingBlankLines(lines);
+
+  const before = trimTrailingBlankLines(lines.slice(0, start));
+  return trimTrailingBlankLines([...before, ...lines.slice(end + 1)]);
+}
+
+function findReturnObjectEnd(lines: string[], start: number) {
+  let depth = 0;
+
+  for (let i = start; i < lines.length; i++) {
+    for (const char of lines[i]) {
+      if (char === "{") depth++;
+      if (char === "}") depth--;
+    }
+    if (depth === 0 && /}\s*;?\s*$/.test(lines[i])) return i;
+  }
+
+  return -1;
+}
+
+function trimTrailingBlankLines(lines: string[]) {
+  const result = [...lines];
+  while (result.length && result[result.length - 1].trim() === "") result.pop();
+  return result;
 }
 
 async function generateGlobalConfigDoc(
@@ -641,14 +849,14 @@ async function generateComponentDoc(
         const lines = [
           ...renderLinks(component),
           ...renderCloudflareBindings(component),
-          ...(["realtime", "task"].includes(sdk?.name!)
+          ...(["realtime", "task", "workflow"].includes(sdk?.name!)
             ? renderAbout(useModuleComment(sdk!))
             : []),
           ...(sdk
             ? renderFunctions(
                 sdk,
                 useModuleFunctions(sdk),
-                ["realtime", "task"].includes(sdk.name)
+                ["realtime", "task", "workflow"].includes(sdk.name)
                   ? { prefix: sdk.name }
                   : undefined
               )
@@ -712,6 +920,20 @@ function renderTdComment(parts: TypeDoc.CommentDisplayPart[]) {
   return parts.map((part) => part.text).join("");
 }
 
+function renderExampleComment(parts: TypeDoc.CommentDisplayPart[]) {
+  return stripSstConfigReturns(renderTdComment(parts));
+}
+
+function stripSstConfigReturns(markdown: string) {
+  return markdown.replace(
+    /```([^\n]*\btitle=(["'])sst\.config\.ts\2[^\n]*)\n([\s\S]*?)```/g,
+    (_, meta: string, _quote: string, code: string) => {
+      const stripped = stripTopLevelReturnObject(code.split("\n")).join("\n");
+      return `\`\`\`${meta}\n${stripped}\n\`\`\``;
+    }
+  );
+}
+
 function renderBodyEnd() {
   return ["</div>"];
 }
@@ -746,6 +968,7 @@ function renderType(
     if (type.type === "literal") return renderLiteralType(type);
     if (type.type === "templateLiteral") return renderTemplateLiteralType(type);
     if (type.type === "union") return renderUnionType(type);
+    if (type.type === "indexedAccess") return renderIndexedAccessType(type);
     if (type.type === "array") return renderArrayType(type);
     if (type.type === "tuple") return renderTupleType(type);
     if (type.type === "reference" && type.package === "typescript") {
@@ -780,17 +1003,29 @@ function renderType(
     ) {
       return renderBunShellType(type);
     }
+    if (type.type === "reference") {
+      return renderReferenceType(type);
+    }
     if (type.type === "reflection" && type.declaration.signatures) {
       return renderCallbackType(type);
     }
     if (type.type === "reflection" && type.declaration.children?.length) {
       return renderObjectType(type);
     }
+    if (type.type === "unknown") {
+      return renderUnknownType(type as TypeDoc.SomeType & { name?: string });
+    }
 
     // @ts-expect-error
     delete type._project;
     console.log(type);
     throw new Error(`Unsupported type "${type.type}"`);
+  }
+  function renderUnknownType(type: TypeDoc.SomeType & { name?: string }) {
+    return `<code class="type">${(type.name ?? "unknown")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")}</code>`;
   }
   function renderIntrisicType(type: TypeDoc.IntrinsicType) {
     return `<code class="primitive">${type.name}</code>`;
@@ -804,6 +1039,9 @@ function renderType(
     // }
     if (type.value === true || type.value === false) {
       return `<code class="primitive">${type.value}</code>`;
+    }
+    if (typeof type.value !== "string") {
+      return `<code class="primitive">${String(type.value)}</code>`;
     }
     // String value
     // ie.
@@ -846,6 +1084,9 @@ function renderType(
     const tail = type.tail[0][1].replace("{", "\\{").replace("}", "\\}");
     return `<code class="symbol">&ldquo;</code><code class="primitive">${head}$\\{${type.tail[0][0].name}\\}${tail}</code><code class="symbol">&rdquo;</code>`;
   }
+  function renderIndexedAccessType(type: TypeDoc.IndexedAccessType) {
+    return `${renderSomeType(type.objectType)}<code class="symbol">[</code>${renderSomeType(type.indexType)}<code class="symbol">]</code>`;
+  }
   function renderUnionType(type: TypeDoc.UnionType) {
     return type.types
       .map((t) => renderSomeType(t))
@@ -868,6 +1109,18 @@ function renderType(
       `<code class="symbol">&lt;</code>`,
       type.typeArguments?.map((t) => renderSomeType(t)).join(", "),
       `<code class="symbol">&gt;</code>`,
+    ].join("");
+  }
+  function renderReferenceType(type: TypeDoc.ReferenceType) {
+    return [
+      `<code class="type">${type.name}</code>`,
+      ...(type.typeArguments?.length
+        ? [
+            `<code class="symbol">&lt;</code>`,
+            type.typeArguments.map((t) => renderSomeType(t)).join(", "),
+            `<code class="symbol">&gt;</code>`,
+          ]
+        : []),
     ].join("");
   }
   function renderSstComponentType(type: TypeDoc.ReferenceType) {
@@ -942,8 +1195,10 @@ function renderType(
     }
 
     // types in different doc
-    const fileName = (type.reflection as TypeDoc.DeclarationReflection)
-      ?.sources?.[0].fileName;
+    const fileName =
+      (type.reflection as TypeDoc.DeclarationReflection)?.sources?.[0].fileName ||
+      // Some local helper types only carry a ReflectionSymbolId target.
+      ((type as any)._target?.fileName as string | undefined);
     if (fileName?.startsWith("platform/src/components/")) {
       const docHash = type.name.endsWith("Args")
         ? `#${type.name.toLowerCase()}`
@@ -975,7 +1230,20 @@ function renderType(
       return `[<code class="type">${
         type.name
       }</code>](#${type.name.toLowerCase()})`;
-    } else if (type.name === "T") {
+    }
+    const fileName =
+      (type.reflection as TypeDoc.DeclarationReflection)?.sources?.[0].fileName ||
+      ((type as any)._target?.fileName as string | undefined);
+    if (
+      fileName?.startsWith("sdk/js/src/") ||
+      fileName?.includes("/sdk/js/src/")
+    ) {
+      return renderReferenceType(type);
+    }
+    if (type.refersToTypeParameter || (module.children ?? []).find((c) => c.name === type.name)) {
+      return renderReferenceType(type);
+    }
+    if (type.name === "T") {
       return `<code class="primitive">string</code>`;
     }
 
@@ -1595,6 +1863,7 @@ function renderInterfacesAtH2Level(
     if (int.comment?.summary) {
       lines.push(``, renderTdComment(int.comment?.summary!));
     }
+    lines.push(...renderInterfaceInheritedApiSummary(int));
 
     // props
     for (const prop of useInterfaceProps(int)) {
@@ -1690,27 +1959,39 @@ function renderInterfacesAtH3Level(module: TypeDoc.DeclarationReflection) {
       `<InlineSection>`,
       `**Type** ${renderType(module, int)}`,
       `</InlineSection>`,
+      ...renderInterfaceInheritedApiInline(i),
       ...renderNestedTypeList(module, int),
       `</Section>`,
       `</Segment>`,
       // nested props (ie. `.domain`, `.transform`)
       ...useNestedTypes(int.type!, int.name).flatMap(
-        ({ depth, prefix, subType }) => [
-          `<NestedTitle id="${useLinkHashes(module).get(subType)}" Tag="${
-            depth === 0 ? "h4" : "h5"
-          }" parent="${prefix}.">${renderName(subType)}</NestedTitle>`,
-          `<Segment>`,
-          `<Section type="parameters">`,
-          `<InlineSection>`,
-          `**Type** ${renderType(module, subType)}`,
-          `</InlineSection>`,
-          `</Section>`,
-          ...renderDefaultTag(module, subType),
-          ...renderDescription(subType),
-          ``,
-          ...renderExamples(subType),
-          `</Segment>`,
-        ]
+        ({ depth, prefix, subType }) => {
+          return subType.kind === TypeDoc.ReflectionKind.Method
+            ? renderMethod(module, subType, {
+                methodTitle: `<NestedTitle id="${useLinkHashes(module).get(
+                  subType
+                )}" Tag="${depth === 0 ? "h4" : "h5"}" parent="${prefix}.">${renderName(
+                  subType
+                )}</NestedTitle>`,
+                parametersTitle: `**Parameters**`,
+              })
+            : [
+                `<NestedTitle id="${useLinkHashes(module).get(subType)}" Tag="${
+                  depth === 0 ? "h4" : "h5"
+                }" parent="${prefix}.">${renderName(subType)}</NestedTitle>`,
+                `<Segment>`,
+                `<Section type="parameters">`,
+                `<InlineSection>`,
+                `**Type** ${renderType(module, subType)}`,
+                `</InlineSection>`,
+                `</Section>`,
+                ...renderDefaultTag(module, subType),
+                ...renderDescription(subType),
+                ``,
+                ...renderExamples(subType),
+                `</Segment>`,
+              ];
+        }
       )
     );
   }
@@ -1849,6 +2130,38 @@ function renderSignature(signature: TypeDoc.SignatureReflection) {
     .join(", ");
   return `${signature.name}(${parameters})`;
 }
+function renderInterfaceInheritedApiInline(int: TypeDoc.DeclarationReflection) {
+  const links = renderExternalExtendedTypeLinks(int);
+  if (!links.length) return [];
+
+  return [
+    `<InlineSection>`,
+    `Only showing custom SDK methods here. For the full API, see ${links.join(", ")}.`,
+    `</InlineSection>`,
+  ];
+}
+function renderInterfaceInheritedApiSummary(int: TypeDoc.DeclarationReflection) {
+  const links = renderExternalExtendedTypeLinks(int);
+  if (!links.length) return [];
+
+  return [
+    ``,
+    `Only showing custom SDK methods here. For the full API, see ${links.join(", ")}.`,
+  ];
+}
+function renderExternalExtendedTypeLinks(int: TypeDoc.DeclarationReflection) {
+  return (int.extendedTypes ?? [])
+    .filter(
+      (type): type is TypeDoc.ReferenceType =>
+        type.type === "reference" && Boolean(type.package)
+    )
+    .map((type) => {
+      const link = externalTypeDocLinks.get(`${type.package}:${type.name}`);
+      if (!link) return undefined;
+      return link;
+    })
+    .filter((type): type is string => Boolean(type));
+}
 function renderJsonParseReviverType() {
   return `[<code class="type">JSON.parse reviver</code>](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/JSON/parse#reviver)`;
 }
@@ -1963,6 +2276,7 @@ function useInterfaceProps(i: TypeDoc.DeclarationReflection) {
   if (!i.children?.length) throw new Error(`Interface ${i.name} has no props`);
 
   return i.children
+    .filter((c) => !c.flags.isExternal)
     .filter((c) => !c.comment?.modifierTags.has("@internal"))
     .filter((c) => !c.comment?.blockTags.find((t) => t.tag === "@deprecated"));
 }
@@ -1990,7 +2304,9 @@ function useNestedTypes(
   }
   if (type.type === "reflection" && type.declaration.children?.length) {
     return type.declaration
-      .children!.filter((c) => !c.comment?.modifierTags.has("@internal"))
+      .children!
+      .filter((c) => !c.flags.isExternal)
+      .filter((c) => !c.comment?.modifierTags.has("@internal"))
       .filter((c) => !c.comment?.blockTags.find((t) => t.tag === "@deprecated"))
       .flatMap((subType) => [
         { prefix, subType, depth },
@@ -2182,6 +2498,7 @@ async function buildComponents() {
       "../platform/src/components/aws/astro.ts",
       "../platform/src/components/aws/nextjs.ts",
       "../platform/src/components/aws/nuxt.ts",
+      "../platform/src/components/aws/dsql.ts",
       "../platform/src/components/aws/realtime.ts",
       "../platform/src/components/aws/realtime-lambda-subscriber.ts",
       "../platform/src/components/aws/react.ts",
@@ -2207,15 +2524,24 @@ async function buildComponents() {
       "../platform/src/components/aws/task.ts",
       "../platform/src/components/aws/vpc.ts",
       "../platform/src/components/aws/vpc-v1.ts",
+      "../platform/src/components/aws/workflow.ts",
       "../platform/src/components/cloudflare/ai.ts",
+      "../platform/src/components/cloudflare/astro.ts",
       "../platform/src/components/cloudflare/bucket.ts",
       "../platform/src/components/cloudflare/cron.ts",
       "../platform/src/components/cloudflare/d1.ts",
+      "../platform/src/components/cloudflare/hyperdrive.ts",
       "../platform/src/components/cloudflare/kv.ts",
       "../platform/src/components/cloudflare/queue.ts",
       "../platform/src/components/cloudflare/queue-worker-subscriber.ts",
+      "../platform/src/components/cloudflare/react-router.ts",
       "../platform/src/components/cloudflare/worker.ts",
+      "../platform/src/components/cloudflare/workflow.ts",
+      "../platform/src/components/cloudflare/static-site.ts",
+      "../platform/src/components/cloudflare/static-site-v2.ts",
+      "../platform/src/components/cloudflare/tan-stack-start.ts",
       // internal
+      "../platform/src/components/aws/alb.ts",
       "../platform/src/components/aws/cdn.ts",
       "../platform/src/components/aws/dns.ts",
       "../platform/src/components/aws/iam-edit.ts",
@@ -2267,7 +2593,7 @@ async function buildComponents() {
   })();
 
   // Generate JSON (generated for debugging purposes)
-  await app.generateJson(project, "components-doc.json");
+  if (process.env.DEBUG) await app.generateJson(project, "components-doc.json");
 
   return project.getChildrenByKind(TypeDoc.ReflectionKind.Module);
 }
@@ -2284,6 +2610,7 @@ async function buildSdk() {
     entryPoints: [
       "../sdk/js/src/aws/realtime.ts",
       "../sdk/js/src/aws/task.ts",
+      "../sdk/js/src/aws/workflow.ts",
       "../sdk/js/src/vector/index.ts",
     ],
     tsconfig: "../sdk/js/tsconfig.json",
@@ -2293,7 +2620,7 @@ async function buildSdk() {
   if (!project) throw new Error("Failed to convert project");
 
   // Generate JSON (generated for debugging purposes)
-  await app.generateJson(project, "sdk-doc.json");
+  if (process.env.DEBUG) await app.generateJson(project, "sdk-doc.json");
 
   return project.getChildrenByKind(TypeDoc.ReflectionKind.Module);
 }
@@ -2315,7 +2642,7 @@ async function buildExamples() {
   if (!project) throw new Error("Failed to convert project");
 
   // Generate JSON (generated for debugging purposes)
-  await app.generateJson(project, "examples-doc.json");
+  if (process.env.DEBUG) await app.generateJson(project, "examples-doc.json");
 
   return project.children!.filter(
     (c) =>

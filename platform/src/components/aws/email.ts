@@ -497,7 +497,7 @@ export class Email extends Component implements Link.Linkable {
    *
    * @param name The name of the component.
    * @param sender The email address or domain name of the existing SES identity.
-   * @param opts? Resource options.
+   * @param opts Resource options.
    *
    * @example
    * Imagine you create an Email component in the `dev` stage. And in your personal stage `frank`,
