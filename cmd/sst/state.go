@@ -235,46 +235,8 @@ var CmdState = &cli.Command{
 				},
 			},
 			Description: cli.Description{
-				Short: "Remove a resource from only the state",
-				Long: strings.Join([]string{
-					"Removes the reference for the given resource from the state.",
-					"",
-					":::note",
-					"This does not remove the resource itself from your cloud account.",
-					":::",
-					"",
-					"This does not delete the resource from your cloud provider; it only edits",
-					"the state of your app.",
-					"",
-					"```bash frame=\"none\"",
-					"sst state remove MyBucket",
-					"```",
-					"",
-					"Here, `MyBucket` is the name of the resource as defined in your `sst.config.ts`.",
-					"",
-					"```ts title=\"sst.config.ts\"",
-					"new sst.aws.Bucket(\"MyBucket\");",
-					"```",
-					"",
-					"This command will:",
-					"",
-					"1. Find every resource with the given name in the state.",
-					"2. Remove each one along with **all of its dependents** — children, explicit",
-					"   `dependsOn`, property dependencies, `deletedWith` and `replaceWith`. This",
-					"   keeps the state internally consistent.",
-					"3. Run a `repair` afterwards to clean up any remaining dangling references.",
-					"",
-					"Protected resources are not deleted; if any are encountered the command will",
-					"abort with an error so you can decide how to handle them.",
-					"",
-					"You can run this for specific stages as well.",
-					"",
-					"```bash frame=\"none\"",
-					"sst state remove MyBucket --stage production",
-					"```",
-					"",
-					"By default, it runs on your personal stage.",
-				}, "\n"),
+				Short: "Remove references to a resource from the state. Does not remove the resource itself.",
+				Long:  `Remove references to a resource from the state. Does not remove the resource itself.`,
 			},
 			Run: func(c *cli.Cli) error {
 				p, err := c.InitProject()
@@ -308,17 +270,9 @@ var CmdState = &cli.Command{
 					return util.NewReadableError(err, "Could not export state")
 				}
 
-				passphrase, err := provider.Passphrase(p.Backend(), p.App().Name, p.App().Stage)
-				if err != nil {
-					return util.NewReadableError(err, "Could not load passphrase")
-				}
-
 				target := c.Positional(0)
-				result, err := state.Remove(c.Context, passphrase, target, checkpoint)
-				if err != nil {
-					return util.NewReadableError(err, err.Error())
-				}
-				if err := confirmRemove(result); err != nil {
+				muts := state.Remove(target, checkpoint)
+				if err := confirmMutations(muts); err != nil {
 					return err
 				}
 
@@ -438,27 +392,34 @@ func confirmRepair(result state.RepairResult) error {
 	return promptConfirm()
 }
 
-func confirmRemove(result state.RemoveResult) error {
-	if result.IsEmpty() {
+func confirmMutations(muts []state.Mutation) error {
+	if len(muts) == 0 {
 		return util.NewReadableError(nil, "No changes made")
 	}
-
-	if len(result.Removed) > 0 {
-		fmt.Println("Removed:")
-		for _, urn := range result.Removed {
-			fmt.Printf("  - %s → %s\n", urn.Type().DisplayName(), urn.Name())
+	fmt.Println("Removing:")
+	for _, item := range muts {
+		if item.Remove != nil {
+			fmt.Printf("- %s → %s\n", item.Remove.Resource.Type().DisplayName(), item.Remove.Resource.Name())
+		}
+		if item.RemoveDependency != nil {
+			fmt.Printf("- dependency from %s → %s on %s → %s\n", item.RemoveDependency.Resource.Type().DisplayName(), item.RemoveDependency.Resource.Name(), item.RemoveDependency.Dependency.Type().DisplayName(), item.RemoveDependency.Dependency.Name())
+		}
+		if item.RemoveProperty != nil {
+			fmt.Printf("- property dependency from %s → %s → %s on %s → %s\n", item.RemoveProperty.Resource.URNName(), item.RemoveProperty.Resource.Name(), item.RemoveProperty.Property, item.RemoveProperty.Dependency.Type().DisplayName(), item.RemoveProperty.Dependency.Name())
 		}
 	}
 
-	if len(result.Pruned) > 0 {
-		fmt.Println()
-		fmt.Println("Modified:")
-		for _, p := range result.Pruned {
-			renderPruneResult(p)
-		}
+	fmt.Println()
+	fmt.Print("Do you want to commit these changes? (Y/n): ")
+	var response string
+	_, err := fmt.Scanln(&response)
+	if err != nil {
+		return util.NewReadableError(err, "failed to read user input")
 	}
-
-	return promptConfirm()
+	if strings.ToLower(response) != "y" {
+		return util.NewReadableError(nil, "Abandoning changes")
+	}
+	return nil
 }
 
 func renderPruneResult(p deploy.PruneResult) {
