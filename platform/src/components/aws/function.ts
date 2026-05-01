@@ -1513,6 +1513,11 @@ export interface FunctionArgs {
      */
     function?: Transform<lambda.FunctionArgs>;
     /**
+     * Transform the Lambda Alias resource. This is only created when versioning
+     * is enabled (via `versioning: true` or `durable: true`).
+     */
+    alias?: Transform<lambda.AliasArgs>;
+    /**
      * Transform the IAM Role resource.
      */
     role?: Transform<iam.RoleArgs>;
@@ -2726,12 +2731,15 @@ export class Function extends Component implements Link.Linkable {
         if (!isVersioningEnabled) return;
 
         return new lambda.Alias(
-          `${name}LatestAlias`,
-          {
-            functionName: fn.name,
-            functionVersion: fn.version,
-          },
-          { parent },
+          ...transform(
+            args.transform?.alias,
+            `${name}LatestAlias`,
+            {
+              functionName: fn.name,
+              functionVersion: fn.version,
+            },
+            { parent },
+          ),
         );
       });
     }
