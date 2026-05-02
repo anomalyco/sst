@@ -307,6 +307,45 @@ export interface App {
   watch?: string[] | AppWatch;
 
   /**
+   * Configure how your app's state is managed.
+   */
+  state?: {
+    /**
+     * If set to `true`, running `sst remove` will fully remove all state associated
+     * with the stage once all resources have been successfully removed.
+     *
+     * :::tip
+     * Only enable this for ephemeral or development stages.
+     * :::
+     *
+     * This removes the state files, secrets, update history, event logs, snapshots
+     * and the encryption passphrase.
+     *
+     * :::caution
+     * This is irreversible. Once the state encryption key is deleted, secrets and
+     * all state versions will be unrecoverable.
+     * :::
+     *
+     * On AWS this requires `s3:DeleteObjectVersion` and `s3:ListBucketVersions`
+     * on the state bucket. See the [IAM credentials](/docs/iam-credentials)
+     * docs for the full policy.
+     *
+     * @default false
+     *
+     * @example
+     *
+     * ```ts
+     * {
+     *   state: {
+     *     purge: true
+     *   }
+     * }
+     * ```
+     */
+    purge?: boolean;
+  };
+
+  /**
    * Configure type generation options.
    *
    * @example

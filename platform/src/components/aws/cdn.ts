@@ -538,7 +538,7 @@ export class Cdn extends Component {
    *
    * @param name The name of the component.
    * @param distributionID The id of the existing CDN distribution.
-   * @param opts? Resource options.
+   * @param opts Resource options.
    */
   public static get(
     name: string,

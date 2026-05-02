@@ -36,6 +36,7 @@ type App struct {
 	Version   string                 `json:"version"`
 	Protect   bool                   `json:"protect"`
 	Watch     Watch                  `json:"watch"`
+	State     *State                 `json:"state"`
 	Types     struct {
 		Ignore []string `json:"ignore"`
 	} `json:"types"`
@@ -43,6 +44,10 @@ type App struct {
 	Backend string `json:"backend"`
 	// Deprecated: RemovalPolicy is now Removal
 	RemovalPolicy string `json:"removalPolicy"`
+}
+
+type State struct {
+	Purge bool `json:"purge"`
 }
 
 type Watch struct {

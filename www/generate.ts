@@ -34,12 +34,6 @@ type CliCommand = {
   children: CliCommand[];
 };
 
-type CommonError = {
-  code: string;
-  message: string;
-  long: string[];
-};
-
 const cmd = process.argv[2];
 const linkHashes = new Map<
   TypeDoc.DeclarationReflection,
@@ -100,7 +94,6 @@ if (!cmd || cmd === "components") {
   }
 }
 if (!cmd || cmd === "cli") await generateCliDoc();
-if (!cmd || cmd === "common-errors") await generateCommonErrorsDoc();
 if (!cmd || cmd === "examples") {
   await generateExamplesDocs();
   await generateIndividualExampleDocs();
@@ -284,99 +277,6 @@ function generateCliDoc() {
           // subcommands description
           lines.push(renderCliDescription(subcmd.description), `</Segment>`);
         });
-    }
-    return lines;
-  }
-
-  function renderCliDescription(description: CliCommand["description"]) {
-    return description.long ?? description.short;
-  }
-
-  function renderCliArgName(prop: CliCommand["args"][number]) {
-    return `${prop.name}${prop.required ? "" : "?"}`;
-  }
-
-  function renderCliCommandUsage(command: CliCommand) {
-    const parts: string[] = [];
-
-    parts.push(command.name);
-    command.args.forEach((arg) =>
-      arg.required ? parts.push(`<${arg.name}>`) : parts.push(`[${arg.name}]`)
-    );
-    return parts.join(" ");
-  }
-
-  function renderCliFlagType(type: CliCommand["flags"][number]["type"]) {
-    if (type.startsWith("[") && type.endsWith("]")) {
-      return type
-        .substring(1, type.length - 1)
-        .split(",")
-        .map((t: string) =>
-          [
-            `<code class="symbol">&ldquo;</code>`,
-            `<code class="primitive">${t}</code>`,
-            `<code class="symbol">&rdquo;</code>`,
-          ].join("")
-        )
-        .join(`<code class="symbol"> | </code>`);
-    }
-
-    if (type === "bool") return `<code class="primitive">boolean</code>`;
-    return `<code class="primitive">${type}</code>`;
-  }
-}
-
-function generateCommonErrorsDoc() {
-  const content = fs.readFileSync("common-errors-doc.json");
-  const json = JSON.parse(content.toString()) as CommonError[];
-  const outputFilePath = `src/content/docs/docs/common-errors.mdx`;
-
-  fs.writeFileSync(
-    outputFilePath,
-    [
-      renderHeader(
-        "Common Errors",
-        "A list of CLI error messages and how to fix them."
-      ),
-      renderSourceMessage("cmd/sst/main.go"),
-      renderImports(outputFilePath),
-      renderBodyBegin(),
-      renderCommonErrorsAbout(),
-      renderCommonErrorsErrors(),
-      renderBodyEnd(),
-    ]
-      .flat()
-      .join("\n")
-  );
-
-  function renderCommonErrorsAbout() {
-    return [
-      "Below is a collection of common errors you might encounter when using SST.",
-      "",
-      ":::tip",
-      "The error messages in the CLI link to this doc.",
-      ":::",
-      "",
-      "The error messages and descriptions in this doc are auto-generated from the CLI.",
-      "",
-    ];
-  }
-
-  function renderCommonErrorsErrors() {
-    const lines: string[] = [];
-
-    for (const error of json) {
-      console.debug(` - command ${error.code}`);
-      lines.push(
-        ``,
-        `---`,
-        ``,
-        `## ${error.code}`,
-        ``,
-        `> ${error.message}`,
-        ``,
-        ...error.long
-      );
     }
     return lines;
   }

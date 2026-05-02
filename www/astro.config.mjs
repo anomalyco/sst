@@ -9,8 +9,9 @@ import rehypeAutolinkHeadings from "rehype-autolink-headings";
 const sidebar = [
   { label: "Intro", slug: "docs" },
   { label: "Basics", slug: "docs/basics" },
-  { label: "Enterprise", slug: "docs/enterprise" },
+  { label: "Examples", slug: "docs/examples" },
   { label: "Changelog", slug: "docs/changelog" },
+  { label: "Enterprise", slug: "docs/enterprise" },
   {
     label: "Get Started",
     collapsed: true,
@@ -287,8 +288,6 @@ const sidebar = [
       "docs/component/experimental/dev-command",
     ],
   },
-  { label: "Examples", slug: "docs/examples" },
-  { label: "Common Errors", slug: "docs/common-errors" },
 ];
 
 if (import.meta.env.DEV) {
@@ -314,8 +313,8 @@ export default defineConfig({
     "/discord": "https://discord.gg/sst",
     "/guide": "https://guide.sst.dev",
     "/docs/workflow": "/docs/basics",
-    "/docs/workflow/": "/docs/basics/",
     "/docs/start/aws/container": "/docs/start/aws/express",
+    "/docs/common-errors": "/docs/component/aws/svelte-kit/#assets",
   },
   integrations: [
     sitemap({

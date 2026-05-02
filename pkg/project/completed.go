@@ -13,7 +13,7 @@ import (
 )
 
 func (p *Project) GetCompleted(ctx context.Context) (*CompleteEvent, error) {
-	passphrase, err := provider.Passphrase(p.home, p.app.Name, p.app.Stage)
+	passphrase, err := provider.GetPassphrase(p.home, p.app.Name, p.app.Stage)
 	if err != nil {
 		return nil, err
 	}

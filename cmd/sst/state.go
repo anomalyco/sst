@@ -135,7 +135,7 @@ var CmdState = &cli.Command{
 					return err
 				}
 				if c.Bool("decrypt") {
-					passphrase, err := provider.Passphrase(p.Backend(), p.App().Name, p.App().Stage)
+					passphrase, err := provider.GetPassphrase(p.Backend(), p.App().Name, p.App().Stage)
 					if err != nil {
 						return err
 					}

@@ -645,7 +645,7 @@ export class SnsTopic extends Component implements Link.Linkable {
    *
    * @param name The name of the component.
    * @param topicArn The ARN of the existing SNS Topic.
-   * @param opts? Resource options.
+   * @param opts Resource options.
    *
    * @example
    * Imagine you create a topic in the `dev` stage. And in your personal stage `frank`,

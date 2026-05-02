@@ -560,7 +560,7 @@ Listening on "${dev.url}"...`,
    *
    * @param name The name of the component.
    * @param id The ID of the existing OpenSearch component.
-   * @param opts? Resource options.
+   * @param opts Resource options.
    *
    * @example
    * Imagine you create a domain in the `dev` stage. And in your personal stage `frank`,

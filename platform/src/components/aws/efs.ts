@@ -355,7 +355,7 @@ export class Efs extends Component {
    *
    * @param name The name of the component.
    * @param fileSystemID The ID of the existing EFS file system.
-   * @param opts? Resource options.
+   * @param opts Resource options.
    *
    * @example
    * Imagine you create a EFS file system in the `dev` stage. And in your personal stage
