@@ -16,10 +16,16 @@ Build full-stack apps on your own infrastructure.
 
 ## Installation
 
-If you are using SST as a part of your Node project, we recommend installing it locally.
+For Node projects, install SST locally so the CLI version is tracked with your app.
 
 ```bash
 npm install sst
+```
+
+You can then run the CLI with your package manager.
+
+```bash
+npx sst dev
 ```
 
 If you are not using Node, you can install the CLI globally.

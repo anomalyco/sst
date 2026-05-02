@@ -268,13 +268,19 @@ Learn more about our [monorepo setup](/docs/set-up-a-monorepo/).
 
 ## CLI
 
-To make this all work, SST comes with a [CLI](/docs/reference/cli/). You can install it as a part of your Node project.
+To make this all work, SST comes with a [CLI](/docs/reference/cli/). For Node projects, install SST locally in your project so the CLI version is tracked with your app.
 
 ```bash
 npm install sst
 ```
 
-Or if you are not using Node, you can install it globally.
+You can then run the CLI with your package manager.
+
+```bash
+npx sst dev
+```
+
+If you are not using Node, you can install the CLI globally.
 
 ```bash
 curl -fsSL https://sst.dev/install | bash
