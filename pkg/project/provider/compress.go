@@ -7,9 +7,6 @@ import (
 	"io"
 )
 
-// gzipEncode reads r fully and returns a reader of the gzipped bytes.
-// Buffers in memory; signature is stable so a streaming variant can replace
-// it later without changing callers.
 func gzipEncode(r io.Reader) (io.Reader, error) {
 	var buf bytes.Buffer
 	gw := gzip.NewWriter(&buf)
@@ -23,10 +20,6 @@ func gzipEncode(r io.Reader) (io.Reader, error) {
 	return &buf, nil
 }
 
-// gzipDecode returns a reader that yields the original bytes from r.
-// If r begins with the gzip magic bytes, it is decoded transparently;
-// otherwise r is returned as-is. This keeps reads compatible with both
-// compressed and legacy plain payloads.
 func gzipDecode(r io.Reader) (io.Reader, error) {
 	br := bufio.NewReader(r)
 	head, err := br.Peek(2)
