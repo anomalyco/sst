@@ -105,6 +105,18 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.crates-auth.outputs.token }}
 
+      - name: Release Python SDK
+        run: |
+          VERSION=$(jq -r .version dist/metadata.json)
+          cd sdk/python
+          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" pyproject.toml
+          uv build
+
+      - name: Publish Python SDK to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: sdk/python/dist/
+
       - name: Announce on Discord
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
