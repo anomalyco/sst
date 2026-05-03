@@ -1,11 +1,12 @@
 import { all, ComponentResourceOptions, output, Output } from "@pulumi/pulumi";
 import { Component, Transform, transform } from "../component";
-import { FunctionArgs, FunctionArn } from "./function.js";
+import { Function, FunctionArgs, FunctionArn } from "./function.js";
 import { Input } from "../input.js";
 import { iam, scheduler } from "@pulumi/aws";
 import { functionBuilder, FunctionBuilder } from "./helpers/function-builder";
 import { Task } from "./task";
 import { VisibleError } from "../error";
+import { Workflow } from "./workflow.js";
 
 export interface CronV2Args {
   /**
@@ -39,7 +40,7 @@ export interface CronV2Args {
    * }
    * ```
    */
-  job?: Input<string | FunctionArgs | FunctionArn>;
+  job?: Input<string | Workflow | Function | FunctionArgs | FunctionArn>;
   /**
    * The function that'll be executed when the cron job runs.
    *
@@ -70,7 +71,7 @@ export interface CronV2Args {
    * }
    * ```
    */
-  function?: Input<string | FunctionArgs | FunctionArn>;
+  function?: Input<string | Workflow | Function | FunctionArgs | FunctionArn>;
   /**
    * The task that'll be executed when the cron job runs.
    *
@@ -369,7 +370,7 @@ export class CronV2 extends Component {
                       statements: [
                         {
                           actions: ["lambda:InvokeFunction"],
-                          resources: [fn.arn],
+                          resources: [fn.targetArn],
                         },
                         ...(dlq
                           ? [
@@ -452,7 +453,7 @@ export class CronV2 extends Component {
               flexibleTimeWindow: { mode: "OFF" },
               state: enabled.apply((v) => (v ? "ENABLED" : "DISABLED")),
               target: {
-                arn: fn.arn,
+                arn: fn.targetArn,
                 roleArn: role.arn,
                 input: event.apply((event) => JSON.stringify(event)),
                 retryPolicy,

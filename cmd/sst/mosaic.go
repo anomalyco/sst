@@ -156,6 +156,9 @@ func CmdMosaic(c *cli.Cli) error {
 	if err != nil {
 		return err
 	}
+	if p.App().Protect {
+		return project.ErrProtectedDevStage
+	}
 	policyPath := c.String("policy")
 	if policyPath != "" {
 		if _, err := p.ResolvePolicyPackPath(policyPath); err != nil {
@@ -427,8 +430,8 @@ func CmdMosaic(c *cli.Cli) error {
 			fnTitle = "Worker"
 			fnFilter = "worker"
 		}
-		mono.AddProcess("deploy", []string{currentExecutable, "ui", "--filter=sst"}, "", "SST")
-		mono.AddProcess("function", []string{currentExecutable, "ui", "--filter=" + fnFilter}, "", fnTitle)
+		mono.AddProcess("deploy", []string{currentExecutable, "ui", "--filter=sst"}, "", "SST", true)
+		mono.AddProcess("function", []string{currentExecutable, "ui", "--filter=" + fnFilter}, "", fnTitle, true)
 
 		wg.Go(func() error {
 			defer c.Cancel()
@@ -459,11 +462,12 @@ func CmdMosaic(c *cli.Cli) error {
 								append([]string{currentExecutable, "dev", "--"}, words...),
 								dir,
 								title,
+								d.Autostart,
 								"SST_CHILD="+d.Name,
 							)
 						}
 						for range evt.Tunnels {
-							mono.AddProcess("tunnel", []string{currentExecutable, "tunnel", "--stage", p.App().Stage}, "", "Tunnel")
+							mono.AddProcess("tunnel", []string{currentExecutable, "tunnel", "--stage", p.App().Stage}, "", "Tunnel", true)
 						}
 						break
 					}

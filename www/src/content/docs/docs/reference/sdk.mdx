@@ -171,8 +171,8 @@ Client functions are currently **not supported** in the Go SDK.
 
 Use the SST Rust SDK package in your Rust functions or container applications.
 
-```toml title="Cargo.toml"
-sst_sdk = "0.1.0"
+```bash
+cargo install sst_sdk
 ```
 
 In your runtime, use the `Resource::get()` function to access linked resources as a typesafe struct, or a `serde_json::Value`.

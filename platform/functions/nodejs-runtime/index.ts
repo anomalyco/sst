@@ -48,10 +48,13 @@ let response: any;
 let context: LambdaContext;
 
 async function error(ex: any) {
+  const errorType = ex instanceof Error ? ex.name : "Error";
+  const errorMessage = ex instanceof Error ? ex.message : String(ex);
+  const trace = ex instanceof Error ? ex.stack?.split("\n") : undefined;
   const body = JSON.stringify({
-    errorType: "Error",
-    errorMessage: ex.message,
-    trace: ex.stack?.split("\n"),
+    errorType,
+    errorMessage,
+    trace,
   });
   await fetch(
     AWS_LAMBDA_RUNTIME_API +

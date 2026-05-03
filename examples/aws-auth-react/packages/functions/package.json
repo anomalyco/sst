@@ -6,7 +6,7 @@
     "@aws-auth-react/core": "*",
     "@openauthjs/openauth": "^0.3.6",
     "hono": "^4.6.18",
-    "sst": "^4",
+    "sst": "file:../../../../sdk/js",
     "valibot": "^1.0.0-beta.14"
   },
   "devDependencies": {

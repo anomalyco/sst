@@ -46,34 +46,14 @@ func (w *worker) Logs() io.ReadCloser {
 
 	go func() {
 		defer writer.Close()
-
 		var wg sync.WaitGroup
-		wg.Add(2)
-
-		copyStream := func(dst io.Writer, src io.Reader, name string) {
-			defer wg.Done()
-			buf := make([]byte, 1024)
-			for {
-				n, err := src.Read(buf)
-				if n > 0 {
-					_, werr := dst.Write(buf[:n])
-					if werr != nil {
-						slog.Error("error writing to pipe", "stream", name, "err", werr)
-						return
-					}
-				}
-				if err != nil {
-					if err != io.EOF {
-						slog.Error("error reading from stream", "stream", name, "err", err)
-					}
-					return
-				}
-			}
+		for _, src := range []io.Reader{w.stdout, w.stderr} {
+			wg.Add(1)
+			go func(src io.Reader) {
+				defer wg.Done()
+				io.Copy(writer, src)
+			}(src)
 		}
-
-		go copyStream(writer, w.stdout, "stdout")
-		go copyStream(writer, w.stderr, "stderr")
-
 		wg.Wait()
 	}()
 
@@ -81,6 +61,10 @@ func (w *worker) Logs() io.ReadCloser {
 }
 
 type PythonRuntime struct {
+	// concurrency limits total parallel builds across all functions.
+	// This is separate from the per-cache-key mutex in build.go which deduplicates
+	// concurrent installs for the same dependency set. The two are complementary:
+	// the semaphore caps throughput, the mutex prevents redundant work.
 	concurrency *semaphore.Weighted
 }
 
@@ -160,28 +144,10 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 	lambdaBridgePath := filepath.Join(input.Build.Out, "lambdaric_python_bridge.py")
 	sourceBridgePath := filepath.Join(path.ResolvePlatformDir(input.CfgPath), "/dist/python-runtime/index.py")
 
-	shouldCopy := false
-	if _, err := os.Stat(lambdaBridgePath); os.IsNotExist(err) {
-		shouldCopy = true
-	} else {
-		// Check if source is newer
-		if srcInfo, err := os.Stat(sourceBridgePath); err == nil {
-			if dstInfo, err := os.Stat(lambdaBridgePath); err == nil {
-				if srcInfo.ModTime().After(dstInfo.ModTime()) {
-					shouldCopy = true
-				}
-			}
-		}
-	}
-
-	if shouldCopy {
-		err := copyFile(sourceBridgePath, lambdaBridgePath)
-		if err != nil {
-			slog.Error("failed to copy lambda bridge",
-				"functionID", input.FunctionID,
-				"source", sourceBridgePath,
-				"dest", lambdaBridgePath,
-				"error", err)
+	dstInfo, dstErr := os.Stat(lambdaBridgePath)
+	srcInfo, srcErr := os.Stat(sourceBridgePath)
+	if dstErr != nil || (srcErr == nil && srcInfo.ModTime().After(dstInfo.ModTime())) {
+		if err := copyFile(sourceBridgePath, lambdaBridgePath); err != nil {
 			return nil, fmt.Errorf("failed to copy lambda bridge: %v", err)
 		}
 	}
@@ -253,37 +219,21 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 }
 
 func (r *PythonRuntime) ShouldRebuild(functionID string, file string) bool {
-	normalizedFile := filepath.ToSlash(file)
-
-	// Ignore build artifacts and cache directories that cause feedback loops
-	for _, ignore := range []string{
-		".sst", "__pycache__", ".pytest_cache", ".mypy_cache",
-		".git", "node_modules", ".venv", "venv", ".tox",
-	} {
-		if strings.Contains(normalizedFile, ignore+"/") || strings.HasSuffix(normalizedFile, "/"+ignore) {
+	// Skip paths inside build artifacts, caches, or virtual envs to avoid feedback loops
+	normalized := filepath.ToSlash(file)
+	for _, dir := range []string{".sst", ".venv", "venv", "__pycache__", ".git", "node_modules", ".pytest_cache", ".mypy_cache", ".tox"} {
+		if strings.Contains(normalized, dir+"/") {
 			return false
 		}
 	}
 
-	// Ignore non-Python file extensions
-	for _, ext := range []string{".pyc", ".pyo", ".pyd", ".log", ".tmp", ".swp", ".swo", ".DS_Store"} {
-		if strings.HasSuffix(file, ext) {
-			return false
-		}
+	if filepath.Base(file) == "requirements.txt" {
+		return true
 	}
-
-	// Only rebuild for Python-relevant files
-	for _, ext := range []string{".py", ".toml", ".lock", ".cfg"} {
-		if strings.HasSuffix(file, ext) {
-			return true
-		}
+	switch filepath.Ext(file) {
+	case ".py", ".toml", ".lock", ".cfg":
+		return true
 	}
-	for _, name := range []string{"pyproject.toml", "requirements.txt", "uv.lock", "setup.py", "setup.cfg"} {
-		if filepath.Base(file) == name {
-			return true
-		}
-	}
-
 	return false
 }
 
@@ -464,65 +414,47 @@ func copyFile(src, dst string) error {
 	return nil
 }
 
-// copyDir recursively copies a directory, skipping ignored files.
-// filterPrefix is prepended to relative paths for filter matching.
-func copyDir(src, dst string) error {
-	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+// skipContent skips __pycache__, .pyc files, and anything matching isIgnored.
+func skipContent(relPath string, info os.FileInfo) bool {
+	name := info.Name()
+	if info.IsDir() && name == "__pycache__" {
+		return true
+	}
+	if strings.HasSuffix(name, ".pyc") {
+		return true
+	}
+	return isIgnored(relPath)
+}
+
+// skipBuildArtifacts skips only dirs that would break workspace package builds.
+// Preserves metadata files (pyproject.toml, etc.) needed by uv pip install.
+func skipBuildArtifacts(_ string, info os.FileInfo) bool {
+	if !info.IsDir() {
+		return false
+	}
+	name := info.Name()
+	return name == "__pycache__" || name == ".venv" || name == "node_modules" || name == ".git"
+}
+
+// copyDir recursively copies src to dst, calling skip on every entry to decide
+// whether to include it. Dirs that return true are pruned entirely.
+func copyDir(src, dst string, skip func(relPath string, info os.FileInfo) bool) error {
+	return filepath.Walk(src, func(p string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-
-		relPath, _ := filepath.Rel(src, path)
-
-		// Always skip __pycache__ and .pyc files
-		if info.IsDir() && info.Name() == "__pycache__" {
-			return filepath.SkipDir
-		}
-		if !info.IsDir() && strings.HasSuffix(info.Name(), ".pyc") {
-			return nil
-		}
-
-		// Apply content filter
-		if isIgnored(relPath) {
+		relPath, _ := filepath.Rel(src, p)
+		if skip(relPath, info) {
 			if info.IsDir() {
 				return filepath.SkipDir
 			}
 			return nil
 		}
-
 		dstPath := filepath.Join(dst, relPath)
-
 		if info.IsDir() {
 			return os.MkdirAll(dstPath, info.Mode())
 		}
-
-		return copyFile(path, dstPath)
-	})
-}
-
-// copyDirUnfiltered copies a directory recursively, skipping only __pycache__,
-// .venv, node_modules, and .git. Used for container builds where metadata must be preserved.
-func copyDirUnfiltered(src, dst string) error {
-	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		if info.IsDir() {
-			name := info.Name()
-			if name == "__pycache__" || name == ".venv" || name == "node_modules" || name == ".git" {
-				return filepath.SkipDir
-			}
-		}
-
-		relPath, _ := filepath.Rel(src, path)
-		dstPath := filepath.Join(dst, relPath)
-
-		if info.IsDir() {
-			return os.MkdirAll(dstPath, info.Mode())
-		}
-
-		return copyFile(path, dstPath)
+		return copyFile(p, dstPath)
 	})
 }
 
@@ -542,40 +474,31 @@ func hashFileContents(filePath string) (string, error) {
 	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
-// hasWorkspaceLayoutPatterns checks for package/src/package patterns that need flattening
+// hasWorkspaceLayoutPatterns checks for package/src/package patterns that need flattening.
+// Scans up to one level below projectRoot to cover both single-package and monorepo layouts.
 func (r *PythonRuntime) hasWorkspaceLayoutPatterns(projectRoot string) bool {
-	var hasPatterns bool
-
-	filepath.Walk(projectRoot, func(path string, info os.FileInfo, err error) error {
-		if err != nil || !info.IsDir() {
-			return nil
+	var scan func(dir string, depth int) bool
+	scan = func(dir string, depth int) bool {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return false
 		}
-
-		// Skip hidden directories and common non-package directories
-		dirName := filepath.Base(path)
-		if strings.HasPrefix(dirName, ".") ||
-			dirName == "__pycache__" ||
-			dirName == "node_modules" ||
-			dirName == ".sst" {
-			return filepath.SkipDir
-		}
-
-		// Check for package/src/package pattern
-		srcDir := filepath.Join(path, "src")
-		if _, err := os.Stat(srcDir); err == nil {
-			// Check if there's a subdirectory in src with the same name as the parent
-			packageName := dirName
-			innerPackageDir := filepath.Join(srcDir, packageName)
-			if _, err := os.Stat(innerPackageDir); err == nil {
-				hasPatterns = true
-				return filepath.SkipDir
+		for _, entry := range entries {
+			name := entry.Name()
+			if !entry.IsDir() || strings.HasPrefix(name, ".") || name == "__pycache__" || name == "node_modules" {
+				continue
+			}
+			pkgDir := filepath.Join(dir, name)
+			if _, err := os.Stat(filepath.Join(pkgDir, "src", name)); err == nil {
+				return true
+			}
+			if depth > 0 && scan(pkgDir, depth-1) {
+				return true
 			}
 		}
-
-		return nil
-	})
-
-	return hasPatterns
+		return false
+	}
+	return scan(projectRoot, 1)
 }
 
 // flattenWorkspaceLayouts detects and flattens package/src/package structures for all legacy projects
@@ -616,7 +539,7 @@ func (r *PythonRuntime) flattenWorkspaceLayouts(artifactDir string) error {
 					destPath := filepath.Join(packageDir, innerEntry.Name())
 
 					if innerEntry.IsDir() {
-						err = copyDir(srcPath, destPath)
+						err = copyDir(srcPath, destPath, skipContent)
 					} else {
 						err = copyFile(srcPath, destPath)
 					}

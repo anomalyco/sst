@@ -1,0 +1,12 @@
+{
+  "name": "cloudflare-hyperdrive-planetscale",
+  "version": "0.0.0",
+  "dependencies": {
+    "pg": "^8.20.0",
+    "sst": "file:../../sdk/js"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240405.0",
+    "@types/pg": "^8.20.0"
+  }
+}

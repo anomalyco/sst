@@ -46,10 +46,18 @@ interface VectorRef {
 }
 
 /**
+ * The `Vector` component has been deprecated. It should not be used for new projects.
+ *
+ * :::caution
+ * This component has been deprecated.
+ * :::
+ *
  * The `Vector` component lets you store and retrieve vector data in your app.
  *
  * - It uses a vector database powered by [RDS Postgres Serverless v2](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/aurora-serverless-v2.html).
  * - Provides a [SDK](/docs/reference/sdk/) to query, put, and remove the vector data.
+ *
+ * @deprecated Use a dedicated vector database provider instead.
  *
  * @example
  *

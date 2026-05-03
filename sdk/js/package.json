@@ -12,6 +12,16 @@
   "license": "MIT",
   "exports": {
     ".": "./dist/index.js",
+    "./resource": {
+      "types": "./dist/resource/index.d.ts",
+      "workerd": "./dist/resource/cloudflare.js",
+      "worker": "./dist/resource/cloudflare.js",
+      "default": "./dist/resource/node.js"
+    },
+    "./resource/cloudflare": {
+      "types": "./dist/resource/cloudflare.d.ts",
+      "default": "./dist/resource/cloudflare.js"
+    },
     "./auth": "./dist/auth/index.js",
     "./auth/adapter": "./dist/auth/adapter/index.js",
     "./event": "./dist/event/index.js",
@@ -27,6 +37,7 @@
     "release": "./scripts/release.ts"
   },
   "devDependencies": {
+    "@aws/durable-execution-sdk-js-testing": "^1.1.1",
     "@tsconfig/node20": "20.1.4",
     "@types/aws-lambda": "^8.10.155",
     "@types/node": "22.10.0",
@@ -45,6 +56,7 @@
   },
   "optionalDependencies": {},
   "dependencies": {
+    "@aws/durable-execution-sdk-js": "1.0.2",
     "aws4fetch": "1.0.18",
     "jose": "5.2.3",
     "openid-client": "5.6.4"

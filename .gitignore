@@ -1,6 +1,8 @@
 .sst
 sst
 dist
+/sst
+s	
 node_modules
 
 # pulumi
@@ -24,5 +26,15 @@ tmp
 __pycache__
 uv.lock
 
-examples/*/sst-env.d.ts
+examples/**/sst-env.d.ts
+examples/**/sst.pyi
 www/src/content/docs/docs/examples.mdx
+www/src/data/changelog.json
+examples/**/bun.lock
+examples/**/bun.lockb
+examples/**/pnpm-lock.yaml
+examples/**/package-lock.json
+examples/**/uv.lock
+examples/**/deno.lock
+examples/**/Cargo.lock
+examples/**/.env.*

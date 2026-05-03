@@ -18,7 +18,7 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Libraries",
 ]
-dependencies = ["pycryptodomex>=3.20.0"]
+dependencies = ["pycryptodomex==3.20.0"]
 
 [project.urls]
 Homepage = "https://sst.dev"
@@ -35,3 +35,8 @@ packages = ["src/sst"]
 
 [tool.hatch.build.targets.sdist]
 include = ["src/sst", "pyproject.toml", "README.md"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.2",
+]

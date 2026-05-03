@@ -56,6 +56,7 @@ export default $config({
   },
   async run() {
     const cluster = new sst.aws.Dsql("MultiRegion", {
+      backup: true,
       regions: {
         witness: "us-west-2",
         peer: "us-east-2",
@@ -69,8 +70,11 @@ export default $config({
     });
 
     return {
+      url: fn.url,
+      arn: cluster.arn,
       endpoint: cluster.endpoint,
       region: cluster.region,
+      peerArn: cluster.peer.arn,
       peerEndpoint: cluster.peer.endpoint,
       peerRegion: cluster.peer.region,
     };

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
+	"runtime"
 
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
@@ -38,14 +40,39 @@ func (p *Project) EnvFor(ctx context.Context, complete *CompleteEvent, name stri
 		}
 	}
 	log.Info("dev", "links", dev.Links)
-	for _, resource := range dev.Links {
-		value := complete.Links[resource].Properties
-		jsonValue, _ := json.Marshal(value)
-		env["SST_RESOURCE_"+resource] = string(jsonValue)
+	// On Windows, always use a consolidated environment variable because
+	// Windows uppercases all environment variable names, breaking
+	// case-sensitive resource lookups.
+	if runtime.GOOS == "windows" {
+		allResources := make(map[string]any)
+		for _, resource := range dev.Links {
+			allResources[resource] = complete.Links[resource].Properties
+		}
+		allResources["App"] = map[string]string{
+			"name":  p.App().Name,
+			"stage": p.App().Stage,
+		}
+		jsonData, _ := json.Marshal(allResources)
+		env["SST_RESOURCES_JSON"] = string(jsonData)
+	} else {
+		for _, resource := range dev.Links {
+			value := complete.Links[resource].Properties
+			jsonValue, _ := json.Marshal(value)
+			env["SST_RESOURCE_"+resource] = string(jsonValue)
+		}
+		env["SST_RESOURCE_App"] = fmt.Sprintf(`{"name": "%s", "stage": "%s" }`, p.App().Name, p.App().Stage)
 	}
-	env["SST_RESOURCE_App"] = fmt.Sprintf(`{"name": "%s", "stage": "%s" }`, p.App().Name, p.App().Stage)
 	for key, value := range dev.Environment {
 		env[key] = value
+	}
+	if dev.Cloudflare != nil && dev.Cloudflare.Path != "" {
+		env["SST_WRANGLER_PATH"] = dev.Cloudflare.Path
+	}
+	// Pass Cloudflare credentials to the child process for remote bindings
+	for _, key := range []string{"CLOUDFLARE_API_TOKEN", "CLOUDFLARE_API_KEY", "CLOUDFLARE_EMAIL", "CLOUDFLARE_DEFAULT_ACCOUNT_ID"} {
+		if val := os.Getenv(key); val != "" {
+			env[key] = val
+		}
 	}
 	return env, nil
 }

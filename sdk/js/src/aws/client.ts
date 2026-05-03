@@ -27,6 +27,13 @@ async function getCredentials(url: string): Promise<EC2Credentials> {
   return credentials;
 }
 
+type AwsFetchOptions = Exclude<Parameters<AwsClient["fetch"]>[1], null | undefined>;
+
+export type AwsOptions = Exclude<
+  Parameters<AwsClient["fetch"]>[1],
+  null | undefined
+>["aws"];
+
 export async function client(): Promise<AwsClient> {
   if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
     return new AwsClient({
@@ -53,7 +60,16 @@ export async function client(): Promise<AwsClient> {
   throw new Error("No AWS credentials found");
 }
 
-export type AwsOptions = Exclude<
-  Parameters<AwsClient["fetch"]>[1],
-  null | undefined
->["aws"];
+export async function awsFetch(
+  service: string,
+  path: string,
+  init: Omit<AwsFetchOptions, "aws">,
+  options?: { aws?: AwsOptions },
+) {
+  const c = await client();
+  const region = options?.aws?.region ?? c.region;
+  return c.fetch(`https://${service}.${region}.amazonaws.com${path}`, {
+    ...init,
+    aws: options?.aws,
+  });
+}

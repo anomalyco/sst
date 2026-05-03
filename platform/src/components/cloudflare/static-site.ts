@@ -5,10 +5,9 @@ import { ComponentResourceOptions, all, output } from "@pulumi/pulumi";
 import { Kv, KvArgs } from "./kv.js";
 import { Component, Prettify, Transform, transform } from "../component.js";
 import { Link } from "../link.js";
-import { Input } from "../input.js";
 import { globSync } from "glob";
 import { KvData } from "./providers/kv-data.js";
-import { Worker } from "./worker.js";
+import { Worker, WorkerArgs } from "./worker.js";
 import { getContentType } from "../base/base-site.js";
 import {
   BaseStaticSiteArgs,
@@ -100,8 +99,30 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
    *   domain: "domain.com"
    * }
    * ```
+   *
+   * Redirect alternate domains to the main domain.
+   *
+   * ```js
+   * {
+   *   domain: {
+   *     name: "domain.com",
+   *     redirects: ["www.domain.com"]
+   *   }
+   * }
+   * ```
+   *
+   * Or keep visitors on alternate domains with aliases.
+   *
+   * ```js
+   * {
+   *   domain: {
+   *     name: "app1.domain.com",
+   *     aliases: ["app2.domain.com"]
+   *   }
+   * }
+   * ```
    */
-  domain?: Input<string>;
+  domain?: WorkerArgs["domain"];
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
@@ -115,6 +136,12 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
 }
 
 /**
+ * The `StaticSite` component has been deprecated. Use [`StaticSiteV2`](/docs/component/cloudflare/static-site-v2) instead.
+ *
+ * :::caution
+ * This component has been deprecated.
+ * :::
+ *
  * The `StaticSite` component lets you deploy a static website to Cloudflare. It uses [Cloudflare KV storage](https://developers.cloudflare.com/kv/) to store your files and [Cloudflare Workers](https://developers.cloudflare.com/workers/) to serve them.
  *
  * It can also `build` your site by running your static site generator, like [Vite](https://vitejs.dev) and uploading the build output to Cloudflare KV.
@@ -126,7 +153,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
  * Simply uploads the current directory as a static site.
  *
  * ```js
- * new sst.aws.StaticSite("MyWeb");
+ * new sst.cloudflare.StaticSite("MyWeb");
  * ```
  *
  * #### Change the path
@@ -134,7 +161,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
  * Change the `path` that should be uploaded.
  *
  * ```js
- * new sst.aws.StaticSite("MyWeb", {
+ * new sst.cloudflare.StaticSite("MyWeb", {
  *   path: "path/to/site"
  * });
  * ```
@@ -144,7 +171,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
  * Use [Vite](https://vitejs.dev) to deploy a React/Vue/Svelte/etc. SPA by specifying the `build` config.
  *
  * ```js
- * new sst.aws.StaticSite("MyWeb", {
+ * new sst.cloudflare.StaticSite("MyWeb", {
  *   build: {
  *     command: "npm run build",
  *     output: "dist"
@@ -157,38 +184,11 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
  * Use [Jekyll](https://jekyllrb.com) to deploy a static site.
  *
  * ```js
- * new sst.aws.StaticSite("MyWeb", {
+ * new sst.cloudflare.StaticSite("MyWeb", {
  *   errorPage: "404.html",
  *   build: {
  *     command: "bundle exec jekyll build",
  *     output: "_site"
- *   }
- * });
- * ```
- *
- * #### Deploy a Gatsby site
- *
- * Use [Gatsby](https://www.gatsbyjs.com) to deploy a static site.
- *
- * ```js
- * new sst.aws.StaticSite("MyWeb", {
- *   errorPage: "404.html",
- *   build: {
- *     command: "npm run build",
- *     output: "public"
- *   }
- * });
- * ```
- *
- * #### Deploy an Angular SPA
- *
- * Use [Angular](https://angular.dev) to deploy a SPA.
- *
- * ```js
- * new sst.aws.StaticSite("MyWeb", {
- *   build: {
- *     command: "ng build --output-path dist",
- *     output: "dist"
  *   }
  * });
  * ```
@@ -198,7 +198,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
  * Set a custom domain for your site.
  *
  * ```js {2}
- * new sst.aws.StaticSite("MyWeb", {
+ * new sst.cloudflare.StaticSite("MyWeb", {
  *   domain: "my-app.com"
  * });
  * ```
@@ -208,7 +208,7 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
  * Redirect `www.my-app.com` to `my-app.com`.
  *
  * ```js {4}
- * new sst.aws.StaticSite("MyWeb", {
+ * new sst.cloudflare.StaticSite("MyWeb", {
  *   domain: {
  *     name: "my-app.com",
  *     redirects: ["www.my-app.com"]
@@ -227,11 +227,11 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
  * For some static site generators like Vite, [environment variables](https://vitejs.dev/guide/env-and-mode) prefixed with `VITE_` can be accessed in the browser.
  *
  * ```ts {5-7}
- * const bucket = new sst.aws.Bucket("MyBucket");
+ * const kv = new sst.cloudflare.Kv("MyKv");
  *
- * new sst.aws.StaticSite("MyWeb", {
+ * new sst.cloudflare.StaticSite("MyWeb", {
  *   environment: {
- *     BUCKET_NAME: bucket.name,
+ *     KV_NAMESPACE: kv.id,
  *     // Accessible in the browser
  *     VITE_STRIPE_PUBLISHABLE_KEY: "pk_test_123"
  *   },
@@ -241,6 +241,8 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
  *   }
  * });
  * ```
+ *
+ * @deprecated Use [`StaticSiteV2`](/docs/component/cloudflare/static-site-v2) instead.
  */
 export class StaticSite extends Component implements Link.Linkable {
   private assets: Kv;

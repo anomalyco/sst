@@ -1,15 +1,10 @@
-import { AwsOptions, client } from "../aws/client.js";
-import { Resource } from "../resource.js";
+import { awsFetch, type AwsOptions } from "./client.js";
+import { Resource } from "../resource/index.js";
 import { event } from "../event/index.js";
 import { EventBridgeEvent, EventBridgeHandler, Context } from "aws-lambda";
 
 export namespace bus {
   export type Name = Extract<typeof Resource, { type: "sst.aws.Bus" }>["name"];
-
-  function url(region?: string, options?: AwsOptions) {
-    if (options?.region) region = options.region;
-    return `https://events.${region}.amazonaws.com/`;
-  }
 
   export function subscriber<Events extends event.Definition>(
     _events: Events | Events[],
@@ -45,8 +40,6 @@ export namespace bus {
       aws?: AwsOptions;
     },
   ): Promise<any> {
-    const c = await client();
-    const u = url(c.region, options?.aws);
     const evt =
       typeof def === "string"
         ? {
@@ -55,10 +48,11 @@ export namespace bus {
             metadata: options?.metadata || {},
           }
         : await def.create(properties, options?.metadata);
-    const res = await c
-      .fetch(u, {
+    const res = await awsFetch(
+      "events",
+      "/",
+      {
         method: "POST",
-        aws: options?.aws,
         headers: {
           "X-Amz-Target": "AWSEvents.PutEvents",
           "Content-Type": "application/x-amz-json-1.1",
@@ -76,7 +70,9 @@ export namespace bus {
             },
           ],
         }),
-      })
+      },
+      options,
+    )
       .catch((e) => {
         if (e instanceof Error) console.log("cause", e.cause);
         throw e;

@@ -86,8 +86,10 @@ func CmdShell(c *cli.Cli) error {
 		}
 	}
 	if target == "" {
-		// On Windows with many resources, use a consolidated environment variable to avoid 32KB limit
-		if runtime.GOOS == "windows" && len(complete.Links) > 50 {
+		// On Windows, always use a consolidated environment variable because
+		// Windows uppercases all environment variable names, breaking
+		// case-sensitive resource lookups.
+		if runtime.GOOS == "windows" {
 			// Create a single JSON with all resources
 			allResources := make(map[string]any)
 			for resource, value := range complete.Links {

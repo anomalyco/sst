@@ -1439,10 +1439,23 @@ async function handler(event) {
                 nodejs: {
                   ...planServer.nodejs,
                   format: "esm" as const,
-                  install: output(args.server?.install).apply((install) => [
-                    ...(install ?? []),
-                    ...(planServer.nodejs?.install ?? []),
-                  ]),
+                  install: output({
+                    install: args.server?.install,
+                    planInstall: planServer.nodejs?.install,
+                  }).apply(({ install, planInstall }) => {
+                    const result: Record<string, string> = {};
+                    for (const pkg of install ?? []) {
+                      result[pkg] = "*";
+                    }
+                    if (Array.isArray(planInstall)) {
+                      for (const pkg of planInstall) {
+                        result[pkg] = "*";
+                      }
+                    } else if (planInstall) {
+                      Object.assign(result, planInstall);
+                    }
+                    return result;
+                  }),
                   loader: args.server?.loader ?? planServer.nodejs?.loader,
                 },
                 environment: output(args.environment).apply((environment) => ({
@@ -1845,8 +1858,32 @@ async function handler(event) {
     }
 
     function createInvalidation() {
-      all([args.invalidation, outputPath, plan]).apply(
-        ([invalidationRaw, outputPath, plan]) => {
+      // Resolve server/image-optimizer code hashes so that server-only code
+      // changes also trigger a CloudFront invalidation. Without this, the
+      // version below is derived purely from static assets and an SSR deploy
+      // that only changes the Lambda bundle produces an identical hash,
+      // causing Pulumi to skip the DistributionInvalidation update.
+      const serverCodeHashes = servers.apply((list) =>
+        all(list.map(({ server }) => server.nodes.function.codeSha256)),
+      );
+      const imageOptimizerCodeHash = imageOptimizer.apply(
+        (opt) => opt?.nodes.function.codeSha256,
+      );
+
+      all([
+        args.invalidation,
+        outputPath,
+        plan,
+        serverCodeHashes,
+        imageOptimizerCodeHash,
+      ]).apply(
+        ([
+          invalidationRaw,
+          outputPath,
+          plan,
+          serverCodeHashes,
+          imageOptimizerCodeHash,
+        ]) => {
           // Normalize invalidation
           if (invalidationRaw === false) return;
           const invalidation = {
@@ -1883,6 +1920,12 @@ async function handler(event) {
             invalidationBuildId = plan.buildId;
           } else {
             const hash = crypto.createHash("md5");
+
+            // Fold in server bundle hashes so that changes to server-only
+            // code (e.g. loaders, handlers) invalidate the CloudFront cache
+            // even when no static assets changed.
+            serverCodeHashes.forEach((h) => hash.update(h));
+            if (imageOptimizerCodeHash) hash.update(imageOptimizerCodeHash);
 
             cachedS3Files.forEach((item) => {
               // The below options are needed to support following symlinks when building zip files:
