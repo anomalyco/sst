@@ -16,6 +16,29 @@ uv add sst-sdk
 
 > **Note**: When deploying with SST, the SDK is automatically included — you don't need to install it manually. This package is for local development and testing.
 
+## Migrating from the Git dependency
+
+If you were previously installing the SDK from GitHub:
+
+```toml
+# Before
+[project]
+dependencies = ["sst"]
+
+[tool.uv.sources]
+sst = { git = "https://github.com/sst/sst", subdirectory = "sdk/python" }
+```
+
+Update your `pyproject.toml` to use the PyPI package instead:
+
+```toml
+# After
+[project]
+dependencies = ["sst-sdk"]
+```
+
+That's it — remove the `[tool.uv.sources]` entry for `sst` and replace the dependency name. No code changes needed; `from sst import Resource` works the same way.
+
 ## Usage
 
 Use `Resource` to access any resource linked to your function in `sst.config.ts`:
