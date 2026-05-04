@@ -1,14 +1,40 @@
 [project]
-name = "sst"
+name = "sst-sdk"
 version = "0.2.0"
-description = "SST SDK"
+description = "Python SDK for SST — access linked resources in your SST app"
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.9"
+keywords = ["sst", "serverless", "aws", "lambda", "infrastructure"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries",
+]
 dependencies = ["pycryptodomex==3.20.0"]
+
+[project.urls]
+Homepage = "https://sst.dev"
+Documentation = "https://sst.dev/docs/reference/sdk/"
+Repository = "https://github.com/sst/sst"
+Issues = "https://github.com/sst/sst/issues"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sst"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/sst", "pyproject.toml", "README.md"]
 
 [dependency-groups]
 dev = [
