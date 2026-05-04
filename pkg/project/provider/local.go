@@ -111,21 +111,39 @@ func (l *LocalHome) pathForData(key, app, stage string) string {
 	return filepath.Join(global.ConfigDir(), "state", key, app, fmt.Sprintf("%v.json", stage))
 }
 
-func (a *LocalHome) listStages(app string) ([]string, error) {
-	path := filepath.Join(global.ConfigDir(), "state", "app", app)
-
+func (l *LocalHome) listData(key, app, stage string) ([]string, error) {
+	path := filepath.Join(global.ConfigDir(), "state", key, app, stage)
 	entries, err := os.ReadDir(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	result := []string{}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		name := strings.TrimSuffix(entry.Name(), ".json")
+		if stage != "" {
+			name = stage + "/" + name
+		}
+		result = append(result, name)
+	}
+	return result, nil
+}
+
+func (a *LocalHome) listStages(app string) ([]string, error) {
+	entries, err := a.listData("app", app, "")
 	if err != nil {
 		return nil, err
 	}
 
 	var stages []string
-	for _, entry := range entries {
-		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".json") {
-			stageName := strings.TrimSuffix(entry.Name(), ".json")
-			if hasResources(a, app, stageName) {
-				stages = append(stages, stageName)
-			}
+	for _, stageName := range entries {
+		if hasResources(a, app, stageName) {
+			stages = append(stages, stageName)
 		}
 	}
 

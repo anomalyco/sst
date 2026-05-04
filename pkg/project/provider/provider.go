@@ -10,9 +10,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/pulumi/pulumi/pkg/v3/resource/stack"
+	"github.com/pulumi/pulumi/sdk/v3/go/common/apitype"
 	"github.com/pulumi/pulumi/sdk/v3/go/common/encoding"
 	"github.com/sst/sst/v3/internal/util"
 	"github.com/sst/sst/v3/pkg/flag"
@@ -23,6 +26,7 @@ import (
 type Home interface {
 	Bootstrap() error
 	getData(key, app, stage string) (io.Reader, error)
+	listData(key, app, stage string) ([]string, error)
 	putData(key, app, stage string, data io.Reader) error
 	removeData(key, app, stage string) error
 	setPassphrase(app, stage string, passphrase string) error
@@ -66,7 +70,55 @@ const SSM_NAME_BOOTSTRAP = "/sst/bootstrap"
 
 var ErrLockExists = fmt.Errorf("Concurrent update detected, run `sst unlock --stage=<stage>` to delete lock file and retry.")
 var ErrLockNotFound = fmt.Errorf("Lock not found")
+var ErrSnapshotNotFound = fmt.Errorf("snapshot not found")
 var passphraseCache = map[Home]map[string]string{}
+
+func LatestValidSnapshot(backend Home, app, stage string) ([]byte, string, error) {
+	snapshots, err := backend.listData("snapshot", app, stage)
+	if err != nil {
+		return nil, "", err
+	}
+	sort.Strings(snapshots)
+	for _, snapshot := range snapshots {
+		if stage != "" && !strings.HasPrefix(snapshot, stage+"/") {
+			continue
+		}
+		reader, err := backend.getData("snapshot", app, snapshot)
+		if err != nil {
+			return nil, "", err
+		}
+		if reader == nil {
+			continue
+		}
+		data, err := io.ReadAll(reader)
+		if err != nil {
+			return nil, "", err
+		}
+		if !isValidSnapshot(data) {
+			continue
+		}
+		return data, strings.TrimPrefix(snapshot, stage+"/"), nil
+	}
+	return nil, "", ErrSnapshotNotFound
+}
+
+func isValidSnapshot(data []byte) bool {
+	if len(data) == 0 {
+		return false
+	}
+	var untyped apitype.VersionedCheckpoint
+	if err := json.Unmarshal(data, &untyped); err != nil {
+		return false
+	}
+	if len(untyped.Checkpoint) == 0 {
+		return false
+	}
+	var checkpoint apitype.CheckpointV3
+	if err := json.Unmarshal(untyped.Checkpoint, &checkpoint); err != nil {
+		return false
+	}
+	return checkpoint.Latest != nil
+}
 
 func Copy(from Home, to Home, app, stage string) error {
 	reader, err := from.getData("app", app, stage)

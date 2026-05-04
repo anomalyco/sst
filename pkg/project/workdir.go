@@ -3,16 +3,20 @@ package project
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 
 	"os"
 	"path/filepath"
 
 	"github.com/pulumi/pulumi/sdk/v3/go/common/apitype"
+	"github.com/sst/sst/v3/internal/util"
 	"github.com/sst/sst/v3/pkg/flag"
 	"github.com/sst/sst/v3/pkg/project/provider"
 	"github.com/zeebo/xxh3"
 	"golang.org/x/sync/errgroup"
 )
+
+const stateCorruptedMessage = "State file is empty or corrupted"
 
 type PulumiWorkdir struct {
 	path       string
@@ -126,15 +130,19 @@ func (w *PulumiWorkdir) Export() (*apitype.CheckpointV3, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer file.Close()
 	err = json.NewDecoder(file).Decode(&untyped)
 	if err != nil {
-		return nil, err
+		return nil, util.NewReadableError(err, stateCorruptedMessage)
+	}
+	if len(untyped.Checkpoint) == 0 {
+		return nil, util.NewReadableError(io.EOF, stateCorruptedMessage)
 	}
 
 	var result apitype.CheckpointV3
 	err = json.Unmarshal(untyped.Checkpoint, &result)
 	if err != nil {
-		return nil, err
+		return nil, util.NewReadableError(err, stateCorruptedMessage)
 	}
 
 	return &result, nil
@@ -160,6 +168,15 @@ func (w *PulumiWorkdir) Import(checkpoint *apitype.CheckpointV3) error {
 		return err
 	}
 	return nil
+}
+
+func (w *PulumiWorkdir) ImportRaw(data []byte) error {
+	statePath := w.state()
+	err := os.MkdirAll(filepath.Dir(statePath), 0755)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(statePath, data, 0644)
 }
 
 func (w *PulumiWorkdir) EventLogPath() string {
