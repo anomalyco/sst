@@ -22,9 +22,9 @@ dependencies = ["pycryptodomex==3.20.0"]
 
 [project.urls]
 Homepage = "https://sst.dev"
-Documentation = "https://sst.dev/docs/reference/sdk/"
-Repository = "https://github.com/sst/sst"
-Issues = "https://github.com/sst/sst/issues"
+Documentation = "https://sst.dev/docs/reference/sdk/#python"
+Repository = "https://github.com/anomalyco/sst"
+Issues = "https://github.com/anomalyco/sst/issues"
 
 [build-system]
 requires = ["hatchling"]

@@ -14,8 +14,6 @@ Or with uv:
 uv add sst-sdk
 ```
 
-> **Note**: When deploying with SST, the SDK is automatically included — you don't need to install it manually. This package is for local development and testing.
-
 ## Migrating from the Git dependency
 
 If you were previously installing the SDK from GitHub:
@@ -71,6 +69,6 @@ The SDK reads resource bindings from encrypted environment variables set by SST 
 ## Links
 
 - [SST Documentation](https://sst.dev/docs/)
-- [SDK Reference](https://sst.dev/docs/reference/sdk/)
-- [Python on SST](https://sst.dev/docs/examples/#aws-lambda-python)
-- [GitHub](https://github.com/sst/sst)
+- [SDK Reference](https://sst.dev/docs/reference/sdk/#python)
+- [Python Examples](https://github.com/anomalyco/sst/tree/dev/examples/aws-python)
+- [GitHub](https://github.com/anomalyco/sst)
