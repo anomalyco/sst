@@ -26,6 +26,9 @@ func (m *mockRuntime) Run(ctx context.Context, input *runtime.RunInput) (runtime
 func (m *mockRuntime) ShouldRebuild(functionID string, path string) bool {
 	return false
 }
+func (m *mockRuntime) ShouldRunEagerly() bool {
+	return true
+}
 
 func TestBuildInputOut(t *testing.T) {
 	cfgPath := filepath.Join("/project", "sst.config.ts")

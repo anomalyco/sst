@@ -2,7 +2,7 @@ import os
 import json
 import base64
 from typing import Dict, Any
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from Cryptodome.Cipher import AES
 
 raw: Dict[str, Any] = {}
 
@@ -15,6 +15,13 @@ environment = os.environ
 for key, value in environment.items():
     if key.startswith("SST_RESOURCE_") and value:
         raw[key[len("SST_RESOURCE_") :]] = json.loads(value)
+
+# Load consolidated resources JSON (used on Windows to avoid uppercasing)
+if "SST_RESOURCES_JSON" in os.environ:
+    try:
+        raw.update(json.loads(os.environ["SST_RESOURCES_JSON"]))
+    except json.JSONDecodeError:
+        pass
 
 # Check if SST_KEY_FILE and SST_KEY are in environment variables
 # and SST_KEY_FILE_DATA is not already set in globals()
@@ -30,21 +37,16 @@ if (
     with open(os.environ["SST_KEY_FILE"], "rb") as f:
         encryptedData = f.read()
 
-    # Create a nonce of 12 zero bytes (as per your original code)
+    # Create a nonce of 12 zero bytes
     nonce = bytes(12)
 
     # Extract the authentication tag and the actual ciphertext
     authTag = encryptedData[-16:]
     actualCiphertext = encryptedData[:-16]
 
-    # Concatenate the ciphertext and authTag as required by AESGCM
-    ciphertext_with_tag = actualCiphertext + authTag
-
-    # Create an AESGCM cipher object with the key
-    aesgcm = AESGCM(key)
-
-    # Decrypt the ciphertext
-    plaintext = aesgcm.decrypt(nonce, ciphertext_with_tag, associated_data=None)
+    # Create AES-GCM cipher and decrypt using PyCryptodomex
+    cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
+    plaintext = cipher.decrypt_and_verify(actualCiphertext, authTag)
 
     # Parse the decrypted plaintext as JSON
     decryptedData = json.loads(plaintext.decode("utf-8"))
@@ -90,7 +92,7 @@ class ResourceProxy:
         if hasattr(raw, prop):
             return getattr(raw, prop)
 
-        if "SST_RESOURCE_App" not in os.environ:
+        if "SST_RESOURCE_App" not in os.environ and "SST_RESOURCES_JSON" not in os.environ:
             raise Exception(
                 "It does not look like SST links are active. If this is in local development and you are not starting this process through the multiplexer, wrap your command with `sst dev -- <command>`"
             )

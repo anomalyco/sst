@@ -1,5 +1,5 @@
 import * as durable from "@aws/durable-execution-sdk-js";
-import { aws } from "./client.js";
+import { awsFetch, type AwsOptions } from "./client.js";
 
 /**
  * The `workflow` SDK is a thin wrapper around the
@@ -119,7 +119,7 @@ export namespace workflow {
      * Configure the options for the [aws4fetch](https://github.com/mhart/aws4fetch)
      * [`AWSClient`](https://github.com/mhart/aws4fetch?tab=readme-ov-file#new-awsclientoptions) used internally by the SDK.
      */
-    aws?: aws.Options;
+    aws?: AwsOptions;
   }
 
   export interface StartResponse {
@@ -243,7 +243,7 @@ export namespace workflow {
     const query = new URLSearchParams({
       Qualifier: resource.qualifier,
     });
-    const response = await aws.fetch(
+    const response = await awsFetch(
       "lambda",
       `/2015-03-31/functions/${encodeURIComponent(
         resource.name,
@@ -310,7 +310,7 @@ export namespace workflow {
     if (startedBefore) params.set("StartedBefore", startedBefore);
     if (direction === "desc") params.set("ReverseOrder", "true");
 
-    const response = await aws.fetch(
+    const response = await awsFetch(
       "lambda",
       `/2025-12-01/functions/${encodeURIComponent(
         resource.name,
@@ -339,7 +339,7 @@ export namespace workflow {
     arn: string,
     options?: Options,
   ): Promise<DescribeResponse> {
-    const response = await aws.fetch(
+    const response = await awsFetch(
       "lambda",
       `/2025-12-01/durable-executions/${encodeURIComponent(arn)}`,
       {
@@ -376,7 +376,7 @@ export namespace workflow {
     input?: StopInput,
     options?: Options,
   ): Promise<StopResponse> {
-    const response = await aws.fetch(
+    const response = await awsFetch(
       "lambda",
       `/2025-12-01/durable-executions/${encodeURIComponent(arn)}/stop`,
       {
@@ -417,7 +417,7 @@ export namespace workflow {
     input: SucceedInput<TPayload> = {},
     options?: Options,
   ): Promise<void> {
-    const response = await aws.fetch(
+    const response = await awsFetch(
       "lambda",
       `/2025-12-01/durable-execution-callbacks/${encodeURIComponent(
         token,
@@ -448,7 +448,7 @@ export namespace workflow {
     input: FailInput,
     options?: Options,
   ): Promise<void> {
-    const response = await aws.fetch(
+    const response = await awsFetch(
       "lambda",
       `/2025-12-01/durable-execution-callbacks/${encodeURIComponent(
         token,
@@ -478,7 +478,7 @@ export namespace workflow {
     token: string,
     options?: Options,
   ): Promise<void> {
-    const response = await aws.fetch(
+    const response = await awsFetch(
       "lambda",
       `/2025-12-01/durable-execution-callbacks/${encodeURIComponent(
         token,

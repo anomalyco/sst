@@ -4,8 +4,13 @@ version = "0.2.0"
 description = "SST SDK"
 readme = "README.md"
 requires-python = ">=3.9"
-dependencies = ["cryptography>=43.0.3"]
+dependencies = ["pycryptodomex==3.20.0"]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.2",
+]

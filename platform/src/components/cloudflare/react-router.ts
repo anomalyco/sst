@@ -105,6 +105,28 @@ export interface ReactRouterArgs extends SsrSiteArgs {
    *   domain: "my-app.com"
    * }
    * ```
+   *
+   * Redirect alternate domains to the main domain.
+   *
+   * ```js
+   * {
+   *   domain: {
+   *     name: "my-app.com",
+   *     redirects: ["www.my-app.com"]
+   *   }
+   * }
+   * ```
+   *
+   * Or keep visitors on alternate domains with aliases.
+   *
+   * ```js
+   * {
+   *   domain: {
+   *     name: "app1.my-app.com",
+   *     aliases: ["app2.my-app.com"]
+   *   }
+   * }
+   * ```
    */
   domain?: SsrSiteArgs["domain"];
   /**
@@ -161,6 +183,32 @@ export interface ReactRouterArgs extends SsrSiteArgs {
  * });
  * ```
  *
+ * #### Redirect www to apex domain
+ *
+ * Redirect `www.my-app.com` to `my-app.com`.
+ *
+ * ```js {4} title="sst.config.ts"
+ * new sst.cloudflare.ReactRouter("MyWeb", {
+ *   domain: {
+ *     name: "my-app.com",
+ *     redirects: ["www.my-app.com"]
+ *   }
+ * });
+ * ```
+ *
+ * #### Add domain aliases
+ *
+ * Allow visitors to use alternate domains without redirecting.
+ *
+ * ```js {4} title="sst.config.ts"
+ * new sst.cloudflare.ReactRouter("MyWeb", {
+ *   domain: {
+ *     name: "app1.my-app.com",
+ *     aliases: ["app2.my-app.com"]
+ *   }
+ * });
+ * ```
+ *
  * #### Link resources
  *
  * [Link resources](/docs/linking/) to your React Router app. This will grant permissions
@@ -202,6 +250,8 @@ export interface ReactRouterArgs extends SsrSiteArgs {
  *   return { files };
  * }
  * ```
+ *
+ * [Check out the full example](/docs/examples/#cloudflare-react-router).
  */
 export class ReactRouter extends SsrSite {
   constructor(

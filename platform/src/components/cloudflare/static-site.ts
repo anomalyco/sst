@@ -5,10 +5,9 @@ import { ComponentResourceOptions, all, output } from "@pulumi/pulumi";
 import { Kv, KvArgs } from "./kv.js";
 import { Component, Prettify, Transform, transform } from "../component.js";
 import { Link } from "../link.js";
-import { Input } from "../input.js";
 import { globSync } from "glob";
 import { KvData } from "./providers/kv-data.js";
-import { Worker } from "./worker.js";
+import { Worker, WorkerArgs } from "./worker.js";
 import { getContentType } from "../base/base-site.js";
 import {
   BaseStaticSiteArgs,
@@ -100,8 +99,30 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
    *   domain: "domain.com"
    * }
    * ```
+   *
+   * Redirect alternate domains to the main domain.
+   *
+   * ```js
+   * {
+   *   domain: {
+   *     name: "domain.com",
+   *     redirects: ["www.domain.com"]
+   *   }
+   * }
+   * ```
+   *
+   * Or keep visitors on alternate domains with aliases.
+   *
+   * ```js
+   * {
+   *   domain: {
+   *     name: "app1.domain.com",
+   *     aliases: ["app2.domain.com"]
+   *   }
+   * }
+   * ```
    */
-  domain?: Input<string>;
+  domain?: WorkerArgs["domain"];
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.

@@ -35,11 +35,60 @@ type App struct {
 	Home      string                 `json:"home"`
 	Version   string                 `json:"version"`
 	Protect   bool                   `json:"protect"`
-	Watch     []string               `json:"watch"`
+	Watch     Watch                  `json:"watch"`
+	State     *State                 `json:"state"`
+	Types     struct {
+		Ignore []string `json:"ignore"`
+	} `json:"types"`
 	// Deprecated: Backend is now Home
 	Backend string `json:"backend"`
 	// Deprecated: RemovalPolicy is now Removal
 	RemovalPolicy string `json:"removalPolicy"`
+}
+
+type State struct {
+	Purge bool `json:"purge"`
+}
+
+type Watch struct {
+	Paths       []string `json:"paths"`
+	Ignore      []string `json:"ignore"`
+	legacyArray bool
+}
+
+func (w Watch) UsesLegacyArray() bool {
+	return w.legacyArray
+}
+
+func (w *Watch) UnmarshalJSON(data []byte) error {
+	var paths []string
+	if err := json.Unmarshal(data, &paths); err == nil {
+		w.Paths = paths
+		w.Ignore = nil
+		w.legacyArray = true
+		return nil
+	}
+
+	type value struct {
+		Paths  []string `json:"paths"`
+		Ignore []string `json:"ignore"`
+	}
+
+	var decoded value
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+
+	for _, path := range decoded.Paths {
+		if strings.ContainsAny(path, "*?[") {
+			return util.NewReadableError(nil, fmt.Sprintf("Watch path globs are only supported in the legacy array form: %q\nUse explicit directories or ignore patterns instead: https://sst.dev/docs/reference/config/#watch", path))
+		}
+	}
+
+	w.Paths = decoded.Paths
+	w.Ignore = decoded.Ignore
+	w.legacyArray = false
+	return nil
 }
 
 type Project struct {
@@ -121,22 +170,25 @@ func New(input *ProjectConfig) (*Project, error) {
 	}
 
 	rootPath := filepath.Dir(input.Config)
+	tmp := filepath.Join(rootPath, ".sst")
+
+	pythonRuntime := python.New()
 
 	proj := &Project{
 		version: input.Version,
 		root:    rootPath,
 		config:  input.Config,
 		env:     map[string]string{},
-		Runtime: runtime.NewCollection(
-			input.Config,
-			node.New(input.Version),
-			worker.New(),
-			python.New(),
-			golang.New(),
-			rust.New(),
-		),
 	}
-	tmp := proj.PathWorkingDir()
+
+	proj.Runtime = runtime.NewCollection(
+		input.Config,
+		node.New(input.Version),
+		worker.New(),
+		pythonRuntime,
+		golang.New(),
+		rust.New(),
+	)
 
 	_, err := os.Stat(tmp)
 	if err != nil {

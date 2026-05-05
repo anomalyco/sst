@@ -15,9 +15,11 @@ export type WranglerLinkInclude = {
 export type WranglerLink = {
   name: string;
   include: WranglerLinkInclude[];
+  properties?: Record<string, unknown>;
 };
 
 export function createWranglerConfig(input: {
+  appName: string;
   appStage: string;
   name: string;
   frameworkConfig?: Record<string, any>;
@@ -37,13 +39,20 @@ export function createWranglerConfig(input: {
     config.account_id = input.accountID;
   }
 
-  const vars = { ...(input.environment ?? {}) };
+  const vars: Record<string, string> = {
+    ...(input.environment ?? {}),
+    SST_RESOURCE_App: JSON.stringify({
+      name: input.appName,
+      stage: input.appStage,
+    }),
+  };
   const kvNamespaces: Record<string, any>[] = [];
   const r2Buckets: Record<string, any>[] = [];
   const d1Databases: Record<string, any>[] = [];
   const hyperdrives: Record<string, any>[] = [];
   const services: Record<string, any>[] = [];
   const queueProducers: Record<string, any>[] = [];
+  const workflows: Record<string, any>[] = [];
   let ai: Record<string, any> | undefined;
   let versionMetadata: Record<string, any> | undefined;
 
@@ -51,7 +60,13 @@ export function createWranglerConfig(input: {
     const binding = link.include.find(
       (item) => item.type === "cloudflare.binding",
     );
-    if (!binding) continue;
+    // Links without a native Cloudflare binding (Secret, sst.aws.*, custom
+    // Linkable, etc.) are surfaced as JSON-stringified vars so they match
+    // the `secret_text` deploy path handled in `worker.ts buildBindings`.
+    if (!binding) {
+      vars[`SST_RESOURCE_${link.name}`] = JSON.stringify(link.properties ?? {});
+      continue;
+    }
 
     const properties = binding.properties ?? {};
     switch (binding.binding) {
@@ -111,6 +126,15 @@ export function createWranglerConfig(input: {
           binding: link.name,
         };
         break;
+      case "workflowBindings":
+        workflows.push({
+          binding: link.name,
+          name: stringValue(properties.workflowName),
+          class_name: stringValue(properties.className),
+          script_name: stringValue(properties.scriptName),
+          remote: true,
+        });
+        break;
     }
   }
 
@@ -142,6 +166,9 @@ export function createWranglerConfig(input: {
   }
   if (versionMetadata) {
     config.version_metadata = versionMetadata;
+  }
+  if (workflows.length > 0) {
+    config.workflows = workflows;
   }
 
   return config;

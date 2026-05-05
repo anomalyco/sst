@@ -381,23 +381,7 @@ export interface NextjsArgs extends SsrSiteArgs {
    * ```
    */
   domain?: SsrSiteArgs["domain"];
-  /**
-   * Configure how the Next.js app assets are uploaded to S3.
-   *
-   * By default, this is set to the following. Read more about these options below.
-   * ```js
-   * {
-   *   assets: {
-   *     textEncoding: "utf-8",
-   *     versionedFilesCacheHeader: "public,max-age=31536000,immutable",
-   *     nonVersionedFilesCacheHeader: "public,max-age=0,s-maxage=86400,stale-while-revalidate=8640"
-   *   }
-   * }
-   * ```
-   * Read more about these options below.
-   * @default `Object`
-   */
-  assets?: SsrSiteArgs["assets"];
+
   /**
    * Configure the [OpenNext](https://opennext.js.org) version used to build the Next.js app.
    *

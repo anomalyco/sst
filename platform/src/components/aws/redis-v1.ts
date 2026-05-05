@@ -534,7 +534,7 @@ Listening on "${dev.host}:${dev.port}"...`,
    *
    * @param name The name of the component.
    * @param clusterID The id of the existing Redis cluster.
-   * @param opts? Resource options.
+   * @param opts Resource options.
    *
    * @example
    * Imagine you create a cluster in the `dev` stage. And in your personal stage `frank`,

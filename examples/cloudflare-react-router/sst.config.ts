@@ -1,5 +1,10 @@
 /// <reference path="./.sst/platform/config.d.ts" />
 
+/**
+ * ## Cloudflare React Router
+ *
+ * Deploy a [React Router](https://reactrouter.com) app to Cloudflare.
+ */
 export default $config({
   app(input) {
     return {

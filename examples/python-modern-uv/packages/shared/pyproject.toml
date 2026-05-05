@@ -1,0 +1,13 @@
+[project]
+name = "shared"
+version = "0.1.0"
+description = "Shared models used by api and worker"
+dependencies = []
+requires-python = ">=3.11"
+
+[tool.uv]
+package = true
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

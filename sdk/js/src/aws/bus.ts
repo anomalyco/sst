@@ -1,4 +1,4 @@
-import { aws } from "./client.js";
+import { awsFetch, type AwsOptions } from "./client.js";
 import { Resource } from "../resource/index.js";
 import { event } from "../event/index.js";
 import { EventBridgeEvent, EventBridgeHandler, Context } from "aws-lambda";
@@ -37,7 +37,7 @@ export namespace bus {
     properties: Definition["$input"],
     options?: {
       metadata?: Definition["$metadata"];
-      aws?: aws.Options;
+      aws?: AwsOptions;
     },
   ): Promise<any> {
     const evt =
@@ -48,7 +48,7 @@ export namespace bus {
             metadata: options?.metadata || {},
           }
         : await def.create(properties, options?.metadata);
-    const res = await aws.fetch(
+    const res = await awsFetch(
       "events",
       "/",
       {

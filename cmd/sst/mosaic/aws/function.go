@@ -226,7 +226,7 @@ func function(ctx context.Context, input input) {
 		return build
 	}
 
-	run := func(functionID string, workerID string) bool {
+	startWorker := func(functionID string, workerID string) bool {
 		build := getBuildOutput(functionID)
 		if build == nil {
 			return false
@@ -280,6 +280,19 @@ func function(ctx context.Context, input input) {
 		return true
 	}
 
+	restartOrDeferWorker := func(workerID string, info *WorkerInfo) {
+		target, ok := targets[info.FunctionID]
+		if !ok {
+			return
+		}
+		if input.project.Runtime.ShouldRunEagerly(target.Runtime) {
+			startWorker(info.FunctionID, workerID)
+		} else {
+			log.Info("lazy startup: deferring worker restart until invoked", "workerID", workerID, "functionID", info.FunctionID)
+			delete(workers, workerID)
+		}
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -305,7 +318,7 @@ func function(ctx context.Context, input input) {
 				}
 				log.Info("worker init", "workerID", msg.Source, "functionID", init.FunctionID)
 				workerEnv[workerID] = init.Environment
-				if ok := run(init.FunctionID, workerID); !ok {
+				if ok := startWorker(init.FunctionID, workerID); !ok {
 					result, err := http.Post("http://"+server+workerID+"/runtime/init/error", "application/json", strings.NewReader(`{"errorMessage":"Function failed to build"}`))
 					if err != nil {
 						continue
@@ -385,7 +398,7 @@ func function(ctx context.Context, input input) {
 				}
 				builds = map[string]*runtime.BuildOutput{}
 				for workerID, info := range workers {
-					run(info.FunctionID, workerID)
+					restartOrDeferWorker(workerID, info)
 				}
 			case *runtime.BuildInput:
 				targets[evt.FunctionID] = evt
@@ -419,7 +432,7 @@ func function(ctx context.Context, input input) {
 
 				for workerID, info := range workers {
 					if toBuild[info.FunctionID] {
-						run(info.FunctionID, workerID)
+						restartOrDeferWorker(workerID, info)
 					}
 				}
 				break

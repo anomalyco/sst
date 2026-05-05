@@ -65,6 +65,28 @@ func (l *LocalHome) removeData(key, app, stage string) error {
 	return os.Remove(p)
 }
 
+func (l *LocalHome) purge(app, stage string) error {
+	// Single-file keys.
+	for _, key := range []string{"app", "secret"} {
+		p := l.pathForData(key, app, stage)
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	// Folder-style keys.
+	for _, key := range []string{"update", "summary", "eventlog", "snapshot"} {
+		dir := filepath.Join(global.ConfigDir(), "state", key, app, stage)
+		if err := os.RemoveAll(dir); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *LocalHome) removePassphrase(app, stage string) error {
+	return c.removeData("passphrase", app, stage)
+}
+
 // these should go into secrets manager once it's out of beta
 func (c *LocalHome) setPassphrase(app, stage string, passphrase string) error {
 	return c.putData("passphrase", app, stage, bytes.NewReader([]byte(passphrase)))

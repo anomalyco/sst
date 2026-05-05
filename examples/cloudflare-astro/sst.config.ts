@@ -1,5 +1,10 @@
 /// <reference path="./.sst/platform/config.d.ts" />
 
+/**
+ * ## Cloudflare Astro
+ *
+ * Deploy an [Astro](https://astro.build) site to Cloudflare.
+ */
 export default $config({
   app(input) {
     return {

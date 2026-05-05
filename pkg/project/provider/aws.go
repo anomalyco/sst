@@ -673,6 +673,79 @@ func (a *AwsHome) cleanup(key, app, stage string) error {
 	return nil
 }
 
+func (a *AwsHome) purge(app, stage string) error {
+	bootstrap, err := a.provider.Bootstrap(a.provider.config.Region)
+	if err != nil {
+		return err
+	}
+	s3Client := s3.NewFromConfig(a.provider.config)
+
+	prefixes := []string{
+		a.pathForData("app", app, stage),
+		a.pathForData("secret", app, stage),
+		path.Join("update", app, stage) + "/",
+		path.Join("summary", app, stage) + "/",
+		path.Join("eventlog", app, stage) + "/",
+		path.Join("snapshot", app, stage) + "/",
+	}
+	for _, prefix := range prefixes {
+		if err := a.purgePrefix(s3Client, bootstrap.State, prefix); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (a *AwsHome) purgePrefix(s3Client *s3.Client, bucket, prefix string) error {
+	slog.Info("purging prefix", "bucket", bucket, "prefix", prefix)
+
+	var keyMarker, versionMarker *string
+	for {
+		out, err := s3Client.ListObjectVersions(context.TODO(), &s3.ListObjectVersionsInput{
+			Bucket:          aws.String(bucket),
+			Prefix:          aws.String(prefix),
+			KeyMarker:       keyMarker,
+			VersionIdMarker: versionMarker,
+		})
+		if err != nil {
+			var apiErr smithy.APIError
+			if errors.As(err, &apiErr) && apiErr.ErrorCode() == "NoSuchBucket" {
+				return nil
+			}
+			return err
+		}
+
+		ids := make([]s3types.ObjectIdentifier, 0, len(out.Versions)+len(out.DeleteMarkers))
+		for _, v := range out.Versions {
+			ids = append(ids, s3types.ObjectIdentifier{Key: v.Key, VersionId: v.VersionId})
+		}
+		for _, dm := range out.DeleteMarkers {
+			ids = append(ids, s3types.ObjectIdentifier{Key: dm.Key, VersionId: dm.VersionId})
+		}
+
+		// DeleteObjects accepts at most 1000 keys per call.
+		for i := 0; i < len(ids); i += 1000 {
+			end := i + 1000
+			if end > len(ids) {
+				end = len(ids)
+			}
+			if _, err := s3Client.DeleteObjects(context.TODO(), &s3.DeleteObjectsInput{
+				Bucket: aws.String(bucket),
+				Delete: &s3types.Delete{Objects: ids[i:end], Quiet: aws.Bool(true)},
+			}); err != nil {
+				return err
+			}
+		}
+
+		if out.IsTruncated == nil || !*out.IsTruncated {
+			break
+		}
+		keyMarker = out.NextKeyMarker
+		versionMarker = out.NextVersionIdMarker
+	}
+	return nil
+}
+
 func (a *AwsHome) getPassphrase(app string, stage string) (string, error) {
 	ssmClient := ssm.NewFromConfig(a.provider.config)
 
@@ -689,6 +762,22 @@ func (a *AwsHome) getPassphrase(app string, stage string) (string, error) {
 		return "", err
 	}
 	return *result.Parameter.Value, nil
+}
+
+func (a *AwsHome) removePassphrase(app, stage string) error {
+	ssmClient := ssm.NewFromConfig(a.provider.config)
+
+	_, err := ssmClient.DeleteParameter(context.TODO(), &ssm.DeleteParameterInput{
+		Name: aws.String(a.pathForPassphrase(app, stage)),
+	})
+	if err != nil {
+		var pnf *ssmTypes.ParameterNotFound
+		if errors.As(err, &pnf) {
+			return nil
+		}
+		return err
+	}
+	return nil
 }
 
 func (a *AwsHome) setPassphrase(app, stage, passphrase string) error {

@@ -997,7 +997,7 @@ Listening on "${dev.host}:${dev.port}"...`,
    *
    * @param name The name of the component.
    * @param args The arguments to get the MySQL database.
-   * @param opts? Resource options.
+   * @param opts Resource options.
    *
    * @example
    * Imagine you create a database in the `dev` stage. And in your personal stage `frank`,

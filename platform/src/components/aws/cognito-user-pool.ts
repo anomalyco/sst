@@ -933,7 +933,7 @@ export class CognitoUserPool extends Component implements Link.Linkable {
    *
    * @param name Name of the client.
    * @param args Configure the client.
-   * @param opts? Resource options.
+   * @param opts Resource options.
    *
    * @example
    *
@@ -941,7 +941,11 @@ export class CognitoUserPool extends Component implements Link.Linkable {
    * userPool.addClient("Web");
    * ```
    */
-  public addClient(name: string, args?: CognitoUserPoolClientArgs) {
+  public addClient(
+    name: string,
+    args?: CognitoUserPoolClientArgs,
+    opts?: ComponentResourceOptions,
+  ) {
     // Note: Referencing an existing client will be implemented in the future:
     // sst.aws.UserPool.getClient("pool", { userPooldID, clientID });
 
@@ -951,7 +955,7 @@ export class CognitoUserPool extends Component implements Link.Linkable {
         userPool: this.id,
         ...args,
       },
-      { provider: this.constructorOpts.provider },
+      { provider: this.constructorOpts.provider, ...opts },
     );
   }
 

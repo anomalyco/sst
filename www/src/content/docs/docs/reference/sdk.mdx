@@ -120,7 +120,7 @@ const bucket = new sst.aws.Bucket("MyBucket");
 
 new sst.aws.Function("MyFunction", {
   handler: "functions/src/functions/api.handler",
-  runtime: "python3.11",
+  runtime: "python3.13",
   link: [bucket]
 });
 ```

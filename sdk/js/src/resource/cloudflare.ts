@@ -1,18 +1,21 @@
 import { env } from "cloudflare:workers";
 
-import { loadFromCloudflareEnv, Resource } from "./shared.js";
+import { createResource, loadResourceEnvironment } from "./shared.js";
+import type { Resource as BaseResource } from "./node.js";
 
-loadFromCloudflareEnv(env);
-
-export function fromCloudflareEnv(input: any) {
-  loadFromCloudflareEnv(input);
+function loadCloudflareResources() {
+  loadResourceEnvironment(env);
 }
 
 export function wrapCloudflareHandler(handler: any) {
+  if (handler == null) {
+    return undefined;
+  }
+
   if (typeof handler === "function" && handler.hasOwnProperty("prototype")) {
     return class extends handler {
       constructor(ctx: any, env: any) {
-        loadFromCloudflareEnv(env);
+        loadResourceEnvironment(env);
         super(ctx, env);
       }
     };
@@ -20,7 +23,7 @@ export function wrapCloudflareHandler(handler: any) {
 
   function wrap(fn: any) {
     return function (req: any, env: any, ...rest: any[]) {
-      loadFromCloudflareEnv(env);
+      loadResourceEnvironment(env);
       return fn(req, env, ...rest);
     };
   }
@@ -32,4 +35,6 @@ export function wrapCloudflareHandler(handler: any) {
   return result;
 }
 
-export { Resource };
+// Keep an interface here so generated sst-env.d.ts can augment Resource.
+export interface Resource extends BaseResource {}
+export const Resource = createResource<Resource>(loadCloudflareResources);
