@@ -37,17 +37,27 @@ export class BusQueueSubscriber extends Component {
       queue instanceof Queue ? queue.arn : output(queue),
     );
 
+    // Detect cross-account scenario by comparing account IDs
     const isCrossAccount = output(busArn).apply((busArnStr) =>
       queueArn.apply((queueArnStr) => {
         const busParsed = parseArn(busArnStr);
         const queueParsed = parseArn(queueArnStr);
-        return busParsed.account !== queueParsed.account;
+        const crossAccount = busParsed.account !== queueParsed.account;
+        console.log("Cross-account detection:", {
+          busAccount: busParsed.account,
+          queueAccount: queueParsed.account,
+          isCrossAccount: crossAccount,
+        });
+        return crossAccount;
       }),
     );
 
+    // Create IAM role only for cross-account scenarios
+    // This role allows EventBridge in the bus's account to send messages to the queue
     const targetRole = isCrossAccount.apply((crossAccount) => {
       if (!crossAccount) return undefined;
 
+      // IAM role created in bus's account (using the provided provider)
       const role = new iam.Role(
         `${name}TargetRole`,
         {
@@ -58,6 +68,7 @@ export class BusQueueSubscriber extends Component {
         { provider: opts?.provider },
       );
 
+      // Inline policy granting sqs:SendMessage to the target queue
       new iam.RolePolicy(
         `${name}TargetRolePolicy`,
         {
@@ -90,12 +101,21 @@ export class BusQueueSubscriber extends Component {
     this.target = target;
 
     function createPolicy() {
+      // For cross-account: create queue policy WITHOUT parent to force default provider
+      // For same-account: use Queue.createPolicy with normal parent relationship
       return isCrossAccount.apply((crossAccount) => {
         if (crossAccount) {
+          // Cross-account: Create policy directly with default provider (no parent)
+          // This is CRITICAL - the policy must be in the queue's account, not bus's account
+          // Get the role ARN for the queue policy principal
+          const roleArn = targetRole.apply((role) => role?.arn);
+          
           return new sqs.QueuePolicy(
             `${name}Policy`,
             {
               queueUrl: queueArn.apply((arn) => {
+                // Parse SQS ARN: arn:aws:sqs:region:account-id:queue-name
+                // Queue URL: https://sqs.{region}.amazonaws.com/{account-id}/{queue-name}
                 const parsed = parseArn(arn);
                 return `https://sqs.${parsed.region}.amazonaws.com/${parsed.account}/${parsed.resource}`;
               }),
@@ -106,18 +126,20 @@ export class BusQueueSubscriber extends Component {
                     resources: [queueArn],
                     principals: [
                       {
-                        type: "Service",
-                        identifiers: ["events.amazonaws.com"],
+                        type: "AWS",
+                        identifiers: [roleArn],
                       },
                     ],
                   },
                 ],
               }).json,
             },
-            { retainOnDelete: true },
+            { retainOnDelete: true }, // No parent, no provider = default provider
           );
+        } else {
+          // Same-account: Use normal Queue.createPolicy with parent
+          return Queue.createPolicy(`${name}Policy`, queueArn, { parent: self });
         }
-        return Queue.createPolicy(`${name}Policy`, queueArn, { parent: self });
       });
     }
 
@@ -130,6 +152,7 @@ export class BusQueueSubscriber extends Component {
             arn: queueArn,
             rule: rule.name,
             eventBusName: bus.name,
+            // roleArn is required only for cross-account scenarios
             roleArn: targetRole?.arn,
           },
           { parent: self },
