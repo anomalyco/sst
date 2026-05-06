@@ -180,3 +180,36 @@ export function parseDsqlPrivateEndpoint(
     );
   return privateDnsName.replace("*", clusterId);
 }
+
+/**
+ * Parses a generic AWS ARN and extracts its components.
+ * ARN format: arn:aws:service:region:account-id:resource
+ *
+ * @param arn - The ARN string to parse
+ * @returns Object with service, region, account, and resource components
+ * @throws VisibleError if the ARN format is invalid
+ *
+ * @example
+ * ```typescript
+ * parseArn("arn:aws:events:us-east-1:123456789012:event-bus/my-bus")
+ * // Returns: { service: "events", region: "us-east-1", account: "123456789012", resource: "event-bus/my-bus" }
+ * ```
+ */
+export function parseArn(arn: string): {
+  service: string;
+  region: string;
+  account: string;
+  resource: string;
+} {
+  // ARN format: arn:aws:service:region:account-id:resource
+  const parts = arn.split(":");
+  if (parts[0] !== "arn" || parts.length < 6) {
+    throw new VisibleError(`Invalid ARN format: ${arn}`);
+  }
+  return {
+    service: parts[2],
+    region: parts[3],
+    account: parts[4],
+    resource: parts.slice(5).join(":"),
+  };
+}

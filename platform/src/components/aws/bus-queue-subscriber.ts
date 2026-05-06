@@ -1,8 +1,9 @@
 import { ComponentResourceOptions, Input, output } from "@pulumi/pulumi";
 import { Component, transform } from "../component";
 import { BusBaseSubscriberArgs, createRule } from "./bus-base-subscriber";
-import { cloudwatch, sqs } from "@pulumi/aws";
+import { cloudwatch, sqs, iam } from "@pulumi/aws";
 import { Queue } from "./queue";
+import { parseArn } from "./helpers/arn";
 
 export interface Args extends BusBaseSubscriberArgs {
   /**
@@ -22,7 +23,7 @@ export interface Args extends BusBaseSubscriberArgs {
  * You'll find this component returned by the `subscribeQueue` method of the `Bus` component.
  */
 export class BusQueueSubscriber extends Component {
-  private readonly policy: sqs.QueuePolicy;
+  private readonly policy: Output<sqs.QueuePolicy>;
   private readonly rule: cloudwatch.EventRule;
   private readonly target: cloudwatch.EventTarget;
 
@@ -31,9 +32,55 @@ export class BusQueueSubscriber extends Component {
 
     const self = this;
     const bus = output(args.bus);
+    const busArn = bus.arn;
     const queueArn = output(args.queue).apply((queue) =>
       queue instanceof Queue ? queue.arn : output(queue),
     );
+
+    const isCrossAccount = output(busArn).apply((busArnStr) =>
+      queueArn.apply((queueArnStr) => {
+        const busParsed = parseArn(busArnStr);
+        const queueParsed = parseArn(queueArnStr);
+        return busParsed.account !== queueParsed.account;
+      }),
+    );
+
+    const targetRole = isCrossAccount.apply((crossAccount) => {
+      if (!crossAccount) return undefined;
+
+      const role = new iam.Role(
+        `${name}TargetRole`,
+        {
+          assumeRolePolicy: iam.assumeRolePolicyForPrincipal({
+            Service: "events.amazonaws.com",
+          }),
+        },
+        { provider: opts?.provider },
+      );
+
+      new iam.RolePolicy(
+        `${name}TargetRolePolicy`,
+        {
+          role: role.id,
+          policy: queueArn.apply((arn) =>
+            JSON.stringify({
+              Version: "2012-10-17",
+              Statement: [
+                {
+                  Effect: "Allow",
+                  Action: "sqs:SendMessage",
+                  Resource: arn,
+                },
+              ],
+            }),
+          ),
+        },
+        { provider: opts?.provider },
+      );
+
+      return role;
+    });
+
     const policy = createPolicy();
     const rule = createRule(name, bus.name, args, self);
     const target = createTarget();
@@ -43,7 +90,35 @@ export class BusQueueSubscriber extends Component {
     this.target = target;
 
     function createPolicy() {
-      return Queue.createPolicy(`${name}Policy`, queueArn, { parent: self });
+      return isCrossAccount.apply((crossAccount) => {
+        if (crossAccount) {
+          return new sqs.QueuePolicy(
+            `${name}Policy`,
+            {
+              queueUrl: queueArn.apply((arn) => {
+                const parsed = parseArn(arn);
+                return `https://sqs.${parsed.region}.amazonaws.com/${parsed.account}/${parsed.resource}`;
+              }),
+              policy: iam.getPolicyDocumentOutput({
+                statements: [
+                  {
+                    actions: ["sqs:SendMessage"],
+                    resources: [queueArn],
+                    principals: [
+                      {
+                        type: "Service",
+                        identifiers: ["events.amazonaws.com"],
+                      },
+                    ],
+                  },
+                ],
+              }).json,
+            },
+            { retainOnDelete: true },
+          );
+        }
+        return Queue.createPolicy(`${name}Policy`, queueArn, { parent: self });
+      });
     }
 
     function createTarget() {
@@ -55,6 +130,7 @@ export class BusQueueSubscriber extends Component {
             arn: queueArn,
             rule: rule.name,
             eventBusName: bus.name,
+            roleArn: targetRole?.arn,
           },
           { parent: self },
         ),

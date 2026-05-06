@@ -479,6 +479,7 @@ export class Bus extends Component implements Link.Linkable {
       this.nodes.bus.name,
       queue,
       args,
+      { provider: this.constructorOpts.provider },
     );
   }
 
@@ -526,10 +527,11 @@ export class Bus extends Component implements Link.Linkable {
     busArn: Input<string>,
     queue: Input<string | Queue>,
     args?: BusSubscriberArgs,
+    opts?: ComponentResourceOptions,
   ) {
     return output(busArn).apply((busArn) => {
       const busName = parseEventBusArn(busArn).busName;
-      return this._subscribeQueue(busName, name, busArn, busName, queue, args);
+      return this._subscribeQueue(busName, name, busArn, busName, queue, args, opts);
     });
   }
 
@@ -540,13 +542,18 @@ export class Bus extends Component implements Link.Linkable {
     busName: Input<string>,
     queue: Input<string | Queue>,
     args: BusSubscriberArgs = {},
+    opts: ComponentResourceOptions = {},
   ) {
     return output(args).apply((args) => {
-      return new BusQueueSubscriber(`${name}Subscriber${subscriberName}`, {
-        bus: { name: busName, arn: busArn },
-        queue,
-        ...args,
-      });
+      return new BusQueueSubscriber(
+        `${name}Subscriber${subscriberName}`,
+        {
+          bus: { name: busName, arn: busArn },
+          queue,
+          ...args,
+        },
+        opts,
+      );
     });
   }
 
