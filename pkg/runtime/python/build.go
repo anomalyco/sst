@@ -90,6 +90,13 @@ func buildDeploy(ctx context.Context, input *runtime.BuildInput, cacheDir string
 		return nil, fmt.Errorf("dependency installation: %w", err)
 	}
 
+	// Precompile the function's own source files (deps are already compiled in the cache).
+	if !input.IsContainer {
+		if err := precompilePythonFiles(ctx, input, input.Out()); err != nil {
+			slog.Warn("failed to precompile Python source files", "error", err)
+		}
+	}
+
 	output, err := createFinalBuildOutput(input, projectInfo)
 	if err != nil {
 		return nil, fmt.Errorf("build output: %w", err)
@@ -140,6 +147,38 @@ func createFinalBuildOutput(input *runtime.BuildInput, projectInfo *projectInfo)
 		Errors:     []string{},
 		Sourcemaps: []string{},
 	}, nil
+}
+
+// precompilePythonFiles runs `python -m compileall` on the given directory to generate
+// .pyc bytecode files. Uses -s/-p flags to rewrite paths so bytecode matches the Lambda
+// runtime path (/var/task/) rather than the local build path. Uses checked-hash invalidation
+// so Python validates by source hash (not mtime) — avoids stale detection after zip extraction.
+// Uses --python flag to match the target Lambda runtime version.
+func precompilePythonFiles(ctx context.Context, input *runtime.BuildInput, dir string) error {
+	// Determine the target Python version from the runtime (e.g., "python3.12" -> "3.12")
+	pythonVersion := ""
+	if input.Runtime != "" {
+		pythonVersion = strings.TrimPrefix(input.Runtime, "python")
+	}
+	if pythonVersion == "" || pythonVersion == input.Runtime {
+		pythonVersion = "3.13" // default
+	}
+
+	args := []string{"run", "--python", pythonVersion, "python", "-m", "compileall",
+		"-q",
+		"--invalidation-mode", "checked-hash",
+		"-s", dir,
+		"-p", "/var/task",
+		dir}
+
+	cmd := process.CommandContext(ctx, "uv", args...)
+	cmd.Dir = dir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("compileall failed: %v\n%s", err, string(output))
+	}
+	slog.Info("precompiled Python bytecode", "dir", dir, "pythonVersion", pythonVersion)
+	return nil
 }
 
 // ensureDockerfile ensures a Dockerfile exists in the output directory for container builds.
@@ -952,6 +991,11 @@ func copySyncedDependencies(ctx context.Context, input *runtime.BuildInput, proj
 		slog.Warn("failed to clean up installed dependencies", "error", err)
 	}
 
+	// Precompile bytecode in the cache so all functions sharing these deps benefit
+	if err := precompilePythonFiles(ctx, input, depsCacheDir); err != nil {
+		slog.Warn("failed to precompile dependencies in cache", "error", err)
+	}
+
 	if err := copyDependencyPackages(depsCacheDir, input.Out()); err != nil {
 		return fmt.Errorf("failed to copy dependencies to artifact: %w", err)
 	}
@@ -1016,16 +1060,10 @@ func cleanupInstalledDependencies(targetDir string) error {
 			return nil
 		}
 
-		// Remove __pycache__ directories
-		if info.IsDir() && info.Name() == "__pycache__" {
-			os.RemoveAll(path)
-			return filepath.SkipDir
-		}
-
 		if !info.IsDir() {
 			ext := filepath.Ext(info.Name())
 			fileName := info.Name()
-			if ext == ".pyc" || ext == ".pyo" || ext == ".pyd" || fileName == ".DS_Store" {
+			if ext == ".pyo" || fileName == ".DS_Store" {
 				os.Remove(path)
 			}
 		}
@@ -1090,7 +1128,7 @@ func copyDependencyPackages(srcDir, destDir string) error {
 		name := entry.Name()
 
 		// Skip special directories and non-package files
-		if name == "__pycache__" || strings.HasPrefix(name, ".") {
+		if strings.HasPrefix(name, ".") {
 			continue
 		}
 
@@ -1571,7 +1609,7 @@ func runUvCommand(ctx context.Context, command string, args []string, workingDir
 var defaultExcludePatterns = []string{
 	".sst", ".git", ".gitignore", ".gitattributes",
 
-	"__pycache__", "*.pyc", "*.pyo", "*.pyd",
+	"*.pyo", "*.pyd",
 	".pytest_cache", "*.egg-info", ".coverage", "htmlcov",
 
 	".venv", "venv", ".env", "env",
