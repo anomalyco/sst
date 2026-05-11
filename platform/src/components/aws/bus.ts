@@ -51,6 +51,19 @@ export interface BusArgs {
 
 export interface BusSubscriberArgs {
   /**
+   * Configures whether the subscriber is enabled. When disabled, the EventBridge
+   * rule is still created, but it won't receive events.
+   *
+   * @default true
+   * @example
+   * ```ts
+   * {
+   *   enabled: false
+   * }
+   * ```
+   */
+  enabled?: Input<boolean>;
+  /**
    * Filter the messages that'll be processed by the subscriber.
    *
    * If any single property in the pattern doesn't match
