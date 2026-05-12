@@ -66,3 +66,5 @@ jobs:
 
       - name: Build docs
         run: cd www && bun run build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
