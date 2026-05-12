@@ -733,17 +733,6 @@ export interface BucketNotificationsArgs {
   };
 }
 
-type BucketEventBridgeDetailType =
-  | "Object Created"
-  | "Object Deleted"
-  | "Object Restore Initiated"
-  | "Object Restore Completed"
-  | "Object Restore Expired"
-  | "Object Tags Added"
-  | "Object Tags Deleted"
-  | "Object ACL Updated"
-  | (string & {});
-
 export interface BucketEventBridgeSubscriberArgs
   extends Omit<BusSubscriberArgs, "pattern"> {
   /**
@@ -761,7 +750,19 @@ export interface BucketEventBridgeSubscriberArgs
      * }
      * ```
      */
-    detailType?: Input<Input<BucketEventBridgeDetailType>[]>;
+    detailType?: Input<
+      Input<
+        | "Object Created"
+        | "Object Deleted"
+        | "Object Restore Initiated"
+        | "Object Restore Completed"
+        | "Object Restore Expired"
+        | "Object Tags Added"
+        | "Object Tags Deleted"
+        | "Object ACL Updated"
+        | string
+      >[]
+    >;
     /**
      * An object of `detail` values to match.
      *
@@ -779,12 +780,6 @@ export interface BucketEventBridgeSubscriberArgs
     detail?: Record<string, any>;
   }>;
 }
-
-type BucketNotifyArgs =
-  | (BucketNotificationsArgs & { eventBridge: true })
-  | (BucketNotificationsArgs & {
-      notifications: NonNullable<BucketNotificationsArgs["notifications"]>;
-    });
 
 /**
  * @internal
@@ -1381,10 +1376,15 @@ export class Bucket extends Component implements Link.Linkable {
    * });
    * ```
    */
-  public notify(args: BucketNotifyArgs) {
+  public notify(args: BucketNotificationsArgs) {
     if (this.isSubscribed) {
       throw new VisibleError(
         `Cannot call "notify" on the "${this.constructorName}" bucket multiple times. Calling it again will override previous notifications.`,
+      );
+    }
+    if (!args.eventBridge && !args.notifications) {
+      throw new VisibleError(
+        `Cannot call "notify" on the "${this.constructorName}" bucket without notifications or EventBridge enabled.`,
       );
     }
     this.isSubscribed = true;
