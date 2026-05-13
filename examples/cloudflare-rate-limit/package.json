@@ -1,0 +1,9 @@
+{
+  "name": "cloudflare-rate-limit",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "@cloudflare/workers-types": "^4.20260426.1",
+    "sst": "file:../../sdk/js"
+  }
+}

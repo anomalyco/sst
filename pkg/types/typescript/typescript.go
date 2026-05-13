@@ -27,6 +27,7 @@ var mapping = map[string]string{
 	"hyperdriveBindings":      "Hyperdrive",
 	"versionMetadataBindings": "WorkerVersionMetadata",
 	"workflowBindings":        "Workflow",
+	"rateLimitBindings":       "RateLimit",
 }
 
 var header = strings.Join([]string{

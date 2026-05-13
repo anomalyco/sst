@@ -39,14 +39,13 @@ func TestDeployBuilder_CleanupInstalledDependencies(t *testing.T) {
 		}
 	}
 
-	// __pycache__ should be removed
-	if _, err := os.Stat(filepath.Join(tempDir, "requests", "__pycache__")); err == nil {
-		t.Error("__pycache__ should have been removed")
+	// __pycache__ and .pyc files should be preserved (needed for cold start performance)
+	if _, err := os.Stat(filepath.Join(tempDir, "requests", "__pycache__")); err != nil {
+		t.Error("__pycache__ should have been preserved for bytecode caching")
 	}
 
-	// .pyc files should be removed
-	if _, err := os.Stat(filepath.Join(tempDir, "some_module.pyc")); err == nil {
-		t.Error(".pyc files should have been removed")
+	if _, err := os.Stat(filepath.Join(tempDir, "some_module.pyc")); err != nil {
+		t.Error(".pyc files should have been preserved for bytecode caching")
 	}
 }
 
@@ -160,11 +159,11 @@ func TestIsIgnored(t *testing.T) {
 				"core/models.py":                 false,
 				".sst/cache/build.json":          true,
 				".git/config":                    true,
-				"functions/__pycache__/test.pyc": true,
+				"functions/__pycache__/test.pyc": false, // preserved for bytecode caching
 				".pytest_cache/v/cache":          true,
 				"node_modules/package/index.js":  true,
 				".DS_Store":                      true,
-				"test.pyc":                       true,
+				"test.pyc":                       false, // preserved for bytecode caching
 				"module.pyo":                     true,
 				".coverage":                      true,
 				"htmlcov/index.html":             true,

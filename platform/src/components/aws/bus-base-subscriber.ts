@@ -31,6 +31,9 @@ export function createRule(
       `${name}Rule`,
       {
         eventBusName,
+        state: output(args.enabled ?? true).apply((v: boolean) =>
+          v ? "ENABLED" : "DISABLED",
+        ),
         eventPattern: args.pattern
           ? output(args.pattern).apply((pattern) =>
               JSON.stringify({

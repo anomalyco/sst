@@ -15,6 +15,7 @@ export * from "./astro";
 export * from "./react-router";
 export * from "./tan-stack-start";
 export * from "./workflow";
+export * from "./rate-limit";
 export { binding } from "./binding.js";
 
 /**
