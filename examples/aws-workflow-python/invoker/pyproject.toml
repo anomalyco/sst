@@ -3,7 +3,7 @@ name = "invoker"
 version = "0.1.0"
 description = "A SST app"
 dependencies = [
-    "sst",
+    "sst-sdk",
     "boto3 (>=1.42.59,<2.0.0)"
 ]
 requires-python = "==3.13.*"
@@ -18,4 +18,4 @@ packages = ["main"]
 
 
 [tool.uv.sources]
-sst = { git = "https://github.com/sst/sst.git", subdirectory = "sdk/python", branch = "dev" }
+sst-sdk = { git = "https://github.com/sst/sst.git", subdirectory = "sdk/python", branch = "dev" }
