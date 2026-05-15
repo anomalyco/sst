@@ -11,4 +11,4 @@ build-backend = "hatchling.build"
 
 [tool.uv.sources]
 core = { workspace = true }
-sst-sdk = { git = "https://github.com/sst/sst.git", branch = "dev", subdirectory = "sdk/python" }
+sst-sdk = { git = "https://github.com/anomalyco/sst.git", branch = "dev", subdirectory = "sdk/python" }

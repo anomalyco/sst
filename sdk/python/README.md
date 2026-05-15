@@ -24,7 +24,7 @@ If you were previously installing the SDK from GitHub:
 dependencies = ["sst"]
 
 [tool.uv.sources]
-sst = { git = "https://github.com/sst/sst", subdirectory = "sdk/python" }
+sst = { git = "https://github.com/anomalyco/sst", subdirectory = "sdk/python" }
 ```
 
 Update your `pyproject.toml` to use the PyPI package instead:

@@ -62,7 +62,7 @@
  *
  * ```toml title="functions/pyproject.toml"
  * [tool.uv.sources]
- * sst = { git = "https://github.com/sst/sst.git", subdirectory = "sdk/python", branch = "dev" }
+ * sst = { git = "https://github.com/anomalyco/sst.git", subdirectory = "sdk/python", branch = "dev" }
  * ```
  *
  * You also want to set the Python version in your `pyproject.toml` to the same
