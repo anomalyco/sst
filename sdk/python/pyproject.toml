@@ -32,6 +32,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/sst"]
+artifacts = ["sst"]
 
 [tool.hatch.build.targets.sdist]
 include = ["src/sst", "pyproject.toml", "README.md"]
