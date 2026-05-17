@@ -71,7 +71,7 @@ func (p *Project) Run(ctx context.Context, input *StackInput) error {
 	defer workdir.Cleanup()
 
 	var passphrase string
-	if input.Command == "deploy" || input.Dev {
+	if input.Command == "deploy" || input.Command == "diff" || input.Dev {
 		passphrase, err = provider.GetOrCreatePassphrase(p.home, p.app.Name, p.app.Stage)
 	} else {
 		passphrase, err = provider.GetPassphrase(p.home, p.app.Name, p.app.Stage)
@@ -99,7 +99,7 @@ func (p *Project) Run(ctx context.Context, input *StackInput) error {
 	_, err = workdir.Pull()
 	if err != nil {
 		if errors.Is(err, provider.ErrStateNotFound) {
-			if input.Command != "deploy" {
+			if input.Command != "deploy" && input.Command != "diff" {
 				return ErrStageNotFound
 			}
 			cmd := process.Command(global.PulumiPath(), "stack", "init", "organization/"+p.app.Name+"/"+p.app.Stage)
