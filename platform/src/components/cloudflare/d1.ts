@@ -185,10 +185,36 @@ export class D1 extends Component implements Link.Linkable {
     name: string,
     args: { databaseId: string; accountId?: string },
     opts?: ComponentResourceOptions,
+  ): D1;
+  /**
+   * @deprecated Use the object-based `args` signature instead: `get(name, { databaseId }, opts)`.
+   */
+  public static get(
+    name: string,
+    databaseId: string,
+    opts?: ComponentResourceOptions,
+  ): D1;
+
+  public static get(
+    name: string,
+    argsOrDatabaseId: { databaseId: string; accountId?: string } | string,
+    opts?: ComponentResourceOptions,
   ) {
+    if (typeof argsOrDatabaseId === "string") {
     const database = cloudflare.D1Database.get(
       `${name}Database`,
-      `${args.accountId ?? DEFAULT_ACCOUNT_ID}/${args.databaseId}`,
+      `${DEFAULT_ACCOUNT_ID}/${argsOrDatabaseId}`,
+      undefined,
+      opts,
+    );
+    return new D1(name, {
+      ref: true,
+      database,
+    } as D1Args);
+    }
+    const database = cloudflare.D1Database.get(
+      `${name}Database`,
+      `${argsOrDatabaseId.accountId ?? DEFAULT_ACCOUNT_ID}/${argsOrDatabaseId.databaseId}`,
       undefined,
       opts,
     );
