@@ -26,7 +26,7 @@ export function createWranglerConfig(input: {
   compatibility: WranglerCompatibility;
   environment?: Record<string, string>;
   links?: WranglerLink[];
-  accountID?: string;
+  accountId?: string;
 }) {
   const config: Record<string, any> = {
     ...(input.frameworkConfig ?? {}),
@@ -35,8 +35,8 @@ export function createWranglerConfig(input: {
     compatibility_flags: input.compatibility.flags,
   };
 
-  if (input.accountID) {
-    config.account_id = input.accountID;
+  if (input.accountId) {
+    config.account_id = input.accountId;
   }
 
   const vars: Record<string, string> = {

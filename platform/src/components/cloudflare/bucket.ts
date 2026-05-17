@@ -4,8 +4,15 @@ import { Component, Transform, transform } from "../component";
 import { Link } from "../link.js";
 import { binding } from "./binding.js";
 import { DEFAULT_ACCOUNT_ID } from "./account-id";
+import type { Input } from "../input";
 
 export interface BucketArgs {
+  /**
+   * The Cloudflare account ID to use for this R2 Bucket.
+   * Overrides the default account ID set via `CLOUDFLARE_DEFAULT_ACCOUNT_ID`.
+   * @internal
+   */
+  accountId?: Input<string>;
   /**
    * [Transform](/docs/components/#transform) how this component creates its underlying
    * resources.
@@ -73,7 +80,7 @@ export class Bucket extends Component implements Link.Linkable {
           `${name}Bucket`,
           {
             name: "",
-            accountId: DEFAULT_ACCOUNT_ID,
+            accountId: args?.accountId ?? DEFAULT_ACCOUNT_ID,
           },
           { parent },
         ),

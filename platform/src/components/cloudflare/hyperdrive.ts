@@ -137,6 +137,13 @@ export interface HyperdriveArgs {
      */
     user: Input<string>;
   }>;
+
+  /**
+   * The Cloudflare account ID to use for this Hyperdrive.
+   * Overrides the default account ID set via `CLOUDFLARE_DEFAULT_ACCOUNT_ID`.
+   * @internal
+   */
+  accountId?: Input<string>;
   /**
    * [Transform](/docs/components/#transform) how this component creates its underlying
    * resources.
@@ -245,7 +252,7 @@ export class Hyperdrive extends Component implements Link.Linkable {
         args.transform?.hyperdrive,
         `${name}Hyperdrive`,
         {
-          accountId: DEFAULT_ACCOUNT_ID,
+        accountId: args.accountId ?? DEFAULT_ACCOUNT_ID,
           caching,
           mtls: args.mtls,
           name: "",

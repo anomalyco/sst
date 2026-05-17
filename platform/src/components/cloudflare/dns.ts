@@ -63,6 +63,12 @@ export interface DnsArgs {
    */
   zone?: Input<string>;
   /**
+   * The Cloudflare account ID to use for zone lookups.
+   * Overrides the default account ID set via `CLOUDFLARE_DEFAULT_ACCOUNT_ID`.
+   * @internal
+   */
+  accountId?: Input<string>;
+  /**
    * Configure ALIAS DNS records as [proxy records](https://developers.cloudflare.com/learning-paths/get-started-free/onboarding/proxy-dns-records/).
    *
    * :::tip
@@ -118,7 +124,7 @@ export function dns(args: DnsArgs = {}) {
     const zone = new ZoneLookup(
       `${namePrefix}${recordType}${recordName}ZoneLookup`,
       {
-        accountId: DEFAULT_ACCOUNT_ID,
+        accountId: args.accountId ?? DEFAULT_ACCOUNT_ID,
         domain: recordName.replace(/\.$/, ""),
       },
       opts,
@@ -169,6 +175,7 @@ export function dns(args: DnsArgs = {}) {
           zoneId: zone.id,
           type: "CAA",
           name: zone.name,
+          accountId: args.accountId,
           data: {
             flags: "0",
             tag: "issue",
@@ -183,6 +190,7 @@ export function dns(args: DnsArgs = {}) {
           zoneId: zone.id,
           type: "CAA",
           name: zone.name,
+          accountId: args.accountId,
           data: {
             flags: "0",
             tag: "issuewild",

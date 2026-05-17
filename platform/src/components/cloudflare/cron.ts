@@ -81,6 +81,12 @@ export interface CronArgs {
    */
   schedules: Input<string[]>;
   /**
+   * The Cloudflare account ID to use for this Cron and its worker.
+   * Overrides the default account ID set via `CLOUDFLARE_DEFAULT_ACCOUNT_ID`.
+   * @internal
+   */
+  accountId?: Input<string>;
+  /**
    * [Transform](/docs/components/#transform) how this component creates its underlying
    * resources.
    */
@@ -142,7 +148,6 @@ export class Cron extends Component {
     const workerArgs = normalizeWorker();
     const worker = createWorker();
     const trigger = createTrigger();
-
     this.worker = worker;
     this.trigger = trigger;
 
@@ -159,7 +164,7 @@ export class Cron extends Component {
         throw new VisibleError(
           `You must provide a "worker" for the "${name}" Cron component.`,
         );
-      return workerBuilder(`${name}Handler`, workerArgs);
+      return workerBuilder(`${name}Handler`, workerArgs, undefined, undefined, args.accountId);
     }
 
     function createTrigger() {
@@ -169,7 +174,7 @@ export class Cron extends Component {
             args.transform?.trigger,
             `${name}Trigger`,
             {
-              accountId: DEFAULT_ACCOUNT_ID,
+              accountId: args.accountId ?? DEFAULT_ACCOUNT_ID,
               scriptName: worker.script.scriptName,
               schedules: schedules.map((s) => ({ cron: s })),
             },

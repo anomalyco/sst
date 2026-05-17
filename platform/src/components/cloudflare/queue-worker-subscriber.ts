@@ -25,6 +25,12 @@ export interface QueueWorkerSubscriberArgs {
    */
   subscriber: Input<string | WorkerArgs>;
   /**
+   * The Cloudflare account ID to use for this subscriber and its consumer.
+   * Overrides the default account ID set via `CLOUDFLARE_DEFAULT_ACCOUNT_ID`.
+   * @internal
+  */
+  accountId?: Input<string>;
+  /**
    * The dead letter queue to send messages that fail processing.
    *
    * When `dlq` is configured, `dlq.queue` is required.
@@ -116,6 +122,7 @@ export class QueueWorkerSubscriber extends Component {
 
     const self = this;
     const queue = output(args.queue);
+    const accountId = args.accountId ?? DEFAULT_ACCOUNT_ID;
     const worker = createWorker();
     const batchSize = output(args.batch?.size ?? 10);
     const window = output(args.batch?.window ?? "5 seconds");
@@ -131,6 +138,7 @@ export class QueueWorkerSubscriber extends Component {
         args.subscriber,
         args.transform?.worker,
         { parent: self },
+        accountId,
       );
     }
 
@@ -140,7 +148,7 @@ export class QueueWorkerSubscriber extends Component {
           args.transform?.consumer,
           `${name}Consumer`,
           {
-            accountId: DEFAULT_ACCOUNT_ID,
+            accountId: accountId,
             deadLetterQueue: args.dlq?.queue,
             queueId: queue.id,
             scriptName: worker.script.scriptName,

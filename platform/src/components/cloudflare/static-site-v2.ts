@@ -162,6 +162,12 @@ export interface StaticSiteV2Args extends Omit<BaseStaticSiteArgs, "vite"> {
      */
     server?: Transform<WorkerArgs>;
   };
+  /**
+   * The Cloudflare account ID to use for this StaticSiteV2 and its worker.
+   * Overrides the default account ID set via `CLOUDFLARE_DEFAULT_ACCOUNT_ID`.
+   * @internal
+   */
+  accountId?: Input<string>;
 }
 
 /**
@@ -345,6 +351,7 @@ export class StaticSiteV2 extends Component implements Link.Linkable {
           args.transform?.server,
           `${name}Router`,
           {
+            accountId: args.accountId,
             handler: path.join(
               $cli.paths.platform,
               "functions",

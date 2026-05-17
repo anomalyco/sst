@@ -310,6 +310,12 @@ export interface WorkerArgs {
     worker?: Transform<cf.WorkersScriptArgs>;
   };
   /**
+   * The Cloudflare account ID to use for this Worker and all its sub-resources.
+   * Overrides the default account ID set via `CLOUDFLARE_DEFAULT_ACCOUNT_ID`.
+   * @internal
+   */
+  accountId?: Input<string>;
+  /**
    * @internal
    * Placehodler for future feature.
    */
@@ -387,6 +393,7 @@ export class Worker extends Component implements Link.Linkable {
 
     const parent = this;
 
+    const accountId = args.accountId ?? DEFAULT_ACCOUNT_ID;
     const dev = normalizeDev();
     const urlEnabled = normalizeUrl();
     const compatibility = normalizeCompatibility(args);
@@ -402,7 +409,7 @@ export class Worker extends Component implements Link.Linkable {
           handler,
           runtime: "worker",
           properties: {
-            accountID: DEFAULT_ACCOUNT_ID,
+            accountID: accountId,
             build,
             compatibility,
           },
@@ -450,7 +457,7 @@ export class Worker extends Component implements Link.Linkable {
             handler,
             runtime: "worker",
             properties: {
-              accountID: DEFAULT_ACCOUNT_ID,
+              accountID: accountId,
               scriptName: script.scriptName,
               build,
               compatibility,
@@ -621,7 +628,7 @@ export class Worker extends Component implements Link.Linkable {
             // workers.dev URLs fail above 54 chars when previews are enabled
             scriptName: prefixName(54, `${name}Script`).toLowerCase(),
             mainModule: "placeholder",
-            accountId: DEFAULT_ACCOUNT_ID,
+            accountId: accountId,
             contentFile: contentFilePath,
             contentSha256: contentFilePath.apply(async (p) =>
               crypto
@@ -707,7 +714,7 @@ export class Worker extends Component implements Link.Linkable {
       return new WorkerUrl(
         `${name}Url`,
         {
-          accountId: DEFAULT_ACCOUNT_ID,
+          accountId: accountId,
           scriptName: script.scriptName,
           enabled: urlEnabled,
         },
@@ -723,7 +730,7 @@ export class Worker extends Component implements Link.Linkable {
       return new WorkerPlacement(
         `${name}Placement`,
         {
-          accountId: DEFAULT_ACCOUNT_ID,
+          accountId: accountId,
           scriptName: script.scriptName,
           // Reapply placement after each script update. Asset-backed SSR workers
           // can rewrite script settings and reset placement back to the default.
@@ -740,7 +747,7 @@ export class Worker extends Component implements Link.Linkable {
       const zone = new ZoneLookup(
         `${name}ZoneLookup`,
         {
-          accountId: DEFAULT_ACCOUNT_ID,
+          accountId: accountId,
           domain: domain.name,
         },
         { parent },
@@ -749,7 +756,7 @@ export class Worker extends Component implements Link.Linkable {
       return new cf.WorkersCustomDomain(
         `${name}Domain`,
         {
-          accountId: DEFAULT_ACCOUNT_ID,
+          accountId: accountId,
           service: script.scriptName,
           hostname: domain.name,
           zoneId: zone.id,

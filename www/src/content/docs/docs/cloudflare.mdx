@@ -55,6 +55,28 @@ export CLOUDFLARE_DEFAULT_ACCOUNT_ID=aaaaaaaa_aaaaaaaaaaaa_aaaaaaaa
 
 ---
 
+### Deploying into Multiple Cloudflare Accounts
+
+You can deploy cloudflare components into multiple Cloudflare accounts by specifying the accountId argument and providing a different Cloudflare Provider.
+
+```ts
+// define a provider with another api token for a different account
+const provider = new cloudflare.Provider("AnotherProvider", { apiToken: "bbbbbbbb_bbbbbbbbbbbb_bbbbbbbb" });
+
+// specify resource in another account
+const sstWorker = new sst.cloudflare.Worker(
+  "MyWorker",
+  { handler: "index.ts", accountId: "bbbbbbbb-bbbbbbbbbbbb-bbbbbbbb" },
+  { provider },
+);
+```
+
+:::caution
+Do not link any resources which are deployed into different Cloudflare accounts.
+:::
+
+---
+
 ## Components
 
 SST includes Cloudflare components for Workers, storage, queues, cron jobs, AI bindings, and more.

@@ -11,6 +11,12 @@ import { DurationMinutes, DurationSeconds } from "../duration";
 
 export interface QueueArgs {
   /**
+   * The Cloudflare account ID to use for this Queue.
+   * Overrides the default account ID set via `CLOUDFLARE_DEFAULT_ACCOUNT_ID`.
+   * @internal
+   */
+  accountId?: Input<string>;
+  /**
    * The dead letter queue to send messages that fail processing.
    *
    * When `dlq` is configured, `dlq.queue` is required.
@@ -189,7 +195,7 @@ export class Queue extends Component implements Link.Linkable {
           `${name}Queue`,
           {
             queueName: "",
-            accountId: DEFAULT_ACCOUNT_ID,
+            accountId: args?.accountId ?? DEFAULT_ACCOUNT_ID,
           },
           { parent },
         ),
@@ -255,6 +261,7 @@ export class Queue extends Component implements Link.Linkable {
       {
         queue: { id: this.queue.id },
         subscriber,
+        accountId: this.constructorArgs?.accountId,
         dlq: this.constructorArgs?.dlq,
         maxConcurrency: this.constructorArgs?.maxConcurrency,
         batch: args?.batch,

@@ -4,8 +4,15 @@ import { Component, Transform, transform } from "../component";
 import { Link } from "../link";
 import { binding } from "./binding";
 import { DEFAULT_ACCOUNT_ID } from ".";
+import type { Input } from "../input";
 
 export interface D1Args {
+  /**
+   * The Cloudflare account ID to use for this D1 database.
+   * Overrides the default account ID set via `CLOUDFLARE_DEFAULT_ACCOUNT_ID`.
+   * @internal
+   */
+  accountId?: Input<string>;
   /**
    * [Transform](/docs/components/#transform) how this component creates its underlying
    * resources.
@@ -70,7 +77,6 @@ export class D1 extends Component implements Link.Linkable {
     }
 
     const parent = this;
-
     const db = createDB();
 
     this.database = db;
@@ -82,7 +88,7 @@ export class D1 extends Component implements Link.Linkable {
           `${name}Database`,
           {
             name: "",
-            accountId: DEFAULT_ACCOUNT_ID,
+            accountId: args?.accountId ?? DEFAULT_ACCOUNT_ID,
           },
           { parent },
         ),
@@ -153,7 +159,7 @@ export class D1 extends Component implements Link.Linkable {
    * :::
    *
    * @param name The name of the component.
-   * @param databaseId The database ID of the existing D1 Database.
+   * @param args The database ID and optional account ID of the existing D1 Database.
    *
    * @example
    * Imagine you create a D1 Database in the `dev` stage. And in your personal
@@ -162,7 +168,7 @@ export class D1 extends Component implements Link.Linkable {
    *
    * ```ts title="sst.config.ts"
    * const d1 = $app.stage === "giorgio"
-   *   ? sst.cloudflare.D1.get("MyD1", "my-database-id")
+   *   ? sst.cloudflare.D1.get("MyD1", { databaseId: "my-database-id" })
    *   : new sst.cloudflare.D1("MyD1");
    * ```
    *
@@ -177,12 +183,12 @@ export class D1 extends Component implements Link.Linkable {
    */
   public static get(
     name: string,
-    databaseId: string,
+    args: { databaseId: string; accountId?: string },
     opts?: ComponentResourceOptions,
   ) {
     const database = cloudflare.D1Database.get(
       `${name}Database`,
-      `${DEFAULT_ACCOUNT_ID}/${databaseId}`,
+      `${args.accountId ?? DEFAULT_ACCOUNT_ID}/${args.databaseId}`,
       undefined,
       opts,
     );
