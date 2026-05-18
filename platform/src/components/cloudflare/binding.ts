@@ -120,7 +120,7 @@ export type Binding =
   | HyperdriveBinding
   | VersionMetadataBinding
   | WorkflowBinding
-  | DurableObjectNamespaceBinding;
+  | DurableObjectNamespaceBinding
   | RateLimitBinding;
 
 export function binding<T extends Binding["type"]>(input: Binding & {}) {
