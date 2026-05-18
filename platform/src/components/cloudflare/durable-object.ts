@@ -59,7 +59,7 @@ export interface DurableObjectArgs {
 export class DurableObject extends Component implements Link.Linkable {
   constructor(
     name: string,
-    private args: DurableObjectArgs,
+    private readonly args: DurableObjectArgs,
     opts?: ComponentResourceOptions,
   ) {
     super(__pulumiType, name, args, opts);
@@ -71,21 +71,21 @@ export class DurableObject extends Component implements Link.Linkable {
    *
    * @internal
    */
-  getSSTLink() {
+  public getSSTLink() {
+    const properties = {
+      className: this.args.className,
+    };
+
     return {
-      properties: {
-        className: this.args.className,
-      },
+      properties,
       include: [
         binding({
           type: "durableObjectNamespaceBindings",
-          properties: {
-            className: this.args.className,
-          },
+          properties,
         }),
         {
           type: "cloudflare.durableObject",
-          className: this.args.className,
+          ...properties,
         },
       ],
     };

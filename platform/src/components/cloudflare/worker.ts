@@ -601,41 +601,48 @@ export class Worker extends Component implements Link.Linkable {
     }
 
     function buildDurableObjectMigrations(scriptName: string) {
-      return all([
-        Link.getInclude<{ className: Input<string> }>(
-          "cloudflare.durableObject",
-          args.link,
-        ).apply((durableObjects) => all(durableObjects.map((item) => item.className))),
-        output(args.durableObjectMigrations ?? []).apply((migrations) =>
-          all(
-            migrations.map((migration) =>
-              all([
-                migration.tag,
-                output(migration.newClasses ?? []),
-                output(migration.newSqliteClasses ?? []),
-                output(migration.deletedClasses ?? []),
-                output(migration.renamedClasses ?? []),
-                output(migration.transferredClasses ?? []),
-              ]).apply(
-                ([
-                  tag,
-                  newClasses,
-                  newSqliteClasses,
-                  deletedClasses,
-                  renamedClasses,
-                  transferredClasses,
-                ]) => ({
-                  tag,
-                  newClasses,
-                  newSqliteClasses,
-                  deletedClasses,
-                  renamedClasses,
-                  transferredClasses,
-                }),
-              ),
+      const durableObjectClassNames = Link.getInclude<{ className: Input<string> }>(
+        "cloudflare.durableObject",
+        args.link,
+      ).apply((durableObjects) =>
+        all(durableObjects.map((durableObject) => durableObject.className)),
+      );
+      const configuredMigrations = output(
+        args.durableObjectMigrations ?? [],
+      ).apply((migrations) =>
+        all(
+          migrations.map((migration) =>
+            all([
+              migration.tag,
+              output(migration.newClasses ?? []),
+              output(migration.newSqliteClasses ?? []),
+              output(migration.deletedClasses ?? []),
+              output(migration.renamedClasses ?? []),
+              output(migration.transferredClasses ?? []),
+            ]).apply(
+              ([
+                tag,
+                newClasses,
+                newSqliteClasses,
+                deletedClasses,
+                renamedClasses,
+                transferredClasses,
+              ]) => ({
+                tag,
+                newClasses,
+                newSqliteClasses,
+                deletedClasses,
+                renamedClasses,
+                transferredClasses,
+              }),
             ),
           ),
         ),
+      );
+
+      return all([
+        durableObjectClassNames,
+        configuredMigrations,
       ]).apply(async ([durableObjects, migrations]) => {
         if (durableObjects.length > 0 && migrations.length === 0) {
           throw new VisibleError(
@@ -677,22 +684,30 @@ export class Worker extends Component implements Link.Linkable {
         if (!latest) {
           return {
             migrationTag: undefined,
-            migrations: {},
+            migrations: undefined,
           };
         }
 
         let currentTag: string | undefined;
         try {
-          const published = await cfFetch<{
-            script: {
+          const published = await cfFetch<
+            {
+              id?: string;
               migration_tag?: string;
-            };
-          }>(
-            `/accounts/${DEFAULT_ACCOUNT_ID}/workers/services/${scriptName}/environments/production`,
-          );
-          currentTag = published.result.script.migration_tag;
-        } catch (error: any) {
-          const code = error?.errors?.[0]?.code;
+            }[]
+          >(`/accounts/${DEFAULT_ACCOUNT_ID}/workers/scripts`);
+          currentTag = published.result.find(
+            (script) => script.id === scriptName,
+          )?.migration_tag;
+        } catch (error) {
+          const code =
+            typeof error === "object" &&
+            error !== null &&
+            "errors" in error &&
+            Array.isArray(error.errors) &&
+            typeof error.errors[0]?.code === "number"
+              ? error.errors[0].code
+              : undefined;
           if (code !== 10090 && code !== 10092) {
             throw error;
           }
@@ -706,28 +721,31 @@ export class Worker extends Component implements Link.Linkable {
           if (foundIndex === migrations.length - 1) {
             return {
               migrationTag: currentTag,
-              migrations: {},
+              migrations: undefined,
             };
           }
 
           const pending =
             foundIndex === -1 ? migrations : migrations.slice(foundIndex + 1);
+          const steps = pending.map(({ tag: _tag, ...step }) => step);
 
           return {
             migrationTag: currentTag,
             migrations: {
               oldTag: currentTag,
               newTag: latest.tag,
-              steps: pending.map(({ tag: _tag, ...step }) => step),
+              steps,
             },
           };
         }
+
+        const steps = migrations.map(({ tag: _tag, ...step }) => step);
 
         return {
           migrationTag: "",
           migrations: {
             newTag: latest.tag,
-            steps: migrations.map(({ tag: _tag, ...step }) => step),
+            steps,
           },
         };
       });
@@ -884,10 +902,10 @@ export class Worker extends Component implements Link.Linkable {
             })),
           ],
         ),
-        migrations: durableObjectMigrationState.apply((state) => state.migrations),
       };
 
       Object.assign(scriptArgs, {
+        migrations: durableObjectMigrationState.apply((state) => state.migrations),
         migrationTag: durableObjectMigrationState.apply(
           (state) => state.migrationTag,
         ),
