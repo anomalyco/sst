@@ -2,6 +2,7 @@ export * from "./bucket";
 export * from "./kv";
 export * from "./d1";
 export * from "./dns";
+export * from "./durable-object";
 export * from "./static-site";
 export * from "./static-site-v2";
 export * from "./worker";

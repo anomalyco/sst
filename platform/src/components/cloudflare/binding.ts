@@ -108,7 +108,8 @@ export type Binding =
   | D1DatabaseBinding
   | HyperdriveBinding
   | VersionMetadataBinding
-  | WorkflowBinding;
+  | WorkflowBinding
+  | DurableObjectNamespaceBinding;
 
 export function binding<T extends Binding["type"]>(input: Binding & {}) {
   return {
