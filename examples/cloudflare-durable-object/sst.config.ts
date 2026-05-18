@@ -17,15 +17,22 @@ export default $config({
     };
   },
   async run() {
-    const counter = new sst.cloudflare.DurableObject("Counter", {
-      className: "CounterTest",
-    });
+    const counter = new sst.cloudflare.DurableObject("Counter");
 
     const api = new sst.cloudflare.Worker("Api", {
       durableObjectMigrations: [
         {
-          tag: "v1",
-          newSqliteClasses: ["CounterTest"],
+          tag: "v3",
+          newSqliteClasses: ["CounterV3"],
+        },
+        {
+          tag: "v4",
+          renamedClasses: [
+            {
+              from: "CounterV3",
+              to: counter.className,
+            },
+          ],
         },
       ],
       handler: "worker.ts",

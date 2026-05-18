@@ -300,15 +300,38 @@ export interface WorkerArgs {
    * Durable Object migrations for this worker.
    *
    * This follows Wrangler's migration model. Keep the full migration history
-   * here and SST will upload the latest step.
+   * here and SST will upload only the pending steps. Each migration needs a
+   * unique `tag`; do not reuse a tag for multiple steps.
+   *
+   * On the first deploy, add each new class with `newSqliteClasses`. If you
+   * rename a Durable Object class after it has been deployed, keep the original
+   * migration and append a new migration with `renamedClasses`. Do not declare
+   * the renamed class as a new class, or Cloudflare will reject the deploy or
+   * create a separate namespace.
    *
    * @example
-   * ```js
+   * ```ts
    * {
    *   durableObjectMigrations: [{
    *     tag: "v1",
    *     newSqliteClasses: ["Counter"]
    *   }]
+   * }
+   * ```
+   *
+   * @example
+   * ```ts
+   * {
+   *   durableObjectMigrations: [
+   *     {
+   *       tag: "v1",
+   *       newSqliteClasses: ["Counter"],
+   *     },
+   *     {
+   *       tag: "v2",
+   *       renamedClasses: [{ from: "Counter", to: "CounterV2" }],
+   *     },
+   *   ]
    * }
    * ```
    */

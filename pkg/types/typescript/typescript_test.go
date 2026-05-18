@@ -366,15 +366,14 @@ func TestGenerate(t *testing.T) {
 			},
 		}
 
-		err := typescript.Generate(dir, links)
+		err := typescript.Generate(dir, links, nil)
 		require.NoError(t, err)
 
 		content, err := os.ReadFile(filepath.Join(dir, "sst-env.d.ts"))
 		require.NoError(t, err)
 
 		out := string(content)
-		assert.Contains(t, out, `import * as cloudflare from "@cloudflare/workers-types";`)
-		assert.Contains(t, out, `"Counter": cloudflare.DurableObjectNamespace`)
+		assert.Contains(t, out, `"Counter": import("@cloudflare/workers-types").DurableObjectNamespace`)
 	})
 }
 

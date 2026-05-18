@@ -14,7 +14,7 @@ export default {
   },
 };
 
-export class CounterTest extends DurableObject {
+export class Counter extends DurableObject {
   async fetch() {
     const current = (await this.ctx.storage.get<number>("count")) ?? 0;
     const count = current + 1;

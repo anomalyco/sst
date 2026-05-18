@@ -1,15 +1,7 @@
 import { ComponentResourceOptions, output } from "@pulumi/pulumi";
 import { Component } from "../component.js";
-import type { Input } from "../input.js";
 import { Link } from "../link.js";
 import { binding } from "./binding.js";
-
-export interface DurableObjectArgs {
-  /**
-   * The exported Durable Object class name.
-   */
-  className: Input<string>;
-}
 
 /**
  * Use the `DurableObject` component to register a
@@ -17,23 +9,50 @@ export interface DurableObjectArgs {
  * for a worker.
  *
  * Create the Durable Object and then link it to a `sst.cloudflare.Worker`. SST
- * adds the Durable Object binding automatically. Configure migrations on the
- * worker, similar to Wrangler.
+ * adds the Durable Object binding automatically. The component name must match
+ * the exported Durable Object class name in your worker code.
+ *
+ * Durable Objects require migrations on the worker, similar to Wrangler. Keep
+ * the full migration history in `durableObjectMigrations`. For the first
+ * deploy, add the class with `newSqliteClasses`. If you later rename the class,
+ * keep the original migration and add a new migration with a unique tag and
+ * `renamedClasses`.
  *
  * @example
  *
  * ```ts title="sst.config.ts"
- * const counter = new sst.cloudflare.DurableObject("Counter", {
- *   className: "Counter",
- * });
+ * const counter = new sst.cloudflare.DurableObject("Counter");
  *
  * new sst.cloudflare.Worker("Api", {
  *   handler: "src/worker.ts",
  *   link: [counter],
  *   durableObjectMigrations: [{
  *     tag: "v1",
- *     newSqliteClasses: ["Counter"],
+ *     newSqliteClasses: [counter.className],
  *   }],
+ *   url: true,
+ * });
+ * ```
+ *
+ * To rename a deployed class from `Counter` to `CounterV2`, update the component
+ * and exported class name, then append a migration.
+ *
+ * ```ts title="sst.config.ts"
+ * const counter = new sst.cloudflare.DurableObject("CounterV2");
+ *
+ * new sst.cloudflare.Worker("Api", {
+ *   handler: "src/worker.ts",
+ *   link: [counter],
+ *   durableObjectMigrations: [
+ *     {
+ *       tag: "v1",
+ *       newSqliteClasses: ["Counter"],
+ *     },
+ *     {
+ *       tag: "v2",
+ *       renamedClasses: [{ from: "Counter", to: counter.className }],
+ *     },
+ *   ],
  *   url: true,
  * });
  * ```
@@ -57,12 +76,11 @@ export interface DurableObjectArgs {
  * ```
  */
 export class DurableObject extends Component implements Link.Linkable {
-  constructor(
-    name: string,
-    private readonly args: DurableObjectArgs,
-    opts?: ComponentResourceOptions,
-  ) {
-    super(__pulumiType, name, args, opts);
+  private readonly durableObjectClassName: string;
+
+  constructor(name: string, opts?: ComponentResourceOptions) {
+    super(__pulumiType, name, {}, opts);
+    this.durableObjectClassName = name;
   }
 
   /**
@@ -73,7 +91,7 @@ export class DurableObject extends Component implements Link.Linkable {
    */
   public getSSTLink() {
     const properties = {
-      className: this.args.className,
+      className: this.durableObjectClassName,
     };
 
     return {
@@ -95,7 +113,7 @@ export class DurableObject extends Component implements Link.Linkable {
    * The exported Durable Object class name.
    */
   public get className() {
-    return output(this.args.className);
+    return output(this.durableObjectClassName);
   }
 }
 
