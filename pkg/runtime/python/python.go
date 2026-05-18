@@ -416,13 +416,6 @@ func copyFile(src, dst string) error {
 
 // skipContent skips __pycache__, .pyc files, and anything matching isIgnored.
 func skipContent(relPath string, info os.FileInfo) bool {
-	name := info.Name()
-	if info.IsDir() && name == "__pycache__" {
-		return true
-	}
-	if strings.HasSuffix(name, ".pyc") {
-		return true
-	}
 	return isIgnored(relPath)
 }
 

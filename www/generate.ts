@@ -2537,6 +2537,7 @@ async function buildComponents() {
       "../platform/src/components/cloudflare/react-router.ts",
       "../platform/src/components/cloudflare/worker.ts",
       "../platform/src/components/cloudflare/workflow.ts",
+      "../platform/src/components/cloudflare/rate-limit.ts",
       "../platform/src/components/cloudflare/static-site.ts",
       "../platform/src/components/cloudflare/static-site-v2.ts",
       "../platform/src/components/cloudflare/tan-stack-start.ts",

@@ -534,11 +534,13 @@ var steps = []bootstrapStep{
 
 type AwsHome struct {
 	provider *AwsProvider
+	compress bool
 }
 
-func NewAwsHome(provider *AwsProvider) *AwsHome {
+func NewAwsHome(provider *AwsProvider, compress bool) *AwsHome {
 	return &AwsHome{
 		provider: provider,
+		compress: compress,
 	}
 }
 
@@ -574,7 +576,7 @@ func (a *AwsHome) getData(key, app, stage string) (io.Reader, error) {
 		}
 		return nil, err
 	}
-	return result.Body, nil
+	return gzipDecode(result.Body)
 }
 
 func (a *AwsHome) putData(key, app, stage string, data io.Reader) error {
@@ -584,11 +586,21 @@ func (a *AwsHome) putData(key, app, stage string, data io.Reader) error {
 	}
 	s3Client := s3.NewFromConfig(a.provider.config)
 
+	var contentEncoding *string
+	if a.compress {
+		data, err = gzipEncode(data)
+		if err != nil {
+			return err
+		}
+		contentEncoding = aws.String("gzip")
+	}
+
 	_, err = s3Client.PutObject(context.TODO(), &s3.PutObjectInput{
-		Bucket:      aws.String(bootstrap.State),
-		Key:         aws.String(a.pathForData(key, app, stage)),
-		Body:        data,
-		ContentType: aws.String("application/json"),
+		Bucket:          aws.String(bootstrap.State),
+		Key:             aws.String(a.pathForData(key, app, stage)),
+		Body:            data,
+		ContentType:     aws.String("application/json"),
+		ContentEncoding: contentEncoding,
 	})
 	if err != nil {
 		return err

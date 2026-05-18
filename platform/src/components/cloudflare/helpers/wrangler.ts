@@ -53,6 +53,7 @@ export function createWranglerConfig(input: {
   const services: Record<string, any>[] = [];
   const queueProducers: Record<string, any>[] = [];
   const workflows: Record<string, any>[] = [];
+  const rateLimits: Record<string, any>[] = [];
   let ai: Record<string, any> | undefined;
   let versionMetadata: Record<string, any> | undefined;
 
@@ -135,6 +136,13 @@ export function createWranglerConfig(input: {
           remote: true,
         });
         break;
+      case "rateLimitBindings":
+        rateLimits.push({
+          name: link.name,
+          namespace_id: stringValue(properties.namespaceId),
+          simple: properties.simple,
+        });
+        break;
     }
   }
 
@@ -169,6 +177,9 @@ export function createWranglerConfig(input: {
   }
   if (workflows.length > 0) {
     config.workflows = workflows;
+  }
+  if (rateLimits.length > 0) {
+    config.rate_limits = rateLimits;
   }
 
   return config;

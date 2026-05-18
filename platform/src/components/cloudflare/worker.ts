@@ -608,6 +608,7 @@ export class Worker extends Component implements Link.Linkable {
                     hyperdriveBindings: "hyperdrive",
                     versionMetadataBindings: "version_metadata",
                     workflowBindings: "workflow",
+                    rateLimitBindings: "ratelimit"
                   }[b.binding],
                   name,
                   ...b.properties,
