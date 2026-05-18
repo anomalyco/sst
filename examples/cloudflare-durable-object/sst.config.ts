@@ -22,17 +22,8 @@ export default $config({
     const api = new sst.cloudflare.Worker("Api", {
       durableObjectMigrations: [
         {
-          tag: "v3",
-          newSqliteClasses: ["CounterV3"],
-        },
-        {
-          tag: "v4",
-          renamedClasses: [
-            {
-              from: "CounterV3",
-              to: counter.className,
-            },
-          ],
+          tag: "v1",
+          newSqliteClasses: [counter.className],
         },
       ],
       handler: "worker.ts",
