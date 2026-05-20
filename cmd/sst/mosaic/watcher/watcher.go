@@ -339,6 +339,17 @@ func Start(ctx context.Context, config WatchConfig) error {
 					if err != nil {
 						return err
 					}
+
+					// Catch nested dirs/files created while fsnotify attaches to the new dir.
+					select {
+					case <-time.After(50 * time.Millisecond):
+					case <-ctx.Done():
+						return nil
+					}
+					err = watchTree(event.Name, true)
+					if err != nil {
+						return err
+					}
 					continue
 				}
 			}
