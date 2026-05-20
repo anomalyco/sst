@@ -268,19 +268,57 @@ Learn more about our [monorepo setup](/docs/set-up-a-monorepo/).
 
 ## CLI
 
-To make this all work, SST comes with a [CLI](/docs/reference/cli/). For Node projects, install SST locally in your project so the CLI version is tracked with your app.
+To make this all work, SST comes with a [CLI](/docs/reference/cli/). For JavaScript projects, install SST locally in your project so the CLI version is tracked with your app.
 
-```bash
-npm install sst
-```
+<Tabs syncKey="package-manager">
+  <TabItem label="npm">
+  ```bash
+  npm install sst
+  ```
+  </TabItem>
+  <TabItem label="pnpm">
+  ```bash
+  pnpm add sst
+  ```
+  </TabItem>
+  <TabItem label="Bun">
+  ```bash
+  bun add sst
+  ```
+  </TabItem>
+  <TabItem label="Yarn">
+  ```bash
+  yarn add sst
+  ```
+  </TabItem>
+</Tabs>
 
 You can then run the CLI with your package manager.
 
-```bash
-npx sst dev
-```
+<Tabs syncKey="package-manager">
+  <TabItem label="npm">
+  ```bash
+  npx sst dev
+  ```
+  </TabItem>
+  <TabItem label="pnpm">
+  ```bash
+  pnpm exec sst dev
+  ```
+  </TabItem>
+  <TabItem label="Bun">
+  ```bash
+  bun sst dev
+  ```
+  </TabItem>
+  <TabItem label="Yarn">
+  ```bash
+  yarn sst dev
+  ```
+  </TabItem>
+</Tabs>
 
-If you are not using Node, you can install the CLI globally.
+If you are not using JavaScript, you can install the CLI globally.
 
 ```bash
 curl -fsSL https://sst.dev/install | bash
