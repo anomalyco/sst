@@ -58,11 +58,14 @@
  *     print(Resource.MyLinkableValue.foo)
  * ```
  *
- * Where the `sst` package can be added to your `pyproject.toml`.
+ * Where the `sst-sdk` package can be added to your `pyproject.toml`.
  *
  * ```toml title="functions/pyproject.toml"
+ * [project]
+ * dependencies = ["sst-sdk"]
+ *
  * [tool.uv.sources]
- * sst = { git = "https://github.com/anomalyco/sst.git", subdirectory = "sdk/python", branch = "dev" }
+ * sst-sdk = { git = "https://github.com/anomalyco/sst.git", subdirectory = "sdk/python", branch = "dev" }
  * ```
  *
  * You also want to set the Python version in your `pyproject.toml` to the same
