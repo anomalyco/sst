@@ -30,6 +30,9 @@ Issues = "https://github.com/anomalyco/sst/issues"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.build]
+ignore-vcs = true
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/sst"]
 
