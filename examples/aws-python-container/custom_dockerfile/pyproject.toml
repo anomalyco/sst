@@ -2,7 +2,7 @@
 name = "custom_dockerfile"
 version = "0.1.0"
 description = "Custom Dockerfile"
-dependencies = ["core", "sst"]
+dependencies = ["core", "sst-sdk"]
 requires-python = "==3.11.*"
 
 [build-system]
@@ -11,4 +11,4 @@ build-backend = "hatchling.build"
 
 [tool.uv.sources]
 core = { workspace = true }
-sst = { git = "https://github.com/sst/sst.git", branch = "dev", subdirectory = "sdk/python" }
+sst-sdk = { git = "https://github.com/anomalyco/sst.git", branch = "dev", subdirectory = "sdk/python" }
