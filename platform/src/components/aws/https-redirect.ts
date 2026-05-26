@@ -2,7 +2,7 @@ import { ComponentResourceOptions, all, output } from "@pulumi/pulumi";
 import { DnsValidatedCertificate } from "./dns-validated-certificate.js";
 import { Bucket } from "./bucket.js";
 import { Component } from "../component.js";
-import { logicalName } from "../naming.js";
+import { logicalName, physicalName } from "../naming.js";
 import { useProvider } from "./helpers/provider.js";
 import { Input } from "../input.js";
 import { Dns } from "../dns.js";
@@ -140,6 +140,7 @@ export class HttpsRedirect extends Component {
                 functionArn: new cloudfront.Function(
                   `${name}CloudfrontFunctionRequest`,
                   {
+                    name: physicalName(64, `${name}CloudfrontFunctionRequest`),
                     runtime: "cloudfront-js-2.0",
                     code: `
 import cf from "cloudfront";
@@ -148,6 +149,7 @@ async function handler(event) {
   return event.request;
 }`,
                   },
+                  { ignoreChanges: ["name"] },
                 ).arn,
               },
             ],
