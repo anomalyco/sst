@@ -311,7 +311,7 @@ export interface WorkerArgs {
    * @example
    * ```ts
    * {
-   *   durableObjectMigrations: [{
+   *   migrations: [{
    *     tag: "v1",
    *     newSqliteClasses: ["Counter"]
    *   }]
@@ -321,7 +321,7 @@ export interface WorkerArgs {
    * @example
    * ```ts
    * {
-   *   durableObjectMigrations: [
+   *   migrations: [
    *     {
    *       tag: "v1",
    *       newSqliteClasses: ["Counter"],
@@ -334,7 +334,7 @@ export interface WorkerArgs {
    * }
    * ```
    */
-  durableObjectMigrations?: Input<Input<WorkerDurableObjectMigration>[]>;
+  migrations?: Input<Input<WorkerDurableObjectMigration>[]>;
   /** @internal */
   assets?: Input<{
     directory: Input<string>;
@@ -625,7 +625,7 @@ export class Worker extends Component implements Link.Linkable {
 
     function buildDurableObjectMigrations(scriptName: string) {
       const configuredMigrations = output(
-        args.durableObjectMigrations ?? [],
+        args.migrations ?? [],
       ).apply((migrations) =>
         all(
           migrations.map((migration) =>

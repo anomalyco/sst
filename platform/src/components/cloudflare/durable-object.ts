@@ -13,7 +13,7 @@ import { binding } from "./binding.js";
  * the exported Durable Object class name in your worker code.
  *
  * Durable Objects require migrations on the worker, similar to Wrangler. Keep
- * the full migration history in `durableObjectMigrations`. For the first
+ * the full migration history in `migrations`. For the first
  * deploy, add the class with `newSqliteClasses`. If you later rename the class,
  * keep the original migration and add a new migration with a unique tag and
  * `renamedClasses`.
@@ -26,7 +26,7 @@ import { binding } from "./binding.js";
  * new sst.cloudflare.Worker("Api", {
  *   handler: "src/worker.ts",
  *   link: [counter],
- *   durableObjectMigrations: [{
+ *   migrations: [{
  *     tag: "v1",
  *     newSqliteClasses: [counter.className],
  *   }],
@@ -43,7 +43,7 @@ import { binding } from "./binding.js";
  * new sst.cloudflare.Worker("Api", {
  *   handler: "src/worker.ts",
  *   link: [counter],
- *   durableObjectMigrations: [
+ *   migrations: [
  *     {
  *       tag: "v1",
  *       newSqliteClasses: ["Counter"],

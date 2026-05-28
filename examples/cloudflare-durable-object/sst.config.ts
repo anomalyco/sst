@@ -20,7 +20,7 @@ export default $config({
     const counter = new sst.cloudflare.DurableObject("Counter");
 
     const api = new sst.cloudflare.Worker("Api", {
-      durableObjectMigrations: [
+      migrations: [
         {
           tag: "v1",
           newSqliteClasses: [counter.className],
