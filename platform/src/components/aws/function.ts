@@ -1636,11 +1636,14 @@ export interface FunctionArgs {
  *       print(Resource.MyBucket.name)
  *   ```
  *
- *   Where the `sst` package can be added to your `pyproject.toml`.
+ *   Where the `sst-sdk` package can be added to your `pyproject.toml`.
  *
  *   ```toml title="functions/pyproject.toml"
+ *   [project]
+ *   dependencies = ["sst-sdk"]
+ *
  *   [tool.uv.sources]
- *   sst = { git = "https://github.com/sst/sst.git", subdirectory = "sdk/python", branch = "dev" }
+ *   sst-sdk = { git = "https://github.com/anomalyco/sst.git", subdirectory = "sdk/python", branch = "dev" }
  *   ```
  *   </TabItem>
  *   <TabItem label="Go">

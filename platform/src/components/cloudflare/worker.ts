@@ -395,6 +395,12 @@ export interface WorkerArgs {
     worker?: Transform<cf.WorkersScriptArgs>;
   };
   /**
+   * The Cloudflare account ID to use for this Worker and all its sub-resources.
+   * Overrides the default account ID set via `CLOUDFLARE_DEFAULT_ACCOUNT_ID`.
+   * @internal
+   */
+  accountId?: Input<string>;
+  /**
    * @internal
    * Placehodler for future feature.
    */
@@ -472,6 +478,7 @@ export class Worker extends Component implements Link.Linkable {
 
     const parent = this;
 
+    const accountId = args.accountId ?? DEFAULT_ACCOUNT_ID;
     const dev = normalizeDev();
     const urlEnabled = normalizeUrl();
     const compatibility = normalizeCompatibility(args);
@@ -479,21 +486,24 @@ export class Worker extends Component implements Link.Linkable {
 
     const bindings = buildBindings();
     const iamCredentials = createAwsCredentials();
-    const buildInput = all([name, args.handler, args.build, compatibility]).apply(
-      async ([name, handler, build, compatibility]) => {
-        return {
-          functionID: name,
-          links: {},
-          handler,
-          runtime: "worker",
-          properties: {
-            accountID: DEFAULT_ACCOUNT_ID,
-            build,
-            compatibility,
-          },
-        };
-      },
-    );
+    const buildInput = all([
+      name,
+      args.handler,
+      args.build,
+      compatibility,
+    ]).apply(async ([name, handler, build, compatibility]) => {
+      return {
+        functionID: name,
+        links: {},
+        handler,
+        runtime: "worker",
+        properties: {
+          accountID: accountId,
+          build,
+          compatibility,
+        },
+      };
+    });
     const build = buildHandler();
     const script = createScript();
     const workerUrl = createWorkersUrl();
@@ -520,13 +530,7 @@ export class Worker extends Component implements Link.Linkable {
       },
     );
     this.registerOutputs({
-      _live: all([
-        name,
-        args.handler,
-        args.build,
-        compatibility,
-        dev,
-      ]).apply(
+      _live: all([name, args.handler, args.build, compatibility, dev]).apply(
         ([name, handler, build, compatibility, dev]) => {
           if (!dev) return undefined;
           return {
@@ -535,7 +539,7 @@ export class Worker extends Component implements Link.Linkable {
             handler,
             runtime: "worker",
             properties: {
-              accountID: DEFAULT_ACCOUNT_ID,
+              accountID: accountId,
               scriptName: script.scriptName,
               build,
               compatibility,
@@ -614,7 +618,7 @@ export class Worker extends Component implements Link.Linkable {
                     hyperdriveBindings: "hyperdrive",
                     versionMetadataBindings: "version_metadata",
                     workflowBindings: "workflow",
-                    rateLimitBindings: "ratelimit"
+                    rateLimitBindings: "ratelimit",
                   }[b.binding],
                   name,
                   ...b.properties,
@@ -698,86 +702,88 @@ export class Worker extends Component implements Link.Linkable {
     function createScript() {
       const scriptName = prefixName(54, `${name}Script`).toLowerCase();
       const durableObjectMigrationState = args.migrations
-        ? output(args.migrations).apply(async (migrations) => {
-            const latest = migrations.at(-1);
-            if (!latest) {
-              return {
-                migrationTag: undefined,
-                migrations: undefined,
-              };
-            }
-
-            let currentTag: string | undefined;
-            try {
-              const published = await cfFetch<
-                {
-                  id?: string;
-                  migration_tag?: string;
-                }[]
-              >(`/accounts/${DEFAULT_ACCOUNT_ID}/workers/scripts`);
-              currentTag = published.result.find(
-                (script) => script.id === scriptName,
-              )?.migration_tag;
-            } catch (error) {
-              const code =
-                typeof error === "object" &&
-                error !== null &&
-                "errors" in error &&
-                Array.isArray(error.errors) &&
-                typeof error.errors[0]?.code === "number"
-                  ? error.errors[0].code
-                  : undefined;
-              // workers.api.error.service_not_found
-              const serviceNotFound = code === 10090;
-              // workers.api.error.environment_not_found
-              const environmentNotFound = code === 10092;
-
-              // Wrangler suppresses these not-found cases when reading the
-              // current migration tag; they mean this is the first deploy for
-              // the script/environment, so there is no remote tag yet.
-              if (!serviceNotFound && !environmentNotFound) {
-                throw error;
-              }
-            }
-
-            if (currentTag) {
-              const foundIndex = migrations.findIndex(
-                (migration) => migration.tag === currentTag,
-              );
-
-              if (foundIndex === migrations.length - 1) {
+        ? all([args.migrations, accountId]).apply(
+            async ([migrations, accountId]) => {
+              const latest = migrations.at(-1);
+              if (!latest) {
                 return {
-                  migrationTag: currentTag,
+                  migrationTag: undefined,
                   migrations: undefined,
                 };
               }
 
-              const pending =
-                foundIndex === -1
-                  ? migrations
-                  : migrations.slice(foundIndex + 1);
-              const steps = pending.map(({ tag: _tag, ...step }) => step);
+              let currentTag: string | undefined;
+              try {
+                const published = await cfFetch<
+                  {
+                    id?: string;
+                    migration_tag?: string;
+                  }[]
+                >(`/accounts/${accountId}/workers/scripts`);
+                currentTag = published.result.find(
+                  (script) => script.id === scriptName,
+                )?.migration_tag;
+              } catch (error) {
+                const code =
+                  typeof error === "object" &&
+                  error !== null &&
+                  "errors" in error &&
+                  Array.isArray(error.errors) &&
+                  typeof error.errors[0]?.code === "number"
+                    ? error.errors[0].code
+                    : undefined;
+                // workers.api.error.service_not_found
+                const serviceNotFound = code === 10090;
+                // workers.api.error.environment_not_found
+                const environmentNotFound = code === 10092;
+
+                // Wrangler suppresses these not-found cases when reading the
+                // current migration tag; they mean this is the first deploy for
+                // the script/environment, so there is no remote tag yet.
+                if (!serviceNotFound && !environmentNotFound) {
+                  throw error;
+                }
+              }
+
+              if (currentTag) {
+                const foundIndex = migrations.findIndex(
+                  (migration) => migration.tag === currentTag,
+                );
+
+                if (foundIndex === migrations.length - 1) {
+                  return {
+                    migrationTag: currentTag,
+                    migrations: undefined,
+                  };
+                }
+
+                const pending =
+                  foundIndex === -1
+                    ? migrations
+                    : migrations.slice(foundIndex + 1);
+                const steps = pending.map(({ tag: _tag, ...step }) => step);
+
+                return {
+                  migrationTag: currentTag,
+                  migrations: {
+                    oldTag: currentTag,
+                    newTag: latest.tag,
+                    steps,
+                  },
+                };
+              }
+
+              const steps = migrations.map(({ tag: _tag, ...step }) => step);
 
               return {
-                migrationTag: currentTag,
+                migrationTag: "",
                 migrations: {
-                  oldTag: currentTag,
                   newTag: latest.tag,
                   steps,
                 },
               };
-            }
-
-            const steps = migrations.map(({ tag: _tag, ...step }) => step);
-
-            return {
-              migrationTag: "",
-              migrations: {
-                newTag: latest.tag,
-                steps,
-              },
-            };
-          })
+            },
+          )
         : undefined;
       const contentFilePath = build.apply((build) =>
         path.join(build.out, build.handler),
@@ -786,7 +792,7 @@ export class Worker extends Component implements Link.Linkable {
         // workers.dev URLs fail above 54 chars when previews are enabled
         scriptName,
         mainModule: "placeholder",
-        accountId: DEFAULT_ACCOUNT_ID,
+        accountId,
         contentFile: contentFilePath,
         contentSha256: contentFilePath.apply(async (p) =>
           crypto
@@ -888,7 +894,7 @@ export class Worker extends Component implements Link.Linkable {
       return new WorkerUrl(
         `${name}Url`,
         {
-          accountId: DEFAULT_ACCOUNT_ID,
+          accountId: accountId,
           scriptName: script.scriptName,
           enabled: urlEnabled,
           etag: script.etag,
@@ -905,7 +911,7 @@ export class Worker extends Component implements Link.Linkable {
       return new WorkerPlacement(
         `${name}Placement`,
         {
-          accountId: DEFAULT_ACCOUNT_ID,
+          accountId: accountId,
           scriptName: script.scriptName,
           // Reapply placement after each script update. Asset-backed SSR workers
           // can rewrite script settings and reset placement back to the default.
@@ -922,7 +928,7 @@ export class Worker extends Component implements Link.Linkable {
       const zone = new ZoneLookup(
         `${name}ZoneLookup`,
         {
-          accountId: DEFAULT_ACCOUNT_ID,
+          accountId: accountId,
           domain: domain.name,
         },
         { parent },
@@ -931,7 +937,7 @@ export class Worker extends Component implements Link.Linkable {
       return new cf.WorkersCustomDomain(
         `${name}Domain`,
         {
-          accountId: DEFAULT_ACCOUNT_ID,
+          accountId: accountId,
           service: script.scriptName,
           hostname: domain.name,
           zoneId: zone.id,
@@ -948,7 +954,7 @@ export class Worker extends Component implements Link.Linkable {
         const zone = new ZoneLookup(
           `${name}Alias${i}ZoneLookup`,
           {
-            accountId: DEFAULT_ACCOUNT_ID,
+            accountId,
             domain: hostname,
           },
           { parent },
@@ -957,7 +963,7 @@ export class Worker extends Component implements Link.Linkable {
         new cf.WorkersCustomDomain(
           `${name}Alias${i}Domain`,
           {
-            accountId: DEFAULT_ACCOUNT_ID,
+            accountId,
             service: script.scriptName,
             hostname,
             zoneId: zone.id,
@@ -976,7 +982,7 @@ export class Worker extends Component implements Link.Linkable {
         const zone = new ZoneLookup(
           `${resourceName}ZoneLookup`,
           {
-            accountId: DEFAULT_ACCOUNT_ID,
+            accountId,
             domain: hostname,
           },
           { parent },

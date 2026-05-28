@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
-import { ComponentResourceOptions, all, output } from "@pulumi/pulumi";
+import { ComponentResourceOptions, all, output, type Input } from "@pulumi/pulumi";
 import { Kv, KvArgs } from "./kv.js";
 import { Component, Prettify, Transform, transform } from "../component.js";
 import { Link } from "../link.js";
@@ -133,6 +133,12 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
      */
     assets?: Transform<KvArgs>;
   };
+  /**
+   * The Cloudflare account ID to use for this StaticSite and its resources.
+   * Overrides the default account ID set via `CLOUDFLARE_DEFAULT_ACCOUNT_ID`.
+   * @internal
+   */
+  accountId?: Input<string>;
 }
 
 /**
@@ -287,7 +293,9 @@ export class StaticSite extends Component implements Link.Linkable {
         ...transform(
           args.transform?.assets,
           `${name}Assets`,
-          {},
+          {
+            accountId: args.accountId,
+          },
           {
             parent,
             retainOnDelete: false,
@@ -359,7 +367,7 @@ export class StaticSite extends Component implements Link.Linkable {
       return new KvData(
         `${name}AssetFiles`,
         {
-          accountId: DEFAULT_ACCOUNT_ID,
+          accountId: args.accountId ?? DEFAULT_ACCOUNT_ID,
           namespaceId: storage.id,
           entries: assetManifest.apply((manifest) =>
             manifest.map((m) => ({
@@ -379,6 +387,7 @@ export class StaticSite extends Component implements Link.Linkable {
       return new Worker(
         `${name}Router`,
         {
+          accountId: args.accountId,
           handler: path.join(
             $cli.paths.platform,
             "functions",

@@ -11,6 +11,12 @@ export interface HyperdriveGetArgs {
    * The ID of the existing Hyperdrive config.
    */
   hyperdriveId: string;
+  /**
+   * The Cloudflare account ID the Hyperdrive config belongs to.
+   * Overrides the default account ID set via `CLOUDFLARE_DEFAULT_ACCOUNT_ID`.
+   * @internal
+   */
+  accountId?: string;
 }
 
 interface HyperdriveRef {
@@ -137,6 +143,13 @@ export interface HyperdriveArgs {
      */
     user: Input<string>;
   }>;
+
+  /**
+   * The Cloudflare account ID to use for this Hyperdrive.
+   * Overrides the default account ID set via `CLOUDFLARE_DEFAULT_ACCOUNT_ID`.
+   * @internal
+   */
+  accountId?: Input<string>;
   /**
    * [Transform](/docs/components/#transform) how this component creates its underlying
    * resources.
@@ -245,7 +258,7 @@ export class Hyperdrive extends Component implements Link.Linkable {
         args.transform?.hyperdrive,
         `${name}Hyperdrive`,
         {
-          accountId: DEFAULT_ACCOUNT_ID,
+          accountId: args.accountId ?? DEFAULT_ACCOUNT_ID,
           caching,
           mtls: args.mtls,
           name: "",
@@ -369,7 +382,7 @@ export class Hyperdrive extends Component implements Link.Linkable {
   ) {
     const hyperdrive = cloudflare.HyperdriveConfig.get(
       `${name}Hyperdrive`,
-      `${DEFAULT_ACCOUNT_ID}/${args.hyperdriveId}`,
+      `${args.accountId ?? DEFAULT_ACCOUNT_ID}/${args.hyperdriveId}`,
       undefined,
       opts,
     );

@@ -90,6 +90,12 @@ export interface WorkflowArgs {
    */
   environment?: Input<Record<string, Input<string>>>;
   /**
+   * The Cloudflare account ID to use for this Workflow.
+   * Overrides the default account ID set via `CLOUDFLARE_DEFAULT_ACCOUNT_ID`.
+   * @internal
+   */
+  accountId?: Input<string>;
+  /**
    * [Transform](/docs/components/#transform) how this component creates its underlying
    * resources.
    */
@@ -224,7 +230,7 @@ export class Workflow extends Component implements Link.Linkable {
           args.transform?.workflow,
           `${name}Workflow`,
           {
-            accountId: DEFAULT_ACCOUNT_ID,
+            accountId: args.accountId ?? DEFAULT_ACCOUNT_ID,
             workflowName: "",
             className: args.className,
             scriptName: worker.nodes.worker.scriptName,

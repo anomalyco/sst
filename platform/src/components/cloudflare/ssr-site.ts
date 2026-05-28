@@ -13,6 +13,7 @@ import {
 } from "./helpers/wrangler.js";
 import { Link } from "../link.js";
 import { URL_UNAVAILABLE } from "../aws/linkable.js";
+import { DEFAULT_ACCOUNT_ID } from "./account-id.js";
 
 export type Plan = {
   server: string;
@@ -21,6 +22,12 @@ export type Plan = {
 
 export interface SsrSiteArgs extends BaseSsrSiteArgs {
   domain?: WorkerArgs["domain"];
+  /**
+   * The Cloudflare account ID to use for this SsrSite.
+   * Overrides the default account ID set via `CLOUDFLARE_DEFAULT_ACCOUNT_ID`.
+   * @internal
+   */
+  accountId?: Input<string>;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
@@ -132,6 +139,7 @@ export abstract class SsrSite extends Component implements Link.Linkable {
         {
           environment: args.environment,
           link: args.link,
+          accountId: args.accountId,
           url: true,
           dev: false,
           domain: args.domain,
@@ -168,7 +176,8 @@ export abstract class SsrSite extends Component implements Link.Linkable {
         resolveLinkBindings(),
         compatibility,
         frameworkConfig,
-      ]).apply(([environment, links, compatibility, frameworkConfig]) => {
+        args.accountId,
+      ]).apply(([environment, links, compatibility, frameworkConfig, accountId]) => {
         return createWranglerConfig({
           appName: $app.name,
           appStage: $app.stage,
@@ -177,7 +186,7 @@ export abstract class SsrSite extends Component implements Link.Linkable {
           compatibility,
           environment,
           links,
-          accountID: process.env.CLOUDFLARE_DEFAULT_ACCOUNT_ID,
+          accountId: accountId ?? DEFAULT_ACCOUNT_ID,
         });
       });
     }
@@ -231,6 +240,7 @@ export abstract class SsrSite extends Component implements Link.Linkable {
           {
             environment: args.environment,
             link: args.link,
+            accountId: args.accountId,
             url: true,
             dev: false,
             domain: args.domain,
