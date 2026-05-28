@@ -22,7 +22,6 @@ import { Permission } from "../aws/permission.js";
 import { binding } from "./binding.js";
 import { DEFAULT_ACCOUNT_ID } from "./account-id.js";
 import { rpc } from "../rpc/rpc.js";
-import { VisibleError } from "../error";
 import { getContentType } from "../base/base-site";
 import { prefixName } from "../naming";
 import { existsAsync } from "../../util/fs";
@@ -625,12 +624,6 @@ export class Worker extends Component implements Link.Linkable {
     }
 
     function buildDurableObjectMigrations(scriptName: string) {
-      const durableObjectClassNames = Link.getInclude<{ className: Input<string> }>(
-        "cloudflare.durableObject",
-        args.link,
-      ).apply((durableObjects) =>
-        all(durableObjects.map((durableObject) => durableObject.className)),
-      );
       const configuredMigrations = output(
         args.durableObjectMigrations ?? [],
       ).apply((migrations) =>
@@ -664,46 +657,7 @@ export class Worker extends Component implements Link.Linkable {
         ),
       );
 
-      return all([
-        durableObjectClassNames,
-        configuredMigrations,
-      ]).apply(async ([durableObjects, migrations]) => {
-        if (durableObjects.length > 0 && migrations.length === 0) {
-          throw new VisibleError(
-            [
-              "Linked Durable Objects require worker migrations.",
-              'Add `durableObjectMigrations: [{ tag: "v1", newSqliteClasses: ["YourClass"] }]` to the worker.',
-            ].join("\n"),
-          );
-        }
-
-        const defined = new Set<string>();
-        for (const migration of migrations) {
-          for (const className of migration.newClasses) {
-            defined.add(className);
-          }
-          for (const className of migration.newSqliteClasses) {
-            defined.add(className);
-          }
-          for (const renamed of migration.renamedClasses) {
-            defined.delete(renamed.from);
-            defined.add(renamed.to);
-          }
-          for (const transferred of migration.transferredClasses) {
-            defined.add(transferred.to);
-          }
-          for (const className of migration.deletedClasses) {
-            defined.delete(className);
-          }
-        }
-
-        const missing = durableObjects.filter((className) => !defined.has(className));
-        if (missing.length > 0) {
-          throw new VisibleError(
-            `Linked Durable Objects are missing from durableObjectMigrations: ${missing.join(", ")}`,
-          );
-        }
-
+      return configuredMigrations.apply(async (migrations) => {
         const latest = migrations.at(-1);
         if (!latest) {
           return {
