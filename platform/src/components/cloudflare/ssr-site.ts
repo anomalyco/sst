@@ -139,6 +139,7 @@ export abstract class SsrSite extends Component implements Link.Linkable {
         {
           environment: args.environment,
           link: args.link,
+          accountId: args.accountId,
           url: true,
           dev: false,
           domain: args.domain,
@@ -175,7 +176,7 @@ export abstract class SsrSite extends Component implements Link.Linkable {
         resolveLinkBindings(),
         compatibility,
         frameworkConfig,
-        args.accountId
+        args.accountId,
       ]).apply(([environment, links, compatibility, frameworkConfig, accountId]) => {
         return createWranglerConfig({
           appName: $app.name,
@@ -239,6 +240,7 @@ export abstract class SsrSite extends Component implements Link.Linkable {
           {
             environment: args.environment,
             link: args.link,
+            accountId: args.accountId,
             url: true,
             dev: false,
             domain: args.domain,

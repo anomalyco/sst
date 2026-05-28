@@ -773,7 +773,7 @@ export class Worker extends Component implements Link.Linkable {
         const zone = new ZoneLookup(
           `${name}Alias${i}ZoneLookup`,
           {
-            accountId: DEFAULT_ACCOUNT_ID,
+            accountId,
             domain: hostname,
           },
           { parent },
@@ -782,7 +782,7 @@ export class Worker extends Component implements Link.Linkable {
         new cf.WorkersCustomDomain(
           `${name}Alias${i}Domain`,
           {
-            accountId: DEFAULT_ACCOUNT_ID,
+            accountId,
             service: script.scriptName,
             hostname,
             zoneId: zone.id,
@@ -801,7 +801,7 @@ export class Worker extends Component implements Link.Linkable {
         const zone = new ZoneLookup(
           `${resourceName}ZoneLookup`,
           {
-            accountId: DEFAULT_ACCOUNT_ID,
+            accountId,
             domain: hostname,
           },
           { parent },

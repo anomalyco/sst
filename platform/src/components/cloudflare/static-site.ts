@@ -293,7 +293,9 @@ export class StaticSite extends Component implements Link.Linkable {
         ...transform(
           args.transform?.assets,
           `${name}Assets`,
-          {},
+          {
+            accountId: args.accountId,
+          },
           {
             parent,
             retainOnDelete: false,
@@ -385,6 +387,7 @@ export class StaticSite extends Component implements Link.Linkable {
       return new Worker(
         `${name}Router`,
         {
+          accountId: args.accountId,
           handler: path.join(
             $cli.paths.platform,
             "functions",
