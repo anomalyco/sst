@@ -12,11 +12,14 @@ import { binding } from "./binding.js";
  * adds the Durable Object binding automatically. The component name must match
  * the exported Durable Object class name in your worker code.
  *
- * Durable Objects require migrations on the worker, similar to Wrangler. Keep
- * the full migration history in `migrations`. For the first
- * deploy, add the class with `newSqliteClasses`. If you later rename the class,
- * keep the original migration and add a new migration with a unique tag and
- * `renamedClasses`.
+ * Durable Objects require migrations on the worker. Use the Worker's
+ * `migrations` field like Wrangler's top-level `migrations` config: keep the
+ * full ordered history there, and SST uses it to build the Cloudflare migration
+ * payload for the Worker.
+ *
+ * On the first deploy, add the class with `newSqliteClasses`. If you later
+ * rename the class, keep the original migration and add a new migration with a
+ * unique tag and `renamedClasses`.
  *
  * @example
  *

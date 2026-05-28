@@ -34,11 +34,11 @@ export interface WorkerDurableObjectMigration {
    */
   tag: Input<string>;
   /**
-   * New Durable Object classes backed by KV.
+   * New Durable Object classes backed by the legacy KV storage backend.
    */
   newClasses?: Input<Input<string>[]>;
   /**
-   * New Durable Object classes backed by SQLite.
+   * New Durable Object classes backed by the SQLite storage backend.
    */
   newSqliteClasses?: Input<Input<string>[]>;
   /**
@@ -298,15 +298,22 @@ export interface WorkerArgs {
   /**
    * Durable Object migrations for this worker.
    *
-   * This follows Wrangler's migration model. Keep the full migration history
-   * here and SST will upload only the pending steps. Each migration needs a
-   * unique `tag`; do not reuse a tag for multiple steps.
+   * This follows Wrangler's top-level `migrations` config. Keep the full,
+   * ordered migration history here; SST reads the Worker's current migration
+   * tag and uploads the pending migrations as Cloudflare's `oldTag`, `newTag`,
+   * and `steps` payload. If there is no current tag, SST uploads the full
+   * history as the initial migration payload. If the current tag is not in the
+   * configured history, SST follows Wrangler and uploads all configured
+   * migrations with the current tag as `oldTag`.
    *
-   * On the first deploy, add each new class with `newSqliteClasses`. If you
-   * rename a Durable Object class after it has been deployed, keep the original
-   * migration and append a new migration with `renamedClasses`. Do not declare
-   * the renamed class as a new class, or Cloudflare will reject the deploy or
-   * create a separate namespace.
+   * Each migration needs a unique `tag`. Add a migration when you create,
+   * rename, delete, or transfer a Durable Object class. Updating code for an
+   * existing class does not require one.
+   *
+   * On the first deploy, add each new class with `newSqliteClasses`. For a
+   * rename, keep the original migration and append a new migration with
+   * `renamedClasses`. Do not declare the renamed class as a new class, or
+   * Cloudflare will reject the deploy or create a separate namespace.
    *
    * @example
    * ```ts
@@ -623,112 +630,6 @@ export class Worker extends Component implements Link.Linkable {
       });
     }
 
-    function buildDurableObjectMigrations(scriptName: string) {
-      const configuredMigrations = output(
-        args.migrations ?? [],
-      ).apply((migrations) =>
-        all(
-          migrations.map((migration) =>
-            all([
-              migration.tag,
-              output(migration.newClasses ?? []),
-              output(migration.newSqliteClasses ?? []),
-              output(migration.deletedClasses ?? []),
-              output(migration.renamedClasses ?? []),
-              output(migration.transferredClasses ?? []),
-            ]).apply(
-              ([
-                tag,
-                newClasses,
-                newSqliteClasses,
-                deletedClasses,
-                renamedClasses,
-                transferredClasses,
-              ]) => ({
-                tag,
-                newClasses,
-                newSqliteClasses,
-                deletedClasses,
-                renamedClasses,
-                transferredClasses,
-              }),
-            ),
-          ),
-        ),
-      );
-
-      return configuredMigrations.apply(async (migrations) => {
-        const latest = migrations.at(-1);
-        if (!latest) {
-          return {
-            migrationTag: undefined,
-            migrations: undefined,
-          };
-        }
-
-        let currentTag: string | undefined;
-        try {
-          const published = await cfFetch<
-            {
-              id?: string;
-              migration_tag?: string;
-            }[]
-          >(`/accounts/${DEFAULT_ACCOUNT_ID}/workers/scripts`);
-          currentTag = published.result.find(
-            (script) => script.id === scriptName,
-          )?.migration_tag;
-        } catch (error) {
-          const code =
-            typeof error === "object" &&
-            error !== null &&
-            "errors" in error &&
-            Array.isArray(error.errors) &&
-            typeof error.errors[0]?.code === "number"
-              ? error.errors[0].code
-              : undefined;
-          if (code !== 10090 && code !== 10092) {
-            throw error;
-          }
-        }
-
-        if (currentTag) {
-          const foundIndex = migrations.findIndex(
-            (migration) => migration.tag === currentTag,
-          );
-
-          if (foundIndex === migrations.length - 1) {
-            return {
-              migrationTag: currentTag,
-              migrations: undefined,
-            };
-          }
-
-          const pending =
-            foundIndex === -1 ? migrations : migrations.slice(foundIndex + 1);
-          const steps = pending.map(({ tag: _tag, ...step }) => step);
-
-          return {
-            migrationTag: currentTag,
-            migrations: {
-              oldTag: currentTag,
-              newTag: latest.tag,
-              steps,
-            },
-          };
-        }
-
-        const steps = migrations.map(({ tag: _tag, ...step }) => step);
-
-        return {
-          migrationTag: "",
-          migrations: {
-            newTag: latest.tag,
-            steps,
-          },
-        };
-      });
-    }
-
     function createAwsCredentials() {
       return output(
         Link.getInclude<Permission>("aws.permission", args.link),
@@ -796,7 +697,88 @@ export class Worker extends Component implements Link.Linkable {
 
     function createScript() {
       const scriptName = prefixName(54, `${name}Script`).toLowerCase();
-      const durableObjectMigrationState = buildDurableObjectMigrations(scriptName);
+      const durableObjectMigrationState = args.migrations
+        ? output(args.migrations).apply(async (migrations) => {
+            const latest = migrations.at(-1);
+            if (!latest) {
+              return {
+                migrationTag: undefined,
+                migrations: undefined,
+              };
+            }
+
+            let currentTag: string | undefined;
+            try {
+              const published = await cfFetch<
+                {
+                  id?: string;
+                  migration_tag?: string;
+                }[]
+              >(`/accounts/${DEFAULT_ACCOUNT_ID}/workers/scripts`);
+              currentTag = published.result.find(
+                (script) => script.id === scriptName,
+              )?.migration_tag;
+            } catch (error) {
+              const code =
+                typeof error === "object" &&
+                error !== null &&
+                "errors" in error &&
+                Array.isArray(error.errors) &&
+                typeof error.errors[0]?.code === "number"
+                  ? error.errors[0].code
+                  : undefined;
+              // workers.api.error.service_not_found
+              const serviceNotFound = code === 10090;
+              // workers.api.error.environment_not_found
+              const environmentNotFound = code === 10092;
+
+              // Wrangler suppresses these not-found cases when reading the
+              // current migration tag; they mean this is the first deploy for
+              // the script/environment, so there is no remote tag yet.
+              if (!serviceNotFound && !environmentNotFound) {
+                throw error;
+              }
+            }
+
+            if (currentTag) {
+              const foundIndex = migrations.findIndex(
+                (migration) => migration.tag === currentTag,
+              );
+
+              if (foundIndex === migrations.length - 1) {
+                return {
+                  migrationTag: currentTag,
+                  migrations: undefined,
+                };
+              }
+
+              const pending =
+                foundIndex === -1
+                  ? migrations
+                  : migrations.slice(foundIndex + 1);
+              const steps = pending.map(({ tag: _tag, ...step }) => step);
+
+              return {
+                migrationTag: currentTag,
+                migrations: {
+                  oldTag: currentTag,
+                  newTag: latest.tag,
+                  steps,
+                },
+              };
+            }
+
+            const steps = migrations.map(({ tag: _tag, ...step }) => step);
+
+            return {
+              migrationTag: "",
+              migrations: {
+                newTag: latest.tag,
+                steps,
+              },
+            };
+          })
+        : undefined;
       const contentFilePath = build.apply((build) =>
         path.join(build.out, build.handler),
       );
@@ -814,6 +796,16 @@ export class Worker extends Component implements Link.Linkable {
         ),
         compatibilityDate: compatibility.apply((value) => value.date),
         compatibilityFlags: compatibility.apply((value) => value.flags),
+        ...(durableObjectMigrationState
+          ? {
+              migrations: durableObjectMigrationState.apply(
+                (state) => state.migrations,
+              ) as Input<cf.types.input.WorkersScriptMigrations>,
+              migrationTag: durableObjectMigrationState.apply(
+                (state) => state.migrationTag,
+              ) as Input<string>,
+            }
+          : {}),
         assets: args.assets
           ? output(args.assets).apply(async (assets) => {
               const directory = path.isAbsolute(assets.directory)
@@ -881,13 +873,6 @@ export class Worker extends Component implements Link.Linkable {
           ],
         ),
       };
-
-      Object.assign(scriptArgs, {
-        migrations: durableObjectMigrationState.apply((state) => state.migrations),
-        migrationTag: durableObjectMigrationState.apply(
-          (state) => state.migrationTag,
-        ),
-      });
 
       return new cf.WorkersScript(
         ...transform(
