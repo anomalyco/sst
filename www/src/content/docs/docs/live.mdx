@@ -189,6 +189,8 @@ Note that, the AWS Client VPC service is billed on an hourly basis but it's fair
 
 Since Live runs your functions locally, you can set breakpoints and debug your functions in your favorite IDE.
 
+### Node (TypeScript/JavaScript)
+
 ![VS Code Enable Auto Attach](../../../assets/docs/live/vs-code-enable-auto-attach.png)
 
 For VS Code, you'll need to enable Auto Attach from the Command Palette. Hit `Ctrl+Shift+P` or `Cmd+Shift+P`, type in **Debug: Toggle Auto Attach** and select **Always**.
@@ -198,6 +200,61 @@ You need to start a new terminal **in VS Code** after enabling Auto Attach.
 :::
 
 Now open a new terminal in VS Code, run `sst dev`, set a breakpoint in a function, and invoke the function.
+
+---
+
+### Golang
+
+Assuming you are using VSCode. Add the _Attach_ configuration to your `launch.json` file.
+Setting `processId` to 0 lets you choose the PID each time you start the debugger.
+```json
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Attach to Go Process",
+      "type": "go",
+      "request": "attach",
+      "mode": "local",
+      "processId": 0
+    }
+  ]
+}
+```
+
+
+Print out the PID in the main function of your Lambda
+```go
+func main() {
+    // For debbugging purposes only
+    if os.Getenv("SST_DEV") != "" {
+        fmt.Printf("------------> ProcessID = %d\n", os.Getpid())
+        time.Sleep(30 * time.Second)
+    }
+
+    lambda.Start(lambdaDeps.handleRequest)
+}
+```
+
+Grab the PID from the Function logs in the Dev console.
+
+During the 30-second sleep period, start the debugger in VSCode and add the PID to the input field that appears.
+Now, just wait for the debugger to hit your breakpoint.
+
+One thing to bear in mind: The behaviour of Lambdas in Live Mode is similar to that of AWS Lambdas (cold/warm starts). The `main` function is executed when the DEV session starts. Afterwards, the Lambda environment stays idle and your debugger remains connected, even after your Lambda invocation has ended. The advantage is that you don't have to reconnect between invocations as long as there are no changes to the Lambda. A change to the Lambda code triggers a rebuild and a new PID is created.
+
+
+If you face the error:
+`Could not attach to pid:##### this could be caused by a kernel security setting, try writing "0" to /proc/sys/kernel/yama/ptrace_scope`
+You can solve this by setting `ptrace_scope` to 0. But before you do, carefully read the [Docs](https://www.kernel.org/doc/Documentation/security/Yama.txt). This setting reverts to its default on reboot.
+```bash
+# Check your current setting
+cat /proc/sys/kernel/yama/ptrace_scope
+
+# Set to 0
+echo 0 > /proc/sys/kernel/yama/ptrace_scope
+```
+
 
 ---
 
