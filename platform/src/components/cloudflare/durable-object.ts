@@ -1,7 +1,22 @@
-import { ComponentResourceOptions, output } from "@pulumi/pulumi";
+import { ComponentResourceOptions, output, type Output } from "@pulumi/pulumi";
 import { Component } from "../component.js";
 import { Link } from "../link.js";
+import type { Input } from "../input.js";
 import { binding } from "./binding.js";
+
+export interface DurableObjectArgs {
+  /**
+   * The name of the class in your worker handler file that extends `DurableObject`.
+   *
+   * @example
+   * ```js
+   * {
+   *   className: "Counter"
+   * }
+   * ```
+   */
+  className: Input<string>;
+}
 
 /**
  * Use the `DurableObject` component to register a
@@ -9,8 +24,8 @@ import { binding } from "./binding.js";
  * for a worker.
  *
  * Create the Durable Object and then link it to a `sst.cloudflare.Worker`. SST
- * adds the Durable Object binding automatically. The component name must match
- * the exported Durable Object class name in your worker code.
+ * adds the Durable Object binding automatically. The `className` must match the
+ * exported Durable Object class name in your worker code.
  *
  * Durable Objects require migrations on the worker. Use the Worker's
  * `migrations` field like Wrangler's top-level `migrations` config: keep the
@@ -24,7 +39,9 @@ import { binding } from "./binding.js";
  * @example
  *
  * ```ts title="sst.config.ts"
- * const counter = new sst.cloudflare.DurableObject("Counter");
+ * const counter = new sst.cloudflare.DurableObject("Counter", {
+ *   className: "Counter",
+ * });
  *
  * new sst.cloudflare.Worker("Api", {
  *   handler: "src/worker.ts",
@@ -37,11 +54,13 @@ import { binding } from "./binding.js";
  * });
  * ```
  *
- * To rename a deployed class from `Counter` to `CounterV2`, update the component
- * and exported class name, then append a migration.
+ * To rename a deployed class from `Counter` to `CounterV2`, update `className`
+ * and the exported class name, then append a migration.
  *
  * ```ts title="sst.config.ts"
- * const counter = new sst.cloudflare.DurableObject("CounterV2");
+ * const counter = new sst.cloudflare.DurableObject("Counter", {
+ *   className: "CounterV2",
+ * });
  *
  * new sst.cloudflare.Worker("Api", {
  *   handler: "src/worker.ts",
@@ -79,11 +98,18 @@ import { binding } from "./binding.js";
  * ```
  */
 export class DurableObject extends Component implements Link.Linkable {
-  private readonly durableObjectClassName: string;
+  /**
+   * The exported Durable Object class name.
+   */
+  public readonly className: Output<string>;
 
-  constructor(name: string, opts?: ComponentResourceOptions) {
-    super(__pulumiType, name, {}, opts);
-    this.durableObjectClassName = name;
+  constructor(
+    name: string,
+    args: DurableObjectArgs,
+    opts?: ComponentResourceOptions,
+  ) {
+    super(__pulumiType, name, args, opts);
+    this.className = output(args.className);
   }
 
   /**
@@ -94,7 +120,7 @@ export class DurableObject extends Component implements Link.Linkable {
    */
   public getSSTLink() {
     const properties = {
-      className: this.durableObjectClassName,
+      className: this.className,
     };
 
     return {
@@ -110,13 +136,6 @@ export class DurableObject extends Component implements Link.Linkable {
         },
       ],
     };
-  }
-
-  /**
-   * The exported Durable Object class name.
-   */
-  public get className() {
-    return output(this.durableObjectClassName);
   }
 }
 

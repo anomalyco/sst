@@ -700,6 +700,7 @@ export class Worker extends Component implements Link.Linkable {
     }
 
     function createScript() {
+      // workers.dev URLs fail above 54 chars when previews are enabled
       const scriptName = prefixName(54, `${name}Script`).toLowerCase();
       const durableObjectMigrationState = args.migrations
         ? all([args.migrations, accountId]).apply(
@@ -788,103 +789,100 @@ export class Worker extends Component implements Link.Linkable {
       const contentFilePath = build.apply((build) =>
         path.join(build.out, build.handler),
       );
-      const scriptArgs: cf.WorkersScriptArgs = {
-        // workers.dev URLs fail above 54 chars when previews are enabled
-        scriptName,
-        mainModule: "placeholder",
-        accountId,
-        contentFile: contentFilePath,
-        contentSha256: contentFilePath.apply(async (p) =>
-          crypto
-            .createHash("sha256")
-            .update(await fs.readFile(p, "utf-8"))
-            .digest("hex"),
-        ),
-        compatibilityDate: compatibility.apply((value) => value.date),
-        compatibilityFlags: compatibility.apply((value) => value.flags),
-        ...(durableObjectMigrationState
-          ? {
-              migrations: durableObjectMigrationState.apply(
-                (state) => state.migrations,
-              ) as Input<cf.types.input.WorkersScriptMigrations>,
-              migrationTag: durableObjectMigrationState.apply(
-                (state) => state.migrationTag,
-              ) as Input<string>,
-            }
-          : {}),
-        assets: args.assets
-          ? output(args.assets).apply(async (assets) => {
-              const directory = path.isAbsolute(assets.directory)
-                ? assets.directory
-                : path.join($cli.paths.root, assets.directory);
-
-              let headers;
-              let redirects;
-              try {
-                headers = await fs.readFile(
-                  path.join(directory, "_headers"),
-                  "utf-8",
-                );
-              } catch (e) {}
-
-              try {
-                redirects = await fs.readFile(
-                  path.join(directory, "_redirects"),
-                  "utf-8",
-                );
-              } catch (e) {}
-              return {
-                directory,
-                config: {
-                  headers,
-                  redirects,
-                  htmlHandling: assets.htmlHandling,
-                  notFoundHandling: assets.notFoundHandling,
-                  runWorkerFirst: assets.runWorkerFirst,
-                },
-              };
-            })
-          : undefined,
-
-        bindings: all([args.environment, iamCredentials, bindings]).apply(
-          ([environment, iamCredentials, bindings]) => [
-            ...bindings,
-            ...(iamCredentials
-              ? [
-                  {
-                    type: "plain_text",
-                    name: "AWS_ACCESS_KEY_ID",
-                    text: iamCredentials.id,
-                  },
-                  {
-                    type: "secret_text",
-                    name: "AWS_SECRET_ACCESS_KEY",
-                    text: iamCredentials.secret,
-                  },
-                ]
-              : []),
-            ...(args.assets
-              ? [
-                  {
-                    type: "assets",
-                    name: "ASSETS",
-                  },
-                ]
-              : []),
-            ...Object.entries(environment ?? {}).map(([key, value]) => ({
-              type: "plain_text",
-              name: key,
-              text: value,
-            })),
-          ],
-        ),
-      };
-
       return new cf.WorkersScript(
         ...transform(
           args.transform?.worker as Transform<cf.WorkersScriptArgs>,
           `${name}Script`,
-          scriptArgs,
+          {
+            scriptName,
+            mainModule: "placeholder",
+            accountId,
+            contentFile: contentFilePath,
+            contentSha256: contentFilePath.apply(async (p) =>
+              crypto
+                .createHash("sha256")
+                .update(await fs.readFile(p, "utf-8"))
+                .digest("hex"),
+            ),
+            compatibilityDate: compatibility.apply((value) => value.date),
+            compatibilityFlags: compatibility.apply((value) => value.flags),
+            ...(durableObjectMigrationState
+              ? {
+                  migrations: durableObjectMigrationState.apply(
+                    (state) => state.migrations,
+                  ) as Input<cf.types.input.WorkersScriptMigrations>,
+                  migrationTag: durableObjectMigrationState.apply(
+                    (state) => state.migrationTag,
+                  ) as Input<string>,
+                }
+              : {}),
+            assets: args.assets
+              ? output(args.assets).apply(async (assets) => {
+                  const directory = path.isAbsolute(assets.directory)
+                    ? assets.directory
+                    : path.join($cli.paths.root, assets.directory);
+
+                  let headers;
+                  let redirects;
+                  try {
+                    headers = await fs.readFile(
+                      path.join(directory, "_headers"),
+                      "utf-8",
+                    );
+                  } catch (e) {}
+
+                  try {
+                    redirects = await fs.readFile(
+                      path.join(directory, "_redirects"),
+                      "utf-8",
+                    );
+                  } catch (e) {}
+                  return {
+                    directory,
+                    config: {
+                      headers,
+                      redirects,
+                      htmlHandling: assets.htmlHandling,
+                      notFoundHandling: assets.notFoundHandling,
+                      runWorkerFirst: assets.runWorkerFirst,
+                    },
+                  };
+                })
+              : undefined,
+
+            bindings: all([args.environment, iamCredentials, bindings]).apply(
+              ([environment, iamCredentials, bindings]) => [
+                ...bindings,
+                ...(iamCredentials
+                  ? [
+                      {
+                        type: "plain_text",
+                        name: "AWS_ACCESS_KEY_ID",
+                        text: iamCredentials.id,
+                      },
+                      {
+                        type: "secret_text",
+                        name: "AWS_SECRET_ACCESS_KEY",
+                        text: iamCredentials.secret,
+                      },
+                    ]
+                  : []),
+                ...(args.assets
+                  ? [
+                      {
+                        type: "assets",
+                        name: "ASSETS",
+                      },
+                    ]
+                  : []),
+                ...Object.entries(environment ?? {}).map(([key, value]) => ({
+                  type: "plain_text",
+                  name: key,
+                  text: value,
+                })),
+              ],
+            ),
+          },
           { parent, ignoreChanges: ["scriptName"] },
         ),
       );

@@ -17,7 +17,9 @@ export default $config({
     };
   },
   async run() {
-    const counter = new sst.cloudflare.DurableObject("Counter");
+    const counter = new sst.cloudflare.DurableObject("Counter", {
+      className: "Counter",
+    });
 
     const api = new sst.cloudflare.Worker("Api", {
       migrations: [
