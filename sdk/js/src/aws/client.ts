@@ -34,7 +34,18 @@ export type AwsOptions = Exclude<
   null | undefined
 >["aws"];
 
-export async function client(): Promise<AwsClient> {
+export async function client(aws?: AwsOptions): Promise<AwsClient> {
+  if (aws?.accessKeyId && aws.secretAccessKey) {
+    return new AwsClient({
+      accessKeyId: aws.accessKeyId,
+      secretAccessKey: aws.secretAccessKey,
+      sessionToken: aws.sessionToken,
+      service: aws.service,
+      region: aws.region ?? process.env.AWS_REGION,
+      cache: aws.cache,
+    });
+  }
+
   if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
     return new AwsClient({
       accessKeyId: process.env.AWS_ACCESS_KEY_ID,
@@ -66,7 +77,7 @@ export async function awsFetch(
   init: Omit<AwsFetchOptions, "aws">,
   options?: { aws?: AwsOptions },
 ) {
-  const c = await client();
+  const c = await client(options?.aws);
   const region = options?.aws?.region ?? c.region;
   return c.fetch(`https://${service}.${region}.amazonaws.com${path}`, {
     ...init,
