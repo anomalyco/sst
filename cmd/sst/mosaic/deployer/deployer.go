@@ -40,6 +40,9 @@ func Start(ctx context.Context, p *project.Project, server *server.Server, polic
 				}
 				continue
 			case *watcher.FileChangedEvent, *DeployRequestedEvent:
+				if evt, ok := evt.(*watcher.FileChangedEvent); ok {
+					log.Info("file change deploy decision", "path", evt.Path, "tracked", watchedFiles[evt.Path])
+				}
 				if evt, ok := evt.(*watcher.FileChangedEvent); !ok || watchedFiles[evt.Path] {
 					log.Info("deploying")
 					err := p.Run(ctx, &project.StackInput{
