@@ -1903,9 +1903,14 @@ export class Function extends Component implements Link.Linkable {
         result.SST_KEY = key;
         // When a shared `bundle` is used, multiple functions write into the
         // same output directory — the Go runtime namespaces the encrypted
-        // resource file by FunctionID to avoid a concurrent-write race that
-        // corrupts the ciphertext. Point each Lambda at its own file to match.
-        result.SST_KEY_FILE = bundle ? `resource-${name}.enc` : "resource.enc";
+        // resource file under `.sst/<FunctionID>/resource.enc` to avoid a
+        // concurrent-write race that corrupts the ciphertext, AND so each
+        // Lambda's uploaded zip can exclude every sibling's subtree (the
+        // zipper filters on `.sst/<otherFunctionID>/`). Point each Lambda
+        // at its own file to match.
+        result.SST_KEY_FILE = bundle
+          ? `.sst/${name}/resource.enc`
+          : "resource.enc";
         if (dev) {
           result.SST_REGION = process.env.SST_AWS_REGION!;
           result.SST_APPSYNC_HTTP = appsync.http;
@@ -2487,8 +2492,26 @@ export class Function extends Component implements Link.Linkable {
                     sourcemaps?.map((item) => path.relative(bundle, item)) ||
                     [],
                 });
+                // When several functions share a `bundle:` directory the Go
+                // runtime writes per-function encrypted envelopes under
+                // `.sst/<FunctionID>/resource.enc`. Each Lambda must ship
+                // ONLY its own envelope — siblings' envelopes are encrypted
+                // with the same app-level key, so leaving them in the zip
+                // would expose every other Lambda's linked secrets/URLs to
+                // this one. Applies to the bundle iteration only; copyFiles
+                // entries can't contain a `.sst/<id>/` subtree.
+                const sstDir = `.sst${path.sep}`;
+                const ownDir = `.sst${path.sep}${name}${path.sep}`;
+                const filtered =
+                  item.from === bundle
+                    ? found.filter(
+                        (file) =>
+                          !file.startsWith(sstDir) ||
+                          file.startsWith(ownDir),
+                      )
+                    : found;
                 files.push(
-                  ...found.map((file) => ({
+                  ...filtered.map((file) => ({
                     from: path.join(item.from, file),
                     to: path.join(item.to, file),
                   })),
