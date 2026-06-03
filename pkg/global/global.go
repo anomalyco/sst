@@ -29,8 +29,22 @@ var configDir = (func() string {
 	return result
 }())
 
+var cacheDir = (func() string {
+	cache, err := os.UserCacheDir()
+	if err != nil {
+		panic(err)
+	}
+	result := filepath.Join(cache, "sst")
+	os.MkdirAll(result, 0755)
+	return result
+}())
+
 func ConfigDir() string {
 	return configDir
+}
+
+func CacheDir() string {
+	return cacheDir
 }
 
 func BinPath() string {
