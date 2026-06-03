@@ -51,6 +51,19 @@ export interface BusArgs {
 
 export interface BusSubscriberArgs {
   /**
+   * Configures whether the subscriber is enabled. When disabled, the EventBridge
+   * rule is still created, but it won't receive events.
+   *
+   * @default true
+   * @example
+   * ```ts
+   * {
+   *   enabled: false
+   * }
+   * ```
+   */
+  enabled?: Input<boolean>;
+  /**
    * Filter the messages that'll be processed by the subscriber.
    *
    * If any single property in the pattern doesn't match
@@ -577,7 +590,7 @@ export class Bus extends Component implements Link.Linkable {
    *
    * @param name The name of the component.
    * @param busName The name of the existing EventBus.
-   * @param opts? Resource options.
+   * @param opts Resource options.
    *
    * @example
    * Imagine you create a bus in the `dev` stage. And in your personal stage `frank`,

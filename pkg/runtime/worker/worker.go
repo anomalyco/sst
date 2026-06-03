@@ -69,6 +69,9 @@ func (w *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 	if err != nil {
 		return nil, err
 	}
+	// Windows paths must not be embedded raw in JS string literals: backslashes
+	// are escape sequences (\p, \f, etc.). Forward slashes work for imports.
+	importPath := filepath.ToSlash(abs)
 	target := filepath.Join(input.Out(), input.Handler)
 
 	slog.Info("loader info", "loader", build.Loader)
@@ -104,11 +107,11 @@ func (w *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		Platform: esbuild.PlatformNode,
 		Stdin: &esbuild.StdinOptions{
 			Contents: fmt.Sprintf(`
-      import handler from "%s"
-      import { fromCloudflareEnv, wrapCloudflareHandler } from "sst"
+      import * as _sst_user_module from "%s"
+      import { wrapCloudflareHandler } from "sst/resource/cloudflare"
       export * from "%s"
-      export default wrapCloudflareHandler(handler)
-      `, abs, abs),
+      export default wrapCloudflareHandler(_sst_user_module.default)
+      `, importPath, importPath),
 			ResolveDir: filepath.Dir(abs),
 			Loader:     esbuild.LoaderTS,
 		},
@@ -252,6 +255,7 @@ func (w *Runtime) getUnenv(ctx context.Context, cfgPath string, compatibility co
 		string(payload),
 	)
 	cmd.Dir = path.ResolvePlatformDir(cfgPath)
+	cmd.Env = []string{}
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load cloudflare unenv config: %w\n%s", err, output)
@@ -309,6 +313,12 @@ func (r *Runtime) ShouldRebuild(functionID string, file string) bool {
 	}
 
 	return false
+}
+
+// ShouldRunEagerly returns true for Cloudflare Workers - workers restart immediately after rebuild.
+// Workers use esbuild's metafile for precise per-function dependency tracking.
+func (r *Runtime) ShouldRunEagerly() bool {
+	return true
 }
 
 func (r *Runtime) Run(ctx context.Context, input *runtime.RunInput) (runtime.Worker, error) {

@@ -100,8 +100,11 @@ SST uses [uv](https://docs.astral.sh/uv/) to package your Python functions. Your
 To use the SDK, add it to your `pyproject.toml`.
 
 ```toml title="functions/pyproject.toml"
+[project]
+dependencies = ["sst-sdk"]
+
 [tool.uv.sources]
-sst = { git = "https://github.com/sst/sst.git", subdirectory = "sdk/python", branch = "dev" }
+sst-sdk = { git = "https://github.com/anomalyco/sst.git", subdirectory = "sdk/python", branch = "dev" }
 ```
 
 And in your function, import the `resource` module and access the linked resource.
@@ -120,7 +123,7 @@ const bucket = new sst.aws.Bucket("MyBucket");
 
 new sst.aws.Function("MyFunction", {
   handler: "functions/src/functions/api.handler",
-  runtime: "python3.11",
+  runtime: "python3.13",
   link: [bucket]
 });
 ```

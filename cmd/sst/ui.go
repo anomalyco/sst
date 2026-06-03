@@ -14,6 +14,7 @@ import (
 	"github.com/sst/sst/v3/cmd/sst/mosaic/ui/common"
 	"github.com/sst/sst/v3/pkg/project"
 	"github.com/sst/sst/v3/pkg/server"
+	"github.com/sst/sst/v3/pkg/types/typescript"
 )
 
 func CmdUI(c *cli.Cli) error {
@@ -86,6 +87,7 @@ func CmdUI(c *cli.Cli) error {
 			apitype.ResOutputsEvent{},
 			apitype.DiagnosticEvent{},
 			project.CompleteEvent{},
+			typescript.WarningEvent{},
 		)
 	}
 	evts, err := dev.Stream(c.Context, url, types...)

@@ -74,9 +74,38 @@ export interface HyperdriveBinding {
   };
 }
 
+export interface DurableObjectNamespaceBinding {
+  type: "durableObjectNamespaceBindings";
+  properties: {
+    className: Input<string>;
+    scriptName?: Input<string>;
+    environment?: Input<string>;
+  };
+}
+
 export interface VersionMetadataBinding {
   type: "versionMetadataBindings";
   properties: Record<string, never>;
+}
+
+export interface WorkflowBinding {
+  type: "workflowBindings";
+  properties: {
+    workflowName: Input<string>;
+    className: Input<string>;
+    scriptName: Input<string>;
+  };
+}
+
+export interface RateLimitBinding {
+  type: "rateLimitBindings";
+  properties: {
+    namespaceId: Input<string>;
+    simple: Input<{
+      limit: Input<number>;
+      period: Input<number>;
+    }>;
+  };
 }
 
 export type Binding =
@@ -89,7 +118,10 @@ export type Binding =
   | R2BucketBinding
   | D1DatabaseBinding
   | HyperdriveBinding
-  | VersionMetadataBinding;
+  | VersionMetadataBinding
+  | WorkflowBinding
+  | DurableObjectNamespaceBinding
+  | RateLimitBinding;
 
 export function binding<T extends Binding["type"]>(input: Binding & {}) {
   return {

@@ -273,19 +273,134 @@ export interface App {
 
   /**
    * Configure which directories should be watched for changes when running `sst dev`.
-   * By default, all directories are watched (except node_modules and hidden directories).
+   * By default, SST watches the project root recursively, except for hidden
+   * directories and `node_modules`.
+   *
+   * You can configure it with `paths` and `ignore`.
+   *
+   * :::caution
+   * Passing an array directly is supported for backward compatibility
+   * and will be deprecated in the next major version.
+   * :::
    *
    * @example
    * ```ts
    * {
-   *   watch: ["packages/www", "packages/api"]
+   *   watch: {
+   *     paths: ["packages/www", "packages/api"],
+   *     ignore: [".env", "packages/api/generated"]
+   *   }
    * }
    * ```
    *
-   * This will only watch the `packages/www` and `packages/api` directories.
-   * The paths are relative to the project root.
+   * @example
+   *
+   * Watch all dictories except `*.egg-info`.
+   * ```ts
+   * {
+   *   watch: {
+   *     ignore: ["*.egg-info"]
+   *   }
+   * }
+   * ```
    */
-  watch?: string[];
+  watch?: string[] | AppWatch;
+
+  /**
+   * Configure how your app's state is managed.
+   */
+  state?: {
+    /**
+     * If set to `true`, running `sst remove` will fully remove all state associated
+     * with the stage once all resources have been successfully removed.
+     *
+     * :::tip
+     * Only enable this for ephemeral or development stages.
+     * :::
+     *
+     * This removes the state files, secrets, update history, event logs, snapshots
+     * and the encryption passphrase.
+     *
+     * :::caution
+     * This is irreversible. Once the state encryption key is deleted, secrets and
+     * all state versions will be unrecoverable.
+     * :::
+     *
+     * On AWS this requires `s3:DeleteObjectVersion` and `s3:ListBucketVersions`
+     * on the state bucket. See the [IAM credentials](/docs/iam-credentials)
+     * docs for the full policy.
+     *
+     * @default false
+     *
+     * @example
+     *
+     * ```ts
+     * {
+     *   state: {
+     *     purge: true
+     *   }
+     * }
+     * ```
+     */
+    purge?: boolean;
+    /**
+     * If set to `true`, state files are gzip-compressed before being uploaded
+     * to your home provider. This reduces transfer size for large state files.
+     *
+     * Applies to the `aws` (S3) and `cloudflare` (R2) home providers. The
+     * `local` home provider ignores this setting.
+     *
+     * Reads remain backward compatible regardless of this setting, so it can
+     * be safely toggled on or off between deploys.
+     *
+     * @default false
+     *
+     * @example
+     *
+     * ```ts
+     * {
+     *   state: {
+     *     compress: true
+     *   }
+     * }
+     * ```
+     */
+    compress?: boolean;
+  };
+
+  /**
+   * Configure type generation options.
+   *
+   * @example
+   * ```ts
+   * {
+   *   types: {
+   *     ignore: ["packages/docs", "services/legacy-python"]
+   *   }
+   * }
+   * ```
+   */
+  types?: {
+    /**
+     * Directories to ignore when generating `sst-env.d.ts` and `sst.pyi` files.
+     *
+     * By default, type files are generated for all JavaScript and Python projects
+     * (except node_modules and hidden directories).
+     *
+     * This will skip generating type files inside the listed directories.
+     * The paths are relative to the project root.
+     *
+     * @example
+     * ```ts
+     * {
+     *   types: {
+     *     ignore: ["packages/docs", "services/legacy-python"]
+     *   }
+     * }
+     * ```
+     */
+    ignore?: string[];
+  };
 }
 
 export interface AppInput {
@@ -299,6 +414,26 @@ export interface AppInput {
    * If not passed in, it'll use the username of your local machine, or prompt you for it.
    */
   stage: string;
+}
+
+export interface AppWatch {
+  /**
+   * Directories to recursively watch.
+   *
+   * The paths are relative to the project root. If omitted, SST watches the
+   * project root. Glob patterns are not supported here; use explicit
+   * directories.
+   */
+  paths?: string[];
+  /**
+   * Files or directories to ignore within the watched paths.
+   *
+   * Entries without a slash match names anywhere in the watched tree, like
+   * `.env` or `*.egg-info`. Entries with a slash match that subtree relative
+   * to the project root and can also point outside it, like
+   * `../external-package/dist`.
+   */
+  ignore?: string[];
 }
 
 export interface RunnerInput {

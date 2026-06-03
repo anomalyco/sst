@@ -81,11 +81,13 @@ type CloudflareHome struct {
 	sync.Mutex
 	provider  *CloudflareProvider
 	bootstrap *bootstrap
+	compress  bool
 }
 
-func NewCloudflareHome(provider *CloudflareProvider) *CloudflareHome {
+func NewCloudflareHome(provider *CloudflareProvider, compress bool) *CloudflareHome {
 	return &CloudflareHome{
 		provider: provider,
+		compress: compress,
 	}
 }
 
@@ -137,6 +139,13 @@ func (c *CloudflareHome) putData(kind, app, stage string, data io.Reader) error 
 	c.Lock()
 	defer c.Unlock()
 	path := filepath.Join(kind, app, stage)
+	if c.compress {
+		encoded, err := gzipEncode(data)
+		if err != nil {
+			return err
+		}
+		data = encoded
+	}
 	_, err := makeRequestContext(c.provider.api, context.Background(), http.MethodPut, "/accounts/"+c.provider.identifier.Identifier+"/r2/buckets/"+c.bootstrap.State+"/objects/"+path, data)
 	if err != nil {
 		return err
@@ -155,7 +164,7 @@ func (c *CloudflareHome) getData(kind, app, stage string) (io.Reader, error) {
 		}
 		return nil, err
 	}
-	return bytes.NewReader(data), nil
+	return gzipDecode(bytes.NewReader(data))
 }
 
 func (c *CloudflareHome) removeData(kind, app, stage string) error {
@@ -167,6 +176,55 @@ func (c *CloudflareHome) removeData(kind, app, stage string) error {
 		return err
 	}
 	return nil
+}
+
+func (c *CloudflareHome) purge(app, stage string) error {
+	// Single-file keys.
+	for _, key := range []string{"app", "secret"} {
+		if err := c.removeData(key, app, stage); err != nil {
+			return err
+		}
+	}
+	// Folder-style keys: list under the prefix and delete each object.
+	for _, key := range []string{"update", "summary", "eventlog", "snapshot"} {
+		if err := c.purgePrefix(filepath.Join(key, app, stage) + "/"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *CloudflareHome) purgePrefix(prefix string) error {
+	type r2Object struct {
+		Key string `json:"key"`
+	}
+	type r2Response struct {
+		Result []r2Object `json:"result"`
+	}
+
+	c.Lock()
+	defer c.Unlock()
+
+	listPath := "/accounts/" + c.provider.identifier.Identifier + "/r2/buckets/" + c.bootstrap.State + "/objects?prefix=" + prefix
+	data, err := makeRequestContext(c.provider.api, context.Background(), http.MethodGet, listPath, nil)
+	if err != nil {
+		return err
+	}
+	var response r2Response
+	if err := json.Unmarshal(data, &response); err != nil {
+		return err
+	}
+	for _, obj := range response.Result {
+		_, err := makeRequestContext(c.provider.api, context.Background(), http.MethodDelete, "/accounts/"+c.provider.identifier.Identifier+"/r2/buckets/"+c.bootstrap.State+"/objects/"+obj.Key, nil)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *CloudflareHome) removePassphrase(app, stage string) error {
+	return c.removeData("passphrase", app, stage)
 }
 
 // these should go into secrets manager once it's out of beta

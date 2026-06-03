@@ -210,3 +210,10 @@ func (r *Runtime) ShouldRebuild(functionID string, file string) bool {
 	}
 	return !strings.HasPrefix(rel, "..")
 }
+
+// ShouldRunEagerly returns true for Rust - workers restart immediately after rebuild.
+// Rust uses directory-based dependency tracking, so only functions in the changed
+// directory will rebuild.
+func (r *Runtime) ShouldRunEagerly() bool {
+	return true
+}

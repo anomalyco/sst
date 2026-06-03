@@ -70,7 +70,12 @@ func (p *Project) Run(ctx context.Context, input *StackInput) error {
 	}
 	defer workdir.Cleanup()
 
-	passphrase, err := provider.Passphrase(p.home, p.app.Name, p.app.Stage)
+	var passphrase string
+	if input.Command == "deploy" || input.Command == "diff" || input.Dev {
+		passphrase, err = provider.GetOrCreatePassphrase(p.home, p.app.Name, p.app.Stage)
+	} else {
+		passphrase, err = provider.GetPassphrase(p.home, p.app.Name, p.app.Stage)
+	}
 	if err != nil {
 		return err
 	}
@@ -94,7 +99,7 @@ func (p *Project) Run(ctx context.Context, input *StackInput) error {
 	_, err = workdir.Pull()
 	if err != nil {
 		if errors.Is(err, provider.ErrStateNotFound) {
-			if input.Command != "deploy" {
+			if input.Command != "deploy" && input.Command != "diff" {
 				return ErrStageNotFound
 			}
 			cmd := process.Command(global.PulumiPath(), "stack", "init", "organization/"+p.app.Name+"/"+p.app.Stage)
@@ -516,14 +521,6 @@ loop:
 				continue
 			}
 
-			// check if the error is a common error
-			help := []string{}
-			for _, commonError := range CommonErrors {
-				if strings.Contains(event.DiagnosticEvent.Message, commonError.Message) {
-					help = append(help, commonError.Short...)
-				}
-			}
-
 			exists := false
 			if event.DiagnosticEvent.URN != "" {
 				for _, item := range errors {
@@ -542,7 +539,6 @@ loop:
 				errors = append(errors, Error{
 					Message: strings.TrimSpace(event.DiagnosticEvent.Message),
 					URN:     event.DiagnosticEvent.URN,
-					Help:    help,
 				})
 				log.Info("telemetry tracking error")
 				telemetry.Track("cli.resource.error", map[string]interface{}{
@@ -634,7 +630,7 @@ loop:
 	complete.Finished = finished
 	complete.Errors = errors
 	complete.ImportDiffs = importDiffs
-	types.Generate(p.PathConfig(), complete.Links)
+	types.Generate(p.PathConfig(), complete.Links, p.App().Types.Ignore)
 	defer bus.Publish(complete)
 
 	if input.Command != "diff" {
@@ -669,7 +665,15 @@ loop:
 	}
 
 	if input.Command == "remove" && len(complete.Resources) == 0 {
-		provider.Cleanup(p.home, p.app.Name, p.app.Stage)
+		if p.app.State != nil && p.app.State.Purge {
+			if err := provider.Purge(p.home, p.app.Name, p.app.Stage); err != nil {
+				return err
+			}
+		} else {
+			if err := provider.Cleanup(p.home, p.app.Name, p.app.Stage); err != nil {
+				return err
+			}
+		}
 	}
 
 	log.Info("done running stack command", "resources", len(complete.Resources))

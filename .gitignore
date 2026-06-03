@@ -1,8 +1,11 @@
 .sst
+sst
 dist
 /sst
 s	
 node_modules
+
+# pulumi
 Pulumi.*.yaml
 Pulumi.yaml
 
@@ -12,8 +15,26 @@ Pulumi.yaml
 .netlify
 .env
 tmp
+
+# coding agents
 .termai
 .opencode
+.idea
+.kiro
 
-examples/*/sst-env.d.ts
+# python
+__pycache__
+uv.lock
+
+examples/**/sst-env.d.ts
+examples/**/sst.pyi
 www/src/content/docs/docs/examples.mdx
+www/src/data/changelog.json
+examples/**/bun.lock
+examples/**/bun.lockb
+examples/**/pnpm-lock.yaml
+examples/**/package-lock.json
+examples/**/uv.lock
+examples/**/deno.lock
+examples/**/Cargo.lock
+examples/**/.env.*

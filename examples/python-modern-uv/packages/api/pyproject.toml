@@ -1,0 +1,16 @@
+[project]
+name = "api"
+version = "0.1.0"
+description = "API package with uv package mode"
+dependencies = ["shared"]
+requires-python = ">=3.11"
+
+[tool.uv]
+package = true
+
+[tool.uv.sources]
+shared = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

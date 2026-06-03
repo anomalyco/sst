@@ -14,6 +14,10 @@ export default $config({
       handler: "./index.ts",
       link: [bucket],
       url: true,
+      compatibility: {
+        date: "2025-01-01",
+        flags: ["nodejs_compat"],
+      },
     });
 
     return {

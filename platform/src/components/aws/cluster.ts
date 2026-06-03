@@ -396,8 +396,8 @@ export class Cluster extends Component {
    * ```
    *
    * @param name Name of the service.
-   * @param args? Configure the service.
-   * @param opts? Resource options.
+   * @param args Configure the service.
+   * @param opts Resource options.
    *
    * @example
    *
@@ -481,8 +481,8 @@ export class Cluster extends Component {
    * ```
    *
    * @param name Name of the task.
-   * @param args? Configure the task.
-   * @param opts? Resource options.
+   * @param args Configure the task.
+   * @param opts Resource options.
    *
    * @example
    *
@@ -541,7 +541,7 @@ export class Cluster extends Component {
    *
    * @param name The name of the component.
    * @param args The arguments to get the cluster.
-   * @param opts? Resource options.
+   * @param opts Resource options.
    *
    * @example
    * Imagine you create a cluster in the `dev` stage. And in your personal stage `frank`,

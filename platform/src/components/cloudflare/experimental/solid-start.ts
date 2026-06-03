@@ -89,6 +89,28 @@ export interface SolidStartArgs extends SsrSiteArgs {
    *   domain: "my-app.com"
    * }
    * ```
+   *
+   * Redirect alternate domains to the main domain.
+   *
+   * ```js
+   * {
+   *   domain: {
+   *     name: "my-app.com",
+   *     redirects: ["www.my-app.com"]
+   *   }
+   * }
+   * ```
+   *
+   * Or keep visitors on alternate domains with aliases.
+   *
+   * ```js
+   * {
+   *   domain: {
+   *     name: "app1.my-app.com",
+   *     aliases: ["app2.my-app.com"]
+   *   }
+   * }
+   * ```
    */
   domain?: SsrSiteArgs["domain"];
   /**
@@ -138,6 +160,32 @@ export interface SolidStartArgs extends SsrSiteArgs {
  * ```js {2} title="sst.config.ts"
  * new sst.cloudflare.SolidStart("MyWeb", {
  *   domain: "my-app.com"
+ * });
+ * ```
+ *
+ * #### Redirect www to apex domain
+ *
+ * Redirect `www.my-app.com` to `my-app.com`.
+ *
+ * ```js {4} title="sst.config.ts"
+ * new sst.cloudflare.SolidStart("MyWeb", {
+ *   domain: {
+ *     name: "my-app.com",
+ *     redirects: ["www.my-app.com"]
+ *   }
+ * });
+ * ```
+ *
+ * #### Add domain aliases
+ *
+ * Allow visitors to use alternate domains without redirecting.
+ *
+ * ```js {4} title="sst.config.ts"
+ * new sst.cloudflare.SolidStart("MyWeb", {
+ *   domain: {
+ *     name: "app1.my-app.com",
+ *     aliases: ["app2.my-app.com"]
+ *   }
  * });
  * ```
  *

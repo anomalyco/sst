@@ -33,7 +33,7 @@ export class WorkerScript extends dynamic.Resource {
       `${name}.sst.cloudflare.WorkerScript`,
       {
         ...args,
-        accountId: DEFAULT_ACCOUNT_ID,
+        accountId: args.accountId ?? DEFAULT_ACCOUNT_ID,
         apiToken:
           $app.providers?.cloudflare?.apiToken ||
           process.env.CLOUDFLARE_API_TOKEN!,

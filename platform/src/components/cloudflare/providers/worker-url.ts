@@ -5,6 +5,7 @@ interface Inputs {
   accountId: string;
   scriptName: string;
   enabled: boolean;
+  etag?: string;
 }
 
 interface Outputs {
@@ -15,6 +16,7 @@ export interface WorkerUrlInputs {
   accountId: Input<Inputs["accountId"]>;
   scriptName: Input<Inputs["scriptName"]>;
   enabled: Input<Inputs["enabled"]>;
+  etag?: Input<Inputs["etag"]>;
 }
 
 export interface WorkerUrl {

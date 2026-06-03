@@ -8,6 +8,7 @@ export interface WorkerAssetsInputs {
   manifest: Input<
     Record<string, { hash: string; size: number; contentType: string }>
   >;
+  accountId?: Input<string>;
 }
 
 export interface WorkerAssets {
@@ -27,7 +28,7 @@ export class WorkerAssets extends dynamic.Resource {
       {
         ...args,
         jwt: undefined,
-        accountId: DEFAULT_ACCOUNT_ID,
+        accountId: args.accountId ?? DEFAULT_ACCOUNT_ID,
         apiToken:
           $app.providers?.cloudflare?.apiToken ||
           process.env.CLOUDFLARE_API_TOKEN!,

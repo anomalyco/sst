@@ -4,15 +4,22 @@ import { Component, Transform, transform } from "../component";
 import { Link } from "../link";
 import { binding } from "./binding";
 import { DEFAULT_ACCOUNT_ID } from "./account-id";
+import type { Input } from "../input";
 
 export interface KvArgs {
+  /**
+   * The Cloudflare account ID to use for this KV namespace.
+   * Overrides the default account ID set via `CLOUDFLARE_DEFAULT_ACCOUNT_ID`.
+   * @internal
+   */
+  accountId?: Input<string>;
   /**
    * [Transform](/docs/components/#transform) how this component creates its underlying
    * resources.
    */
   transform?: {
     /**
-     * Transform the R2 KV namespace resource.
+     * Transform the KV namespace resource.
      */
     namespace?: Transform<cloudflare.WorkersKvNamespaceArgs>;
   };
@@ -23,6 +30,12 @@ export interface KvGetArgs {
    * The ID of the existing KV namespace.
    */
   namespaceId: string;
+  /**
+   * The Cloudflare account ID the namespace belongs to.
+   * Overrides the default account ID set via `CLOUDFLARE_DEFAULT_ACCOUNT_ID`.
+   * @internal
+  */
+  accountId?: string;
 }
 
 interface KvRef {
@@ -87,7 +100,7 @@ export class Kv extends Component implements Link.Linkable {
           `${name}Namespace`,
           {
             title: "",
-            accountId: DEFAULT_ACCOUNT_ID,
+            accountId: args?.accountId ?? DEFAULT_ACCOUNT_ID,
           },
           { parent },
         ),
@@ -105,7 +118,7 @@ export class Kv extends Component implements Link.Linkable {
    *
    * @param name The name of the component.
    * @param args The arguments to get the KV namespace.
-   * @param opts? Resource options.
+   * @param opts Resource options.
    *
    * @example
    * Imagine you create a KV namespace in the `dev` stage. And in your personal stage `frank`,
@@ -126,7 +139,7 @@ export class Kv extends Component implements Link.Linkable {
   ) {
     const namespace = cloudflare.WorkersKvNamespace.get(
       `${name}Namespace`,
-      `${DEFAULT_ACCOUNT_ID}/${args.namespaceId}`,
+      `${args.accountId ?? DEFAULT_ACCOUNT_ID}/${args.namespaceId}`,
       undefined,
       opts,
     );

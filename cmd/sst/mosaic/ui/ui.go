@@ -22,6 +22,7 @@ import (
 	"github.com/sst/sst/v3/cmd/sst/mosaic/ui/common"
 	"github.com/sst/sst/v3/pkg/flag"
 	"github.com/sst/sst/v3/pkg/project"
+	"github.com/sst/sst/v3/pkg/types/typescript"
 
 	"golang.org/x/crypto/ssh/terminal"
 )
@@ -231,7 +232,7 @@ func (u *UI) Event(unknown interface{}) {
 		if len(evt.Errors) > 0 {
 			u.printEvent(TEXT_DANGER, "Build Error", u.functionName(evt.FunctionID))
 			for _, item := range evt.Errors {
-				u.printEvent(TEXT_DANGER, "", "↳ "+strings.TrimSpace(item))
+				u.printEvent(TEXT_DANGER, "", "  "+strings.TrimSpace(item))
 			}
 			return
 		}
@@ -262,6 +263,9 @@ func (u *UI) Event(unknown interface{}) {
 
 	case *project.PolicyAdvisoryEvent:
 		u.printEvent(TEXT_WARNING, "Warning", u.FormatURN(evt.URN)+" "+evt.Policy+": "+evt.Message)
+
+	case *typescript.WarningEvent:
+		u.printEvent(TEXT_WARNING, "Warning", evt.Message)
 
 	case *project.StackCommandEvent:
 		u.reset()
@@ -602,10 +606,10 @@ func (u *UI) functionName(functionID string) string {
 	}
 	for _, resource := range u.complete.Resources {
 		if resource.Type == "sst:aws:Function" && resource.URN.Name() == functionID {
-			return resource.Outputs["_metadata"].(map[string]interface{})["handler"].(string)
+			return strings.TrimPrefix(resource.Outputs["_metadata"].(map[string]interface{})["handler"].(string), "./")
 		}
 		if resource.Type == "sst:cloudflare:Worker" && resource.URN.Name() == functionID {
-			return resource.Outputs["_metadata"].(map[string]interface{})["handler"].(string)
+			return strings.TrimPrefix(resource.Outputs["_metadata"].(map[string]interface{})["handler"].(string), "./")
 		}
 	}
 	return functionID

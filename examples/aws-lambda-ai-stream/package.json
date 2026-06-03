@@ -3,7 +3,7 @@
   "type": "module",
   "dependencies": {
     "ai": "^6.0.116",
-    "sst": "^4"
+    "sst": "file:../../sdk/js"
   },
   "devDependencies": {
     "@types/aws-lambda": "8.10.145"

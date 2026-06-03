@@ -18,12 +18,13 @@ export function workerBuilder(
   definition: Input<string | WorkerArgs>,
   argsTransform?: Transform<WorkerArgs>,
   opts?: ComponentResourceOptions,
+  accountId?: Input<string>,
 ): WorkerBuilder {
   return output(definition).apply((definition) => {
     if (typeof definition === "string") {
       // Case 1: The definition is a handler
       const worker = new Worker(
-        ...transform(argsTransform, name, { handler: definition }, opts || {}),
+        ...transform(argsTransform, name, { accountId, handler: definition }, opts || {}),
       );
       return {
         getWorker: () => worker,
@@ -38,6 +39,7 @@ export function workerBuilder(
           argsTransform,
           name,
           {
+            accountId,
             ...definition,
           },
           opts || {},

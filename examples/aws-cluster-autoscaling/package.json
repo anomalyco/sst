@@ -12,6 +12,6 @@
   "dependencies": {
     "@aws-sdk/client-sqs": "^3.682.0",
     "express": "^4.21.1",
-    "sst": "^4"
+    "sst": "file:../../sdk/js"
   }
 }

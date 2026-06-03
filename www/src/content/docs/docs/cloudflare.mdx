@@ -31,7 +31,7 @@ If Cloudflare should store your app state, set [`home`](/docs/reference/config/#
 
 ## Credentials
 
-You can create an account token in the Cloudflare dashboard under [Manage Account > API Tokens](https://dash.cloudflare.com/profile/api-tokens).
+You can create an account token in the Cloudflare dashboard under [Manage Account > API Tokens](https://dash.cloudflare.com/?to=/:account/api-tokens).
 
 Start with the **Edit Cloudflare Workers** template and add these permissions:
 
@@ -52,6 +52,28 @@ Then set these variables in your shell, `.env`, or CI environment before you dep
 export CLOUDFLARE_API_TOKEN=aaaaaaaa_aaaaaaaaaaaa_aaaaaaaa
 export CLOUDFLARE_DEFAULT_ACCOUNT_ID=aaaaaaaa_aaaaaaaaaaaa_aaaaaaaa
 ```
+
+---
+
+### Deploying into Multiple Cloudflare Accounts
+
+You can deploy cloudflare components into multiple Cloudflare accounts by specifying the accountId argument and providing a different Cloudflare Provider.
+
+```ts
+// define a provider with another api token for a different account
+const provider = new cloudflare.Provider("AnotherProvider", { apiToken: "bbbbbbbb_bbbbbbbbbbbb_bbbbbbbb" });
+
+// specify resource in another account
+const sstWorker = new sst.cloudflare.Worker(
+  "MyWorker",
+  { handler: "index.ts", accountId: "bbbbbbbb-bbbbbbbbbbbb-bbbbbbbb" },
+  { provider },
+);
+```
+
+:::caution
+Do not link any resources which are deployed into different Cloudflare accounts.
+:::
 
 ---
 
@@ -130,9 +152,40 @@ For scheduled work, use [`Cron`](/docs/component/cloudflare/cron/) to run a work
 
 ### More components
 
-Browse the component docs for [`Worker`](/docs/component/cloudflare/worker/), [`Bucket`](/docs/component/cloudflare/bucket/), [`D1`](/docs/component/cloudflare/d1/), [`Kv`](/docs/component/cloudflare/kv/), [`Queue`](/docs/component/cloudflare/queue/), [`Cron`](/docs/component/cloudflare/cron/), and [`Ai`](/docs/component/cloudflare/ai/).
+Browse the component docs for [`Worker`](/docs/component/cloudflare/worker/), [`Astro`](/docs/component/cloudflare/astro/), [`Bucket`](/docs/component/cloudflare/bucket/), [`D1`](/docs/component/cloudflare/d1/), [`Kv`](/docs/component/cloudflare/kv/), [`Queue`](/docs/component/cloudflare/queue/), [`Cron`](/docs/component/cloudflare/cron/), [`Ai`](/docs/component/cloudflare/ai/), [`Workflow`](/docs/component/cloudflare/workflow/), and [`RateLimit`](/docs/component/cloudflare/rate-limit/).
 
 If you are using Cloudflare DNS with SST, use [`sst.cloudflare.dns`](/docs/component/cloudflare/dns/) with [custom domains](/docs/custom-domains/).
+
+---
+
+## Cloudflare Vite plugin
+
+Cloudflare SSR components like [Astro](/docs/component/cloudflare/astro/) or [TanStack Start](/docs/component/cloudflare/tanstack-start/) need the Cloudflare Vite plugin to work correctly.
+
+:::caution
+Do not include any Wrangler configuration files (`wrangler.toml`, `wrangler.json`) in your project. SST manages these for you and will generate them as needed.
+:::
+
+You need to configure the Vite plugin to use the SST-managed Wrangler config.
+
+```ts title="vite.config.ts"
+import { defineConfig } from "vite";
+import { cloudflare } from "@cloudflare/vite-plugin";
+
+export default defineConfig({
+  plugins: [
+    cloudflare({
+      configPath: process.env.SST_WRANGLER_CONFIG,
+    }),
+  ],
+});
+```
+
+This environment variable is set by SST and ensures the plugin uses the generated Wrangler configuration.
+
+:::tip
+There is an [open PR](https://github.com/cloudflare/workers-sdk/pull/13587) on the Cloudflare Workers SDK that will add automatic detection of the SST-managed Wrangler config. Once merged, you won't need to explicitly set `configPath`.
+:::
 
 ---
 
@@ -143,6 +196,7 @@ Check out the full examples:
 - [Cloudflare Workers with SST](/docs/start/cloudflare/worker/)
 - [Hono on Cloudflare with SST](/docs/start/cloudflare/hono/)
 - [tRPC on Cloudflare with SST](/docs/start/cloudflare/trpc/)
+- [Astro on Cloudflare](https://github.com/sst/sst/tree/dev/examples/cloudflare-astro)
 - [Cloudflare D1](https://github.com/sst/sst/tree/dev/examples/cloudflare-d1)
 - [Cloudflare KV](https://github.com/sst/sst/tree/dev/examples/cloudflare-kv)
 - [Cloudflare Queue](https://github.com/sst/sst/tree/dev/examples/cloudflare-queue)

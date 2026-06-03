@@ -1,0 +1,152 @@
+---
+import { createMarkdownProcessor } from "@astrojs/markdown-remark";
+import data from "../data/changelog.json";
+
+type Entry = {
+  tag: string;
+  publishedAt: string;
+  url: string;
+  body: string;
+};
+
+const entries = data as Entry[];
+
+const processor = await createMarkdownProcessor();
+
+const dateFormatter = new Intl.DateTimeFormat("en-US", {
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+});
+
+function formatTag(tag: string): string {
+  return tag.replace(/^v/, "");
+}
+
+const rendered = await Promise.all(
+  entries.map(async (entry) => {
+    const html = entry.body
+      ? (await processor.render(entry.body)).code
+      : "";
+    return {
+      ...entry,
+      html,
+      label: formatTag(entry.tag),
+      anchor: formatTag(entry.tag),
+      formattedDate: dateFormatter.format(new Date(entry.publishedAt)),
+    };
+  }),
+);
+
+const releases = rendered.map((entry, index) => ({
+  ...entry,
+  showDate: entry.formattedDate !== rendered[index - 1]?.formattedDate,
+}));
+---
+
+<ul class="changelog">
+  {releases.map((entry) => (
+    <li class="release">
+      <div class="meta">
+        <h2 id={entry.anchor}>
+          <a href={`#${entry.anchor}`}>{entry.label}</a>
+        </h2>
+        <time
+          class={`date${entry.showDate ? "" : " hidden"}`}
+          datetime={entry.publishedAt}
+        >
+          {entry.formattedDate}
+        </time>
+      </div>
+      <div class="body">
+        {entry.html
+          ? <Fragment set:html={entry.html} />
+          : <p class="empty"><em>No release notes.</em></p>
+        }
+      </div>
+    </li>
+  ))}
+</ul>
+
+<style>
+  .changelog {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .changelog > li.release {
+    margin: 0;
+    padding: 0;
+  }
+  .changelog > li.release + li.release {
+    margin-top: 0.25rem !important;
+  }
+  .changelog > li.release::before {
+    content: none;
+  }
+  .meta {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0 !important;
+    flex-wrap: wrap;
+  }
+  .meta h2 {
+    margin: 0 !important;
+    font-size: 1.15rem !important;
+    line-height: 1.1 !important;
+    font-family: var(--__sl-font-headings), var(--sl-font-system-mono) !important;
+    font-weight: 600;
+  }
+  .meta h2 a {
+    color: inherit;
+    text-decoration: none;
+  }
+  .meta h2 a:hover {
+    color: var(--sl-color-text-accent);
+  }
+  .date {
+    color: var(--color-text-dimmed);
+    font-size: var(--sl-text-sm);
+    line-height: 1.1;
+    white-space: nowrap;
+  }
+  .date.hidden {
+    visibility: hidden;
+  }
+  .body {
+    margin-top: 0.5rem !important;
+    margin-bottom: 0 !important;
+  }
+  .body :global(p:first-child) {
+    margin-top: 0;
+  }
+  .body :global(p:last-child),
+  .body :global(ul:last-child),
+  .body :global(ol:last-child) {
+    margin-bottom: 0;
+  }
+  .body :global(ul),
+  .body :global(ol) {
+    margin-top: 0;
+  }
+  .body :global(li + li) {
+    margin-top: 0.125rem !important;
+  }
+  .body :global(a[href*="/issues/"]) {
+    margin-left: 0.25rem;
+    font-size: 0.95em;
+    color: var(--color-text-dimmed);
+    text-decoration: none;
+    font-family: var(--sl-font-system-mono), ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  .body :global(a[href*="/issues/"]:hover) {
+    color: var(--sl-color-text-accent);
+  }
+  .body .empty {
+    color: var(--color-text-dimmed);
+    margin: 0;
+  }
+</style>

@@ -1,0 +1,16 @@
+---
+import Layout from "../layouts/Layout.astro";
+
+export const prerender = true;
+---
+
+<Layout title="Prerendered page">
+  <h1>Prerendered page</h1>
+  <p>
+    Astro can mix prerendered routes with server rendered routes in the same
+    Cloudflare app.
+  </p>
+  <p>
+    <a href="/">Back to the server rendered page</a>
+  </p>
+</Layout>

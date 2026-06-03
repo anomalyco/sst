@@ -20,6 +20,24 @@ type Runtime interface {
 	Build(ctx context.Context, input *BuildInput) (*BuildOutput, error)
 	Run(ctx context.Context, input *RunInput) (Worker, error)
 	ShouldRebuild(functionID string, path string) bool
+	// ShouldRunEagerly controls whether workers are started immediately after a rebuild
+	// or lazily on first invocation.
+	//
+	// Background: When a file changes, SST stops all affected workers and rebuilds them.
+	// By default (returning true), workers are restarted immediately after rebuild.
+	// This works well for runtimes like Node.js where esbuild provides precise per-function
+	// dependency tracking, so only a few functions rebuild on each change.
+	//
+	// For Python, we lack precise dependency tracking - a change to shared library code
+	// triggers rebuilds for ALL 50+ functions. Starting all workers immediately causes:
+	// - 50+ processes competing for CPU/memory during startup
+	// - ~2 second startup time per worker
+	// - Long delays before the system is responsive again
+	//
+	// By returning false, Python opts into lazy startup: workers are stopped and marked
+	// as needing rebuild, but only actually start when invoked. This means only the
+	// functions you're actively using restart immediately.
+	ShouldRunEagerly() bool
 }
 
 type Worker interface {
@@ -239,6 +257,14 @@ func (c *Collection) ShouldRebuild(runtime string, functionID string, file strin
 	result := r.ShouldRebuild(functionID, file)
 	slog.Info("should rebuild", "result", result, "functionID", functionID)
 	return result
+}
+
+func (c *Collection) ShouldRunEagerly(runtime string) bool {
+	r, ok := c.Runtime(runtime)
+	if !ok {
+		return true // Default to eager for unknown runtimes
+	}
+	return r.ShouldRunEagerly()
 }
 
 func (c *Collection) AddTarget(input *BuildInput) {
