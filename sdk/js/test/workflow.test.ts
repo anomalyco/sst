@@ -554,3 +554,450 @@ describe("workflow rollback runner", () => {
     expect(calls).toEqual(["run:step-a", "undo:step-a"]);
   });
 });
+
+describe("workflow rollback v2 runner", () => {
+  beforeAll(async () => {
+    await LocalDurableTestRunner.setupTestEnvironment({ skipTime: true });
+  });
+
+  afterAll(async () => {
+    await LocalDurableTestRunner.teardownTestEnvironment();
+  });
+
+  it("registers and drains the failing step's undo with an undefined result", async () => {
+    const calls: string[] = [];
+    const errors: string[] = [];
+    let undoResult: unknown = "unset";
+
+    const handler = workflow.handler(async (_event, ctx) => {
+      try {
+        await ctx.stepWithRollbackV2(
+          "charge",
+          {
+            run: async () => {
+              calls.push("run:charge:side-effect");
+              throw new Error("post-write failure");
+            },
+            undo: async (error, result) => {
+              errors.push((error as Error).message);
+              undoResult = result;
+              calls.push("undo:charge");
+            },
+          },
+          { retryStrategy: () => ({ shouldRetry: false }) },
+        );
+      } catch (error) {
+        await ctx.rollbackAll(error);
+        throw error;
+      }
+    });
+
+    const runner = new LocalDurableTestRunner({ handlerFunction: handler });
+    const execution = await runner.run();
+
+    expect(execution.getStatus()).toBe(ExecutionStatus.FAILED);
+    expect(calls).toEqual(["run:charge:side-effect", "undo:charge"]);
+    expect(errors).toEqual(["post-write failure"]);
+    expect(undoResult).toBeUndefined();
+  });
+
+  it("runs the failing step's undo first, then earlier steps (LIFO)", async () => {
+    const calls: string[] = [];
+    const errors: string[] = [];
+
+    const handler = workflow.handler(async (_event, ctx) => {
+      try {
+        await ctx.stepWithRollbackV2("step-a", {
+          run: async () => {
+            calls.push("run:a");
+            return "result-a";
+          },
+          undo: async (error, value) => {
+            errors.push(`a:${(error as Error).message}`);
+            calls.push(`undo:a:${value}`);
+          },
+        });
+
+        await ctx.stepWithRollbackV2(
+          "step-b",
+          {
+            run: async () => {
+              calls.push("run:b:side-effect");
+              throw new Error("boom");
+            },
+            undo: async (error, value) => {
+              errors.push(`b:${(error as Error).message}`);
+              calls.push(`undo:b:${value}`);
+            },
+          },
+          { retryStrategy: () => ({ shouldRetry: false }) },
+        );
+      } catch (error) {
+        await ctx.rollbackAll(error);
+        throw error;
+      }
+    });
+
+    const runner = new LocalDurableTestRunner({ handlerFunction: handler });
+    const execution = await runner.run();
+
+    expect(execution.getStatus()).toBe(ExecutionStatus.FAILED);
+    expect(calls).toEqual([
+      "run:a",
+      "run:b:side-effect",
+      "undo:b:undefined",
+      "undo:a:result-a",
+    ]);
+    expect(errors).toEqual(["b:boom", "a:boom"]);
+  });
+
+  it("lets undo reconcile against external state and no-op when nothing happened", async () => {
+    const externalStore = new Set<string>();
+    const calls: string[] = [];
+    const errors: string[] = [];
+
+    const handler = workflow.handler(async (_event, ctx) => {
+      try {
+        await ctx.stepWithRollbackV2<{ id: string }>(
+          "provision",
+          {
+            run: async () => {
+              calls.push("run:provision");
+              throw new Error("failed before side effect");
+            },
+            undo: async (error, result) => {
+              errors.push((error as Error).message);
+              const id = result?.id;
+              if (id && externalStore.has(id)) {
+                externalStore.delete(id);
+                calls.push("undo:deleted");
+              } else {
+                calls.push("undo:noop");
+              }
+            },
+          },
+          { retryStrategy: () => ({ shouldRetry: false }) },
+        );
+      } catch (error) {
+        await ctx.rollbackAll(error);
+        throw error;
+      }
+    });
+
+    const runner = new LocalDurableTestRunner({ handlerFunction: handler });
+    const execution = await runner.run();
+
+    expect(execution.getStatus()).toBe(ExecutionStatus.FAILED);
+    expect(calls).toEqual(["run:provision", "undo:noop"]);
+    expect(errors).toEqual(["failed before side effect"]);
+    expect(externalStore.size).toBe(0);
+  });
+
+  it("backfills real results so a later failure's undos see actual output", async () => {
+    const calls: string[] = [];
+    const errors: string[] = [];
+
+    const handler = workflow.handler(async (_event, ctx) => {
+      try {
+        await ctx.stepWithRollbackV2("step-a", {
+          run: async () => {
+            calls.push("run:a");
+            return "result-a";
+          },
+          undo: async (error, value) => {
+            errors.push(`a:${(error as Error).message}`);
+            calls.push(`undo:a:${value}`);
+          },
+        });
+
+        await ctx.stepWithRollbackV2("step-b", {
+          run: async () => {
+            calls.push("run:b");
+            return "result-b";
+          },
+          undo: async (error, value) => {
+            errors.push(`b:${(error as Error).message}`);
+            calls.push(`undo:b:${value}`);
+          },
+        });
+
+        await ctx.step("fail", async () => {
+          throw new Error("boom");
+        });
+      } catch (error) {
+        await ctx.rollbackAll(error);
+        throw error;
+      }
+    });
+
+    const runner = new LocalDurableTestRunner({ handlerFunction: handler });
+    const execution = await runner.run();
+
+    expect(execution.getStatus()).toBe(ExecutionStatus.FAILED);
+    expect(calls).toEqual([
+      "run:a",
+      "run:b",
+      "undo:b:result-b",
+      "undo:a:result-a",
+    ]);
+    expect(errors).toEqual(["b:boom", "a:boom"]);
+  });
+
+  it("retries undo per undoConfig, independent of the run config", async () => {
+    const calls: string[] = [];
+    const errors: string[] = [];
+    let undoAttempts = 0;
+
+    const handler = workflow.handler(async (_event, ctx) => {
+      try {
+        await ctx.stepWithRollbackV2(
+          "step-a",
+          {
+            run: async () => {
+              calls.push("run:a");
+              return "result-a";
+            },
+            undo: async (error) => {
+              errors.push((error as Error).message);
+              undoAttempts++;
+              calls.push(`undo-attempt:${undoAttempts}`);
+              if (undoAttempts === 1) {
+                throw new Error("retry undo once");
+              }
+            },
+          },
+          {
+            retryStrategy: () => ({ shouldRetry: true, delay: { seconds: 1 } }),
+            undoConfig: {
+              retryStrategy: (_error, attempt) => ({
+                shouldRetry: attempt < 2,
+                delay: { seconds: 1 },
+              }),
+            },
+          },
+        );
+
+        await ctx.step("fail", async () => {
+          throw new Error("boom");
+        });
+      } catch (error) {
+        await ctx.rollbackAll(error);
+        throw error;
+      }
+    });
+
+    const runner = new LocalDurableTestRunner({ handlerFunction: handler });
+    const execution = await runner.run();
+
+    expect(execution.getStatus()).toBe(ExecutionStatus.FAILED);
+    expect(calls).toEqual(["run:a", "undo-attempt:1", "undo-attempt:2"]);
+    expect(errors).toEqual(["boom", "boom"]);
+    expect(
+      runner.getOperation("Undo 'step-a'").getStepDetails()?.attempt,
+    ).toBe(2);
+  });
+
+  it("does not inherit the run retryStrategy for undo when undoConfig is omitted", async () => {
+    const calls: string[] = [];
+    const errors: string[] = [];
+    let undoAttempts = 0;
+
+    const handler = workflow.handler(async (_event, ctx) => {
+      try {
+        await ctx.stepWithRollbackV2(
+          "step-a",
+          {
+            run: async () => {
+              calls.push("run:a");
+              return "result-a";
+            },
+            undo: async (error) => {
+              errors.push((error as Error).message);
+              undoAttempts++;
+              calls.push(`undo-attempt:${undoAttempts}`);
+              throw new Error("undo always fails");
+            },
+          },
+          {
+            retryStrategy: () => ({ shouldRetry: false }),
+          },
+        );
+
+        await ctx.step("fail", async () => {
+          throw new Error("boom");
+        });
+      } catch (error) {
+        await ctx.rollbackAll(error);
+        throw error;
+      }
+    });
+
+    const runner = new LocalDurableTestRunner({ handlerFunction: handler });
+    const execution = await runner.run();
+
+    expect(execution.getStatus()).toBe(ExecutionStatus.FAILED);
+    expect(undoAttempts).toBeGreaterThan(1);
+    expect(errors).toHaveLength(undoAttempts);
+    expect(errors.every((message) => message === "boom")).toBe(true);
+    expect(execution.getError().errorType).toBe("RollbackError");
+    expect(execution.getError().errorMessage).toContain("step-a");
+  });
+
+  it("backfills survive a wait-induced replay", async () => {
+    const calls: string[] = [];
+    const errors: string[] = [];
+
+    const handler = workflow.handler(async (_event, ctx) => {
+      try {
+        await ctx.stepWithRollbackV2("step-a", {
+          run: async () => {
+            calls.push("run:a");
+            return "result-a";
+          },
+          undo: async (error, value) => {
+            errors.push(`a:${(error as Error).message}`);
+            calls.push(`undo:a:${value}`);
+          },
+        });
+
+        await ctx.wait("pause", { seconds: 1 });
+
+        await ctx.stepWithRollbackV2("step-b", {
+          run: async () => {
+            calls.push("run:b");
+            return "result-b";
+          },
+          undo: async (error, value) => {
+            errors.push(`b:${(error as Error).message}`);
+            calls.push(`undo:b:${value}`);
+          },
+        });
+
+        await ctx.step("fail", async () => {
+          throw new Error("boom");
+        });
+      } catch (error) {
+        await ctx.rollbackAll(error);
+        throw error;
+      }
+    });
+
+    const runner = new LocalDurableTestRunner({ handlerFunction: handler });
+    const execution = await runner.run();
+
+    expect(execution.getStatus()).toBe(ExecutionStatus.FAILED);
+    expect(calls).toEqual([
+      "run:a",
+      "run:b",
+      "undo:b:result-b",
+      "undo:a:result-a",
+    ]);
+    expect(errors).toEqual(["b:boom", "a:boom"]);
+  });
+
+  it("includes the failing step's undo after a replay", async () => {
+    const calls: string[] = [];
+    const errors: string[] = [];
+
+    const handler = workflow.handler(async (_event, ctx) => {
+      try {
+        await ctx.stepWithRollbackV2("step-a", {
+          run: async () => {
+            calls.push("run:a");
+            return "result-a";
+          },
+          undo: async (error, value) => {
+            errors.push(`a:${(error as Error).message}`);
+            calls.push(`undo:a:${value}`);
+          },
+        });
+
+        await ctx.wait("pause", { seconds: 1 });
+
+        await ctx.stepWithRollbackV2(
+          "step-b",
+          {
+            run: async () => {
+              calls.push("run:b:side-effect");
+              throw new Error("boom");
+            },
+            undo: async (error, value) => {
+              errors.push(`b:${(error as Error).message}`);
+              calls.push(`undo:b:${value}`);
+            },
+          },
+          { retryStrategy: () => ({ shouldRetry: false }) },
+        );
+      } catch (error) {
+        await ctx.rollbackAll(error);
+        throw error;
+      }
+    });
+
+    const runner = new LocalDurableTestRunner({ handlerFunction: handler });
+    const execution = await runner.run();
+
+    expect(execution.getStatus()).toBe(ExecutionStatus.FAILED);
+    expect(calls).toEqual([
+      "run:a",
+      "run:b:side-effect",
+      "undo:b:undefined",
+      "undo:a:result-a",
+    ]);
+    expect(errors).toEqual(["b:boom", "a:boom"]);
+  });
+
+  it("stops rollback on undo failure and reports the failing step", async () => {
+    const calls: string[] = [];
+    const errors: string[] = [];
+
+    const handler = workflow.handler(async (_event, ctx) => {
+      try {
+        await ctx.stepWithRollbackV2("step-a", {
+          run: async () => {
+            calls.push("run:a");
+            return "result-a";
+          },
+          undo: async (error) => {
+            errors.push(`a:${(error as Error).message}`);
+            calls.push("undo:a");
+          },
+        });
+
+        await ctx.stepWithRollbackV2(
+          "step-b",
+          {
+            run: async () => {
+              calls.push("run:b");
+              return "result-b";
+            },
+            undo: async (error) => {
+              errors.push(`b:${(error as Error).message}`);
+              calls.push("undo:b");
+              throw new Error("undo failed");
+            },
+          },
+          { undoConfig: { retryStrategy: () => ({ shouldRetry: false }) } },
+        );
+
+        await ctx.step("fail", async () => {
+          throw new Error("boom");
+        });
+      } catch (error) {
+        await ctx.rollbackAll(error);
+        throw error;
+      }
+    });
+
+    const runner = new LocalDurableTestRunner({ handlerFunction: handler });
+    const execution = await runner.run();
+
+    expect(execution.getStatus()).toBe(ExecutionStatus.FAILED);
+    expect(calls.slice(0, 2)).toEqual(["run:a", "run:b"]);
+    expect(calls.slice(2).every((call) => call === "undo:b")).toBe(true);
+    expect(calls).not.toContain("undo:a");
+    expect(errors.every((message) => message === "b:boom")).toBe(true);
+    expect(execution.getError().errorType).toBe("RollbackError");
+    expect(execution.getError().errorMessage).toContain("step-b");
+  });
+});

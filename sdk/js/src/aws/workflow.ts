@@ -6,7 +6,7 @@ import { awsFetch, type AwsOptions } from "./client.js";
  * [`@aws/durable-execution-sdk-js`](https://www.npmjs.com/package/@aws/durable-execution-sdk-js)
  * package and the AWS Lambda durable execution APIs.
  *
- * SST also adds a few helpers on top, including `ctx.stepWithRollback()`,
+ * SST also adds a few helpers on top, including `ctx.stepWithRollbackV2()`,
  * `ctx.rollbackAll()`, and `ctx.waitUntil()`.
  *
  * @example
@@ -15,19 +15,22 @@ import { awsFetch, type AwsOptions } from "./client.js";
  * ```
  *
  * @example
- * Use `stepWithRollback()` and `rollbackAll()` to register compensating actions.
+ * Use `stepWithRollbackV2()` to give each step an `undo`, and `rollbackAll()` to
+ * run those undos in reverse on failure. Since the undo is registered before the
+ * step runs, `result` is `undefined` if the step failed partway through — so
+ * reconcile against external state (e.g. look it up by an idempotency key).
  *
  * ```ts title="src/workflow.ts"
  * import { workflow } from "sst/aws/workflow";
  *
- * export const handler = workflow.handler(async (_event, ctx) => {
+ * export const handler = workflow.handler(async (event, ctx) => {
+ *   const idempotencyKey = event.idempotencyKey;
  *   try {
- *     const order = await ctx.stepWithRollback("create-order", {
- *       run: async () => ({ orderId: "order_123" }),
+ *     const order = await ctx.stepWithRollbackV2("create-order", {
+ *       run: async () => createOrder({ idempotencyKey }),
  *       undo: async (error, result) => {
- *         await fetch(`https://example.com/orders/${result.orderId}`, {
- *           method: "DELETE",
- *         });
+ *         const order = result ?? (await findOrder({ idempotencyKey }));
+ *         if (order) await deleteOrder(order.id);
  *       },
  *     });
  *
@@ -70,11 +73,47 @@ export namespace workflow {
     /**
      * Execute a durable step and register a compensating rollback step if it succeeds.
      * If `run` throws, nothing is added to the rollback stack for that step.
+     *
+     * @deprecated Use {@link stepWithRollbackV2}, which registers the undo
+     * *before* the step runs (so side effects from a failed step still roll back)
+     * and configures the undo separately.
      */
     stepWithRollback<TOutput>(
       name: string,
       handler: StepWithRollbackHandler<TOutput, TLogger>,
       config?: StepConfig<TOutput>,
+    ): durable.DurablePromise<TOutput>;
+    /**
+     * Execute a durable step and register its `undo` *before* the step runs, so a
+     * step that fails after a side effect still rolls back via {@link rollbackAll}.
+     *
+     * Since the result doesn't exist yet at registration, `undo` receives
+     * `TOutput | undefined` (`undefined` when the step failed), so it must
+     * reconcile against external state and be idempotent. Configure the undo step
+     * with `config.undoConfig`; it inherits nothing from the run config.
+     *
+     * @example
+     * ```ts
+     * await ctx.stepWithRollbackV2(
+     *   "charge-card",
+     *   {
+     *     run: async () => chargeCard({ idempotencyKey: key }),
+     *     undo: async (error, result) => {
+     *       const charge = result ?? (await findChargeByKey(key));
+     *       if (charge) await refundCharge(charge.id);
+     *     },
+     *   },
+     *   {
+     *     retryStrategy: createRetryStrategy({ maxAttempts: 3 }),
+     *     undoConfig: { retryStrategy: createRetryStrategy({ maxAttempts: 10 }) },
+     *   },
+     * );
+     * ```
+     */
+    stepWithRollbackV2<TOutput>(
+      name: string,
+      handler: StepWithRollbackHandlerV2<TOutput, TLogger>,
+      config?: StepWithRollbackConfig<TOutput>,
     ): durable.DurablePromise<TOutput>;
     /**
      * Wait until the provided time. Delays are rounded up to the nearest second.
@@ -682,6 +721,32 @@ interface StepWithRollbackHandler<
   ) => Promise<void>;
 }
 
+interface StepWithRollbackHandlerV2<
+  TOutput = any,
+  TLogger extends durable.DurableLogger = durable.DurableLogger,
+> {
+  /**
+   * The durable step to execute.
+   */
+  run: durable.StepFunc<TOutput, TLogger>;
+  /**
+   * Called during rollback. `value` is `undefined` if the step failed before
+   * recording a result, so reconcile against external state instead of trusting it.
+   */
+  undo: (
+    error: unknown,
+    value: TOutput | undefined,
+    context: Parameters<durable.StepFunc<void, TLogger>>[0],
+  ) => Promise<void>;
+}
+
+type StepWithRollbackConfig<TOutput = any> = durable.StepConfig<TOutput> & {
+  /**
+   * Configuration for the compensating undo step.
+   */
+  undoConfig?: durable.StepConfig<void>;
+};
+
 interface StartInput<TPayload = unknown> {
   /**
    * The unique name for this workflow execution.
@@ -845,6 +910,46 @@ function withRollback<
             );
           },
         });
+
+        return result;
+      });
+    },
+  });
+
+  Object.defineProperty(wrapped, "stepWithRollbackV2", {
+    configurable: true,
+    enumerable: false,
+    writable: true,
+    value: function <TOutput>(
+      name: string,
+      handler: StepWithRollbackHandlerV2<TOutput, TLogger>,
+      config?: StepWithRollbackConfig<TOutput>,
+    ): durable.DurablePromise<TOutput> {
+      const { undoConfig, ...runConfig } = config || {};
+
+      return new durable.DurablePromise(async () => {
+        const entry: RollbackEntry<TLogger> & { result?: TOutput } = {
+          name,
+          result: undefined,
+          execute: async (
+            error: unknown,
+            rollbackContext: durable.DurableContext<TLogger>,
+          ) => {
+            await rollbackContext.step(
+              `Undo '${name}'`,
+              (stepContext) => handler.undo(error, entry.result, stepContext),
+              undoConfig,
+            );
+          },
+        };
+
+        // Register before the step runs so a side effect that escapes a failing
+        // step is still rolled back.
+        rollbackState.undoStack.push(entry);
+
+        const result = await context.step(name, handler.run, runConfig);
+
+        entry.result = result;
 
         return result;
       });
