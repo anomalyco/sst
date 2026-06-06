@@ -1,10 +1,26 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from "bun:test";
 import {
   ExecutionStatus,
   LocalDurableTestRunner,
 } from "@aws/durable-execution-sdk-js-testing";
-import { aws } from "../src/aws/client.ts";
-import { workflow } from "../src/aws/workflow.ts";
+import * as realClient from "../src/aws/client.ts";
+
+type FetchImpl = typeof realClient.awsFetch;
+
+let fetchImpl: FetchImpl = () => {
+  throw new Error("awsFetch is not stubbed");
+};
+
+mock.module("../src/aws/client.ts", () => ({
+  ...realClient,
+  awsFetch: (...args: Parameters<FetchImpl>) => fetchImpl(...args),
+}));
+
+const { workflow } = await import("../src/aws/workflow.ts");
+
+afterAll(() => {
+  fetchImpl = realClient.awsFetch;
+});
 
 function jsonResponse(body: unknown, init: ResponseInit = {}) {
   return new Response(JSON.stringify(body), {
@@ -17,18 +33,18 @@ function jsonResponse(body: unknown, init: ResponseInit = {}) {
 }
 
 describe("workflow client", () => {
-  const originalFetch = aws.fetch;
+  const originalFetch = fetchImpl;
 
   beforeEach(() => {
-    aws.fetch = originalFetch;
+    fetchImpl = originalFetch;
   });
 
   afterEach(() => {
-    aws.fetch = originalFetch;
+    fetchImpl = originalFetch;
   });
 
   it("starts a workflow execution", async () => {
-    aws.fetch = async (service, path, init) => {
+    fetchImpl = async (service, path, init) => {
       expect(service).toBe("lambda");
       expect(path).toBe(
         "/2015-03-31/functions/my-workflow/invocations?Qualifier=live",
@@ -73,7 +89,7 @@ describe("workflow client", () => {
       init: RequestInit;
     }[] = [];
 
-    aws.fetch = async (service, path, init) => {
+    fetchImpl = async (service, path, init) => {
       requests.push({ service, path, init });
       const url = new URL(`https://example.com${path}`);
       const status = url.searchParams.getAll("Statuses")[0];
@@ -149,7 +165,7 @@ describe("workflow client", () => {
   it("rejects multiple statuses", async () => {
     let calls = 0;
 
-    aws.fetch = async () => {
+    fetchImpl = async () => {
       calls += 1;
       return jsonResponse({ DurableExecutions: [] });
     };
@@ -165,7 +181,7 @@ describe("workflow client", () => {
   });
 
   it("describes a workflow execution", async () => {
-    aws.fetch = async (service, path, init) => {
+    fetchImpl = async (service, path, init) => {
       expect(service).toBe("lambda");
       expect(path).toBe(
         "/2025-12-01/durable-executions/arn%3Aworkflow%3Alive%2Fexecution-123",
@@ -193,7 +209,7 @@ describe("workflow client", () => {
   });
 
   it("stops a workflow execution with a normalized error payload", async () => {
-    aws.fetch = async (service, path, init) => {
+    fetchImpl = async (service, path, init) => {
       expect(service).toBe("lambda");
       expect(path).toBe(
         "/2025-12-01/durable-executions/arn%3Aworkflow%3Alive%2Fexecution-123/stop",
@@ -230,7 +246,7 @@ describe("workflow client", () => {
   });
 
   it("succeeds a workflow callback", async () => {
-    aws.fetch = async (service, path, init) => {
+    fetchImpl = async (service, path, init) => {
       expect(service).toBe("lambda");
       expect(path).toBe(
         "/2025-12-01/durable-execution-callbacks/callback-token/succeed",
@@ -252,7 +268,7 @@ describe("workflow client", () => {
   });
 
   it("fails a workflow callback", async () => {
-    aws.fetch = async (service, path, init) => {
+    fetchImpl = async (service, path, init) => {
       expect(service).toBe("lambda");
       expect(path).toBe(
         "/2025-12-01/durable-execution-callbacks/callback-token/fail",
@@ -277,7 +293,7 @@ describe("workflow client", () => {
   });
 
   it("heartbeats a workflow callback", async () => {
-    aws.fetch = async (service, path, init) => {
+    fetchImpl = async (service, path, init) => {
       expect(service).toBe("lambda");
       expect(path).toBe(
         "/2025-12-01/durable-execution-callbacks/callback-token/heartbeat",
