@@ -53,7 +53,7 @@ export function setupApiGatewayAccount(
       {
         cloudwatchRoleArn: useCloudWatchRole(opts).arn,
       },
-      { provider: opts.provider },
+      { retainOnDelete: true, provider: opts.provider },
     );
   });
 }
