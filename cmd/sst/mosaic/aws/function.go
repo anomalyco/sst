@@ -18,6 +18,7 @@ import (
 	"github.com/sst/sst/v3/cmd/sst/mosaic/aws/bridge"
 	"github.com/sst/sst/v3/cmd/sst/mosaic/watcher"
 	"github.com/sst/sst/v3/pkg/bus"
+	"github.com/sst/sst/v3/pkg/flag"
 	"github.com/sst/sst/v3/pkg/project"
 	"github.com/sst/sst/v3/pkg/runtime"
 	"github.com/sst/sst/v3/pkg/server"
@@ -199,6 +200,21 @@ func function(ctx context.Context, input input) {
 	workerEnv := map[string][]string{}
 	builds := map[string]*runtime.BuildOutput{}
 	targets := map[string]*runtime.BuildInput{}
+
+	// connect-only (SST_DEV_SKIP_UNCHANGED): on a skipped no-op deploy the Pulumi program
+	// that normally registers dev targets via Runtime.AddTarget never runs, so load the
+	// targets from the already-deployed state here — after we have subscribed, so there is
+	// no publish-vs-subscribe race against a skip path.
+	if flag.SST_DEV_SKIP_UNCHANGED {
+		if replayed, err := input.project.DevTargets(ctx); err != nil {
+			log.Error("connect-only: failed to load dev targets from deployed state", "err", err)
+		} else {
+			for _, t := range replayed {
+				targets[t.FunctionID] = t
+			}
+			log.Info("connect-only: registered dev targets from deployed state", "targets", len(replayed))
+		}
+	}
 
 	getBuildOutput := func(functionID string) *runtime.BuildOutput {
 		build := builds[functionID]

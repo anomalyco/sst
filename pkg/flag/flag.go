@@ -25,6 +25,17 @@ var SST_RUN_ID = os.Getenv("SST_RUN_ID")
 var SST_SKIP_APPSYNC = isTrue("SST_SKIP_APPSYNC")
 var SST_NO_BUN = isTrue("NO_BUN") || isTrue("SST_NO_BUN")
 
+// SST_DEV_SKIP_UNCHANGED enables connect-only dev: skip the per-startup `pulumi up` when
+// the fully-resolved deployment fingerprint (config/infra bundle + resolved env, links,
+// secrets, and versions) matches the last successful deploy, and let the dev bridge reuse
+// already-deployed state.
+var SST_DEV_SKIP_UNCHANGED = isTrue("SST_DEV_SKIP_UNCHANGED")
+
+// SST_DEV_SKIP_MAX_AGE (seconds) forces a real deploy when the persisted fingerprint is
+// older than this, so out-of-band drift (resources changed outside this stack, which
+// input-hashing cannot detect) is reconciled periodically. Empty or "0" disables the limit.
+var SST_DEV_SKIP_MAX_AGE = os.Getenv("SST_DEV_SKIP_MAX_AGE")
+
 func isTrue(name string) bool {
 	val, ok := os.LookupEnv(name)
 	if !ok {

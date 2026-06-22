@@ -3,6 +3,8 @@ package project
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +14,8 @@ import (
 	"os/signal"
 	"path"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -26,11 +30,176 @@ import (
 	"github.com/sst/sst/v3/pkg/js"
 	"github.com/sst/sst/v3/pkg/process"
 	"github.com/sst/sst/v3/pkg/project/provider"
+	"github.com/sst/sst/v3/pkg/runtime"
 	"github.com/sst/sst/v3/pkg/telemetry"
 	"github.com/sst/sst/v3/pkg/types"
 	"golang.org/x/exp/slices"
 	"golang.org/x/sync/errgroup"
 )
+
+// pathSkipHash is the per-stage file holding the deployment fingerprint of the last
+// successful dev deploy, used by the SST_DEV_SKIP_UNCHANGED connect-only path. Lives in
+// the .sst working dir so it is naturally scoped to this checkout + stage.
+func (p *Project) pathSkipHash() string {
+	return filepath.Join(p.PathWorkingDir(), "skiphash."+p.app.Stage)
+}
+
+// devSkipParts returns a per-component hash of everything that decides whether a dev
+// deploy is a no-op: the config/infra bundle hash (Part 1) plus the resolved env baked
+// into function args that the bundle hash misses (Part 2) — secrets, _fallback secrets,
+// SST-injected env (p.Env), resolved link values, and provider/SST versions. Returning
+// the components (not just a combined hash) lets the gate log exactly which one changed
+// when a skip is declined, so an unstable input is diagnosable from one run.
+func (p *Project) devSkipParts(bundleHash string, secrets, fallback map[string]string, c *CompleteEvent) map[string]string {
+	short := func(b []byte) string { s := sha256.Sum256(b); return hex.EncodeToString(s[:]) }
+	mapBytes := func(m map[string]string) []byte {
+		keys := make([]string, 0, len(m))
+		for k := range m {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		var sb strings.Builder
+		for _, k := range keys {
+			sb.WriteString(k)
+			sb.WriteByte(0)
+			sb.WriteString(m[k])
+			sb.WriteByte(0)
+		}
+		return []byte(sb.String())
+	}
+	// Provider credentials are injected into p.Env() for deploy-time auth and ROTATE on
+	// every refresh (e.g. AWS SSO session tokens); they are not baked into functions, so
+	// excluding them is required or the fingerprint never stabilizes (changed=[env] every
+	// run). See AwsProvider.Env() — SST_AWS_ACCESS_KEY_ID/SECRET_ACCESS_KEY/SESSION_TOKEN.
+	volatileEnv := map[string]bool{
+		"SST_AWS_ACCESS_KEY_ID":     true,
+		"SST_AWS_SECRET_ACCESS_KEY": true,
+		"SST_AWS_SESSION_TOKEN":     true,
+	}
+	envStable := map[string]string{}
+	for k, v := range p.Env() {
+		if !volatileEnv[k] {
+			envStable[k] = v
+		}
+	}
+	parts := map[string]string{
+		"bundle":   short([]byte(bundleHash)),
+		"stage":    short([]byte(p.app.Stage)),
+		"secrets":  short(mapBytes(secrets)),
+		"fallback": short(mapBytes(fallback)),
+		"env":      short(mapBytes(envStable)),
+	}
+	if c != nil {
+		vb, _ := json.Marshal(c.Versions)
+		parts["versions"] = short(vb)
+		lb, _ := json.Marshal(c.Links)
+		parts["links"] = short(lb)
+	}
+	return parts
+}
+
+// devSkipExpired forces a real deploy when the persisted fingerprint is older than
+// SST_DEV_SKIP_MAX_AGE seconds, so out-of-band drift (resources changed outside this
+// stack, which input-hashing cannot detect) is reconciled periodically. Empty/"0"
+// disables the limit.
+func devSkipExpired(path string) bool {
+	if flag.SST_DEV_SKIP_MAX_AGE == "" || flag.SST_DEV_SKIP_MAX_AGE == "0" {
+		return false
+	}
+	secs, err := strconv.Atoi(flag.SST_DEV_SKIP_MAX_AGE)
+	if err != nil || secs <= 0 {
+		return false
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return true
+	}
+	return time.Since(info.ModTime()) > time.Duration(secs)*time.Second
+}
+
+// DevTargets reconstructs the dev function targets from the CURRENT deployed state. The aws
+// dev runtime calls this at its own startup (after it has subscribed) so that connect-only
+// skips have their function targets registered without a publish-vs-subscribe race.
+func (p *Project) DevTargets(ctx context.Context) ([]*runtime.BuildInput, error) {
+	complete, err := p.GetCompleted(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return p.devTargetsFromState(complete), nil
+}
+
+// devTargetsFromState reconstructs the per-function dev targets (runtime.BuildInput) from
+// already-deployed state, so the connect-only skip path can register them with the local
+// runtime via bus.Publish — the SAME channel Runtime.AddTarget publishes on (the Pulumi
+// program normally fires AddTarget during the up we are skipping). Each function's `_live`
+// output supplies most of the BuildInput; `_live.links` holds link NAMES which are joined
+// to resolved properties via complete.Links; the app-wide RandomBytes("LambdaEncryptionKey")
+// output supplies EncryptionKey so the written resource.enc decrypts with the deployed
+// stub's baked SST_KEY. Without this, a skip connects the bridge but routes nothing.
+func (p *Project) devTargetsFromState(complete *CompleteEvent) []*runtime.BuildInput {
+	encryptionKey := ""
+	for _, r := range complete.Resources {
+		if r.URN.Name() != "LambdaEncryptionKey" {
+			continue
+		}
+		if outputs, ok := parsePlaintext(r.Outputs).(map[string]interface{}); ok {
+			if b64, ok := outputs["base64"].(string); ok {
+				encryptionKey = b64
+			}
+		}
+		break
+	}
+
+	targets := []*runtime.BuildInput{}
+	for _, r := range complete.Resources {
+		outputs, ok := parsePlaintext(r.Outputs).(map[string]interface{})
+		if !ok {
+			continue
+		}
+		live, ok := outputs["_live"]
+		if !ok || live == nil {
+			continue
+		}
+		data, err := json.Marshal(live)
+		if err != nil {
+			continue
+		}
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(data, &fields); err != nil {
+			continue
+		}
+		// `_live.links` is an array of NAMES; BuildInput.Links is a map of resolved
+		// properties, so pull the names out and join them below.
+		var names []string
+		if raw, ok := fields["links"]; ok {
+			json.Unmarshal(raw, &names)
+		}
+		delete(fields, "links")
+		cleaned, err := json.Marshal(fields)
+		if err != nil {
+			continue
+		}
+		var input runtime.BuildInput
+		if err := json.Unmarshal(cleaned, &input); err != nil {
+			continue
+		}
+		input.CfgPath = p.PathConfig()
+		input.Dev = true
+		input.EncryptionKey = encryptionKey
+		input.Links = map[string]json.RawMessage{}
+		for _, name := range names {
+			link, ok := complete.Links[name]
+			if !ok {
+				continue
+			}
+			if b, err := json.Marshal(link.Properties); err == nil {
+				input.Links[name] = b
+			}
+		}
+		targets = append(targets, &input)
+	}
+	return targets
+}
 
 func (p *Project) Run(ctx context.Context, input *StackInput) error {
 	log := slog.Default().With("service", "project.run")
@@ -194,10 +363,80 @@ func (p *Project) Run(ctx context.Context, input *StackInput) error {
 		defer js.Cleanup(buildResult)
 	}
 
-	// disable for now until we hash env too
-	if input.SkipHash != "" && buildResult.OutputFiles[0].Hash == input.SkipHash && false {
-		bus.Publish(&SkipEvent{})
-		return nil
+	// Resolve secrets up front — used both by the connect-only fingerprint below and by the
+	// function env passed to the deploy, so fetch them once here.
+	secrets := map[string]string{}
+	fallback := map[string]string{}
+	{
+		wg := errgroup.Group{}
+		wg.Go(func() error {
+			secrets, err = provider.GetSecrets(p.home, p.app.Name, p.app.Stage)
+			if err != nil {
+				return ErrPassphraseInvalid
+			}
+			return nil
+		})
+		wg.Go(func() error {
+			fallback, err = provider.GetSecrets(p.home, p.app.Name, "")
+			if err != nil {
+				return ErrPassphraseInvalid
+			}
+			return nil
+		})
+		if err := wg.Wait(); err != nil {
+			return err
+		}
+	}
+
+	// [SST_DEV_SKIP_UNCHANGED] connect-only dev: skip the `pulumi up` entirely when the
+	// fully-resolved deployment fingerprint matches the last successful deploy, and let
+	// the dev bridge reuse already-deployed state. The fingerprint is the config/infra
+	// bundle hash (Part 1, what the upstream gate already had) PLUS the env that gets
+	// baked into function args but is NOT in the bundle (Part 2): secrets, _fallback
+	// secrets, SST-injected env, resolved link values, and provider/SST versions. Hashing
+	// all of these is the "hash env too" prerequisite the parked `&& false` gate waited on
+	// — skipping only on an identical fingerprint avoids silently serving stale secrets or
+	// link values. The persisted fingerprint (written at the end of the last successful
+	// deploy) is the single source of truth; the deployer's in-memory SkipHash is only the
+	// bundle half, so it is intentionally not used here.
+	//
+	// Residual gap: ambient process.env read directly in sst.config.ts and out-of-band
+	// drift (a resource changed in AWS outside this stack) are not detectable by
+	// input-hashing — SST_DEV_SKIP_MAX_AGE forces a periodic real up to reconcile.
+	if flag.SST_DEV_SKIP_UNCHANGED && input.Dev {
+		current := p.devSkipParts(buildResult.OutputFiles[0].Hash, secrets, fallback, completed)
+		var persisted map[string]string
+		if data, readErr := os.ReadFile(p.pathSkipHash()); readErr == nil {
+			json.Unmarshal(data, &persisted)
+		}
+		match := persisted != nil
+		changed := []string{}
+		for k, v := range current {
+			if persisted[k] != v {
+				match = false
+				changed = append(changed, k)
+			}
+		}
+		for k := range persisted {
+			if _, ok := current[k]; !ok {
+				match = false
+				changed = append(changed, k+"(gone)")
+			}
+		}
+		expired := devSkipExpired(p.pathSkipHash())
+		if match && !expired {
+			// The local dev function targets that the Pulumi program would register (via
+			// Runtime.AddTarget) are instead loaded from already-deployed state by the aws
+			// runtime at its OWN startup (Project.DevTargets, from aws/function.go) —
+			// race-free, whereas publishing them from here loses to the runtime's late
+			// subscribe (it blocks on AppSync-readiness before subscribing).
+			log.Info("skipping deploy — deployment fingerprint unchanged (SST_DEV_SKIP_UNCHANGED)")
+			bus.Publish(&SkipEvent{})
+			return nil
+		}
+		if persisted != nil {
+			log.Info("deploying — deployment fingerprint changed", "changed", changed, "expired", expired)
+		}
 	}
 
 	var meta = js.Metafile{}
@@ -219,31 +458,6 @@ func (p *Project) Run(ctx context.Context, input *StackInput) error {
 		Hash:  buildResult.OutputFiles[0].Hash,
 	})
 	log.Info("tracked files")
-
-	secrets := map[string]string{}
-	fallback := map[string]string{}
-
-	wg := errgroup.Group{}
-
-	wg.Go(func() error {
-		secrets, err = provider.GetSecrets(p.home, p.app.Name, p.app.Stage)
-		if err != nil {
-			return ErrPassphraseInvalid
-		}
-		return nil
-	})
-
-	wg.Go(func() error {
-		fallback, err = provider.GetSecrets(p.home, p.app.Name, "")
-		if err != nil {
-			return ErrPassphraseInvalid
-		}
-		return nil
-	})
-
-	if err := wg.Wait(); err != nil {
-		return err
-	}
 
 	env := os.Environ()
 	for key, value := range p.Env() {
@@ -677,6 +891,20 @@ loop:
 	}
 
 	log.Info("done running stack command", "resources", len(complete.Resources))
+
+	// [SST_DEV_SKIP_UNCHANGED] persist the fully-resolved deployment fingerprint so the
+	// NEXT `sst dev` startup can skip a no-op deploy. Recomputed against the POST-up state
+	// (`complete`) so the next startup — which reads that same state — compares
+	// apples-to-apples. Only on a clean dev deploy that finished with no errors and exit 0
+	// (so a half-applied / pending-ops stage is never marked skippable).
+	if flag.SST_DEV_SKIP_UNCHANGED && input.Dev && finished && len(errors) == 0 && cmd.ProcessState.ExitCode() == 0 {
+		parts := p.devSkipParts(buildResult.OutputFiles[0].Hash, secrets, fallback, complete)
+		if data, mErr := json.Marshal(parts); mErr == nil {
+			if writeErr := os.WriteFile(p.pathSkipHash(), data, 0644); writeErr != nil {
+				log.Warn("failed to persist dev skip fingerprint", "err", writeErr)
+			}
+		}
+	}
 
 	if cmd.ProcessState.ExitCode() > 0 {
 		if hasPolicyViolations {
