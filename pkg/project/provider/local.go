@@ -13,10 +13,18 @@ import (
 )
 
 type LocalHome struct {
+	root string
 }
 
 func NewLocalHome() *LocalHome {
 	return &LocalHome{}
+}
+
+func (l *LocalHome) configDir() string {
+	if l.root != "" {
+		return l.root
+	}
+	return global.ConfigDir()
 }
 
 func (l *LocalHome) Bootstrap() error {
@@ -65,6 +73,32 @@ func (l *LocalHome) removeData(key, app, stage string) error {
 	return os.Remove(p)
 }
 
+func (l *LocalHome) prune(app, stage string, retention int) error {
+	dir := filepath.Join(l.configDir(), "state", "snapshot", app, stage)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	keys := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			keys = append(keys, entry.Name())
+		}
+	}
+	for _, updateID := range staleUpdateIDs(keys, retention) {
+		for _, kind := range historyKinds {
+			if err := l.removeData(kind, app, filepath.Join(stage, updateID)); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func (l *LocalHome) purge(app, stage string) error {
 	// Single-file keys.
 	for _, key := range []string{"app", "secret"} {
@@ -75,7 +109,7 @@ func (l *LocalHome) purge(app, stage string) error {
 	}
 	// Folder-style keys.
 	for _, key := range []string{"update", "summary", "eventlog", "snapshot"} {
-		dir := filepath.Join(global.ConfigDir(), "state", key, app, stage)
+		dir := filepath.Join(l.configDir(), "state", key, app, stage)
 		if err := os.RemoveAll(dir); err != nil {
 			return err
 		}
@@ -108,11 +142,11 @@ func (c *LocalHome) getPassphrase(app, stage string) (string, error) {
 }
 
 func (l *LocalHome) pathForData(key, app, stage string) string {
-	return filepath.Join(global.ConfigDir(), "state", key, app, fmt.Sprintf("%v.json", stage))
+	return filepath.Join(l.configDir(), "state", key, app, fmt.Sprintf("%v.json", stage))
 }
 
 func (a *LocalHome) listStages(app string) ([]string, error) {
-	path := filepath.Join(global.ConfigDir(), "state", "app", app)
+	path := filepath.Join(a.configDir(), "state", "app", app)
 
 	entries, err := os.ReadDir(path)
 	if err != nil {
@@ -135,6 +169,6 @@ func (a *LocalHome) listStages(app string) ([]string, error) {
 func (c *LocalHome) info() (util.KeyValuePairs[string], error) {
 	return util.KeyValuePairs[string]{
 		{Key: "Provider", Value: "Local"},
-		{Key: "Path", Value: global.ConfigDir()},
+		{Key: "Path", Value: c.configDir()},
 	}, nil
 }

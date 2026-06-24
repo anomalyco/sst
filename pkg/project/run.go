@@ -650,7 +650,7 @@ loop:
 	defer outputsFile.Close()
 	json.NewEncoder(outputsFile).Encode(complete.Outputs)
 
-	if input.Command != "diff " {
+	if input.Command != "diff" {
 		update.TimeCompleted = time.Now().Format(time.RFC3339)
 		for _, err := range errors {
 			update.Errors = append(update.Errors, provider.SummaryError{
@@ -664,12 +664,18 @@ loop:
 		}
 	}
 
+	if input.Command != "diff" && p.app.State != nil && p.app.State.Retention != nil {
+		if err := provider.Prune(p.home, p.app.Name, p.app.Stage, *p.app.State.Retention); err != nil {
+			log.Warn("failed to prune state history", "err", err)
+		}
+	}
+
 	if input.Command == "remove" && len(complete.Resources) == 0 {
 		if p.app.State != nil && p.app.State.Purge {
 			if err := provider.Purge(p.home, p.app.Name, p.app.Stage); err != nil {
 				return err
 			}
-		} else {
+		} else if p.app.State == nil || p.app.State.Retention == nil {
 			if err := provider.Cleanup(p.home, p.app.Name, p.app.Stage); err != nil {
 				return err
 			}

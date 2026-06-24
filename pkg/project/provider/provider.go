@@ -29,6 +29,7 @@ type Home interface {
 	getPassphrase(app, stage string) (string, error)
 	listStages(app string) ([]string, error)
 	cleanup(key, app, stage string) error
+	prune(app, stage string, retention int) error
 	purge(app, stage string) error
 	removePassphrase(app, stage string) error
 	info() (util.KeyValuePairs[string], error)
@@ -181,6 +182,11 @@ func Cleanup(backend Home, app, stage string) error {
 		return err
 	}
 	return nil
+}
+
+func Prune(backend Home, app, stage string, retention int) error {
+	slog.Info("pruning state history", "app", app, "stage", stage, "retention", retention)
+	return backend.prune(app, stage, retention)
 }
 
 func Purge(backend Home, app, stage string) error {
