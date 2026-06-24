@@ -30,6 +30,9 @@ func (err *ErrProviderVersionTooLow) Error() string {
 }
 
 func (p *Project) NeedsInstall() bool {
+	if _, err := os.Stat(filepath.Join(p.PathPlatformDir(), "node_modules")); err != nil {
+		return true
+	}
 	if len(p.app.Providers) != len(p.lock) {
 		return true
 	}
