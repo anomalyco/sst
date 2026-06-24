@@ -11,9 +11,10 @@ type FunctionEnvironmentUpdate struct {
 }
 
 type FunctionEnvironmentUpdateInputs struct {
-	FunctionName string            `json:"functionName"`
-	Environment  map[string]string `json:"environment"`
-	Region       string            `json:"region"`
+	FunctionName         string            `json:"functionName"`
+	Environment          map[string]string `json:"environment"`
+	Region               string            `json:"region"`
+	FunctionLastModified string            `json:"functionLastModified"`
 }
 
 type FunctionEnvironmentUpdateOutputs struct{}

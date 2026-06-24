@@ -14,6 +14,10 @@ export interface FunctionEnvironmentUpdateInputs {
    * The region of the function to update.
    */
   region: Input<string>;
+  /**
+   * The last modified timestamp of the function to update
+   */
+  functionLastModified: Input<string>;
 }
 
 /**
