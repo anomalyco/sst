@@ -20,6 +20,10 @@ export interface Record {
    * The value of the record.
    */
   value: Input<string>;
+  /**
+   * The priority of the record. Only applies to `MX` records.
+   */
+  priority?: Input<number>;
 }
 
 export interface AliasRecord {

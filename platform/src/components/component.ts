@@ -177,6 +177,7 @@ export class Component extends ComponentResource {
               "aws:ses/domainIdentityVerification:DomainIdentityVerification",
               "aws:sesv2/configurationSetEventDestination:ConfigurationSetEventDestination",
               "aws:sesv2/emailIdentity:EmailIdentity",
+              "aws:sesv2/emailIdentityMailFromAttributes:EmailIdentityMailFromAttributes",
               "aws:sns/topicPolicy:TopicPolicy",
               "aws:sns/topicSubscription:TopicSubscription",
               "aws:sqs/queuePolicy:QueuePolicy",

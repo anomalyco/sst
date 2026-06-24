@@ -240,6 +240,9 @@ export function dns(args: DnsArgs = {}) {
               : {
                   content: record.value,
                 }),
+            ...(record.priority !== undefined
+              ? { priority: record.priority }
+              : {}),
             ttl: output(proxy).apply((proxy) => (proxy ? 1 : 60)),
           },
           opts,
