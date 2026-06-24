@@ -52,7 +52,7 @@ func (p *Project) Run(ctx context.Context, input *StackInput) error {
 		ID: id.Descending(),
 	}
 	var err error
-	if input.Command != "diff" {
+	if input.Command != "diff" && input.Command != "graph" {
 		update, err = p.Lock(input.Command)
 		if err != nil {
 			if err == provider.ErrLockExists {
@@ -289,7 +289,10 @@ func (p *Project) Run(ctx context.Context, input *StackInput) error {
 	args := []string{
 		"--stack", fmt.Sprintf("organization/%v/%v", p.app.Name, p.app.Stage),
 		"--non-interactive",
-		"--event-log", eventlogPath,
+	}
+	// Graph command does not support event log
+	if input.Command != "graph" {
+		args = append(args, "--event-log", eventlogPath)
 	}
 
 	if input.Command == "deploy" {
@@ -335,9 +338,11 @@ func (p *Project) Run(ctx context.Context, input *StackInput) error {
 		args = append([]string{"up", "--yes", "-f"}, args...)
 	case "remove":
 		args = append([]string{"destroy", "--yes", "-f"}, args...)
+	case "graph":
+		args = append([]string{"stack", "graph", input.OutputFile}, args...)
 	}
 
-	if (input.Command == "diff" || input.Command == "deploy") && input.PolicyPath != "" {
+	if (input.Command == "diff" || input.Command == "deploy" || input.Command == "graph") && input.PolicyPath != "" {
 		policyPath, err := p.ResolvePolicyPackPath(input.PolicyPath)
 		if err != nil {
 			return util.NewReadableError(nil, err.Error())
@@ -395,7 +400,7 @@ func (p *Project) Run(ctx context.Context, input *StackInput) error {
 	defer partialCancel()
 	partialDone := make(chan error)
 	go func() {
-		if input.Command == "diff" {
+		if input.Command == "diff" || input.Command == "graph" {
 			return
 		}
 		for {
@@ -567,7 +572,7 @@ loop:
 			}
 		}
 
-		if input.Command != "diff" && (event.ResOutputsEvent != nil || event.CancelEvent != nil || event.SummaryEvent != nil) {
+		if input.Command != "diff" && input.Command != "graph" && (event.ResOutputsEvent != nil || event.CancelEvent != nil || event.SummaryEvent != nil) {
 			partial <- 1
 		}
 
@@ -633,7 +638,7 @@ loop:
 	types.Generate(p.PathConfig(), complete.Links, p.App().Types.Ignore)
 	defer bus.Publish(complete)
 
-	if input.Command != "diff" {
+	if input.Command != "diff" && input.Command != "graph" {
 		log.Info("canceling partial")
 		partialCancel()
 		log.Info("waiting for partial to exit")
@@ -650,7 +655,7 @@ loop:
 	defer outputsFile.Close()
 	json.NewEncoder(outputsFile).Encode(complete.Outputs)
 
-	if input.Command != "diff " {
+	if input.Command != "diff " && input.Command != "graph" {
 		update.TimeCompleted = time.Now().Format(time.RFC3339)
 		for _, err := range errors {
 			update.Errors = append(update.Errors, provider.SummaryError{

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/sst/sst/v3/internal/util"
 	"github.com/sst/sst/v3/pkg/id"
 	"github.com/sst/sst/v3/pkg/process"
+	"github.com/sst/sst/v3/pkg/project"
 	"github.com/sst/sst/v3/pkg/project/provider"
 	"github.com/sst/sst/v3/pkg/state"
 )
@@ -147,6 +149,79 @@ var CmdState = &cli.Command{
 				encoder := json.NewEncoder(os.Stdout)
 				encoder.SetIndent("", "  ")
 				return encoder.Encode(exported)
+			},
+		},
+		{
+			Name: "graph",
+			Flags: []cli.Flag{
+				{
+					Name: "file",
+					Type: "string",
+					Description: cli.Description{
+						Short: "Path to write the graph file",
+						Long:  "Path to write the output DOT file. Accepts an absolute path or a path relative to the current working directory. Defaults to `<app>-<stage>.dot` in the project root.",
+					},
+				},
+			},
+			Description: cli.Description{
+				Short: "Generate a graph of your app's resource dependencies",
+				Long: strings.Join([]string{
+					"Generates a dependency graph of your app's deployed resources.",
+					"",
+					"This exports the resource dependency graph from your most recent deployment",
+					"as a [DOT format](https://graphviz.org/doc/info/lang.html) file, which can",
+					"be visualized with tools like [Graphviz](https://graphviz.org/).",
+					"",
+					"By default the file is written to `<app>-<stage>.dot` in your project root",
+					"(the directory containing `sst.config.ts`).",
+					"",
+					"```bash frame=\"none\"",
+					"sst state graph",
+					"```",
+					"",
+					"You can specify a custom output path with `--file`.",
+					"",
+					"```bash frame=\"none\"",
+					"sst state graph --file ./my-graph.dot",
+					"```",
+					"",
+					"You can also run this for a specific stage.",
+					"",
+					"```bash frame=\"none\"",
+					"sst state graph --stage production",
+					"```",
+					"",
+					"By default, it runs on your personal stage.",
+				}, "\n"),
+			},
+			Run: func(c *cli.Cli) error {
+				p, err := c.InitProject()
+				if err != nil {
+					return err
+				}
+				defer p.Cleanup()
+
+				outputFile := c.String("file")
+				if outputFile == "" {
+					outputFile = filepath.Join(p.PathRoot(), p.App().Name+"-"+p.App().Stage+".dot")
+				} else if !filepath.IsAbs(outputFile) {
+					cwd, err := os.Getwd()
+					if err != nil {
+						return util.NewReadableError(err, "Could not determine working directory")
+					}
+					outputFile = filepath.Join(cwd, outputFile)
+				}
+
+				err = p.Run(c.Context, &project.StackInput{
+					Command:    "graph",
+					OutputFile: outputFile,
+				})
+				if err != nil {
+					return util.NewReadableError(err, "Could not generate graph")
+				}
+
+				ui.Success("Graph written to " + outputFile)
+				return nil
 			},
 		},
 		{

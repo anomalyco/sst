@@ -25,6 +25,7 @@ type StackInput struct {
 	Continue   bool
 	SkipHash   string
 	PolicyPath string
+	OutputFile string
 }
 
 type ConcurrentUpdateEvent struct{}
