@@ -66,7 +66,7 @@ You can read more about the `home` provider in [Config](/docs/reference/config/)
 
 ---
 
-### History retention
+### Retention
 
 By default, SST keeps every completed state snapshot. You can limit the number of snapshots kept for each stage with `state.retention`.
 
@@ -79,7 +79,7 @@ By default, SST keeps every completed state snapshot. You can limit the number o
 }
 ```
 
-After an update completes, SST keeps the latest 30 snapshots and removes older snapshots with their matching event logs, update records, and summaries. The current state, secrets, and encryption passphrase are not removed. These snapshots are also preserved after `sst remove` unless `state.purge` is enabled.
+After an update completes, SST keeps the latest 30 snapshots and removes older snapshots with their matching event logs, update records, and summaries. The current state, secrets, and encryption passphrase are not removed.
 
 Retention counts completed updates instead of days. If a stage is inactive, its retained snapshots do not expire. Pruning runs the next time an update completes for that stage.
 

@@ -373,12 +373,12 @@ export interface App {
      * event logs, update records, and summaries. The current state, secrets, and
      * passphrase are not removed.
      *
+     * :::tip
+     * Use this property if your state bucket is growing very large.
+     * :::
+     *
      * Retention is based on the number of completed updates, not their age. An
      * inactive stage therefore keeps its retained history indefinitely.
-     *
-     * On AWS, the retained snapshots become the recovery history. SST permanently
-     * removes pruned history and noncurrent versions of the mutable current-state
-     * object, which include intermediate checkpoints.
      *
      * @default All completed state snapshots are kept.
      *

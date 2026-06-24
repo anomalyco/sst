@@ -675,7 +675,7 @@ loop:
 			if err := provider.Purge(p.home, p.app.Name, p.app.Stage); err != nil {
 				return err
 			}
-		} else if p.app.State == nil || p.app.State.Retention == nil {
+		} else {
 			if err := provider.Cleanup(p.home, p.app.Name, p.app.Stage); err != nil {
 				return err
 			}
