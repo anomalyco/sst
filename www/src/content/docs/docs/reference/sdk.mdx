@@ -11,7 +11,7 @@ You can use the SDK in your **functions**, **frontends**, and **container applic
 Check out the _SDK_ section in a component's API reference doc.
 :::
 
-Currently, the SDK is only available for JS/TS, Python, Golang, and Rust. Support for other languages is on the roadmap.
+Currently, the SDK is available for JS/TS, Python, Golang, Rust, and PHP. Support for other languages is on the roadmap.
 
 ---
 
@@ -211,3 +211,53 @@ new sst.aws.Function("MyFunction", {
 ```
 
 Client functions are currently **not supported** in the Rust SDK.
+
+---
+
+## PHP
+
+Use the SST PHP SDK package in your PHP container applications.
+
+```bash
+composer require sst/sdk
+```
+
+In your runtime code, use the `Resource::get()` function to access the linked resources.
+
+```php title="index.php"
+<?php
+
+use Sst\Sdk\Resource;
+
+$bucket = Resource::get('MyBucket');
+echo $bucket['name'];
+```
+
+Where `MyBucket` is the name of a bucket that's linked to the service.
+
+```ts title="sst.config.ts" {7}
+const vpc = new sst.aws.Vpc("MyVpc");
+const cluster = new sst.aws.Cluster("MyCluster", { vpc });
+const bucket = new sst.aws.Bucket("MyBucket");
+
+new sst.aws.Service("MyService", {
+  cluster,
+  link: [bucket]
+});
+```
+
+You can also access nested properties directly using path parameters.
+
+```php title="index.php"
+<?php
+
+use Sst\Sdk\Resource;
+
+// Get the whole resource
+$bucket = Resource::get('MyBucket');
+
+// Or get a specific property directly
+$name = Resource::get('MyBucket', 'name');
+```
+
+Client functions are currently **not supported** in the PHP SDK.
