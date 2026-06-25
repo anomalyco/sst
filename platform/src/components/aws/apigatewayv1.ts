@@ -68,7 +68,7 @@ export interface ApiGatewayV1DomainArgs {
    * }
    * ```
    */
-  name: Input<string>;
+  name?: Input<string>;
   /**
    * The base mapping for the custom domain. This adds a suffix to the URL of the API.
    *
@@ -1584,7 +1584,7 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
           return new DnsValidatedCertificate(
             `${name}Ssl`,
             {
-              domainName: domain.name,
+              domainName: domain.name!,
               dns: domain.dns!,
             },
             {
@@ -1615,7 +1615,7 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
               args.transform?.domainName,
               `${name}DomainName`,
               {
-                domainName: domain?.name,
+                domainName: domain.name!,
                 endpointConfiguration: { types: endpointType },
                 ...(endpointType === "REGIONAL"
                   ? {
@@ -1640,7 +1640,7 @@ export class ApiGatewayV1 extends Component implements Link.Linkable {
         domain.dns.createAlias(
           name,
           {
-            name: domain.name,
+            name: domain.name!,
             aliasName: endpointType.apply((v) =>
               v === "EDGE"
                 ? apigDomain.cloudfrontDomainName
