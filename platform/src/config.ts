@@ -968,6 +968,81 @@ export interface WorkflowInput {
   event: BranchEvent | PullRequestEvent | TagEvent | UserEvent;
 }
 
+/**
+ * An error that occurred during deployment.
+ */
+export interface DeployError {
+  /**
+   * The error message.
+   */
+  message: string;
+  /**
+   * The URN of the resource that caused the error, if applicable.
+   */
+  urn?: string;
+  /**
+   * Additional help text for resolving the error.
+   */
+  help?: string[];
+}
+
+/**
+ * The result passed to the `deploy.after` hook.
+ */
+export interface DeployResult {
+  /**
+   * Whether the deployment completed without errors.
+   */
+  success: boolean;
+  /**
+   * Array of errors that occurred during deployment. Empty if `success` is true.
+   */
+  errors: DeployError[];
+  /**
+   * The outputs from your `run` function.
+   */
+  outputs: Record<string, any>;
+  /**
+   * Number of resources in the stack.
+   */
+  resources: number;
+  /**
+   * Information about the app.
+   */
+  app: {
+    /**
+     * The app name.
+     */
+    name: string;
+    /**
+     * The stage name.
+     */
+    stage: string;
+  };
+}
+
+/**
+ * Hooks for the deploy operation.
+ */
+export interface DeployHooks {
+  /**
+   * Runs after a deployment completes (success or failure).
+   *
+   * @param result - The deployment result
+   */
+  after?(result: DeployResult): Promise<void> | void;
+}
+
+/**
+ * Hooks that run at specific points during operations.
+ */
+export interface Hooks {
+  /**
+   * Hooks for the deploy operation.
+   */
+  deploy?: DeployHooks;
+}
+
 export interface Config {
   /**
    * The config for your app. It needs to return an object of type [`App`](#app-1). The `app`
@@ -1405,6 +1480,64 @@ export interface Config {
    * ```
    */
   run(): Promise<Record<string, any> | void>;
+  /**
+   * Configure hooks that run at specific points during operations.
+   *
+   * Currently supports a `deploy.after` hook that runs after a deployment completes.
+   * This is useful for sending notifications (like Slack), triggering follow-up actions,
+   * or logging deployment results.
+   *
+   * :::note
+   * The hook runs after `sst deploy` completes, not during `sst dev` or `sst diff`.
+   * :::
+   *
+   * :::caution
+   * The hook will not run if the deployment is interrupted (e.g., Ctrl+C).
+   * :::
+   *
+   * :::caution
+   * Hook errors will cause the deployment to fail. If you want to handle errors
+   * gracefully and prevent deployment failure, wrap your hook logic in a try-catch block.
+   * :::
+   *
+   * @example
+   *
+   * ```ts title="sst.config.ts"
+   * hooks: {
+   *   deploy: {
+   *     async after(result) {
+   *       // Send a notification to your webhook
+   *       await fetch("https://example.com/webhook", {
+   *         method: "POST",
+   *         body: JSON.stringify({
+   *           text: `Deployed ${result.app.name} to ${result.app.stage}`
+   *         })
+   *       });
+   *     }
+   *   }
+   * }
+   * ```
+   *
+   * The `after` hook receives a `DeployResult` object containing:
+   * - `success` — Whether the deployment completed without errors
+   * - `errors` — Array of errors if any occurred
+   * - `outputs` — The outputs from your `run` function
+   * - `resources` — Number of resources in the stack
+   * - `app.name` — The app name
+   * - `app.stage` — The stage name
+   *
+   * #### Timeout
+   *
+   * By default, the hook has a 30-second timeout. You can customize this by setting
+   * the `SST_HOOK_TIMEOUT` environment variable to the number of seconds.
+   *
+   * ```bash
+   * SST_HOOK_TIMEOUT=60 sst deploy
+   * ```
+   *
+   * This sets the timeout to 60 seconds.
+   */
+  hooks?: Hooks;
 }
 
 /** @internal */

@@ -676,6 +676,13 @@ loop:
 		}
 	}
 
+	// Run deploy.after hook for deploy command only (not dev or diff)
+	if input.Command == "deploy" && !input.Dev && complete.Finished {
+		if err := p.RunDeployHook(complete); err != nil {
+			return err
+		}
+	}
+
 	log.Info("done running stack command", "resources", len(complete.Resources))
 
 	if cmd.ProcessState.ExitCode() > 0 {

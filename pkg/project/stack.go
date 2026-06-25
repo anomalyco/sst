@@ -108,6 +108,19 @@ type StackCommandEvent struct {
 	Version string
 }
 
+type HookStartEvent struct {
+	Hook string
+}
+
+type HookCompleteEvent struct {
+	Hook string
+}
+
+type HookErrorEvent struct {
+	Hook  string
+	Error string
+}
+
 type Error struct {
 	Message string   `json:"message"`
 	URN     string   `json:"urn"`
