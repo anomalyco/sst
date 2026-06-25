@@ -78,16 +78,11 @@ func Upgrade(existingVersion string, nextVersion string) (string, error) {
 		return "", fmt.Errorf("unexpected HTTP status when downloading release: %s", resp.Status)
 	}
 
-	homeDir, err := os.UserHomeDir()
+	tmpReleaseDir, err := os.MkdirTemp("", "sst")
 	if err != nil {
 		return "", err
 	}
-
-	sstBinPath := filepath.Join(homeDir, ".sst", "bin")
-	os.RemoveAll(sstBinPath)
-	if err := os.MkdirAll(sstBinPath, os.ModePerm); err != nil {
-		return "", err
-	}
+	defer os.RemoveAll(tmpReleaseDir)
 
 	// Assuming we have a variable `resp` which is the response from a *http.Request
 	body, err := gzip.NewReader(resp.Body)
@@ -96,11 +91,29 @@ func Upgrade(existingVersion string, nextVersion string) (string, error) {
 	}
 	defer body.Close()
 
-	if err := untar(body, sstBinPath); err != nil {
+	if err := untar(body, tmpReleaseDir); err != nil {
 		return "", err
 	}
 
-	if err := os.Chmod(filepath.Join(sstBinPath, "sst"), 0755); err != nil {
+	binHome := os.Getenv("XDG_BIN_HOME")
+	if binHome == "" {
+		// Default to ~/.local/bin if $XDG_BIN_HOME not set
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		binHome = filepath.Join(homeDir, ".local", "bin")
+	}
+	if err := os.MkdirAll(binHome, os.ModePerm); err != nil {
+		return "", err
+	}
+	sstBinPath := filepath.Join(binHome, "sst")
+
+	if err := os.Rename(filepath.Join(tmpReleaseDir, "sst"), sstBinPath); err != nil {
+		return "", err
+	}
+
+	if err := os.Chmod(sstBinPath, 0755); err != nil {
 		return "", err
 	}
 
