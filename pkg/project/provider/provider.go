@@ -180,6 +180,12 @@ func Cleanup(backend Home, app, stage string) error {
 	if err := backend.cleanup("snapshot", app, stage); err != nil {
 		return err
 	}
+	if err := backend.cleanup("app", app, stage); err != nil {
+		return err
+	}
+	if err := backend.cleanup("update", app, stage); err != nil {
+		return err
+	}
 	return nil
 }
 
