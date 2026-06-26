@@ -6,6 +6,34 @@ import {
 } from "@pulumi/pulumi";
 import { $print } from "../../component";
 
+let cloudWatchRole: iam.Role | undefined;
+
+function useCloudWatchRole(opts: ComponentResourceOptions) {
+  const partition = getPartitionOutput(undefined, opts).partition;
+  cloudWatchRole ??= new iam.Role(
+    `APIGatewayPushToCloudWatchLogsRole`,
+    {
+      assumeRolePolicy: jsonStringify({
+        Version: "2012-10-17",
+        Statement: [
+          {
+            Effect: "Allow",
+            Principal: {
+              Service: "apigateway.amazonaws.com",
+            },
+            Action: "sts:AssumeRole",
+          },
+        ],
+      }),
+      managedPolicyArns: [
+        interpolate`arn:${partition}:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs`,
+      ],
+    },
+    { retainOnDelete: true, provider: opts.provider },
+  );
+  return cloudWatchRole;
+}
+
 export function setupApiGatewayAccount(
   namePrefix: string,
   opts: ComponentResourceOptions,
@@ -20,35 +48,12 @@ export function setupApiGatewayAccount(
   return account.cloudwatchRoleArn.apply((arn) => {
     if (arn) return account;
 
-    const partition = getPartitionOutput(undefined, opts).partition;
-    const role = new iam.Role(
-      `APIGatewayPushToCloudWatchLogsRole`,
-      {
-        assumeRolePolicy: jsonStringify({
-          Version: "2012-10-17",
-          Statement: [
-            {
-              Effect: "Allow",
-              Principal: {
-                Service: "apigateway.amazonaws.com",
-              },
-              Action: "sts:AssumeRole",
-            },
-          ],
-        }),
-        managedPolicyArns: [
-          interpolate`arn:${partition}:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs`,
-        ],
-      },
-      { retainOnDelete: true, provider: opts.provider },
-    );
-
     return new apigateway.Account(
       `${namePrefix}APIGatewayAccountSetup`,
       {
-        cloudwatchRoleArn: role.arn,
+        cloudwatchRoleArn: useCloudWatchRole(opts).arn,
       },
-      { provider: opts.provider },
+      { retainOnDelete: true, provider: opts.provider },
     );
   });
 }
