@@ -130,6 +130,56 @@ export const supportedMemories = {
   },
 };
 
+export interface FargateLoggingAwsLogsArgs {
+  /**
+   * The driver to use for logging.
+   */
+  driver?: "awslogs";
+  /**
+   * The duration the logs are kept in CloudWatch.
+   * @default `"1 month"`
+   */
+  retention?: Input<keyof typeof RETENTION>;
+  /**
+   * The name of the CloudWatch log group. If omitted, the log group name is generated
+   * based on the cluster name, service name, and container name.
+   * @default `"/sst/cluster/${CLUSTER_NAME}/${SERVICE_NAME}/${CONTAINER_NAME}"`
+   */
+  name?: Input<string>;
+}
+
+export interface FargateLoggingCustomArgs {
+  /**
+   * The driver to use for logging.
+   */
+  driver: "splunk" | "awsfirelens";
+  /**
+   * The options to pass to the logging driver.
+   */
+  options?: Input<Record<string, Input<string>>>;
+}
+
+export type FargateLoggingArgs =
+  | FargateLoggingAwsLogsArgs
+  | FargateLoggingCustomArgs;
+
+type NormalizedAwsLogsLoggingArgs =
+  | {
+      [Property in keyof FargateLoggingAwsLogsArgs]-?: FargateLoggingAwsLogsArgs[Property];
+    }
+  | FargateLoggingCustomArgs;
+
+export interface FargateFirelensArgs {
+  /**
+   * The type of FireLens configuration to use.
+   */
+  type: "fluentbit" | "fluentd";
+  /**
+   * The options to pass to the FireLens configuration.
+   */
+  options?: Input<Record<string, Input<string>>>;
+}
+
 export interface FargateContainerArgs {
   /**
    * The name of the container.
@@ -264,16 +314,7 @@ export interface FargateContainerArgs {
   /**
    * Configure the logs in CloudWatch. Same as the top-level [`logging`](#logging).
    */
-  logging?: Input<{
-    /**
-     * The duration the logs are kept in CloudWatch. Same as the top-level [`logging.retention`](#logging-retention).
-     */
-    retention?: Input<keyof typeof RETENTION>;
-    /**
-     * The name of the CloudWatch log group. Same as the top-level [`logging.name`](#logging-name).
-     */
-    name?: Input<string>;
-  }>;
+  logging?: Input<FargateLoggingArgs>;
   /**
    * Key-value pairs of AWS Systems Manager Parameter Store parameter ARNs or AWS Secrets
    * Manager secret ARNs. The values will be loaded into the container as environment
@@ -285,6 +326,11 @@ export interface FargateContainerArgs {
    * [`volumes`](#volumes).
    */
   volumes?: FargateBaseArgs["volumes"];
+
+  /**
+   * The FireLens configuration to use for the container.
+   */
+  firelens?: Input<FargateFirelensArgs>;
 }
 
 export interface FargateBaseArgs {
@@ -661,19 +707,7 @@ export interface FargateBaseArgs {
    * }
    * ```
    */
-  logging?: Input<{
-    /**
-     * The duration the logs are kept in CloudWatch.
-     * @default `"1 month"`
-     */
-    retention?: Input<keyof typeof RETENTION>;
-    /**
-     * The name of the CloudWatch log group. If omitted, the log group name is generated
-     * based on the cluster name, service name, and container name.
-     * @default `"/sst/cluster/${CLUSTER_NAME}/${SERVICE_NAME}/${CONTAINER_NAME}"`
-     */
-    name?: Input<string>;
-  }>;
+  logging?: Input<FargateLoggingArgs>;
   /**
    * Mount Amazon EFS file systems into the container.
    *
@@ -774,6 +808,11 @@ export interface FargateBaseArgs {
    * ```
    */
   executionRole?: Input<string>;
+
+  /**
+   * The FireLens configuration to use for the container.
+   */
+  firelens?: Input<FargateFirelensArgs>;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
@@ -860,7 +899,8 @@ export function normalizeContainers(
       args.environmentFiles ||
       args.volumes ||
       args.health ||
-      args.ssm)
+      args.ssm ||
+      args.firelens)
   ) {
     throw new VisibleError(
       type === "service"
@@ -885,6 +925,7 @@ export function normalizeContainers(
       entrypoint: args.entrypoint,
       health: type === "service" ? args.health : undefined,
       dev: type === "service" ? args.dev : undefined,
+      firelens: args.firelens,
     },
   ];
 
@@ -931,15 +972,21 @@ export function normalizeContainers(
 
       function normalizeLogging() {
         return all([v.logging, args.cluster.nodes.cluster.name]).apply(
-          ([logging, clusterName]) => ({
-            ...logging,
-            retention: logging?.retention ?? "1 month",
-            name:
-              logging?.name ??
-              // In the case of shared Cluster across stage, log group name can thrash
-              // if Task name is the same. Need to suffix the task name with random hash.
-              `/sst/cluster/${clusterName}/${physicalName(64, name)}/${v.name}`,
-          }),
+          ([logging, clusterName]) =>
+            (isAwsLogsLoggingOrUndefined(logging)
+              ? {
+                  ...logging,
+                  driver: "awslogs",
+                  retention: logging?.retention ?? "1 month",
+                  name:
+                    logging?.name ??
+                    // In the case of shared Cluster across stage, log group name can thrash
+                    // if Task name is the same. Need to suffix the task name with random hash.
+                    `/sst/cluster/${clusterName}/${physicalName(64, name)}/${
+                      v.name
+                    }`,
+                }
+              : logging) as NormalizedAwsLogsLoggingArgs,
         );
       }
     }),
@@ -1067,6 +1114,18 @@ export function createExecutionRole(
   );
 }
 
+function isAwsLogsLoggingOrUndefined(
+  logging?: FargateLoggingArgs,
+): logging is FargateLoggingAwsLogsArgs | undefined {
+  return !logging?.driver || logging?.driver === "awslogs";
+}
+
+function isAwsLogsLogging(
+  logging: FargateLoggingArgs,
+): logging is FargateLoggingAwsLogsArgs {
+  return logging.driver === "awslogs";
+}
+
 export function createTaskDefinition(
   name: string,
   args: Omit<ServiceArgs, "public">,
@@ -1185,24 +1244,26 @@ export function createTaskDefinition(
       pseudoTerminal: true,
       portMappings: [{ containerPortRange: "1-65535" }],
       logConfiguration: {
-        logDriver: "awslogs",
-        options: {
-          "awslogs-group": (() => {
-            return new cloudwatch.LogGroup(
-              ...transform(
-                args.transform?.logGroup,
-                `${name}LogGroup${container.name}`,
-                {
-                  name: container.logging.name,
-                  retentionInDays: RETENTION[container.logging.retention],
-                },
-                { parent, ignoreChanges: ["name"] },
-              ),
-            );
-          })().name,
-          "awslogs-region": region,
-          "awslogs-stream-prefix": "/service",
-        },
+        logDriver: container.logging.driver,
+        options: isAwsLogsLogging(container.logging)
+          ? {
+              "awslogs-group": (() => {
+                return new cloudwatch.LogGroup(
+                  ...transform(
+                    args.transform?.logGroup,
+                    `${name}LogGroup${container.name}`,
+                    {
+                      name: container.logging.name,
+                      retentionInDays: RETENTION[container.logging.retention],
+                    },
+                    { parent, ignoreChanges: ["name"] },
+                  ),
+                );
+              })().name,
+              "awslogs-region": region,
+              "awslogs-stream-prefix": "/service",
+            }
+          : container.logging.options,
       },
       environment: linkEnvs.apply((linkEnvs) =>
         Object.entries({
@@ -1225,6 +1286,7 @@ export function createTaskDefinition(
         name,
         valueFrom,
       })),
+      firelensConfiguration: container.firelens,
     })),
   );
 
