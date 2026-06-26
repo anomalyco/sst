@@ -114,6 +114,7 @@ export type Plan = {
   };
   custom404?: string;
   buildId?: string;
+  hasStaticRoutes?: boolean;
 };
 
 export interface SsrSiteArgs extends BaseSsrSiteArgs {
@@ -1790,6 +1791,35 @@ async function handler(event) {
             const expandDirs = [".well-known"];
 
             plan.assets.forEach((copy) => {
+              // Helper function to recursively find HTML files in directories
+              const findHtmlFiles = (dirPath: string, basePath: string, depth = 0) => {
+
+                const results: string[] = [];
+                const files = fs.readdirSync(dirPath, { withFileTypes: true });
+                // avoid infinite loop
+                if(depth > 100) {
+                  console.warn(`findHtmlFiles: depth > 100, skipping ${dirPath}`);
+                  return results;
+                }
+
+                for (const file of files) {
+                  const fullPath = path.join(dirPath, file.name);
+                  const relativePath = path.join(basePath, file.name);
+                  
+                  if(file.isSymbolicLink() || file.name.startsWith('.')) {
+                    continue;
+                  } else if (file.isDirectory()) {
+                    // Recursively process subdirectories
+                    results.push(...findHtmlFiles(fullPath, relativePath, depth + 1));
+                  } else if (file.isFile() && file.name.endsWith('.html')) {
+                    // Found an HTML file
+                    results.push(relativePath);
+                  }
+                }
+                
+                return results;
+              };
+
               const processDir = (childPath = "", level = 0) => {
                 const currentPath = path.join(outputPath, copy.from, childPath);
                 fs.readdirSync(currentPath, { withFileTypes: true }).forEach(
@@ -1813,7 +1843,36 @@ async function handler(event) {
                     ) {
                       processDir(path.join(childPath, item.name), level + 1);
                       return;
-                    }
+                    }               
+                  // Resolves routing precedence bug in nested paths with mixed rendering modes.
+                  //   Issue: Directory-level S3 classification caused static routes to shadow SSR siblings
+                  //   (e.g., /api/users/static masks /api/users/ssr from reaching Lambda).
+                  //   Fix: Perform deep file-level scanning when prerendered routes exist, adding only
+                  //   concrete static assets to KV metadata. Handles framework-specific output patterns:
+                  //   SvelteKit (route.html) vs Astro / SolidStart (route/index.html), ensuring CloudFront router
+                  // correctly differentiates S3-served files from Lambda-routed SSR endpoints.
+                    if (plan.hasStaticRoutes) {
+
+                      // For versioned asset dir, add to routes and do not recurse
+                      if (item.name === copy.versionedSubDir) {
+                        dirs.push(toPosix(path.join("/", childPath, item.name)));
+                        return;
+                      } 
+                      
+                      const dirPath = path.join(currentPath, item.name);
+                      const dirRelativePath = path.join(childPath, item.name);
+                      
+                      // Find all HTML files in this directory and its subdirectories
+                      const htmlFiles = findHtmlFiles(dirPath, dirRelativePath);
+
+                      // Add all HTML files to S3 keys to avoid ssr overrride
+                      if (htmlFiles.length > 0) {
+                        htmlFiles.forEach(htmlFile => {
+                          kvEntries[toPosix(path.join("/", htmlFile))] = "s3";
+                        });
+                        return;
+                      }
+                    }       
                     // Directory + NOT expand: add to route
                     dirs.push(toPosix(path.join("/", childPath, item.name)));
                   },
