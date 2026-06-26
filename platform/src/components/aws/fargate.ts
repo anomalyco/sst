@@ -1,5 +1,3 @@
-import fs from "fs";
-import path from "path";
 import { ComponentResourceOptions, interpolate, secret } from "@pulumi/pulumi";
 import { all, output } from "@pulumi/pulumi";
 import { Input } from "../input";
@@ -13,7 +11,6 @@ import { ImageArgs, Platform } from "@pulumi/docker-build";
 import { Component, Transform, transform } from "../component";
 import {
   cloudwatch,
-  ecr,
   ecs,
   getCallerIdentityOutput,
   getPartitionOutput,
@@ -23,11 +20,11 @@ import {
 import { Link } from "../link";
 import { Permission } from "./permission";
 import { bootstrap } from "./helpers/bootstrap";
-import { imageBuilder } from "./helpers/container-builder";
 import { toNumber } from "../cpu";
 import { toSeconds } from "../duration";
 import { Cluster } from "./cluster";
 import { physicalName } from "../naming";
+import { Image } from "./image";
 
 export const supportedCpus = {
   "0.25 vCPU": 256,
@@ -1090,86 +1087,24 @@ export function createTaskDefinition(
       image: (() => {
         if (typeof container.image === "string") return output(container.image);
 
-        const containerImage = container.image;
-        const contextPath = path.join($cli.paths.root, container.image.context);
-        const dockerfile = container.image.dockerfile ?? "Dockerfile";
-        const dockerfilePath = path.join(contextPath, dockerfile);
-        const dockerIgnorePath = fs.existsSync(
-          path.join(contextPath, `${dockerfile}.dockerignore`),
-        )
-          ? path.join(contextPath, `${dockerfile}.dockerignore`)
-          : path.join(contextPath, ".dockerignore");
-
-        // add .sst to .dockerignore if not exist
-        const lines = fs.existsSync(dockerIgnorePath)
-          ? fs.readFileSync(dockerIgnorePath).toString().split("\n")
-          : [];
-        if (!lines.find((line) => line === ".sst")) {
-          fs.writeFileSync(
-            dockerIgnorePath,
-            [...lines, "", "# sst", ".sst"].join("\n"),
-          );
-        }
-
-        // Build image
-        const image = imageBuilder(
-          ...transform(
-            args.transform?.image,
-            `${name}Image${container.name}`,
-            {
-              context: { location: contextPath },
-              dockerfile: { location: dockerfilePath },
-              buildArgs: containerImage.args,
-              secrets: all([linkEnvs, containerImage.secrets ?? {}]).apply(
-                ([link, secrets]) => ({ ...link, ...secrets }),
-              ),
-              target: container.image.target,
-              platforms: [container.image.platform],
-              tags: [container.name, ...(container.image.tags ?? [])].map(
-                (tag) => interpolate`${bootstrapData.assetEcrUrl}:${tag}`,
-              ),
-              registries: [
-                ecr
-                  .getAuthorizationTokenOutput(
-                    {
-                      registryId: bootstrapData.assetEcrRegistryId,
-                    },
-                    { parent },
-                  )
-                  .apply((authToken) => ({
-                    address: authToken.proxyEndpoint,
-                    password: secret(authToken.password),
-                    username: authToken.userName,
-                  })),
-              ],
-              ...(container.image.cache !== false
-                ? {
-                    cacheFrom: [
-                      {
-                        registry: {
-                          ref: interpolate`${bootstrapData.assetEcrUrl}:${container.name}-cache`,
-                        },
-                      },
-                    ],
-                    cacheTo: [
-                      {
-                        registry: {
-                          ref: interpolate`${bootstrapData.assetEcrUrl}:${container.name}-cache`,
-                          imageManifest: true,
-                          ociMediaTypes: true,
-                          mode: "max",
-                        },
-                      },
-                    ],
-                  }
-                : {}),
-              push: true,
+        const image = new Image(
+          `${name}${container.name}`,
+          {
+            context: container.image.context,
+            dockerfile: container.image.dockerfile,
+            args: container.image.args,
+            secrets: linkEnvs,
+            target: container.image.target,
+            platforms: [container.image.platform],
+            tags: [container.name, ...(container.image.tags ?? [])],
+            transform: {
+              image: args.transform?.image,
             },
-            { parent },
-          ),
+          },
+          { parent },
         );
 
-        return interpolate`${bootstrapData.assetEcrUrl}@${image.digest}`;
+        return image.uri;
       })(),
       cpu: container.cpu ? toNumber(container.cpu) : undefined,
       memory: container.memory ? toMBs(container.memory) : undefined,

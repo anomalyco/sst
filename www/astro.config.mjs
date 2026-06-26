@@ -114,6 +114,7 @@ const sidebar = [
           "docs/component/aws/workflow",
           "docs/component/aws/realtime",
           "docs/component/aws/sns-topic",
+          "docs/component/aws/image",
           "docs/component/aws/function",
           "docs/component/aws/postgres",
           "docs/component/aws/app-sync",
