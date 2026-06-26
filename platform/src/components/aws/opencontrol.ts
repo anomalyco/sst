@@ -43,7 +43,7 @@ export interface OpenControlArgs {
    * Learn more in the [OpenControl docs](https://opencontrol.ai) on how to
    * configure the `server` function.
    */
-  server: Input<string | FunctionArgs>;
+  server: Input<string | Function | FunctionArgs>;
 }
 /**
  * The `OpenControl` component has been deprecated. It should not be used for new projects.

@@ -14,7 +14,7 @@ import {
 } from "../component";
 import { Link } from "../link";
 import type { Input } from "../input";
-import { FunctionArgs, FunctionArn } from "./function.js";
+import { Function, FunctionArgs, FunctionArn } from "./function.js";
 import { hashStringToPrettyString, physicalName, logicalName } from "../naming";
 import { DnsValidatedCertificate } from "./dns-validated-certificate";
 import { RETENTION } from "./logging";
@@ -228,7 +228,7 @@ export interface ApiGatewayWebSocketAuthorizerArgs {
      * }
      * ```
      */
-    function: Input<string | FunctionArgs>;
+    function: Input<string | Function | FunctionArgs>;
     /**
      * The JWT payload version.
      * @default `"2.0"`
@@ -767,7 +767,7 @@ export class ApiGatewayWebSocket extends Component implements Link.Linkable {
    */
   public route(
     route: string,
-    handler: Input<string | FunctionArgs | FunctionArn>,
+    handler: Input<string | Function | FunctionArgs | FunctionArn>,
     args: ApiGatewayWebSocketRouteArgs = {},
   ) {
     const prefix = this.constructorName;

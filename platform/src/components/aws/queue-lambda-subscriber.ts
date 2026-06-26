@@ -24,7 +24,7 @@ export interface Args extends QueueSubscriberArgs {
   /**
    * The subscriber function.
    */
-  subscriber: Input<string | FunctionArgs>;
+  subscriber: Input<string | Function | FunctionArgs>;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.

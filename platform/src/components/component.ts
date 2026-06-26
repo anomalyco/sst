@@ -147,6 +147,7 @@ export class Component extends ComponentResource {
               "aws:cognito/identityPoolRoleAttachment:IdentityPoolRoleAttachment",
               "aws:cognito/identityProvider:IdentityProvider",
               "aws:cognito/userPoolClient:UserPoolClient",
+              "aws:lambda/alias:Alias",
               "aws:lambda/eventSourceMapping:EventSourceMapping",
               "aws:lambda/functionEventInvokeConfig:FunctionEventInvokeConfig",
               "aws:lambda/functionUrl:FunctionUrl",
@@ -215,6 +216,15 @@ export class Component extends ComponentResource {
             "aws:apigatewayv2/vpcLink:VpcLink": ["name", 128],
             "aws:appautoscaling/policy:Policy": ["name", 255],
             "aws:appsync/graphQLApi:GraphQLApi": ["name", 65536],
+            "aws:codedeploy/application:Application": ["name", 100],
+            "aws:codedeploy/deploymentConfig:DeploymentConfig": [
+              "deploymentConfigName",
+              100,
+            ],
+            "aws:codedeploy/deploymentGroup:DeploymentGroup": [
+              "deploymentGroupName",
+              100,
+            ],
             "aws:cloudwatch/eventBus:EventBus": ["name", 256],
             "aws:cloudwatch/eventTarget:EventTarget": ["targetId", 64],
             "aws:cloudwatch/eventRule:EventRule": ["name", 64],

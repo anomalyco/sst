@@ -1,8 +1,12 @@
-import { ComponentResourceOptions, Output, all } from "@pulumi/pulumi";
+import { ComponentResourceOptions, Output, all, output } from "@pulumi/pulumi";
 import { Component, Transform, transform } from "../component";
 import { Link } from "../link";
 import type { Input } from "../input";
 import { Function, FunctionArgs, FunctionArn } from "./function.js";
+import {
+  functionBuilder,
+  FunctionBuilder,
+} from "./helpers/function-builder.js";
 import { hashStringToPrettyString, logicalName } from "../naming";
 import { RealtimeLambdaSubscriber } from "./realtime-lambda-subscriber";
 import { iot, lambda } from "@pulumi/aws";
@@ -18,7 +22,7 @@ export interface RealtimeArgs {
    * }
    * ```
    */
-  authorizer: Input<string | FunctionArgs>;
+  authorizer: Input<string | Function | FunctionArgs>;
   /**
    * [Transform](/docs/components#transform) how this subscription creates its underlying
    * resources.
@@ -158,7 +162,7 @@ export interface RealtimeSubscriberArgs {
 export class Realtime extends Component implements Link.Linkable {
   private readonly constructorName: string;
   private constructorOpts: ComponentResourceOptions;
-  private readonly authHadler: Output<Function>;
+  private readonly authHandler: FunctionBuilder;
   private readonly iotAuthorizer: iot.Authorizer;
   private readonly iotEndpoint: Output<string>;
 
@@ -171,7 +175,7 @@ export class Realtime extends Component implements Link.Linkable {
 
     const parent = this;
 
-    const authHadler = createAuthorizerFunction();
+    const authHandler = createAuthorizerFunction();
     const iotAuthorizer = createAuthorizer();
     createPermission();
 
@@ -181,11 +185,11 @@ export class Realtime extends Component implements Link.Linkable {
       { parent },
     ).endpointAddress;
     this.constructorName = name;
-    this.authHadler = authHadler;
+    this.authHandler = authHandler;
     this.iotAuthorizer = iotAuthorizer;
 
     function createAuthorizerFunction() {
-      return Function.fromDefinition(
+      return functionBuilder(
         `${name}AuthorizerHandler`,
         args.authorizer,
         {
@@ -209,7 +213,7 @@ export class Realtime extends Component implements Link.Linkable {
           `${name}Authorizer`,
           {
             signingDisabled: true,
-            authorizerFunctionArn: authHadler.arn,
+            authorizerFunctionArn: authHandler.targetArn,
           },
           { parent },
         ),
@@ -221,7 +225,8 @@ export class Realtime extends Component implements Link.Linkable {
         `${name}Permission`,
         {
           action: "lambda:InvokeFunction",
-          function: authHadler.arn,
+          function: authHandler.arn,
+          qualifier: authHandler.qualifier.apply((q) => q!),
           principal: "iot.amazonaws.com",
           sourceArn: iotAuthorizer.arn,
         },
@@ -256,7 +261,7 @@ export class Realtime extends Component implements Link.Linkable {
       /**
        * The IoT authorizer function resource.
        */
-      authHandler: this.authHadler,
+      authHandler: this.authHandler,
     };
   }
 
@@ -297,29 +302,32 @@ export class Realtime extends Component implements Link.Linkable {
    * ```
    */
   public subscribe(
-    subscriber: Input<string | FunctionArgs | FunctionArn>,
+    subscriber: Input<string | Function | FunctionArgs | FunctionArn>,
     args: RealtimeSubscriberArgs,
   ) {
     return all([subscriber, args.filter]).apply(([subscriber, filter]) => {
-      const suffix = logicalName(
-        hashStringToPrettyString(
-          [
-            filter,
-            typeof subscriber === "string" ? subscriber : subscriber.handler,
-          ].join(""),
-          6,
-        ),
-      );
+      const subscriberIdentity =
+        typeof subscriber === "string"
+          ? subscriber
+          : subscriber instanceof Function
+            ? subscriber.arn
+            : subscriber.handler;
 
-      return new RealtimeLambdaSubscriber(
-        `${this.constructorName}Subscriber${suffix}`,
-        {
-          iot: { name: this.constructorName },
-          subscriber,
-          ...args,
-        },
-        { provider: this.constructorOpts.provider },
-      );
+      return output(subscriberIdentity).apply((identity) => {
+        const suffix = logicalName(
+          hashStringToPrettyString([filter, identity].join(""), 6),
+        );
+
+        return new RealtimeLambdaSubscriber(
+          `${this.constructorName}Subscriber${suffix}`,
+          {
+            iot: { name: this.constructorName },
+            subscriber,
+            ...args,
+          },
+          { provider: this.constructorOpts.provider },
+        );
+      });
     });
   }
 
