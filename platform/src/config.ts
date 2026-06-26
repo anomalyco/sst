@@ -366,6 +366,35 @@ export interface App {
      * ```
      */
     compress?: boolean;
+    /**
+     * The number of completed state snapshots to keep for each stage.
+     *
+     * After an update completes, SST removes older snapshots and their matching
+     * event logs, update records, and summaries. The current state, secrets, and
+     * passphrase are not removed.
+     *
+     * :::tip
+     * Use this property if your state bucket is growing very large.
+     * :::
+     *
+     * Retention is based on the number of completed updates, not their age. An
+     * inactive stage therefore keeps its retained history indefinitely.
+     *
+     * @default All completed state snapshots are kept.
+     *
+     * @example
+     *
+     * Keep the latest 30 completed state snapshots.
+     *
+     * ```ts
+     * {
+     *   state: {
+     *     retention: 30
+     *   }
+     * }
+     * ```
+     */
+    retention?: number;
   };
 
   /**

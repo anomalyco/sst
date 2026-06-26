@@ -47,8 +47,16 @@ type App struct {
 }
 
 type State struct {
-	Purge    bool `json:"purge"`
-	Compress bool `json:"compress"`
+	Purge     bool `json:"purge"`
+	Compress  bool `json:"compress"`
+	Retention *int `json:"retention"`
+}
+
+func validateState(state *State) error {
+	if state != nil && state.Retention != nil && *state.Retention < 1 {
+		return util.NewReadableError(nil, `The "state.retention" property must be a positive integer.`)
+	}
+	return nil
 }
 
 type Watch struct {
@@ -319,6 +327,10 @@ console.log("~j" + JSON.stringify(await mod.app({
 
 			if proj.app.Removal == "" {
 				proj.app.Removal = "retain"
+			}
+
+			if err := validateState(proj.app.State); err != nil {
+				return nil, err
 			}
 
 			if proj.app.Version != "" && input.Version != "dev" {
