@@ -1,0 +1,9 @@
+{
+  "name": "aws-ecs-gpus",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "sst": "^4"
+  }
+}
