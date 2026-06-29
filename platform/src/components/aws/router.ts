@@ -2965,7 +2965,8 @@ function setUrlOrigin(urlHost, override) {
   };
   override = override ?? {};
   if (override.protocol === "http") {
-    delete origin.customOriginConfig;
+    origin.customOriginConfig = { port: 80, protocol: "http", sslProtocols: ["TLSv1.2"] };
+    delete origin.originAccessControlConfig;
   }
   if (override.connectionAttempts) {
     origin.connectionAttempts = override.connectionAttempts;
