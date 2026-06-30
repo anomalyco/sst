@@ -156,6 +156,7 @@ export abstract class SsrSite extends Component implements Link.Linkable {
     function resolveBuildEnvironment() {
       return resolveBuildWranglerPath().apply((wranglerPath) => ({
         SST_WRANGLER_PATH: wranglerPath,
+        CLOUDFLARE_VITE_WRANGLER_CONFIG_PATH: wranglerPath,
       }));
     }
 
