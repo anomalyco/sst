@@ -60,6 +60,30 @@ import {
 import { KvRoutesUpdate } from "./providers/kv-routes-update.js";
 import { KvKeys } from "./providers/kv-keys.js";
 
+const lambdaCodeAssetPrefix = "lambda";
+const useVersionedLambdaCodeAssets =
+  process.env.SST_LAMBDA_CODE_ASSET_VERSIONING === "1" ||
+  process.env.SST_LAMBDA_CODE_ASSET_VERSIONING === "true";
+
+function assetKeySegment(value: string) {
+  return encodeURIComponent(value);
+}
+
+function lambdaCodeAssetKey(name: string) {
+  const keyHash = crypto
+    .createHash("sha256")
+    .update([$app.name, $app.stage, name].join(":"))
+    .digest("hex")
+    .slice(0, 16);
+  return [
+    lambdaCodeAssetPrefix,
+    assetKeySegment($app.name),
+    assetKeySegment($app.stage),
+    `${assetKeySegment(name)}-${keyHash}`,
+    "code.zip",
+  ].join("/");
+}
+
 /**
  * Helper type to define function ARN type
  */
@@ -2552,9 +2576,14 @@ export class Function extends Component implements Link.Linkable {
               {
                 key: dev
                   ? `assets/dev-bridge-code-${hashValue}.zip`
-                  : interpolate`assets/${name}-code-${hashValue}.zip`,
+                  : useVersionedLambdaCodeAssets
+                    ? lambdaCodeAssetKey(name)
+                    : interpolate`assets/${name}-code-${hashValue}.zip`,
                 bucket: assetBucket,
                 source: new asset.FileArchive(zipPath),
+                ...(!dev && useVersionedLambdaCodeAssets
+                  ? { sourceHash: hashValue }
+                  : {}),
               },
               dev
                 ? { parent: rootStackResource, provider: opts?.provider }
@@ -2670,6 +2699,9 @@ export class Function extends Component implements Link.Linkable {
                     packageType: "Zip",
                     s3Bucket: zipAsset!.bucket,
                     s3Key: zipAsset!.key,
+                    ...(dev || !useVersionedLambdaCodeAssets
+                      ? {}
+                      : { s3ObjectVersion: zipAsset!.versionId }),
                     handler: unsecret(handler),
                     runtime: runtime.apply((v) =>
                       v === "go" || v === "rust" ? "provided.al2023" : v,
