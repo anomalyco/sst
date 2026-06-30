@@ -63,8 +63,8 @@ func (a *AwsProvider) Env() (map[string]string, error) {
 
 func (a *AwsProvider) Init(app string, stage string, args map[string]interface{}) error {
 	ctx := context.Background()
-	if os.Getenv("SST_AWS_NO_PROFILE") != "" {
-		delete(args, "profile")
+	if value := os.Getenv("AWS_PROFILE"); value != "" {
+		a.profile = value
 	}
 	if val, ok := args["profile"]; ok && val != "" {
 		delete(args, "profile")
@@ -72,9 +72,6 @@ func (a *AwsProvider) Init(app string, stage string, args map[string]interface{}
 		// this isn't ideal because people may use different profile names for the same stage
 		// so we wipe it from args and put it in env which is not saved to the state
 		a.profile = val.(string)
-	}
-	if value := os.Getenv("AWS_PROFILE"); value != "" {
-		a.profile = value
 	}
 
 	cfg, err := config.LoadDefaultConfig(
