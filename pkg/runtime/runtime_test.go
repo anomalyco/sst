@@ -2,6 +2,9 @@ package runtime_test
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -78,5 +81,68 @@ func TestCollectionRuntime(t *testing.T) {
 
 		_, ok := c.Runtime("anything")
 		assert.False(t, ok)
+	})
+}
+
+func TestCollectionBuildEncryptedResourceFileWithBundle(t *testing.T) {
+	// A 32-byte AES-256 key (all zeroes is fine for testing purposes).
+	encryptionKey := base64.StdEncoding.EncodeToString(make([]byte, 32))
+
+	t.Run("writes per-function subdirectory when bundle is set", func(t *testing.T) {
+		bundleDir := t.TempDir()
+
+		mr := &mockRuntime{matchFn: func(r string) bool { return r == "nodejs" }}
+		c := runtime.NewCollection("cfg", mr)
+
+		input := &runtime.BuildInput{
+			FunctionID:    "my-function",
+			Handler:       "index.handler",
+			Bundle:        bundleDir,
+			Runtime:       "nodejs",
+			EncryptionKey: encryptionKey,
+			Links:         map[string]json.RawMessage{},
+		}
+
+		_, err := c.Build(context.Background(), input)
+		require.NoError(t, err)
+
+		// Per-function file lives under .sst/<FunctionID>/ so concurrent
+		// Build calls sharing the same bundle directory don't race, and the
+		// uploaded zip for each function can exclude every sibling's subtree.
+		perFunctionPath := filepath.Join(bundleDir, ".sst", "my-function", "resource.enc")
+		_, err = os.Stat(perFunctionPath)
+		assert.NoError(t, err, "expected %s to exist", perFunctionPath)
+
+		// Default top-level filename is reserved for the non-bundle
+		// (per-function artifact directory) path.
+		defaultPath := filepath.Join(bundleDir, "resource.enc")
+		_, err = os.Stat(defaultPath)
+		assert.True(t, os.IsNotExist(err), "default resource.enc should not exist when bundle is set")
+	})
+
+	t.Run("distinct functions sharing a bundle write to distinct subdirs", func(t *testing.T) {
+		bundleDir := t.TempDir()
+
+		mr := &mockRuntime{matchFn: func(r string) bool { return r == "nodejs" }}
+		c := runtime.NewCollection("cfg", mr)
+
+		for _, id := range []string{"fn-a", "fn-b"} {
+			input := &runtime.BuildInput{
+				FunctionID:    id,
+				Handler:       "index.handler",
+				Bundle:        bundleDir,
+				Runtime:       "nodejs",
+				EncryptionKey: encryptionKey,
+				Links:         map[string]json.RawMessage{},
+			}
+			_, err := c.Build(context.Background(), input)
+			require.NoError(t, err)
+		}
+
+		for _, id := range []string{"fn-a", "fn-b"} {
+			p := filepath.Join(bundleDir, ".sst", id, "resource.enc")
+			_, err := os.Stat(p)
+			assert.NoError(t, err, "expected %s to exist", p)
+		}
 	})
 }
