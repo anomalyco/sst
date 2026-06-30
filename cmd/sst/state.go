@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pulumi/pulumi/pkg/v3/resource/deploy"
+	"github.com/pulumi/pulumi/sdk/v3/go/common/resource"
 	"github.com/sst/sst/v3/cmd/sst/cli"
 	"github.com/sst/sst/v3/cmd/sst/mosaic/ui"
 	"github.com/sst/sst/v3/internal/util"
@@ -302,18 +304,15 @@ var CmdState = &cli.Command{
 
 				target := c.Positional(0)
 				muts := state.Remove(target, checkpoint)
-				err = confirmMutations(muts)
-				if err != nil {
+				if err := confirmMutations(muts); err != nil {
 					return err
 				}
 
-				err = workdir.Import(checkpoint)
-				if err != nil {
+				if err := workdir.Import(checkpoint); err != nil {
 					return util.NewReadableError(err, "Could not import state")
 				}
 
-				err = workdir.Push(update.ID)
-				if err != nil {
+				if err := workdir.Push(update.ID); err != nil {
 					return err
 				}
 				ui.Success("Resource removed")
@@ -329,7 +328,7 @@ var CmdState = &cli.Command{
 					"",
 					"Sometimes, if something goes wrong with your app, or if the state was directly",
 					"edited, the state can become corrupted. This will cause your `sst deploy` command",
-					"to fail.",
+					"to fail with a `snapshot integrity` error.",
 					"",
 					"This command looks for the following issues and fixes them.",
 					"",
@@ -337,11 +336,12 @@ var CmdState = &cli.Command{
 					"   it needs to be listed after the one it depends on. This command finds resources",
 					"   that depend on each other but are not ordered correctly and **reorders them**.",
 					"",
-					"2. If resource B depends on resource A, but resource A is not listed in the state,",
-					"   it'll **remove the dependency**.",
+					"2. If resource B depends on resource A but resource A is not listed in the state,",
+					"   it'll **remove the dangling reference**. This applies to all dependency types:",
+					"   parent, dependencies, property dependencies, `deletedWith` and `replaceWith`.",
 					"",
-					"This command does this by going through all the resources in the state, fixing the",
-					"issues and updating the state.",
+					"3. If a child resource has a parent that no longer exists, the child is",
+					"   **unparented** (its URN is rewritten and it becomes a top-level resource).",
 					"",
 					"You can run this for specific stages as well.",
 					"",
@@ -384,19 +384,24 @@ var CmdState = &cli.Command{
 					return util.NewReadableError(err, "Could not export state")
 				}
 
-				muts := state.Repair(checkpoint)
-				err = confirmMutations(muts)
+				passphrase, err := provider.Passphrase(p.Backend(), p.App().Name, p.App().Stage)
 				if err != nil {
+					return util.NewReadableError(err, "Could not load passphrase")
+				}
+
+				result, err := state.Repair(c.Context, passphrase, checkpoint)
+				if err != nil {
+					return util.NewReadableError(err, err.Error())
+				}
+				if err := confirmRepair(result); err != nil {
 					return err
 				}
 
-				err = workdir.Import(checkpoint)
-				if err != nil {
+				if err := workdir.Import(checkpoint); err != nil {
 					return util.NewReadableError(err, "Could not import state")
 				}
 
-				err = workdir.Push(update.ID)
-				if err != nil {
+				if err := workdir.Push(update.ID); err != nil {
 					return err
 				}
 				ui.Success("State repaired")
@@ -404,6 +409,19 @@ var CmdState = &cli.Command{
 			},
 		},
 	},
+}
+
+func confirmRepair(result state.RepairResult) error {
+	if result.IsEmpty() {
+		return util.NewReadableError(nil, "No changes needed")
+	}
+
+	fmt.Println("Modified:")
+	for _, p := range result.Pruned {
+		renderPruneResult(p)
+	}
+
+	return promptConfirm()
 }
 
 func confirmMutations(muts []state.Mutation) error {
@@ -423,7 +441,43 @@ func confirmMutations(muts []state.Mutation) error {
 		}
 	}
 
-	// prompt for confirmation to continue
+	fmt.Println()
+	fmt.Print("Do you want to commit these changes? (Y/n): ")
+	var response string
+	_, err := fmt.Scanln(&response)
+	if err != nil {
+		return util.NewReadableError(err, "failed to read user input")
+	}
+	if strings.ToLower(response) != "y" {
+		return util.NewReadableError(nil, "Abandoning changes")
+	}
+	return nil
+}
+
+func renderPruneResult(p deploy.PruneResult) {
+	if p.OldURN != p.NewURN {
+		fmt.Printf("  - %s → %s (unparented)\n", p.OldURN.Type().DisplayName(), p.OldURN.Name())
+	} else {
+		fmt.Printf("  - %s → %s\n", p.OldURN.Type().DisplayName(), p.OldURN.Name())
+	}
+	for _, dep := range p.RemovedDependencies {
+		switch dep.Type {
+		case resource.ResourceParent:
+			fmt.Printf("      removed parent: %s → %s\n", dep.URN.Type().DisplayName(), dep.URN.Name())
+		case resource.ResourceDependency:
+			fmt.Printf("      removed dependency: %s → %s\n", dep.URN.Type().DisplayName(), dep.URN.Name())
+		case resource.ResourcePropertyDependency:
+			fmt.Printf("      removed property %q dependency: %s → %s\n", dep.Key, dep.URN.Type().DisplayName(), dep.URN.Name())
+		case resource.ResourceDeletedWith:
+			fmt.Printf("      removed deletedWith: %s → %s\n", dep.URN.Type().DisplayName(), dep.URN.Name())
+		case resource.ResourceReplaceWith:
+			fmt.Printf("      removed replaceWith: %s → %s\n", dep.URN.Type().DisplayName(), dep.URN.Name())
+		}
+	}
+}
+
+func promptConfirm() error {
+	fmt.Println()
 	fmt.Print("Do you want to commit these changes? (Y/n): ")
 	var response string
 	_, err := fmt.Scanln(&response)

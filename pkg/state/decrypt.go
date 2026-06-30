@@ -13,9 +13,7 @@ import (
 
 func Decrypt(ctx context.Context, passphrase string, checkpoint *apitype.CheckpointV3) (*apitype.CheckpointV3, error) {
 	os.Setenv("PULUMI_CONFIG_PASSPHRASE", passphrase)
-	sp := &defaultSecretsProvider{
-		passphrase: passphrase,
-	}
+	sp := &defaultSecretsProvider{passphrase: passphrase}
 	snapshot, err := stack.DeserializeCheckpoint(ctx, sp, checkpoint)
 	if err != nil {
 		return nil, err
