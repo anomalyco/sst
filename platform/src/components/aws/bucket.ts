@@ -9,18 +9,21 @@ import { hashStringToPrettyString, logicalName } from "../naming";
 import { Component, Prettify, Transform, transform } from "../component";
 import { Link } from "../link";
 import type { Input } from "../input";
-import { FunctionArgs, FunctionArn } from "./function.js";
+import { Function, FunctionArgs, FunctionArn } from "./function.js";
+import { Workflow } from "./workflow.js";
 import { Duration, DurationDays, toSeconds } from "../duration";
 import { VisibleError } from "../error";
 import { parseBucketArn } from "./helpers/arn";
 import { BucketLambdaSubscriber } from "./bucket-lambda-subscriber";
-import { iam, s3 } from "@pulumi/aws";
+import { cloudwatch, iam, s3 } from "@pulumi/aws";
 import { permission } from "./permission";
 import { BucketQueueSubscriber } from "./bucket-queue-subscriber";
 import { BucketTopicSubscriber } from "./bucket-topic-subscriber";
 import { Queue } from "./queue";
 import { SnsTopic } from "./sns-topic";
 import { BucketNotification } from "./bucket-notification";
+import { BusLambdaSubscriber } from "./bus-lambda-subscriber";
+import type { BusSubscriberArgs } from "./bus";
 
 interface BucketCorsArgs {
   /**
@@ -533,9 +536,28 @@ export interface BucketArgs {
 
 export interface BucketNotificationsArgs {
   /**
+   * Enable EventBridge notifications for this bucket. This publishes S3 events to
+   * the account's default EventBridge bus.
+   *
+   * @default `false`
+   * @example
+   * ```js
+   * {
+   *   eventBridge: true,
+   *   notifications: [
+   *     {
+   *       name: "MySubscriber",
+   *       queue: myQueue
+   *     }
+   *   ]
+   * }
+   * ```
+   */
+  eventBridge?: Input<boolean>;
+  /**
    * A list of subscribers that'll be notified when events happen in the bucket.
    */
-  notifications: Input<
+  notifications?: Input<
     Input<{
       /**
        * The name of the subscriber.
@@ -709,6 +731,54 @@ export interface BucketNotificationsArgs {
      */
     notification?: Transform<s3.BucketNotificationArgs>;
   };
+}
+
+export interface BucketEventBridgeSubscriberArgs
+  extends Omit<BusSubscriberArgs, "pattern"> {
+  /**
+   * Filter the S3 events that'll be processed by the subscriber. The `source` and
+   * bucket name are automatically added to the EventBridge pattern.
+   */
+  pattern?: Input<{
+    /**
+     * A list of `detail-type` values to match against.
+     *
+     * @example
+     * ```js
+     * {
+     *   detailType: ["Object Created"]
+     * }
+     * ```
+     */
+    detailType?: Input<
+      Input<
+        | "Object Created"
+        | "Object Deleted"
+        | "Object Restore Initiated"
+        | "Object Restore Completed"
+        | "Object Restore Expired"
+        | "Object Tags Added"
+        | "Object Tags Deleted"
+        | "Object ACL Updated"
+        | string
+      >[]
+    >;
+    /**
+     * An object of `detail` values to match.
+     *
+     * @example
+     * ```js
+     * {
+     *   detail: {
+     *     object: {
+     *       key: [{ prefix: "images/" }]
+     *     }
+     *   }
+     * }
+     * ```
+     */
+    detail?: Record<string, any>;
+  }>;
 }
 
 /**
@@ -1269,6 +1339,15 @@ export class Bucket extends Component implements Link.Linkable {
    * });
    * ```
    *
+   * Or enable EventBridge notifications for this bucket. This publishes S3 events
+   * to the account's default EventBridge bus.
+   *
+   * ```js title="sst.config.ts"
+   * bucket.notify({
+   *   eventBridge: true
+   * });
+   * ```
+   *
    * You can also set it to only send notifications for specific S3 events.
    *
    * ```js {6}
@@ -1303,6 +1382,11 @@ export class Bucket extends Component implements Link.Linkable {
         `Cannot call "notify" on the "${this.constructorName}" bucket multiple times. Calling it again will override previous notifications.`,
       );
     }
+    if (!args.eventBridge && !args.notifications) {
+      throw new VisibleError(
+        `Cannot call "notify" on the "${this.constructorName}" bucket without notifications or EventBridge enabled.`,
+      );
+    }
     this.isSubscribed = true;
     const name = this.constructorName;
     const opts = this.constructorOpts;
@@ -1315,6 +1399,70 @@ export class Bucket extends Component implements Link.Linkable {
       },
       opts,
     );
+  }
+
+  /**
+   * Subscribe to S3 EventBridge notifications from an existing bucket with a function.
+   *
+   * This creates an EventBridge rule and target only. The bucket owner must enable
+   * EventBridge notifications separately with `notify`.
+   *
+   * @param name The name of the subscription.
+   * @param bucketName The name of the S3 bucket to subscribe to.
+   * @param subscriber The function that'll be notified.
+   * @param args Configure the subscription.
+   *
+   * @example
+   * ```js title="sst.config.ts"
+   * sst.aws.Bucket.subscribeEventBridge("Uploads", "my-bucket", "src/subscriber.handler", {
+   *   pattern: {
+   *     detailType: ["Object Created"],
+   *     detail: {
+   *       object: {
+   *         key: [{ prefix: "uploads/" }]
+   *       }
+   *     }
+   *   }
+   * });
+   * ```
+   */
+  public static subscribeEventBridge(
+    name: string,
+    bucketName: Input<string>,
+    subscriber: Input<
+      string | Workflow | Function | FunctionArgs | FunctionArn
+    >,
+    args: BucketEventBridgeSubscriberArgs = {},
+  ) {
+    return all([bucketName, args]).apply(([bucketName, args]) => {
+      const bucket = logicalName(bucketName);
+      const bus = cloudwatch.EventBus.get(
+        `${bucket}EventBridgeSubscriber${name}DefaultBus`,
+        "default",
+      );
+      const pattern = output(args.pattern ?? {}).apply((pattern) => {
+        const detail = pattern.detail ?? {};
+
+        return {
+          source: ["aws.s3"],
+          detailType: pattern.detailType,
+          detail: {
+            ...detail,
+            bucket: {
+              ...(detail.bucket ?? {}),
+              name: [bucketName],
+            },
+          },
+        };
+      });
+
+      return new BusLambdaSubscriber(`${bucket}EventBridgeSubscriber${name}`, {
+        bus: { name: bus.name, arn: bus.arn },
+        subscriber,
+        ...args,
+        pattern,
+      });
+    });
   }
 
   /**
