@@ -203,7 +203,23 @@ func function(ctx context.Context, input input) {
 	getBuildOutput := func(functionID string) *runtime.BuildOutput {
 		build := builds[functionID]
 		if build != nil {
-			return build
+			// check that the handler file still exists on disk
+			handlerFile := build.Handler
+			if i := strings.LastIndex(handlerFile, "."); i > 0 {
+				handlerFile = handlerFile[:i]
+			}
+			matches, _ := filepath.Glob(filepath.Join(build.Out, handlerFile+".*"))
+			if len(matches) == 0 {
+				// also check without extension for compiled binaries
+				if _, err := os.Stat(filepath.Join(build.Out, handlerFile)); err != nil {
+					log.Info("build output missing, rebuilding", "functionID", functionID, "handler", build.Handler)
+					delete(builds, functionID)
+				} else {
+					return build
+				}
+			} else {
+				return build
+			}
 		}
 		target, _ := targets[functionID]
 		build, err := input.project.Runtime.Build(ctx, target)
