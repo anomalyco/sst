@@ -22,6 +22,7 @@ type StackInput struct {
 	ServerPort int
 	Dev        bool
 	Verbose    bool
+	Refresh    bool
 	Continue   bool
 	SkipHash   string
 	PolicyPath string

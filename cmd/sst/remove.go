@@ -18,11 +18,6 @@ func CmdRemove(c *cli.Cli) error {
 	}
 	defer p.Cleanup()
 
-	target := []string{}
-	if c.String("target") != "" {
-		target = strings.Split(c.String("target"), ",")
-	}
-
 	var wg errgroup.Group
 	defer wg.Wait()
 	ui := ui.New(c.Context)
@@ -44,14 +39,23 @@ func CmdRemove(c *cli.Cli) error {
 	})
 	defer ui.Destroy()
 	defer c.Cancel()
-	err = p.Run(c.Context, &project.StackInput{
-		Command:    "remove",
-		Target:     target,
-		ServerPort: s.Port,
-		Verbose:    c.Bool("verbose"),
-	})
+	err = p.Run(c.Context, removeInput(c, s.Port))
 	if err != nil {
 		return err
 	}
 	return nil
+}
+
+func removeInput(c *cli.Cli, serverPort int) *project.StackInput {
+	target := []string{}
+	if c.String("target") != "" {
+		target = strings.Split(c.String("target"), ",")
+	}
+	return &project.StackInput{
+		Command:    "remove",
+		Target:     target,
+		ServerPort: serverPort,
+		Verbose:    c.Bool("verbose"),
+		Refresh:    c.Bool("refresh"),
+	}
 }

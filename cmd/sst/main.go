@@ -844,9 +844,23 @@ var root = &cli.Command{
 					"```bash frame=\"none\"",
 					"sst remove --target MyComponent",
 					"```",
+					"",
+					"To refresh resource state before removing your app, use `--refresh`. This reads the existing resources without running your app's `run()` function, so it can also be used when retrying a partially completed removal.",
+					"",
+					"```bash frame=\"none\"",
+					"sst remove --refresh",
+					"```",
 				}, "\n"),
 			},
 			Flags: []cli.Flag{
+				{
+					Name: "refresh",
+					Type: "bool",
+					Description: cli.Description{
+						Short: "Refresh resource state before removal",
+						Long:  "Refresh resource state before removal without running your app's run() function.",
+					},
+				},
 				{
 					Name: "target",
 					Type: "string",

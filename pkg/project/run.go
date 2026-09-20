@@ -326,16 +326,7 @@ func (p *Project) Run(ctx context.Context, input *StackInput) error {
 		}
 	}
 
-	switch input.Command {
-	case "diff":
-		args = append([]string{"preview"}, args...)
-	case "refresh":
-		args = append([]string{"refresh", "--yes", "--run-program"}, args...)
-	case "deploy":
-		args = append([]string{"up", "--yes", "-f"}, args...)
-	case "remove":
-		args = append([]string{"destroy", "--yes", "-f"}, args...)
-	}
+	args = append(pulumiCommandArgs(input.Command, input.Refresh), args...)
 
 	if (input.Command == "diff" || input.Command == "deploy") && input.PolicyPath != "" {
 		policyPath, err := p.ResolvePolicyPackPath(input.PolicyPath)
