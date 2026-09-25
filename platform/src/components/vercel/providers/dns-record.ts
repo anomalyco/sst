@@ -6,6 +6,7 @@ export interface DnsRecordInputs {
   type: Input<string>;
   name: Input<string>;
   value: Input<string>;
+  mxPriority?: Input<number>;
 }
 
 export interface DnsRecord {

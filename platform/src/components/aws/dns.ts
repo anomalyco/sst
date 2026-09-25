@@ -157,7 +157,11 @@ export function dns(args: DnsArgs = {}) {
         type: record.type,
         name: record.name,
         ttl: 60,
-        records: [record.value],
+        records: [
+          output(record).apply((r) =>
+            r.priority !== undefined ? `${r.priority} ${r.value}` : r.value,
+          ),
+        ],
       },
       opts,
     );

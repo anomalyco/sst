@@ -612,6 +612,12 @@ var root = &cli.Command{
 						return err
 					}
 				}
+				if p.NeedsInstall() {
+					err := p.Install()
+					if err != nil {
+						return err
+					}
+				}
 				entry, err := project.FindProvider(pkg, "latest", pkg)
 				if err != nil {
 					return util.NewReadableError(err, "Could not find provider "+pkg)

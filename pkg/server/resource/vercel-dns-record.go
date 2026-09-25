@@ -22,12 +22,13 @@ type VercelDnsRecord struct {
 }
 
 type VercelDnsRecordInputs struct {
-	Domain    string `json:"domain"`
-	Type      string `json:"type"`
-	Name      string `json:"name"`
-	Value     string `json:"value"`
-	TeamId    string `json:"teamId,omitempty"`
-	ApiToken  string `json:"apiToken"`
+	Domain     string `json:"domain"`
+	Type       string `json:"type"`
+	Name       string `json:"name"`
+	Value      string `json:"value"`
+	MxPriority int    `json:"mxPriority,omitempty"`
+	TeamId     string `json:"teamId,omitempty"`
+	ApiToken   string `json:"apiToken"`
 }
 
 type VercelDnsRecordOutputs struct {
@@ -67,17 +68,20 @@ func (r *VercelDnsRecord) createOrUpdateRecord(input *VercelDnsRecordInputs) (st
 		url = fmt.Sprintf("%s?teamId=%s", url, input.TeamId)
 	}
 	
-	// Use the input type, name, and value for the DNS record
+	// Use the input type, name, and value for the DNS record. MxPriority is only
+	// relevant for MX records; omitempty drops it for other types.
 	recordPayload := struct {
-		Type     string   `json:"type"`
-		Name     string   `json:"name"`
-		Value    string   `json:"value"`
-		Ttl      int      `json:"ttl"`
+		Type       string `json:"type"`
+		Name       string `json:"name"`
+		Value      string `json:"value"`
+		MxPriority int    `json:"mxPriority,omitempty"`
+		Ttl        int    `json:"ttl"`
 	}{
-		Type:     input.Type,
-		Name:     input.Name,
-		Value:    input.Value,
-		Ttl:      60,
+		Type:       input.Type,
+		Name:       input.Name,
+		Value:      input.Value,
+		MxPriority: input.MxPriority,
+		Ttl:        60,
 	}
 	
 	payloadBytes, err := json.Marshal(recordPayload)

@@ -3065,6 +3065,7 @@ export class Function extends Component implements Link.Linkable {
         functionName: this.name,
         environment,
         region: getRegionOutput(undefined, { parent: this }).region,
+        functionLastModified: this.function.lastModified,
       },
       { parent: this },
     );

@@ -1,0 +1,20 @@
+{
+  "name": "aws-email-domain",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@aws-sdk/client-sesv2": "^3.515.0",
+    "sst": "file:../../sdk/js"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "8.10.142"
+  }
+}

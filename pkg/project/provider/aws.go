@@ -685,6 +685,113 @@ func (a *AwsHome) cleanup(key, app, stage string) error {
 	return nil
 }
 
+func (a *AwsHome) prune(app, stage string, retention int) error {
+	bootstrap, err := a.provider.Bootstrap(a.provider.config.Region)
+	if err != nil {
+		return err
+	}
+	s3Client := s3.NewFromConfig(a.provider.config)
+	prefix := path.Join("snapshot", app, stage) + "/"
+
+	var keys []string
+	var continuationToken *string
+	for {
+		out, err := s3Client.ListObjectsV2(context.TODO(), &s3.ListObjectsV2Input{
+			Bucket:            aws.String(bootstrap.State),
+			Prefix:            aws.String(prefix),
+			ContinuationToken: continuationToken,
+		})
+		if err != nil {
+			return err
+		}
+		for _, object := range out.Contents {
+			keys = append(keys, aws.ToString(object.Key))
+		}
+		if out.IsTruncated == nil || !*out.IsTruncated {
+			break
+		}
+		continuationToken = out.NextContinuationToken
+	}
+
+	for _, updateID := range staleUpdateIDs(keys, retention) {
+		for _, kind := range historyKinds {
+			key := a.pathForData(kind, app, path.Join(stage, updateID))
+			if err := a.purgePrefix(s3Client, bootstrap.State, key); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Completed snapshots are the retained history, so intermediate versions of
+	// the mutable current-state object are redundant once the snapshot is stored.
+	if err := a.pruneNoncurrentVersions(s3Client, bootstrap.State, a.pathForData("app", app, stage)); err != nil {
+		return err
+	}
+	// Preserve the active lock while removing versions left by prior updates.
+	return a.pruneNoncurrentVersions(s3Client, bootstrap.State, a.pathForData("lock", app, stage))
+}
+
+func (a *AwsHome) pruneNoncurrentVersions(s3Client *s3.Client, bucket, key string) error {
+	var keyMarker, versionMarker *string
+	var ids []s3types.ObjectIdentifier
+	for {
+		out, err := s3Client.ListObjectVersions(context.TODO(), &s3.ListObjectVersionsInput{
+			Bucket:          aws.String(bucket),
+			Prefix:          aws.String(key),
+			KeyMarker:       keyMarker,
+			VersionIdMarker: versionMarker,
+		})
+		if err != nil {
+			return err
+		}
+
+		ids = append(ids, noncurrentVersionIdentifiers(out, key)...)
+
+		if out.IsTruncated == nil || !*out.IsTruncated {
+			break
+		}
+		keyMarker = out.NextKeyMarker
+		versionMarker = out.NextVersionIdMarker
+	}
+	return a.deleteObjectVersions(s3Client, bucket, ids)
+}
+
+func noncurrentVersionIdentifiers(out *s3.ListObjectVersionsOutput, key string) []s3types.ObjectIdentifier {
+	ids := make([]s3types.ObjectIdentifier, 0, len(out.Versions)+len(out.DeleteMarkers))
+	for _, version := range out.Versions {
+		if aws.ToString(version.Key) == key && !aws.ToBool(version.IsLatest) {
+			ids = append(ids, s3types.ObjectIdentifier{Key: version.Key, VersionId: version.VersionId})
+		}
+	}
+	for _, marker := range out.DeleteMarkers {
+		if aws.ToString(marker.Key) == key && !aws.ToBool(marker.IsLatest) {
+			ids = append(ids, s3types.ObjectIdentifier{Key: marker.Key, VersionId: marker.VersionId})
+		}
+	}
+	return ids
+}
+
+func (a *AwsHome) deleteObjectVersions(s3Client *s3.Client, bucket string, ids []s3types.ObjectIdentifier) error {
+	for i := 0; i < len(ids); i += 1000 {
+		end := i + 1000
+		if end > len(ids) {
+			end = len(ids)
+		}
+		out, err := s3Client.DeleteObjects(context.TODO(), &s3.DeleteObjectsInput{
+			Bucket: aws.String(bucket),
+			Delete: &s3types.Delete{Objects: ids[i:end], Quiet: aws.Bool(true)},
+		})
+		if err != nil {
+			return err
+		}
+		if len(out.Errors) > 0 {
+			item := out.Errors[0]
+			return fmt.Errorf("failed to delete state object %s version %s: %s", aws.ToString(item.Key), aws.ToString(item.VersionId), aws.ToString(item.Message))
+		}
+	}
+	return nil
+}
+
 func (a *AwsHome) purge(app, stage string) error {
 	bootstrap, err := a.provider.Bootstrap(a.provider.config.Region)
 	if err != nil {
@@ -735,18 +842,8 @@ func (a *AwsHome) purgePrefix(s3Client *s3.Client, bucket, prefix string) error 
 			ids = append(ids, s3types.ObjectIdentifier{Key: dm.Key, VersionId: dm.VersionId})
 		}
 
-		// DeleteObjects accepts at most 1000 keys per call.
-		for i := 0; i < len(ids); i += 1000 {
-			end := i + 1000
-			if end > len(ids) {
-				end = len(ids)
-			}
-			if _, err := s3Client.DeleteObjects(context.TODO(), &s3.DeleteObjectsInput{
-				Bucket: aws.String(bucket),
-				Delete: &s3types.Delete{Objects: ids[i:end], Quiet: aws.Bool(true)},
-			}); err != nil {
-				return err
-			}
+		if err := a.deleteObjectVersions(s3Client, bucket, ids); err != nil {
+			return err
 		}
 
 		if out.IsTruncated == nil || !*out.IsTruncated {

@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -178,6 +179,79 @@ func (c *CloudflareHome) removeData(kind, app, stage string) error {
 	return nil
 }
 
+func (c *CloudflareHome) listObjects(prefix string) ([]string, error) {
+	type r2Object struct {
+		Key string `json:"key"`
+	}
+	type r2Response struct {
+		Result []r2Object `json:"result"`
+		Info   struct {
+			Cursor      string `json:"cursor"`
+			IsTruncated bool   `json:"is_truncated"`
+		} `json:"result_info"`
+	}
+
+	c.Lock()
+	defer c.Unlock()
+
+	var keys []string
+	cursor := ""
+	for {
+		query := url.Values{"prefix": []string{prefix}, "per_page": []string{"1000"}}
+		if cursor != "" {
+			query.Set("cursor", cursor)
+		}
+		listPath := "/accounts/" + c.provider.identifier.Identifier + "/r2/buckets/" + c.bootstrap.State + "/objects?" + query.Encode()
+		data, err := makeRequestContext(c.provider.api, context.Background(), http.MethodGet, listPath, nil)
+		if err != nil {
+			return nil, err
+		}
+		var response r2Response
+		if err := json.Unmarshal(data, &response); err != nil {
+			return nil, err
+		}
+		for _, object := range response.Result {
+			keys = append(keys, object.Key)
+		}
+		if !response.Info.IsTruncated || response.Info.Cursor == "" {
+			break
+		}
+		cursor = response.Info.Cursor
+	}
+	return keys, nil
+}
+
+func (c *CloudflareHome) prune(app, stage string, retention int) error {
+	prefix := filepath.Join("snapshot", app, stage) + "/"
+	keys, err := c.listObjects(prefix)
+	if err != nil {
+		return err
+	}
+	stale := map[string]struct{}{}
+	for _, updateID := range staleUpdateIDs(keys, retention) {
+		stale[updateID] = struct{}{}
+	}
+	if len(stale) == 0 {
+		return nil
+	}
+	for _, kind := range historyKinds {
+		keys, err := c.listObjects(filepath.Join(kind, app, stage) + "/")
+		if err != nil {
+			return err
+		}
+		for _, key := range keys {
+			updateID, ok := updateIDFromKey(key)
+			if _, isStale := stale[updateID]; !ok || !isStale {
+				continue
+			}
+			if err := c.removeData(kind, app, filepath.Join(stage, updateID)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func (c *CloudflareHome) purge(app, stage string) error {
 	// Single-file keys.
 	for _, key := range []string{"app", "secret"} {
@@ -195,27 +269,14 @@ func (c *CloudflareHome) purge(app, stage string) error {
 }
 
 func (c *CloudflareHome) purgePrefix(prefix string) error {
-	type r2Object struct {
-		Key string `json:"key"`
-	}
-	type r2Response struct {
-		Result []r2Object `json:"result"`
-	}
-
-	c.Lock()
-	defer c.Unlock()
-
-	listPath := "/accounts/" + c.provider.identifier.Identifier + "/r2/buckets/" + c.bootstrap.State + "/objects?prefix=" + prefix
-	data, err := makeRequestContext(c.provider.api, context.Background(), http.MethodGet, listPath, nil)
+	keys, err := c.listObjects(prefix)
 	if err != nil {
 		return err
 	}
-	var response r2Response
-	if err := json.Unmarshal(data, &response); err != nil {
-		return err
-	}
-	for _, obj := range response.Result {
-		_, err := makeRequestContext(c.provider.api, context.Background(), http.MethodDelete, "/accounts/"+c.provider.identifier.Identifier+"/r2/buckets/"+c.bootstrap.State+"/objects/"+obj.Key, nil)
+	for _, key := range keys {
+		c.Lock()
+		_, err := makeRequestContext(c.provider.api, context.Background(), http.MethodDelete, "/accounts/"+c.provider.identifier.Identifier+"/r2/buckets/"+c.bootstrap.State+"/objects/"+key, nil)
+		c.Unlock()
 		if err != nil {
 			return err
 		}

@@ -158,6 +158,7 @@ export function dns(args: DnsArgs) {
               type: record.type,
               name: recordName,
               value: record.value,
+              mxPriority: record.priority,
               teamId: DEFAULT_TEAM_ID,
               ttl: 60,
             },

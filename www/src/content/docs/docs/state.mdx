@@ -66,6 +66,31 @@ You can read more about the `home` provider in [Config](/docs/reference/config/)
 
 ---
 
+### Retention
+
+By default, SST keeps every completed state snapshot. You can limit the number of snapshots kept for each stage with `state.retention`.
+
+```ts title="sst.config.ts"
+{
+  home: "aws",
+  state: {
+    retention: 30
+  }
+}
+```
+
+After an update completes, SST keeps the latest 30 snapshots and removes older snapshots with their matching event logs, update records, and summaries. The current state, secrets, and encryption passphrase are not removed.
+
+Retention counts completed updates instead of days. If a stage is inactive, its retained snapshots do not expire. Pruning runs the next time an update completes for that stage.
+
+:::caution
+Lowering `state.retention` permanently removes older state history. On AWS, SST also removes the underlying S3 object versions.
+:::
+
+On AWS, the retained snapshots become the recovery history. SST removes noncurrent versions of the mutable current-state object, including the intermediate checkpoints uploaded during an update.
+
+---
+
 ## Bootstrap
 
 As SST starts deploying the resources in your app, it creates some additional _bootstrap_ resources. If your app has a Lambda function or a Docker container, then SST will create the following in the same region as the given resource:

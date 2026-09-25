@@ -10,7 +10,7 @@ import { Link } from "../link";
 import { Input } from "../input";
 import { Dns } from "../dns";
 import { dns as awsDns } from "./dns.js";
-import { ses, sesv2 } from "@pulumi/aws";
+import { getRegionOutput, ses, sesv2 } from "@pulumi/aws";
 import { permission } from "./permission";
 
 interface Events {
@@ -138,6 +138,65 @@ export interface EmailArgs {
    */
   dmarc?: Input<string>;
   /**
+   * Configure a custom [MAIL FROM domain](https://docs.aws.amazon.com/ses/latest/dg/mail-from.html)
+   * for the emails you send. This sets the `Return-Path` (envelope sender) to use a subdomain of
+   * your own domain instead of the default `amazonses.com`. It improves SPF alignment for DMARC
+   * and routes bounce and complaint feedback through your domain.
+   *
+   * This'll create the required MX and SPF DNS records for the MAIL FROM subdomain.
+   *
+   * :::note
+   * This is only valid when `sender` is a domain. The MAIL FROM `domain` must be a subdomain
+   * of the `sender` domain.
+   * :::
+   *
+   * @default No custom MAIL FROM domain
+   *
+   * @example
+   * ```js
+   * {
+   *   mailFrom: {
+   *     domain: "mail.example.com"
+   *   }
+   * }
+   * ```
+   */
+  mailFrom?: Input<{
+    /**
+     * The custom MAIL FROM subdomain. Must be a subdomain of the `sender` domain.
+     *
+     * @example
+     * ```js
+     * {
+     *   mailFrom: {
+     *     domain: "mail.example.com"
+     *   }
+     * }
+     * ```
+     */
+    domain: Input<string>;
+    /**
+     * Control what happens when the required MX record of the custom MAIL FROM domain isn't
+     * configured correctly.
+     *
+     * By default, Amazon SES falls back to using the default `amazonses.com` MAIL FROM domain.
+     * When set to `true`, Amazon SES returns a `MailFromDomainNotVerified` error instead and the
+     * emails you attempt to send from this domain are automatically rejected.
+     *
+     * @default `false`
+     * @example
+     * ```js
+     * {
+     *   mailFrom: {
+     *     domain: "mail.example.com",
+     *     rejectOnMxFailure: true
+     *   }
+     * }
+     * ```
+     */
+    rejectOnMxFailure?: Input<boolean>;
+  }>;
+  /**
    * Configure event notifications for this Email component.
    *
    * @default No event notifications
@@ -167,6 +226,10 @@ export interface EmailArgs {
      * Transform the SES configuration set resource.
      */
     configurationSet?: Transform<sesv2.ConfigurationSetArgs>;
+    /**
+     * Transform the SES MAIL FROM attributes resource.
+     */
+    mailFromAttributes?: Transform<sesv2.EmailIdentityMailFromAttributesArgs>;
   };
 }
 
@@ -216,6 +279,17 @@ interface EmailRef {
  * new sst.aws.Email("MyEmail", {
  *   sender: "example.com",
  *   dmarc: "v=DMARC1; p=quarantine; adkim=s; aspf=s;"
+ * });
+ * ```
+ *
+ * #### Configuring a custom MAIL FROM domain
+ *
+ * ```ts title="sst.config.ts"
+ * new sst.aws.Email("MyEmail", {
+ *   sender: "example.com",
+ *   mailFrom: {
+ *     domain: "mail.example.com"
+ *   }
  * });
  * ```
  *
@@ -274,13 +348,16 @@ export class Email extends Component implements Link.Linkable {
     const isDomain = checkIsDomain();
     const dns = normalizeDns();
     const dmarc = normalizeDmarc();
+    normalizeMailFrom();
     const configurationSet = createConfigurationSet();
     const identity = createIdentity();
+    if (args.mailFrom) createMailFrom();
     createEvents();
     isDomain.apply((isDomain) => {
       if (!isDomain) return;
       createDkimRecords();
       createDmarcRecord();
+      createMailFromRecords();
       waitForVerification();
     });
 
@@ -335,6 +412,22 @@ export class Email extends Component implements Link.Linkable {
       return args.dmarc ?? `v=DMARC1; p=none;`;
     }
 
+    function normalizeMailFrom() {
+      all([args.mailFrom, isDomain, args.sender]).apply(
+        ([mailFrom, isDomain, sender]) => {
+          if (!mailFrom) return;
+          if (!isDomain)
+            throw new Error(
+              `The "mailFrom" property is only valid when "sender" is a domain.`,
+            );
+          if (!mailFrom.domain.endsWith(`.${sender}`))
+            throw new Error(
+              `The "mailFrom.domain" "${mailFrom.domain}" must be a subdomain of the "sender" domain "${sender}".`,
+            );
+        },
+      );
+    }
+
     function createConfigurationSet() {
       return new sesv2.ConfigurationSet(
         ...transform(
@@ -354,6 +447,24 @@ export class Email extends Component implements Link.Linkable {
           {
             emailIdentity: args.sender,
             configurationSetName: configurationSet.configurationSetName,
+          },
+          { parent: self },
+        ),
+      );
+    }
+
+    function createMailFrom() {
+      const mailFrom = output(args.mailFrom!);
+      return new sesv2.EmailIdentityMailFromAttributes(
+        ...transform(
+          args.transform?.mailFromAttributes,
+          `${name}MailFrom`,
+          {
+            emailIdentity: identity.emailIdentity,
+            mailFromDomain: mailFrom.domain,
+            behaviorOnMxFailure: output(mailFrom.rejectOnMxFailure).apply(
+              (reject) => (reject ? "REJECT_MESSAGE" : "USE_DEFAULT_VALUE"),
+            ),
           },
           { parent: self },
         ),
@@ -417,6 +528,36 @@ export class Email extends Component implements Link.Linkable {
             type: "TXT",
             name: interpolate`_dmarc.${args.sender}`,
             value: dmarc,
+          },
+          { parent: self },
+        );
+      });
+    }
+
+    function createMailFromRecords() {
+      all([
+        dns,
+        args.mailFrom,
+        getRegionOutput(undefined, { parent: self }).region,
+      ]).apply(([dns, mailFrom, region]) => {
+        if (!dns || !mailFrom) return;
+
+        dns.createRecord(
+          name,
+          {
+            type: "MX",
+            name: mailFrom.domain,
+            value: `feedback-smtp.${region}.amazonses.com`,
+            priority: 10,
+          },
+          { parent: self },
+        );
+        dns.createRecord(
+          name,
+          {
+            type: "TXT",
+            name: mailFrom.domain,
+            value: `v=spf1 include:amazonses.com ~all`,
           },
           { parent: self },
         );
