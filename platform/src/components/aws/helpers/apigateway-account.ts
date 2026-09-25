@@ -1,7 +1,6 @@
 import { getPartitionOutput, apigateway, iam } from "@pulumi/aws";
 import {
   ComponentResourceOptions,
-  Output,
   ProviderResource,
   jsonStringify,
   interpolate,
@@ -9,12 +8,27 @@ import {
 import { $print } from "../../component";
 import { lazy } from "../../../util/lazy";
 
-// The API Gateway account is a singleton per provider (account + region), so
-// one Read resource per provider is enough. Reading it once per ApiGateway
-// component re-reads it from AWS that many times on every update.
-const useAccountCache = lazy(
-  () => new Map<ProviderResource | undefined, Output<apigateway.Account>>(),
+// The account is a singleton per provider, so gateways on the same provider
+// share one read. The read keeps the name of the first gateway that asks for
+// it, which is a name this helper already registered before the cache.
+const useAccountReads = lazy(
+  () => new Map<ProviderResource | undefined, apigateway.Account>(),
 );
+
+function useAccountRead(namePrefix: string, opts: ComponentResourceOptions) {
+  const reads = useAccountReads();
+  const existing = reads.get(opts.provider);
+  if (existing) return existing;
+
+  const account = apigateway.Account.get(
+    `${namePrefix}APIGatewayAccount`,
+    "APIGatewayAccount",
+    undefined,
+    { provider: opts.provider },
+  );
+  reads.set(opts.provider, account);
+  return account;
+}
 
 let cloudWatchRole: iam.Role | undefined;
 
@@ -48,21 +62,9 @@ export function setupApiGatewayAccount(
   namePrefix: string,
   opts: ComponentResourceOptions,
 ) {
-  const cache = useAccountCache();
-  const existing = cache.get(opts.provider);
-  if (existing) return existing;
+  const account = useAccountRead(namePrefix, opts);
 
-  // The first provider keeps the bare name; later providers get a suffix to
-  // keep URNs unique when gateways span multiple providers.
-  const suffix = cache.size === 0 ? "" : `${cache.size + 1}`;
-  const account = apigateway.Account.get(
-    `APIGatewayAccount${suffix}`,
-    "APIGatewayAccount",
-    undefined,
-    { provider: opts.provider },
-  );
-
-  const result = account.cloudwatchRoleArn.apply((arn) => {
+  return account.cloudwatchRoleArn.apply((arn) => {
     if (arn) return account;
 
     return new apigateway.Account(
@@ -73,7 +75,4 @@ export function setupApiGatewayAccount(
       { retainOnDelete: true, provider: opts.provider },
     );
   });
-
-  cache.set(opts.provider, result);
-  return result;
 }
