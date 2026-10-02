@@ -913,6 +913,7 @@ export interface FunctionArgs {
         router?: Prettify<RouterRouteArgs>;
         /**
          * The authorization used for the function URL. Supports [IAM authorization](https://docs.aws.amazon.com/lambda/latest/dg/urls-auth.html).
+         * Behind a `Router`, `"iam"` protects this route with OAC regardless of the Router's `protection`.
          * @default `"none"`
          * @example
          * ```js
@@ -2713,8 +2714,11 @@ export class Function extends Component implements Link.Linkable {
         if (url === undefined) return output(undefined);
 
         const authorization = output(url.authorization ?? "none");
-        const isOac = output(url.route?.routerProtection).apply(
-          (p) => p?.mode === "oac" || p?.mode === "oac-with-edge-signing",
+        const isOac = all([url.route?.routerProtection, authorization]).apply(
+          ([p, authorization]) =>
+            p?.mode === "oac" ||
+            p?.mode === "oac-with-edge-signing" ||
+            (url.route !== undefined && authorization === "iam"),
         );
         const isIam = all([isOac, authorization]).apply(
           ([oac, authorization]) => oac || authorization === "iam",
