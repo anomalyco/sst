@@ -1,13 +1,92 @@
 package node
 
 import (
+	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/sst/sst/v3/pkg/js"
+	"github.com/sst/sst/v3/pkg/runtime"
 )
+
+func TestBuildTarget(t *testing.T) {
+	const resource = `export function handler() {
+  using resource = { [Symbol.dispose]() {} };
+  return resource;
+}`
+	tests := []struct {
+		name    string
+		runtime string
+		target  string
+		source  string
+		syntax  string
+		retain  bool
+	}{
+		{"node26 native using", "nodejs26.x", "", resource, "using resource", true},
+		{"node26 lowers accessor", "nodejs26.x", "", `export class Handler { accessor value = 1 }`, "accessor value", false},
+		{"node22 lowers using", "nodejs22.x", "", resource, "using resource", false},
+		{"explicit esnext overrides node22", "nodejs22.x", "ESNext", resource, "using resource", true},
+		{"explicit es2022 overrides node26", "nodejs26.x", "es2022", resource, "using resource", false},
+		{"unknown target uses node26", "nodejs26.x", "unknown", resource, "using resource", true},
+		{"unknown target uses node22", "nodejs22.x", "unknown", resource, "using resource", false},
+		{"node12 lowers optional chaining", "nodejs12.x", "", `export const handler = (event) => event?.value`, "?.", false},
+	}
+	for _, format := range []string{"esm", "cjs"} {
+		for _, tt := range tests {
+			t.Run(format+"/"+tt.name, func(t *testing.T) {
+				code := buildTargetFixture(t, tt.runtime, format, tt.target, tt.source)
+				if retained := strings.Contains(code, tt.syntax); retained != tt.retain {
+					t.Fatalf("retained syntax %q = %v, want %v:\n%s", tt.syntax, retained, tt.retain, code)
+				}
+			})
+		}
+	}
+	t.Run("esm/node20 top level await", func(t *testing.T) {
+		code := buildTargetFixture(t, "nodejs20.x", "esm", "", `export const handler = await Promise.resolve(() => 42)`)
+		if !strings.Contains(code, "await Promise.resolve") {
+			t.Fatalf("top level await missing:\n%s", code)
+		}
+	})
+}
+
+func buildTargetFixture(t *testing.T, nodeRuntime, format, target, source string) string {
+	t.Helper()
+	dir := t.TempDir()
+	mustWriteFile(t, filepath.Join(dir, "handler.js"), source)
+	properties, err := json.Marshal(NodeProperties{
+		Format:  format,
+		ESBuild: ESBuildOptions{Target: target},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := &runtime.BuildInput{
+		CfgPath:    filepath.Join(dir, "sst.config.ts"),
+		FunctionID: "target",
+		Handler:    filepath.Join(dir, "handler.handler"),
+		Runtime:    nodeRuntime,
+		Properties: properties,
+	}
+	output, err := New("dev").Build(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(output.Errors) > 0 {
+		t.Fatalf("build errors: %v", output.Errors)
+	}
+	extension := ".mjs"
+	if format == "cjs" {
+		extension = ".cjs"
+	}
+	code, err := os.ReadFile(filepath.Join(input.Out(), "bundle"+extension))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(code)
+}
 
 func TestResolveInstallVersion(t *testing.T) {
 	tests := []struct {

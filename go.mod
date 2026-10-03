@@ -29,7 +29,7 @@ require (
 	github.com/charmbracelet/x/ansi v0.4.3
 	github.com/cloudflare/cloudflare-go v0.115.0
 	github.com/creack/pty v1.1.21
-	github.com/evanw/esbuild v0.27.2
+	github.com/evanw/esbuild v0.28.2
 	github.com/fatih/color v1.17.0
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/gdamore/tcell/v2 v2.7.4
