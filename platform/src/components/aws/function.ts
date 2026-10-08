@@ -365,6 +365,7 @@ export interface FunctionArgs {
     | "nodejs20.x"
     | "nodejs22.x"
     | "nodejs24.x"
+    | "nodejs26.x"
     | "go"
     | "rust"
     | "provided.al2"
