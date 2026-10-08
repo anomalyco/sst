@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>SST</RootNamespace>
+    <AssemblyName>SST.Sdk</AssemblyName>
+    <PackageId>SST.Sdk</PackageId>
+    <Version>0.1.0</Version>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsAotCompatible>true</IsAotCompatible>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Description>.NET SDK for SST — access linked resources in your SST app</Description>
+    <Authors>SST</Authors>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://sst.dev</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/anomalyco/sst</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>sst;serverless;aws;lambda;infrastructure</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="../README.md" Pack="true" PackagePath="/" />
+    <InternalsVisibleTo Include="SST.Sdk.Tests" />
+  </ItemGroup>
+
+</Project>

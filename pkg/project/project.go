@@ -20,6 +20,7 @@ import (
 	"github.com/sst/sst/v3/pkg/process"
 	"github.com/sst/sst/v3/pkg/project/provider"
 	"github.com/sst/sst/v3/pkg/runtime"
+	"github.com/sst/sst/v3/pkg/runtime/csharp"
 	"github.com/sst/sst/v3/pkg/runtime/golang"
 	"github.com/sst/sst/v3/pkg/runtime/node"
 	"github.com/sst/sst/v3/pkg/runtime/python"
@@ -197,6 +198,7 @@ func New(input *ProjectConfig) (*Project, error) {
 		pythonRuntime,
 		golang.New(),
 		rust.New(),
+		csharp.New(),
 	)
 
 	_, err := os.Stat(tmp)

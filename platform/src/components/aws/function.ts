@@ -348,7 +348,7 @@ export interface FunctionArgs {
   /**
    * The language runtime for the function.
    *
-   * Node.js and Golang are officially supported. While, Python and Rust are
+   * Node.js and Golang are officially supported. While, Python, Rust and .NET are
    * community supported. Support for other runtimes are on the roadmap.
    *
    * @default `"nodejs24.x"`
@@ -375,6 +375,8 @@ export interface FunctionArgs {
     | "python3.12"
     | "python3.13"
     | "python3.14"
+    | "dotnet8"
+    | "dotnet10"
   >;
   /**
    * Path to the source code directory for the function. By default, the handler is
@@ -406,6 +408,7 @@ export interface FunctionArgs {
    * - For Python this is also `{path}/{file}.{method}`.
    * - For Golang this is `{path}` to the Go module.
    * - For Rust this is `{path}` to the Rust crate.
+   * - For .NET this is `{path}` to the project. Class library handlers add `::{Namespace.Class}::{Method}`.
    *
    * @example
    *
@@ -507,6 +510,59 @@ export interface FunctionArgs {
    *
    * Where `crates/api` is the path to the Rust crate. This means there is a
    * `Cargo.toml` file in `crates/api`, and the main() function handles the lambda.
+   *
+   * ##### .NET
+   *
+   * For .NET, the handler points to the project (.csproj) or a single C# file in the case of a file-based app (.cs).
+   *
+   * ```js
+   * {
+   *   handler: "packages/functions/dotnet/api"
+   * }
+   * ```
+   *
+   * Where `packages/functions/dotnet/api` is a directory with a single `.csproj` in it.
+   * You can also point at the `.csproj` file directly. SST runs `dotnet publish` on it,
+   * so you need the [.NET SDK](https://dotnet.microsoft.com/download) installed.
+   *
+   * With the .NET 10 SDK you can also point at a single-file
+   * [file-based app](https://learn.microsoft.com/dotnet/core/sdk/file-based-apps),
+   * where packages are declared with `#:package` directives instead of a `.csproj`.
+   *
+   * ```js
+   * {
+   *   handler: "packages/functions/dotnet/api.cs"
+   * }
+   * ```
+   *
+   * The project should be an executable assembly that bootstraps itself with
+   * [`Amazon.Lambda.RuntimeSupport`](https://github.com/aws/aws-lambda-dotnet/tree/master/Libraries/src/Amazon.Lambda.RuntimeSupport).
+   * The Lambda handler is set to the assembly name. This style is required for
+   * `sst dev`, since the function is started locally and talks to the Lambda
+   * Runtime API on its own.
+   *
+   * ```xml title="api.csproj"
+   * <OutputType>Exe</OutputType>
+   * ```
+   *
+   * ```csharp title="Function.cs"
+   * await LambdaBootstrapBuilder.Create(handler, new DefaultLambdaJsonSerializer())
+   *   .Build()
+   *   .RunAsync();
+   * ```
+   *
+   * Class library projects can be deployed by pointing the handler at the method.
+   *
+   * ```js
+   * {
+   *   handler: "packages/functions/dotnet/api::Api.Function::Handler"
+   * }
+   * ```
+   *
+   * Here `Api.Function` is the fully qualified class and `Handler` is the method. The
+   * assembly name is read from the `.csproj`. Class libraries can't be run with `sst dev`.
+   *
+   * You can refer to [this example of deploying a .NET function](/docs/examples/#aws-lambda-net).
    */
   handler: Input<string>;
   /**
@@ -1589,6 +1645,18 @@ export interface FunctionArgs {
  *
  *   [Learn more below](#handler).
  *   </TabItem>
+ *   <TabItem label=".NET">
+ *   Pass in the directory where your `.csproj` lives.
+ *
+ *   ```ts title="sst.config.ts"
+ *   new sst.aws.Function("MyFunction", {
+ *     runtime: "dotnet8",
+ *     handler: "./src"
+ *   });
+ *   ```
+ *
+ *   [Learn more below](#handler).
+ *   </TabItem>
  * </Tabs>
  *
  * #### Set additional config
@@ -1665,6 +1733,19 @@ export interface FunctionArgs {
  *
  *   let resource = Resource::init().unwrap();
  *   let Bucket { name } = resource.get("Bucket").unwrap();
+ *   ```
+ *   </TabItem>
+ *   <TabItem label=".NET">
+ *   ```csharp title="src/Function.cs"
+ *   using SST;
+ *
+ *   var bucket = Resource.Get<string>("MyBucket", "name");
+ *   ```
+ *
+ *   Where the SDK project in `sdk/csharp` is referenced from your `.csproj`.
+ *
+ *   ```xml title="src/MyFunction.csproj"
+ *   <ProjectReference Include="../../sdk/csharp/src/SST.Sdk.csproj" />
  *   ```
  *   </TabItem>
  * </Tabs>
@@ -1896,39 +1977,41 @@ export class Function extends Component implements Link.Linkable {
         Function.encryptionKey().base64,
         args.link,
         args.streaming,
-        dev.apply((dev) => dev ? Function.appsync() : undefined),
-      ]).apply(([environment, dev, bootstrap, key, link, streaming, appsync]) => {
-        const result = environment ?? {};
-        result.SST_RESOURCE_App = JSON.stringify({
-          name: $app.name,
-          stage: $app.stage,
-        });
-        for (const linkable of link || []) {
-          if (!Link.isLinkable(linkable)) continue;
-          const def = linkable.getSSTLink();
-          for (const item of def.include || []) {
-            if (item.type === "environment") Object.assign(result, item.env);
+        dev.apply((dev) => (dev ? Function.appsync() : undefined)),
+      ]).apply(
+        ([environment, dev, bootstrap, key, link, streaming, appsync]) => {
+          const result = environment ?? {};
+          result.SST_RESOURCE_App = JSON.stringify({
+            name: $app.name,
+            stage: $app.stage,
+          });
+          for (const linkable of link || []) {
+            if (!Link.isLinkable(linkable)) continue;
+            const def = linkable.getSSTLink();
+            for (const item of def.include || []) {
+              if (item.type === "environment") Object.assign(result, item.env);
+            }
           }
-        }
-        result.SST_KEY = key;
-        result.SST_KEY_FILE = "resource.enc";
-        if (dev) {
-          result.SST_REGION = process.env.SST_AWS_REGION!;
-          result.SST_APPSYNC_HTTP = appsync.http;
-          result.SST_APPSYNC_REALTIME = appsync.realtime;
-          result.SST_FUNCTION_ID = name;
-          result.SST_APP = $app.name;
-          result.SST_STAGE = $app.stage;
-          result.SST_ASSET_BUCKET = bootstrap.asset;
-          if (process.env.SST_FUNCTION_TIMEOUT) {
-            result.SST_FUNCTION_TIMEOUT = process.env.SST_FUNCTION_TIMEOUT;
+          result.SST_KEY = key;
+          result.SST_KEY_FILE = "resource.enc";
+          if (dev) {
+            result.SST_REGION = process.env.SST_AWS_REGION!;
+            result.SST_APPSYNC_HTTP = appsync.http;
+            result.SST_APPSYNC_REALTIME = appsync.realtime;
+            result.SST_FUNCTION_ID = name;
+            result.SST_APP = $app.name;
+            result.SST_STAGE = $app.stage;
+            result.SST_ASSET_BUCKET = bootstrap.asset;
+            if (process.env.SST_FUNCTION_TIMEOUT) {
+              result.SST_FUNCTION_TIMEOUT = process.env.SST_FUNCTION_TIMEOUT;
+            }
+            if (streaming) {
+              result.SST_FUNCTION_STREAMING = "true";
+            }
           }
-          if (streaming) {
-            result.SST_FUNCTION_STREAMING = "true";
-          }
-        }
-        return result;
-      });
+          return result;
+        },
+      );
     }
 
     function normalizeStreaming() {
@@ -2070,9 +2153,7 @@ export class Function extends Component implements Link.Linkable {
       if (!args.durable) return;
       const config = args.durable === true ? {} : args.durable;
       return {
-        timeout: output(config.timeout).apply((v) =>
-          toSeconds(v ?? "14 days"),
-        ),
+        timeout: output(config.timeout).apply((v) => toSeconds(v ?? "14 days")),
         retention: output(config.retention).apply((v) =>
           toDays(v ?? "30 days"),
         ),
@@ -2447,7 +2528,9 @@ export class Function extends Component implements Link.Linkable {
               $cli.paths.work,
               "artifacts",
               dev
-                ? `dev-bridge-${regionName}-${logicalName(path.basename(bundle))}`
+                ? `dev-bridge-${regionName}-${logicalName(
+                    path.basename(bundle),
+                  )}`
                 : name,
               "code.zip",
             );
@@ -2547,7 +2630,9 @@ export class Function extends Component implements Link.Linkable {
 
             return new s3.BucketObjectv2(
               dev
-                ? `DevBridgeCode${logicalName(regionName)}${logicalName(path.basename(bundle))}`
+                ? `DevBridgeCode${logicalName(regionName)}${logicalName(
+                    path.basename(bundle),
+                  )}`
                 : `${name}Code`,
               {
                 key: dev

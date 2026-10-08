@@ -1,0 +1,6 @@
+bin/
+obj/
+artifacts/
+
+# sst
+.sst
