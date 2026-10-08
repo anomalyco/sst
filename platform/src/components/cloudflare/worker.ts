@@ -596,7 +596,7 @@ export class Worker extends Component implements Link.Linkable {
       if (!args.link) return result;
       return output(args.link).apply((links) => {
         for (let link of links) {
-          if (!Link.isLinkable(link)) continue;
+          Link.assertLinkable(link);
           const name = output(link.urn).apply((uri) => uri.split("::").at(-1)!);
           const item = link.getSSTLink();
           const b = item.include?.find(
