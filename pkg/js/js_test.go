@@ -1,6 +1,8 @@
 package js_test
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	esbuild "github.com/evanw/esbuild/pkg/api"
@@ -33,4 +35,24 @@ func TestFormatError(t *testing.T) {
 		}
 		assert.Equal(t, "err1\nb.ts:2:3: err2", js.FormatError(msgs))
 	})
+}
+
+func TestBuildInjectsGlobalsForProjectPathContainingSST(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "app.sst-branch")
+	assert.NoError(t, os.MkdirAll(filepath.Join(dir, ".sst"), 0755))
+	assert.NoError(t, os.WriteFile(filepath.Join(dir, "source.ts"), []byte(`if (!injected) throw new Error("missing globals")`), 0644))
+
+	outfile := filepath.Join(dir, ".sst", "platform", "config.mjs")
+	assert.NoError(t, os.MkdirAll(filepath.Dir(outfile), 0755))
+	_, err := js.Build(js.EvalOptions{
+		Dir:     dir,
+		Outfile: outfile,
+		Code:    `import "./source"`,
+		Globals: `const injected = true`,
+	})
+	assert.NoError(t, err)
+
+	contents, err := os.ReadFile(outfile)
+	assert.NoError(t, err)
+	assert.Contains(t, string(contents), "injected = true")
 }
