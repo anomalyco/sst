@@ -56,10 +56,10 @@ export namespace Link {
       if (isLinkable && !args.opts.parent) {
         const lcname = args.name.toLowerCase();
 
-        // "App" is reserved and cannot be used as a component name.
+        // Reserve "App" (case-insensitive) for Resource.App's app name and stage.
         if (lcname === "app") {
           throw new VisibleError(
-            `Component name "${args.name}" is reserved. Please choose a different name for your "${args.type}" component.`,
+            `Component name "${args.name}" conflicts with "Resource.App", which stores the app name and stage. Choose a name other than "App" (case-insensitive) for your "${args.type}" component.`,
           );
         }
 
