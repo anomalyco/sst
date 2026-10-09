@@ -175,6 +175,12 @@ export interface CdnArgs {
    */
   defaultCacheBehavior: cloudfront.DistributionArgs["defaultCacheBehavior"];
   /**
+   * The cache policy to use for the default cache behavior.
+   *
+   * When set, this overrides the cache policy configured on `defaultCacheBehavior`.
+   */
+  cachePolicy?: Input<string>;
+  /**
    * An ordered list of cache behaviors for this distribution. Listed in order of precedence. The first cache behavior will have precedence 0.
    */
   orderedCacheBehaviors?: cloudfront.DistributionArgs["orderedCacheBehaviors"];
@@ -385,7 +391,27 @@ export class Cdn extends Component {
             enabled: true,
             origins: args.origins,
             originGroups: args.originGroups,
-            defaultCacheBehavior: args.defaultCacheBehavior,
+            defaultCacheBehavior: all([
+              args.defaultCacheBehavior,
+              args.cachePolicy,
+            ]).apply(([behavior, cachePolicy]) => {
+              const effectiveCachePolicy =
+                cachePolicy ?? behavior.cachePolicyId;
+              if (!effectiveCachePolicy) return behavior;
+
+              const {
+                forwardedValues: _forwardedValues,
+                minTtl: _minTtl,
+                defaultTtl: _defaultTtl,
+                maxTtl: _maxTtl,
+                ...rest
+              } = behavior;
+
+              return {
+                ...rest,
+                cachePolicyId: effectiveCachePolicy,
+              };
+            }),
             orderedCacheBehaviors: args.orderedCacheBehaviors,
             defaultRootObject: args.defaultRootObject,
             customErrorResponses: args.customErrorResponses,

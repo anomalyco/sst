@@ -394,6 +394,12 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
    */
   domain?: CdnArgs["domain"];
   /**
+   * The CloudFront cache policy to use for the default cache behavior.
+   *
+   * By default, CloudFront's managed CachingOptimized policy is used.
+   */
+  cachePolicy?: Input<string>;
+  /**
    * @deprecated The `router` prop is now the recommended way to serve your site
    * through a `Router` component.
    */
@@ -1199,7 +1205,8 @@ async function handler(event) {
               cachedMethods: ["GET", "HEAD"],
               compress: true,
               // CloudFront's managed CachingOptimized policy
-              cachePolicyId: "658327ea-f89d-4fab-a63d-7e88639e58f6",
+              cachePolicyId:
+                args.cachePolicy ?? "658327ea-f89d-4fab-a63d-7e88639e58f6",
               functionAssociations: all([
                 createRequestFunction(),
                 createResponseFunction(),
