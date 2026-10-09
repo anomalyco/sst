@@ -446,6 +446,7 @@ export class SolidStart extends SsrSite {
             cached: true,
           },
         ],
+        hasStaticRoutes: true,
       };
     });
   }
