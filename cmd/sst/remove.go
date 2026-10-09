@@ -36,6 +36,7 @@ func CmdRemove(c *cli.Cli) error {
 	})
 	events := bus.SubscribeAll()
 	defer close(events)
+	defer bus.Unsubscribe(events)
 	wg.Go(func() error {
 		for evt := range events {
 			ui.Event(evt)
