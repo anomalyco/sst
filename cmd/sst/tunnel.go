@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log/slog"
@@ -109,6 +110,11 @@ var CmdTunnel = &cli.Command{
 			tun = item
 		}
 		subnets := strings.Join(tun.Subnets, ",")
+		// create a pipe so the child can detect parent death via EOF
+		pipeRead, pipeWrite, err := os.Pipe()
+		if err != nil {
+			return err
+		}
 		// run as root
 		tunnelCmd := process.CommandContext(
 			c.Context,
@@ -126,7 +132,12 @@ var CmdTunnel = &cli.Command{
 			"SSH_PRIVATE_KEY="+tun.PrivateKey,
 			"SST_LOG="+strings.ReplaceAll(os.Getenv("SST_LOG"), ".log", "_sudo.log"),
 		)
+		tunnelCmd.Stdin = pipeRead
 		tunnelCmd.Stdout = os.Stdout
+		tunnelCmd.Cancel = func() error {
+			// closing the write end signals EOF to child, which triggers cleanup
+			return pipeWrite.Close()
+		}
 		slog.Info("starting tunnel", "cmd", tunnelCmd.Args)
 		fmt.Println(ui.TEXT_HIGHLIGHT_BOLD.Render("Tunnel"))
 		fmt.Println()
@@ -143,7 +154,9 @@ var CmdTunnel = &cli.Command{
 		fmt.Println()
 		stderr, _ := tunnelCmd.StderrPipe()
 		tunnelCmd.Start()
+		pipeRead.Close() // parent doesn't need read end
 		output, _ := io.ReadAll(stderr)
+		tunnelCmd.Wait()
 		if strings.Contains(string(output), "password is required") {
 			return util.NewReadableError(nil, "Make sure you have installed the tunnel with `sudo sst tunnel install`")
 		}
@@ -245,8 +258,16 @@ var CmdTunnel = &cli.Command{
 				}
 				defer tunnel.Stop()
 				slog.Info("tunnel started")
+				ctx, cancel := context.WithCancel(c.Context)
+				defer cancel()
+				// detect parent death via stdin EOF
+				go func() {
+					io.Copy(io.Discard, os.Stdin)
+					slog.Info("stdin closed, shutting down tunnel")
+					cancel()
+				}()
 				err = tunnel.StartProxy(
-					c.Context,
+					ctx,
 					user,
 					host+":"+port,
 					[]byte(os.Getenv("SSH_PRIVATE_KEY")),
