@@ -71,7 +71,7 @@ func CmdMosaic(c *cli.Cli) error {
 		var cmd *exec.Cmd
 		var last *dev.EnvResponse
 		processExited := make(chan bool)
-		timeout := time.Minute * 50
+		timeout := time.Hour * 24
 		timer := time.NewTimer(timeout)
 		defer timer.Stop()
 
@@ -102,8 +102,15 @@ func CmdMosaic(c *cli.Cli) error {
 				if err != nil {
 					return err
 				}
-				if _, ok := nextEnv.Env["AWS_ACCESS_KEY_ID"]; ok {
+				if _, ok := nextEnv.Env["AWS_ACCESS_KEY_ID"]; ok && timeout != time.Minute*45 {
 					timeout = time.Minute * 45
+					if !timer.Stop() {
+						select {
+						case <-timer.C:
+						default:
+						}
+					}
+					timer.Reset(timeout)
 				}
 				if last == nil || diff(last.Env, nextEnv.Env) || last.Command != nextEnv.Command {
 					if cmd != nil && cmd.Process != nil {
