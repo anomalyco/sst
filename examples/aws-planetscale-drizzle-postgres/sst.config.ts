@@ -43,6 +43,9 @@
  * bun run db:push
  * ```
  *
+ * The database role sets `successor` to `postgres` so PlanetScale can reassign
+ * owned schema objects before deleting a non-production branch role.
+ *
  * In the function we use [Drizzle ORM](https://orm.drizzle.team) with the
  * [`Resource`](/docs/reference/sdk/#resource) helper.
  *
@@ -103,6 +106,7 @@ export default $config({
         "pg_write_all_data",
         "postgres", // Only needed for pushing schema changes
       ],
+      successor: "postgres",
     });
 
     const database = new sst.Linkable("Database", {

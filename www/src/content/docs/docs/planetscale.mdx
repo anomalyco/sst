@@ -50,6 +50,31 @@ const db = planetscale.getDatabaseVitessOutput({
 This guide uses the Vitess resources. PlanetScale also supports Postgres with equivalent resources and functions: `PostgresBranch`, `PostgresBranchRole`, `getDatabasePostgresOutput`, and `getPostgresBranchOutput`.
 :::
 
+For branch-per-stage Postgres roles, set `successor` to another role that should
+receive ownership of database objects before PlanetScale deletes the role. This
+is especially important in preview and branch-per-stage workflows where
+non-production roles are removed automatically after they may have created or
+modified objects.
+
+```ts title="sst.config.ts"
+const role = new planetscale.PostgresBranchRole("DatabaseRole", {
+  database: db.name,
+  organization: db.organization,
+  branch: branch.name,
+  name: `${$app.name}-${$app.stage}`,
+  inheritedRoles: [
+    "pg_read_all_data",
+    "pg_write_all_data",
+    "postgres", // Only needed for pushing schema changes
+  ],
+  successor: "postgres",
+});
+```
+
+Runtime-only roles that never own database objects do not need a `successor`,
+but setting one makes branch cleanup robust if the role later creates or owns
+objects.
+
 ---
 
 ## Branch per stage

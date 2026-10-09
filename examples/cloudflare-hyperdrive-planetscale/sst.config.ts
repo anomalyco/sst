@@ -44,6 +44,7 @@ export default $config({
       inheritedRoles: ["pg_read_all_data", "pg_write_all_data"],
       name: `${$app.name}-${$app.stage}`,
       organization: db.organization,
+      successor: "postgres",
     });
 
     const hyperdrive = new sst.cloudflare.Hyperdrive("Database", {
