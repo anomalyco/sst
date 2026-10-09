@@ -24,8 +24,8 @@ cp ./functions/docker/python.Dockerfile ./dist/dockerfiles/python.Dockerfile
 
 cd ./support/bridge-task
 mkdir -p build/amd64 build/arm64
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -mod=readonly -ldflags="-buildid=" -o build/amd64/main .
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -mod=readonly -ldflags="-buildid=" -o build/arm64/main .
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -buildvcs=false -mod=readonly -ldflags="-buildid=" -o build/amd64/main .
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -buildvcs=false -mod=readonly -ldflags="-buildid=" -o build/arm64/main .
 
 timestamp=$(date +%Y%m%d%H%M%S)
 docker buildx inspect >/dev/null 2>&1 || docker buildx create --name multi --driver docker-container --use
