@@ -8,6 +8,8 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 	"sync"
 
@@ -103,6 +105,7 @@ func (w *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		build.ESBuild.External,
 	)
 	alias := stripAliasedExternals(unenv.Alias, external)
+	platformDir := path.ResolvePlatformDir(input.CfgPath)
 	options := esbuild.BuildOptions{
 		Platform: esbuild.PlatformNode,
 		Stdin: &esbuild.StdinOptions{
@@ -116,9 +119,10 @@ func (w *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 			Loader:     esbuild.LoaderTS,
 		},
 		NodePaths: append([]string{
-			filepath.Join(path.ResolvePlatformDir(input.CfgPath), "node_modules"),
+			filepath.Join(platformDir, "node_modules"),
 		}, build.ESBuild.NodePaths...),
 		Alias:             alias,
+		Plugins:           []esbuild.Plugin{unenvAliasInteropPlugin(alias, platformDir)},
 		Inject:            unenv.Polyfill,
 		External:          external,
 		Conditions:        build.ESBuild.ResolveConditions([]string{"workerd", "worker", "browser"}),
@@ -232,6 +236,40 @@ func stripAliasedExternals(alias map[string]string, external []string) map[strin
 		delete(result, item)
 	}
 	return result
+}
+
+func unenvAliasInteropPlugin(alias map[string]string, resolveDir string) esbuild.Plugin {
+	aliases := make([]string, 0, len(alias))
+	for name := range alias {
+		aliases = append(aliases, regexp.QuoteMeta(name))
+	}
+	slices.Sort(aliases)
+
+	const namespace = "sst-required-unenv-alias"
+	return esbuild.Plugin{
+		Name: "sst-unenv-alias-interop",
+		Setup: func(build esbuild.PluginBuild) {
+			build.OnResolve(esbuild.OnResolveOptions{Filter: "^(" + strings.Join(aliases, "|") + ")$"}, func(args esbuild.OnResolveArgs) (esbuild.OnResolveResult, error) {
+				target := alias[args.Path]
+				if args.Kind != esbuild.ResolveJSRequireCall || (!strings.HasPrefix(target, "unenv/npm/") && !strings.HasPrefix(target, "unenv/mock/")) {
+					return esbuild.OnResolveResult{}, nil
+				}
+				return esbuild.OnResolveResult{Path: args.Path, Namespace: namespace}, nil
+			})
+			build.OnLoad(esbuild.OnLoadOptions{Filter: ".*", Namespace: namespace}, func(args esbuild.OnLoadArgs) (esbuild.OnLoadResult, error) {
+				contents := fmt.Sprintf(`
+import * as esm from %q;
+module.exports = Object.entries(esm)
+  .filter(([k,]) => k !== "default")
+  .reduce((cjs, [k, value]) =>
+    Object.defineProperty(cjs, k, { value, enumerable: true }),
+    "default" in esm ? esm.default : {}
+  );
+`, alias[args.Path])
+				return esbuild.OnLoadResult{Contents: &contents, Loader: esbuild.LoaderJS, ResolveDir: resolveDir}, nil
+			})
+		},
+	}
 }
 
 func (w *Runtime) getUnenv(ctx context.Context, cfgPath string, compatibility compatibility) (*unenv, error) {
