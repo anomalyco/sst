@@ -117,7 +117,7 @@ export class Service extends Component implements Link.Linkable {
     const image = createImage();
     const logGroup = createLogGroup();
     const taskDefinition = createTaskDefinition();
-    const certificateArn = createSsl();
+    const { cert, arn: certificateArn } = createSsl();
     const { loadBalancer, targets } = createLoadBalancer();
     const service = createService();
     createAutoScaling();
@@ -414,7 +414,10 @@ export class Service extends Component implements Link.Linkable {
             securityGroups: [securityGroup.id],
             enableCrossZoneLoadBalancing: true,
           },
-          { parent: self },
+          {
+            parent: self,
+            dependsOn: cert.apply((cert) => (cert ? [cert] : [])),
+          },
         ),
       );
 
@@ -487,11 +490,15 @@ export class Service extends Component implements Link.Linkable {
     }
 
     function createSsl() {
-      if (!pub) return output(undefined);
+      if (!pub) {
+        return {
+          cert: output<DnsValidatedCertificate | undefined>(undefined),
+          arn: output<string | undefined>(undefined),
+        };
+      }
 
-      return pub.domain.apply((domain) => {
-        if (!domain) return output(undefined);
-        if (domain.cert) return output(domain.cert);
+      const cert = pub.domain.apply((domain) => {
+        if (!domain || domain.cert) return undefined;
 
         return new DnsValidatedCertificate(
           `${name}Ssl`,
@@ -500,8 +507,16 @@ export class Service extends Component implements Link.Linkable {
             dns: domain.dns!,
           },
           { parent: self },
-        ).arn;
+        );
       });
+      return {
+        cert,
+        arn: all([pub.domain, cert]).apply(([domain, cert]) => {
+          if (!domain) return undefined;
+          if (domain.cert) return domain.cert;
+          return cert!.arn;
+        }),
+      };
     }
 
     function createLogGroup() {

@@ -1822,7 +1822,7 @@ export class Service extends Component implements Link.Linkable {
     let effectiveLbArn: Output<string> | undefined;
     let effectiveDomain: Output<string | undefined>;
     let effectiveDnsName: Output<string> | undefined;
-    const certificateArn = albAttachment ? output(undefined) : createSsl();
+    const { cert, arn: certificateArn } = createSsl();
     if (albAttachment) {
       all([albAttachment.instance._vpc, vpc.id]).apply(
         ([albVpcId, clusterVpcId]) => {
@@ -2155,7 +2155,10 @@ export class Service extends Component implements Link.Linkable {
             securityGroups: [securityGroup.id],
             enableCrossZoneLoadBalancing: true,
           },
-          { parent: self },
+          {
+            parent: self,
+            dependsOn: cert.apply((cert) => (cert ? [cert] : [])),
+          },
         ),
       );
     }
@@ -2344,11 +2347,15 @@ export class Service extends Component implements Link.Linkable {
     }
 
     function createSsl() {
-      if (!lbArgs) return output(undefined);
+      if (!lbArgs) {
+        return {
+          cert: output<DnsValidatedCertificate | undefined>(undefined),
+          arn: output<string | undefined>(undefined),
+        };
+      }
 
-      return lbArgs.domain.apply((domain) => {
-        if (!domain) return output(undefined);
-        if (domain.cert) return output(domain.cert);
+      const cert = lbArgs.domain.apply((domain) => {
+        if (!domain || domain.cert) return undefined;
 
         return new DnsValidatedCertificate(
           `${name}Ssl`,
@@ -2358,8 +2365,16 @@ export class Service extends Component implements Link.Linkable {
             dns: domain.dns!,
           },
           { parent: self },
-        ).arn;
+        );
       });
+      return {
+        cert,
+        arn: all([lbArgs.domain, cert]).apply(([domain, cert]) => {
+          if (!domain) return undefined;
+          if (domain.cert) return domain.cert;
+          return cert!.arn;
+        }),
+      };
     }
 
     function createCloudmapService() {

@@ -269,7 +269,7 @@ export class Alb extends Component implements Link.Linkable {
     const { vpcId, subnets } = normalizeVpc();
     const domain = normalizeDomain();
     const securityGroup = createSecurityGroup();
-    const certificateArn = createSsl();
+    const { cert, arn: certificateArn } = createSsl();
     const loadBalancer = createLoadBalancer();
     createListeners();
     createDnsRecords();
@@ -347,11 +347,14 @@ export class Alb extends Component implements Link.Linkable {
       );
     }
 
-    function createSsl(): Output<string | undefined> {
-      if (!domain) return output(undefined);
-      if (domain.cert) return output(domain.cert);
+    function createSsl(): {
+      cert?: DnsValidatedCertificate;
+      arn: Output<string | undefined>;
+    } {
+      if (!domain) return { arn: output(undefined) };
+      if (domain.cert) return { arn: output(domain.cert) };
 
-      return new DnsValidatedCertificate(
+      const cert = new DnsValidatedCertificate(
         `${name}Ssl`,
         {
           domainName: domain.name,
@@ -359,7 +362,8 @@ export class Alb extends Component implements Link.Linkable {
           dns: domain.dns!,
         },
         { parent: self },
-      ).arn;
+      );
+      return { cert, arn: cert.arn };
     }
 
     function createLoadBalancer() {
@@ -375,7 +379,7 @@ export class Alb extends Component implements Link.Linkable {
             enableCrossZoneLoadBalancing: true,
 
           },
-          { parent: self },
+          { parent: self, dependsOn: cert ? [cert] : [] },
         ),
       );
     }
