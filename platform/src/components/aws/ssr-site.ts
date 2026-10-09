@@ -943,8 +943,13 @@ async function handler(event) {
     metadata = JSON.parse(v);
   } catch (e) {}
 
-  const response = await routeSite(kvNamespace, metadata);
-  return response || event.request;
+  if (!metadata) return event.request;
+  try {
+    const response = await routeSite(kvNamespace, metadata);
+    return response || event.request;
+  } catch (e) {
+    return event.request;
+  }
 }`,
           },
           { parent: self },
