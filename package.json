@@ -9,6 +9,7 @@
     "setup": "bun install && go mod tidy && bun run build:platform && bun run build:sdk",
     "build:platform": "bun run --filter @sst/platform build",
     "build:cli": "go build ./cmd/sst",
+    "build:cli:semver": "go build -ldflags \"-X main.version=$(git describe --tags --abbrev=0 | sed 's/^v//')\" -o sst ./cmd/sst",
     "build:sdk": "bun run --cwd ./sdk/js build",
     "test:cli": "go test ./...",
     "typecheck": "bun run typecheck:platform && bun run typecheck:sdk",

@@ -17,6 +17,7 @@ Pulumi.yaml
 tmp
 
 # coding agents
+.bookgen-notes
 .termai
 .opencode
 .idea
