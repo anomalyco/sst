@@ -1,0 +1,13 @@
+[project]
+name = "build_args"
+version = "0.1.0"
+description = "Build Args Example"
+dependencies = ["sst"]
+requires-python = "==3.11.*"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.sources]
+sst = { git = "https://github.com/sst/sst.git", branch = "dev", subdirectory = "sdk/python" }
