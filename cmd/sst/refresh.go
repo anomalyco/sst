@@ -33,6 +33,7 @@ func CmdRefresh(c *cli.Cli) error {
 	ui := ui.New(c.Context)
 	events := bus.SubscribeAll()
 	defer close(events)
+	defer bus.Unsubscribe(events)
 	wg.Go(func() error {
 		for evt := range events {
 			ui.Event(evt)
