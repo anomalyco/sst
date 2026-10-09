@@ -1160,8 +1160,18 @@ export interface FunctionArgs {
      * This needs the Docker daemon to be running.
      * :::
      *
-     * To use a custom Dockerfile, add one to the rooot of the uv workspace
+     * To use a custom Dockerfile, add one to the root of the uv workspace
      * of the function.
+     *
+     * For a cache-friendly dependency layer, copy both `requirements.txt` and the
+     * SST-generated `.sst/packages/` directory before installing dependencies.
+     *
+     * ```dockerfile
+     * COPY requirements.txt ${LAMBDA_TASK_ROOT}/requirements.txt
+     * COPY .sst/packages/ ${LAMBDA_TASK_ROOT}/.sst/packages/
+     * RUN uv pip install -r requirements.txt --target ${LAMBDA_TASK_ROOT} --system
+     * COPY . ${LAMBDA_TASK_ROOT}
+     * ```
      *
      *
      * ```txt {5}

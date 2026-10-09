@@ -16,14 +16,13 @@ RUN if command -v dnf > /dev/null 2>&1; then \
       yum install -y git gcc python3-devel && yum clean all; \
     fi
 
-# Copy everything first so workspace packages (referenced as ./pkg in requirements.txt)
-# are available during dependency installation.
+# Copy everything first so local source distributions in .sst/packages are available
+# during dependency installation.
 #
 # NOTE: This copies source code before installing deps, which means any code change
 # invalidates Docker's layer cache for the pip install step. This is a deliberate
-# tradeoff — workspace packages must be present for `uv pip install` to resolve
-# relative path dependencies (e.g. ./shared, ./core). Users who need better caching
-# should provide a custom Dockerfile that copies requirements.txt first.
+# tradeoff — local package artifacts must be present for `uv pip install`. Users who
+# need better caching should copy requirements.txt and .sst/packages/ before this step.
 COPY . ${LAMBDA_TASK_ROOT}
 
 # Install dependencies inside the container to ensure native binaries
