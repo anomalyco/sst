@@ -1074,6 +1074,7 @@ async function handler(event) {
         // Server functions
         servers.forEach(({ region, server }) => {
           const provider = useProvider(region);
+          const urlDependsOn = server.nodes.url.apply((u) => (u ? [u] : []));
 
           if (protection.mode === "none") {
             new lambda.Permission(
@@ -1084,7 +1085,7 @@ async function handler(event) {
                 principal: "*",
                 functionUrlAuthType: "NONE",
               },
-              { provider, parent: self },
+              { provider, parent: self, dependsOn: urlDependsOn },
             );
           } else if (
             protection.mode === "oac" ||
@@ -1098,7 +1099,7 @@ async function handler(event) {
                 principal: "cloudfront.amazonaws.com",
                 sourceArn: distributionArn,
               },
-              { provider, parent: self },
+              { provider, parent: self, dependsOn: urlDependsOn },
             );
             new lambda.Permission(
               `${name}CloudFrontInvokeFunction${logicalName(region)}`,
@@ -1109,13 +1110,16 @@ async function handler(event) {
                 sourceArn: distributionArn,
                 invokedViaFunctionUrl: true,
               },
-              { provider, parent: self },
+              { provider, parent: self, dependsOn: urlDependsOn },
             );
           }
         });
 
         // Image optimizer
         if (imgOptimizer) {
+          const urlDependsOn = imgOptimizer.nodes.url.apply((u) =>
+            u ? [u] : [],
+          );
           if (protection.mode === "none") {
             new lambda.Permission(
               `${name}ImageOptimizerPublicFunctionUrlAccess`,
@@ -1125,7 +1129,7 @@ async function handler(event) {
                 principal: "*",
                 functionUrlAuthType: "NONE",
               },
-              { parent: self },
+              { parent: self, dependsOn: urlDependsOn },
             );
           } else if (
             protection.mode === "oac" ||
@@ -1139,7 +1143,7 @@ async function handler(event) {
                 principal: "cloudfront.amazonaws.com",
                 sourceArn: distributionArn,
               },
-              { parent: self },
+              { parent: self, dependsOn: urlDependsOn },
             );
             new lambda.Permission(
               `${name}ImageOptimizerCloudFrontInvokeFunction`,
@@ -1150,7 +1154,7 @@ async function handler(event) {
                 sourceArn: distributionArn,
                 invokedViaFunctionUrl: true,
               },
-              { parent: self },
+              { parent: self, dependsOn: urlDependsOn },
             );
           }
         }
