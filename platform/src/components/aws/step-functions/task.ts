@@ -324,7 +324,7 @@ export class Task extends State implements Nextable, Failable {
       Credentials: this.args.role && {
         RoleArn: this.args.role,
       },
-      Timeout: this.args.timeout
+      TimeoutSeconds: this.args.timeout
         ? output(this.args.timeout).apply((t) =>
             isJSONata(t) ? t : toSeconds(t as Duration),
           )
