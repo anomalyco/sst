@@ -281,6 +281,88 @@ type AwsBootstrapData struct {
 
 type bootstrapStep = func(ctx context.Context, cfg aws.Config, data *AwsBootstrapData) error
 
+const (
+	lambdaCodeAssetLifecycleRuleID      = "SstLambdaCodeAssetVersions"
+	legacyFunctionAssetLifecycleRuleID  = "SstLegacyFunctionAssetVersions"
+	lambdaCodeAssetLifecyclePrefix      = "lambda/"
+	legacyFunctionAssetLifecyclePrefix  = "assets/"
+	lambdaCodeAssetNoncurrentRetainDays = 1
+	lambdaCodeAssetRetainedNoncurrent   = 1
+)
+
+func configureAssetBucketCodeVersioning(ctx context.Context, cfg aws.Config, data *AwsBootstrapData) error {
+	s3Client := s3.NewFromConfig(cfg)
+
+	slog.Info("enabling versioning for asset bucket", "name", data.Asset)
+	_, err := s3Client.PutBucketVersioning(ctx, &s3.PutBucketVersioningInput{
+		Bucket: aws.String(data.Asset),
+		VersioningConfiguration: &s3types.VersioningConfiguration{
+			Status: s3types.BucketVersioningStatusEnabled,
+		},
+	})
+	if err != nil {
+		return err
+	}
+
+	var existing []s3types.LifecycleRule
+	lifecycle, err := s3Client.GetBucketLifecycleConfiguration(ctx, &s3.GetBucketLifecycleConfigurationInput{
+		Bucket: aws.String(data.Asset),
+	})
+	if err != nil {
+		var apiErr smithy.APIError
+		if !errors.As(err, &apiErr) || apiErr.ErrorCode() != "NoSuchLifecycleConfiguration" {
+			return err
+		}
+	} else {
+		existing = lifecycle.Rules
+	}
+
+	rules := make([]s3types.LifecycleRule, 0, len(existing)+2)
+	for _, rule := range existing {
+		switch aws.ToString(rule.ID) {
+		case lambdaCodeAssetLifecycleRuleID, legacyFunctionAssetLifecycleRuleID:
+			continue
+		default:
+			rules = append(rules, rule)
+		}
+	}
+	rules = append(rules,
+		s3types.LifecycleRule{
+			ID:     aws.String(lambdaCodeAssetLifecycleRuleID),
+			Status: s3types.ExpirationStatusEnabled,
+			Filter: &s3types.LifecycleRuleFilterMemberPrefix{
+				Value: lambdaCodeAssetLifecyclePrefix,
+			},
+			NoncurrentVersionExpiration: &s3types.NoncurrentVersionExpiration{
+				NoncurrentDays:          aws.Int32(lambdaCodeAssetNoncurrentRetainDays),
+				NewerNoncurrentVersions: aws.Int32(lambdaCodeAssetRetainedNoncurrent),
+			},
+		},
+		s3types.LifecycleRule{
+			ID:     aws.String(legacyFunctionAssetLifecycleRuleID),
+			Status: s3types.ExpirationStatusEnabled,
+			Filter: &s3types.LifecycleRuleFilterMemberPrefix{
+				Value: legacyFunctionAssetLifecyclePrefix,
+			},
+			Expiration: &s3types.LifecycleExpiration{
+				ExpiredObjectDeleteMarker: aws.Bool(true),
+			},
+			NoncurrentVersionExpiration: &s3types.NoncurrentVersionExpiration{
+				NoncurrentDays: aws.Int32(lambdaCodeAssetNoncurrentRetainDays),
+			},
+		},
+	)
+
+	slog.Info("configuring asset bucket lifecycle", "name", data.Asset)
+	_, err = s3Client.PutBucketLifecycleConfiguration(ctx, &s3.PutBucketLifecycleConfigurationInput{
+		Bucket: aws.String(data.Asset),
+		LifecycleConfiguration: &s3types.BucketLifecycleConfiguration{
+			Rules: rules,
+		},
+	})
+	return err
+}
+
 // never change these, only append more steps
 var steps = []bootstrapStep{
 	// Step: create the bootstrap bucket
@@ -529,6 +611,11 @@ var steps = []bootstrapStep{
 	// Step: add appsync events apis for live lambda - we no longer do this
 	func(ctx context.Context, cfg aws.Config, data *AwsBootstrapData) error {
 		return nil
+	},
+
+	// Step: version lambda code assets so Lambda updates can track object versions
+	func(ctx context.Context, cfg aws.Config, data *AwsBootstrapData) error {
+		return configureAssetBucketCodeVersioning(ctx, cfg, data)
 	},
 }
 
