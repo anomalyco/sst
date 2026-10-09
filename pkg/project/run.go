@@ -158,9 +158,9 @@ func (p *Project) Run(ctx context.Context, input *StackInput) error {
 
 	providerShim := []string{}
 	for _, entry := range p.lock {
-		providerShim = append(providerShim, fmt.Sprintf("import * as %s from \"%s\";", entry.Alias, entry.Package))
+		providerShim = append(providerShim, fmt.Sprintf("export * as %s from \"%s\";", entry.Alias, entry.Package))
 	}
-	providerShim = append(providerShim, fmt.Sprintf("import * as sst from \"%s\";", path.Join(filepath.ToSlash(p.PathPlatformDir()), "src/components")))
+	providerShim = append(providerShim, fmt.Sprintf("export * as sst from \"%s\";", path.Join(filepath.ToSlash(p.PathPlatformDir()), "src/components")))
 
 	buildResult, err := js.Build(js.EvalOptions{
 		Dir:     p.PathRoot(),

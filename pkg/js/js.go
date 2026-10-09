@@ -59,6 +59,33 @@ func Build(input EvalOptions) (esbuild.BuildResult, error) {
 		outfile = filepath.Join(input.Dir, ".sst", "platform", fmt.Sprintf("sst.config.%v.mjs", time.Now().UnixMilli()))
 	}
 	slog.Info("esbuild building", "out", outfile)
+	inject := append([]string{}, input.Inject...)
+	plugins := []esbuild.Plugin{}
+	if input.Globals != "" {
+		const globalsPath = "sst:globals"
+		globals := input.Globals
+		inject = append(inject, globalsPath)
+		plugins = append(plugins, esbuild.Plugin{
+			Name: "InjectGlobals",
+			Setup: func(build esbuild.PluginBuild) {
+				build.OnResolve(esbuild.OnResolveOptions{Filter: "^" + globalsPath + "$"},
+					func(args esbuild.OnResolveArgs) (esbuild.OnResolveResult, error) {
+						return esbuild.OnResolveResult{
+							Path:      globalsPath,
+							Namespace: globalsPath,
+						}, nil
+					})
+				build.OnLoad(esbuild.OnLoadOptions{Filter: ".*", Namespace: globalsPath},
+					func(args esbuild.OnLoadArgs) (esbuild.OnLoadResult, error) {
+						return esbuild.OnLoadResult{
+							Contents:   &globals,
+							ResolveDir: input.Dir,
+							Loader:     esbuild.LoaderJS,
+						}, nil
+					})
+			},
+		})
+	}
 	var err error
 	result := esbuild.Build(esbuild.BuildOptions{
 		Banner: map[string]string{
@@ -83,43 +110,18 @@ const __dirname = topLevelFileUrlToPath(new topLevelURL(".", import.meta.url))
 		NodePaths: []string{
 			filepath.Join(input.Dir, ".sst", "platform", "node_modules"),
 		},
-		Plugins: []esbuild.Plugin{
-			{
-				Name: "DisallowImports",
-				Setup: func(build esbuild.PluginBuild) {
-					build.OnResolve(esbuild.OnResolveOptions{Filter: ".*"}, func(args esbuild.OnResolveArgs) (esbuild.OnResolveResult, error) {
-						if input.Globals == "" && filepath.Base(args.Importer) == "sst.config.ts" && args.Kind == esbuild.ResolveJSImportStatement {
-							err = ErrTopLevelImport
-							return esbuild.OnResolveResult{}, ErrTopLevelImport
-						}
-						return esbuild.OnResolveResult{}, nil
-					})
-				},
+		Plugins: append(plugins, esbuild.Plugin{
+			Name: "DisallowImports",
+			Setup: func(build esbuild.PluginBuild) {
+				build.OnResolve(esbuild.OnResolveOptions{Filter: ".*"}, func(args esbuild.OnResolveArgs) (esbuild.OnResolveResult, error) {
+					if input.Globals == "" && filepath.Base(args.Importer) == "sst.config.ts" && args.Kind == esbuild.ResolveJSImportStatement {
+						err = ErrTopLevelImport
+						return esbuild.OnResolveResult{}, ErrTopLevelImport
+					}
+					return esbuild.OnResolveResult{}, nil
+				})
 			},
-			{
-				Name: "InjectGlobals",
-				Setup: func(build esbuild.PluginBuild) {
-					build.OnLoad(esbuild.OnLoadOptions{Filter: `\.(js|ts|jsx|tsx)$`},
-						func(args esbuild.OnLoadArgs) (esbuild.OnLoadResult, error) {
-							if filepath.HasPrefix(args.Path, filepath.Join(input.Dir, ".sst")) {
-								return esbuild.OnLoadResult{}, nil
-							}
-							contents, err := os.ReadFile(args.Path)
-							if err != nil {
-								return esbuild.OnLoadResult{}, err
-							}
-							newContents := string(contents)
-							if !strings.Contains(args.Path, ".sst") {
-								newContents = input.Globals + "\n" + newContents
-							}
-							return esbuild.OnLoadResult{
-								Contents: &newContents,
-								Loader:   esbuild.LoaderDefault,
-							}, nil
-						})
-				},
-			},
-		},
+		}),
 		External: []string{
 			"@pulumi/*",
 			"undici",
@@ -132,7 +134,7 @@ const __dirname = topLevelFileUrlToPath(new topLevelURL(".", import.meta.url))
 			"vite", // The remix component uses vite to resolve the user's vite config file. We don't want to bundle it.
 		},
 		Define:   input.Define,
-		Inject:   input.Inject,
+		Inject:   inject,
 		Outfile:  outfile,
 		Write:    true,
 		Bundle:   true,
