@@ -2,7 +2,8 @@ import path from "path";
 import fs from "fs";
 import { Output, output, all, ComponentResourceOptions } from "@pulumi/pulumi";
 import { Input } from "../input.js";
-import { Component, transform, type Transform } from "../component.js";
+import { transform, type Transform } from "../component.js";
+import { CloudflareComponent } from "./component.js";
 import { VisibleError } from "../error.js";
 import { BaseSsrSiteArgs, buildApp } from "../base/base-ssr-site.js";
 import { Worker, WorkerArgs } from "./worker.js";
@@ -10,7 +11,9 @@ import { normalizeCompatibility } from "./helpers/compatibility.js";
 import {
   createWranglerConfig,
   writeWranglerConfig,
+  type WranglerLink,
 } from "./helpers/wrangler.js";
+import type { Unstable_RawConfig as RawConfig } from "wrangler";
 import { Link } from "../link.js";
 import { URL_UNAVAILABLE } from "../aws/linkable.js";
 import { DEFAULT_ACCOUNT_ID } from "./account-id.js";
@@ -40,7 +43,8 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
   };
 }
 
-export abstract class SsrSite extends Component implements Link.Linkable {
+export abstract class SsrSite extends CloudflareComponent {
+  protected readonly type = "{ url: string }";
   private server?: Worker;
   private devUrl?: Output<string>;
 
@@ -50,7 +54,7 @@ export abstract class SsrSite extends Component implements Link.Linkable {
 
   protected buildWrangler(
     _sitePath: string,
-  ): Input<Record<string, Input<any>> | undefined> {
+  ): Input<Partial<RawConfig> | undefined> {
     return undefined;
   }
 
@@ -214,7 +218,7 @@ export abstract class SsrSite extends Component implements Link.Linkable {
             properties: link.properties,
           })),
         );
-        return linkBindings.length > 0 ? all(linkBindings) : [];
+        return linkBindings.length > 0 ? all(linkBindings) : ([] as WranglerLink[]);
       });
     }
 
@@ -283,7 +287,7 @@ export abstract class SsrSite extends Component implements Link.Linkable {
   }
 
   /** @internal */
-  public getSSTLink() {
+  protected getLinkDefinition() {
     return {
       properties: {
         url: this.url,

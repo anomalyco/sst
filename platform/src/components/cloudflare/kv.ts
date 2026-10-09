@@ -1,8 +1,7 @@
 import { ComponentResourceOptions } from "@pulumi/pulumi";
 import * as cloudflare from "@pulumi/cloudflare";
-import { Component, Transform, transform } from "../component";
-import { Link } from "../link";
-import { binding } from "./binding";
+import { Transform, transform } from "../component";
+import { CloudflareComponent } from "./component.js";
 import { DEFAULT_ACCOUNT_ID } from "./account-id";
 import type { Input } from "../input";
 
@@ -75,7 +74,9 @@ interface KvRef {
  * await Resource.MyStorage.get("someKey");
  * ```
  */
-export class Kv extends Component implements Link.Linkable {
+export class Kv extends CloudflareComponent {
+  protected readonly type = 'import("@cloudflare/workers-types").KVNamespace';
+  protected readonly binding: import("./binding.js").CloudflareBinding;
   private namespace: cloudflare.WorkersKvNamespace;
 
   constructor(name: string, args?: KvArgs, opts?: ComponentResourceOptions) {
@@ -86,26 +87,39 @@ export class Kv extends Component implements Link.Linkable {
     if (args && "ref" in args) {
       const ref = args as unknown as KvRef;
       this.namespace = ref.namespace;
-      return;
+    } else {
+      const namespace = createNamespace();
+
+      this.namespace = namespace;
+
+      function createNamespace() {
+        return new cloudflare.WorkersKvNamespace(
+          ...transform(
+            args?.transform?.namespace,
+            `${name}Namespace`,
+            {
+              title: "",
+              accountId: args?.accountId ?? DEFAULT_ACCOUNT_ID,
+            },
+            { parent },
+          ),
+        );
+      }
     }
 
-    const namespace = createNamespace();
-
-    this.namespace = namespace;
-
-    function createNamespace() {
-      return new cloudflare.WorkersKvNamespace(
-        ...transform(
-          args?.transform?.namespace,
-          `${name}Namespace`,
-          {
-            title: "",
-            accountId: args?.accountId ?? DEFAULT_ACCOUNT_ID,
-          },
-          { parent },
-        ),
-      );
-    }
+    this.binding = {
+      type: "kv_namespace",
+      namespaceId: this.namespaceId,
+    };
+    this.devConfig = {
+      kv_namespaces: [
+        {
+          binding: this.linkNamePlaceholder,
+          id: this.namespaceId,
+          remote: true,
+        },
+      ],
+    };
   }
 
   /**
@@ -166,19 +180,11 @@ export class Kv extends Component implements Link.Linkable {
    *
    * @internal
    */
-  getSSTLink() {
+  protected getLinkDefinition() {
     return {
       properties: {
         namespaceId: this.namespaceId,
       },
-      include: [
-        binding({
-          type: "kvNamespaceBindings",
-          properties: {
-            namespaceId: this.namespaceId,
-          },
-        }),
-      ],
     };
   }
 

@@ -1,7 +1,7 @@
 import path from "path";
 import { ComponentResourceOptions, output } from "@pulumi/pulumi";
-import { Component, transform, type Transform } from "../component.js";
-import { Link } from "../link.js";
+import { transform, type Transform } from "../component.js";
+import { CloudflareComponent } from "./component.js";
 import { Input } from "../input.js";
 import { URL_UNAVAILABLE } from "../aws/linkable.js";
 import { Worker, WorkerArgs } from "./worker.js";
@@ -280,7 +280,8 @@ export interface StaticSiteV2Args extends Omit<BaseStaticSiteArgs, "vite"> {
  * });
  * ```
  */
-export class StaticSiteV2 extends Component implements Link.Linkable {
+export class StaticSiteV2 extends CloudflareComponent {
+  protected readonly type = "{ url: string }";
   private server?: Worker;
   private devUrl = output(URL_UNAVAILABLE);
 
@@ -414,7 +415,7 @@ export class StaticSiteV2 extends Component implements Link.Linkable {
   }
 
   /** @internal */
-  public getSSTLink() {
+  protected getLinkDefinition() {
     return {
       properties: {
         url: this.url,

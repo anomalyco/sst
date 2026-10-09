@@ -253,16 +253,15 @@ func TestGenerate(t *testing.T) {
 		assert.NotContains(t, string(leafContent), "broken")
 	})
 
-	t.Run("cloudflare bindings fall back to raw shape when workers-types missing", func(t *testing.T) {
+	t.Run("cloudflare explicit type is used exactly", func(t *testing.T) {
 		dir := setupProject(t, map[string]string{})
 
 		links := common.Links{
 			"MyKV": {
-				Properties: map[string]interface{}{
-					"name": "my-kv",
-				},
+				Properties: map[string]interface{}{"name": "my-kv"},
 				Include: []common.LinkInclude{
-					{Type: "cloudflare.binding", Other: map[string]interface{}{"binding": "kvNamespaceBindings"}},
+					{Type: "cloudflare.binding"},
+					{Type: "typescript.type", Other: map[string]interface{}{"value": `import("custom/types").KV`}},
 				},
 			},
 		}
@@ -272,11 +271,77 @@ func TestGenerate(t *testing.T) {
 
 		content, err := os.ReadFile(filepath.Join(dir, "sst-env.d.ts"))
 		require.NoError(t, err)
+		assert.Contains(t, string(content), `"MyKV": import("custom/types").KV`)
+	})
 
-		out := string(content)
-		assert.Contains(t, out, "\"MyKV\":")
-		assert.Contains(t, out, "\"name\": string")
-		assert.NotContains(t, out, `import("@cloudflare/workers-types")`)
+	t.Run("first-party non-binding type preserves its explicit object shape", func(t *testing.T) {
+		dir := setupProject(t, map[string]string{})
+
+		err := typescript.Generate(dir, common.Links{
+			"MySite": {
+				Properties: map[string]interface{}{"url": "https://example.com"},
+				Include: []common.LinkInclude{{
+					Type:  "typescript.type",
+					Other: map[string]interface{}{"value": "{ url: string }"},
+				}},
+			},
+		}, nil)
+		require.NoError(t, err)
+
+		content, err := os.ReadFile(filepath.Join(dir, "sst-env.d.ts"))
+		require.NoError(t, err)
+		assert.Contains(t, string(content), `"MySite": { url: string }`)
+	})
+
+	t.Run("cloudflare binding without explicit type returns an error", func(t *testing.T) {
+		dir := setupProject(t, map[string]string{})
+
+		links := common.Links{
+			"MyKV": {
+				Properties: map[string]interface{}{
+					"name": "my-kv",
+				},
+				Include: []common.LinkInclude{
+					{Type: "cloudflare.binding"},
+				},
+			},
+		}
+
+		err := typescript.Generate(dir, links, nil)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "MyKV")
+	})
+
+	t.Run("malformed and duplicate explicit types return errors", func(t *testing.T) {
+		tests := []struct {
+			name    string
+			include []common.LinkInclude
+		}{
+			{
+				name: "malformed",
+				include: []common.LinkInclude{{
+					Type:  "typescript.type",
+					Other: map[string]interface{}{"value": 42},
+				}},
+			},
+			{
+				name: "duplicate",
+				include: []common.LinkInclude{
+					{Type: "typescript.type", Other: map[string]interface{}{"value": "A"}},
+					{Type: "typescript.type", Other: map[string]interface{}{"value": "B"}},
+				},
+			},
+		}
+
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				dir := setupProject(t, map[string]string{})
+				err := typescript.Generate(dir, common.Links{
+					"Resource": {Include: test.include},
+				}, nil)
+				require.Error(t, err)
+			})
+		}
 	})
 
 	t.Run("cloudflare leaf gets reference shim like aws", func(t *testing.T) {
@@ -300,7 +365,8 @@ func TestGenerate(t *testing.T) {
 					"name": "my-kv",
 				},
 				Include: []common.LinkInclude{
-					{Type: "cloudflare.binding", Other: map[string]interface{}{"binding": "kvNamespaceBindings"}},
+					{Type: "cloudflare.binding"},
+					{Type: "typescript.type", Other: map[string]interface{}{"value": `import("@cloudflare/workers-types").KVNamespace`}},
 				},
 			},
 		}
@@ -357,12 +423,10 @@ func TestGenerate(t *testing.T) {
 
 		links := common.Links{
 			"Counter": {
-				Include: []common.LinkInclude{{
-					Type: "cloudflare.binding",
-					Other: map[string]interface{}{
-						"binding": "durableObjectNamespaceBindings",
-					},
-				}},
+				Include: []common.LinkInclude{
+					{Type: "cloudflare.binding"},
+					{Type: "typescript.type", Other: map[string]interface{}{"value": `import("@cloudflare/workers-types").DurableObjectNamespace`}},
+				},
 			},
 		}
 

@@ -11,7 +11,8 @@ import {
 import * as cf from "@pulumi/cloudflare";
 import type { Loader } from "esbuild";
 import type { EsbuildOptions } from "../esbuild.js";
-import { Component, Prettify, Transform, transform } from "../component";
+import { Prettify, Transform, transform } from "../component";
+import { CloudflareComponent } from "./component.js";
 import { WorkerUrl } from "./providers/worker-url.js";
 import { WorkerPlacement } from "./providers/worker-placement.js";
 import { Link } from "../link.js";
@@ -19,7 +20,8 @@ import type { Input } from "../input.js";
 import { ZoneLookup } from "./providers/zone-lookup.js";
 import { iam } from "@pulumi/aws";
 import { Permission } from "../aws/permission.js";
-import { binding } from "./binding.js";
+import type { CloudflareBinding } from "./binding.js";
+import { buildWorkerBinding } from "./helpers/worker-binding.js";
 import { DEFAULT_ACCOUNT_ID } from "./account-id.js";
 import { rpc } from "../rpc/rpc.js";
 import { getContentType } from "../base/base-site";
@@ -467,7 +469,9 @@ export interface WorkerArgs {
  * });
  * ```
  */
-export class Worker extends Component implements Link.Linkable {
+export class Worker extends CloudflareComponent {
+  protected readonly type = 'import("@cloudflare/workers-types").Service';
+  protected readonly binding: CloudflareBinding;
   private script: cf.WorkersScript;
   private workerUrl: WorkerUrl;
   private workerPlacement?: WorkerPlacement;
@@ -516,6 +520,21 @@ export class Worker extends Component implements Link.Linkable {
     this.workerUrl = workerUrl;
     this.workerPlacement = workerPlacement;
     this.workerDomain = workerDomain;
+    this.binding = {
+      type: "service",
+      service: this.script.id,
+    };
+    if (!opts?.parent) {
+      this.devConfig = {
+        services: [
+          {
+            binding: this.linkNamePlaceholder,
+            service: this.script.id,
+            remote: true,
+          },
+        ],
+      };
+    }
 
     all([dev, buildInput, script.scriptName]).apply(
       async ([dev, buildInput, scriptName]) => {
@@ -592,43 +611,13 @@ export class Worker extends Component implements Link.Linkable {
             stage: $app.stage,
           }),
         },
-      ] as cf.types.input.WorkerScriptBinding[];
+      ] as cf.types.input.WorkersScriptBinding[];
       if (!args.link) return result;
       return output(args.link).apply((links) => {
         for (let link of links) {
           if (!Link.isLinkable(link)) continue;
           const name = output(link.urn).apply((uri) => uri.split("::").at(-1)!);
-          const item = link.getSSTLink();
-          const b = item.include?.find(
-            (i) => i.type === "cloudflare.binding",
-          ) as ReturnType<typeof binding>;
-          result.push(
-            b
-              ? {
-                  type: {
-                    aiBindings: "ai",
-                    plainTextBindings: "plain_text",
-                    secretTextBindings: "secret_text",
-                    queueBindings: "queue",
-                    serviceBindings: "service",
-                    durableObjectNamespaceBindings: "durable_object_namespace",
-                    kvNamespaceBindings: "kv_namespace",
-                    d1DatabaseBindings: "d1",
-                    r2BucketBindings: "r2_bucket",
-                    hyperdriveBindings: "hyperdrive",
-                    versionMetadataBindings: "version_metadata",
-                    workflowBindings: "workflow",
-                    rateLimitBindings: "ratelimit",
-                  }[b.binding],
-                  name,
-                  ...b.properties,
-                }
-              : {
-                  type: "secret_text",
-                  name: output(name).apply((name) => `SST_RESOURCE_${name}`),
-                  text: jsonStringify(item.properties),
-                },
-          );
+          result.push(buildWorkerBinding(link, name));
         }
         return result;
       });
@@ -1058,19 +1047,11 @@ export class Worker extends Component implements Link.Linkable {
    *
    * @internal
    */
-  getSSTLink() {
+  protected getLinkDefinition() {
     return {
       properties: {
         url: this.url,
       },
-      include: [
-        binding({
-          type: "serviceBindings",
-          properties: {
-            service: this.script.id,
-          },
-        }),
-      ],
     };
   }
 }

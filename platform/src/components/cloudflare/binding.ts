@@ -2,131 +2,112 @@
  * The Cloudflare Binding Linkable helper is used to define the Cloudflare bindings included
  * with the [`sst.Linkable`](/docs/component/linkable/) component.
  *
+ * The input is the provider-shaped [`CloudflareBinding`](#cloudflarebinding) object accepted by
+ * `@pulumi/cloudflare`. Do not provide `name`; SST assigns the final binding name from the link
+ * name when the link is attached to a Worker. SST does not maintain a closed list of binding
+ * kinds, so new provider fields can pass through this helper. Cloudflare's provider or API may
+ * still reject an unsupported kind or field.
+ *
+ * Binding objects from earlier SST releases are also accepted and normalized to the provider
+ * shape, so existing `Linkable` definitions continue to work.
+ *
+ * A production binding only describes the Worker binding. It does not generate Wrangler
+ * configuration or a runtime TypeScript type. Native Cloudflare resources should extend
+ * `CloudflareComponent` from `sst.cloudflare` so those projections can be declared independently.
+ *
  * @example
  *
  * ```ts
  * sst.cloudflare.binding({
- *   type: "r2BucketBindings",
- *   properties: {
- *     bucketName: "my-bucket"
- *   }
+ *   type: "r2_bucket",
+ *   bucketName: "my-bucket"
  * })
+ * ```
+ *
+ * For a custom native resource, set `binding` and `devConfig` in the constructor, declare its
+ * runtime `type`, and return only runtime `properties` and any additional non-reserved includes
+ * from `getLinkDefinition()`. The base class adds `cloudflare.binding`, `typescript.type`, and
+ * `cloudflare.dev`; subclasses must not add those includes themselves.
+ *
+ * ```ts
+ * class Search extends CloudflareComponent {
+ *   protected readonly binding: CloudflareBinding;
+ *   protected readonly type =
+ *     `import("@cloudflare/workers-types").AiSearchInstance`;
+ *   private readonly instanceName: Input<string>;
+ *
+ *   constructor(
+ *     name: string,
+ *     args: { instanceName: Input<string> },
+ *     opts?: ComponentResourceOptions,
+ *   ) {
+ *     super("sst:cloudflare:Search", name, args, opts);
+ *     this.instanceName = args.instanceName;
+ *     this.binding = {
+ *       type: "ai_search",
+ *       instanceName: this.instanceName,
+ *     };
+ *     this.devConfig = {
+ *       ai_search: [{
+ *         binding: this.linkNamePlaceholder,
+ *         instance_name: this.instanceName,
+ *         remote: true,
+ *       }],
+ *     };
+ *   }
+ *
+ *   protected getLinkDefinition() {
+ *     return {
+ *       properties: { instanceName: this.instanceName },
+ *     };
+ *   }
+ * }
  * ```
  *
  * @packageDocumentation
  */
 
-import { Input } from "../input";
+import type { types as cloudflare } from "@pulumi/cloudflare";
 
-export interface AiBinding {
-  type: "aiBindings";
-  properties: Record<string, never>;
-}
+export type CloudflareBinding = Omit<
+  cloudflare.input.WorkersScriptBinding,
+  "name"
+> & {
+  readonly name?: never;
+  readonly [field: string]: unknown;
+};
 
-export interface KvBinding {
-  type: "kvNamespaceBindings";
-  properties: {
-    namespaceId: Input<string>;
-  };
-}
-export interface SecretTextBinding {
-  type: "secretTextBindings";
-  properties: {
-    text: Input<string>;
-  };
-}
-export interface ServiceBinding {
-  type: "serviceBindings";
-  properties: {
-    service: Input<string>;
-  };
-}
-export interface PlainTextBinding {
-  type: "plainTextBindings";
-  properties: {
-    text: Input<string>;
-  };
-}
-export interface QueueBinding {
-  type: "queueBindings";
-  properties: {
-    queueName: Input<string>;
-  };
-}
-export interface R2BucketBinding {
-  type: "r2BucketBindings";
-  properties: {
-    bucketName: Input<string>;
-  };
-}
+const legacyBindingTypes = {
+  aiBindings: "ai",
+  plainTextBindings: "plain_text",
+  secretTextBindings: "secret_text",
+  queueBindings: "queue",
+  serviceBindings: "service",
+  durableObjectNamespaceBindings: "durable_object_namespace",
+  kvNamespaceBindings: "kv_namespace",
+  d1DatabaseBindings: "d1",
+  r2BucketBindings: "r2_bucket",
+  hyperdriveBindings: "hyperdrive",
+  versionMetadataBindings: "version_metadata",
+  workflowBindings: "workflow",
+  rateLimitBindings: "ratelimit",
+} as const;
 
-export interface D1DatabaseBinding {
-  type: "d1DatabaseBindings";
-  properties: {
-    id: Input<string>;
-  };
-}
+export function binding(input: CloudflareBinding) {
+  const providerType =
+    typeof input.type === "string" &&
+    Object.prototype.hasOwnProperty.call(legacyBindingTypes, input.type)
+      ? legacyBindingTypes[input.type as keyof typeof legacyBindingTypes]
+      : undefined;
+  const workerBinding = providerType
+    ? {
+        type: providerType,
+        ...(input.properties as Record<string, unknown>),
+      }
+    : input;
 
-export interface HyperdriveBinding {
-  type: "hyperdriveBindings";
-  properties: {
-    id: Input<string>;
-  };
-}
-
-export interface DurableObjectNamespaceBinding {
-  type: "durableObjectNamespaceBindings";
-  properties: {
-    className: Input<string>;
-    scriptName?: Input<string>;
-    environment?: Input<string>;
-  };
-}
-
-export interface VersionMetadataBinding {
-  type: "versionMetadataBindings";
-  properties: Record<string, never>;
-}
-
-export interface WorkflowBinding {
-  type: "workflowBindings";
-  properties: {
-    workflowName: Input<string>;
-    className: Input<string>;
-    scriptName: Input<string>;
-  };
-}
-
-export interface RateLimitBinding {
-  type: "rateLimitBindings";
-  properties: {
-    namespaceId: Input<string>;
-    simple: Input<{
-      limit: Input<number>;
-      period: Input<number>;
-    }>;
-  };
-}
-
-export type Binding =
-  | AiBinding
-  | KvBinding
-  | SecretTextBinding
-  | ServiceBinding
-  | PlainTextBinding
-  | QueueBinding
-  | R2BucketBinding
-  | D1DatabaseBinding
-  | HyperdriveBinding
-  | VersionMetadataBinding
-  | WorkflowBinding
-  | DurableObjectNamespaceBinding
-  | RateLimitBinding;
-
-export function binding<T extends Binding["type"]>(input: Binding & {}) {
   return {
     type: "cloudflare.binding" as const,
-    binding: input.type as T,
-    properties: input.properties as Extract<Binding, { type: T }>["properties"],
+    binding: workerBinding,
   };
 }

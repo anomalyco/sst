@@ -762,7 +762,6 @@ async function generateDnsDoc(module: TypeDoc.DeclarationReflection) {
 }
 
 async function generateLinkableDoc(module: TypeDoc.DeclarationReflection) {
-  const name = module.name.split("/")[1];
   const sourceFile = module.sources![0].fileName;
   const outputFilePath = path.join(
     "src/content/docs/docs/component",
@@ -796,6 +795,9 @@ async function generateLinkableDoc(module: TypeDoc.DeclarationReflection) {
       renderFunctions(module, useModuleFunctions(module), {
         title: "Functions",
       }),
+      ...(module.name === "components/cloudflare/binding"
+        ? renderTypeAliasesAtH2Level(module)
+        : []),
       renderInterfacesAtH2Level(module),
       renderBodyEnd(),
     ]
@@ -961,6 +963,13 @@ function renderType(
     }
   }
 
+  if (
+    type.name === "CloudflareBinding" &&
+    module.name === "components/cloudflare/binding"
+  ) {
+    return renderCloudflareBindingAlias(type as TypeDoc.DeclarationReflection);
+  }
+
   return renderSomeType(type.type!);
 
   function renderSomeType(type: TypeDoc.SomeType): string {
@@ -968,6 +977,7 @@ function renderType(
     if (type.type === "literal") return renderLiteralType(type);
     if (type.type === "templateLiteral") return renderTemplateLiteralType(type);
     if (type.type === "union") return renderUnionType(type);
+    if (type.type === "intersection") return renderIntersectionType(type);
     if (type.type === "indexedAccess") return renderIndexedAccessType(type);
     if (type.type === "array") return renderArrayType(type);
     if (type.type === "tuple") return renderTupleType(type);
@@ -1020,6 +1030,50 @@ function renderType(
     delete type._project;
     console.log(type);
     throw new Error(`Unsupported type "${type.type}"`);
+  }
+
+  function renderCloudflareBindingAlias(alias: TypeDoc.DeclarationReflection) {
+    const type = alias.type;
+    if (!type || type.type !== "intersection") {
+      return type ? renderSomeType(type) : "";
+    }
+
+    return type.types
+      .map((part) =>
+        part.type === "reflection"
+          ? renderCloudflareBindingObject(part)
+          : renderSomeType(part)
+      )
+      .join(`<code class="symbol"> &amp; </code>`);
+  }
+
+  function renderCloudflareBindingObject(type: TypeDoc.ReflectionType) {
+    const members = (type.declaration.children ?? [])
+      .filter((member) => !member.flags.isExternal)
+      .map(
+        (member) =>
+          `${renderName(member)}<code class="symbol">: </code>${renderSomeType(
+            member.type!
+          )}`
+      );
+
+    if (type.declaration.indexSignature) {
+      const index = type.declaration.indexSignature;
+      const parameter = index.parameters?.[0];
+      members.push(
+        `<code class="symbol">[</code><code class="primitive">${
+          parameter?.name ?? "field"
+        }</code><code class="symbol">: </code>${renderSomeType(
+          parameter?.type ?? { type: "intrinsic", name: "string" }
+        )}<code class="symbol">]: </code>${renderSomeType(
+          index.type ?? { type: "intrinsic", name: "unknown" }
+        )}`
+      );
+    }
+
+    return `<code class="primitive">{ ${members.join(
+      `<code class="symbol">; </code>`
+    )} }</code>`;
   }
   function renderUnknownType(type: TypeDoc.SomeType & { name?: string }) {
     return `<code class="type">${(type.name ?? "unknown")
@@ -1091,6 +1145,11 @@ function renderType(
     return type.types
       .map((t) => renderSomeType(t))
       .join(`<code class="symbol"> | </code>`);
+  }
+  function renderIntersectionType(type: TypeDoc.IntersectionType) {
+    return type.types
+      .map((t) => renderSomeType(t))
+      .join(`<code class="symbol"> &amp; </code>`);
   }
   function renderArrayType(type: TypeDoc.ArrayType) {
     return type.elementType.type === "union"
@@ -1172,6 +1231,12 @@ function renderType(
         namespace: "sst.cloudflare.binding",
       },
     }[type.name];
+    if (
+      type.name === "CloudflareBinding" &&
+      module.name === "components/cloudflare/binding"
+    ) {
+      return `[<code class="type">CloudflareBinding</code>](#cloudflarebinding)`;
+    }
     if (linkableProvider) {
       return `[<code class="type">${linkableProvider.namespace}</code>](/docs/component/${linkableProvider.doc})`;
     }
@@ -1334,6 +1399,12 @@ function renderType(
         PolicyDocument: "iam/getpolicydocument",
       }[type.name];
       if (!link) {
+        if (
+          provider === "cloudflare" &&
+          type.name.endsWith("WorkersScriptBinding")
+        ) {
+          return renderReferenceType(type);
+        }
         // @ts-expect-error
         delete type._project;
         console.error(type);
@@ -1746,14 +1817,14 @@ function renderProperties(module: TypeDoc.DeclarationReflection) {
 
 function renderLinks(module: TypeDoc.DeclarationReflection) {
   const lines: string[] = [];
-  const method = useClassMethodByName(module, "getSSTLink");
+  const method = useLinkDefinitionMethod(module);
   if (!method) return lines;
 
-  // Get `getSSTLink()` return type
+  // Get the link definition return type
   const returnType = method.signatures![0].type as TypeDoc.ReflectionType;
   if (!returnType.declaration) return lines;
 
-  // Get `getSSTLink().properties` type
+  // Get the link definition properties type
   const properties = returnType.declaration.children?.find(
     (c) => c.name === "properties"
   );
@@ -1778,9 +1849,14 @@ function renderLinks(module: TypeDoc.DeclarationReflection) {
     ...links.flatMap((link) => {
       console.debug(` - link ${link.name}`);
 
-      // Find the getter property that matches the link name
+      // Find the public property or getter that matches the link name.
       const getter = useClassGetters(module).find((g) => g.name === link.name);
-      if (!getter) {
+      const cloudflareLinkDefinition =
+        isConcreteCloudflareLinkDefinition(method);
+      const property = cloudflareLinkDefinition
+        ? useClassLinkProperty(module, link.name)
+        : undefined;
+      if (!getter && !cloudflareLinkDefinition) {
         throw new Error(
           `Failed to render link ${link.name} b/c cannot find a getter property with the matching name`
         );
@@ -1793,7 +1869,11 @@ function renderLinks(module: TypeDoc.DeclarationReflection) {
           { ignoreOutput: true }
         )}</p>`,
         "", // Needed to indent the description
-        ...renderDescription(getter.getSignature!, { indent: true }),
+        ...(getter
+          ? renderDescription(getter.getSignature!, { indent: true })
+          : property
+            ? renderDescription(property, { indent: true })
+            : []),
       ];
     }),
     `</Section>`,
@@ -1805,36 +1885,18 @@ function renderLinks(module: TypeDoc.DeclarationReflection) {
 
 function renderCloudflareBindings(module: TypeDoc.DeclarationReflection) {
   const lines: string[] = [];
-  const method = useClassMethodByName(module, "getSSTLink");
-  if (!method) return lines;
-
-  // Get `getSSTLink()` return type
-  const returnType = method.signatures![0].type as TypeDoc.ReflectionType;
-  if (!returnType.declaration) return lines;
-
-  // Get `getSSTLink().include` type
-  const include = returnType.declaration.children?.find(
-    (c) => c.name === "include"
-  );
-  if (!include) return lines;
-
-  // Filter out `getSSTLink().include[].type` is `cloudflare.binding`
-  const includeArrayType = include.type as TypeDoc.ArrayType;
-  const includeType = includeArrayType.elementType as TypeDoc.ReflectionType;
-  const isCloudflareBinding = includeType.declaration.children?.some(
-    (c) =>
-      c.name === "type" &&
-      (c.type as TypeDoc.LiteralType)?.value === "cloudflare.binding"
-  );
-  if (!isCloudflareBinding) return lines;
+  const binding = useClassBindingProperty(module);
+  if (!binding) return lines;
+  const method = useClassMethodByName(module, "getLinkDefinition");
+  const signature = method?.signatures?.[0];
 
   lines.push(
     ``,
     `### Bindings`,
     `<Segment>`,
-    ...renderDescription(method.signatures![0]),
+    ...(signature ? renderDescription(signature) : []),
     ``,
-    ...renderExamples(method.signatures![0]),
+    ...(signature ? renderExamples(signature) : []),
     `</Segment>`
   );
 
@@ -1932,6 +1994,34 @@ function renderInterfacesAtH2Level(
         );
       }
     }
+  }
+
+  return lines;
+}
+
+function renderTypeAliasesAtH2Level(module: TypeDoc.DeclarationReflection) {
+  const lines: string[] = [];
+  const aliases = module
+    .getChildrenByKind(TypeDoc.ReflectionKind.TypeAlias)
+    .filter((alias) => !alias.comment?.modifierTags.has("@internal"))
+    .filter(
+      (alias) => !alias.comment?.blockTags.find((t) => t.tag === "@deprecated")
+    );
+
+  for (const alias of aliases) {
+    console.debug(` - type alias ${alias.name}`);
+    lines.push(
+      ``,
+      `## ${alias.name}`,
+      `<Segment>`,
+      `<Section type="parameters">`,
+      `<InlineSection>`,
+      `**Type** ${renderType(module, alias)}`,
+      `</InlineSection>`,
+      ...renderDescription(alias),
+      `</Section>`,
+      `</Segment>`
+    );
   }
 
   return lines;
@@ -2254,6 +2344,10 @@ function useClassMethods(module: TypeDoc.DeclarationReflection) {
         !c.flags.isExternal &&
         !c.flags.isPrivate &&
         !c.flags.isProtected &&
+        !(
+          c.name === "getSSTLink" &&
+          c.sources?.[0]?.fileName.endsWith("/cloudflare/component.ts")
+        ) &&
         c.signatures &&
         !c.signatures[0].comment?.modifierTags.has("@internal") &&
         !c.signatures[0].comment?.blockTags.find((t) => t.tag === "@deprecated")
@@ -2266,6 +2360,50 @@ function useClassMethodByName(
   return useClass(module)
     .getChildrenByKind(TypeDoc.ReflectionKind.Method)
     .find((c) => !c.flags.isExternal && c.signatures?.[0].name === methodName);
+}
+function useLinkDefinitionMethod(module: TypeDoc.DeclarationReflection) {
+  const linkDefinition = useClass(module)
+    .getChildrenByKind(TypeDoc.ReflectionKind.Method)
+    .find(
+      (method) =>
+        method.name === "getLinkDefinition" &&
+        isConcreteCloudflareLinkDefinition(method)
+    );
+  if (linkDefinition) return linkDefinition;
+  return useClassMethodByName(module, "getSSTLink");
+}
+function isConcreteCloudflareLinkDefinition(
+  method?: TypeDoc.DeclarationReflection
+) {
+  const sourceFile = method?.sources?.[0]?.fileName;
+  return Boolean(
+    sourceFile?.includes("/components/cloudflare/") &&
+      !sourceFile.endsWith("/cloudflare/component.ts")
+  );
+}
+function useClassLinkProperty(
+  module: TypeDoc.DeclarationReflection,
+  name: string
+) {
+  return (useClass(module).children ?? []).find(
+    (child) =>
+      child.name === name &&
+      (child.kind === TypeDoc.ReflectionKind.Property ||
+        child.kind === TypeDoc.ReflectionKind.Accessor) &&
+      !child.flags.isExternal &&
+      !child.flags.isProtected &&
+      !child.flags.isPrivate
+  );
+}
+function useClassBindingProperty(module: TypeDoc.DeclarationReflection) {
+  const classSource = useClass(module).sources?.[0]?.fileName;
+  return (useClass(module).children ?? []).find(
+    (child) =>
+      child.name === "binding" &&
+      child.flags.isProtected &&
+      child.sources?.[0]?.fileName === classSource &&
+      !child.sources[0].fileName.endsWith("/cloudflare/component.ts")
+  );
 }
 function useClassGetters(module: TypeDoc.DeclarationReflection) {
   return (useClass(module).children ?? []).filter(
@@ -2527,9 +2665,11 @@ async function buildComponents() {
       "../platform/src/components/aws/workflow.ts",
       "../platform/src/components/cloudflare/ai.ts",
       "../platform/src/components/cloudflare/astro.ts",
+      "../platform/src/components/cloudflare/auth.ts",
       "../platform/src/components/cloudflare/bucket.ts",
       "../platform/src/components/cloudflare/cron.ts",
       "../platform/src/components/cloudflare/d1.ts",
+      "../platform/src/components/cloudflare/durable-object.ts",
       "../platform/src/components/cloudflare/hyperdrive.ts",
       "../platform/src/components/cloudflare/kv.ts",
       "../platform/src/components/cloudflare/queue.ts",
