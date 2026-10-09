@@ -270,6 +270,40 @@ describe("Service with external ALB", function () {
   });
 
   describe("multiple containers", () => {
+    it("registers dev commands only for containers with a dev command", async () => {
+      createdResources.length = 0;
+      // @ts-ignore — Service checks $dev to decide dev mode
+      global.$dev = true;
+
+      try {
+        new Service("DevMultiContainerService", {
+          cluster,
+          dev: { command: "npm run dev" },
+          containers: [
+            {
+              name: "api",
+              image: { context: "./api" },
+            },
+            {
+              name: "sidecar",
+              image: { context: "./worker" },
+            },
+          ],
+        });
+
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      } finally {
+        // @ts-ignore — Restore the default used by the other tests
+        global.$dev = false;
+      }
+
+      const devCommands = createdResources.filter(
+        (resource) => resource.type === "sst:sst:DevCommand",
+      );
+      expect(devCommands).toHaveLength(1);
+      expect(devCommands[0].name).toBe("DevMultiContainerServiceDev");
+    });
+
     it("creates service with container field in rules", async () => {
       const service = new Service("MultiContainerService", {
         cluster,
