@@ -515,6 +515,7 @@ var root = &cli.Command{
 		},
 		CmdDeploy,
 		CmdDiff,
+		CmdTypes,
 		{
 			Name: "add",
 			Description: cli.Description{
