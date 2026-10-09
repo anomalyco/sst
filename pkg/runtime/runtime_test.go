@@ -55,6 +55,43 @@ func TestBuildInputOut(t *testing.T) {
 	})
 }
 
+func TestCollectionBuildCustomBundle(t *testing.T) {
+	projectDir := t.TempDir()
+	absoluteBundle := filepath.Join(t.TempDir(), "dist")
+	tests := []struct {
+		name   string
+		bundle string
+		want   string
+	}{
+		{
+			name:   "relative path",
+			bundle: "./dist",
+			want:   filepath.Join(projectDir, "dist"),
+		},
+		{
+			name:   "absolute path",
+			bundle: absoluteBundle,
+			want:   absoluteBundle,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input := &runtime.BuildInput{
+				CfgPath: filepath.Join(projectDir, "sst.config.ts"),
+				Bundle:  tt.bundle,
+				Handler: "lambda.handler",
+			}
+
+			result, err := runtime.NewCollection(input.CfgPath).Build(context.Background(), input)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, result.Out)
+			assert.True(t, filepath.IsAbs(result.Out))
+			assert.Equal(t, filepath.Join(tt.want, "lambda.handler"), filepath.Join(result.Out, result.Handler))
+		})
+	}
+}
+
 func TestCollectionRuntime(t *testing.T) {
 	t.Run("matching runtime found", func(t *testing.T) {
 		mr := &mockRuntime{matchFn: func(r string) bool { return r == "nodejs" }}
