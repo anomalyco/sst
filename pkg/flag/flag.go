@@ -24,6 +24,7 @@ var SST_EXPERIMENTAL = isTrue("SST_EXPERIMENTAL") || isTrue("SST_EXPERIMENTAL_RU
 var SST_RUN_ID = os.Getenv("SST_RUN_ID")
 var SST_SKIP_APPSYNC = isTrue("SST_SKIP_APPSYNC")
 var SST_NO_BUN = isTrue("NO_BUN") || isTrue("SST_NO_BUN")
+var SST_HOOK_TIMEOUT = os.Getenv("SST_HOOK_TIMEOUT")
 
 func isTrue(name string) bool {
 	val, ok := os.LookupEnv(name)
