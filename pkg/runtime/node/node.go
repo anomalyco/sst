@@ -94,18 +94,31 @@ func (w *Worker) Logs() io.ReadCloser {
 
 	var wg sync.WaitGroup
 	wg.Add(2)
-	go func() {
+
+	copyStream := func(dst io.Writer, src io.Reader) {
 		defer wg.Done()
-		_, _ = io.Copy(writer, w.stdout)
-	}()
-	go func() {
-		defer wg.Done()
-		_, _ = io.Copy(writer, w.stderr)
-	}()
+		buf := make([]byte, 32*1024)
+		for {
+			nr, err := src.Read(buf)
+			if nr > 0 {
+				nw, werr := dst.Write(buf[0:nr])
+				if werr != nil || nw != nr {
+					return
+				}
+			}
+			if err != nil {
+				// Pipe closed or process died, stop copying
+				return
+			}
+		}
+	}
+
+	go copyStream(writer, w.stdout)
+	go copyStream(writer, w.stderr)
 
 	go func() {
 		wg.Wait()
-		defer writer.Close()
+		writer.Close()
 	}()
 
 	return reader
