@@ -198,13 +198,13 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 	}
 
 	if input.Dev {
-		match, ok := r.contexts.Load(input.FunctionID)
-		if !ok {
-			match, _ = esbuild.Context(options)
-			r.contexts.Store(input.FunctionID, match)
+		buildContext, ctxErr := r.acquireContext(input.FunctionID, options)
+		if ctxErr != nil {
+			return nil, ctxErr
 		}
-		result = match.(esbuild.BuildContext).Rebuild()
-		r.results.Store(input.FunctionID, result)
+		result = buildContext.Rebuild()
+		r.releaseContext(input.FunctionID)
+		r.storeInputs(input.FunctionID, result.Metafile)
 	}
 	log.Info("esbuild finished")
 
