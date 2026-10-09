@@ -18,7 +18,7 @@
     "@types/aws-lambda": "8.10.145"
   },
   "dependencies": {
-    "@aws/durable-execution-sdk-js": "1.0.2",
+    "@aws/durable-execution-sdk-js": "^2.6.0",
     "@aws-sdk/client-lambda": "^3.714.0"
   }
 }
