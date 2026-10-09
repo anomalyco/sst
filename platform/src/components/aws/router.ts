@@ -1613,10 +1613,7 @@ export class Router extends Component implements Link.Linkable {
           return {
             include: (l.include ?? "all") as "all" | "blocked",
             retention: (l.retention ?? "1 month") as keyof typeof RETENTION,
-            redact:
-              redact === false
-                ? undefined
-                : redact ?? defaultRedact,
+            redact: redact === false ? undefined : redact ?? defaultRedact,
           };
         });
     }
@@ -2537,8 +2534,8 @@ async function handler(event) {
     url: Input<string>,
     args?: Input<RouterUrlRouteArgs>,
   ) {
-    all([pattern, args, this.hasInlineRoutes]).apply(
-      ([pattern, args, hasInlineRoutes]) => {
+    all([pattern, args, this.hasInlineRoutes, this._protectionMode]).apply(
+      ([pattern, args, hasInlineRoutes, protection]) => {
         if (hasInlineRoutes)
           throw new VisibleError(
             "Cannot use both `routes` and `.route()` function to add routes.",
@@ -2552,6 +2549,7 @@ async function handler(event) {
             pattern,
             url,
             routeArgs: args,
+            protection,
           },
           { provider: this.constructorOpts.provider },
         );
