@@ -5,11 +5,19 @@ import {
 } from "@pulumi/pulumi";
 import { Component, Transform, transform } from "../component";
 import { Link } from "../link";
-import { FunctionArgs, Function, Dynamo, CdnArgs, Router, RouterArgs } from ".";
+import {
+  FunctionArgs,
+  Function,
+  Dynamo,
+  CdnArgs,
+  Router,
+  RouterArgs,
+} from ".";
 import { functionBuilder } from "./helpers/function-builder";
 import { env } from "../linkable";
 import { Auth as AuthV1 } from "./auth-v1";
 import { Input } from "../input";
+import { createAuthTable } from "./auth/shared";
 
 export interface AuthArgs {
   /**
@@ -282,7 +290,7 @@ export class Auth extends Component implements Link.Linkable {
       forceUpgrade: args.forceUpgrade,
     });
 
-    const table = createTable();
+    const table = createAuthTable(name, { parent: self });
     const issuer = createIssuer();
     const router = createRouter();
 
@@ -295,18 +303,6 @@ export class Auth extends Component implements Link.Linkable {
       self.registerOutputs({
         _hint: self.url,
       });
-    }
-
-    function createTable() {
-      return new Dynamo(
-        `${name}Storage`,
-        {
-          fields: { pk: "string", sk: "string" },
-          primaryIndex: { hashKey: "pk", rangeKey: "sk" },
-          ttl: "expiry",
-        },
-        { parent: self },
-      );
     }
 
     function createIssuer() {
