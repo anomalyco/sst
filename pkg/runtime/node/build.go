@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -453,9 +454,7 @@ func parseBunCatalogSource(data []byte) (catalogSource, bool, error) {
 			if source.Catalogs == nil {
 				source.Catalogs = map[string]map[string]string{}
 			}
-			for name, catalog := range workspaceSource.Catalogs {
-				source.Catalogs[name] = catalog
-			}
+			maps.Copy(source.Catalogs, workspaceSource.Catalogs)
 		}
 	}
 	if source.Catalog == nil && len(source.Catalogs) == 0 {
