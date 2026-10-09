@@ -7,8 +7,9 @@ import {
   toMilliseconds,
 } from "../duration";
 import { WorkerBuilder, workerBuilder } from "./helpers/worker-builder";
-import { WorkerArgs } from "./worker";
+import { Worker, WorkerArgs } from "./worker";
 import { DEFAULT_ACCOUNT_ID } from "./account-id";
+import { VisibleError } from "../error";
 
 export interface QueueWorkerSubscriberArgs {
   /**
@@ -21,9 +22,10 @@ export interface QueueWorkerSubscriberArgs {
     id: Input<string>;
   }>;
   /**
-   * The subscriber worker.
+   * The subscriber worker. Accepts a handler path, full worker props, or an
+   * existing Cloudflare Worker.
    */
-  subscriber: Input<string | WorkerArgs>;
+  subscriber: Input<string | WorkerArgs> | Worker;
   /**
    * The Cloudflare account ID to use for this subscriber and its consumer.
    * Overrides the default account ID set via `CLOUDFLARE_DEFAULT_ACCOUNT_ID`.
@@ -133,9 +135,21 @@ export class QueueWorkerSubscriber extends Component {
     this.consumer = consumer;
 
     function createWorker() {
+      if (args.subscriber instanceof Worker) {
+        if (args.transform?.worker)
+          throw new VisibleError(
+            `Cannot transform the "${name}" Worker because it is already created.`,
+          );
+
+        return output({
+          getWorker: () => args.subscriber as Worker,
+          script: args.subscriber.nodes.worker,
+        });
+      }
+
       return workerBuilder(
         `${name}Function`,
-        args.subscriber,
+        args.subscriber as Input<string | WorkerArgs>,
         args.transform?.worker,
         { parent: self },
         accountId,

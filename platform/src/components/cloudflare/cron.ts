@@ -2,7 +2,7 @@ import { all, ComponentResourceOptions, Output } from "@pulumi/pulumi";
 import * as cf from "@pulumi/cloudflare";
 import * as cloudflare from "@pulumi/cloudflare";
 import { Component, Transform, transform } from "../component";
-import { WorkerArgs } from "./worker";
+import { Worker, WorkerArgs } from "./worker";
 import { DEFAULT_ACCOUNT_ID } from "./account-id.js";
 import { Input } from "../input.js";
 import { WorkerBuilder, workerBuilder } from "./helpers/worker-builder";
@@ -10,31 +10,12 @@ import { VisibleError } from "../error";
 
 export interface CronArgs {
   /**
-   * The worker that'll be executed when the cron job runs.
+   * The worker that's executed when the cron job runs.
    * @deprecated Use `worker` instead.
-   *
-   * @example
-   *
-   * ```ts
-   * {
-   *   job: "src/cron.ts"
-   * }
-   * ```
-   *
-   * You can pass in the full worker props.
-   *
-   * ```ts
-   * {
-   *   job: {
-   *     handler: "src/cron.ts",
-   *     link: [bucket]
-   *   }
-   * }
-   * ```
    */
-  job?: Input<string | WorkerArgs>;
+  job?: Input<string | WorkerArgs> | Worker;
   /**
-   * The worker that'll be executed when the cron job runs.
+   * The worker that's executed when the cron job runs.
    *
    * @example
    *
@@ -44,7 +25,7 @@ export interface CronArgs {
    * }
    * ```
    *
-   * You can pass in the full worker props.
+   * Pass full worker props.
    *
    * ```ts
    * {
@@ -54,8 +35,16 @@ export interface CronArgs {
    *   }
    * }
    * ```
+   *
+   * Or pass an existing worker.
+   *
+   * ```ts
+   * {
+   *   worker
+   * }
+   * ```
    */
-  worker?: Input<string | WorkerArgs>;
+  worker?: Input<string | WorkerArgs> | Worker;
   /**
    * The schedule for the cron job.
    *
@@ -115,7 +104,7 @@ export interface CronArgs {
  * };
  * ```
  *
- * Pass in a `schedules` and a `worker` that'll be executed.
+ * Pass `schedules` and a `worker`.
  *
  * ```ts title="sst.config.ts"
  * new sst.cloudflare.Cron("MyCronJob", {
@@ -124,15 +113,28 @@ export interface CronArgs {
  * });
  * ```
  *
- * #### Customize the worker
+ * #### Pass full worker props
  *
- * ```js title="sst.config.ts"
+ * ```ts title="sst.config.ts"
  * new sst.cloudflare.Cron("MyCronJob", {
  *   schedules: ["* * * * *"],
  *   worker: {
  *     handler: "cron.ts",
  *     link: [bucket]
  *   }
+ * });
+ * ```
+ *
+ * #### Use an existing worker
+ *
+ * ```ts title="sst.config.ts"
+ * const worker = new sst.cloudflare.Worker("MyWorker", {
+ *   handler: "worker.ts"
+ * });
+ *
+ * new sst.cloudflare.Cron("MyCronJob", {
+ *   schedules: ["* * * * *"],
+ *   worker
  * });
  * ```
  */
@@ -164,7 +166,19 @@ export class Cron extends Component {
         throw new VisibleError(
           `You must provide a "worker" for the "${name}" Cron component.`,
         );
-      return workerBuilder(`${name}Handler`, workerArgs, undefined, undefined, args.accountId);
+      if (workerArgs instanceof Worker)
+        return all([workerArgs.nodes.worker]).apply(([script]) => ({
+          getWorker: () => workerArgs,
+          script,
+        }));
+
+      return workerBuilder(
+        `${name}Handler`,
+        workerArgs as Input<string | WorkerArgs>,
+        undefined,
+        undefined,
+        args.accountId,
+      );
     }
 
     function createTrigger() {

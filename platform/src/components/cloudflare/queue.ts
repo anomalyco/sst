@@ -4,7 +4,7 @@ import { Component, Transform, transform } from "../component";
 import { Link } from "../link";
 import { binding } from "./binding";
 import { DEFAULT_ACCOUNT_ID } from "./account-id";
-import { WorkerArgs } from "./worker";
+import { Worker, WorkerArgs } from "./worker";
 import { VisibleError } from "../error";
 import { QueueWorkerSubscriber } from "./queue-worker-subscriber";
 import { DurationMinutes, DurationSeconds } from "../duration";
@@ -168,6 +168,17 @@ export interface QueueSubscribeArgs {
  *   link: [bucket],
  * });
  * ```
+ *
+ * #### Subscribe with an existing worker
+ *
+ * ```ts title="sst.config.ts"
+ * const worker = new sst.cloudflare.Worker("MyWorker", {
+ *   handler: "worker.ts",
+ *   link: [queue],
+ * });
+ *
+ * queue.subscribe(worker);
+ * ```
  */
 export class Queue extends Component implements Link.Linkable {
   private queue: cloudflare.Queue;
@@ -204,7 +215,7 @@ export class Queue extends Component implements Link.Linkable {
   }
 
   /**
-   * Subscribe to the queue with a worker.
+   * Subscribe with a worker.
    *
    * @param subscriber The worker that'll process messages from the queue.
    * @param args Configure the subscription.
@@ -218,7 +229,7 @@ export class Queue extends Component implements Link.Linkable {
    * queue.subscribe("consumer.ts");
    * ```
    *
-   * Pass in full worker props.
+   * Pass full worker props.
    *
    * ```ts title="sst.config.ts"
    * const bucket = new sst.cloudflare.Bucket("MyBucket");
@@ -227,6 +238,17 @@ export class Queue extends Component implements Link.Linkable {
    *   handler: "consumer.ts",
    *   link: [bucket],
    * });
+   * ```
+   *
+   * Pass an existing worker.
+   *
+   * ```ts title="sst.config.ts"
+   * const worker = new sst.cloudflare.Worker("MyWorker", {
+   *   handler: "worker.ts",
+   *   link: [queue],
+   * });
+   *
+   * queue.subscribe(worker);
    * ```
    *
    * Configure batch settings.
@@ -241,7 +263,7 @@ export class Queue extends Component implements Link.Linkable {
    * ```
    */
   public subscribe(
-    subscriber: Input<string | WorkerArgs>,
+    subscriber: Input<string | WorkerArgs> | Worker,
     args?: QueueSubscribeArgs,
     opts?: ComponentResourceOptions,
   ) {
