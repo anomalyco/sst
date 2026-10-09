@@ -25,7 +25,7 @@ export interface Args extends RealtimeSubscriberArgs {
   /**
    * The subscriber function.
    */
-  subscriber: Input<string | FunctionArgs>;
+  subscriber: Input<string | Function | FunctionArgs>;
 }
 
 /**

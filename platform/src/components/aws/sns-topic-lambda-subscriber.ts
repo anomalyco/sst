@@ -24,7 +24,7 @@ export interface Args extends SnsTopicSubscriberArgs {
   /**
    * The subscriber function.
    */
-  subscriber: Input<string | FunctionArgs>;
+  subscriber: Input<string | Function | FunctionArgs>;
 }
 
 /**

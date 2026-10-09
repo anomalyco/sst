@@ -6,7 +6,7 @@ import {
   output,
 } from "@pulumi/pulumi";
 import { Component, Transform, transform } from "../component";
-import { FunctionArgs, FunctionArn } from "./function.js";
+import { Function, FunctionArgs, FunctionArn } from "./function.js";
 import { apigatewayv2, lambda } from "@pulumi/aws";
 import {
   ApiGatewayV2BaseRouteArgs,
@@ -20,7 +20,7 @@ export interface Args extends ApiGatewayV2BaseRouteArgs {
    *
    * Takes the handler path, the function args, or a function ARN.
    */
-  handler: Input<string | FunctionArgs | FunctionArn>;
+  handler: Input<string | Function | FunctionArgs | FunctionArn>;
   /**
    * The resources to link to the route function.
    */

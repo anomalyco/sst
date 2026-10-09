@@ -33,7 +33,7 @@ export interface AuthArgs {
    * }
    * ```
    */
-  authorizer?: Input<string | FunctionArgs>;
+  authorizer?: Input<string | Function | FunctionArgs>;
   /**
    * The function that's running your OpenAuth server.
    *
@@ -78,7 +78,7 @@ export interface AuthArgs {
    * Learn more on the [OpenAuth docs](https://openauth.js.org/docs/issuer/) on how to configure
    * the `issuer` function.
    */
-  issuer?: Input<string | FunctionArgs>;
+  issuer?: Input<string | Function | FunctionArgs>;
   /**
    * Set a custom domain for your Auth server.
    *

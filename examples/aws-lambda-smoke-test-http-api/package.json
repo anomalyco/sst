@@ -1,0 +1,7 @@
+{
+  "name": "aws-lambda-smoke-test-http-api",
+  "private": true,
+  "dependencies": {
+    "sst": "^4"
+  }
+}

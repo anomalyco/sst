@@ -1,15 +1,17 @@
 import { Input, output } from "@pulumi/pulumi";
-import { FunctionArgs, FunctionArn } from "../function.js";
+import { Function, FunctionArgs, FunctionArn } from "../function.js";
 import { Queue } from "../queue";
 
 export function isFunctionSubscriber(
-  subscriber?: Input<string | FunctionArgs | FunctionArn>,
+  subscriber?: Input<string | Function | FunctionArgs | FunctionArn>,
 ) {
   if (!subscriber) return output(false);
 
   return output(subscriber).apply(
     (subscriber) =>
-      typeof subscriber === "string" || typeof subscriber.handler === "string",
+      typeof subscriber === "string" ||
+      subscriber instanceof Function ||
+      typeof subscriber.handler === "string",
   );
 }
 

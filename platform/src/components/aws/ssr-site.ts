@@ -1081,6 +1081,7 @@ async function handler(event) {
               {
                 action: "lambda:InvokeFunctionUrl",
                 function: server.nodes.function.name,
+                qualifier: server.qualifier.apply((q) => q!),
                 principal: "*",
                 functionUrlAuthType: "NONE",
               },
@@ -1095,6 +1096,7 @@ async function handler(event) {
               {
                 action: "lambda:InvokeFunctionUrl",
                 function: server.nodes.function.name,
+                qualifier: server.qualifier.apply((q) => q!),
                 principal: "cloudfront.amazonaws.com",
                 sourceArn: distributionArn,
               },
@@ -1105,6 +1107,7 @@ async function handler(event) {
               {
                 action: "lambda:InvokeFunction",
                 function: server.nodes.function.name,
+                qualifier: server.qualifier.apply((q) => q!),
                 principal: "cloudfront.amazonaws.com",
                 sourceArn: distributionArn,
                 invokedViaFunctionUrl: true,
@@ -1122,6 +1125,7 @@ async function handler(event) {
               {
                 action: "lambda:InvokeFunctionUrl",
                 function: imgOptimizer.nodes.function.name,
+                qualifier: imgOptimizer.qualifier.apply((q) => q!),
                 principal: "*",
                 functionUrlAuthType: "NONE",
               },
@@ -1136,6 +1140,7 @@ async function handler(event) {
               {
                 action: "lambda:InvokeFunctionUrl",
                 function: imgOptimizer.nodes.function.name,
+                qualifier: imgOptimizer.qualifier.apply((q) => q!),
                 principal: "cloudfront.amazonaws.com",
                 sourceArn: distributionArn,
               },
@@ -1146,6 +1151,7 @@ async function handler(event) {
               {
                 action: "lambda:InvokeFunction",
                 function: imgOptimizer.nodes.function.name,
+                qualifier: imgOptimizer.qualifier.apply((q) => q!),
                 principal: "cloudfront.amazonaws.com",
                 sourceArn: distributionArn,
                 invokedViaFunctionUrl: true,

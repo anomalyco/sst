@@ -1,0 +1,7 @@
+{
+  "name": "aws-lambda-smoke-test-router",
+  "private": true,
+  "dependencies": {
+    "sst": "^4"
+  }
+}
