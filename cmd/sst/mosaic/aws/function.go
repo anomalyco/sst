@@ -273,6 +273,9 @@ func function(ctx context.Context, input input) {
 					Line:       line,
 				})
 			}
+			if err := scanner.Err(); err != nil {
+				log.Error("failed to read worker logs", "error", err, "workerID", workerID, "functionID", functionID)
+			}
 			workerShutdownChan <- info
 		}()
 		workers[workerID] = info
@@ -380,7 +383,6 @@ func function(ctx context.Context, input input) {
 				delete(workers, info.WorkerID)
 				delete(nextChan, info.WorkerID)
 			}
-			break
 		case unknown := <-evts:
 			switch evt := unknown.(type) {
 			case *FunctionInvokedEvent:
@@ -435,7 +437,6 @@ func function(ctx context.Context, input input) {
 						restartOrDeferWorker(workerID, info)
 					}
 				}
-				break
 			}
 		}
 	}
