@@ -517,19 +517,40 @@ func (u *UI) Event(unknown interface{}) {
 						u.println(TEXT_NORMAL.Render("\n\nSet the following:"))
 					}
 					for _, diff := range importDiffs {
-						value, _ := json.Marshal(diff.Old)
+						oldValue, _ := json.MarshalIndent(diff.Old, "     ", "  ")
+						newValue, _ := json.MarshalIndent(diff.New, "     ", "  ")
 						if diff.Old == nil {
-							value = []byte("undefined")
+							oldValue = []byte("undefined")
 						}
+						if diff.New == nil {
+							newValue = []byte("undefined")
+						}
+
+						// For simple values (not objects/arrays), show them on one line
+						oldStr := string(oldValue)
+						newStr := string(newValue)
+						isComplex := strings.Contains(oldStr, "\n") || strings.Contains(newStr, "\n")
+
 						u.print(TEXT_NORMAL.Render("   - "))
 						if isSSTComponent {
-							u.print(TEXT_INFO.Render("`args." + string(diff.Input) + " = " + string(value) + ";`"))
+							if isComplex {
+								u.println(TEXT_INFO.Render("`args." + string(diff.Input) + " = " + oldStr + ";`"))
+								u.println(TEXT_DIM.Render("     Trying to set: " + newStr))
+							} else {
+								u.println(TEXT_INFO.Render("`args." + string(diff.Input) + " = " + oldStr + ";`"))
+							}
 						}
 						if !isSSTComponent {
-							u.print(TEXT_INFO.Render("`" + string(diff.Input) + ": " + string(value) + ",`"))
+							if isComplex {
+								u.println(TEXT_INFO.Render("`" + string(diff.Input) + ": " + oldStr + ",`"))
+								u.println(TEXT_DIM.Render("     Trying to set: " + newStr))
+							} else {
+								u.println(TEXT_INFO.Render("`" + string(diff.Input) + ": " + oldStr + ",`"))
+							}
 						}
 						u.blank()
 					}
+					u.println(TEXT_DIM.Render("   For more details, check: .sst/log/pulumi.log"))
 				} else {
 					u.blank()
 				}
