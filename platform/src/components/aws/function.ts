@@ -1312,6 +1312,12 @@ export interface FunctionArgs {
   /**
    * Enable versioning for the function.
    *
+   * :::caution
+   * If you're wiring this function to an event source by passing its ARN,
+   * use `fn.targetArn` rather than `fn.arn`. Using `fn.arn` invokes
+   * `$LATEST` and bypasses the alias that routes to the published version.
+   * :::
+   *
    * :::note
    * Durable functions enable this by default.
    * :::
@@ -1479,6 +1485,12 @@ export interface FunctionArgs {
    * This property is meant to be used internally by [Workflow](/docs/component/aws/workflow).
    * Prefer the component if you want to use the [SDK](/docs/component/aws/workflow#sdk) or if you are not very familiar with durable functions limitations.
    * :::
+   *
+   * :::caution
+   * If you're wiring this function to an event source by passing its ARN,
+   * use `fn.targetArn` rather than `fn.arn`. Using `fn.arn` invokes
+   * `$LATEST` and bypasses the alias that routes to the published version.
+   * :::
    */
   durable?:
     | boolean
@@ -1503,6 +1515,11 @@ export interface FunctionArgs {
      * Transform the Lambda Function resource.
      */
     function?: Transform<lambda.FunctionArgs>;
+    /**
+     * Transform the Lambda Alias resource. This is only created when versioning
+     * is enabled (via `versioning: true` or `durable: true`).
+     */
+    alias?: Transform<lambda.AliasArgs>;
     /**
      * Transform the IAM Role resource.
      */
@@ -1718,6 +1735,8 @@ export class Function extends Component implements Link.Linkable {
   private logGroup: Output<cloudwatch.LogGroup | undefined>;
   private urlEndpoint: Output<string | undefined>;
   private eventInvokeConfig?: lambda.FunctionEventInvokeConfig;
+  private alias: Output<lambda.Alias | undefined>;
+  private isVersioningEnabled: Output<boolean>;
 
   private static readonly encryptionKey = lazy(
     () =>
@@ -1787,7 +1806,8 @@ export class Function extends Component implements Link.Linkable {
     const logGroup = createLogGroup();
     const zipAsset = createZipAsset();
     const fn = createFunction();
-    const urlEndpoint = createUrl();
+    const isVersioningEnabled = fn.publish.apply((publish) => Boolean(publish));
+    const alias = createLatestAlias();
     createProvisioned();
     const eventInvokeConfig = createEventInvokeConfig();
 
@@ -1796,8 +1816,14 @@ export class Function extends Component implements Link.Linkable {
     this.function = fn;
     this.role = role;
     this.logGroup = logGroup;
-    this.urlEndpoint = urlEndpoint;
     this.eventInvokeConfig = eventInvokeConfig;
+    this.alias = alias;
+    this.isVersioningEnabled = isVersioningEnabled;
+
+    const urlEndpoint = this.qualifier.apply((qualifier) =>
+      createUrl(qualifier),
+    );
+    this.urlEndpoint = urlEndpoint;
 
     const buildInput = output({
       functionID: name,
@@ -2708,7 +2734,25 @@ export class Function extends Component implements Link.Linkable {
       );
     }
 
-    function createUrl() {
+    function createLatestAlias() {
+      return isVersioningEnabled.apply((isVersioningEnabled) => {
+        if (!isVersioningEnabled) return;
+
+        return new lambda.Alias(
+          ...transform(
+            args.transform?.alias,
+            `${name}LatestAlias`,
+            {
+              functionName: fn.name,
+              functionVersion: fn.version,
+            },
+            { parent },
+          ),
+        );
+      });
+    }
+
+    function createUrl(qualifier: string | undefined) {
       return url.apply((url) => {
         if (url === undefined) return output(undefined);
 
@@ -2720,23 +2764,10 @@ export class Function extends Component implements Link.Linkable {
           ([oac, authorization]) => oac || authorization === "iam",
         );
 
-        /**
-         * Lambda Function URLs only accept alias names in the explicit `qualifier`
-         * field. Durable functions with URLs therefore need an alias target here,
-         * even when the underlying function is still on `$LATEST`.
-         * See https://github.com/hashicorp/terraform-provider-aws/issues/31459
-         */
-        const qualifier = durable
-          ? new lambda.Alias(`${name}Durable`, {
-              functionName: fn.arn,
-              functionVersion: fn.version,
-            }).name
-          : undefined;
-
         const fnUrl = new lambda.FunctionUrl(
           `${name}Url`,
           {
-            functionName: durable ? fn.arn : fn.name,
+            functionName: fn.name,
             qualifier,
             authorizationType: isIam.apply((isIam) =>
               isIam ? "AWS_IAM" : "NONE",
@@ -2746,7 +2777,7 @@ export class Function extends Component implements Link.Linkable {
             ),
             cors: url.cors,
           },
-          { parent },
+          { parent, deleteBeforeReplace: false },
         );
 
         if (!url.route) {
@@ -2758,6 +2789,7 @@ export class Function extends Component implements Link.Linkable {
               {
                 action: "lambda:InvokeFunctionUrl",
                 function: fn.name,
+                qualifier,
                 principal: "*",
                 functionUrlAuthType: "NONE",
               },
@@ -2768,6 +2800,7 @@ export class Function extends Component implements Link.Linkable {
               {
                 action: "lambda:InvokeFunction",
                 function: fn.name,
+                qualifier,
                 principal: "*",
                 invokedViaFunctionUrl: true,
               },
@@ -2786,6 +2819,7 @@ export class Function extends Component implements Link.Linkable {
                 {
                   action: "lambda:InvokeFunctionUrl",
                   function: fn.name,
+                  qualifier,
                   principal: "cloudfront.amazonaws.com",
                   sourceArn: distributionArn,
                 },
@@ -2796,6 +2830,7 @@ export class Function extends Component implements Link.Linkable {
                 {
                   action: "lambda:InvokeFunction",
                   function: fn.name,
+                  qualifier,
                   principal: "cloudfront.amazonaws.com",
                   sourceArn: distributionArn,
                   invokedViaFunctionUrl: true,
@@ -2808,6 +2843,7 @@ export class Function extends Component implements Link.Linkable {
                 {
                   action: "lambda:InvokeFunctionUrl",
                   function: fn.name,
+                  qualifier,
                   principal: "*",
                   functionUrlAuthType: "NONE",
                 },
@@ -2818,6 +2854,7 @@ export class Function extends Component implements Link.Linkable {
                 {
                   action: "lambda:InvokeFunction",
                   function: fn.name,
+                  qualifier,
                   principal: "*",
                   invokedViaFunctionUrl: true,
                 },
@@ -2960,6 +2997,10 @@ export class Function extends Component implements Link.Linkable {
        * The Function Event Invoke Config resource if retries are configured.
        */
       eventInvokeConfig: this.eventInvokeConfig,
+      /**
+       * The Lambda Alias. Available when `versioning` or `durable` is enabled.
+       */
+      alias: this.alias,
     };
   }
 
@@ -2991,18 +3032,21 @@ export class Function extends Component implements Link.Linkable {
     return this.function.arn;
   }
 
-  /** @internal */
-  private get useQualifiedTarget() {
-    return this.function.publish.apply(
-      (publish) => (publish ?? false) || this.durable,
-    );
-  }
-
-  /** @internal */
+  /**
+   * The ARN to use when wiring this function to an event source.
+   *
+   * When versioning is enabled, this points to the Lambda alias that routes
+   * to the currently published version. Otherwise it falls back to the
+   * function ARN.
+   *
+   * Prefer this over `arn` when passing the function to an event source, so
+   * invocations go through the alias instead of `$LATEST`.
+   */
   public get targetArn() {
-    return this.useQualifiedTarget.apply((useQualifiedTarget) =>
-      useQualifiedTarget ? this.function.qualifiedArn : this.arn,
-    );
+    return this.alias.apply((alias) => {
+      if (alias) return alias.arn;
+      return this.function.arn;
+    });
   }
 
   /** @internal */
@@ -3014,23 +3058,21 @@ export class Function extends Component implements Link.Linkable {
 
   /** @internal */
   public get targetInvokeArn() {
-    return this.useQualifiedTarget.apply((useQualifiedTarget) =>
-      useQualifiedTarget
-        ? this.function.qualifiedInvokeArn
-        : this.function.invokeArn,
+    return this.alias.apply((alias) =>
+      alias ? alias.invokeArn : this.function.invokeArn,
     );
   }
 
   /** @internal */
   public get targetResponseStreamingInvokeArn() {
-    return this.useQualifiedTarget.apply((useQualifiedTarget) =>
-      useQualifiedTarget
+    return this.alias.apply((alias) =>
+      alias
         ? all([
             this.arn,
-            this.function.qualifiedArn,
+            alias.arn,
             this.function.responseStreamingInvokeArn,
-          ]).apply(([arn, qualifiedArn, responseStreamingInvokeArn]) =>
-            responseStreamingInvokeArn.replace(arn, qualifiedArn),
+          ]).apply(([arn, aliasArn, responseStreamingInvokeArn]) =>
+            responseStreamingInvokeArn.replace(arn, aliasArn),
           )
         : this.function.responseStreamingInvokeArn,
     );
@@ -3119,11 +3161,7 @@ export class Function extends Component implements Link.Linkable {
       properties: {
         name: this.name,
         url: this.urlEndpoint,
-        ...(this.durable
-          ? {
-              qualifier: this.qualifier,
-            }
-          : {}),
+        qualifier: this.qualifier,
       },
       include: [
         permission({
@@ -3141,7 +3179,13 @@ export class Function extends Component implements Link.Linkable {
                 ]
               : []),
           ],
-          resources: [this.durable ? interpolate`${this.arn}:*` : this.arn],
+          resources: this.isVersioningEnabled.apply((isVersioningEnabled) =>
+            this.durable
+              ? [interpolate`${this.arn}:*`]
+              : isVersioningEnabled
+                ? [this.arn, interpolate`${this.arn}:*`]
+                : [this.arn],
+          ),
         }),
       ],
     };

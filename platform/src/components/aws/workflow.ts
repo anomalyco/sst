@@ -272,7 +272,12 @@ export interface WorkflowArgs
  * ID generation inside durable operations like `ctx.step()`.
  *
  * :::caution
- * Workflow handlers have versioning enabled. Deploying an update won't update existing running workflows.
+ * The workflow SDK invokes the handler through an alias. Each execution is pinned
+ * to the version the alias points to when it starts, and stays pinned across resumes
+ * and retries — so deploying an update won't affect already-running workflows.
+ *
+ * To resume on the latest code, invoke the function directly via the Lambda SDK
+ * with the `$LATEST` qualifier. Not recommended for production.
  * :::
  *
  * Before using workflows in production, review the
