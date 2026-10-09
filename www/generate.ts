@@ -2489,6 +2489,7 @@ async function buildComponents() {
       "../platform/src/components/aws/dynamo-lambda-subscriber.ts",
       "../platform/src/components/aws/efs.ts",
       "../platform/src/components/aws/email.ts",
+      "../platform/src/components/aws/image.ts",
       "../platform/src/components/aws/function.ts",
       "../platform/src/components/aws/mysql.ts",
       "../platform/src/components/aws/postgres.ts",
