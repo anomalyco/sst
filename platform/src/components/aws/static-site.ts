@@ -37,6 +37,8 @@ import {
 import { DistributionInvalidation } from "./providers/distribution-invalidation.js";
 import { VisibleError } from "../error.js";
 import { KvRoutesUpdate } from "./providers/kv-routes-update.js";
+import { OriginAccessControl } from "./providers/origin-access-control.js";
+import { physicalName } from "../naming.js";
 import { toPosix } from "../path.js";
 
 export interface StaticSiteArgs extends BaseStaticSiteArgs {
@@ -1163,6 +1165,14 @@ async function handler(event) {
       });
     }
 
+    function createOriginAccessControl() {
+      return new OriginAccessControl(
+        `${name}S3AccessControl`,
+        { name: physicalName(64, name) },
+        { parent: self, ignoreChanges: ["name"] },
+      );
+    }
+
     function createDistribution() {
       return new Cdn(
         ...transform(
@@ -1171,17 +1181,14 @@ async function handler(event) {
           {
             comment: `${name} site`,
             domain: args.domain,
+            // CloudFront fetches custom error pages without running the
+            // viewer request function, so the default origin has to be the
+            // bucket itself rather than a placeholder.
             origins: [
               {
                 originId: "default",
-                domainName: "placeholder.sst.dev",
-                customOriginConfig: {
-                  httpPort: 80,
-                  httpsPort: 443,
-                  originProtocolPolicy: "https-only",
-                  originReadTimeout: 20,
-                  originSslProtocols: ["TLSv1.2"],
-                },
+                domainName: bucketDomain,
+                originAccessControlId: createOriginAccessControl().id,
               },
             ],
             defaultCacheBehavior: {
@@ -1214,13 +1221,21 @@ async function handler(event) {
               args.errorPage,
               errorPage,
               route,
-            ]).apply(([hasCustomErrorPage, errorPage, route]) => {
+              assets.path,
+            ]).apply(([hasCustomErrorPage, errorPage, route, assetsPath]) => {
               if (!hasCustomErrorPage) return [];
               const base =
                 route?.pathPrefix && route.pathPrefix !== "/"
                   ? route.pathPrefix
                   : "/";
-              const pagePath = path.posix.join(base, errorPage);
+              // Error page fetches skip the viewer request function, which is
+              // what prepends the assets path for every other request
+              const pagePath = path.posix.join(
+                "/",
+                assetsPath ?? "",
+                base,
+                errorPage,
+              );
 
               return [
                 {
