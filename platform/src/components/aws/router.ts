@@ -1763,6 +1763,9 @@ export class Router extends Component implements Link.Linkable {
 
           normalizedRoutes["/*"] = normalizedRoutes["/*"] ?? {
             url: "https://do-not-exist.sst.dev",
+            edge: {
+              viewerRequest: { injection: CF_ROUTER_NOT_FOUND_INJECTION },
+            },
           };
 
           return normalizedRoutes;
@@ -2725,6 +2728,19 @@ Router.__pulumiType = __pulumiType;
 // We reserve 512 bytes for origin-request overhead CloudFront can still add after
 // this viewer-request function runs, so borderline requests fail with a clear 431.
 const CLOUDFRONT_FUNCTION_SAFE_HEADER_LIMIT = 10240 - 512;
+
+// Returned at the edge for the synthetic catch-all route that is added when the user
+// does not define a `/*` route. Without it, requests that match no route are forwarded
+// to the placeholder origin and come back as a 502 instead of a 404.
+export const CF_ROUTER_NOT_FOUND_INJECTION = `
+return {
+  statusCode: 404,
+  statusDescription: 'Not Found',
+  body: {
+    encoding: "text",
+    data: '<html><head><title>404 Not Found</title></head><body><center><h1>404 Not Found</h1></center></body></html>'
+  }
+};`;
 
 export const CF_BLOCK_CLOUDFRONT_URL_INJECTION = `
 if (event.request.headers.host.value.includes('cloudfront.net')) {
