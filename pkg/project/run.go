@@ -630,7 +630,11 @@ loop:
 	complete.Finished = finished
 	complete.Errors = errors
 	complete.ImportDiffs = importDiffs
-	types.Generate(p.PathConfig(), complete.Links, p.App().Types.Ignore)
+	// Skip on remove: the stage is gone, so the links are empty and regenerating
+	// would blank out the types the developer still needs to work against.
+	if input.Command != "remove" {
+		types.Generate(p.PathConfig(), complete.Links, p.App().Types.Ignore)
+	}
 	defer bus.Publish(complete)
 
 	if input.Command != "diff" {
