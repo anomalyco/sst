@@ -52,13 +52,13 @@ export class BusLambdaSubscriber extends Component {
 
     function createFunction() {
       return functionBuilder(
-        `${name}Function`,
+        name,
         args.subscriber,
         {
           description: interpolate`Subscribed to ${bus.name}`,
         },
         undefined,
-        { parent: self },
+        { parent: self, aliases: [{ name: `${name}Function` }] },
       );
     }
 
