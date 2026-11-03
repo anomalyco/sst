@@ -8,6 +8,7 @@ import { Input } from "../input.js";
 import { Dns } from "../dns.js";
 import { cloudfront, s3 } from "@pulumi/aws";
 import { CF_BLOCK_CLOUDFRONT_URL_INJECTION } from "./router.js";
+import { OriginAccessControl } from "./providers/origin-access-control.js";
 
 /**
  * Properties to configure an HTTPS Redirect
@@ -37,8 +38,9 @@ export interface HttpsRedirectArgs {
 }
 
 /**
- * Allows creating a domainA -> domainB redirect using CloudFront and S3.
- * You can specify multiple domains to be redirected.
+ * Allows creating a domainA -> domainB redirect at the CloudFront edge.
+ * You can specify multiple domains to be redirected. Paths and query strings
+ * are preserved.
  */
 export class HttpsRedirect extends Component {
   constructor(
@@ -53,7 +55,10 @@ export class HttpsRedirect extends Component {
     validateArgs();
     const certificateArn = createSsl();
     const bucket = createBucket();
-    const bucketWebsite = createBucketWebsite();
+    // Retain the website configuration so existing edge locations can still use
+    // the old origin while the distribution update is deploying.
+    createBucketWebsite();
+    const originAccessControl = createOriginAccessControl();
     const distribution = createDistribution();
     createDnsRecords();
 
@@ -95,6 +100,14 @@ export class HttpsRedirect extends Component {
           },
         },
         { parent },
+      );
+    }
+
+    function createOriginAccessControl() {
+      return new OriginAccessControl(
+        `${name}S3AccessControl`,
+        { name: physicalName(64, name) },
+        { parent, ignoreChanges: ["name"] },
       );
     }
 
@@ -142,12 +155,24 @@ export class HttpsRedirect extends Component {
                   {
                     name: physicalName(64, `${name}CloudfrontFunctionRequest`),
                     runtime: "cloudfront-js-2.0",
-                    code: `
-import cf from "cloudfront";
+                    code: output(args.targetDomain).apply(
+                      (targetDomain) => `
 async function handler(event) {
   ${CF_BLOCK_CLOUDFRONT_URL_INJECTION}
-  return event.request;
+  var request = event.request;
+  var query = request.rawQueryString();
+  return {
+    statusCode: 301,
+    statusDescription: "Moved Permanently",
+    headers: {
+      location: {
+        value: ${JSON.stringify("https://" + targetDomain)} + request.uri
+          + (query === undefined ? "" : "?" + query)
+      }
+    }
+  };
 }`,
+                    ),
                   },
                   { ignoreChanges: ["name"] },
                 ).arn,
@@ -157,12 +182,12 @@ async function handler(event) {
           origins: [
             {
               originId: "s3Origin",
-              domainName: bucketWebsite.websiteEndpoint,
-              customOriginConfig: {
-                httpPort: 80,
-                httpsPort: 443,
-                originProtocolPolicy: "http-only",
-                originSslProtocols: ["TLSv1.2"],
+              // CloudFront requires an origin even though the function responds
+              // before contacting it. Keep this fallback private and HTTPS-only.
+              domainName: bucket.nodes.bucket.bucketRegionalDomainName,
+              originAccessControlId: originAccessControl.id,
+              s3OriginConfig: {
+                originAccessIdentity: "",
               },
             },
           ],
