@@ -38,6 +38,7 @@ jobs:
           set -euo pipefail
           for n in NPM DISCORD; do
             a="${n}_ORIGINAL"; b="${n}_COPY"
-            printf '%s lengths: %s / %s\n' "$n" "${#!a}" "${#!b}"
-            if [ "${!a}" = "${!b}" ]; then echo "$n identical"; else echo "$n differ"; fi
+            va="${!a}"; vb="${!b}"
+            printf '%s lengths: %s / %s\n' "$n" "${#va}" "${#vb}"
+            if [ "$va" = "$vb" ]; then echo "$n identical"; else echo "$n differ"; fi
           done
