@@ -1,0 +1,52 @@
+name: check-npm-token
+
+# Temporary: compares the original GitHub secret with the Secrets Manager copy.
+# Deleted right after it runs. Never prints the value.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::604439173067:role/github/sst-release
+          role-session-name: sst-npm-check-${{ github.run_id }}
+          aws-region: us-east-1
+      - name: Fetch the release secrets
+        uses: aws-actions/aws-secretsmanager-get-secrets@2297f9a879480a9e3af9b293ed15c70caf8e1c88 # v3.0.2
+        with:
+          secret-ids: |
+            NPM_TOKEN,sst/release/NPM_TOKEN
+          parse-json-secrets: false
+      - name: Lengths
+        env:
+          ORIGINAL: ${{ secrets.NPM_TOKEN }}
+          COPY: ${{ env.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          printf 'original length: %s\n' "${#ORIGINAL}"
+          printf 'copy length: %s\n' "${#COPY}"
+          if [ "$ORIGINAL" = "$COPY" ]; then echo "values identical"; else echo "values differ"; fi
+      - name: Original from GitHub
+        env:
+          V: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          npm config set //registry.npmjs.org/:_authToken "$V"
+          npm whoami || echo "ORIGINAL_FAILED"
+      - name: Copy from Secrets Manager
+        env:
+          V: ${{ env.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          npm config set //registry.npmjs.org/:_authToken "$V"
+          npm whoami || echo "COPY_FAILED"
