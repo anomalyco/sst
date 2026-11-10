@@ -290,22 +290,7 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 			})
 			outFile.Close()
 
-			cmd := []string{
-				"install",
-				// npm will refuse to install packages if platform does not match
-				"--force",
-				"--platform=linux",
-				"--os=linux",
-				"--arch=x64",
-				"--cpu=x64",
-			}
-			if properties.Architecture == "arm64" {
-				cmd[4] = "--arch=arm64"
-				cmd[5] = "--cpu=arm64"
-			}
-			if slices.Contains(installPackages, "sharp") {
-				cmd = append(cmd, "--libc=glibc")
-			}
+			cmd := npmInstallArgs(properties.Architecture, installPackages)
 			proc := process.Command("npm", cmd...)
 			proc.Dir = input.Out()
 			log.Info("running npm", "cmd", cmd)
@@ -495,4 +480,25 @@ func resolveCatalogEntry(pkg string, version string, source catalogSource) (stri
 	}
 	resolved := catalog[pkg]
 	return resolved, resolved != ""
+}
+
+// npmInstallArgs returns the arguments of the npm install that fetches the packages
+// of a Lambda function for its target platform. It uses --os/--cpu (npm 9.9+):
+// npm 12 rejects the legacy --platform/--arch flags as unknown.
+func npmInstallArgs(architecture string, installPackages []string) []string {
+	cpu := "x64"
+	if architecture == "arm64" {
+		cpu = "arm64"
+	}
+	args := []string{
+		"install",
+		// npm will refuse to install packages if platform does not match
+		"--force",
+		"--os=linux",
+		"--cpu=" + cpu,
+	}
+	if slices.Contains(installPackages, "sharp") {
+		args = append(args, "--libc=glibc")
+	}
+	return args
 }
