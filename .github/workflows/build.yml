@@ -9,16 +9,33 @@ on:
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
 permissions:
+  id-token: write
   contents: write
   packages: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    environment: release
     steps:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::604439173067:role/github/sst-release
+          role-session-name: sst-${{ github.run_id }}
+          aws-region: us-east-1
+
+      - name: Fetch the release secrets
+        uses: aws-actions/aws-secretsmanager-get-secrets@2297f9a879480a9e3af9b293ed15c70caf8e1c88 # v3.0.2
+        with:
+          secret-ids: |
+            NPM_TOKEN,sst/release/NPM_TOKEN
+          parse-json-secrets: false
+
       - uses: oven-sh/setup-bun@v1
         with:
           bun-version: latest
@@ -27,7 +44,7 @@ jobs:
           npm config set //registry.npmjs.org/:_authToken $NODE_AUTH_TOKEN
           npm whoami
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ env.NPM_TOKEN }}
 
       - run: git fetch --force --tags
 
