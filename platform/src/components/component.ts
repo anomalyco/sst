@@ -147,6 +147,7 @@ export class Component extends ComponentResource {
               "aws:cognito/identityPoolRoleAttachment:IdentityPoolRoleAttachment",
               "aws:cognito/identityProvider:IdentityProvider",
               "aws:cognito/userPoolClient:UserPoolClient",
+              "aws:lambda/alias:Alias",
               "aws:lambda/eventSourceMapping:EventSourceMapping",
               "aws:lambda/functionEventInvokeConfig:FunctionEventInvokeConfig",
               "aws:lambda/functionUrl:FunctionUrl",

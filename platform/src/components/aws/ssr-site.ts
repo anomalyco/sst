@@ -1074,6 +1074,8 @@ async function handler(event) {
         // Server functions
         servers.forEach(({ region, server }) => {
           const provider = useProvider(region);
+          // Unset unless the server has an alias, which its URL is on.
+          const qualifier = server.aliasName as Output<string>;
 
           if (protection.mode === "none") {
             new lambda.Permission(
@@ -1081,6 +1083,7 @@ async function handler(event) {
               {
                 action: "lambda:InvokeFunctionUrl",
                 function: server.nodes.function.name,
+                qualifier,
                 principal: "*",
                 functionUrlAuthType: "NONE",
               },
@@ -1095,6 +1098,7 @@ async function handler(event) {
               {
                 action: "lambda:InvokeFunctionUrl",
                 function: server.nodes.function.name,
+                qualifier,
                 principal: "cloudfront.amazonaws.com",
                 sourceArn: distributionArn,
               },
@@ -1105,6 +1109,7 @@ async function handler(event) {
               {
                 action: "lambda:InvokeFunction",
                 function: server.nodes.function.name,
+                qualifier,
                 principal: "cloudfront.amazonaws.com",
                 sourceArn: distributionArn,
                 invokedViaFunctionUrl: true,
@@ -1116,12 +1121,14 @@ async function handler(event) {
 
         // Image optimizer
         if (imgOptimizer) {
+          const qualifier = imgOptimizer.aliasName as Output<string>;
           if (protection.mode === "none") {
             new lambda.Permission(
               `${name}ImageOptimizerPublicFunctionUrlAccess`,
               {
                 action: "lambda:InvokeFunctionUrl",
                 function: imgOptimizer.nodes.function.name,
+                qualifier,
                 principal: "*",
                 functionUrlAuthType: "NONE",
               },
@@ -1136,6 +1143,7 @@ async function handler(event) {
               {
                 action: "lambda:InvokeFunctionUrl",
                 function: imgOptimizer.nodes.function.name,
+                qualifier,
                 principal: "cloudfront.amazonaws.com",
                 sourceArn: distributionArn,
               },
@@ -1146,6 +1154,7 @@ async function handler(event) {
               {
                 action: "lambda:InvokeFunction",
                 function: imgOptimizer.nodes.function.name,
+                qualifier,
                 principal: "cloudfront.amazonaws.com",
                 sourceArn: distributionArn,
                 invokedViaFunctionUrl: true,
@@ -1558,7 +1567,13 @@ async function handler(event) {
                   memory: "128 MB",
                   dev: false,
                   environment: {
-                    FUNCTION_NAME: server.nodes.function.name,
+                    // Warm the alias if there is one, since that's what the
+                    // function URL serves.
+                    FUNCTION_NAME: server.aliasName.apply((aliasName) =>
+                      aliasName
+                        ? interpolate`${server.nodes.function.name}:${aliasName}`
+                        : server.nodes.function.name,
+                    ),
                     CONCURRENCY: output(args.warm).apply((warm) =>
                       warm.toString(),
                     ),

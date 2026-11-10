@@ -1323,8 +1323,54 @@ export interface FunctionArgs {
    *   versioning: true
    * }
    * ```
+   *
+   * You can also create a [Lambda alias](https://docs.aws.amazon.com/lambda/latest/dg/configuration-aliases.html)
+   * that points to the version published on each deploy. This enables versioning.
+   *
+   * ```js
+   * {
+   *   versioning: {
+   *     alias: "live"
+   *   }
+   * }
+   * ```
+   *
+   * If `url` is enabled, the function URL is created on the alias instead of
+   * `$LATEST`. So it, and any Router route that uses it, serves whichever version the
+   * alias points to. This lets you roll back by moving the alias to an earlier
+   * version, without a deploy.
+   *
+   * By default, a deploy moves the alias to the version it published. If a tool
+   * outside of SST moves the alias, you can have deploys leave it alone with
+   * `transform.alias`.
+   *
+   * ```js
+   * {
+   *   versioning: {
+   *     alias: "live"
+   *   },
+   *   transform: {
+   *     alias: (args, opts) => {
+   *       opts.ignoreChanges = ["functionVersion"];
+   *     }
+   *   }
+   * }
+   * ```
+   *
+   * :::caution
+   * Adding or removing the alias on a function with `url` enabled replaces the
+   * function URL, so its hostname changes.
+   * :::
    */
-  versioning?: Input<boolean>;
+  versioning?: Input<
+    | boolean
+    | {
+        /**
+         * The name of the alias to create.
+         */
+        alias: Input<string>;
+      }
+  >;
   /**
    * A list of Lambda layer ARNs to add to the function.
    *
@@ -1516,6 +1562,11 @@ export interface FunctionArgs {
      * when the `retries` property is set.
      */
     eventInvokeConfig?: Transform<lambda.FunctionEventInvokeConfigArgs>;
+    /**
+     * Transform the Lambda Alias resource. This is only created when
+     * `versioning.alias` is set.
+     */
+    alias?: Transform<lambda.AliasArgs>;
   };
   /**
    * @internal
@@ -1716,6 +1767,7 @@ export class Function extends Component implements Link.Linkable {
   private function: Output<lambda.Function>;
   private role: iam.Role;
   private logGroup: Output<cloudwatch.LogGroup | undefined>;
+  private alias: Output<lambda.Alias | undefined>;
   private urlEndpoint: Output<string | undefined>;
   private eventInvokeConfig?: lambda.FunctionEventInvokeConfig;
 
@@ -1772,6 +1824,7 @@ export class Function extends Component implements Link.Linkable {
     const logging = normalizeLogging();
     const volume = normalizeVolume();
     const url = normalizeUrl();
+    const versioning = normalizeVersioning();
     const copyFiles = normalizeCopyFiles();
     const durable = normalizeDurable();
     const policies = output(args.policies ?? []);
@@ -1787,6 +1840,7 @@ export class Function extends Component implements Link.Linkable {
     const logGroup = createLogGroup();
     const zipAsset = createZipAsset();
     const fn = createFunction();
+    const alias = createAlias();
     const urlEndpoint = createUrl();
     createProvisioned();
     const eventInvokeConfig = createEventInvokeConfig();
@@ -1796,6 +1850,7 @@ export class Function extends Component implements Link.Linkable {
     this.function = fn;
     this.role = role;
     this.logGroup = logGroup;
+    this.alias = alias;
     this.urlEndpoint = urlEndpoint;
     this.eventInvokeConfig = eventInvokeConfig;
 
@@ -1958,6 +2013,25 @@ export class Function extends Component implements Link.Linkable {
           retention: logging?.retention ?? "1 month",
           format: logging?.format ?? defaultFormat,
         };
+      });
+    }
+
+    function normalizeVersioning() {
+      return output(args.versioning).apply((versioning) => {
+        if (typeof versioning !== "object") {
+          return {
+            publish: versioning ?? Boolean(args.durable),
+            alias: undefined,
+          };
+        }
+
+        // Durable functions already put their URL on an alias of their own.
+        if (args.durable) {
+          throw new VisibleError(
+            `"versioning.alias" is not supported for durable functions.`,
+          );
+        }
+        return { publish: true, alias: versioning.alias };
       });
     }
 
@@ -2637,9 +2711,7 @@ export class Function extends Component implements Link.Linkable {
               },
               layers: args.layers,
               tags: args.tags,
-              publish: output(args.versioning).apply(
-                (v) => v ?? Boolean(args.durable),
-              ),
+              publish: versioning.apply((v) => v.publish),
               reservedConcurrentExecutions: concurrency?.reserved,
               durableConfig: durable && {
                 executionTimeout: durable.timeout,
@@ -2708,9 +2780,33 @@ export class Function extends Component implements Link.Linkable {
       );
     }
 
+    function createAlias() {
+      return versioning.apply((versioning) => {
+        if (!versioning.alias) return;
+
+        return new lambda.Alias(
+          ...transform(
+            args.transform?.alias,
+            `${name}Alias`,
+            {
+              name: versioning.alias,
+              functionName: fn.arn,
+              functionVersion: fn.version,
+            },
+            { parent },
+          ),
+        );
+      });
+    }
+
     function createUrl() {
       return url.apply((url) => {
         if (url === undefined) return output(undefined);
+
+        // Unset unless there is an alias, which the URL is created on.
+        const aliasName = alias.apply((alias) =>
+          output(alias?.name),
+        ) as Output<string>;
 
         const authorization = output(url.authorization ?? "none");
         const isOac = output(url.route?.routerProtection).apply(
@@ -2731,7 +2827,7 @@ export class Function extends Component implements Link.Linkable {
               functionName: fn.arn,
               functionVersion: fn.version,
             }).name
-          : undefined;
+          : aliasName;
 
         const fnUrl = new lambda.FunctionUrl(
           `${name}Url`,
@@ -2758,6 +2854,7 @@ export class Function extends Component implements Link.Linkable {
               {
                 action: "lambda:InvokeFunctionUrl",
                 function: fn.name,
+                qualifier: aliasName,
                 principal: "*",
                 functionUrlAuthType: "NONE",
               },
@@ -2768,6 +2865,7 @@ export class Function extends Component implements Link.Linkable {
               {
                 action: "lambda:InvokeFunction",
                 function: fn.name,
+                qualifier: aliasName,
                 principal: "*",
                 invokedViaFunctionUrl: true,
               },
@@ -2786,6 +2884,7 @@ export class Function extends Component implements Link.Linkable {
                 {
                   action: "lambda:InvokeFunctionUrl",
                   function: fn.name,
+                  qualifier: aliasName,
                   principal: "cloudfront.amazonaws.com",
                   sourceArn: distributionArn,
                 },
@@ -2796,6 +2895,7 @@ export class Function extends Component implements Link.Linkable {
                 {
                   action: "lambda:InvokeFunction",
                   function: fn.name,
+                  qualifier: aliasName,
                   principal: "cloudfront.amazonaws.com",
                   sourceArn: distributionArn,
                   invokedViaFunctionUrl: true,
@@ -2808,6 +2908,7 @@ export class Function extends Component implements Link.Linkable {
                 {
                   action: "lambda:InvokeFunctionUrl",
                   function: fn.name,
+                  qualifier: aliasName,
                   principal: "*",
                   functionUrlAuthType: "NONE",
                 },
@@ -2818,6 +2919,7 @@ export class Function extends Component implements Link.Linkable {
                 {
                   action: "lambda:InvokeFunction",
                   function: fn.name,
+                  qualifier: aliasName,
                   principal: "*",
                   invokedViaFunctionUrl: true,
                 },
@@ -2957,6 +3059,10 @@ export class Function extends Component implements Link.Linkable {
        */
       logGroup: this.logGroup,
       /**
+       * The Lambda Alias, if `versioning.alias` is set.
+       */
+      alias: this.alias,
+      /**
        * The Function Event Invoke Config resource if retries are configured.
        */
       eventInvokeConfig: this.eventInvokeConfig,
@@ -2989,6 +3095,14 @@ export class Function extends Component implements Link.Linkable {
    */
   public get arn() {
     return this.function.arn;
+  }
+
+  /**
+   * The name of the alias, if `versioning.alias` is set.
+   * @internal
+   */
+  public get aliasName(): Output<string | undefined> {
+    return this.alias.apply((alias) => output(alias?.name));
   }
 
   /** @internal */
@@ -3141,7 +3255,11 @@ export class Function extends Component implements Link.Linkable {
                 ]
               : []),
           ],
-          resources: [this.durable ? interpolate`${this.arn}:*` : this.arn],
+          resources: this.durable
+            ? [interpolate`${this.arn}:*`]
+            : this.alias.apply((alias) =>
+                alias ? [this.arn, alias.arn] : [this.arn],
+              ),
         }),
       ],
     };
