@@ -117,6 +117,65 @@ export interface RedisArgs {
    */
   parameters?: Input<Record<string, Input<string>>>;
   /**
+   * Enable serverless Redis using Amazon ElastiCache Serverless.
+   *
+   * Serverless Redis automatically scales based on usage and offers pay-per-use pricing.
+   * When enabled, traditional cluster configuration options like `instance`, `cluster`, and `parameters` are ignored.
+   *
+   * @default `false`
+   * @example
+   * Enable serverless Redis with default limits.
+   * ```js
+   * {
+   *   serverless: true
+   * }
+   * ```
+   *
+   * Configure serverless Redis with custom limits.
+   * ```js
+   * {
+   *   serverless: {
+   *     dataStorage: { maximum: 100, unit: "GB" },
+   *     ecpuPerSeconds: { maximum: 50000 }
+   *   }
+   * }
+   * ```
+   */
+  serverless?: Input<
+    | boolean
+    | {
+        /**
+         * The maximum data storage limit in GB.
+         *
+         * @default `{ maximum: 10, unit: "GB" }`
+         * @example
+         * ```js
+         * {
+         *   dataStorage: { maximum: 100, unit: "GB" }
+         * }
+         * ```
+         */
+        dataStorage?: Input<{
+          maximum: Input<number>;
+          unit: Input<"GB">;
+        }>;
+        /**
+         * The maximum ElastiCache Processing Units (ECPU) per second.
+         *
+         * @default `{ maximum: 5000 }`
+         * @example
+         * ```js
+         * {
+         *   ecpuPerSeconds: { maximum: 50000 }
+         * }
+         * ```
+         */
+        ecpuPerSeconds?: Input<{
+          maximum: Input<number>;
+        }>;
+      }
+  >;
+  /**
    * The VPC to use for the Redis instance.
    *
    * @example
@@ -223,6 +282,10 @@ export interface RedisArgs {
      * Transform the Redis cluster.
      */
     cluster?: Transform<elasticache.ReplicationGroupArgs>;
+    /**
+     * Transform the Redis serverless cache.
+     */
+    serverlessCache?: Transform<elasticache.ServerlessCacheArgs>;
   };
 }
 
@@ -242,6 +305,30 @@ interface RedisRef {
  * ```js title="sst.config.ts"
  * const vpc = new sst.aws.Vpc("MyVpc");
  * const redis = new sst.aws.Redis("MyRedis", { vpc });
+ * ```
+ *
+ * #### Create a serverless Redis
+ *
+ * You can also create a serverless Redis instance that automatically scales based on usage.
+ *
+ * ```js title="sst.config.ts"
+ * const vpc = new sst.aws.Vpc("MyVpc");
+ * const redis = new sst.aws.Redis("MyRedis", {
+ *   vpc,
+ *   serverless: true
+ * });
+ * ```
+ *
+ * Configure serverless limits.
+ *
+ * ```js title="sst.config.ts"
+ * const redis = new sst.aws.Redis("MyRedis", {
+ *   vpc,
+ *   serverless: {
+ *     dataStorage: { maximum: 100, unit: "GB" },
+ *     ecpuPerSeconds: { maximum: 50000 }
+ *   }
+ * });
  * ```
  *
  * #### Link to a resource
@@ -321,6 +408,7 @@ interface RedisRef {
  */
 export class Redis extends Component implements Link.Linkable {
   private cluster?: Output<elasticache.ReplicationGroup>;
+  private serverlessCache?: Output<elasticache.ServerlessCache>;
   private _authToken?: Output<string>;
   private dev?: {
     enabled: boolean;
@@ -348,9 +436,6 @@ export class Redis extends Component implements Link.Linkable {
     const version = all([engine, args.version]).apply(
       ([engine, v]) => v ?? (engine === "redis" ? "7.1" : "7.2"),
     );
-    const instance = output(args.instance).apply((v) => v ?? "t4g.micro");
-    const argsCluster = normalizeCluster();
-    const vpc = normalizeVpc();
 
     const dev = registerDev();
     if (dev?.enabled) {
@@ -358,13 +443,24 @@ export class Redis extends Component implements Link.Linkable {
       return;
     }
 
+    const vpc = normalizeVpc();
+    const serverless = normalizeServerless();
+    if (serverless.enabled) {
+      const serverlessCache = createServerlessCache();
+      this.serverlessCache = serverlessCache;
+      return;
+    }
+    const instance = output(args.instance).apply((v) => v ?? "t4g.micro");
+    const argsCluster = normalizeCluster();
+
     const { authToken, secret } = createAuthToken();
+    this._authToken = authToken;
+
     const subnetGroup = createSubnetGroup();
     const parameterGroup = createParameterGroup();
     const cluster = createCluster();
 
     this.cluster = cluster;
-    this._authToken = authToken;
 
     function reference() {
       const ref = args as unknown as RedisRef;
@@ -469,6 +565,26 @@ Listening on "${dev.host}:${dev.port}"...`,
           return { nodes: 1 };
         }
         return v;
+      });
+    }
+
+    function normalizeServerless() {
+      return output(args.serverless).apply((v) => {
+        if (v === true) {
+          return {
+            enabled: true,
+            dataStorage: { maximum: 10, unit: "GB" },
+            ecpuPerSeconds: { maximum: 5000 },
+          };
+        }
+        if (v === false || v === undefined) {
+          return { enabled: false };
+        }
+        return {
+          enabled: true,
+          dataStorage: v.dataStorage ?? { maximum: 10, unit: "GB" },
+          ecpuPerSeconds: v.ecpuPerSeconds ?? { maximum: 5000 },
+        };
       });
     }
 
@@ -605,13 +721,54 @@ Listening on "${dev.host}:${dev.port}"...`,
           ),
       );
     }
+
+    function createServerlessCache() {
+      return serverless.apply(
+        (serverless) =>
+          new elasticache.ServerlessCache(
+            ...transform(
+              args.transform?.serverlessCache,
+              `${name}ServerlessCache`,
+              {
+                description: "Managed by SST",
+                engine,
+                name: `${name.toLowerCase()}`,
+                majorEngineVersion: version.apply((v) => {
+                  // Extract major version (e.g., "7.1" -> "7")
+                  const majorVersion = v.split(".")[0];
+                  return majorVersion;
+                }),
+                cacheUsageLimits: {
+                  dataStorage: {
+                    maximum: serverless.dataStorage?.maximum ?? 10,
+                    unit: serverless.dataStorage?.unit ?? "GB",
+                  },
+                  ecpuPerSeconds: [
+                    {
+                      maximum: serverless.ecpuPerSeconds?.maximum ?? 5000,
+                    },
+                  ],
+                },
+                securityGroupIds: vpc.securityGroups,
+                subnetIds: vpc.subnets,
+                tags: {
+                  "sst:component-version": _version.toString(),
+                },
+              },
+              { parent: self },
+            ),
+          ),
+      );
+    }
   }
 
   /**
    * The ID of the Redis cluster.
    */
   public get clusterId() {
-    return this.dev ? output("placeholder") : this.cluster!.id;
+    if (this.dev) return output("placeholder");
+    if (this.serverlessCache) return this.serverlessCache.id;
+    return this.cluster!.id;
   }
 
   /**
@@ -632,20 +789,30 @@ Listening on "${dev.host}:${dev.port}"...`,
    * The host to connect to the Redis cluster.
    */
   public get host() {
-    return this.dev
-      ? this.dev.host
-      : this.cluster!.clusterEnabled.apply((enabled) =>
-          enabled
-            ? this.cluster!.configurationEndpointAddress
-            : this.cluster!.primaryEndpointAddress,
-        );
+    if (this.dev) return this.dev.host;
+    if (this.serverlessCache) {
+      return this.serverlessCache.endpoints.apply(
+        (endpoints) => endpoints?.[0]?.address ?? "",
+      );
+    }
+    return this.cluster!.clusterEnabled.apply((enabled) =>
+      enabled
+        ? this.cluster!.configurationEndpointAddress
+        : this.cluster!.primaryEndpointAddress,
+    );
   }
 
   /**
    * The port to connect to the Redis cluster.
    */
   public get port() {
-    return this.dev ? this.dev.port : this.cluster!.port.apply((v) => v!);
+    if (this.dev) return this.dev.port;
+    if (this.serverlessCache) {
+      return this.serverlessCache.endpoints.apply(
+        (endpoints) => endpoints?.[0]?.port ?? 6379,
+      );
+    }
+    return this.cluster!.port.apply((v) => v!);
   }
 
   /**
@@ -661,6 +828,16 @@ Listening on "${dev.host}:${dev.port}"...`,
         if (_this.dev)
           throw new VisibleError("Cannot access `nodes.cluster` in dev mode.");
         return _this.cluster!;
+      },
+      /**
+       * The ElastiCache Redis serverless cache.
+       */
+      get serverlessCache() {
+        if (_this.dev)
+          throw new VisibleError(
+            "Cannot access `nodes.serverlessCache` in dev mode.",
+          );
+        return _this.serverlessCache!;
       },
     };
   }
