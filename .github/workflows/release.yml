@@ -92,6 +92,15 @@ jobs:
       - name: Run Go tests
         run: go test -vet=all ./...
 
+      # Fetched right before goreleaser and cleared after it, so earlier build steps and the
+      # SDK publish steps never see the AUR key.
+      - name: Fetch the AUR key
+        uses: aws-actions/aws-secretsmanager-get-secrets@2297f9a879480a9e3af9b293ed15c70caf8e1c88 # v3.0.2
+        with:
+          secret-ids: |
+            AUR_KEY,shared/AUR_SSH_KEY
+          parse-json-secrets: false
+
       - name: Release CLI
         uses: goreleaser/goreleaser-action@v6
         with:
@@ -100,7 +109,10 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.SST_GITHUB_TOKEN }}
-          AUR_KEY: ${{ secrets.AUR_KEY }}
+
+      - name: Clear the AUR key
+        if: always()
+        run: echo "AUR_KEY=" >> "$GITHUB_ENV"
 
       - name: Release JS SDK
         run: |
