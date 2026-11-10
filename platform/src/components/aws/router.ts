@@ -26,7 +26,7 @@ import { FunctionArn } from "./function.js";
 import { parseLambdaEdgeArn } from "./helpers/arn";
 import { Size, toMBs } from "../size";
 import { RETENTION } from "./logging";
-import { minify } from "../../util/minify";
+import { minify, minifyBody } from "../../util/minify";
 
 interface InlineUrlRouteArgs extends InlineBaseRouteArgs {
   /**
@@ -2139,98 +2139,7 @@ async function handler(event) {
   ${userInjection}
   ${blockCloudfrontUrlInjection}
   ${CF_ROUTER_INJECTION}
-
-  async function getRoutes() {
-    const routerNS = "${kvNamespace}";
-    let routes = [];
-    try {
-      const v = await cf.kvs().get(routerNS + ":routes");
-      routes = JSON.parse(v);
-
-      // handle chunked routes
-      if (routes.parts) {
-        const chunkPromises = [];
-        for (let i = 0; i < routes.parts; i++) {
-          chunkPromises.push(cf.kvs().get(routerNS + ":routes:" + i));
-        }
-        const chunks = await Promise.all(chunkPromises);
-        routes = JSON.parse(chunks.join(""));
-      }
-    } catch (e) {}
-    return routes;
-  }
-
-  async function matchRoute(routes) {
-    const requestHost = event.request.headers.host.value;
-    const requestHostWithEscapedDots = requestHost.replace(/\\./g, "\\\\.");
-    const requestHostRegexPattern = "^" + requestHost + "$";
-    let match;
-    routes.forEach(r => {
-      ${
-        /*
-        Route format: [type, routeNamespace, hostRegex, pathPrefix]
-        - First sort by host pattern (longest first)
-        - Then sort by path prefix (longest first)
-      */ ""
-      }
-      var parts = r.split(",");
-      const type = parts[0];
-      const routeNs = parts[1];
-      const host = parts[2];
-      const hostLength = host.length;
-      const path = parts[3];
-      const pathLength = path.length;
-
-      // Do not consider if the current match is a better winner
-      if (match && (
-          hostLength < match.hostLength
-          || (hostLength === match.hostLength && pathLength < match.pathLength)
-      )) return;
-
-      const hostMatches = host === ""
-        || host === requestHostWithEscapedDots
-        || (host.includes("*") && new RegExp(host).test(requestHostRegexPattern));
-      if (!hostMatches) return;
-
-      const pathMatches = event.request.uri.startsWith(path) && (event.request.uri === path || path.endsWith('/') || event.request.uri[path.length] === '/' || path === '/');
-      if (!pathMatches) return;
-
-      match = {
-        type,
-        routeNs,
-        host,
-        hostLength,
-        path,
-        pathLength,
-      };
-    });
-
-    // Load metadata
-    if (match) {
-      try {
-        const type = match.type;
-        const routeNs = match.routeNs;
-        const v = await cf.kvs().get(routeNs + ":metadata");
-        return { type, routeNs, metadata: JSON.parse(v) };
-      } catch (e) {}
-    }
-  }
-
-  // Look up the route
-  const routes = await getRoutes();
-  const route = await matchRoute(routes);
-  if (!route) return event.request;
-  if (route.metadata.rewrite) {
-    const rw = route.metadata.rewrite;
-    event.request.uri = event.request.uri.replace(new RegExp(rw.regex), rw.to);
-  }
-  if (route.type === "url") setUrlOrigin(route.metadata.host, route.metadata.origin);
-  if (route.type === "bucket") setS3Origin(route.metadata.domain, route.metadata.origin);
-  if (route.type === "site") {
-    const response = await routeSite(route.routeNs, route.metadata);
-    return response || event.request;
-  }
-  return event.request;
+  ${routerLookupCode(kvNamespace)}
 }`,
             },
             { parent: self },
@@ -2726,17 +2635,117 @@ Router.__pulumiType = __pulumiType;
 // this viewer-request function runs, so borderline requests fail with a clear 431.
 const CLOUDFRONT_FUNCTION_SAFE_HEADER_LIMIT = 10240 - 512;
 
-export const CF_BLOCK_CLOUDFRONT_URL_INJECTION = `
+// NOTE: This string is size-sensitive — CloudFront Functions have a 10KB limit.
+export const CF_BLOCK_CLOUDFRONT_URL_INJECTION = minifyBody`
 if (event.request.headers.host.value.includes('cloudfront.net')) {
   return {
     statusCode: 403,
     statusDescription: 'Forbidden',
     body: {
       encoding: "text",
-      data: '<html><head><title>403 Forbidden</title></head><body><center><h1>403 Forbidden</h1></center></body></html>'
+      data: "403 Forbidden"
     }
   };
 }`;
+
+// The route lookup that ends the router's viewer-request function: finds the
+// route for the request in the key-value store and sends the request on to it.
+// Minified when the function is built, because the router's key-value
+// namespace is part of it.
+// NOTE: This string is size-sensitive — CloudFront Functions have a 10KB limit.
+export const routerLookupCode = (kvNamespace: string) => minifyBody`
+  async function getRoutes() {
+    const routerNS = "${kvNamespace}";
+    let routes = [];
+    try {
+      const v = await cf.kvs().get(routerNS + ":routes");
+      routes = JSON.parse(v);
+
+      // handle chunked routes
+      if (routes.parts) {
+        const chunkPromises = [];
+        for (let i = 0; i < routes.parts; i++) {
+          chunkPromises.push(cf.kvs().get(routerNS + ":routes:" + i));
+        }
+        const chunks = await Promise.all(chunkPromises);
+        routes = JSON.parse(chunks.join(""));
+      }
+    } catch (e) {}
+    return routes;
+  }
+
+  async function matchRoute(routes) {
+    const requestHost = event.request.headers.host.value;
+    const requestHostWithEscapedDots = requestHost.replace(/\\./g, "\\\\.");
+    const requestHostRegexPattern = "^" + requestHost + "$";
+    let match;
+    routes.forEach(r => {
+      ${
+        /*
+        Route format: [type, routeNamespace, hostRegex, pathPrefix]
+        - First sort by host pattern (longest first)
+        - Then sort by path prefix (longest first)
+      */ ""
+      }
+      var parts = r.split(",");
+      const type = parts[0];
+      const routeNs = parts[1];
+      const host = parts[2];
+      const hostLength = host.length;
+      const path = parts[3];
+      const pathLength = path.length;
+
+      // Do not consider if the current match is a better winner
+      if (match && (
+          hostLength < match.hostLength
+          || (hostLength === match.hostLength && pathLength < match.pathLength)
+      )) return;
+
+      const hostMatches = host === ""
+        || host === requestHostWithEscapedDots
+        || (host.includes("*") && new RegExp(host).test(requestHostRegexPattern));
+      if (!hostMatches) return;
+
+      const pathMatches = event.request.uri.startsWith(path) && (event.request.uri === path || path.endsWith('/') || event.request.uri[path.length] === '/' || path === '/');
+      if (!pathMatches) return;
+
+      match = {
+        type,
+        routeNs,
+        host,
+        hostLength,
+        path,
+        pathLength,
+      };
+    });
+
+    // Load metadata
+    if (match) {
+      try {
+        const type = match.type;
+        const routeNs = match.routeNs;
+        const v = await cf.kvs().get(routeNs + ":metadata");
+        return { type, routeNs, metadata: JSON.parse(v) };
+      } catch (e) {}
+    }
+  }
+
+  // Look up the route
+  const routes = await getRoutes();
+  const route = await matchRoute(routes);
+  if (!route) return event.request;
+  if (route.metadata.rewrite) {
+    const rw = route.metadata.rewrite;
+    event.request.uri = event.request.uri.replace(new RegExp(rw.regex), rw.to);
+  }
+  if (route.type === "url") setUrlOrigin(route.metadata.host, route.metadata.origin);
+  if (route.type === "bucket") setS3Origin(route.metadata.domain, route.metadata.origin);
+  if (route.type === "site") {
+    const response = await routeSite(route.routeNs, route.metadata);
+    return response || event.request;
+  }
+  return event.request;
+`;
 
 // CloudFront Function handler code injected into site and router CF functions.
 // NOTE: This string is size-sensitive — CloudFront Functions have a 10KB limit.
