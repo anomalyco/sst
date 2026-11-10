@@ -16,11 +16,26 @@ permissions:
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
+    environment: release
     steps:
       - name: Checkout
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::604439173067:role/github/sst-release
+          role-session-name: sst-${{ github.run_id }}
+          aws-region: us-east-1
+
+      - name: Fetch the release secrets
+        uses: aws-actions/aws-secretsmanager-get-secrets@2297f9a879480a9e3af9b293ed15c70caf8e1c88 # v3.0.2
+        with:
+          secret-ids: |
+            DISCORD_WEBHOOK_URL,sst/release/DISCORD_WEBHOOK_URL
+          parse-json-secrets: false
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
@@ -120,7 +135,7 @@ jobs:
       - name: Announce on Discord
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_WEBHOOK_URL: ${{ env.DISCORD_WEBHOOK_URL }}
           TAG: ${{ github.ref_name }}
         run: |
           RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/$TAG"
