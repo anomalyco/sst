@@ -1,7 +1,7 @@
 name: check-npm-token
 
-# Temporary: compares the original GitHub secret with the Secrets Manager copy.
-# Deleted right after it runs. Never prints the value.
+# Temporary: compares the original GitHub secrets with the Secrets Manager copies.
+# Deleted right after it runs. Never prints the values.
 
 on:
   workflow_dispatch:
@@ -19,34 +19,25 @@ jobs:
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
           role-to-assume: arn:aws:iam::604439173067:role/github/sst-release
-          role-session-name: sst-npm-check-${{ github.run_id }}
+          role-session-name: sst-compare-${{ github.run_id }}
           aws-region: us-east-1
       - name: Fetch the release secrets
         uses: aws-actions/aws-secretsmanager-get-secrets@2297f9a879480a9e3af9b293ed15c70caf8e1c88 # v3.0.2
         with:
           secret-ids: |
             NPM_TOKEN,sst/release/NPM_TOKEN
+            DISCORD_WEBHOOK_URL,sst/release/DISCORD_WEBHOOK_URL
           parse-json-secrets: false
-      - name: Lengths
+      - name: Compare
         env:
-          ORIGINAL: ${{ secrets.NPM_TOKEN }}
-          COPY: ${{ env.NPM_TOKEN }}
+          NPM_ORIGINAL: ${{ secrets.NPM_TOKEN }}
+          NPM_COPY: ${{ env.NPM_TOKEN }}
+          DISCORD_ORIGINAL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_COPY: ${{ env.DISCORD_WEBHOOK_URL }}
         run: |
           set -euo pipefail
-          printf 'original length: %s\n' "${#ORIGINAL}"
-          printf 'copy length: %s\n' "${#COPY}"
-          if [ "$ORIGINAL" = "$COPY" ]; then echo "values identical"; else echo "values differ"; fi
-      - name: Original from GitHub
-        env:
-          V: ${{ secrets.NPM_TOKEN }}
-        run: |
-          set -euo pipefail
-          npm config set //registry.npmjs.org/:_authToken "$V"
-          npm whoami || echo "ORIGINAL_FAILED"
-      - name: Copy from Secrets Manager
-        env:
-          V: ${{ env.NPM_TOKEN }}
-        run: |
-          set -euo pipefail
-          npm config set //registry.npmjs.org/:_authToken "$V"
-          npm whoami || echo "COPY_FAILED"
+          for n in NPM DISCORD; do
+            a="${n}_ORIGINAL"; b="${n}_COPY"
+            printf '%s lengths: %s / %s\n' "$n" "${#!a}" "${#!b}"
+            if [ "${!a}" = "${!b}" ]; then echo "$n identical"; else echo "$n differ"; fi
+          done
