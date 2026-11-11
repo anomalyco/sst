@@ -56,11 +56,26 @@ var LoaderToString = []string{
 	"tsx",
 }
 
+// DefaultContextCap is the default number of esbuild build contexts kept
+// alive in dev mode. Each context caches the parsed dependency graph of one
+// function, which can retain hundreds of MB for large graphs, so keeping one
+// per function grows memory without bound as functions are built.
+const DefaultContextCap = 4
+
+type buildContextEntry struct {
+	context  esbuild.BuildContext
+	lastUsed int64
+	building int
+}
+
 type Runtime struct {
-	version     string
-	contexts    sync.Map
-	results     sync.Map
-	concurrency *semaphore.Weighted
+	version      string
+	concurrency  *semaphore.Weighted
+	contextCap   int
+	contextsLock sync.Mutex
+	contexts     map[string]*buildContextEntry
+	contextClock int64
+	inputs       map[string]map[string]bool
 }
 
 func New(version string) *Runtime {
@@ -71,12 +86,114 @@ func New(version string) *Runtime {
 		weight, _ = strconv.ParseInt(flag.SST_BUILD_CONCURRENCY, 10, 64)
 	}
 
+	contextCap := DefaultContextCap
+	if flag.SST_BUILD_CONTEXT_CACHE != "" {
+		if parsed, err := strconv.Atoi(flag.SST_BUILD_CONTEXT_CACHE); err == nil && parsed >= 0 {
+			contextCap = parsed
+		}
+	}
+
 	return &Runtime{
-		contexts:    sync.Map{},
-		results:     sync.Map{},
 		version:     version,
 		concurrency: semaphore.NewWeighted(weight),
+		contextCap:  contextCap,
+		contexts:    map[string]*buildContextEntry{},
+		inputs:      map[string]map[string]bool{},
 	}
+}
+
+// acquireContext returns the cached build context for a function, creating
+// one if needed. The entry is pinned until releaseContext is called so it
+// cannot be evicted mid-build.
+func (r *Runtime) acquireContext(functionID string, options esbuild.BuildOptions) (esbuild.BuildContext, error) {
+	r.contextsLock.Lock()
+	if entry, ok := r.contexts[functionID]; ok {
+		entry.building++
+		r.contextClock++
+		entry.lastUsed = r.contextClock
+		r.contextsLock.Unlock()
+		return entry.context, nil
+	}
+	r.contextsLock.Unlock()
+
+	// create outside the lock; plugin setup can spawn subprocesses
+	created, ctxErr := esbuild.Context(options)
+	if ctxErr != nil {
+		return nil, ctxErr
+	}
+
+	r.contextsLock.Lock()
+	if entry, ok := r.contexts[functionID]; ok {
+		// lost a race with a concurrent build of the same function
+		entry.building++
+		r.contextClock++
+		entry.lastUsed = r.contextClock
+		r.contextsLock.Unlock()
+		created.Dispose()
+		return entry.context, nil
+	}
+	r.contextClock++
+	r.contexts[functionID] = &buildContextEntry{
+		context:  created,
+		lastUsed: r.contextClock,
+		building: 1,
+	}
+	r.contextsLock.Unlock()
+	return created, nil
+}
+
+// releaseContext unpins a function's build context and evicts the least
+// recently used contexts beyond the configured cap.
+func (r *Runtime) releaseContext(functionID string) {
+	var evicted []esbuild.BuildContext
+	r.contextsLock.Lock()
+	if entry, ok := r.contexts[functionID]; ok {
+		entry.building--
+	}
+	for len(r.contexts) > r.contextCap {
+		oldestID := ""
+		var oldest *buildContextEntry
+		for id, entry := range r.contexts {
+			if entry.building > 0 {
+				continue
+			}
+			if oldest == nil || entry.lastUsed < oldest.lastUsed {
+				oldestID = id
+				oldest = entry
+			}
+		}
+		if oldest == nil {
+			break
+		}
+		delete(r.contexts, oldestID)
+		evicted = append(evicted, oldest.context)
+	}
+	r.contextsLock.Unlock()
+	for _, context := range evicted {
+		context.Dispose()
+	}
+}
+
+// storeInputs records the absolute paths of a build's inputs so ShouldRebuild
+// can match changed files without retaining the full build result.
+func (r *Runtime) storeInputs(functionID string, metafile string) {
+	var meta struct {
+		Inputs map[string]json.RawMessage `json:"inputs"`
+	}
+	if err := json.Unmarshal([]byte(metafile), &meta); err != nil {
+		return
+	}
+	paths := make(map[string]bool, len(meta.Inputs))
+	for key := range meta.Inputs {
+		absPath, err := filepath.Abs(key)
+		if err != nil {
+			continue
+		}
+		paths[absPath] = true
+	}
+	r.contextsLock.Lock()
+	r.inputs[functionID] = paths
+	r.contextsLock.Unlock()
 }
 
 type Worker struct {
@@ -282,25 +399,11 @@ func (r *Runtime) getFile(input *runtime.BuildInput) (string, bool) {
 }
 
 func (r *Runtime) ShouldRebuild(functionID string, file string) bool {
-	result, ok := r.results.Load(functionID)
+	r.contextsLock.Lock()
+	defer r.contextsLock.Unlock()
+	paths, ok := r.inputs[functionID]
 	if !ok {
 		return false
 	}
-
-	var meta = map[string]interface{}{}
-	err := json.Unmarshal([]byte(result.(esbuild.BuildResult).Metafile), &meta)
-	if err != nil {
-		return false
-	}
-	for key := range meta["inputs"].(map[string]interface{}) {
-		absPath, err := filepath.Abs(key)
-		if err != nil {
-			continue
-		}
-		if absPath == file {
-			return true
-		}
-	}
-
-	return false
+	return paths[file]
 }

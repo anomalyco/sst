@@ -8,12 +8,14 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"net/http/pprof"
 	"net/rpc"
 	"net/rpc/jsonrpc"
 	"net/url"
 	"os"
 	"path/filepath"
 
+	"github.com/sst/sst/v3/pkg/flag"
 	"github.com/sst/sst/v3/pkg/global"
 	"github.com/sst/sst/v3/pkg/project"
 	"github.com/sst/sst/v3/pkg/server/aws"
@@ -48,6 +50,13 @@ func New() (*Server, error) {
 		slog.Info("rpc request", "method", r.Method, "url", r.URL.String())
 		result.Rpc.ServeCodec(jsonrpc.NewServerCodec(&HttpConn{Reader: r.Body, Writer: w}))
 	})
+	if flag.SST_PPROF {
+		result.Mux.HandleFunc("/debug/pprof/", pprof.Index)
+		result.Mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+		result.Mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+		result.Mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+		result.Mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+	}
 	return result, nil
 }
 
