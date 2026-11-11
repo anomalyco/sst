@@ -655,6 +655,14 @@ func installDependenciesForLambda(ctx context.Context, input *runtime.BuildInput
 
 // copyWorkspacePackagesForContainer copies workspace package directories into the artifact
 // so the Dockerfile's `uv pip install -r requirements.txt` can resolve relative paths.
+//
+// Members that live above the workspace root (e.g. "../../lib") cannot be
+// referenced by their original relative path: copying them there would escape
+// the docker build context, and inside the image uv would resolve the path
+// against the requirements.txt location (/var/task) and fail. Such members are
+// re-homed inside the build context by stripping the leading "../" segments
+// (e.g. "../../lib" -> "./lib"), and the requirements.txt line is rewritten to
+// match.
 func copyWorkspacePackagesForContainer(input *runtime.BuildInput, projectInfo *projectInfo) error {
 	workspaceRoot := findWorkspaceRoot(projectInfo)
 
@@ -665,8 +673,10 @@ func copyWorkspacePackagesForContainer(input *runtime.BuildInput, projectInfo *p
 	}
 
 	lines := strings.Split(string(content), "\n")
+	rewritten := false
+	rehomed := map[string]string{}
 
-	for _, line := range lines {
+	for i, line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "-") {
 			continue
@@ -691,8 +701,26 @@ func copyWorkspacePackagesForContainer(input *runtime.BuildInput, projectInfo *p
 			continue
 		}
 
-		// Copy to artifact at the same relative path
-		destPath := filepath.Join(input.Out(), pkgPath)
+		// Re-home members that live above the workspace root inside the build
+		// context, and rewrite their requirements.txt line to the new path.
+		contextPath := pkgPath
+		if strings.HasPrefix(pkgPath, "../") {
+			trimmed := pkgPath
+			for strings.HasPrefix(trimmed, "../") {
+				trimmed = strings.TrimPrefix(trimmed, "../")
+			}
+			if trimmed == "" || trimmed == "." {
+				slog.Warn("cannot re-home workspace package inside build context", "line", line)
+				continue
+			}
+			contextPath = "./" + trimmed
+			lines[i] = contextPath + strings.TrimPrefix(line, pkgPath)
+			rewritten = true
+			rehomed[pkgPath] = contextPath
+		}
+
+		// Copy to artifact at the in-context relative path
+		destPath := filepath.Join(input.Out(), contextPath)
 		if _, err := os.Stat(destPath); err == nil {
 			// Already exists — just ensure pyproject.toml is present for uv pip install
 			srcPyproject := filepath.Join(fullPath, "pyproject.toml")
@@ -722,7 +750,60 @@ func copyWorkspacePackagesForContainer(input *runtime.BuildInput, projectInfo *p
 
 	}
 
+	if rewritten {
+		if err := os.WriteFile(requirementsPath, []byte(strings.Join(lines, "\n")), 0644); err != nil {
+			return fmt.Errorf("failed to rewrite requirements.txt for workspace packages: %w", err)
+		}
+	}
+
+	if len(rehomed) > 0 {
+		if err := rewritePyprojectWorkspacePaths(input, projectInfo, rehomed); err != nil {
+			return fmt.Errorf("failed to rewrite pyproject.toml workspace paths: %w", err)
+		}
+	}
+
 	return nil
+}
+
+// rewritePyprojectWorkspacePaths updates workspace member paths in the artifact's
+// pyproject.toml after their packages were re-homed inside the build context.
+// uv validates [tool.uv.workspace] members when it builds the project inside the
+// image, so a member path like "../../lib" fails with "Workspace member
+// `/var/task/../../lib` is missing a `pyproject.toml`" even after the package
+// itself was copied into the context. Replaces the exact quoted paths only, so
+// the rest of the file (comments, formatting) is untouched.
+func rewritePyprojectWorkspacePaths(input *runtime.BuildInput, projectInfo *projectInfo, rehomed map[string]string) error {
+	outPyproject := filepath.Join(input.Out(), "pyproject.toml")
+	if _, err := os.Stat(outPyproject); err != nil {
+		// Not copied yet (ensureDockerfile runs later in the build). Copy it
+		// now so the rewrite lands in the artifact, not the source tree.
+		if projectInfo.PyprojectPath == "" {
+			return nil
+		}
+		if _, err := os.Stat(projectInfo.PyprojectPath); err != nil {
+			return nil
+		}
+		if err := copyFile(projectInfo.PyprojectPath, outPyproject); err != nil {
+			return err
+		}
+	}
+
+	content, err := os.ReadFile(outPyproject)
+	if err != nil {
+		return err
+	}
+
+	updated := string(content)
+	for oldPath, newPath := range rehomed {
+		for _, quote := range []string{`"`, `'`} {
+			updated = strings.ReplaceAll(updated, quote+oldPath+quote, quote+newPath+quote)
+		}
+	}
+
+	if updated == string(content) {
+		return nil
+	}
+	return os.WriteFile(outPyproject, []byte(updated), 0644)
 }
 
 // copySourceFilesSimple copies handler source files to the build output.
