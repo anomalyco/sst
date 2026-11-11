@@ -55,7 +55,7 @@ export class DynamoLambdaSubscriber extends Component {
 
     function createFunction() {
       return functionBuilder(
-        `${name}Function`,
+        name,
         args.subscriber,
         {
           description: `Subscribed to ${name}`,
@@ -72,7 +72,7 @@ export class DynamoLambdaSubscriber extends Component {
           ],
         },
         undefined,
-        { parent: self },
+        { parent: self, aliases: [{ name: `${name}Function` }] },
       );
     }
 

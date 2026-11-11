@@ -80,7 +80,7 @@ export class BucketLambdaSubscriber extends Component {
 
     function createFunction() {
       return functionBuilder(
-        `${name}Function`,
+        name,
         args.subscriber,
         {
           description: events.apply((events) =>
@@ -92,7 +92,7 @@ export class BucketLambdaSubscriber extends Component {
           ),
         },
         undefined,
-        { parent: self },
+        { parent: self, aliases: [{ name: `${name}Function` }] },
       );
     }
 

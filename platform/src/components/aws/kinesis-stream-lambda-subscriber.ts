@@ -49,7 +49,7 @@ export class KinesisStreamLambdaSubscriber extends Component {
     function createFunction() {
       return output(args.subscriber).apply((subscriber) => {
         return functionBuilder(
-          `${name}Function`,
+          name,
           subscriber,
           {
             description: `Subscribed to ${name}`,
@@ -69,7 +69,7 @@ export class KinesisStreamLambdaSubscriber extends Component {
             ],
           },
           undefined,
-          { parent: self },
+          { parent: self, aliases: [{ name: `${name}Function` }] },
         );
       });
     }

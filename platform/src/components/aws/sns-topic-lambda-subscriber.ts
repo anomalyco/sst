@@ -57,13 +57,13 @@ export class SnsTopicLambdaSubscriber extends Component {
 
     function createFunction() {
       return functionBuilder(
-        `${name}Function`,
+        name,
         args.subscriber,
         {
           description: `Subscribed to ${name}`,
         },
         undefined,
-        { parent: self },
+        { parent: self, aliases: [{ name: `${name}Function` }] },
       );
     }
 
