@@ -1717,6 +1717,7 @@ export class Function extends Component implements Link.Linkable {
   private role: iam.Role;
   private logGroup: Output<cloudwatch.LogGroup | undefined>;
   private urlEndpoint: Output<string | undefined>;
+  private urlResource: Output<lambda.FunctionUrl | undefined>;
   private eventInvokeConfig?: lambda.FunctionEventInvokeConfig;
 
   private static readonly encryptionKey = lazy(
@@ -1787,7 +1788,7 @@ export class Function extends Component implements Link.Linkable {
     const logGroup = createLogGroup();
     const zipAsset = createZipAsset();
     const fn = createFunction();
-    const urlEndpoint = createUrl();
+    const { endpoint: urlEndpoint, resource: urlResource } = createUrl();
     createProvisioned();
     const eventInvokeConfig = createEventInvokeConfig();
 
@@ -1797,6 +1798,7 @@ export class Function extends Component implements Link.Linkable {
     this.role = role;
     this.logGroup = logGroup;
     this.urlEndpoint = urlEndpoint;
+    this.urlResource = urlResource;
     this.eventInvokeConfig = eventInvokeConfig;
 
     const buildInput = output({
@@ -2708,9 +2710,13 @@ export class Function extends Component implements Link.Linkable {
       );
     }
 
-    function createUrl() {
-      return url.apply((url) => {
-        if (url === undefined) return output(undefined);
+    function createUrl(): {
+      endpoint: Output<string | undefined>;
+      resource: Output<lambda.FunctionUrl | undefined>;
+    } {
+      const result = url.apply((url) => {
+        if (url === undefined)
+          return { endpoint: output(undefined), resource: undefined };
 
         const authorization = output(url.authorization ?? "none");
         const isOac = output(url.route?.routerProtection).apply(
@@ -2761,7 +2767,7 @@ export class Function extends Component implements Link.Linkable {
                 principal: "*",
                 functionUrlAuthType: "NONE",
               },
-              { parent },
+              { parent, dependsOn: [fnUrl] },
             );
             new lambda.Permission(
               `${name}InvokeFunction`,
@@ -2771,10 +2777,10 @@ export class Function extends Component implements Link.Linkable {
                 principal: "*",
                 invokedViaFunctionUrl: true,
               },
-              { parent },
+              { parent, dependsOn: [fnUrl] },
             );
           });
-          return fnUrl.functionUrl;
+          return { endpoint: fnUrl.functionUrl, resource: fnUrl };
         }
 
         // Create permissions based on Router protection mode
@@ -2789,7 +2795,7 @@ export class Function extends Component implements Link.Linkable {
                   principal: "cloudfront.amazonaws.com",
                   sourceArn: distributionArn,
                 },
-                { parent },
+                { parent, dependsOn: [fnUrl] },
               );
               new lambda.Permission(
                 `${name}CloudFrontInvokeFunction`,
@@ -2800,7 +2806,7 @@ export class Function extends Component implements Link.Linkable {
                   sourceArn: distributionArn,
                   invokedViaFunctionUrl: true,
                 },
-                { parent },
+                { parent, dependsOn: [fnUrl] },
               );
             } else if (authorization === "none") {
               new lambda.Permission(
@@ -2811,7 +2817,7 @@ export class Function extends Component implements Link.Linkable {
                   principal: "*",
                   functionUrlAuthType: "NONE",
                 },
-                { parent },
+                { parent, dependsOn: [fnUrl] },
               );
               new lambda.Permission(
                 `${name}PublicInvokeFunction`,
@@ -2821,7 +2827,7 @@ export class Function extends Component implements Link.Linkable {
                   principal: "*",
                   invokedViaFunctionUrl: true,
                 },
-                { parent },
+                { parent, dependsOn: [fnUrl] },
               );
             }
           },
@@ -2890,8 +2896,12 @@ export class Function extends Component implements Link.Linkable {
           },
           { parent },
         );
-        return url.route.routerUrl;
+        return { endpoint: url.route.routerUrl, resource: fnUrl };
       });
+      return {
+        endpoint: result.apply((r) => r.endpoint),
+        resource: result.apply((r) => r.resource),
+      };
     }
 
     function createProvisioned() {
@@ -2960,6 +2970,10 @@ export class Function extends Component implements Link.Linkable {
        * The Function Event Invoke Config resource if retries are configured.
        */
       eventInvokeConfig: this.eventInvokeConfig,
+      /**
+       * The Lambda Function URL resource if `url` is enabled.
+       */
+      url: this.urlResource,
     };
   }
 
