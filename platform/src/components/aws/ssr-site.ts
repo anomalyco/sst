@@ -335,7 +335,13 @@ export interface SsrSiteArgs extends BaseSsrSiteArgs {
      * }
      * ```
      */
-    runtime?: Input<"nodejs18.x" | "nodejs20.x" | "nodejs22.x" | "nodejs24.x">;
+    runtime?: Input<
+      | "nodejs18.x"
+      | "nodejs20.x"
+      | "nodejs22.x"
+      | "nodejs24.x"
+      | "nodejs26.x"
+    >;
     /**
      * The maximum amount of time the server function can run.
      *

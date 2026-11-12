@@ -22,16 +22,6 @@ var forceExternal = []string{
 	"sharp", "pg-native",
 }
 
-var targetMap = map[string]esbuild.Target{
-	"nodejs24.x": esbuild.ES2024,
-	"nodejs22.x": esbuild.ES2023,
-	"nodejs20.x": esbuild.ES2023,
-	"nodejs18.x": esbuild.ES2022,
-	"nodejs16.x": esbuild.ES2021,
-	"nodejs14.x": esbuild.ES2020,
-	"nodejs12.x": esbuild.ES2019,
-}
-
 func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtime.BuildOutput, error) {
 	log := slog.Default().With("service", "runtime.node").With("functionID", input.FunctionID)
 
@@ -137,7 +127,6 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		Sourcemap:   properties.ESBuild.ResolveSourcemap(esbuild.SourceMapLinked),
 		Write:       true,
 		Format:      esbuild.FormatESModule,
-		Target:      properties.ESBuild.ResolveTarget(targetMap[input.Runtime]),
 		MainFields:  properties.ESBuild.ResolveMainFields([]string{"module", "main"}),
 		Conditions:  properties.ESBuild.ResolveConditions(nil),
 		Banner: map[string]string{
@@ -152,6 +141,16 @@ func (r *Runtime) Build(ctx context.Context, input *runtime.BuildInput) (*runtim
 		},
 		NodePaths: properties.ESBuild.NodePaths,
 		Define:    properties.ESBuild.Define,
+	}
+
+	if target, ok := esTargetMap[strings.ToLower(properties.ESBuild.Target)]; ok {
+		options.Target = target
+	} else {
+		options.Target = esbuild.ESNext
+		options.Engines = []esbuild.Engine{{
+			Name:    esbuild.EngineNode,
+			Version: strings.TrimSuffix(strings.TrimPrefix(input.Runtime, "nodejs"), ".x"),
+		}}
 	}
 
 	if !isESM {
