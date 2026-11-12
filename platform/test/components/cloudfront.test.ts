@@ -336,6 +336,64 @@ describe("CloudFront router", () => {
     });
   });
 
+  describe("Next.js cache key", () => {
+    it("varies for segment prefetch requests", async () => {
+      async function getCacheKey(headers: Record<string, CloudFrontField>) {
+        const { event, routeSite } = loadRouteSite({ uri: "/page", headers });
+
+        await routeSite("test", {
+          servers: [["server.example.com", 0, 0]],
+          origin: {},
+        });
+
+        return event.request.headers["x-open-next-cache-key"].value;
+      }
+
+      const headers = { host: { value: "example.com" } };
+      const baselineKey = await getCacheKey(headers);
+      const repeatedBaselineKey = await getCacheKey(headers);
+      const segmentPrefetchKey = await getCacheKey({
+        ...headers,
+        "next-router-segment-prefetch": { value: "/_tree" },
+      });
+
+      expect(repeatedBaselineKey).toBe(baselineKey);
+      expect(segmentPrefetchKey).not.toBe(baselineKey);
+    });
+
+    it("varies only by accept for image requests", async () => {
+      async function getCacheKey(headers: Record<string, CloudFrontField>) {
+        const { event, routeSite } = loadRouteSite({
+          uri: "/_next/image",
+          headers,
+        });
+
+        await routeSite("test", {
+          image: { route: "/_next/image", host: "image.example.com" },
+        });
+
+        return event.request.headers["x-open-next-cache-key"].value;
+      }
+
+      const headers = {
+        host: { value: "example.com" },
+        accept: { value: "image/webp" },
+      };
+      const baselineKey = await getCacheKey(headers);
+      const segmentPrefetchKey = await getCacheKey({
+        ...headers,
+        "next-router-segment-prefetch": { value: "/_tree" },
+      });
+      const differentAcceptKey = await getCacheKey({
+        ...headers,
+        accept: { value: "image/avif" },
+      });
+
+      expect(segmentPrefetchKey).toBe(baselineKey);
+      expect(differentAcceptKey).not.toBe(baselineKey);
+    });
+  });
+
   describe("header sizing", () => {
     it("counts request headers and cookies", async () => {
       const { getRequestHeaderSize, routeSite } = loadRouteSite({

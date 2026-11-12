@@ -2839,7 +2839,7 @@ async function routeSite(kvNamespace, metadata) {
     if (event.request.uri.startsWith("/_next/image")) {
       cacheKey = getHeader("accept");
     } else {
-      var headers = ["rsc","next-router-prefetch","next-router-state-tree","next-url","x-prerender-revalidate"];
+      var headers = ["rsc","next-router-prefetch","next-router-segment-prefetch","next-router-state-tree","next-url","x-prerender-revalidate"];
       for (var i=0; i<headers.length; i++) cacheKey += getHeader(headers[i]);
     }
     if (event.request.cookies["__prerender_bypass"]) {
