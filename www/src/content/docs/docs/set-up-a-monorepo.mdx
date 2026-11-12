@@ -73,7 +73,7 @@ The `packages/` directory  includes the following:
 - `core/`
 
   This directory includes shared code that can be used by other packages. These are
-  defined as modules. For example, we have an `Example` module.
+  organized into namespaces. For example, we have an `Example` namespace.
 
   ```ts title="packages/core/src/example/index.ts"
   export namespace Example {
@@ -87,14 +87,11 @@ The `packages/` directory  includes the following:
 
   ```json title="packages/core/package.json"
   "exports": {
-    "./*": [
-      "./src/*\/index.ts",
-      "./src/*.ts"
-    ]
+    "./*": "./src/*\/index.ts"
   }
   ```
 
-  This will allow us to import the `Example` module by doing:
+  This will allow us to import the `Example` namespace by doing:
 
   ```ts
   import { Example } from "@monorepo-template/core/example";
@@ -107,7 +104,7 @@ The `packages/` directory  includes the following:
    We also have [Vitest](https://vitest.dev/) configured for testing this package with the `sst shell` CLI.
 
    ```bash
-   npm test
+   npm test -w packages/core
    ```
 
 - `functions/`
@@ -119,10 +116,10 @@ The `packages/` directory  includes the following:
 
   This directory includes scripts that you can run on your SST app using the `sst shell` CLI
   and [`tsx`](https://www.npmjs.com/package/tsx). For example, to the run the example
-  `scripts/src/example.ts`, run the following from `packages/scripts/`.
+  `scripts/src/example.ts`, run the following from the root of your project.
 
   ```bash
-  npm run shell src/example.ts
+  npm run shell -w packages/scripts -- src/example.ts
   ```
 
 You can add additional packages to the `packages/` directory. For example, you might add a `frontend/` and a `backend/` package.
