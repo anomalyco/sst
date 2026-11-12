@@ -336,6 +336,49 @@ describe("CloudFront router", () => {
     });
   });
 
+  it("sets URL route origin timeouts dynamically", async () => {
+    const { event, handler } = loadHandler({
+      uri: "/",
+      headers: {
+        host: { value: "example.com" },
+      },
+      routes: ["url,route0,,/"],
+      metadata: {
+        route0: {
+          host: "gateway-origin.example.com",
+          origin: {
+            connectionAttempts: 2,
+            timeouts: {
+              connectionTimeout: 3,
+              readTimeout: 60,
+              keepAliveTimeout: 60,
+            },
+          },
+        },
+      },
+    });
+
+    await handler(event);
+
+    expect(event.request.origin).toEqual({
+      domainName: "gateway-origin.example.com",
+      customOriginConfig: {
+        port: 443,
+        protocol: "https",
+        sslProtocols: ["TLSv1.2"],
+      },
+      originAccessControlConfig: {
+        enabled: false,
+      },
+      connectionAttempts: 2,
+      timeouts: {
+        connectionTimeout: 3,
+        readTimeout: 60,
+        keepAliveTimeout: 60,
+      },
+    });
+  });
+
   describe("header sizing", () => {
     it("counts request headers and cookies", async () => {
       const { getRequestHeaderSize, routeSite } = loadRouteSite({

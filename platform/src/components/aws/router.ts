@@ -407,6 +407,10 @@ export interface RouterUrlRouteArgs extends RouteArgs {
    * When compared to the `connectionTimeout`, this is the total time for the
    * request.
    *
+   * The Router applies this timeout dynamically to matching requests through
+   * its CloudFront Function. It does not change the distribution's static
+   * origin configuration.
+   *
    * @default `"20 seconds"`
    * @example
    * ```js
@@ -420,6 +424,11 @@ export interface RouterUrlRouteArgs extends RouteArgs {
    * The number of seconds that CloudFront should try to maintain the connection
    * to the destination after receiving the last packet of the response. Must be
    * between 1 and 60 seconds
+   *
+   * The Router applies this timeout dynamically to matching requests through
+   * its CloudFront Function. It does not change the distribution's static
+   * origin configuration.
+   *
    * @default `"5 seconds"`
    * @example
    * ```js
