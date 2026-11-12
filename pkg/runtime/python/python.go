@@ -8,7 +8,6 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -29,36 +28,6 @@ var (
 	// Clear .deps/ once per SST run so workspace package changes are picked up
 	globalDepsCacheClearOnce sync.Once
 )
-
-type worker struct {
-	stdout io.ReadCloser
-	stderr io.ReadCloser
-	cmd    *exec.Cmd
-}
-
-func (w *worker) Stop() {
-	// Terminate the whole process group
-	process.Kill(w.cmd.Process)
-}
-
-func (w *worker) Logs() io.ReadCloser {
-	reader, writer := io.Pipe()
-
-	go func() {
-		defer writer.Close()
-		var wg sync.WaitGroup
-		for _, src := range []io.Reader{w.stdout, w.stderr} {
-			wg.Add(1)
-			go func(src io.Reader) {
-				defer wg.Done()
-				io.Copy(writer, src)
-			}(src)
-		}
-		wg.Wait()
-	}()
-
-	return reader
-}
 
 type PythonRuntime struct {
 	// concurrency limits total parallel builds across all functions.
@@ -167,8 +136,7 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 		workingDir = projectRoot
 	}
 
-	cmd := process.CommandContext(
-		ctx,
+	cmd := process.Command(
 		"uv",
 		"run",
 		lambdaBridgePath,
@@ -197,24 +165,11 @@ func (r *PythonRuntime) Run(ctx context.Context, input *runtime.RunInput) (runti
 
 	cmd.Env = env
 	cmd.Dir = workingDir
-	stdout, err := cmd.StdoutPipe()
+	worker, err := runtime.StartWorker(ctx, cmd)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create stdout pipe: %v", err)
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create stderr pipe: %v", err)
-	}
-
-	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("failed to start worker process: %v", err)
 	}
-
-	return &worker{
-		stdout,
-		stderr,
-		cmd,
-	}, nil
+	return worker, nil
 
 }
 

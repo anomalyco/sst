@@ -263,6 +263,7 @@ func function(ctx context.Context, input input) {
 		}
 		go func() {
 			logs := worker.Logs()
+			defer logs.Close()
 			scanner := bufio.NewScanner(logs)
 			for scanner.Scan() {
 				line := scanner.Text()

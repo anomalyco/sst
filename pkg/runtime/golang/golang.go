@@ -3,10 +3,8 @@ package golang
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -19,38 +17,6 @@ import (
 type Runtime struct {
 	mut         sync.Mutex
 	directories map[string]string
-}
-
-type Worker struct {
-	stdout io.ReadCloser
-	stderr io.ReadCloser
-	cmd    *exec.Cmd
-}
-
-func (w *Worker) Stop() {
-	process.Kill(w.cmd.Process)
-}
-
-func (w *Worker) Logs() io.ReadCloser {
-	reader, writer := io.Pipe()
-
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		_, _ = io.Copy(writer, w.stdout)
-	}()
-	go func() {
-		defer wg.Done()
-		_, _ = io.Copy(writer, w.stderr)
-	}()
-
-	go func() {
-		wg.Wait()
-		defer writer.Close()
-	}()
-
-	return reader
 }
 
 func New() *Runtime {
@@ -120,14 +86,7 @@ func (r *Runtime) Run(ctx context.Context, input *runtime.RunInput) (runtime.Wor
 	cmd.Env = input.Env
 	cmd.Env = append(cmd.Env, "AWS_LAMBDA_RUNTIME_API="+input.Server)
 	cmd.Dir = input.Build.Out
-	stdout, _ := cmd.StdoutPipe()
-	stderr, _ := cmd.StderrPipe()
-	cmd.Start()
-	return &Worker{
-		stdout,
-		stderr,
-		cmd,
-	}, nil
+	return runtime.StartWorker(ctx, cmd)
 }
 
 func (r *Runtime) ShouldRebuild(functionID string, file string) bool {
