@@ -913,6 +913,7 @@ export class Dynamo extends Component implements Link.Linkable {
     return {
       properties: {
         name: this.name,
+        arn: this.arn,
       },
       include: [
         permission({
