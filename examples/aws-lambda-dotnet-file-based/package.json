@@ -1,0 +1,18 @@
+{
+  "name": "aws-lambda-dotnet-file-based",
+  "module": "index.ts",
+  "type": "module",
+  "devDependencies": {
+    "@types/aws-lambda": "8.10.146",
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "sst": "file:../../sdk/js"
+  },
+  "scripts": {
+    "dev": "bun sst dev"
+  }
+}

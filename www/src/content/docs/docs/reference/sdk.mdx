@@ -11,7 +11,7 @@ You can use the SDK in your **functions**, **frontends**, and **container applic
 Check out the _SDK_ section in a component's API reference doc.
 :::
 
-Currently, the SDK is only available for JS/TS, Python, Golang, and Rust. Support for other languages is on the roadmap.
+Currently, the SDK is only available for JS/TS, Python, Golang, Rust, and .NET. Support for other languages is on the roadmap.
 
 ---
 
@@ -211,3 +211,50 @@ new sst.aws.Function("MyFunction", {
 ```
 
 Client functions are currently **not supported** in the Rust SDK.
+
+---
+
+## .NET
+
+Use the SST .NET SDK in your .NET functions or container applications. Until it's published to NuGet, reference the project from the SST repo.
+
+```xml title="src/MyFunction.csproj"
+<ItemGroup>
+  <ProjectReference Include="../../sdk/csharp/src/SST.Sdk.csproj" />
+</ItemGroup>
+```
+
+In your runtime code, use `Resource.Get` to access the linked resources. Pass a type to get a typed value, or leave it out to get a `JsonElement`.
+
+```csharp title="src/Function.cs"
+using SST;
+
+var bucket = Resource.Get<string>("MyBucket", "name");
+var openaiKey = Resource.Get<string>("OpenaiSecret", "value");
+```
+
+Where `MyBucket` and `OpenaiSecret` are linked to the function.
+
+```ts title="sst.config.ts"
+const bucket = new sst.aws.Bucket("MyBucket");
+const openai = new sst.Secret("OpenaiSecret");
+
+new sst.aws.Function("MyFunction", {
+  handler: "./src",
+  link: [bucket, openai],
+  runtime: "dotnet8"
+});
+```
+
+You can also read a whole resource into a record, and access the current app's info.
+
+```csharp title="src/Function.cs"
+public sealed record Bucket(string Name, string Arn);
+
+var bucket = Resource.Get<Bucket>("MyBucket");
+Console.WriteLine($"{Resource.App.Name} {Resource.App.Stage}");
+```
+
+For Native AOT, pass source generated `JsonTypeInfo` to `Resource.Get` instead of relying on reflection. See the [SDK README](https://github.com/anomalyco/sst/tree/dev/sdk/csharp) for details.
+
+Client functions are currently **not supported** in the .NET SDK.
