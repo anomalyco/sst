@@ -52,6 +52,7 @@ func TestGenerate(t *testing.T) {
 		assert.Contains(t, out, "\"name\": string")
 		assert.Contains(t, out, "\"arn\": string")
 		assert.NotContains(t, out, "/// <reference path=\"sst-env.d.ts\" />")
+		assert.Equal(t, byte('\n'), content[len(content)-1], "generated declaration should end with a newline")
 	})
 
 	t.Run("number and boolean types", func(t *testing.T) {

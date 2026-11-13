@@ -45,6 +45,7 @@ var footer = strings.Join([]string{
 	"",
 	"import \"sst\"",
 	"export {}",
+	"",
 }, "\n")
 
 func Generate(root string, links common.Links, ignore []string) error {
