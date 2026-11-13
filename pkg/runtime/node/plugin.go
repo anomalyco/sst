@@ -46,8 +46,8 @@ func plugin(path string) api.Plugin {
 			if err := cmd.Start(); err != nil {
 				return
 			}
-			requests := make(chan request, 0)
-			responses := make(chan message, 0)
+			requests := make(chan request)
+			responses := make(chan message)
 
 			request := func(command string, input map[string]any) map[string]any {
 				c := make(chan map[string]any)
