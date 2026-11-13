@@ -2803,8 +2803,29 @@ export class Service extends Component implements Link.Linkable {
     }
 
     function registerReceiver() {
+      if (
+        args.containers &&
+        args.dev &&
+        typeof args.dev === "object" &&
+        args.dev.command
+      ) {
+        new DevCommand(`${name}Dev`, {
+          link: args.link,
+          dev: args.dev,
+          aws: {
+            role: taskRole.arn,
+          },
+        });
+      }
+
       all([containers]).apply(([val]) => {
         for (const container of val) {
+          if (
+            !container.dev ||
+            typeof container.dev !== "object" ||
+            !container.dev.command
+          )
+            continue;
           const title = val.length == 1 ? name : `${name}${container.name}`;
           new DevCommand(`${title}Dev`, {
             link: args.link,

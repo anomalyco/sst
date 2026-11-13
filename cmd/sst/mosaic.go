@@ -111,9 +111,12 @@ func CmdMosaic(c *cli.Cli) error {
 						<-processExited
 						fmt.Println("\n[restarting]")
 					}
-					fields, _ := shellquote.Split(nextEnv.Command)
-					if len(args) > 0 {
-						fields = args
+					fields := args
+					if len(fields) == 0 {
+						fields, err = parseCommand(nextEnv.Command)
+						if err != nil {
+							return err
+						}
 					}
 					cmd = process.Command(
 						fields[0],
@@ -330,8 +333,11 @@ func CmdMosaic(c *cli.Cli) error {
 					switch evt := unknown.(type) {
 					case *project.CompleteEvent:
 						for _, d := range evt.Devs {
-							if d.Command == "" {
+							if strings.TrimSpace(d.Command) == "" {
 								continue
+							}
+							if _, err := parseCommand(d.Command); err != nil {
+								return fmt.Errorf("invalid dev command for %q: %w", d.Name, err)
 							}
 							dir := filepath.Join(cwd, d.Directory)
 							title := d.Title
@@ -448,11 +454,14 @@ func CmdMosaic(c *cli.Cli) error {
 					switch evt := unknown.(type) {
 					case *project.CompleteEvent:
 						for _, d := range evt.Devs {
-							if d.Command == "" {
+							if strings.TrimSpace(d.Command) == "" {
 								continue
 							}
+							words, err := parseCommand(d.Command)
+							if err != nil {
+								return fmt.Errorf("invalid dev command for %q: %w", d.Name, err)
+							}
 							dir := filepath.Join(cwd, d.Directory)
-							words, _ := shellquote.Split(d.Command)
 							title := d.Title
 							if title == "" {
 								title = d.Name
@@ -479,6 +488,21 @@ func CmdMosaic(c *cli.Cli) error {
 	err = wg.Wait()
 	slog.Info("done mosaic", "err", err)
 	return err
+}
+
+func parseCommand(command string) ([]string, error) {
+	if strings.TrimSpace(command) == "" {
+		return nil, fmt.Errorf("command is empty")
+	}
+
+	fields, err := shellquote.Split(command)
+	if err != nil {
+		return nil, err
+	}
+	if len(fields) == 0 {
+		return nil, fmt.Errorf("command is empty")
+	}
+	return fields, nil
 }
 
 func diff(a map[string]string, b map[string]string) bool {
