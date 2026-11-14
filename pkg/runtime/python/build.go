@@ -5,6 +5,7 @@ import (
 	"archive/zip"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -78,12 +79,10 @@ func buildDeploy(ctx context.Context, input *runtime.BuildInput, cacheDir string
 		return nil, fmt.Errorf("package discovery: %w", err)
 	}
 
-	var packagesBuilt []string
 	for _, pkg := range localPackages {
 		if err := buildPackage(ctx, input, pkg); err != nil {
 			return nil, fmt.Errorf("build %s: %w", pkg.Name, err)
 		}
-		packagesBuilt = append(packagesBuilt, pkg.Name)
 	}
 
 	if err := installDependenciesForBuild(ctx, input, projectInfo); err != nil {
@@ -185,11 +184,14 @@ func precompilePythonFiles(ctx context.Context, input *runtime.BuildInput, dir s
 func ensureDockerfile(input *runtime.BuildInput, projectInfo *projectInfo) error {
 	outputDockerfile := filepath.Join(input.Out(), "Dockerfile")
 
-	// Ensure pyproject.toml is in the build context for `pip install .`
+	// Preserve the handler package metadata for custom Dockerfiles that build it.
+	// Default container installs use the rewritten requirements.txt instead.
 	outputPyproject := filepath.Join(input.Out(), "pyproject.toml")
 	if _, err := os.Stat(outputPyproject); err != nil && projectInfo.PyprojectPath != "" {
 		if _, err := os.Stat(projectInfo.PyprojectPath); err == nil {
-			_ = copyFile(projectInfo.PyprojectPath, outputPyproject)
+			if err := copyFile(projectInfo.PyprojectPath, outputPyproject); err != nil {
+				return fmt.Errorf("copy pyproject.toml: %w", err)
+			}
 		}
 	}
 
@@ -641,8 +643,8 @@ func installDependenciesForLambda(ctx context.Context, input *runtime.BuildInput
 
 	// Container builds: Dockerfile handles deps; zip builds: install here
 	if input.IsContainer {
-		if err := copyWorkspacePackagesForContainer(input, projectInfo); err != nil {
-			return fmt.Errorf("failed to copy workspace packages for container: %w", err)
+		if err := materializeContainerRequirements(ctx, input, projectInfo); err != nil {
+			return fmt.Errorf("failed to materialize container requirements: %w", err)
 		}
 	} else {
 		if err := copySyncedDependencies(ctx, input, projectInfo, architecture); err != nil {
@@ -653,76 +655,117 @@ func installDependenciesForLambda(ctx context.Context, input *runtime.BuildInput
 	return nil
 }
 
-// copyWorkspacePackagesForContainer copies workspace package directories into the artifact
-// so the Dockerfile's `uv pip install -r requirements.txt` can resolve relative paths.
-func copyWorkspacePackagesForContainer(input *runtime.BuildInput, projectInfo *projectInfo) error {
-	workspaceRoot := findWorkspaceRoot(projectInfo)
-
+// materializeContainerRequirements replaces checkout-relative local requirements with
+// sdists stored inside the Docker build context.
+func materializeContainerRequirements(ctx context.Context, input *runtime.BuildInput, projectInfo *projectInfo) error {
 	requirementsPath := filepath.Join(input.Out(), "requirements.txt")
 	content, err := os.ReadFile(requirementsPath)
 	if err != nil {
-		return nil
+		return fmt.Errorf("read requirements: %w", err)
 	}
 
-	lines := strings.Split(string(content), "\n")
-
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "-") {
-			continue
-		}
-
-		if !strings.HasPrefix(line, "./") && !strings.HasPrefix(line, "../") {
-			continue
-		}
-
-		// Strip extras or markers (e.g., "./core[extra] ; python_version >= '3.11'")
-		pkgPath := line
-		for _, sep := range []string{" ", "[", ";"} {
-			if idx := strings.Index(pkgPath, sep); idx > 0 {
-				pkgPath = pkgPath[:idx]
-			}
-		}
-
-		// Resolve full path relative to workspace root
-		fullPath := filepath.Join(workspaceRoot, pkgPath)
-		if _, err := os.Stat(fullPath); err != nil {
-			slog.Warn("workspace package directory not found", "path", fullPath, "line", line)
-			continue
-		}
-
-		// Copy to artifact at the same relative path
-		destPath := filepath.Join(input.Out(), pkgPath)
-		if _, err := os.Stat(destPath); err == nil {
-			// Already exists — just ensure pyproject.toml is present for uv pip install
-			srcPyproject := filepath.Join(fullPath, "pyproject.toml")
-			destPyproject := filepath.Join(destPath, "pyproject.toml")
-			if _, err := os.Stat(srcPyproject); err == nil {
-				if _, err := os.Stat(destPyproject); err != nil {
-					data, readErr := os.ReadFile(srcPyproject)
-					if readErr != nil {
-						return fmt.Errorf("failed to read pyproject.toml for workspace package %s: %w", pkgPath, readErr)
-					}
-					if err := os.WriteFile(destPyproject, data, 0644); err != nil {
-						return fmt.Errorf("failed to copy pyproject.toml for workspace package %s: %w", pkgPath, err)
-					}
-				}
-			}
-			continue
-		}
-
-		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
-			return fmt.Errorf("failed to create directory for workspace package %s: %w", pkgPath, err)
-		}
-
-		// Preserve pyproject.toml and metadata for uv pip install
-		if err := copyDir(fullPath, destPath, skipBuildArtifacts); err != nil {
-			return fmt.Errorf("failed to copy workspace package %s: %w", pkgPath, err)
-		}
-
+	rewritten, err := rewriteContainerRequirements(
+		ctx,
+		string(content),
+		findWorkspaceRoot(projectInfo),
+		input.Out(),
+		buildContainerSdist,
+	)
+	if err != nil {
+		return err
 	}
 
-	return nil
+	return os.WriteFile(requirementsPath, []byte(rewritten), 0644)
+}
+
+type containerSdistBuilder func(context.Context, string, string) (string, error)
+
+func rewriteContainerRequirements(
+	ctx context.Context,
+	requirements string,
+	workspaceRoot string,
+	artifactRoot string,
+	buildSdist containerSdistBuilder,
+) (string, error) {
+	lines := strings.Split(requirements, "\n")
+	artifacts := make(map[string]string)
+
+	for index, rawLine := range lines {
+		localPath, suffix, ok := splitLocalRequirement(rawLine)
+		if !ok {
+			continue
+		}
+
+		fullPath := filepath.Clean(filepath.Join(workspaceRoot, localPath))
+		info, err := os.Stat(fullPath)
+		if err != nil {
+			return "", fmt.Errorf("workspace package %q: %w", localPath, err)
+		}
+		if !info.IsDir() {
+			return "", fmt.Errorf("workspace package %q is not a directory", localPath)
+		}
+
+		artifactPath, exists := artifacts[fullPath]
+		if !exists {
+			artifactPath, err = buildSdist(ctx, artifactRoot, fullPath)
+			if err != nil {
+				return "", fmt.Errorf("build workspace package %q: %w", localPath, err)
+			}
+			artifacts[fullPath] = artifactPath
+		}
+
+		relativePath, err := filepath.Rel(artifactRoot, artifactPath)
+		if err != nil {
+			return "", fmt.Errorf("resolve artifact path for workspace package %q: %w", localPath, err)
+		}
+		if relativePath == ".." || strings.HasPrefix(relativePath, ".."+string(os.PathSeparator)) {
+			return "", fmt.Errorf("workspace package %q produced an artifact outside the build context", localPath)
+		}
+		lines[index] = "./" + filepath.ToSlash(relativePath) + suffix
+	}
+
+	return strings.Join(lines, "\n"), nil
+}
+
+// splitLocalRequirement separates a uv-exported local path from extras and markers.
+func splitLocalRequirement(line string) (path string, suffix string, ok bool) {
+	trimmed := strings.TrimSpace(line)
+	if !strings.HasPrefix(trimmed, "./") && !strings.HasPrefix(trimmed, "../") {
+		return "", "", false
+	}
+
+	end := len(trimmed)
+	for _, separator := range []string{" ", "[", ";"} {
+		if index := strings.Index(trimmed, separator); index >= 0 && index < end {
+			end = index
+		}
+	}
+	return trimmed[:end], trimmed[end:], true
+}
+
+func buildContainerSdist(ctx context.Context, artifactRoot string, packageDir string) (string, error) {
+	sum := sha256.Sum256([]byte(packageDir))
+	outputDir := filepath.Join(artifactRoot, ".sst", "packages", fmt.Sprintf("%x", sum[:8]))
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		return "", fmt.Errorf("create package artifact directory: %w", err)
+	}
+
+	if err := runUvBuild(ctx, &uvBuildCommand{
+		PackageDir: packageDir,
+		OutputDir:  outputDir,
+		BuildType:  "sdist",
+	}); err != nil {
+		return "", err
+	}
+
+	archives, err := filepath.Glob(filepath.Join(outputDir, "*.tar.gz"))
+	if err != nil {
+		return "", fmt.Errorf("find source distribution: %w", err)
+	}
+	if len(archives) != 1 {
+		return "", fmt.Errorf("expected one source distribution, found %d", len(archives))
+	}
+	return archives[0], nil
 }
 
 // copySourceFilesSimple copies handler source files to the build output.

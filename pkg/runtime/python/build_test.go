@@ -1,6 +1,7 @@
 package python
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -8,6 +9,140 @@ import (
 
 	"github.com/sst/sst/v3/pkg/runtime"
 )
+
+func TestRewriteContainerRequirements(t *testing.T) {
+	t.Run("materializes parent workspace members inside the artifact", func(t *testing.T) {
+		root := t.TempDir()
+		workspaceRoot := filepath.Join(root, "projects", "app")
+		libDir := filepath.Join(root, "lib")
+		artifactRoot := filepath.Join(root, "artifact")
+		for _, dir := range []string{workspaceRoot, libDir, artifactRoot} {
+			if err := os.MkdirAll(dir, 0755); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		calls := 0
+		rewritten, err := rewriteContainerRequirements(
+			context.Background(),
+			"../../lib[extra] ; python_version >= '3.12'\nrequests==2.32.0\n../../lib",
+			workspaceRoot,
+			artifactRoot,
+			func(_ context.Context, artifactRoot string, packageDir string) (string, error) {
+				calls++
+				if packageDir != libDir {
+					t.Fatalf("package dir = %s, want %s", packageDir, libDir)
+				}
+				archive := filepath.Join(artifactRoot, ".sst", "packages", "lib", "lib-0.1.0.tar.gz")
+				if err := os.MkdirAll(filepath.Dir(archive), 0755); err != nil {
+					return "", err
+				}
+				return archive, os.WriteFile(archive, nil, 0644)
+			},
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if calls != 1 {
+			t.Fatalf("sdist builder called %d times, want 1", calls)
+		}
+		if strings.Contains(rewritten, "..") {
+			t.Fatalf("rewritten requirements contain a parent path:\n%s", rewritten)
+		}
+		if !strings.Contains(rewritten, "./.sst/packages/lib/lib-0.1.0.tar.gz[extra] ; python_version >= '3.12'") {
+			t.Fatalf("local requirement was not rewritten with its suffix:\n%s", rewritten)
+		}
+		if !strings.Contains(rewritten, "requests==2.32.0") {
+			t.Fatalf("registry requirement was changed:\n%s", rewritten)
+		}
+	})
+
+	t.Run("supports descendant path dependencies", func(t *testing.T) {
+		workspaceRoot := t.TempDir()
+		packageDir := filepath.Join(workspaceRoot, "packages", "common")
+		artifactRoot := filepath.Join(workspaceRoot, "artifact")
+		for _, dir := range []string{packageDir, artifactRoot} {
+			if err := os.MkdirAll(dir, 0755); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		rewritten, err := rewriteContainerRequirements(
+			context.Background(),
+			"./packages/common",
+			workspaceRoot,
+			artifactRoot,
+			func(_ context.Context, artifactRoot string, packageDir string) (string, error) {
+				archive := filepath.Join(artifactRoot, ".sst", "packages", "common", "common-0.1.0.tar.gz")
+				return archive, nil
+			},
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rewritten != "./.sst/packages/common/common-0.1.0.tar.gz" {
+			t.Fatalf("rewritten requirement = %q", rewritten)
+		}
+	})
+
+	t.Run("rejects missing local packages", func(t *testing.T) {
+		_, err := rewriteContainerRequirements(
+			context.Background(),
+			"../missing",
+			t.TempDir(),
+			t.TempDir(),
+			func(context.Context, string, string) (string, error) {
+				t.Fatal("sdist builder should not be called")
+				return "", nil
+			},
+		)
+		if err == nil {
+			t.Fatal("expected missing package error")
+		}
+	})
+
+	t.Run("rejects archives outside the artifact", func(t *testing.T) {
+		workspaceRoot := t.TempDir()
+		packageDir := filepath.Join(workspaceRoot, "package")
+		if err := os.MkdirAll(packageDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+
+		_, err := rewriteContainerRequirements(
+			context.Background(),
+			"./package",
+			workspaceRoot,
+			t.TempDir(),
+			func(context.Context, string, string) (string, error) {
+				return filepath.Join(workspaceRoot, "outside.tar.gz"), nil
+			},
+		)
+		if err == nil {
+			t.Fatal("expected artifact containment error")
+		}
+	})
+}
+
+func TestSplitLocalRequirement(t *testing.T) {
+	tests := []struct {
+		line       string
+		wantPath   string
+		wantSuffix string
+		ok         bool
+	}{
+		{"./package", "./package", "", true},
+		{"../../lib[extra] ; python_version >= '3.12'", "../../lib", "[extra] ; python_version >= '3.12'", true},
+		{"requests==2.32.0", "", "", false},
+		{"-e ./package", "", "", false},
+	}
+
+	for _, tt := range tests {
+		path, suffix, ok := splitLocalRequirement(tt.line)
+		if path != tt.wantPath || suffix != tt.wantSuffix || ok != tt.ok {
+			t.Errorf("splitLocalRequirement(%q) = (%q, %q, %v), want (%q, %q, %v)", tt.line, path, suffix, ok, tt.wantPath, tt.wantSuffix, tt.ok)
+		}
+	}
+}
 
 func TestDeployBuilder_CleanupInstalledDependencies(t *testing.T) {
 	tempDir := t.TempDir()
