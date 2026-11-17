@@ -3,6 +3,7 @@ package node
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -253,5 +254,47 @@ func mustWriteFile(t *testing.T, path string, contents string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestNpmInstallArgs(t *testing.T) {
+	tests := []struct {
+		name         string
+		architecture string
+		packages     []string
+		want         []string
+	}{
+		{
+			name:         "x86_64",
+			architecture: "x86_64",
+			packages:     []string{"pg"},
+			want:         []string{"install", "--force", "--os=linux", "--cpu=x64"},
+		},
+		{
+			name:         "arm64",
+			architecture: "arm64",
+			packages:     []string{"pg"},
+			want:         []string{"install", "--force", "--os=linux", "--cpu=arm64"},
+		},
+		{
+			name:         "sharp needs glibc",
+			architecture: "arm64",
+			packages:     []string{"sharp"},
+			want:         []string{"install", "--force", "--os=linux", "--cpu=arm64", "--libc=glibc"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := npmInstallArgs(tt.architecture, tt.packages)
+			if !slices.Equal(got, tt.want) {
+				t.Fatalf("npmInstallArgs() = %v, want %v", got, tt.want)
+			}
+			// npm 12 rejects these legacy flags as unknown (EUNKNOWNCONFIG)
+			for _, arg := range got {
+				if strings.HasPrefix(arg, "--platform") || strings.HasPrefix(arg, "--arch") {
+					t.Fatalf("npmInstallArgs() contains %q, which npm 12 rejects", arg)
+				}
+			}
+		})
 	}
 }
