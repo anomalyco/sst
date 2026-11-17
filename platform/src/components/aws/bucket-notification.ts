@@ -55,7 +55,7 @@ export class BucketNotification extends Component {
     this.notification = notification;
 
     function normalizeNotifications() {
-      return output(args.notifications).apply((notifications) =>
+      return output(args.notifications ?? []).apply((notifications) =>
         notifications.map((n) => {
           const count =
             (n.function ? 1 : 0) + (n.queue ? 1 : 0) + (n.topic ? 1 : 0);
@@ -181,6 +181,7 @@ export class BucketNotification extends Component {
           `${name}Notification`,
           {
             bucket: bucket.name,
+            eventbridge: args.eventBridge,
             lambdaFunctions: config.apply((config) =>
               config
                 .filter((c) => c!.functionBuilder)
