@@ -160,17 +160,15 @@ func getNotNilFields(v interface{}) []interface{} {
 		return result
 	}
 
-	for i := 0; i < val.NumField(); i++ {
+	for i := range val.NumField() {
 		field := val.Field(i)
 		switch field.Kind() {
 		case reflect.Struct:
 			result = append(result, getNotNilFields(field.Interface())...)
-			break
 		case reflect.Ptr, reflect.Interface, reflect.Slice, reflect.Map, reflect.Chan, reflect.Func:
 			if !field.IsNil() {
 				result = append(result, field.Interface())
 			}
-			break
 		}
 	}
 

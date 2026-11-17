@@ -156,7 +156,7 @@ func (r *BucketFiles) uploadFiles(client *s3.Client, bucketName string, files []
 
 	// Start worker pool (10 workers)
 	numWorkers := 10
-	for i := 0; i < numWorkers; i++ {
+	for range numWorkers {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

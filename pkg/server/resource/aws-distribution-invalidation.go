@@ -71,7 +71,7 @@ func (r *DistributionInvalidation) handle(input *DistributionInvalidationInputs)
 	))
 
 	// Invalidate each chunk
-	for i := 0; i < stepsCount; i++ {
+	for i := range stepsCount {
 		fileStart := int(math.Min(float64(i*FILE_LIMIT), float64(fileCount)))
 		fileEnd := int(math.Min(float64((i+1)*FILE_LIMIT), float64(fileCount)))
 		wildcardStart := int(math.Min(float64(i*WILDCARD_LIMIT), float64(wildcardCount)))

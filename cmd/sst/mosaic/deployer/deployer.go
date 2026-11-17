@@ -75,17 +75,15 @@ func publishFields(v interface{}) {
 		return
 	}
 
-	for i := 0; i < val.NumField(); i++ {
+	for i := range val.NumField() {
 		field := val.Field(i)
 		switch field.Kind() {
 		case reflect.Struct:
 			publishFields(field.Interface())
-			break
 		case reflect.Ptr, reflect.Interface, reflect.Slice, reflect.Map, reflect.Chan, reflect.Func:
 			if !field.IsNil() {
 				bus.Publish(field.Interface())
 			}
-			break
 		default:
 			// bus.Publish(field.Interface())
 		}
