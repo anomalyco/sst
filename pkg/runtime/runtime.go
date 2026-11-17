@@ -118,6 +118,9 @@ func (c *Collection) Build(ctx context.Context, input *BuildInput) (*BuildOutput
 
 	if input.Bundle != "" {
 		out = input.Bundle
+		if !filepath.IsAbs(out) {
+			out = filepath.Join(path.ResolveRootDir(input.CfgPath), out)
+		}
 		result = &BuildOutput{
 			Handler: input.Handler,
 			Errors:  []string{},
