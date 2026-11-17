@@ -59,16 +59,55 @@
  * # ...
  * ```
  *
+ * You can also pass build arguments to the Docker build using `buildArgs`. This is
+ * useful for passing secrets or configuration values that are needed during the
+ * Docker build process, such as authentication tokens for private package registries.
+ *
+ * ```ts title="sst.config.ts" {3-7}
+ * const withBuildArgs = new sst.aws.Function("PythonFnBuildArgs", {
+ *   python: {
+ *     container: {
+ *       buildArgs: {
+ *         MY_BUILD_ARG: "my-value",
+ *       },
+ *     },
+ *   },
+ *   handler: "./build_args/src/build_args/api.handler",
+ *   runtime: "python3.11",
+ *   url: true,
+ * });
+ * ```
+ *
+ * In your Dockerfile, declare the ARG after the FROM statement to make it available
+ * in the build stage.
+ *
+ * ```dockerfile title="build_args/Dockerfile" {7-11}
+ * ARG PYTHON_VERSION=3.11
+ * FROM public.ecr.aws/lambda/python:${PYTHON_VERSION}
+ *
+ * # Declare build args AFTER FROM to make them available in the build stage
+ * ARG MY_BUILD_ARG="default_value"
+ *
+ * # Set as ENV so it's available at runtime
+ * ENV MY_BUILD_ARG=${MY_BUILD_ARG}
+ * ```
+ *
  * The project structure looks something like this.
  *
- * ```txt {5}
+ * ```txt {5,10}
  * ├── sst.config.ts
  * ├── pyproject.toml
- * └── custom_dockerfile
+ * ├── custom_dockerfile
+ * │   ├── pyproject.toml
+ * │   ├── Dockerfile
+ * │   └── src
+ * │       └── custom_dockerfile
+ * │           └── api.py
+ * └── build_args
  *     ├── pyproject.toml
  *     ├── Dockerfile
  *     └── src
- *         └── custom_dockerfile
+ *         └── build_args
  *             └── api.py
  * ```
  *
@@ -110,9 +149,23 @@ export default $config({
 			url: true,
 		});
 
+		const withBuildArgs = new sst.aws.Function("PythonFnBuildArgs", {
+			python: {
+				container: {
+					buildArgs: {
+						MY_BUILD_ARG: "hello-from-build-args",
+					},
+				},
+			},
+			handler: "./build_args/src/build_args/api.handler",
+			runtime: "python3.11",
+			url: true,
+		});
+
 		return {
 			base: base.url,
 			custom: custom.url,
+			withBuildArgs: withBuildArgs.url,
 		};
 	},
 });
