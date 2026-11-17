@@ -61,6 +61,7 @@ const supportedRegions = {
   "ap-southeast-3": { lat: -6.2088, lon: 106.8456 }, // Jakarta, Indonesia
   "ap-southeast-4": { lat: -37.8136, lon: 144.9631 }, // Melbourne, Australia
   "ap-southeast-5": { lat: 3.139, lon: 101.6869 }, // Kuala Lumpur, Malaysia
+  "ap-southeast-6": { lat: -36.8485, lon: 174.7633 }, // Auckland, New Zealand
   "ap-southeast-7": { lat: 13.7563, lon: 100.5018 }, // Bangkok, Thailand
   "ap-south-1": { lat: 19.076, lon: 72.8777 }, // Mumbai, India
   "ap-south-2": { lat: 17.385, lon: 78.4867 }, // Hyderabad, India
