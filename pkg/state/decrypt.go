@@ -35,7 +35,7 @@ type defaultSecretsProvider struct {
 	passphrase string
 }
 
-func (d *defaultSecretsProvider) OfType(ty string, state json.RawMessage) (secrets.Manager, error) {
+func (d *defaultSecretsProvider) OfType(_ context.Context, ty string, state json.RawMessage) (secrets.Manager, error) {
 	sm, err := passphrase.NewPromptingPassphraseSecretsManagerFromState(state)
 	if err != nil {
 		return nil, err
