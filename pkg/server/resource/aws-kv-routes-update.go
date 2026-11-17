@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"slices"
 	"strings"
 	"time"
 
@@ -29,10 +30,10 @@ type KvRoutesUpdateInputs struct {
 }
 
 type KvRoutesUpdateOutputs struct {
-	Store     string   `json:"store,omitempty"`
-	Key       string   `json:"key,omitempty"`
-	Entry     string   `json:"entry,omitempty"`
-	Namespace string   `json:"namespace,omitempty"`
+	Store     string `json:"store,omitempty"`
+	Key       string `json:"key,omitempty"`
+	Entry     string `json:"entry,omitempty"`
+	Namespace string `json:"namespace,omitempty"`
 }
 
 func (r *KvRoutesUpdate) Create(input *KvRoutesUpdateInputs, output *CreateResult[KvRoutesUpdateOutputs]) error {
@@ -62,10 +63,10 @@ func (r *KvRoutesUpdate) Create(input *KvRoutesUpdateInputs, output *CreateResul
 		}
 		return err
 	}
-	
+
 	// append route if not exists
 	routes := existingRoutes
-	if !existsRoute(routes, input.Entry) {
+	if !slices.Contains(routes, input.Entry) {
 		routes = append(routes, input.Entry)
 	}
 
@@ -80,7 +81,7 @@ func (r *KvRoutesUpdate) Create(input *KvRoutesUpdateInputs, output *CreateResul
 		}
 		return err
 	}
-	
+
 	*output = CreateResult[KvRoutesUpdateOutputs]{
 		ID: fmt.Sprintf("%s:%s:%s", input.Store, input.Namespace, input.Key),
 		Outs: KvRoutesUpdateOutputs{
@@ -99,7 +100,7 @@ func (r *KvRoutesUpdate) Update(input *UpdateInput[KvRoutesUpdateInputs, KvRoute
 		input.News.Namespace != input.Olds.Namespace ||
 		input.News.Key != input.Olds.Key {
 		result := CreateResult[KvRoutesUpdateOutputs]{}
-		
+
 		// First, delete the old entry if it exists
 		deleteInput := DeleteInput[KvRoutesUpdateOutputs]{
 			ID: input.ID,
@@ -114,18 +115,18 @@ func (r *KvRoutesUpdate) Update(input *UpdateInput[KvRoutesUpdateInputs, KvRoute
 		if err := r.Delete(&deleteInput, &dummy); err != nil {
 			return err
 		}
-		
+
 		// Then create the new entry
 		if err := r.Create(&input.News, &result); err != nil {
 			return err
 		}
-		
+
 		*output = UpdateResult[KvRoutesUpdateOutputs]{
 			Outs: result.Outs,
 		}
 		return nil
 	}
-	
+
 	// get client
 	cfg, err := r.config()
 	if err != nil {
@@ -152,13 +153,13 @@ func (r *KvRoutesUpdate) Update(input *UpdateInput[KvRoutesUpdateInputs, KvRoute
 		}
 		return err
 	}
-	
+
 	// Remove the old entry and add new
 	entries := removeRoute(existingEntries, input.Olds.Entry)
-	if !existsRoute(entries, input.News.Entry) {
+	if !slices.Contains(entries, input.News.Entry) {
 		entries = append(entries, input.News.Entry)
 	}
-	
+
 	// Save routes
 	err = r.setRoutes(client, input.News.Store, etag, fullKey, entries, chunkNum)
 	if err != nil {
@@ -170,7 +171,7 @@ func (r *KvRoutesUpdate) Update(input *UpdateInput[KvRoutesUpdateInputs, KvRoute
 		}
 		return err
 	}
-	
+
 	*output = UpdateResult[KvRoutesUpdateOutputs]{
 		Outs: KvRoutesUpdateOutputs{
 			Store:     input.News.Store,
@@ -254,7 +255,7 @@ func (r *KvRoutesUpdate) getRoutes(client *cloudfrontkeyvaluestore.Client, store
 		KvsARN: aws.String(storeARN),
 		Key:    aws.String(key),
 	})
-	
+
 	if err != nil {
 		var notFoundErr *types.ResourceNotFoundException
 		if errors.As(err, &notFoundErr) {
@@ -264,12 +265,12 @@ func (r *KvRoutesUpdate) getRoutes(client *cloudfrontkeyvaluestore.Client, store
 		// other error, propagate
 		return nil, chunkNum, err
 	}
-	
+
 	if getResp.Value == nil {
 		// no value
 		return []string{}, chunkNum, nil
 	}
-	
+
 	entriesData := *getResp.Value
 
 	// Check if the data is chunked by trying to parse a metadata object first
@@ -280,33 +281,33 @@ func (r *KvRoutesUpdate) getRoutes(client *cloudfrontkeyvaluestore.Client, store
 
 			// This is chunked data, we need to retrieve and concatenate all chunks
 			entriesData = ""
-			
+
 			// Retrieve all chunks
 			for i := 0; i < parts; i++ {
 				chunkResp, err := client.GetKey(r.context, &cloudfrontkeyvaluestore.GetKeyInput{
 					KvsARN: aws.String(storeARN),
 					Key:    aws.String(fmt.Sprintf("%s:%d", key, i)),
 				})
-				
+
 				if err != nil {
 					return nil, chunkNum, fmt.Errorf("failed to retrieve chunk %d: %w", i, err)
 				}
-				
+
 				if chunkResp.Value == nil {
 					return nil, chunkNum, fmt.Errorf("chunk %d value is missing", i)
 				}
-				
+
 				entriesData += *chunkResp.Value
 			}
 		}
 	}
-	
+
 	// Parse routes array
 	var entries []string
 	if err := json.Unmarshal([]byte(entriesData), &entries); err != nil {
 		return nil, chunkNum, fmt.Errorf("failed to unmarshal existing entries: %w", err)
 	}
-	
+
 	return entries, chunkNum, nil
 }
 
@@ -325,21 +326,21 @@ func (r *KvRoutesUpdate) setRoutes(client *cloudfrontkeyvaluestore.Client, store
 	// Check if the string is longer than chunkSize
 	if len(entriesStr) > chunkSize {
 		// Calculate number of chunks needed
-		newChunkNum= (len(entriesStr) + chunkSize - 1) / chunkSize // Ceiling division
-		
+		newChunkNum = (len(entriesStr) + chunkSize - 1) / chunkSize // Ceiling division
+
 		// Create a metadata entry to store the number of parts
 		metadataMap := map[string]int{"parts": newChunkNum}
 		metadataJSON, err := json.Marshal(metadataMap)
 		if err != nil {
 			return fmt.Errorf("failed to marshal metadata: %w", err)
 		}
-		
+
 		// Create multiple puts for each chunk
 		puts = append(puts, types.PutKeyRequestListItem{
 			Key:   aws.String(key),
 			Value: aws.String(string(metadataJSON)),
 		})
-		
+
 		// Split the string into chunks
 		for i := 0; i < newChunkNum; i++ {
 			start := i * chunkSize
@@ -347,7 +348,7 @@ func (r *KvRoutesUpdate) setRoutes(client *cloudfrontkeyvaluestore.Client, store
 			if end > len(entriesStr) {
 				end = len(entriesStr)
 			}
-			
+
 			puts = append(puts, types.PutKeyRequestListItem{
 				Key:   aws.String(fmt.Sprintf("%s:%d", key, i)),
 				Value: aws.String(entriesStr[start:end]),
@@ -395,7 +396,7 @@ func (r *KvRoutesUpdate) deleteKey(client *cloudfrontkeyvaluestore.Client, store
 	deletes = append(deletes, types.DeleteKeyRequestListItem{
 		Key: aws.String(key),
 	})
-	
+
 	// Add all chunk keys to delete
 	if oldChunkNum > 1 {
 		for i := 0; i < oldChunkNum; i++ {
@@ -404,7 +405,7 @@ func (r *KvRoutesUpdate) deleteKey(client *cloudfrontkeyvaluestore.Client, store
 			})
 		}
 	}
-	
+
 	// Not chunked or key not found, proceed with normal delete
 	_, err := client.UpdateKeys(r.context, &cloudfrontkeyvaluestore.UpdateKeysInput{
 		KvsARN:  aws.String(storeARN),
@@ -416,15 +417,6 @@ func (r *KvRoutesUpdate) deleteKey(client *cloudfrontkeyvaluestore.Client, store
 	}
 
 	return nil
-}
-
-func existsRoute(entries []string, entry string) bool {
-	for _, e := range entries {
-		if e == entry {
-			return true
-		}
-	}
-	return false
 }
 
 func removeRoute(entries []string, entryToRemove string) []string {
