@@ -1,6 +1,8 @@
 import fs from "fs";
 import path from "path";
 import { VisibleError } from "../../error.js";
+import { isALteB } from "../../util/compare-semver.js";
+import { getPackageVersion } from "../../util/package.js";
 
 /**
  * Validates that no wrangler configuration file exists in the site directory.
@@ -27,13 +29,26 @@ export function validateNoWranglerFile(sitePath: string, componentName: string):
 /**
  * Validates that the framework config file contains the required SST_WRANGLER_PATH configuration.
  * This ensures linked resources work correctly in Cloudflare SSR sites.
+ *
+ * Starting with the specified minimum version, the plugin automatically detects the SST-managed
+ * Wrangler config, so this validation is only needed for older versions.
  */
 export function validateFrameworkConfig(input: {
   sitePath: string;
   configName: string;
   componentName: string;
+  packageName: string;
+  minVersion: string;
 }): void {
-  const { sitePath, configName, componentName } = input;
+  const { sitePath, configName, componentName, packageName, minVersion } = input;
+
+  // Check the package version first
+  const packageVersion = getPackageVersion(sitePath, packageName);
+
+  // If version is the minimum or higher, no validation needed (plugin auto-detects SST config)
+  if (packageVersion && isALteB(minVersion, packageVersion)) {
+    return;
+  }
 
   const extensions = [".ts", ".js", ".mjs"];
   const configDir = sitePath;
@@ -58,17 +73,28 @@ export function validateFrameworkConfig(input: {
   const content = fs.readFileSync(configPath, "utf-8");
   const hasWranglerPath = /configPath\s*[:=]\s*process\.env\.SST_WRANGLER_PATH/.test(content);
 
-  if (!hasWranglerPath) {
-    throw new VisibleError(
-      [
-        `Missing required configuration for ${componentName}.`,
-        "",
-        `The Cloudflare adapter must be configured with:`,
-        `  configPath: process.env.SST_WRANGLER_PATH,`,
-        "",
-        `This is required for linked resources to work correctly:`,
-        `https://sst.dev/docs/cloudflare/#cloudflare-vite-plugin`,
-      ].join("\n")
+  if (hasWranglerPath) {
+    // Show warning for backwards compatibility - user has old config but env var is present
+    console.warn(
+      `Starting with ${packageName} v${minVersion}, you no longer need to set configPath: process.env.SST_WRANGLER_PATH in your config file for ${componentName}. The plugin now automatically detects the SST-managed Wrangler configuration. You can safely remove this configuration.`
     );
+    return;
   }
+
+  // No env var set and version is old or unknown - require upgrade
+  throw new VisibleError(
+    [
+      `Please upgrade ${packageName} to v${minVersion} or higher for SST to work correctly with ${componentName}.`,
+      "",
+      packageVersion
+        ? `Detected ${packageName} v${packageVersion}.`
+        : `Could not detect ${packageName} version in package.json.`,
+      "",
+      `Starting with v${minVersion}, the plugin automatically detects the SST-managed Wrangler configuration.`,
+      "Alternatively, you can add the following to your config file for older versions:",
+      `  configPath: process.env.SST_WRANGLER_PATH,`,
+      "",
+      `https://sst.dev/docs/cloudflare/#cloudflare-vite-plugin`,
+    ].join("\n")
+  );
 }
