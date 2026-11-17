@@ -95,6 +95,9 @@ func (r *Run) executeCommand(input *RunInputs) error {
 	for scanner.Scan() {
 		bus.Publish(&common.StdoutEvent{Line: scanner.Text()})
 	}
+	if err := scanner.Err(); err != nil {
+		slog.Error("failed to read command output", "error", err, "cmd", cmd.String())
+	}
 	slog.Info("waiting for command to finish", "cmd", cmd.String())
 	cmd.Wait()
 	if cmd.ProcessState.ExitCode() > 0 {
