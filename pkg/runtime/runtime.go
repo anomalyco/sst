@@ -125,11 +125,14 @@ func (c *Collection) Build(ctx context.Context, input *BuildInput) (*BuildOutput
 	}
 
 	if input.Bundle == "" {
-		err := os.RemoveAll(out)
-		if err != nil {
-			return nil, err
+		// skip removing in dev mode so running workers don't lose their bundle files
+		if !input.Dev {
+			err := os.RemoveAll(out)
+			if err != nil {
+				return nil, err
+			}
 		}
-		err = os.MkdirAll(out, 0755)
+		err := os.MkdirAll(out, 0755)
 		if err != nil {
 			return nil, err
 		}
