@@ -2,6 +2,7 @@ package bus
 
 import (
 	"reflect"
+	"slices"
 	"sync"
 )
 
@@ -43,18 +44,12 @@ func Unsubscribe(ch chan interface{}) {
 	bus.mu.Lock()
 	defer bus.mu.Unlock()
 
-	for i := len(bus.all) - 1; i >= 0; i-- {
-		if bus.all[i] == ch {
-			bus.all = append(bus.all[:i], bus.all[i+1:]...)
-		}
-	}
+	isTarget := func(c chan interface{}) bool { return c == ch }
 
-	for _, channels := range bus.subscribers {
-		for i := len(channels) - 1; i >= 0; i-- {
-			if channels[i] == ch {
-				channels = append(channels[:i], channels[i+1:]...)
-			}
-		}
+	bus.all = slices.DeleteFunc(bus.all, isTarget)
+
+	for t, channels := range bus.subscribers {
+		bus.subscribers[t] = slices.DeleteFunc(channels, isTarget)
 	}
 }
 
