@@ -22,9 +22,12 @@ export default $config({
       access: "public",
     });
     const router = new sst.aws.Router("MyRouter", {
+      // Use the AWS-managed CachingDisabled policy so this distribution is
+      // compatible with the CloudFront Free Tier and safe for the API route.
+      cachePolicy: sst.aws.cloudfront.cachePolicy.cachingDisabled,
       routes: {
         "/api/*": api.url,
-        "/*": $interpolate`https://${bucket.domain}`,
+        "/*": { bucket },
       },
     });
 

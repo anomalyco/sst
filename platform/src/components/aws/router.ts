@@ -1044,6 +1044,15 @@ export interface RouterArgs {
   >;
 
   /**
+   * The CloudFront cache policy to use by default for routes that do not specify
+   * their own policy.
+   *
+   * By default, SST creates a cache policy for server routes and uses CloudFront's
+   * managed CachingOptimized policy for bucket routes.
+   */
+  cachePolicy?: Input<string>;
+
+  /**
    * Configure Lambda function URL protection through CloudFront Origin Access Control.
    *
    * When set, all Functions and SSR sites routing through this Router automatically
@@ -1874,6 +1883,8 @@ async function handler(event) {
       }
 
       function createCachePolicy() {
+        if (args.cachePolicy) return undefined;
+
         defaultCachePolicy =
           defaultCachePolicy ??
           new cloudfront.CachePolicy(
@@ -1962,9 +1973,11 @@ async function handler(event) {
                       "PUT",
                     ],
                     cachedMethods: ["GET", "HEAD"],
-                    defaultTtl: 0,
                     compress: true,
-                    cachePolicyId: route.cachePolicy ?? createCachePolicy().id,
+                    cachePolicyId:
+                      route.cachePolicy ??
+                      args.cachePolicy ??
+                      createCachePolicy()!.id,
                     // CloudFront's Managed-AllViewerExceptHostHeader policy
                     originRequestPolicyId:
                       "b689b0a8-53d0-40ab-baf2-68738e2966ac",
@@ -2061,7 +2074,7 @@ async function handler(event) {
       const kvStoreArn = createRequestKvStore();
       const requestFunction = createRequestFunction();
       const responseFunction = createResponseFunction();
-      const cachePolicyId = createCachePolicy().id;
+      const cachePolicyId = args.cachePolicy ?? createCachePolicy()!.id;
       const edgeFunction = createLambdaEdgeFunction();
       const distribution = createDistribution();
 
