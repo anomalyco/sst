@@ -2,6 +2,12 @@ module github.com/sst/sst/v3
 
 go 1.24.7
 
+// Go 1.23 stopped reporting Windows directory junctions as symlinks. Package
+// managers link workspace packages that way, and the esbuild we embed then
+// records the node_modules path instead of the real source path, so `sst dev`
+// never rebuilds when a workspace package changes.
+godebug winsymlink=0
+
 require (
 	github.com/BurntSushi/toml v1.2.1
 	github.com/Masterminds/semver/v3 v3.2.1
