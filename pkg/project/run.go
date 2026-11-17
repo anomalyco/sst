@@ -269,7 +269,7 @@ func (p *Project) Run(ctx context.Context, input *StackInput) error {
 			}
 			return nodeOptions
 		}(),
-		"PULUMI_HOME="+global.ConfigDir(),
+		"PULUMI_HOME="+global.CacheDir(),
 	)
 	if input.ServerPort != 0 {
 		env = append(env, "SST_SERVER=http://127.0.0.1:"+fmt.Sprint(input.ServerPort))
