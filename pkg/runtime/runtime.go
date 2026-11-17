@@ -208,7 +208,27 @@ func (c *Collection) Build(ctx context.Context, input *BuildInput) (*BuildOutput
 			return nil, err
 		}
 		ciphertext := gcm.Seal(nil, make([]byte, 12), json, nil)
-		err = os.WriteFile(filepath.Join(result.Out, "resource.enc"), ciphertext, 0644)
+		// When a shared bundle is used, multiple functions share the same output
+		// directory (result.Out == input.Bundle). Writing "resource.enc" from
+		// concurrent Runtime.Build calls races: partial writes can leave a
+		// truncated or mixed ciphertext that fails AES-GCM authentication on
+		// the Lambda's first cold start (observed as `Decipheriv` errors at
+		// runtime initialization).
+		//
+		// Namespace the file under a per-function subdirectory so each function
+		// writes to its own path (eliminating the race) AND each function's
+		// uploaded zip can exclude every sibling's subtree (the .sst/ prefix
+		// gives a single, stable glob target for the zipper to filter on). The
+		// Lambda reads its own file via SST_KEY_FILE, which the platform
+		// component points at the matching path.
+		resourcePath := filepath.Join(result.Out, "resource.enc")
+		if input.Bundle != "" {
+			resourcePath = filepath.Join(result.Out, ".sst", input.FunctionID, "resource.enc")
+			if err := os.MkdirAll(filepath.Dir(resourcePath), 0755); err != nil {
+				return nil, err
+			}
+		}
+		err = os.WriteFile(resourcePath, ciphertext, 0644)
 		if err != nil {
 			return nil, err
 		}
