@@ -36,19 +36,41 @@ export interface Definition<
    * }
    * ```
    *
-   * Include Cloudflare bindings.
+   * Include a Cloudflare binding in a raw `Linkable` projection.
    *
-   * ```ts
-   * {
+   * For a custom native Cloudflare resource, prefer extending `CloudflareComponent`. It assembles the production
+   * binding, runtime type, and optional Wrangler development config. A raw `Linkable` must provide
+   * every projection explicitly; `binding()` alone is only the production Worker projection.
+   * The input is provider-shaped. Do not provide `name`; SST assigns the final binding name from
+   * the link name. SST does not maintain a closed binding-kind enum. The Cloudflare provider or
+   * API remains the final authority on supported kinds and fields.
+   *
+   * ```ts title="sst.config.ts"
+   * const bucket = new sst.cloudflare.Bucket("MyBucket");
+   *
+   * new sst.Linkable("MyStorage", {
+   *   properties: { bucketName: bucket.name },
    *   include: [
    *     sst.cloudflare.binding({
-   *       type: "r2BucketBindings",
-   *       properties: {
-   *         bucketName: "my-bucket"
+   *       type: "r2_bucket",
+   *       bucketName: bucket.name
+   *     }),
+   *     {
+   *       type: "typescript.type",
+   *       value: 'import("@cloudflare/workers-types").R2Bucket'
+   *     },
+   *     {
+   *       type: "cloudflare.dev",
+   *       config: {
+   *         r2_buckets: [{
+   *           binding: "__sst_link_name__",
+   *           bucket_name: bucket.name,
+   *           remote: true
+   *         }]
    *       }
-   *     })
+   *     }
    *   ]
-   * }
+   * });
    * ```
    */
   include?: {

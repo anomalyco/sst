@@ -1,8 +1,7 @@
 import { ComponentResourceOptions } from "@pulumi/pulumi";
 import * as cloudflare from "@pulumi/cloudflare";
-import { Component, Transform, transform } from "../component";
-import { Link } from "../link";
-import { binding } from "./binding";
+import { Transform, transform } from "../component";
+import { CloudflareComponent } from "./component.js";
 import { DEFAULT_ACCOUNT_ID } from ".";
 import type { Input } from "../input";
 
@@ -64,7 +63,9 @@ interface D1Ref {
  * ).first();
  * ```
  */
-export class D1 extends Component implements Link.Linkable {
+export class D1 extends CloudflareComponent {
+  protected readonly type = 'import("@cloudflare/workers-types").D1Database';
+  protected readonly binding: import("./binding.js").CloudflareBinding;
   private database: cloudflare.D1Database;
 
   constructor(name: string, args?: D1Args, opts?: ComponentResourceOptions) {
@@ -73,27 +74,40 @@ export class D1 extends Component implements Link.Linkable {
     if (args && "ref" in args) {
       const ref = args as D1Ref;
       this.database = ref.database;
-      return;
+    } else {
+      const parent = this;
+      const db = createDB();
+
+      this.database = db;
+
+      function createDB() {
+        return new cloudflare.D1Database(
+          ...transform(
+            args?.transform?.database,
+            `${name}Database`,
+            {
+              name: "",
+              accountId: args?.accountId ?? DEFAULT_ACCOUNT_ID,
+            },
+            { parent },
+          ),
+        );
+      }
     }
 
-    const parent = this;
-    const db = createDB();
-
-    this.database = db;
-
-    function createDB() {
-      return new cloudflare.D1Database(
-        ...transform(
-          args?.transform?.database,
-          `${name}Database`,
-          {
-            name: "",
-            accountId: args?.accountId ?? DEFAULT_ACCOUNT_ID,
-          },
-          { parent },
-        ),
-      );
-    }
+    this.binding = {
+      type: "d1",
+      id: this.databaseId,
+    };
+    this.devConfig = {
+      d1_databases: [
+        {
+          binding: this.linkNamePlaceholder,
+          database_id: this.databaseId,
+          remote: true,
+        },
+      ],
+    };
   }
 
   /**
@@ -111,19 +125,11 @@ export class D1 extends Component implements Link.Linkable {
    *
    * @internal
    */
-  getSSTLink() {
+  protected getLinkDefinition() {
     return {
       properties: {
         databaseId: this.databaseId,
       },
-      include: [
-        binding({
-          type: "d1DatabaseBindings",
-          properties: {
-            id: this.databaseId,
-          },
-        }),
-      ],
     };
   }
 

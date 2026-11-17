@@ -1,8 +1,7 @@
 import { ComponentResourceOptions, Input, output } from "@pulumi/pulumi";
 import * as cloudflare from "@pulumi/cloudflare";
-import { Component, Transform, transform } from "../component";
-import { Link } from "../link";
-import { binding } from "./binding";
+import { Transform, transform } from "../component";
+import { CloudflareComponent } from "./component.js";
 import { DEFAULT_ACCOUNT_ID } from "./account-id";
 import { DurationHours, toSeconds } from "../duration";
 
@@ -232,7 +231,9 @@ export interface HyperdriveArgs {
  * const db = await mysql.createConnection(Resource.MySQLDatabase.connectionString)
  * ```
  */
-export class Hyperdrive extends Component implements Link.Linkable {
+export class Hyperdrive extends CloudflareComponent {
+  protected readonly type = 'import("@cloudflare/workers-types").Hyperdrive';
+  protected readonly binding: import("./binding.js").CloudflareBinding;
   private hyperdrive: cloudflare.HyperdriveConfig;
 
   constructor(
@@ -245,42 +246,54 @@ export class Hyperdrive extends Component implements Link.Linkable {
     if (args && "ref" in args) {
       const ref = args as unknown as HyperdriveRef;
       this.hyperdrive = ref.hyperdrive;
-      return;
+    } else {
+      const parent = this;
+
+      const origin = output(args.origin);
+      const caching = normalizeCaching();
+
+      this.hyperdrive = new cloudflare.HyperdriveConfig(
+        ...transform(
+          args.transform?.hyperdrive,
+          `${name}Hyperdrive`,
+          {
+            accountId: args.accountId ?? DEFAULT_ACCOUNT_ID,
+            caching,
+            mtls: args.mtls,
+            name: "",
+            origin,
+            originConnectionLimit: args.connectionLimit,
+          },
+          { parent },
+        ),
+      );
+
+      function normalizeCaching() {
+        if (args.caching === undefined) return undefined;
+        return output(args.caching).apply((c) => {
+          if (c === false) return { disabled: true };
+          return {
+            maxAge: c.maxAge ? toSeconds(c.maxAge) : undefined,
+            staleWhileRevalidate: c.staleWhileRevalidate
+              ? toSeconds(c.staleWhileRevalidate)
+              : undefined,
+          };
+        });
+      }
     }
 
-    const parent = this;
-
-    const origin = output(args.origin);
-    const caching = normalizeCaching();
-
-    this.hyperdrive = new cloudflare.HyperdriveConfig(
-      ...transform(
-        args.transform?.hyperdrive,
-        `${name}Hyperdrive`,
+    this.binding = {
+      type: "hyperdrive",
+      id: this.id,
+    };
+    this.devConfig = {
+      hyperdrive: [
         {
-          accountId: args.accountId ?? DEFAULT_ACCOUNT_ID,
-          caching,
-          mtls: args.mtls,
-          name: "",
-          origin,
-          originConnectionLimit: args.connectionLimit,
+          binding: this.linkNamePlaceholder,
+          id: this.id,
         },
-        { parent },
-      ),
-    );
-
-    function normalizeCaching() {
-      if (args.caching === undefined) return undefined;
-      return output(args.caching).apply((c) => {
-        if (c === false) return { disabled: true };
-        return {
-          maxAge: c.maxAge ? toSeconds(c.maxAge) : undefined,
-          staleWhileRevalidate: c.staleWhileRevalidate
-            ? toSeconds(c.staleWhileRevalidate)
-            : undefined,
-        };
-      });
-    }
+      ],
+    };
   }
 
   /**
@@ -306,19 +319,11 @@ export class Hyperdrive extends Component implements Link.Linkable {
    *
    * @internal
    */
-  public getSSTLink() {
+  protected getLinkDefinition() {
     return {
       properties: {
         id: this.id,
       },
-      include: [
-        binding({
-          type: "hyperdriveBindings",
-          properties: {
-            id: this.id,
-          },
-        }),
-      ],
     };
   }
 

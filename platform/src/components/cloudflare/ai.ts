@@ -1,7 +1,5 @@
 import { ComponentResourceOptions } from "@pulumi/pulumi";
-import { Component } from "../component";
-import { Link } from "../link";
-import { binding } from "./binding";
+import { CloudflareComponent } from "./component.js";
 
 export interface AiArgs {}
 
@@ -39,9 +37,19 @@ export interface AiArgs {}
  * });
  * ```
  */
-export class Ai extends Component implements Link.Linkable {
+export class Ai extends CloudflareComponent {
+  protected readonly type = 'import("@cloudflare/workers-types").Ai';
+  protected readonly binding: import("./binding.js").CloudflareBinding;
+
   constructor(name: string, args?: AiArgs, opts?: ComponentResourceOptions) {
     super(__pulumiType, name, args, opts);
+    this.binding = { type: "ai" };
+    this.devConfig = {
+      ai: {
+        binding: this.linkNamePlaceholder,
+        remote: true,
+      },
+    };
   }
 
   /**
@@ -59,15 +67,9 @@ export class Ai extends Component implements Link.Linkable {
    *
    * @internal
    */
-  getSSTLink() {
+  protected getLinkDefinition() {
     return {
       properties: {},
-      include: [
-        binding({
-          type: "aiBindings",
-          properties: {},
-        }),
-      ],
     };
   }
 }

@@ -1,5 +1,12 @@
 import fs from "fs";
 import path from "path";
+import type { Unstable_RawConfig as RawConfig } from "wrangler";
+import { VisibleError } from "../../error.js";
+import {
+  composeWranglerConfig,
+  replaceLinkName,
+  type WranglerConfigSource,
+} from "./wrangler-config.js";
 
 export type WranglerCompatibility = {
   date: string;
@@ -8,8 +15,8 @@ export type WranglerCompatibility = {
 
 export type WranglerLinkInclude = {
   type: string;
-  binding?: string;
-  properties?: Record<string, unknown>;
+  config?: Partial<RawConfig>;
+  [field: string]: unknown;
 };
 
 export type WranglerLink = {
@@ -28,161 +35,69 @@ export function createWranglerConfig(input: {
   links?: WranglerLink[];
   accountId?: string;
 }) {
-  const config: Record<string, any> = {
-    ...(input.frameworkConfig ?? {}),
+  const baseConfig: Partial<RawConfig> = {
     name: sanitizeWranglerName(`sst-${input.appStage}-${input.name}`),
     compatibility_date: input.compatibility.date,
     compatibility_flags: input.compatibility.flags,
+    ...(input.accountId ? { account_id: input.accountId } : {}),
+    vars: {
+      ...(input.environment ?? {}),
+      SST_RESOURCE_App: JSON.stringify({
+        name: input.appName,
+        stage: input.appStage,
+      }),
+    },
   };
 
-  if (input.accountId) {
-    config.account_id = input.accountId;
-  }
-
-  const vars: Record<string, string> = {
-    ...(input.environment ?? {}),
-    SST_RESOURCE_App: JSON.stringify({
-      name: input.appName,
-      stage: input.appStage,
-    }),
-  };
-  const kvNamespaces: Record<string, any>[] = [];
-  const r2Buckets: Record<string, any>[] = [];
-  const d1Databases: Record<string, any>[] = [];
-  const hyperdrives: Record<string, any>[] = [];
-  const services: Record<string, any>[] = [];
-  const queueProducers: Record<string, any>[] = [];
-  const workflows: Record<string, any>[] = [];
-  const rateLimits: Record<string, any>[] = [];
-  let ai: Record<string, any> | undefined;
-  let versionMetadata: Record<string, any> | undefined;
+  const sources: WranglerConfigSource[] = [
+    {
+      owner: "framework",
+      config: (input.frameworkConfig ?? {}) as Partial<RawConfig>,
+      linkScoped: false,
+    },
+    { owner: "sst", config: baseConfig, linkScoped: false },
+  ];
 
   for (const link of input.links ?? []) {
+    const devConfigs = link.include
+      .filter((item) => item.type === "cloudflare.dev")
+      .map((item) => item.config);
     const binding = link.include.find(
       (item) => item.type === "cloudflare.binding",
     );
-    // Links without a native Cloudflare binding (Secret, sst.aws.*, custom
-    // Linkable, etc.) are surfaced as JSON-stringified vars so they match
-    // the `secret_text` deploy path handled in `worker.ts buildBindings`.
-    if (!binding) {
-      vars[`SST_RESOURCE_${link.name}`] = JSON.stringify(link.properties ?? {});
+
+    if (devConfigs.length === 0) {
+      // Non-native links are exposed as vars for local Wrangler consumers.
+      if (!binding) {
+        sources.push({
+          owner: link.name,
+          config: {
+            vars: {
+              [`SST_RESOURCE_${link.name}`]: JSON.stringify(
+                link.properties ?? {},
+              ),
+            },
+          },
+          linkScoped: false,
+        });
+      }
       continue;
     }
 
-    const properties = binding.properties ?? {};
-    switch (binding.binding) {
-      case "aiBindings":
-        ai = {
-          binding: link.name,
-          remote: true,
-        };
-        break;
-      case "kvNamespaceBindings":
-        kvNamespaces.push({
-          binding: link.name,
-          id: stringValue(properties.namespaceId),
-          remote: true,
-        });
-        break;
-      case "secretTextBindings":
-      case "plainTextBindings":
-        vars[link.name] = stringValue(properties.text);
-        break;
-      case "serviceBindings":
-        services.push({
-          binding: link.name,
-          service: stringValue(properties.service),
-          remote: true,
-        });
-        break;
-      case "queueBindings":
-        queueProducers.push({
-          binding: link.name,
-          queue: stringValue(properties.queueName),
-          remote: true,
-        });
-        break;
-      case "r2BucketBindings":
-        r2Buckets.push({
-          binding: link.name,
-          bucket_name: stringValue(properties.bucketName),
-          remote: true,
-        });
-        break;
-      case "d1DatabaseBindings":
-        d1Databases.push({
-          binding: link.name,
-          database_id: stringValue(properties.id),
-          remote: true,
-        });
-        break;
-      case "hyperdriveBindings":
-        hyperdrives.push({
-          binding: link.name,
-          id: stringValue(properties.id),
-        });
-        break;
-      case "versionMetadataBindings":
-        versionMetadata = {
-          binding: link.name,
-        };
-        break;
-      case "workflowBindings":
-        workflows.push({
-          binding: link.name,
-          name: stringValue(properties.workflowName),
-          class_name: stringValue(properties.className),
-          script_name: stringValue(properties.scriptName),
-          remote: true,
-        });
-        break;
-      case "rateLimitBindings":
-        rateLimits.push({
-          name: link.name,
-          namespace_id: stringValue(properties.namespaceId),
-          simple: properties.simple,
-        });
-        break;
+    for (const config of devConfigs) {
+      if (!config) {
+        throw new VisibleError(
+          `Cloudflare dev config is missing for ${link.name}`,
+        );
+      }
+      sources.push({
+        owner: link.name,
+        config: replaceLinkName(link.name, config, link.name),
+      });
     }
   }
 
-  if (Object.keys(vars).length > 0) {
-    config.vars = vars;
-  }
-  if (kvNamespaces.length > 0) {
-    config.kv_namespaces = kvNamespaces;
-  }
-  if (r2Buckets.length > 0) {
-    config.r2_buckets = r2Buckets;
-  }
-  if (d1Databases.length > 0) {
-    config.d1_databases = d1Databases;
-  }
-  if (hyperdrives.length > 0) {
-    config.hyperdrive = hyperdrives;
-  }
-  if (services.length > 0) {
-    config.services = services;
-  }
-  if (queueProducers.length > 0) {
-    config.queues = {
-      producers: queueProducers,
-    };
-  }
-  if (ai) {
-    config.ai = ai;
-  }
-  if (versionMetadata) {
-    config.version_metadata = versionMetadata;
-  }
-  if (workflows.length > 0) {
-    config.workflows = workflows;
-  }
-  if (rateLimits.length > 0) {
-    config.rate_limits = rateLimits;
-  }
-
-  return config;
+  return composeWranglerConfig(sources);
 }
 
 export function writeWranglerConfig(args: {
@@ -208,10 +123,6 @@ export function writeWranglerConfig(args: {
   }
 
   return wranglerPath;
-}
-
-function stringValue(input: unknown) {
-  return typeof input === "string" ? input : "";
 }
 
 const wranglerNameRegex = /[^a-z0-9-]+/g;

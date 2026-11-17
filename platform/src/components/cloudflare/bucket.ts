@@ -1,8 +1,7 @@
 import { ComponentResourceOptions } from "@pulumi/pulumi";
 import * as cloudflare from "@pulumi/cloudflare";
-import { Component, Transform, transform } from "../component";
-import { Link } from "../link.js";
-import { binding } from "./binding.js";
+import { Transform, transform } from "../component";
+import { CloudflareComponent } from "./component.js";
 import { DEFAULT_ACCOUNT_ID } from "./account-id";
 import type { Input } from "../input";
 
@@ -57,7 +56,9 @@ export interface BucketArgs {
  * await Resource.MyBucket.list();
  * ```
  */
-export class Bucket extends Component implements Link.Linkable {
+export class Bucket extends CloudflareComponent {
+  protected readonly type = 'import("@cloudflare/workers-types").R2Bucket';
+  protected readonly binding: import("./binding.js").CloudflareBinding;
   private bucket: cloudflare.R2Bucket;
 
   constructor(
@@ -72,6 +73,19 @@ export class Bucket extends Component implements Link.Linkable {
     const bucket = createBucket();
 
     this.bucket = bucket;
+    this.binding = {
+      type: "r2_bucket",
+      bucketName: this.bucket.name,
+    };
+    this.devConfig = {
+      r2_buckets: [
+        {
+          binding: this.linkNamePlaceholder,
+          bucket_name: this.bucket.name,
+          remote: true,
+        },
+      ],
+    };
 
     function createBucket() {
       return new cloudflare.R2Bucket(
@@ -101,19 +115,11 @@ export class Bucket extends Component implements Link.Linkable {
    *
    * @internal
    */
-  getSSTLink() {
+  protected getLinkDefinition() {
     return {
       properties: {
         name: this.bucket.name,
       },
-      include: [
-        binding({
-          type: "r2BucketBindings",
-          properties: {
-            bucketName: this.bucket.name,
-          },
-        }),
-      ],
     };
   }
 

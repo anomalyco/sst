@@ -17,7 +17,8 @@ export * from "./react-router";
 export * from "./tan-stack-start";
 export * from "./workflow";
 export * from "./rate-limit";
-export { binding } from "./binding.js";
+export { binding, type CloudflareBinding } from "./binding.js";
+export { CloudflareComponent } from "./component.js";
 
 /**
  * experimental packages, you may be fired for using

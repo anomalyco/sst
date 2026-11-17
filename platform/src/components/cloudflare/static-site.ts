@@ -3,8 +3,8 @@ import path from "path";
 import crypto from "crypto";
 import { ComponentResourceOptions, all, output, type Input } from "@pulumi/pulumi";
 import { Kv, KvArgs } from "./kv.js";
-import { Component, Prettify, Transform, transform } from "../component.js";
-import { Link } from "../link.js";
+import { Prettify, Transform, transform } from "../component.js";
+import { CloudflareComponent } from "./component.js";
 import { globSync } from "glob";
 import { KvData } from "./providers/kv-data.js";
 import { Worker, WorkerArgs } from "./worker.js";
@@ -250,7 +250,8 @@ export interface StaticSiteArgs extends BaseStaticSiteArgs {
  *
  * @deprecated Use [`StaticSiteV2`](/docs/component/cloudflare/static-site-v2) instead.
  */
-export class StaticSite extends Component implements Link.Linkable {
+export class StaticSite extends CloudflareComponent {
+  protected readonly type = "{ url: string }";
   private assets: Kv;
   private router: Worker;
 
@@ -456,7 +457,7 @@ export class StaticSite extends Component implements Link.Linkable {
   }
 
   /** @internal */
-  public getSSTLink() {
+  protected getLinkDefinition() {
     return {
       properties: {
         url: this.url,

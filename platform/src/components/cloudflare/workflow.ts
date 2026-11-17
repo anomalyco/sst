@@ -1,9 +1,8 @@
 import { ComponentResourceOptions } from "@pulumi/pulumi";
 import * as cf from "@pulumi/cloudflare";
-import { Component, Transform, transform } from "../component";
-import { Link } from "../link";
+import { Transform, transform } from "../component";
+import { CloudflareComponent } from "./component.js";
 import { Input } from "../input";
-import { binding } from "./binding";
 import { DEFAULT_ACCOUNT_ID } from "./account-id";
 import { Worker, WorkerArgs } from "./worker";
 
@@ -190,7 +189,9 @@ export interface WorkflowArgs {
  * ```
  *
  */
-export class Workflow extends Component implements Link.Linkable {
+export class Workflow extends CloudflareComponent {
+  protected readonly type = 'import("@cloudflare/workers-types").Workflow';
+  protected readonly binding: import("./binding.js").CloudflareBinding;
   private worker: Worker;
   private workflow: cf.Workflow;
 
@@ -208,6 +209,23 @@ export class Workflow extends Component implements Link.Linkable {
 
     this.worker = worker;
     this.workflow = workflow;
+    this.binding = {
+      type: "workflow",
+      workflowName: this.workflow.workflowName,
+      className: this.workflow.className,
+      scriptName: this.workflow.scriptName,
+    };
+    this.devConfig = {
+      workflows: [
+        {
+          binding: this.linkNamePlaceholder,
+          name: this.workflow.workflowName,
+          class_name: this.workflow.className,
+          script_name: this.workflow.scriptName,
+          remote: true,
+        },
+      ],
+    };
 
     function createWorker() {
       return new Worker(
@@ -293,23 +311,13 @@ export class Workflow extends Component implements Link.Linkable {
    *
    * @internal
    */
-  getSSTLink() {
+  protected getLinkDefinition() {
     return {
       properties: {
         workflowName: this.workflow.workflowName,
         className: this.workflow.className,
         scriptName: this.workflow.scriptName,
       },
-      include: [
-        binding({
-          type: "workflowBindings",
-          properties: {
-            workflowName: this.workflow.workflowName,
-            className: this.workflow.className,
-            scriptName: this.workflow.scriptName,
-          },
-        }),
-      ],
     };
   }
 }

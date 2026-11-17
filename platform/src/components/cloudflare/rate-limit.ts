@@ -4,9 +4,7 @@ import {
   type Input,
   type Output,
 } from "@pulumi/pulumi";
-import { Component } from "../component";
-import { Link } from "../link";
-import { binding } from "./binding";
+import { CloudflareComponent } from "./component.js";
 import { toSeconds } from "../duration";
 import { VisibleError } from "../error";
 
@@ -72,10 +70,12 @@ export interface RateLimitArgs {
  * }
  * ```
  */
-export class RateLimit extends Component implements Link.Linkable {
+export class RateLimit extends CloudflareComponent {
+  protected readonly type = 'import("@cloudflare/workers-types").RateLimit';
+  protected readonly binding: import("./binding.js").CloudflareBinding;
   private _namespaceId: Output<string>;
   private _limit: Output<number>;
-  private _period: Output<number>;
+  private _period: Output<10 | 60>;
 
   constructor(
     name: string,
@@ -91,6 +91,26 @@ export class RateLimit extends Component implements Link.Linkable {
     this._namespaceId = namespaceId;
     this._limit = limit;
     this._period = period;
+    this.binding = {
+      type: "ratelimit",
+      namespaceId: this._namespaceId,
+      simple: {
+        limit: this._limit,
+        period: this._period,
+      },
+    };
+    this.devConfig = {
+      ratelimits: [
+        {
+          name: this.linkNamePlaceholder,
+          namespace_id: this._namespaceId,
+          simple: {
+            limit: this._limit,
+            period: this._period as unknown as Input<60> | Input<10>,
+          },
+        },
+      ],
+    };
 
     function normalizeNamespaceId() {
       return output(args.namespaceId).apply((namespaceId) => {
@@ -105,7 +125,7 @@ export class RateLimit extends Component implements Link.Linkable {
     }
 
     function normalizePeriod() {
-      return output(args.period).apply(toSeconds);
+      return output(args.period).apply((period) => toSeconds(period) as 10 | 60);
     }
   }
 
@@ -154,21 +174,9 @@ export class RateLimit extends Component implements Link.Linkable {
    *
    * @internal
    */
-  getSSTLink() {
+  protected getLinkDefinition() {
     return {
       properties: {},
-      include: [
-        binding({
-          type: "rateLimitBindings",
-          properties: {
-            namespaceId: this._namespaceId,
-            simple: {
-              limit: this._limit,
-              period: this._period,
-            },
-          },
-        }),
-      ],
     };
   }
 }

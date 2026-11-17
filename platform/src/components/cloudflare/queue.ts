@@ -1,8 +1,7 @@
 import { ComponentResourceOptions, Input } from "@pulumi/pulumi";
 import * as cloudflare from "@pulumi/cloudflare";
-import { Component, Transform, transform } from "../component";
-import { Link } from "../link";
-import { binding } from "./binding";
+import { Transform, transform } from "../component";
+import { CloudflareComponent } from "./component.js";
 import { DEFAULT_ACCOUNT_ID } from "./account-id";
 import { WorkerArgs } from "./worker";
 import { VisibleError } from "../error";
@@ -169,7 +168,9 @@ export interface QueueSubscribeArgs {
  * });
  * ```
  */
-export class Queue extends Component implements Link.Linkable {
+export class Queue extends CloudflareComponent {
+  protected readonly type = 'import("@cloudflare/workers-types").Queue';
+  protected readonly binding: import("./binding.js").CloudflareBinding;
   private queue: cloudflare.Queue;
   private isSubscribed = false;
   private constructorName: string;
@@ -187,6 +188,21 @@ export class Queue extends Component implements Link.Linkable {
     const queue = create();
 
     this.queue = queue;
+    this.binding = {
+      type: "queue",
+      queueName: this.queue.queueName,
+    };
+    this.devConfig = {
+      queues: {
+        producers: [
+          {
+            binding: this.linkNamePlaceholder,
+            queue: this.queue.queueName,
+            remote: true,
+          },
+        ],
+      },
+    };
 
     function create() {
       return new cloudflare.Queue(
@@ -271,17 +287,9 @@ export class Queue extends Component implements Link.Linkable {
     );
   }
 
-  getSSTLink() {
+  protected getLinkDefinition() {
     return {
       properties: {},
-      include: [
-        binding({
-          type: "queueBindings",
-          properties: {
-            queueName: this.queue.queueName,
-          },
-        }),
-      ],
     };
   }
 

@@ -2,10 +2,11 @@ import {
   ComponentResourceOptions,
   Output,
   output,
+  rootStackResource,
   secret,
 } from "@pulumi/pulumi";
-import { Component, Transform } from "../component";
-import { Link } from "../link";
+import { Transform } from "../component";
+import { CloudflareComponent } from "./component.js";
 import { WorkerArgs, Worker } from "./worker";
 import { PrivateKey } from "@pulumi/tls";
 import { BucketPolicyArgs } from "@pulumi/aws/s3";
@@ -17,7 +18,12 @@ export interface AuthArgs {
   };
 }
 
-export class Auth extends Component implements Link.Linkable {
+/**
+ * The `Auth` component creates an authenticator Worker and exposes its URL and
+ * public key when linked to another Worker.
+ */
+export class Auth extends CloudflareComponent {
+  protected readonly type = "{ url: string; publicKey: string }";
   private readonly _key: PrivateKey;
   private readonly _authenticator: Output<Worker>;
 
@@ -29,15 +35,22 @@ export class Auth extends Component implements Link.Linkable {
     });
 
     this._authenticator = output(args.authenticator).apply((args) => {
-      return new Worker(`${name}Authenticator`, {
-        ...args,
-        url: true,
-        environment: {
-          ...args.environment,
-          AUTH_PRIVATE_KEY: secret(this.key.privateKeyPemPkcs8),
-          AUTH_PUBLIC_KEY: secret(this.key.publicKeyPem),
+      return new Worker(
+        `${name}Authenticator`,
+        {
+          ...args,
+          url: true,
+          environment: {
+            ...args.environment,
+            AUTH_PRIVATE_KEY: secret(this.key.privateKeyPemPkcs8),
+            AUTH_PUBLIC_KEY: secret(this.key.publicKeyPem),
+          },
         },
-      });
+        {
+          parent: this,
+          aliases: [{ parent: rootStackResource }],
+        },
+      );
     });
   }
 
@@ -54,7 +67,7 @@ export class Auth extends Component implements Link.Linkable {
   }
 
   /** @internal */
-  public getSSTLink(): Link.Definition {
+  protected getLinkDefinition() {
     return {
       properties: {
         url: this._authenticator.url,
