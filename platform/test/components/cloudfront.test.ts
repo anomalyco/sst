@@ -179,6 +179,7 @@ function loadHandler(input: {
   metadata: Record<string, any>;
   cookies?: Record<string, CloudFrontField>;
   querystring?: Record<string, unknown>;
+  injection?: string;
 }) {
   const { context, event } = createContext({
     ...input,
@@ -196,7 +197,9 @@ function loadHandler(input: {
     },
   });
 
-  new vm.Script(`${REQUEST_HANDLER_CODE}
+  // Splice the injection in where the handler starts, as the Router does
+  const code = REQUEST_HANDLER_CODE.replace("{", `{${input.injection ?? ""}`);
+  new vm.Script(`${code}
 }
 globalThis.__handler = handler;`).runInContext(
     context,
@@ -463,6 +466,119 @@ describe("CloudFront router", () => {
       expect(response.statusCode).toBe(431);
       expect(response.statusDescription).toBe("Request Header Fields Too Large");
       expect(response.body.data).toContain("Reduce cookie size");
+    });
+  });
+
+  describe("server host", () => {
+    const routes = ["site,site,,/", "url,api,,/api"];
+    const metadata = {
+      site: {
+        servers: [
+          ["server-us.example.com", 38.9, -77.0],
+          ["server-eu.example.com", 50.1, 8.7],
+        ],
+        origin: { timeouts: { readTimeout: 20 } },
+        image: { route: "/_next/image", host: "image.example.com" },
+      },
+      api: { host: "api.example.com" },
+    };
+    const headers = {
+      host: { value: "example.com" },
+      "cloudfront-viewer-latitude": { value: "55.7" },
+      "cloudfront-viewer-longitude": { value: "12.6" },
+    };
+    // Sets the host after an await, as an injection reading a KeyValueStore does
+    const injection = `
+      const preview = await cf.kvs().get("router:routes");
+      if (preview) event.request.serverHost = "preview.example.com";
+    `;
+
+    it("routes to the nearest server by default", async () => {
+      const { event, handler } = loadHandler({ uri: "/", headers, routes, metadata });
+
+      const request = await handler(event);
+
+      expect(request.origin.domainName).toBe("server-eu.example.com");
+    });
+
+    it("routes to the server host set by the injection", async () => {
+      const { event, handler } = loadHandler({
+        uri: "/",
+        headers,
+        routes,
+        metadata,
+        injection,
+      });
+
+      const request = await handler(event);
+
+      expect(request.origin.domainName).toBe("preview.example.com");
+      expect(request.origin.timeouts).toEqual({ readTimeout: 20 });
+      expect(request.origin.originAccessControlConfig).toEqual({ enabled: false });
+    });
+
+    it("keeps the origin access control of the server route", async () => {
+      const oac = {
+        enabled: true,
+        signingBehavior: "always",
+        signingProtocol: "sigv4",
+        originType: "lambda",
+      };
+      const { event, handler } = loadHandler({
+        uri: "/",
+        headers,
+        routes,
+        metadata: {
+          ...metadata,
+          site: { ...metadata.site, origin: { originAccessControlConfig: oac } },
+        },
+        injection,
+      });
+
+      const request = await handler(event);
+
+      expect(request.origin.domainName).toBe("preview.example.com");
+      expect(request.origin.originAccessControlConfig).toEqual(oac);
+    });
+
+    it("caches each server host separately", async () => {
+      const cacheKey = async (uri: string, injection?: string) => {
+        const { event, handler } = loadHandler({
+          uri,
+          headers: { ...headers },
+          routes,
+          metadata,
+          injection,
+        });
+        const request = await handler(event);
+        return request.headers["x-open-next-cache-key"].value;
+      };
+
+      // Unchanged without a server host, so existing cache entries stay valid
+      expect(await cacheKey("/")).toBe("d41d8cd98f00b204e9800998ecf8427e");
+      expect(await cacheKey("/", injection)).not.toBe(await cacheKey("/"));
+      expect(await cacheKey("/_next/image", injection)).toBe(
+        await cacheKey("/_next/image"),
+      );
+    });
+
+    it("does not change the image optimizer or url routes", async () => {
+      for (const [uri, host] of [
+        ["/_next/image", "image.example.com"],
+        ["/api/users", "api.example.com"],
+      ]) {
+        const { event, handler } = loadHandler({
+          uri,
+          headers,
+          routes,
+          metadata,
+          injection,
+        });
+
+        const request = await handler(event);
+
+        expect(request.origin.domainName).toBe(host);
+      }
     });
   });
 });

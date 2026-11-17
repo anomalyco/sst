@@ -893,6 +893,29 @@ export interface RouterArgs {
        *   }
        * }
        * ```
+       *
+       * To send a request for a site's server to a different server host, set
+       * `event.request.serverHost`. This is useful for previews or canaries that run
+       * another version of the server, like a second Lambda alias. Only the server
+       * route uses it; static files and the image optimizer are routed as usual. The
+       * origin settings stay the same, so the host must accept the same CloudFront
+       * origin access control.
+       *
+       * ```js
+       * {
+       *   edge: {
+       *     viewerRequest: {
+       *       injection: `
+       *         if (event.request.cookies.canary)
+       *           event.request.serverHost = "abc123.lambda-url.us-east-1.on.aws";
+       *       `
+       *     }
+       *   }
+       * }
+       * ```
+       *
+       * With the default cache policy, responses from each `serverHost` are cached
+       * separately, so a cached response from one version isn't served for another.
        */
       injection: Input<string>;
       /**
@@ -2818,7 +2841,8 @@ async function routeSite(kvNamespace, metadata) {
     setNextjsGeoHeaders();
     setNextjsCacheKey();
     if (isRequestHeaderTooLarge()) return buildOversizedHeadersResponse();
-    setUrlOrigin(findNearestServer(metadata.servers), metadata.origin);
+    // A viewer request injection can pick the server host for this request
+    setUrlOrigin(event.request.serverHost || findNearestServer(metadata.servers), metadata.origin);
   }
 
   // Inject the CloudFront viewer country, region, latitude, and longitude headers into
@@ -2835,7 +2859,8 @@ async function routeSite(kvNamespace, metadata) {
   // based on the request headers and the path. next/image only needs the
   // accept header, and this header is not useful for the rest of the query
   function setNextjsCacheKey() {
-    var cacheKey = "";
+    // Cache each server host apart; the image optimizer doesn't use it
+    var cacheKey = event.request.serverHost || "";
     if (event.request.uri.startsWith("/_next/image")) {
       cacheKey = getHeader("accept");
     } else {
