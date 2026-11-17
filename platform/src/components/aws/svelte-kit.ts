@@ -422,14 +422,22 @@ export class SvelteKit extends SsrSite {
         }
       } catch (e) {}
 
+      // Copy streaming handler into the server output directory
+      fs.copyFileSync(
+        path.join(
+          $cli.paths.platform,
+          "functions",
+          "sveltekit-server",
+          "server.mjs",
+        ),
+        path.join(serverOutputPath, "server.mjs"),
+      );
+
       return {
         base: basepath,
         server: {
-          handler: path.join(
-            serverOutputPath,
-            "lambda-handler",
-            "index.handler",
-          ),
+          handler: path.join(serverOutputPath, "server.handler"),
+          streaming: true,
           nodejs: {
             esbuild: {
               minify: process.env.SST_DEBUG ? false : true,
