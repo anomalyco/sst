@@ -1,6 +1,7 @@
 package project
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
@@ -28,8 +29,7 @@ func (p *Project) checkProviderUpgrade(resources []apitype.ResourceV3) []string 
 
 	// We iterate backwards over the slice b/c when multiple provider versions are present (i.e. just after refreshing but before deploying)
 	// the old provider version appears at the end of the array, and we want to override the version checkpoint with the new version.
-	for i := len(resources) - 1; i >= 0; i-- {
-		v := resources[i]
+	for _, v := range slices.Backward(resources) {
 		name := strings.TrimPrefix(string(v.Type), "pulumi:providers:")
 		if name == string(v.Type) {
 			continue
