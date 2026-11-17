@@ -691,7 +691,7 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
   private constructorName: string;
   private constructorArgs: ApiGatewayV2Args;
   private constructorOpts: ComponentResourceOptions;
-  private api: apigatewayv2.Api;
+  private api: Output<apigatewayv2.Api>;
   private apigDomain?: Output<apigatewayv2.DomainName>;
   private apiMapping?: Output<apigatewayv2.ApiMapping>;
   private logGroup: cloudwatch.LogGroup;
@@ -708,7 +708,6 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
 
     const accessLog = normalizeAccessLog();
     const domain = normalizeDomain();
-    const cors = normalizeCors();
     const vpc = normalizeVpc();
 
     const vpcLink = createVpcLink();
@@ -773,25 +772,6 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
       });
     }
 
-    function normalizeCors() {
-      return output(args.cors).apply((cors) => {
-        if (cors === false) return {};
-
-        const defaultCors: types.input.apigatewayv2.ApiCorsConfiguration = {
-          allowHeaders: ["*"],
-          allowMethods: ["*"],
-          allowOrigins: ["*"],
-        };
-        return cors === true || cors === undefined
-          ? defaultCors
-          : {
-            ...defaultCors,
-            ...cors,
-            maxAge: cors.maxAge && toSeconds(cors.maxAge),
-          };
-      });
-    }
-
     function normalizeVpc() {
       // "vpc" is undefined
       if (!args.vpc) return;
@@ -825,17 +805,63 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
     }
 
     function createApi() {
-      return new apigatewayv2.Api(
-        ...transform(
-          args.transform?.api,
-          `${name}Api`,
-          {
-            protocolType: "HTTP",
-            corsConfiguration: cors,
-          },
-          { parent },
-        ),
-      );
+      return output(args.cors).apply((cors) => {
+        const defaultCors: types.input.apigatewayv2.ApiCorsConfiguration = {
+          allowHeaders: ["*"],
+          allowMethods: ["*"],
+          allowOrigins: ["*"],
+        };
+
+        if (cors === false) {
+          return output(undefined).apply(
+            () =>
+              new apigatewayv2.Api(
+                ...transform(
+                  args.transform?.api,
+                  `${name}Api`,
+                  { protocolType: "HTTP" },
+                  { parent },
+                ),
+              ),
+          );
+        }
+
+        if (cors === true || cors === undefined) {
+          return output(undefined).apply(
+            () =>
+              new apigatewayv2.Api(
+                ...transform(
+                  args.transform?.api,
+                  `${name}Api`,
+                  {
+                    protocolType: "HTTP",
+                    corsConfiguration: defaultCors,
+                  },
+                  { parent },
+                ),
+              ),
+          );
+        }
+
+        const { maxAge: maxAgeInput, ...corsRest } = cors;
+        return output(maxAgeInput).apply((maxAge) =>
+          new apigatewayv2.Api(
+            ...transform(
+              args.transform?.api,
+              `${name}Api`,
+              {
+                protocolType: "HTTP",
+                corsConfiguration: {
+                  ...defaultCors,
+                  ...corsRest,
+                  maxAge: maxAge && toSeconds(maxAge),
+                },
+              },
+              { parent },
+            ),
+          ),
+        );
+      });
     }
 
     function createLogGroup() {
