@@ -467,6 +467,7 @@ export class SvelteKit extends SsrSite {
             cached: false,
           },
         ],
+        hasStaticRoutes: true,
       };
     });
   }

@@ -482,6 +482,7 @@ export class Astro extends SsrSite {
             )
             ? "/404.html"
             : undefined,
+        hasStaticRoutes: true,
       };
     });
   }
