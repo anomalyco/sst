@@ -123,6 +123,12 @@ export interface TanStackStartArgs extends SsrSiteArgs {
    * 1. In `vite build`, they are loaded into `process.env`.
    * 2. Locally while running `sst dev`.
    *
+   * Commands started by the build command inherit these variables. A standalone
+   * `vite preview` command runs outside SST; use
+   * `sst shell --target MyWeb -- vite preview` to expose them to the preview
+   * process. Client values in `import.meta.env` remain the values embedded by
+   * the build.
+   *
    * :::tip
    * You can also `link` resources to your TanStack Start app and access them in a type-safe way with the [SDK](/docs/reference/sdk/). We recommend linking since it's more secure.
    * :::
