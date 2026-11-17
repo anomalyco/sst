@@ -6,7 +6,7 @@ import {
   output,
 } from "@pulumi/pulumi";
 import { Component, Transform, transform } from "../component";
-import { FunctionArgs, FunctionArn } from "./function.js";
+import { Function, FunctionArgs, FunctionArn } from "./function.js";
 import { apigatewayv2, lambda } from "@pulumi/aws";
 import {
   ApiGatewayV2BaseRouteArgs,
@@ -29,6 +29,24 @@ export interface Args extends ApiGatewayV2BaseRouteArgs {
    * @internal
    */
   handlerTransform?: Transform<FunctionArgs>;
+  /**
+   * Reuse an already-created Lambda function, invoke permission, and
+   * `apigatewayv2.Integration` instead of creating new ones.
+   *
+   * Populated by `ApiGatewayV2.route()` when `dedupeHandlers: true` is set on
+   * the parent API and the current call's handler string matches an earlier
+   * call's. The component type (and therefore the child `apigatewayv2.Route`
+   * URN) stays the same whether this field is set or not — that's what keeps
+   * Pulumi from trying to create a second API-Gateway route with the same
+   * key during a dedup migration.
+   *
+   * @internal
+   */
+  sharedIntegration?: {
+    integration: apigatewayv2.Integration;
+    lambdaFunction: Output<Function>;
+    permission: lambda.Permission;
+  };
 }
 
 /**
@@ -42,7 +60,8 @@ export interface Args extends ApiGatewayV2BaseRouteArgs {
  * You'll find this component returned by the `route` method of the `ApiGatewayV2` component.
  */
 export class ApiGatewayV2LambdaRoute extends Component {
-  private readonly fn: FunctionBuilder;
+  private readonly fn: FunctionBuilder | undefined;
+  private readonly sharedLambdaFunction: Output<Function> | undefined;
   private readonly permission: lambda.Permission;
   private readonly apiRoute: Output<apigatewayv2.Route>;
   private readonly integration: apigatewayv2.Integration;
@@ -53,59 +72,63 @@ export class ApiGatewayV2LambdaRoute extends Component {
     const self = this;
     const api = output(args.api);
     const route = output(args.route);
+    const shared = args.sharedIntegration;
 
-    const fn = createFunction();
-    const permission = createPermission();
-    const integration = createIntegration();
-    const apiRoute = createApiRoute(name, args, integration.id, self);
+    if (shared) {
+      // Dedup path: reuse the first-call's Function, Permission, and Integration.
+      // Only the `apigatewayv2.Route` resource is created here, targeting the
+      // existing integration. The component URN stays `ApiGatewayV2LambdaRoute`
+      // so Pulumi doesn't treat a dedup-migration as a resource replacement.
+      this.fn = undefined;
+      this.sharedLambdaFunction = shared.lambdaFunction;
+      this.permission = shared.permission;
+      this.integration = shared.integration;
+      this.apiRoute = createApiRoute(name, args, output(shared.integration.id), self);
+      return;
+    }
+
+    const fn = functionBuilder(
+      `${name}Handler`,
+      args.handler,
+      {
+        description: interpolate`${api.name} route ${route}`,
+        link: args.handlerLink,
+      },
+      args.handlerTransform,
+      { parent: self },
+    );
+
+    const permission = new lambda.Permission(
+      `${name}Permissions`,
+      {
+        action: "lambda:InvokeFunction",
+        function: fn.arn,
+        qualifier: fn.qualifier.apply((qualifier) => qualifier!),
+        principal: "apigateway.amazonaws.com",
+        sourceArn: interpolate`${api.executionArn}/*`,
+      },
+      { parent: self },
+    );
+
+    const integration = new apigatewayv2.Integration(
+      ...transform(
+        args.transform?.integration,
+        `${name}Integration`,
+        {
+          apiId: api.id,
+          integrationType: "AWS_PROXY",
+          integrationUri: fn.targetArn,
+          payloadFormatVersion: "2.0",
+        },
+        { parent: self, dependsOn: [permission] },
+      ),
+    );
 
     this.fn = fn;
+    this.sharedLambdaFunction = undefined;
     this.permission = permission;
-    this.apiRoute = apiRoute;
+    this.apiRoute = createApiRoute(name, args, integration.id, self);
     this.integration = integration;
-
-    function createFunction() {
-      return functionBuilder(
-        `${name}Handler`,
-        args.handler,
-        {
-          description: interpolate`${api.name} route ${route}`,
-          link: args.handlerLink,
-        },
-        args.handlerTransform,
-        { parent: self },
-      );
-    }
-
-    function createPermission() {
-      return new lambda.Permission(
-        `${name}Permissions`,
-        {
-          action: "lambda:InvokeFunction",
-          function: fn.arn,
-          qualifier: fn.qualifier.apply((qualifier) => qualifier!),
-          principal: "apigateway.amazonaws.com",
-          sourceArn: interpolate`${api.executionArn}/*`,
-        },
-        { parent: self },
-      );
-    }
-
-    function createIntegration() {
-      return new apigatewayv2.Integration(
-        ...transform(
-          args.transform?.integration,
-          `${name}Integration`,
-          {
-            apiId: api.id,
-            integrationType: "AWS_PROXY",
-            integrationUri: fn.targetArn,
-            payloadFormatVersion: "2.0",
-          },
-          { parent: self, dependsOn: [permission] },
-        ),
-      );
-    }
   }
 
   /**
@@ -118,7 +141,8 @@ export class ApiGatewayV2LambdaRoute extends Component {
        * The Lambda function.
        */
       get function() {
-        return self.fn.apply((fn) => fn.getFunction());
+        if (self.sharedLambdaFunction) return self.sharedLambdaFunction;
+        return self.fn!.apply((fn) => fn.getFunction());
       },
       /**
        * The Lambda permission.

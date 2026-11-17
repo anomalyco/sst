@@ -28,6 +28,24 @@ import {
 import { ApiGatewayV2PrivateRoute } from "./apigatewayv2-private-route";
 import { Vpc } from "./vpc";
 
+/**
+ * Compute a stable fingerprint for a route handler so that `dedupeHandlers`
+ * can keep Integrations + Lambdas + Permissions shared across identical
+ * `route()` calls.
+ *
+ * Only plain string handlers (handler paths and function ARNs) are
+ * fingerprinted — `FunctionArgs` objects and Pulumi `Output`s return `null`
+ * (no dedup) because we'd need to resolve them asynchronously to compare,
+ * which doesn't compose with the synchronous `route()` API. Users that want
+ * dedup with `FunctionArgs` should hoist their handler path to a shared
+ * string constant.
+ */
+function fingerprintHandler(
+  handler: Input<string | FunctionArgs | FunctionArn>,
+): string | null {
+  return typeof handler === "string" ? handler : null;
+}
+
 interface ApiGatewayV2CorsArgs {
   /**
    * Allow cookies or other credentials in requests to the HTTP API.
@@ -269,6 +287,42 @@ export interface ApiGatewayV2Args {
      */
     subnets: Input<Input<string>[]>;
   }>;
+  /**
+   * Deduplicate the underlying Lambda function, invoke permission, and
+   * `apigatewayv2.Integration` when multiple `route()` calls share the same
+   * handler.
+   *
+   * AWS HTTP APIs cap Integrations at 300 per API — a hard cap that is *not*
+   * adjustable through Service Quotas. By default, every `route()` call
+   * creates a brand-new Integration even when the handler is identical, which
+   * means a route count above ~300 forces you to manually consolidate paths
+   * behind `{proxy+}` catch-alls inside your handler.
+   *
+   * With `dedupeHandlers: true`, the second (and Nth) `route()` call against
+   * the same handler reuses the first call's Integration + Function +
+   * Permission and only creates a new `apigatewayv2.Route`. Routes are still
+   * capped (default 300, raisable to 1000+ via Service Quota
+   * `L-65B5C802 "Routes per HTTP API"`), but Integrations stay at one per
+   * unique handler.
+   *
+   * Two handlers are treated as the same handler when both calls pass the
+   * **same plain string** (handler path or function ARN). `FunctionArgs`
+   * objects and Pulumi `Output`s do not participate in dedup — pass a string
+   * literal you can compare statically.
+   *
+   * @default `false`
+   * @example
+   * ```ts
+   * const api = new sst.aws.ApiGatewayV2("MyApi", { dedupeHandlers: true });
+   *
+   * // 4 routes, 1 Integration, 1 Lambda
+   * api.route("GET /a", "src/handler.fn");
+   * api.route("GET /b", "src/handler.fn");
+   * api.route("GET /c", "src/handler.fn");
+   * api.route("GET /d", "src/handler.fn");
+   * ```
+   */
+  dedupeHandlers?: boolean;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
@@ -595,6 +649,19 @@ export interface ApiGatewayV2RouteArgs {
    */
   name?: string;
   /**
+   * Force this route to create its own Lambda function, permission, and
+   * `apigatewayv2.Integration` even when the parent `ApiGatewayV2` has
+   * `dedupeHandlers: true`.
+   *
+   * Useful when a single route needs a route-specific transform applied to
+   * the underlying integration or function (e.g. a different timeout or
+   * `payloadFormatVersion`) and would otherwise share resources with another
+   * route that uses the same handler string.
+   *
+   * @default `false`
+   */
+  _forceUnique?: boolean;
+  /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
    */
@@ -696,6 +763,7 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
   private apiMapping?: Output<apigatewayv2.ApiMapping>;
   private logGroup: cloudwatch.LogGroup;
   private vpcLink?: apigatewayv2.VpcLink;
+  private integrationCache: Map<string, ApiGatewayV2LambdaRoute> = new Map();
 
   constructor(
     name: string,
@@ -1137,22 +1205,48 @@ export class ApiGatewayV2 extends Component implements Link.Linkable {
       args,
       { provider: this.constructorOpts.provider },
     );
-    return new ApiGatewayV2LambdaRoute(
-      transformed[0],
+    const [routeId, routeArgs, routeOpts] = transformed;
+    const baseApi = {
+      name: this.constructorName,
+      id: this.api.id,
+      executionArn: this.api.executionArn,
+    };
+
+    const fingerprint = fingerprintHandler(handler);
+    const dedupeEnabled = this.constructorArgs.dedupeHandlers === true;
+    const forceUnique = routeArgs._forceUnique === true;
+    const cached =
+      dedupeEnabled && !forceUnique && fingerprint
+        ? this.integrationCache.get(fingerprint)
+        : undefined;
+
+    const created = new ApiGatewayV2LambdaRoute(
+      routeId,
       {
-        api: {
-          name: this.constructorName,
-          id: this.api.id,
-          executionArn: this.api.executionArn,
-        },
+        api: baseApi,
         route,
         handler,
         handlerLink: this.constructorArgs.link,
         handlerTransform: this.constructorArgs.transform?.route?.handler,
-        ...transformed[1],
+        ...(cached
+          ? {
+              sharedIntegration: {
+                integration: cached.nodes.integration,
+                lambdaFunction: cached.nodes.function,
+                permission: cached.nodes.permission,
+              },
+            }
+          : {}),
+        ...routeArgs,
       },
-      transformed[2],
+      routeOpts,
     );
+
+    if (dedupeEnabled && !forceUnique && fingerprint) {
+      this.integrationCache.set(fingerprint, created);
+    }
+
+    return created;
   }
 
   /**
