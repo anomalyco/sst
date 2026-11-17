@@ -1,0 +1,25 @@
+{
+  "name": "@aws-auth-react/functions",
+  "version": "0.0.0",
+  "type": "module",
+  "main": "src/server/issuer.ts",
+  "scripts": {
+    "dev": "openauth dev",
+    "build": "openauth build"
+  },
+  "dependencies": {
+    "@openauthjs/openauth": "../../../../../openauth/packages/openauth",
+    "@openauthjs/react": "../../../../../openauth/packages/react",
+    "@openauthjs/vite": "../../../../../openauth/packages/vite",
+    "@tailwindcss/vite": "^4.3.3",
+    "hono": "4.6.9",
+    "sst": "file:../../../../sdk/js",
+    "tailwindcss": "^4.3.3",
+    "valibot": "^1.0.0-beta.15",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8"
+  }
+}
