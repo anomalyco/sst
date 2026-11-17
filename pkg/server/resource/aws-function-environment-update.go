@@ -1,6 +1,8 @@
 package resource
 
 import (
+	"maps"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	"github.com/aws/aws-sdk-go-v2/service/lambda/types"
@@ -71,16 +73,12 @@ func (r *FunctionEnvironmentUpdate) updateEnvironment(input *FunctionEnvironment
 	envVars := make(map[string]string)
 
 	// If the function already has environment variables, preserve them
-	if functionConfig.Environment != nil && functionConfig.Environment.Variables != nil {
-		for k, v := range functionConfig.Environment.Variables {
-			envVars[k] = v
-		}
+	if functionConfig.Environment != nil {
+		maps.Copy(envVars, functionConfig.Environment.Variables)
 	}
 
 	// Add or update with the new environment variables
-	for k, v := range input.Environment {
-		envVars[k] = v
-	}
+	maps.Copy(envVars, input.Environment)
 
 	// Update the function configuration with the new environment variables
 	_, err = client.UpdateFunctionConfiguration(r.context, &lambda.UpdateFunctionConfigurationInput{

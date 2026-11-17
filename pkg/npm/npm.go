@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/url"
 	"os"
@@ -115,9 +116,7 @@ func LoadRegistry() Registry {
 		if rc.registry != "" {
 			merged.registry = rc.registry
 		}
-		for k, v := range rc.auths {
-			merged.auths[k] = v
-		}
+		maps.Copy(merged.auths, rc.auths)
 	}
 
 	// Load from ~/.npmrc

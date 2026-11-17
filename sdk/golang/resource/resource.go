@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"maps"
 	"os"
 	"strings"
 )
@@ -106,9 +107,7 @@ func loadFromEnv() {
 	if consolidated := os.Getenv("SST_RESOURCES_JSON"); consolidated != "" {
 		var parsed map[string]interface{}
 		if err := json.Unmarshal([]byte(consolidated), &parsed); err == nil {
-			for k, v := range parsed {
-				resources[k] = v
-			}
+			maps.Copy(resources, parsed)
 		}
 	}
 }
