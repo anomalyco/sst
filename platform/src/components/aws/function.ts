@@ -1714,7 +1714,7 @@ export class Function extends Component implements Link.Linkable {
   private constructorName: string;
   private durable: boolean;
   private function: Output<lambda.Function>;
-  private role: iam.Role;
+  private role: () => iam.Role;
   private logGroup: Output<cloudwatch.LogGroup | undefined>;
   private urlEndpoint: Output<string | undefined>;
   private eventInvokeConfig?: lambda.FunctionEventInvokeConfig;
@@ -2227,12 +2227,20 @@ export class Function extends Component implements Link.Linkable {
     }
 
     function createRole() {
+      // When a role ARN is passed in, the function is wired up from that ARN directly
+      // (see `createFunction`), so the Role is only needed to back `nodes.role`. Looking
+      // it up eagerly costs an IAM GetRole per function on every run — a `read` op, which
+      // is never treated as unchanged — so defer it until something asks for it. Apps that
+      // share one role across many functions pay that lookup once per function today.
       if (args.role) {
-        return iam.Role.get(
-          `${name}Role`,
-          output(args.role).apply(parseRoleArn).roleName,
-          {},
-          { parent },
+        const roleArn = args.role;
+        return lazy(() =>
+          iam.Role.get(
+            `${name}Role`,
+            output(roleArn).apply(parseRoleArn).roleName,
+            {},
+            { parent },
+          ),
         );
       }
 
@@ -2271,7 +2279,10 @@ export class Function extends Component implements Link.Linkable {
           }),
       );
 
-      return new iam.Role(
+      // Created eagerly, as before. `role` is consumed inside an `apply` in
+      // `createFunction`, so this must not be deferred — the thunk exists only so both
+      // branches share a return type.
+      const role = new iam.Role(
         ...transform(
           args.transform?.role,
           `${name}Role`,
@@ -2330,6 +2341,7 @@ export class Function extends Component implements Link.Linkable {
           { parent },
         ),
       );
+      return () => role;
     }
 
     function createImageAsset() {
@@ -2615,7 +2627,7 @@ export class Function extends Component implements Link.Linkable {
             {
               name: args.name,
               description: args.description ?? "",
-              role: args.role ?? role!.arn,
+              role: args.role ?? role().arn,
               timeout: timeout.apply((timeout) => toSeconds(timeout)),
               memorySize: memory.apply((memory) => toMBs(memory)),
               ephemeralStorage: { size: storage.apply((v) => toMBs(v)) },
@@ -2943,11 +2955,14 @@ export class Function extends Component implements Link.Linkable {
    * The underlying [resources](/docs/components/#nodes) this component creates.
    */
   public get nodes() {
+    const self = this;
     return {
       /**
        * The IAM Role the function will use.
        */
-      role: this.role,
+      get role() {
+        return self.role();
+      },
       /**
        * The AWS Lambda function.
        */
