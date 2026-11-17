@@ -154,7 +154,7 @@ func (p *AwsProvider) Bootstrap(region string) (*AwsBootstrapData, error) {
 	slog.Info("fetching bootstrap")
 	result, err := ssmClient.GetParameter(ctx, &ssm.GetParameterInput{
 		Name:           aws.String(SSM_NAME_BOOTSTRAP),
-		WithDecryption: aws.Bool(false),
+		WithDecryption: aws.Bool(true),
 	})
 	if result != nil && result.Parameter.Value != nil {
 		slog.Info("found existing bootstrap", "data", *result.Parameter.Value)
@@ -187,7 +187,7 @@ func (p *AwsProvider) Bootstrap(region string) (*AwsBootstrapData, error) {
 			ctx,
 			&ssm.PutParameterInput{
 				Name:      aws.String(SSM_NAME_BOOTSTRAP),
-				Type:      ssmTypes.ParameterTypeString,
+				Type:      ssmTypes.ParameterTypeSecureString,
 				Overwrite: aws.Bool(true),
 				Value:     aws.String(string(data)),
 			},
