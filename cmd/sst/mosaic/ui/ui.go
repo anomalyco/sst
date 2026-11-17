@@ -592,12 +592,16 @@ var Colors = []lipgloss.Style{
 	lipgloss.NewStyle().Foreground(lipgloss.Color("12")),
 }
 
+// GetColor returns a copy of one of Colors picked by hashing input. The copy
+// matters: lipgloss styles share their rules map across value copies, so
+// callers chaining setters like Bold(true) would otherwise write to the shared
+// Colors entries and race when called from multiple goroutines.
 func GetColor(input string) lipgloss.Style {
 	hash := 0
 	for _, c := range input {
 		hash += int(c)
 	}
-	return Colors[hash%len(Colors)]
+	return Colors[hash%len(Colors)].Copy()
 }
 
 func (u *UI) functionName(functionID string) string {
