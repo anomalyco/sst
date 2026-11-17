@@ -1,5 +1,12 @@
-import * as durable from "@aws/durable-execution-sdk-js";
+import { createRequire } from "node:module";
+import type * as durableTypes from "@aws/durable-execution-sdk-js";
 import { awsFetch, type AwsOptions } from "./client.js";
+
+// The durable SDK's ESM build statically imports CommonJS AWS SDK modules.
+// Loading its CommonJS entrypoint also works when an SST config is bundled in Yarn PnP.
+const durable = createRequire(import.meta.url)(
+  "@aws/durable-execution-sdk-js",
+) as typeof import("@aws/durable-execution-sdk-js");
 
 /**
  * The `workflow` SDK is a thin wrapper around the
@@ -65,8 +72,8 @@ import { awsFetch, type AwsOptions } from "./client.js";
  */
 export namespace workflow {
   export interface Context<
-    TLogger extends durable.DurableLogger = durable.DurableLogger,
-  > extends durable.DurableContext<TLogger> {
+    TLogger extends durableTypes.DurableLogger = durableTypes.DurableLogger,
+  > extends durableTypes.DurableContext<TLogger> {
     /**
      * Execute a durable step and register a compensating rollback step if it succeeds.
      * If `run` throws, nothing is added to the rollback stack for that step.
@@ -75,11 +82,11 @@ export namespace workflow {
       name: string,
       handler: StepWithRollbackHandler<TOutput, TLogger>,
       config?: StepConfig<TOutput>,
-    ): durable.DurablePromise<TOutput>;
+    ): durableTypes.DurablePromise<TOutput>;
     /**
      * Wait until the provided time. Delays are rounded up to the nearest second.
      */
-    waitUntil(name: string, until: Date): durable.DurablePromise<void>;
+    waitUntil(name: string, until: Date): durableTypes.DurablePromise<void>;
     /**
      * Execute all registered rollback steps in reverse order.
      */
@@ -89,11 +96,11 @@ export namespace workflow {
   export type Handler<
     TEvent = any,
     TResult = any,
-    TLogger extends durable.DurableLogger = durable.DurableLogger,
+    TLogger extends durableTypes.DurableLogger = durableTypes.DurableLogger,
   > = (event: TEvent, context: Context<TLogger>) => Promise<TResult>;
-  export type Config = durable.DurableExecutionConfig;
-  export type Duration = durable.Duration;
-  export type StepConfig<TOutput = any> = durable.StepConfig<TOutput>;
+  export type Config = durableTypes.DurableExecutionConfig;
+  export type Duration = durableTypes.Duration;
+  export type StepConfig<TOutput = any> = durableTypes.StepConfig<TOutput>;
   export type ExecutionStatus =
     | "RUNNING"
     | "SUCCEEDED"
@@ -218,10 +225,10 @@ export namespace workflow {
   export function handler<
     TEvent = any,
     TResult = any,
-    TLogger extends durable.DurableLogger = durable.DurableLogger,
+    TLogger extends durableTypes.DurableLogger = durableTypes.DurableLogger,
   >(input: Handler<TEvent, TResult, TLogger>, config?: Config) {
     return durable.withDurableExecution(
-      (event: TEvent, context: durable.DurableContext<TLogger>) =>
+      (event: TEvent, context: durableTypes.DurableContext<TLogger>) =>
         input(event, withRollback(context)),
       config,
     );
@@ -561,24 +568,24 @@ const workflowListPageSize = 1000;
 const rollbackStateSymbol = Symbol("sst.workflow.rollback.state");
 
 interface RollbackEntry<
-  TLogger extends durable.DurableLogger = durable.DurableLogger,
+  TLogger extends durableTypes.DurableLogger = durableTypes.DurableLogger,
 > {
   name: string;
   execute(
     error: unknown,
-    context: durable.DurableContext<TLogger>,
+    context: durableTypes.DurableContext<TLogger>,
   ): Promise<void>;
 }
 
 interface RollbackState<
-  TLogger extends durable.DurableLogger = durable.DurableLogger,
+  TLogger extends durableTypes.DurableLogger = durableTypes.DurableLogger,
 > {
   undoStack: RollbackEntry<TLogger>[];
 }
 
 type WrappedDurableContext<
-  TLogger extends durable.DurableLogger = durable.DurableLogger,
-> = durable.DurableContext<TLogger> & {
+  TLogger extends durableTypes.DurableLogger = durableTypes.DurableLogger,
+> = durableTypes.DurableContext<TLogger> & {
   [rollbackStateSymbol]?: RollbackState<TLogger>;
 };
 
@@ -666,19 +673,19 @@ function normalizeError(error: unknown): DurableError {
 
 interface StepWithRollbackHandler<
   TOutput = any,
-  TLogger extends durable.DurableLogger = durable.DurableLogger,
+  TLogger extends durableTypes.DurableLogger = durableTypes.DurableLogger,
 > {
   /**
    * The durable step to execute.
    */
-  run: durable.StepFunc<TOutput, TLogger>;
+  run: durableTypes.StepFunc<TOutput, TLogger>;
   /**
    * Called during rollback with the original error, the step result, and step context.
    */
   undo: (
     error: unknown,
     value: TOutput,
-    context: Parameters<durable.StepFunc<void, TLogger>>[0],
+    context: Parameters<durableTypes.StepFunc<void, TLogger>>[0],
   ) => Promise<void>;
 }
 
@@ -791,7 +798,7 @@ function parseTimestamp(timestamp: string | number): Date {
   return new Date(timestamp);
 }
 
-function resolveWaitUntilDuration(until: Date): durable.Duration {
+function resolveWaitUntilDuration(until: Date): durableTypes.Duration {
   const timestamp = until.getTime();
   if (!Number.isFinite(timestamp)) {
     throw new TypeError("waitUntil requires a valid Date");
@@ -803,8 +810,8 @@ function resolveWaitUntilDuration(until: Date): durable.Duration {
 }
 
 function withRollback<
-  TLogger extends durable.DurableLogger = durable.DurableLogger,
->(context: durable.DurableContext<TLogger>): workflow.Context<TLogger> {
+  TLogger extends durableTypes.DurableLogger = durableTypes.DurableLogger,
+>(context: durableTypes.DurableContext<TLogger>): workflow.Context<TLogger> {
   const wrapped = context as WrappedDurableContext<TLogger>;
   if (wrapped[rollbackStateSymbol]) return wrapped as workflow.Context<TLogger>;
 
@@ -819,8 +826,8 @@ function withRollback<
     value: function <TOutput>(
       name: string,
       handler: StepWithRollbackHandler<TOutput, TLogger>,
-      config?: durable.StepConfig<TOutput>,
-    ): durable.DurablePromise<TOutput> {
+      config?: durableTypes.StepConfig<TOutput>,
+    ): durableTypes.DurablePromise<TOutput> {
       const undoConfig =
         config?.retryStrategy || config?.semantics
           ? {
@@ -836,7 +843,7 @@ function withRollback<
           name,
           execute: async (
             error: unknown,
-            rollbackContext: durable.DurableContext<TLogger>,
+            rollbackContext: durableTypes.DurableContext<TLogger>,
           ) => {
             await rollbackContext.step(
               `Undo '${name}'`,
@@ -855,7 +862,7 @@ function withRollback<
     configurable: true,
     enumerable: false,
     writable: true,
-    value: (name: string, until: Date): durable.DurablePromise<void> =>
+    value: (name: string, until: Date): durableTypes.DurablePromise<void> =>
       context.wait(name, resolveWaitUntilDuration(until)),
   });
 
