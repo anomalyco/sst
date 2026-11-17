@@ -1904,7 +1904,7 @@ export class Function extends Component implements Link.Linkable {
           stage: $app.stage,
         });
         for (const linkable of link || []) {
-          if (!Link.isLinkable(linkable)) continue;
+          Link.assertLinkable(linkable);
           const def = linkable.getSSTLink();
           for (const item of def.include || []) {
             if (item.type === "environment") Object.assign(result, item.env);
