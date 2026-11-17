@@ -8,7 +8,7 @@ import {
 import { Component, Transform, transform } from "../component";
 import { Link } from "../link";
 import type { Input } from "../input";
-import { FunctionArgs, FunctionArn } from "./function.js";
+import { Function, FunctionArgs, FunctionArn } from "./function.js";
 import { VisibleError } from "../error";
 import { hashStringToPrettyString, logicalName } from "../naming";
 import { parseQueueArn } from "./helpers/arn";
@@ -507,7 +507,7 @@ export class Queue extends Component implements Link.Linkable {
    * ```
    */
   public subscribe(
-    subscriber: Input<string | FunctionArgs | FunctionArn>,
+    subscriber: Input<string | Function | FunctionArgs | FunctionArn>,
     args?: QueueSubscriberArgs,
     opts?: ComponentResourceOptions,
   ) {
@@ -572,7 +572,7 @@ export class Queue extends Component implements Link.Linkable {
    */
   public static subscribe(
     queueArn: Input<string>,
-    subscriber: Input<string | FunctionArgs | FunctionArn>,
+    subscriber: Input<string | Function | FunctionArgs | FunctionArn>,
     args?: QueueSubscriberArgs,
     opts?: ComponentResourceOptions,
   ) {
@@ -590,7 +590,7 @@ export class Queue extends Component implements Link.Linkable {
   private static _subscribeFunction(
     name: string,
     queueArn: Input<string>,
-    subscriber: Input<string | FunctionArgs | FunctionArn>,
+    subscriber: Input<string | Function | FunctionArgs | FunctionArn>,
     args: QueueSubscriberArgs = {},
     opts?: ComponentResourceOptions,
   ) {

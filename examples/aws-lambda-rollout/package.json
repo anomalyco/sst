@@ -1,0 +1,5 @@
+{
+  "name": "aws-lambda-rollout",
+  "private": true,
+  "type": "module"
+}

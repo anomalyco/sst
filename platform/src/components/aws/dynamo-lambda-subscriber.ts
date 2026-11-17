@@ -1,6 +1,6 @@
 import { ComponentResourceOptions, Input, output } from "@pulumi/pulumi";
 import { Component, transform } from "../component";
-import { FunctionArgs } from "./function.js";
+import { Function, FunctionArgs } from "./function.js";
 import { DynamoSubscriberArgs } from "./dynamo";
 import { lambda } from "@pulumi/aws";
 import { FunctionBuilder, functionBuilder } from "./helpers/function-builder";
@@ -18,7 +18,7 @@ export interface Args extends DynamoSubscriberArgs {
   /**
    * The subscriber function.
    */
-  subscriber: Input<string | FunctionArgs>;
+  subscriber: Input<string | Function | FunctionArgs>;
   /**
    * In early versions of SST, parent were forgotten to be set for resources in components.
    * This flag is used to disable the automatic setting of the parent to prevent breaking

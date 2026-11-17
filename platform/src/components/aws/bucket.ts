@@ -9,7 +9,7 @@ import { hashStringToPrettyString, logicalName } from "../naming";
 import { Component, Prettify, Transform, transform } from "../component";
 import { Link } from "../link";
 import type { Input } from "../input";
-import { FunctionArgs, FunctionArn } from "./function.js";
+import { Function, FunctionArgs, FunctionArn } from "./function.js";
 import { Duration, DurationDays, toSeconds } from "../duration";
 import { VisibleError } from "../error";
 import { parseBucketArn } from "./helpers/arn";
@@ -575,7 +575,7 @@ export interface BucketNotificationsArgs {
        * }
        * ```
        */
-      function?: Input<string | FunctionArgs | FunctionArn>;
+      function?: Input<string | Function | FunctionArgs | FunctionArn>;
       /**
        * The Queue that'll be notified.
        *
@@ -1370,7 +1370,7 @@ export class Bucket extends Component implements Link.Linkable {
    * ```
    */
   public subscribe(
-    subscriber: Input<string | FunctionArgs | FunctionArn>,
+    subscriber: Input<string | Function | FunctionArgs | FunctionArn>,
     args?: BucketSubscriberArgs,
   ) {
     this.ensureNotSubscribed();
@@ -1438,7 +1438,7 @@ export class Bucket extends Component implements Link.Linkable {
    */
   public static subscribe(
     bucketArn: Input<string>,
-    subscriber: Input<string | FunctionArgs | FunctionArn>,
+    subscriber: Input<string | Function | FunctionArgs | FunctionArn>,
     args?: BucketSubscriberArgs,
   ) {
     return output(bucketArn).apply((bucketArn) => {
@@ -1457,27 +1457,33 @@ export class Bucket extends Component implements Link.Linkable {
     name: string,
     bucketName: Input<string>,
     bucketArn: Input<string>,
-    subscriber: Input<string | FunctionArgs | FunctionArn>,
+    subscriber: Input<string | Function | FunctionArgs | FunctionArn>,
     args: BucketSubscriberArgs = {},
     opts: ComponentResourceOptions = {},
   ) {
     return all([bucketArn, subscriber, args]).apply(
       ([bucketArn, subscriber, args]) => {
-        const subscriberId = this.buildSubscriberId(
-          bucketArn,
-          typeof subscriber === "string" ? subscriber : subscriber.handler,
-        );
+        const subscriberIdentity =
+          typeof subscriber === "string"
+            ? subscriber
+            : subscriber instanceof Function
+              ? subscriber.arn
+              : subscriber.handler;
 
-        return new BucketLambdaSubscriber(
-          `${name}Subscriber${subscriberId}`,
-          {
-            bucket: { name: bucketName, arn: bucketArn },
-            subscriber,
-            subscriberId,
-            ...args,
-          },
-          opts,
-        );
+        return output(subscriberIdentity).apply((identity) => {
+          const subscriberId = this.buildSubscriberId(bucketArn, identity);
+
+          return new BucketLambdaSubscriber(
+            `${name}Subscriber${subscriberId}`,
+            {
+              bucket: { name: bucketName, arn: bucketArn },
+              subscriber,
+              subscriberId,
+              ...args,
+            },
+            opts,
+          );
+        });
       },
     );
   }

@@ -1,0 +1,8 @@
+{
+  "name": "aws-lambda-smoke-test",
+  "private": true,
+  "dependencies": {
+    "@aws-sdk/client-lambda": "^3.540.0",
+    "sst": "^4"
+  }
+}

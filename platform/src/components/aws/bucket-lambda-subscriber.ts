@@ -32,7 +32,7 @@ export interface Args extends BucketSubscriberArgs {
   /**
    * The subscriber function.
    */
-  subscriber: Input<string | FunctionArgs>;
+  subscriber: Input<string | Function | FunctionArgs>;
 }
 
 /**
