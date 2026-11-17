@@ -35,7 +35,7 @@ case "$filename" in
     ;;
 esac
 
-INSTALL_DIR=$HOME/.sst/bin
+INSTALL_DIR=${XDG_BIN_HOME:-$HOME/.local/bin}
 mkdir -p "$INSTALL_DIR"
 
 if [ -z "$requested_version" ]; then
