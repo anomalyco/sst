@@ -163,7 +163,7 @@ export namespace task {
         tasks: [task],
       }),
     }, options);
-    if (!res.ok) throw new DescribeError(res);
+    if (!res.ok) throw new DescribeError(res, await readBody(res));
 
     const data = (await res.json()) as {
       tasks?: {
@@ -171,7 +171,7 @@ export namespace task {
         lastStatus: string;
       }[];
     };
-    if (!data.tasks?.length) throw new DescribeError(res);
+    if (!data.tasks?.length) throw new DescribeError(res, data);
 
     return {
       arn: data.tasks[0].taskArn,
@@ -263,7 +263,7 @@ export namespace task {
         },
       }),
     }, options);
-    if (!res.ok) throw new RunError(res);
+    if (!res.ok) throw new RunError(res, await readBody(res));
 
     const data = (await res.json()) as {
       tasks?: {
@@ -271,7 +271,7 @@ export namespace task {
         lastStatus: string;
       }[];
     };
-    if (!data.tasks?.length) throw new RunError(res);
+    if (!data.tasks?.length) throw new RunError(res, data);
 
     return {
       arn: data.tasks[0].taskArn,
@@ -327,7 +327,7 @@ export namespace task {
         task,
       }),
     }, options);
-    if (!res.ok) throw new StopError(res);
+    if (!res.ok) throw new StopError(res, await readBody(res));
 
     const data = (await res.json()) as {
       task: {
@@ -335,7 +335,7 @@ export namespace task {
         lastStatus: string;
       };
     };
-    if (!data.task) throw new StopError(res);
+    if (!data.task) throw new StopError(res, data);
 
     return {
       arn: data.task.taskArn,
@@ -344,20 +344,77 @@ export namespace task {
     };
   }
 
-  export class DescribeError extends Error {
-    constructor(public readonly response: Response) {
-      super("Failed to describe task");
+  /**
+   * The failure entries ECS returns when it cannot place or find a task.
+   */
+  export interface Failure {
+    arn?: string;
+    reason?: string;
+    detail?: string;
+  }
+
+  class TaskError extends Error {
+    /**
+     * The HTTP status of the ECS response.
+     */
+    readonly status: number;
+    /**
+     * The AWS error type, for example `ThrottlingException`.
+     */
+    readonly errorType?: string;
+    /**
+     * The `failures` array of the ECS response, for example a capacity error.
+     */
+    readonly failures?: Failure[];
+    /**
+     * The parsed JSON body of the ECS response, if there was one.
+     */
+    readonly body?: unknown;
+
+    constructor(
+      message: string,
+      public readonly response: Response,
+      body?: unknown
+    ) {
+      const data = (body && typeof body === "object" ? body : {}) as {
+        __type?: string;
+        message?: string;
+        Message?: string;
+        failures?: Failure[];
+      };
+      const failures = Array.isArray(data.failures) ? data.failures : undefined;
+      const reason = failures?.[0]?.reason ?? data.message ?? data.Message;
+      super(reason ? `${message}: ${reason}` : message);
+      this.status = response.status;
+      this.errorType = data.__type?.split("#").pop();
+      this.failures = failures;
+      this.body = body;
     }
   }
 
-  export class RunError extends Error {
-    constructor(public readonly response: Response) {
-      super("Failed to run task");
+  async function readBody(res: Response) {
+    try {
+      return await res.json();
+    } catch {
+      return undefined;
     }
   }
-  export class StopError extends Error {
-    constructor(public readonly response: Response) {
-      super("Failed to stop task");
+
+  export class DescribeError extends TaskError {
+    constructor(response: Response, body?: unknown) {
+      super("Failed to describe task", response, body);
+    }
+  }
+
+  export class RunError extends TaskError {
+    constructor(response: Response, body?: unknown) {
+      super("Failed to run task", response, body);
+    }
+  }
+
+  export class StopError extends TaskError {
+    constructor(response: Response, body?: unknown) {
+      super("Failed to stop task", response, body);
     }
   }
 }
