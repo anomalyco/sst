@@ -126,7 +126,7 @@ func (r *BucketFiles) upload(client *s3.Client, bucketName string, files []Bucke
 	for _, file := range files {
 		oldFile, exists := oldFilesMap[file.Key]
 		if exists && oldFile.Hash != nil && *oldFile.Hash == *file.Hash &&
-			oldFile.CacheControl == file.CacheControl &&
+			aws.ToString(oldFile.CacheControl) == aws.ToString(file.CacheControl) &&
 			oldFile.ContentType == file.ContentType {
 			continue
 		}
