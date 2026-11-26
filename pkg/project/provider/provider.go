@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/pulumi/pulumi/pkg/v3/resource/stack"
@@ -67,7 +68,37 @@ const SSM_NAME_BOOTSTRAP = "/sst/bootstrap"
 
 var ErrLockExists = fmt.Errorf("Concurrent update detected, run `sst unlock --stage=<stage>` to delete lock file and retry.")
 var ErrLockNotFound = fmt.Errorf("Lock not found")
+
+// passphraseCache is shared by goroutines that decrypt at the same time (`sst secret list`
+// loads the stage's and the fallback's secrets concurrently), so every access holds passphraseMu.
 var passphraseCache = map[Home]map[string]string{}
+var passphraseMu sync.Mutex
+
+func cachedPassphrase(backend Home, key string) (string, bool) {
+	passphraseMu.Lock()
+	defer passphraseMu.Unlock()
+	passphrase, ok := passphraseCache[backend][key]
+	return passphrase, ok
+}
+
+func cachePassphrase(backend Home, key, passphrase string) {
+	passphraseMu.Lock()
+	defer passphraseMu.Unlock()
+	cache, ok := passphraseCache[backend]
+	if !ok {
+		cache = map[string]string{}
+		passphraseCache[backend] = cache
+	}
+	cache[key] = passphrase
+}
+
+func forgetPassphrase(backend Home, key string) {
+	passphraseMu.Lock()
+	defer passphraseMu.Unlock()
+	if cache, ok := passphraseCache[backend]; ok {
+		delete(cache, key)
+	}
+}
 
 func Copy(from Home, to Home, app, stage string) error {
 	reader, err := from.getData("app", app, stage)
@@ -89,13 +120,7 @@ func Copy(from Home, to Home, app, stage string) error {
 func GetPassphrase(backend Home, app, stage string) (string, error) {
 	slog.Info("getting passphrase", "app", app, "stage", stage)
 
-	cache, ok := passphraseCache[backend]
-	if !ok {
-		cache = map[string]string{}
-		passphraseCache[backend] = cache
-	}
-
-	existingPassphrase, ok := cache[app+stage]
+	existingPassphrase, ok := cachedPassphrase(backend, app+stage)
 	if ok {
 		return existingPassphrase, nil
 	}
@@ -106,7 +131,7 @@ func GetPassphrase(backend Home, app, stage string) (string, error) {
 	}
 
 	if passphrase != "" {
-		cache[app+stage] = passphrase
+		cachePassphrase(backend, app+stage, passphrase)
 	}
 	return passphrase, nil
 }
@@ -133,7 +158,7 @@ func GetOrCreatePassphrase(backend Home, app, stage string) (string, error) {
 			return "", err
 		}
 
-		passphraseCache[backend][app+stage] = passphrase
+		cachePassphrase(backend, app+stage, passphrase)
 	}
 
 	return passphrase, nil
@@ -197,9 +222,7 @@ func Purge(backend Home, app, stage string) error {
 	if err := backend.removePassphrase(app, stage); err != nil {
 		return err
 	}
-	if cache, ok := passphraseCache[backend]; ok {
-		delete(cache, app+stage)
-	}
+	forgetPassphrase(backend, app+stage)
 	return nil
 }
 
